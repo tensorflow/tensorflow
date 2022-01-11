@@ -3329,11 +3329,29 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
   };
 
   Status unimplemented_eq = errors::Unimplemented("");
-  Status internal_eq = errors::Internal("");
+  Status internal_err = errors::Internal("");
+  Status internal_err_before_TRT82 =
+      IS_TRT_VERSION_GE(8, 2, 0, 0) ? Status::OK() : internal_err;
+  Status unimplemented_before_TRT82 =
+      IS_TRT_VERSION_GE(8, 2, 0, 0) ? Status::OK() : unimplemented_eq;
+
+  Status diagonal_error = unimplemented_eq;
+  // The old converter only accepts 2 inputs, and the validator returns
+  // internal_err if only 1 input is used.
+  Status diagonal_error_1_input =
+      IS_TRT_VERSION_GE(8, 2, 0, 0) ? unimplemented_eq : internal_err;
 
   std::vector<TestParams> params{
       // Dot product.
-      TestParams{"i,i->", {2}, {2, 3}, {2}, {1, 2}, {1}, {8}, unimplemented_eq},
+      TestParams{"i,i->", {2}, {2, 3}, {2}, {1, 2}, {}, {8}, unimplemented_eq},
+      TestParams{"ik,ik->",
+                 {2, 2},
+                 {2, 3, 4, 1},
+                 {2, 2},
+                 {1, 2, 1, 3},
+                 {},
+                 {15},
+                 unimplemented_eq},
       // Outer product.
       TestParams{"i,k->ik",
                  {2},
@@ -3343,6 +3361,14 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {2, 3},
                  {1, 2, 3, 2, 4, 6},
                  unimplemented_eq},
+      TestParams{"ij,kl->ijkl",
+                 {2, 1},
+                 {1, 2},
+                 {3, 1},
+                 {1, 2, 3},
+                 {2, 1, 3, 1},
+                 {1, 2, 3, 2, 4, 6},
+                 unimplemented_before_TRT82},
       // Transpose.
       TestParams{"ik->ki",
                  {2, 3},
@@ -3351,7 +3377,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {},
                  {3, 2},
                  {0, 3, 1, 4, 2, 5},
-                 internal_eq},
+                 internal_err_before_TRT82},
       // Diag.
       TestParams{"ii->i",
                  {3, 3},
@@ -3360,16 +3386,16 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {},
                  {3},
                  {0, 4, 8},
-                 internal_eq},
+                 diagonal_error_1_input},
       // Trace.
-      TestParams{"ii",
+      TestParams{"ii->",  // Note TF einsum op always has '->'.
                  {3, 3},
                  {0, 1, 2, 3, 4, 5, 6, 7, 8},
                  {},
                  {},
                  {},
                  {12},
-                 internal_eq},
+                 diagonal_error_1_input},
       // MatMul with reduction.
       TestParams{"abbc,dc->ad",
                  {1, 2, 2, 3},
@@ -3378,7 +3404,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {1, 2, 3, 4, 5, 6},
                  {2, 3},
                  {1, 2, 3, 2, 4, 6},
-                 unimplemented_eq},
+                 diagonal_error},
       // Ellipsis with broadcast.
       TestParams{"...ik,...jk->...ij",
                  {1, 3, 1, 4},
@@ -3388,7 +3414,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {2, 3, 1, 1},
                  {20, 60, 100, 44, 148, 252},
                  unimplemented_eq},
-      // MatMul
+      // MatMul.
       TestParams{"ab,bc->ac",
                  {2, 3},
                  {0, 1, 2, 3, 4, 5},
@@ -3396,7 +3422,7 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  {1, 2, 3, 4, 5, 6},
                  {2, 2},
                  {13, 16, 40, 52}},
-      // Batched MatMul
+      // Batched MatMul.
       TestParams{"abc,cde->abde",
                  /*shape_a=*/{1, 2, 3},
                  /*values_a=*/{0, 1, 2, 3, 4, 5},
@@ -3405,6 +3431,14 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                  /*expected_shape=*/{1, 2, 2, 2},
                  /*expected_output=*/{23, 26, 29, 32, 68, 80, 92, 104}},
       TestParams{"abcd,cde->abe",
+                 {1, 2, 2, 3},
+                 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                 {2, 3, 2},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                 {1, 2, 2},
+                 {125, 140, 341, 392}},
+      // TF assumes case sensitive labels.
+      TestParams{"aBAE,AEe->aBe",
                  {1, 2, 2, 3},
                  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
                  {2, 3, 2},
