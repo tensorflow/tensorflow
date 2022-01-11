@@ -19,6 +19,7 @@ limitations under the License.
 
 include "tensorflow/core/ir/dialect.td"
 include "tensorflow/core/ir/types/attributes.td"
+include "tensorflow/core/ir/types/types.td"
 
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/Interfaces/CallInterfaces.td"
@@ -189,7 +190,7 @@ def TFGraph_ReturnOp : TFGraph_Op<"return",
     OpBuilder<(ins),
     [{ build($_builder, $_state, llvm::None); }]>];
 
-  // Use the dialect printer/parser like other unregistered op in this dialect.
+  // Use the dialect printer/parser like other unregistered ops in this dialect.
   let parser = [{ return parseCustomTfOp(parser, result); }];
   let printer = [{ printCustomTfOp(*this, p); }];
 }
@@ -222,6 +223,138 @@ def TFGraph_GetResultOp : TFGraph_Op<"get_result",
   );
 
   let assemblyFormat = "`(` $value `)` $name `:` $number attr-dict-with-keyword";
+}
+
+//===----------------------------------------------------------------------===//
+// TFGraph Concrete Ops
+//===----------------------------------------------------------------------===//
+
+// TODO(jeffniu): Much of the TF ops' ODS definitions and verifiers should be
+// auto-generated from the TF op registry, with a mix of hand-written code for
+// op-specific cases.
+// TODO(jeffniu): Also, many of these should be derived attributes (e.g. types).
+
+// A cast operation.
+def TFGraph_CastOp : TFGraph_Op<"Cast", [NoSideEffect]> {
+  let summary = "Cast between two compatible tensor types.";
+
+  let arguments = (ins
+    // Op operands.
+    TFGraph_Tensor:$x,
+    // Required attributes.
+    TFGraph_TypeOrPlaceholder:$SrcT,
+    TFGraph_TypeOrPlaceholder:$DstT,
+    DefaultValuedAttr<BoolAttr, "false">:$Truncate
+  );
+  let results = (outs AnyType:$y, ControlType:$ctl);
+}
+
+// Base class for TFGraph concrete ops.
+class TFGraph_ConcreteOp<string mnemonic, list<OpTrait> traits = []> :
+    TFGraph_Op<mnemonic, traits>;
+
+// Base class for TFGraph if-like operations.
+class TFGraph_IfLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
+  let arguments = (ins
+    // Op operands.
+    I1Tensor:$cond,
+    Variadic<TFGraph_TensorOrControlType>:$args,
+    // Required attributes.
+    TypeAttr:$Tcond,
+    TypeArrayAttr:$Tin,
+    TypeArrayAttr:$Tout,
+    TFType_FuncAttr:$then_branch,
+    TFType_FuncAttr:$else_branch,
+    TFGraph_ShapesAttr:$output_shapes
+  );
+  let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
+
+  let verifier = [{ return verifyIfLikeOp(*this); }];
+}
+
+def TFGraph_IfOp : TFGraph_IfLikeOp<"If"> {
+  let summary = "An if operation, in functional form.";
+}
+def TFGraph_StatelessIfOp : TFGraph_IfLikeOp<"StatelessIf"> {
+  let summary = "A stateless if operation, in functional form.";
+}
+def TFGraph_StatefulIfOp : TFGraph_IfLikeOp<"StatefulIf"> {
+  let summary = "A stateful if operation, in functional form.";
+}
+
+// Base class for TFGraph case-like operations.
+class TFGraph_CaseLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
+  let arguments = (ins
+    // Op operands.
+    I32Tensor:$branch_index,
+    Variadic<TFGraph_TensorOrControlType>:$args,
+    // Required attributes.
+    TypeArrayAttr:$Tin,
+    TypeArrayAttr:$Tout,
+    TypedArrayAttrBase<TFType_FuncAttr, "an array of functions">:$branches,
+    TFGraph_ShapesAttr:$output_shapes
+  );
+
+  let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
+
+  let verifier = [{ return verifyCaseLikeOp(*this); }];
+}
+
+def TFGraph_CaseOp : TFGraph_CaseLikeOp<"Case"> {
+  let summary = "A case operation, in functional form";
+}
+def TFGraph_StatelessCaseOp : TFGraph_CaseLikeOp<"StatelessCase"> {
+  let summary = "A stateless case operation, in functional form";
+}
+def TFGraph_StatefulCaseOp : TFGraph_CaseLikeOp<"StatefulCase"> {
+  let summary = "A stateful case operation, in functional form";
+}
+
+// Base class for TFGraph while-like operations.
+class TFGraph_WhileLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
+  let arguments = (ins
+    // Op operands.
+    Variadic<TFGraph_TensorOrControlType>:$args,
+    // Required attributes.
+    TypeArrayAttr:$T,
+    TFType_FuncAttr:$cond,
+    TFType_FuncAttr:$body,
+    TFGraph_ShapesAttr:$output_shapes,
+    I64Attr:$parallel_iterations
+  );
+  let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
+
+  let verifier = [{ return verifyWhileLikeOp(*this); }];
+}
+
+def TFGraph_WhileOp : TFGraph_WhileLikeOp<"While"> {
+  let summary = "A functional while loop operation.";
+}
+def TFGraph_StatelessWhileOp : TFGraph_WhileLikeOp<"StatelessWhile"> {
+  let summary = "A functional stateless while loop operation.";
+}
+def TFGraph_StatefulWhileOp : TFGraph_WhileLikeOp<"StatefulWhile"> {
+  let summary = "A functional stateful while loop operation.";
+}
+
+// A functional for loop operation.
+def TFGraph_ForOp : TFGraph_ConcreteOp<"For"> {
+  let summary = "A functional for-loop operation.";
+
+  let arguments = (ins
+    // Op operands.
+    I32Tensor:$start,
+    I32Tensor:$limit,
+    I32Tensor:$delta,
+    Variadic<TFGraph_TensorOrControlType>:$args,
+    // Required attributes.
+    TypeArrayAttr:$T,
+    TFType_FuncAttr:$body
+  );
+
+  let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
+
+  let verifier = [{ return ::mlir::tfg::verify(*this); }];
 }
 
 #endif // TFG_OPS
