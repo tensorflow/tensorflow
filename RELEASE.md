@@ -36,9 +36,9 @@
     to change it back to stdout, or
     `tf.keras.utils.is_interactive_logging_enabled()` to check if interactive
     logging is enabled.
-  * Changed default value for the `verbose` argument of `Model.evaluate()` to
-    `"auto"`, which defaults to `verbose=1` for most cases and defaults to
-     `verbose=2` when used with `ParameterServerStrategy`.
+  * Changed default value for the `verbose` argument of `Model.evaluate()` and
+    `Model.predict()` to `"auto"`, which defaults to `verbose=1` for most cases
+    and defaults to `verbose=2` when used with `ParameterServerStrategy`.
 
 * `tf.lite`:
 
