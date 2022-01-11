@@ -252,8 +252,8 @@ struct TFToJITInvocationPass
   }
 };
 
-struct TFT64BitIndexerPattern : public RewritePattern {
-  explicit TFT64BitIndexerPattern(MLIRContext *ctx)
+struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
+  explicit TFToI64JITInvocationForLargeTensorsPattern(MLIRContext *ctx)
       : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
 
   LogicalResult matchAndRewrite(Operation *op,
@@ -279,11 +279,11 @@ struct TFT64BitIndexerPattern : public RewritePattern {
                     loc, arith::CmpIPredicate::sgt, num_elems, shape_size_limit);
 
     Value conditional_path =
-                rewriter.create<scf::IfOp>(
-                  loc, op->getResultTypes(), coniditon_check_main,
-                  [&](OpBuilder &b, Location l) {
-                    auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
-                      loc, rewriter.getType<tf_framework::JITCallableType>(), llvm::None);
+        rewriter.create<scf::IfOp>(
+                    loc, op->getResultTypes(), coniditon_check_main,
+                    [&](OpBuilder &b, Location l) {
+                      auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
+                          loc, rewriter.getType<tf_framework::JITCallableType>(), llvm::None);
                       BlockAndValueMapping bvm;
                       {
                         OpBuilder::InsertionGuard guard(rewriter);
@@ -297,15 +297,15 @@ struct TFT64BitIndexerPattern : public RewritePattern {
                         rewriter.create<tf_framework::JITCompileYieldOp>(loc, TypeRange{},
                                                                         new_op->getResults());
                       }
-                    auto jit_execute_op = rewriter.create<tf_framework::JITExecuteOp>(
-                        loc, result_types, Value(), jit_compile_op.result(), op->getOperands());
-                          b.create<scf::YieldOp>(l, jit_execute_op.results());
-                     },
-                     [&](OpBuilder &b, Location l) {
-                       auto new_op = rewriter.clone(*op);
-                       b.create<scf::YieldOp>(l, new_op->getResult(0));
-                     })
-                    .getResult(0);
+                      auto jit_execute_op = rewriter.create<tf_framework::JITExecuteOp>(
+                          loc, result_types, Value(), jit_compile_op.result(), op->getOperands());
+                      b.create<scf::YieldOp>(l, jit_execute_op.results());
+                    },
+                    [&](OpBuilder &b, Location l) {
+                      auto new_op = rewriter.clone(*op);
+                      b.create<scf::YieldOp>(l, new_op->getResult(0));
+                    })
+            .getResult(0);
 
   rewriter.replaceOp(op, conditional_path);
   return success();
@@ -321,7 +321,7 @@ void PopulateTFToJITInvocationPatterns(MLIRContext* ctx,
                                        bool enable_ftz, bool cpu_codegen,
                                        bool jit_i64_indexed_for_large_tensors) {
   if (jit_i64_indexed_for_large_tensors) {
-    patterns->insert<TFT64BitIndexerPattern>(ctx);
+    patterns->insert<TFToI64JITInvocationForLargeTensorsPattern>(ctx);
   } else {
     patterns->insert<TFToJITInvocationsPattern>(ctx);
   }
