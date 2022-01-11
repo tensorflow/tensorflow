@@ -124,61 +124,60 @@
         the model's training step with [XLA](https://www.tensorflow.org/xla).
         Note that `jit_compile=True` may not necessarily work for all models.
 
-*   Deterministic Op Functionality
+*   Deterministic Op Functionality:
 
     *   Add determinsitic GPU implementations of:
-    *   `tf.function(jit_compile=True)`'s that use `Scatter`.
-    *   (since v2.7) Stateful ops used in `tf.data.Dataset`
-    *   (since v2.7) `tf.convert_to_tensor` when fed with (sparse)
-        `tf.IndexedSlices` (because it uses `tf.math.unsorted_segment_sum`)
-    *   (since v2.7) `tf.gather` backprop (because `tf.convert_to_tensor`
-        reduces `tf.gather`'s (sparse) `tf.IndexedSlices` gradients into its
-        dense `params` input)
-    *   (since v2.7) `tf.math.segment_mean`
-    *   (since v2.7) `tf.math.segment_prod`
-    *   (since v2.7) `tf.math.segment_sum`
-    *   (since v2.7) `tf.math.unsorted_segment_mean`
-    *   (since v2.7) `tf.math.unsorted_segment_prod`
-    *   (since v2.7) `tf.math.unsorted_segment_sum`
-    *   (since v2.7) `tf.math.unsorted_segment_sqrt`
-    *   (since v2.7) `tf.nn.ctc_loss` (resolved, possibly in prior release, and
-        confirmed with tests)
-    *   (since v2.7)`tf.nn.sparse_softmax_crossentropy_with_logits`
-    *   (since v2.7) Run the following ops on CPU (with significant performance
-        penalty):
-    *   `tf.scatter_nd` and other related scatter functions, such as
-        `tf.tensor_scatter_nd_update`
+        *   `tf.function(jit_compile=True)`'s that use `Scatter`.
+        *   (since v2.7) Stateful ops used in `tf.data.Dataset`
+        *   (since v2.7) `tf.convert_to_tensor` when fed with (sparse)
+            `tf.IndexedSlices` (because it uses `tf.math.unsorted_segment_sum`)
+        *   (since v2.7) `tf.gather` backprop (because `tf.convert_to_tensor`
+            reduces `tf.gather`'s (sparse) `tf.IndexedSlices` gradients into its
+            dense `params` input)
+        *   (since v2.7) `tf.math.segment_mean`
+        *   (since v2.7) `tf.math.segment_prod`
+        *   (since v2.7) `tf.math.segment_sum`
+        *   (since v2.7) `tf.math.unsorted_segment_mean`
+        *   (since v2.7) `tf.math.unsorted_segment_prod`
+        *   (since v2.7) `tf.math.unsorted_segment_sum`
+        *   (since v2.7) `tf.math.unsorted_segment_sqrt`
+        *   (since v2.7) `tf.nn.ctc_loss` (resolved, possibly in prior release,
+            and confirmed with tests)
+        *   (since v2.7)`tf.nn.sparse_softmax_crossentropy_with_logits`
+    *   (since v2.7) Run `tf.scatter_nd` and other related scatter functions,
+        such as `tf.tensor_scatter_nd_update`, on CPU (with significant
+        performance penalty).
     *   Add determinism-unimplemented exception-throwing to the following ops.
         When op-determinism is expected (i.e. after
         `tf.config.experimental.enable_op_determinism` has been called), an
         attempt to use the specified paths through the following ops on a GPU
         will cause `tf.errors.UnimplementedError` (with an understandable
         message), unless otherwise specified, to be thrown.
-    *   `FakeQuantWithMinMaxVarsGradient` and
-        `FakeQuantWithMinMaxVarsPerChannelGradient`
-    *   (since v2.7) `tf.compat.v1.get_seed` if the global random seed has not
-        yet been set (via `tf.random.set_seed`). Throws `RuntimeError` from
-        Python or `InvalidArgument` from C++
-    *   (since v2.7) `tf.compat.v1.nn.fused_batch_norm` backprop to `offset`
-        when `is_training=False`
-    *   (since v2.7) `tf.image.adjust_contrast` forward
-    *   (since v2.7) `tf.image.resize` with `method=ResizeMethod.NEAREST`
-        backprop
-    *   (since v2.7) `tf.linalg.svd`
-    *   (since v2.7) `tf.math.bincount`
-    *   (since v2.7) `tf.nn.depthwise_conv2d` backprop to `filter` when not
-        using cuDNN convolution
-    *   (since v2.7) `tf.nn.dilation2d` gradient
-    *   (since v2.7) `tf.nn.max_pool_with_argmax` gradient
-    *   (since v2.7) `tf.raw_ops.DebugNumericSummary` and
-        `tf.raw_ops.DebugNumericSummaryV2`
-    *   (since v2.7) `tf.timestamp`. Throws `FailedPrecondition`
-    *   (since v2.7) `tf.Variable.scatter_add` (and other scatter methods, both
-        on ref and resource variables)
-    *   (since v2.7) The random-number-generating ops in the `tf.random` module
-        when the global random seed has not yet been set (via
-        `tf.random.set_seed`). Throws `RuntimeError` from Python or
-        `InvalidArgument` from C++
+        *   `FakeQuantWithMinMaxVarsGradient` and
+            `FakeQuantWithMinMaxVarsPerChannelGradient`
+        *   (since v2.7) `tf.compat.v1.get_seed` if the global random seed has
+            not yet been set (via `tf.random.set_seed`). Throws `RuntimeError`
+            from Python or `InvalidArgument` from C++
+        *   (since v2.7) `tf.compat.v1.nn.fused_batch_norm` backprop to `offset`
+            when `is_training=False`
+        *   (since v2.7) `tf.image.adjust_contrast` forward
+        *   (since v2.7) `tf.image.resize` with `method=ResizeMethod.NEAREST`
+            backprop
+        *   (since v2.7) `tf.linalg.svd`
+        *   (since v2.7) `tf.math.bincount`
+        *   (since v2.7) `tf.nn.depthwise_conv2d` backprop to `filter` when not
+            using cuDNN convolution
+        *   (since v2.7) `tf.nn.dilation2d` gradient
+        *   (since v2.7) `tf.nn.max_pool_with_argmax` gradient
+        *   (since v2.7) `tf.raw_ops.DebugNumericSummary` and
+            `tf.raw_ops.DebugNumericSummaryV2`
+        *   (since v2.7) `tf.timestamp`. Throws `FailedPrecondition`
+        *   (since v2.7) `tf.Variable.scatter_add` (and other scatter methods,
+            both on ref and resource variables)
+        *   (since v2.7) The random-number-generating ops in the `tf.random`
+            module when the global random seed has not yet been set (via
+            `tf.random.set_seed`). Throws `RuntimeError` from Python or
+            `InvalidArgument` from C++
 
 *   TensorFlow-oneDNN no longer supports
    [explicit use of oneDNN blocked tensor format](https://github.com/tensorflow/tensorflow/pull/53288), 
