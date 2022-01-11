@@ -73,7 +73,6 @@ cuda_py_test(
         ":numpy",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -105,7 +104,6 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 

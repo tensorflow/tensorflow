@@ -18,8 +18,6 @@ import collections
 import functools
 import uuid
 
-import six
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -582,7 +580,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
 
 
 @tf_export("lookup.TextFileIndex")
-class TextFileIndex(object):
+class TextFileIndex:
   """The key and value content to get from each line.
 
   This class defines the key and value used for `tf.lookup.TextFileInitializer`.
@@ -1489,8 +1487,8 @@ def index_table_from_file(vocabulary_file=None,
     ValueError: If `num_oov_buckets` is negative or `vocab_size` is not greater
       than zero.
   """
-  if vocabulary_file is None or (isinstance(vocabulary_file, six.string_types)
-                                 and not vocabulary_file):
+  if vocabulary_file is None or (isinstance(vocabulary_file, str) and
+                                 not vocabulary_file):
     raise ValueError(
         "`vocabulary_file` must be specified and must not be empty.")
   if num_oov_buckets < 0:
@@ -1700,8 +1698,8 @@ def index_to_string_table_from_file(vocabulary_file,
     ValueError: when `vocabulary_file` is empty.
     ValueError: when `vocab_size` is invalid.
   """
-  if vocabulary_file is None or (isinstance(vocabulary_file, six.string_types)
-                                 and not vocabulary_file):
+  if vocabulary_file is None or (isinstance(vocabulary_file, str) and
+                                 not vocabulary_file):
     raise ValueError(
         "`vocabulary_file` must be specified and must not be empty.")
 

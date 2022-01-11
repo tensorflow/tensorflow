@@ -41,7 +41,7 @@ from tensorflow.python.types import core
 # TODO(martinz): allow inner_shape to be a fully defined TensorShape.
 # TODO(martinz): unify the impl of the determination of index type across
 #     RowPartition and RaggedShape.
-class RaggedShape(object):
+class RaggedShape:
   """The shape of a ragged or dense tensor.
 
   Ragged shapes are encoded using two fields:
@@ -1103,7 +1103,7 @@ class _GatherLayerBroadcaster(_LayerBroadcaster):
     return _GatherLayerBroadcaster(new_gather_index)
 
 
-class _Broadcaster(object):
+class _Broadcaster:
   """A _Broadcaster represents a transformation from one shape to another.
 
   It provides a transform for each axis of the source shape to the

@@ -22,7 +22,6 @@ import traceback  # pylint: disable=unused-import
 import weakref
 
 import numpy as np
-import six
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
@@ -70,7 +69,7 @@ def _maybe_copy_to_context_device(tensor, device_name):
     return tensor._copy()  # pylint: disable=protected-access
 
 
-class EagerFunc(object):
+class EagerFunc:
   """A wrapper for a function owned by an EagerPyFunc."""
 
   def __init__(self, func, Tout, is_grad_func):
@@ -173,7 +172,7 @@ class EagerFunc(object):
     return outputs
 
 
-class FuncRegistry(object):
+class FuncRegistry:
   """A helper class to keep track of registered py functions.
 
   FuncRegistry keeps a map from unique tokens (string) to python
@@ -271,7 +270,7 @@ class FuncRegistry(object):
       ret = func(*args)
       # Strings seem to lead to a memory leak here if they're not wrapped in a
       # list.
-      if isinstance(ret, six.binary_type):
+      if isinstance(ret, bytes):
         ret = [ret]
       # Ensures that we return either a single numpy array or a list of numpy
       # arrays.

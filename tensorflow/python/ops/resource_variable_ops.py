@@ -250,7 +250,7 @@ def _handle_graph(handle):
       yield
 
 
-class EagerResourceDeleter(object):
+class EagerResourceDeleter:
   """An object which cleans up a resource handle.
 
   An alternative to defining a __del__ method on an object. The intended use is
