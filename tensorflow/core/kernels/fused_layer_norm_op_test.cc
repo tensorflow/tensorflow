@@ -270,14 +270,14 @@ class FusedLayerNormOpTest : public OpsTestBase {
                      .Attr("epsilon", 0.001)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
-    AddInputFromArray<float>(TensorShape({3, 4}),
+    AddInputFromArray<float>(TensorShape({3, 1, 4}),
                              {2, 3, 4, 5, 2, 3, 4, 5, 2, 3, 4, 5});
     AddInputFromArray<float>(TensorShape({4}), {4.0, 4.0, 4.0, 4.0});
     AddInputFromArray<float>(TensorShape({4}), {2.0, 2.0, 2.0, 2.0});
 
     TF_ASSERT_OK(RunOpKernel());
 
-    Tensor expected(allocator(), DT_FLOAT, TensorShape({3, 4}));
+    Tensor expected(allocator(), DT_FLOAT, TensorShape({3, 1, 4}));
     test::FillValues<float>(&expected, {-3.36, 0.21, 3.79, 7.36, -3.36, 0.21,
                                         3.79, 7.36, -3.36, 0.21, 3.79, 7.36});
     test::ExpectTensorNear<float>(expected, *GetOutput(0), 0.01);
@@ -331,9 +331,9 @@ class FusedLayerNormGradOpTest : public OpsTestBase {
                      .Attr("epsilon", 0.001)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
-    AddInputFromArray<float>(TensorShape({2, 6}),
+    AddInputFromArray<float>(TensorShape({2, 1, 6}),
                              {2, 9, -4, 5, 8, 7, 2, 9, -4, 5, 8, 7});
-    AddInputFromArray<float>(TensorShape({2, 6}),
+    AddInputFromArray<float>(TensorShape({2, 1, 6}),
                              {1, 7, 4, -3, -11, 13, 1, 7, 4, -3, -11, 13});
     AddInputFromArray<float>(TensorShape({6}), {4.0, 4.0, 4.0, 4.0, 4.0, 4.0});
     AddInputFromArray<float>(TensorShape({2}), {1.83, 1.83});
@@ -341,7 +341,7 @@ class FusedLayerNormGradOpTest : public OpsTestBase {
 
     TF_ASSERT_OK(RunOpKernel());
 
-    Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 6}));
+    Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 1, 6}));
     test::FillValues<float>(&expected, {-1.32, 2.43, -4.38, 0.17, 1.58, 1.50,
                                         -1.32, 2.43, -4.38, 0.17, 1.58, 1.50});
     test::ExpectTensorNear<float>(expected, *GetOutput(0), 0.01);

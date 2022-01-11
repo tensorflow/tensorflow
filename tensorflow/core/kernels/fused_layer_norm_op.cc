@@ -263,8 +263,8 @@ class FusedLayerNormOp : public OpKernel {
     const Tensor& scale_input = context->input(1);
     const Tensor& offset_input = context->input(2);
 
-    OP_REQUIRES(context, x_input.dims() == 2,
-                errors::InvalidArgument("input must be 2-dimensional",
+    OP_REQUIRES(context, x_input.dims() > 0,
+                errors::InvalidArgument("input must be at least 1-dimensional",
                                         x_input.shape().DebugString()));
     OP_REQUIRES(context, scale_input.dims() == 1,
                 errors::InvalidArgument("scale must be 1-dimensional",
@@ -272,10 +272,23 @@ class FusedLayerNormOp : public OpKernel {
     OP_REQUIRES(context, offset_input.dims() == 1,
                 errors::InvalidArgument("offset must be 1-dimensional",
                                         offset_input.shape().DebugString()));
+
+    // For the input tensor, we treat the the last dimension as the features and
+    // then 0 to N-2 dimensions as the batches. For 1D tensors, the batches
+    // is 1.
+    int64_t num_features = x_input.dim_size(x_input.dims() - 1);
+    int64_t num_batches = 1;
+    for (int i = 0; i < x_input.dims() - 1; i++) {
+      num_batches *= x_input.dim_size(i);
+    }
+    TensorShape original_input_shape = x_input.shape();
+    OP_REQUIRES(
+        context,
+        x_input.CopyFrom(x_input, TensorShape({num_batches, num_features})),
+        errors::InvalidArgument("Error during tensor copy."));
+
     const int batch_dim = 0;
     const int feature_dim = 1;
-    const auto num_features = x_input.dim_size(feature_dim);
-    const auto num_batches = x_input.dim_size(batch_dim);
     OP_REQUIRES(context, scale_input.NumElements() == num_features,
                 errors::InvalidArgument(
                     "scale must have the same number of elements "
@@ -300,6 +313,10 @@ class FusedLayerNormOp : public OpKernel {
     functor::FusedLayerNorm<Device, T, U>()(
         context, x_input, scale_input, offset_input, epsilon_, batch_dim,
         feature_dim, out, saved_mean_out, saved_inv_var_out);
+
+    OP_REQUIRES(
+        context, out->CopyFrom(*out, original_input_shape),
+        errors::InvalidArgument("Error during tensor copy."));
   }
 
  private:
@@ -323,11 +340,11 @@ class FusedLayerNormGradOp : public OpKernel {
     const Tensor& saved_mean = context->input(3);
     const Tensor& saved_inv_var = context->input(4);
 
-    OP_REQUIRES(context, y_backprop.dims() == 2,
-                errors::InvalidArgument("input must be 2-dimensional",
+    OP_REQUIRES(context, y_backprop.dims() > 0,
+                errors::InvalidArgument("input must be at least 1-dimensional",
                                         y_backprop.shape().DebugString()));
-    OP_REQUIRES(context, x.dims() == 2,
-                errors::InvalidArgument("input must be 2-dimensional",
+    OP_REQUIRES(context, x.dims() > 0,
+                errors::InvalidArgument("input must be at least 1-dimensional",
                                         x.shape().DebugString()));
     OP_REQUIRES(context, scale.dims() == 1,
                 errors::InvalidArgument("scale must be 1-dimensional",
@@ -345,10 +362,26 @@ class FusedLayerNormGradOp : public OpKernel {
             "x and y_backprop must have same shape, but x has shape ",
             x.shape(), " and y_backprop has shape ", y_backprop.shape()));
 
+    // For the input tensor, we treat the the last dimension as the features and
+    // then 0 to N-2 dimensions as the batches. For 1D tensors, the batches
+    // is 1.
+    int64_t num_features = x.dim_size(x.dims() - 1);
+    int64_t num_batches = 1;
+    for (int i = 0; i < x.dims() - 1; i++) {
+      num_batches *= x.dim_size(i);
+    }
+    TensorShape original_input_shape = x.shape();
+    OP_REQUIRES(context,
+                x.CopyFrom(x, TensorShape({num_batches, num_features})),
+                errors::InvalidArgument("Error during tensor copy."));
+    OP_REQUIRES(
+        context,
+        y_backprop.CopyFrom(y_backprop,
+                            TensorShape({num_batches, num_features})),
+        errors::InvalidArgument("Error during tensor copy."));
+
     const int batch_dim = 0;
     const int feature_dim = 1;
-    const auto num_features = x.dim_size(feature_dim);
-    const auto num_batches = x.dim_size(batch_dim);
     OP_REQUIRES(
         context, scale.NumElements() == num_features,
         errors::InvalidArgument("scale must have the same number of elements "
@@ -388,6 +421,10 @@ class FusedLayerNormGradOp : public OpKernel {
     functor::FusedLayerNormGrad<Device, T, U>()(
         context, y_backprop, x, scale, saved_mean, saved_inv_var, epsilon_,
         batch_dim, feature_dim, x_backprop, scale_backprop, offset_backprop);
+
+    OP_REQUIRES(
+        context, x_backprop->CopyFrom(*x_backprop, original_input_shape),
+        errors::InvalidArgument("Error during tensor copy."));
   }
 
  private:
