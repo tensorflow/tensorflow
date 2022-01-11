@@ -116,7 +116,6 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
     return tensorflow::errors::Unimplemented(
         "64 bit indexing is not supported yet");
   }
-  printf("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&");
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
