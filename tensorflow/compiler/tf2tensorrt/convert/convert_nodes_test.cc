@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/strings/match.h"
@@ -36,8 +37,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
@@ -67,6 +66,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -2682,8 +2683,8 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
     Status conv_status;
   };
 
-  Status unimplemented_eq =
-      errors::Unimplemented("No conversion for einsum equation.");
+  Status unimplemented_eq = errors::Unimplemented("");
+  Status internal_eq = errors::Internal("");
 
   std::vector<TestParams> params {
     // Dot product.
@@ -2699,20 +2700,14 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                    unimplemented_eq},
         // Transpose.
         TestParams{"ik->ki", {2, 3}, {0, 1, 2, 3, 4, 5}, {},
-                   {},       {3, 2}, {0, 3, 1, 4, 2, 5}, unimplemented_eq},
+                   {},       {3, 2}, {0, 3, 1, 4, 2, 5}, internal_eq},
         // Diag.
-        TestParams{"ii->i",
-                   {3, 3},
-                   {0, 1, 2, 3, 4, 5, 6, 7, 8},
-                   {},
-                   {},
-                   {3},
-                   {0, 4, 8},
-                   unimplemented_eq},
+        TestParams{"ii->i",   {3, 3},     {0, 1, 2, 3, 4, 5, 6, 7, 8},
+                   {},        {},         {3},
+                   {0, 4, 8}, internal_eq},
         // Trace.
-        TestParams{
-            "ii", {3, 3},          {0, 1, 2, 3, 4, 5, 6, 7, 8}, {}, {}, {},
-            {12}, unimplemented_eq},
+        TestParams{"ii", {3, 3},     {0, 1, 2, 3, 4, 5, 6, 7, 8}, {}, {}, {},
+                   {12}, internal_eq},
         // MatMul with reduction.
         TestParams{"abbc,dc->ad",
                    {1, 2, 2, 3},
@@ -2731,16 +2726,17 @@ TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
                    {2, 3, 1, 1},
                    {20, 60, 100, 44, 148, 252},
                    unimplemented_eq},
-        // MatMul and Batched MatMul.
+        // MatMul
         TestParams{"ab,bc->ac",        {2, 3}, {0, 1, 2, 3, 4, 5}, {3, 2},
                    {1, 2, 3, 4, 5, 6}, {2, 2}, {13, 16, 40, 52}},
+        // Batched MatMul
         TestParams{"abc,cde->abde",
-                   {1, 2, 3},
-                   {0, 1, 2, 3, 4, 5},
-                   {3, 2, 2},
-                   {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-                   {1, 2, 2, 2},
-                   {23, 26, 29, 32, 68, 80, 92, 104}},
+                   /*shape_a=*/{1, 2, 3},
+                   /*values_a=*/{0, 1, 2, 3, 4, 5},
+                   /*shape_b=*/{3, 2, 2},
+                   /*values_v=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                   /*expected_shape=*/{1, 2, 2, 2},
+                   /*expected_output=*/{23, 26, 29, 32, 68, 80, 92, 104}},
         TestParams{"abcd,cde->abe",
                    {1, 2, 2, 3},
                    {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
