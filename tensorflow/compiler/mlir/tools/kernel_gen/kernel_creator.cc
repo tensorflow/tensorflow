@@ -322,6 +322,11 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
         std::make_unique<TileLoops>(tile_sizes, unroll_factors));
   }
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
+  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  if (failed(pm.run(module))) {
+    return tensorflow::errors::Internal("Lowering TF to loops failed.");
+  }
+  return Status::OK();
 }
 
 Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
