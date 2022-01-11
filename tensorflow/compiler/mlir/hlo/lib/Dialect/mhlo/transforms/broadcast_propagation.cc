@@ -144,14 +144,31 @@ bool IsAvailableAt(Value value, Operation *op) {
   return value.cast<BlockArgument>().getParentBlock() == op->getBlock();
 }
 
-void PropagateBroadcasts(DynamicBroadcastInDimOp root,
-                         DenseMap<BroadcastIntent, Value> &cache) {
+// Assumes that all values are defined within the block or dominate the block.
+void SetInsertionPointToEarliestPointWithAllValuesAvailable(OpBuilder &b,
+                                                            Block *block,
+                                                            ValueRange values) {
+  Operation *last_def = nullptr;
+  for (Value v : values) {
+    Operation *def = v.getDefiningOp();
+    if (def && def->getBlock() == block) {
+      if (!last_def || last_def->isBeforeInBlock(def)) last_def = def;
+    }
+  }
+  if (last_def) {
+    b.setInsertionPointAfter(last_def);
+  } else {
+    b.setInsertionPointToStart(block);
+  }
+}
+
+void PropagateBroadcast(DynamicBroadcastInDimOp root) {
   OpBuilder builder(root.getContext());
   BroadcastIntent root_bcast_intent = {
       root.getResult().getType().cast<RankedTensorType>(), root.operand(),
       root.output_dimensions(), root.broadcast_dimensions()};
 
-  // We can move broadcasts up over element-wise (broadcasting) operations and
+  // We can move broadcasts up over (broadcasting) element-wise operations and
   // propagate them through the IR to perform them early. Instead of
   // broadcasting the result of such an op, we can broadcast the operands and
   // apply the element-wise operation to them.
@@ -161,8 +178,9 @@ void PropagateBroadcasts(DynamicBroadcastInDimOp root,
   //      broadcasted versions of values that we are interested in. They may
   //      later be materialized as an explicit broadcast or they can be the
   //      direct result of an operation over which a broadcast was propagated.
-  //   2) Then, we fulfill every broadcast intent in reverse order to ensure
-  //      that their dependencies (the broadcasted operands) are available.
+  //   2) Then, we fulfill every broadcast intent in reverse topological order
+  //      to ensure that their dependencies (the broadcasted operands) are
+  //      available.
 
   // Collect all the broadcast intents, starting with the root. Record
   // dependencies for later lookups.
@@ -180,12 +198,10 @@ void PropagateBroadcasts(DynamicBroadcastInDimOp root,
     Operation *producer_op = it.target_value.getDefiningOp();
 
     // We can propagate broadcasts over (broadcasting) element-wise operations
-    // with the following restrictions:
-    //   - they must be in the same block as they can depend on assumptions,
-    //   - the output dimensions must be available at the definition.
+    // with the restriction that they must be in the same block as they may
+    // depend on assumptions.
     if (producer_op && producer_op->getBlock() == the_block &&
-        AllowsForBroadcastPropagation(producer_op) &&
-        IsAvailableAt(it.output_dimensions, producer_op)) {
+        AllowsForBroadcastPropagation(producer_op)) {
       // Collect this broadcast propagation's dependencies: the broadcasted
       // versions of the operands that we will need in the second phase.
       SmallVector<BroadcastIntent> dependencies;
@@ -212,53 +228,42 @@ void PropagateBroadcasts(DynamicBroadcastInDimOp root,
     }
   }
 
-  // Realize all the broadcast intents in reverse topological order. We can use
-  // the positions in the block for this. All broadcast intents outside the
-  // block (e.g. arguments) will be sorted towards the front.
-  std::sort(
-      bcast_intents_ordered.begin(), bcast_intents_ordered.end(),
-      [the_block](const BroadcastIntent &a, const BroadcastIntent &b) {
-        Operation *a_op = a.target_value.getDefiningOp();
-        bool a_same_block = (a_op != nullptr) && a_op->getBlock() == the_block;
-        Operation *b_op = b.target_value.getDefiningOp();
-        bool b_same_block = (b_op != nullptr) && b_op->getBlock() == the_block;
-        if (a_same_block && b_same_block) return a_op->isBeforeInBlock(b_op);
-        return !a_same_block;
-      });
+  // Realize all the broadcast intents in reverse topological order of the
+  // producer ops. We can use the positions in the block for this. All broadcast
+  // intents outside the block (e.g. arguments) will be sorted towards the
+  // front.
+  // This ordering is independent of the output dimensions as dependencies can
+  // only occur between broadcast intents of the same output dimension.
+  DenseMap<BroadcastIntent, Value> realizations;
+  std::sort(bcast_intents_ordered.begin(), bcast_intents_ordered.end(),
+            [&](const BroadcastIntent &a, const BroadcastIntent &b) {
+              Operation *producer_op_a = a.target_value.getDefiningOp();
+              Operation *producer_op_b = b.target_value.getDefiningOp();
+              bool a_in_block =
+                  producer_op_a && producer_op_a->getBlock() == the_block;
+              bool b_in_block =
+                  producer_op_b && producer_op_b->getBlock() == the_block;
+              if (a_in_block && b_in_block) {
+                return producer_op_a->isBeforeInBlock(producer_op_b);
+              }
+              return !a_in_block && b_in_block;
+            });
   for (auto it : bcast_intents_ordered) {
     Operation *producer_op = it.target_value.getDefiningOp();
-    Operation *output_dimensions_def = it.output_dimensions.getDefiningOp();
-
-    // Find the right insertion point: the earliest point at which both, the
-    // target value and the output dimensions are available.
-    bool is_producer_op_in_block =
-        producer_op && producer_op->getBlock() == the_block;
-    bool is_output_dimensions_def_in_block =
-        output_dimensions_def && output_dimensions_def->getBlock() == the_block;
-    if (is_producer_op_in_block && is_output_dimensions_def_in_block) {
-      if (producer_op->isBeforeInBlock(output_dimensions_def))
-        builder.setInsertionPointAfter(output_dimensions_def);
-      else
-        builder.setInsertionPointAfter(producer_op);
-    } else if (is_producer_op_in_block) {
-      builder.setInsertionPointAfter(producer_op);
-    } else if (is_output_dimensions_def_in_block) {
-      builder.setInsertionPointAfter(output_dimensions_def);
-    } else {
-      builder.setInsertionPointToStart(the_block);
-    }
 
     // Realize broadcast intent for an element-wise operation based on the
     // broadcasted operands, if possible.
     if (bcast_propagation_dependencies.count(it)) {
       assert(producer_op && producer_op->getBlock() == the_block &&
              AllowsForBroadcastPropagation(producer_op) &&
-             "expect element-wise (broadcasting) op in the same block");
+             "expect (broadcasting)  element-wise op in the same block");
       auto bcasted_operands =
           llvm::to_vector(llvm::map_range(bcast_propagation_dependencies[it],
                                           [&](BroadcastIntent operand_intent) {
-                                            return cache[operand_intent];
+                                            return realizations[operand_intent];
                                           }));
+      SetInsertionPointToEarliestPointWithAllValuesAvailable(builder, the_block,
+                                                             bcasted_operands);
       OperationState new_producer_op_state(
           producer_op->getLoc(), producer_op->getName().getStringRef(),
           bcasted_operands, it.result_type, producer_op->getAttrs());
@@ -266,19 +271,21 @@ void PropagateBroadcasts(DynamicBroadcastInDimOp root,
           builder.createOperation(new_producer_op_state);
       assert(new_producer_op->getNumResults() == 1 &&
              "expect exactly one result");
-      cache[it] = new_producer_op->getResults().front();
+      realizations[it] = new_producer_op->getResults().front();
       continue;
     }
 
     // Fall back to explicit broadcasts, otherwise.
-    cache[it] = builder.create<DynamicBroadcastInDimOp>(
+    SetInsertionPointToEarliestPointWithAllValuesAvailable(
+        builder, the_block, ValueRange{it.target_value, it.output_dimensions});
+    realizations[it] = builder.create<DynamicBroadcastInDimOp>(
         it.target_value.getLoc(), it.result_type, it.target_value,
         it.output_dimensions,
         it.broadcast_dimensions.cast<DenseIntElementsAttr>());
   }
 
   // Lookup the replacement for the root operation.
-  auto replacement = cache[root_bcast_intent];
+  auto replacement = realizations[root_bcast_intent];
   root->replaceAllUsesWith(ValueRange{replacement});
 
   // Erase all the operations that have become redundant as a result of this
@@ -293,10 +300,8 @@ struct BroadcastPropagationPass
   }
 
   void runOnFunction() override {
-    DenseMap<BroadcastIntent, Value> cache;
-    getFunction().walk([&](DynamicBroadcastInDimOp bcast) {
-      PropagateBroadcasts(bcast, cache);
-    });
+    getFunction().walk(
+        [&](DynamicBroadcastInDimOp bcast) { PropagateBroadcast(bcast); });
   }
 };
 
