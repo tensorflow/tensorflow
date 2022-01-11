@@ -1338,6 +1338,35 @@ struct ConvertRfftToRfft2d : public RewritePattern {
   }
 };
 
+// Replaces the Identity op with its input in either of the following scenarios
+// : 1) The Identity op's input and output have same types/shapes. 2) The result
+// of Identity op is only used by TF ops.
+struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
+  using OpRewritePattern<TF::IdentityOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::IdentityOp identity,
+                                PatternRewriter &rewriter) const override {
+    // Replace the op with the input if input and result have the same type.
+    if (identity.input().getType() == identity.getType()) {
+      rewriter.replaceOp(identity, identity.input());
+      return success();
+    }
+    // Replace the op with the input if output is only used by TF ops.
+    // Currently this is more on the conservative side since we need to ensure
+    // every consumer op to be a TF op before applying this pattern. We can
+    // consider to revisit this in the future if this turns out to be too
+    // restrictive.
+    for (Operation *user : identity->getUsers()) {
+      if (user->getDialect()->getNamespace() != "tf") {
+        return failure();
+      }
+    }
+
+    rewriter.replaceOp(identity, identity.input());
+    return success();
+  }
+};
+
 void PrepareTFPass::runOnFunction() {
   MLIRContext *ctx = &getContext();
   OwningRewritePatternList patterns(ctx);
@@ -1365,6 +1394,7 @@ void PrepareTFPass::runOnFunction() {
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
+  patterns.insert<RemoveIdentity>(ctx);
   TFL::populateWithGenerated(patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
@@ -1390,8 +1420,9 @@ void PrepareTFPass::runOnFunction() {
   if (unfold_batch_matmul_) {
     TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }
-  phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
-                          ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);
+  phase_2_patterns
+      .insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
+              ConvertTFStridedSlice, ConvertRfftToRfft2d, RemoveIdentity>(ctx);
   phase_2_patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
 
