@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cmath>
 
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/constants.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -24,31 +26,34 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
+namespace gelu_internal {
+
 constexpr float kSqrt2dPi = M_2_SQRTPI * M_SQRT1_2;  // sqrt( 2 / pi )
+
+}  // namespace gelu_internal
 
 template <typename T>
 inline void Gelu(const RuntimeShape& input_shape, const T* input_data,
                  bool approximate, const RuntimeShape& output_shape,
                  T* output_data) {
-  auto matching_size = MatchingFlatSize(input_shape, output_shape);
+  using VectorType = Eigen::VectorX<T>;
+  auto input_map = VectorType::Map(input_data, input_shape.FlatSize());
+  auto output_map = VectorType::Map(output_data, output_shape.FlatSize());
 
-  for (int i = 0; i < matching_size; i++) {
-    const T in = input_data[i];
-    if (approximate) {
-      // 0.5 * x * ( 1 + tanh( sqrt( 2 / pi ) * ( x + 0.044715 * x^3 ) ) )
-      output_data[i] =
-          static_cast<T>(0.5) * in *
-          (static_cast<T>(1) +
-           std::tanh(static_cast<T>(kSqrt2dPi) *
-                     // Note: Avoid std::pow for integer exponents
-                     // as it leads to much slower performance.
-                     (in + static_cast<T>(0.044715) * in * in * in)));
-    } else {
-      // 0.5 * x * ( 1 + erf( x / sqrt( 2 ) ) )
-      output_data[i] =
-          static_cast<T>(0.5) * in *
-          (static_cast<T>(1) + std::erf(in * static_cast<T>(M_SQRT1_2)));
-    }
+  if (approximate) {
+    // 0.5 * x * ( 1 + tanh( sqrt( 2 / pi ) * ( x + 0.044715 * x^3 ) ) )
+    output_map.array() = static_cast<T>(0.5) * input_map.array() *
+                         (static_cast<T>(1) +
+                          (static_cast<T>(gelu_internal::kSqrt2dPi) *
+                           (input_map.array() + static_cast<T>(0.044715) *
+                                                    input_map.array().cube()))
+                              .tanh());
+  } else {
+    // 0.5 * x * ( 1 + erf( x / sqrt( 2 ) ) )
+    output_map.array() =
+        static_cast<T>(0.5) * input_map.array() *
+        (static_cast<T>(1) +
+         (input_map.array() * static_cast<T>(M_SQRT1_2)).erf());
   }
 }
 
