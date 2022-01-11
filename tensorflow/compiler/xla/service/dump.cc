@@ -283,6 +283,16 @@ static absl::optional<std::string> DumpToFileInDirOrStdoutImpl(
   return DumpToFileInDirImpl(filename, contents, opts);
 }
 
+// Returns whether the computation is trivial enough not to warrant dumping.
+// Currently skips instructions where the root instruction has only parameters
+// as operands.
+static bool IsTrivial(const HloComputation& computation) {
+  const HloInstruction* root = computation.root_instruction();
+  return absl::c_all_of(root->operands(), [&](const HloInstruction* op) {
+    return op->opcode() == HloOpcode::kParameter;
+  });
+}
+
 // Returns full file paths of all dumps of the module.
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
@@ -342,6 +352,9 @@ static std::vector<std::string> DumpHloModuleImpl(
                             render_graph(RenderedGraphFormat::kHtml), opts));
   }
 
+  // TODO(cheshire): More descriptive filename which still avoids char limit.
+  static std::atomic<int> counter;
+
   if (opts.dump_fusion_visualization) {
     for (const HloComputation* computation :
          module.MakeNonfusionComputations()) {
@@ -350,12 +363,19 @@ static std::vector<std::string> DumpHloModuleImpl(
           /*label=*/absl::StrCat(filename, "_", computation->name()),
           module.config().debug_options(),
           RenderedGraphFormat::kFusionVisualization, profile);
+      if (IsTrivial(*computation)) {
+        VLOG(1) << "Skipping computation " << computation->name()
+                << " as trivial";
+        continue;
+      }
+      if (!rendered_graph.ok()) {
+        VLOG(1) << "Skipping fusion visualization"
+                << " for computation " << computation->name()
+                << " due to: " << rendered_graph.status().ToString();
+        continue;
+      }
       file_paths.push_back(DumpToFileInDirImpl(
-          StrFormat("%s_%s_fusion_visualization.html", filename,
-                    computation->name()),
-          rendered_graph.ok() ? *rendered_graph
-                              : StrFormat("Error rendering graph: %s",
-                                          rendered_graph.status().ToString()),
+          StrFormat("%d_fusion_visualization.html", ++counter), *rendered_graph,
           opts));
     }
   }

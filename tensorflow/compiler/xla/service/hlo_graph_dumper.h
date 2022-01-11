@@ -97,7 +97,7 @@ StatusOr<std::string> RenderAllPathsFromTo(
 // Registers the fusion state of the graph for future visualization using
 // the kFusionVisulization render format.
 Status RegisterFusionState(const HloComputation& computation,
-                           absl::string_view label);
+                           absl::string_view label, bool changed = true);
 
 // Registers a function which implements RenderedGraphFormat::kUrl.
 //
