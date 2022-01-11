@@ -124,6 +124,10 @@ flatbuffers::Offset<data::GpuModel> Encode(
 
 absl::Status Decode(const data::GpuModel* fb_gpu_model, GpuModel* gpu_model);
 
+// This transformations MUST be applied to graph for correct work of GpuModel
+// that will be created from graph
+absl::Status RunGraphTransformsForGpuModel(GraphFloat32* graph);
+
 }  // namespace gpu
 }  // namespace tflite
 

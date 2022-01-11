@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 
 namespace tflite {
 namespace gpu {
@@ -592,6 +595,24 @@ absl::Status Decode(const data::GpuModel* fb_gpu_model, GpuModel* gpu_model) {
   for (auto variable_id : *fb_gpu_model->variable_ids_and_refs()) {
     gpu_model->variable_ids_and_refs.push_back(
         {variable_id->first(), variable_id->second()});
+  }
+  return absl::OkStatus();
+}
+
+absl::Status RunGraphTransformsForGpuModel(GraphFloat32* graph) {
+  auto merge_padding_transform = NewMergePaddingWithAdd();
+  auto add_bias_transform = NewAddBias();
+  auto pooling_to_reduce_op = NewGlobalPoolingToReduceOp();
+  ModelTransformer transformer(graph);
+  if (!transformer.Apply("add_bias", add_bias_transform.get())) {
+    return absl::InternalError("Invalid add_bias transform");
+  }
+  if (!transformer.Apply("merge_padding", merge_padding_transform.get())) {
+    return absl::InternalError("Invalid merge_padding transform");
+  }
+  if (!transformer.Apply("global pooling to mean",
+                         pooling_to_reduce_op.get())) {
+    return absl::InternalError("Invalid global pooling to mean transform");
   }
   return absl::OkStatus();
 }

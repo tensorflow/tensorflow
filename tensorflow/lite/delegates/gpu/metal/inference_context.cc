@@ -36,9 +36,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
@@ -73,7 +70,7 @@ void AddUsage(ValueId id, int task_index,
 absl::Status InferenceContext::InitFromGraphWithTransforms(
     const CreateGpuModelInfo& create_info, GraphFloat32* graph,
     id<MTLDevice> device_id) {
-  RETURN_IF_ERROR(RunGraphTransforms(graph));
+  RETURN_IF_ERROR(RunGraphTransformsForGpuModel(graph));
   RETURN_IF_ERROR(InitFromGraph(create_info, *graph, device_id));
   return absl::OkStatus();
 }
@@ -601,24 +598,6 @@ void InferenceContext::PrepareExternal() {
       }
     }
   }
-}
-
-absl::Status RunGraphTransforms(GraphFloat32* graph) {
-  auto merge_padding_transform = NewMergePaddingWithAdd();
-  auto add_bias_transform = NewAddBias();
-  auto pooling_to_reduce_op = NewGlobalPoolingToReduceOp();
-  ModelTransformer transformer(graph);
-  if (!transformer.Apply("add_bias", add_bias_transform.get())) {
-    return absl::InternalError("Invalid add_bias transform");
-  }
-  if (!transformer.Apply("merge_padding", merge_padding_transform.get())) {
-    return absl::InternalError("Invalid merge_padding transform");
-  }
-  if (!transformer.Apply("global pooling to mean",
-                         pooling_to_reduce_op.get())) {
-    return absl::InternalError("Invalid global pooling to mean transform");
-  }
-  return absl::OkStatus();
 }
 
 }  // namespace metal
