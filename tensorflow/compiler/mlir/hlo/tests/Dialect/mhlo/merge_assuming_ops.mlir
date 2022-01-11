@@ -486,3 +486,21 @@ func @bcast_select_scalar_pred(%pred : tensor<i1>, %arg0 : tensor<?x?xf32>,
       : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   return %1 : tensor<?x?xf32>
 }
+
+// -----
+
+// CHECK-LABEL: @move_down_into_assuming
+// CHECK-SAME:  (%[[ARG:.*]]: tensor<?x32xi16>, %[[W:.*]]: !shape.witness)
+func @move_down_into_assuming(%arg0: tensor<?x32xi16>, %w: !shape.witness) -> tensor<?x32xf16> {
+  // CHECK: %[[RES:.*]] = shape.assuming %[[W]]
+  // CHECK:   %[[INNER_RES:.*]] = "mhlo.convert"(%[[ARG]])
+  // CHECK:   shape.assuming_yield %[[INNER_RES]]
+  // CHECK: }
+  // CHECK: return %[[RES]]
+  %0 = "mhlo.convert"(%arg0) : (tensor<?x32xi16>) -> tensor<?x32xf16>
+  "some.possibly_side_effecting_op"() : () -> ()
+  %4 = shape.assuming %w -> (tensor<?x32xf16>) {
+    shape.assuming_yield %0 : tensor<?x32xf16>
+  }
+  return %4 : tensor<?x32xf16>
+}
