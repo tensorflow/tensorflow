@@ -49,11 +49,22 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     def _init_func():
       return multi_device_iterator_string_handle
 
-    self._init_func = _init_func.get_concrete_function()
+    init_func_concrete = _init_func.get_concrete_function()
+
+    # TODO(b/124254153): Enable autograph once the overhead is low enough.
+    @function.defun(autograph=False)  # Pure graph code.
+    def _remote_init_func():
+      return functional_ops.remote_call(
+          target=source_device,
+          args=init_func_concrete.captured_inputs,
+          Tout=[dtypes.string],
+          f=init_func_concrete)
+
+    self._init_func = _remote_init_func.get_concrete_function()
     self._init_captured_args = self._init_func.captured_inputs
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun_with_attributes(
+    @function.defun(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _next_func(string_handle):
@@ -73,7 +84,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
 
     next_func_concrete = _next_func.get_concrete_function()
 
-    # TODO(b/213621472): Remove this remote call.
+    # TODO(b/124254153): Enable autograph once the overhead is low enough.
     @function.defun_with_attributes(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         attributes={"experimental_ints_on_device": True},
@@ -88,8 +99,6 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs
 
-    # TODO(b/211676070): Directly capture the iterator resource via the
-    # function, removing the serialization Ops.
     if use_anonymous_multi_device_iterator_v3():
       if iterator_is_anonymous:
         self._next_captured_args = self._next_captured_args + [
@@ -108,7 +117,20 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     def _finalize_func(unused_string_handle):
       return array_ops.constant(0, dtypes.int64)
 
-    self._finalize_func = _finalize_func.get_concrete_function()
+    finalize_func_concrete = _finalize_func.get_concrete_function()
+
+    # TODO(b/124254153): Enable autograph once the overhead is low enough.
+    @function.defun(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
+        autograph=False)  # Pure graph code.
+    def _remote_finalize_func(string_handle):
+      return functional_ops.remote_call(
+          target=source_device,
+          args=[string_handle] + finalize_func_concrete.captured_inputs,
+          Tout=[dtypes.int64],
+          f=finalize_func_concrete)
+
+    self._finalize_func = _remote_finalize_func.get_concrete_function()
     self._finalize_captured_args = self._finalize_func.captured_inputs
 
     variant_tensor = gen_dataset_ops.generator_dataset(
