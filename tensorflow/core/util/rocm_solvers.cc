@@ -487,7 +487,7 @@ TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
 
 TF_CALL_LAPACK_TYPES_NO_REAL(HEEVD_INSTANCE);
 
-#else 
+#else //TF_ROCM_VERSION < 40500
 // Macro that specializes a solver method for all 4 standard
 // numeric types.
 // Macro to construct rocsolver method names.
