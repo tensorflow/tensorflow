@@ -664,7 +664,7 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrShapeList(
     int num_shapes, int64_t* storage, int storage_size, TF_Status* status);
 
 // Sets `value` to the binary-serialized TensorShapeProto of the value of
-// `attr_name` attribute of `oper`'.
+// `attr_name` attribute of `oper`.
 TF_CAPI_EXPORT extern void TF_OperationGetAttrTensorShapeProto(
     TF_Operation* oper, const char* attr_name, TF_Buffer* value,
     TF_Status* status);
