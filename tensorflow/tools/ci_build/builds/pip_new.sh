@@ -305,6 +305,10 @@ fi
 # Check that global variables are properly set.
 check_global_vars
 
+# TODO(mihaimaruseac): Find a better place for this
+# It seems that now TB is needed to build TF API, so install it.
+pip install tb-nightly
+
 # Check if in a virtualenv and exit if yes.
 # TODO(rameshsampath): Python 3.10 has pip conflicts when using global env, so build in virtualenv
 # Once confirmed to work, run builds for all python env in a virtualenv
