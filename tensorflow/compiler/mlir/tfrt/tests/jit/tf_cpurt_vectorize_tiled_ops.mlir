@@ -185,8 +185,8 @@ func @test_transfer_read_of_one_dim_expand_shape(
 }
 // CHECK-LABEL: func @test_transfer_read_of_one_dim_expand_shape(
 // CHECK-SAME: %[[IN:.*]]: tensor<10xf32>
-// CHECK: %[[C0:.*]] = arith.constant 0 : index
-// CHECK: %[[ZERO_FLOAT:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG: %[[ZERO_FLOAT:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5] : tensor<5xf32>
 // CHECK: %[[TRANSFER_READ:.*]] = vector.transfer_read %[[IN]][%[[C0]]], %[[ZERO_FLOAT]] {in_bounds = [true]} : tensor<10xf32>, vector<10xf32>
 // CHECK: %[[SHAPE_CAST:.*]] = vector.shape_cast %[[TRANSFER_READ]] : vector<10xf32> to vector<2x5xf32>

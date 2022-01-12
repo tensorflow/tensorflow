@@ -224,8 +224,8 @@ func @NotQuantizeConv3D(%arg0: tensor<?x28x28x28x8xf32>) -> tensor<?x26x26x26x16
   %5 = "tfl.add"(%3, %4) {fused_activation_function = "RELU"} : (tensor<?x26x26x26x16xf32>, tensor<?x26x26x26x16xf32>) -> tensor<?x26x26x26x16xf32>
   return %5 : tensor<?x26x26x26x16xf32>
 
-// CHECK: %[[out_ch:.*]] = arith.constant dense<16> : tensor<1xi64>
-// CHECK: %[[const:.*]] = constant unit
+// CHECK-DAG: %[[out_ch:.*]] = arith.constant dense<16> : tensor<1xi64>
+// CHECK-DAG: %[[const:.*]] = constant unit
 // CHECK-DAG: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<3x3x3x8x16xf32>
 // CHECK-DAG: %[[b:.*]] = arith.constant dense<0.000000e+00> : tensor<16xf32>
 // CHECK: %[[conv3d:.*]] = "tfl.conv_3d"(%arg0, %[[w]], %cst_0) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<?x28x28x28x8xf32>, tensor<3x3x3x8x16xf32>, none) -> tensor<?x26x26x26x16xf32>
