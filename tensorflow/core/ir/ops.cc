@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -204,7 +205,7 @@ void TFGraphDialect::printCustomTfOp(Operation *op,
 }
 
 // Print a custom TFG op.
-static void printCustomTfOp(Operation *op, OpAsmPrinter &printer) {
+static void PrintCustomTfOp(Operation *op, OpAsmPrinter &printer) {
   cast<TFGraphDialect>(op->getDialect())->printCustomTfOp(op, printer);
 }
 
@@ -220,7 +221,7 @@ TFGraphDialect::getOperationPrinter(Operation *op) const {
 //   tfg.OpName(%input1, %input2, %input3) [%control_dep1, %control_dep2]
 //           name("<node_name>") device("<device>") { attribute-dict } :
 //           (input types) -> (result_types)
-static ParseResult parseCustomTfOp(OpAsmParser &parser,
+static ParseResult ParseCustomTfOp(OpAsmParser &parser,
                                    OperationState &result) {
   MLIRContext *context = parser.getBuilder().getContext();
   // Parse optional argument list
@@ -292,10 +293,10 @@ static ParseResult parseCustomTfOp(OpAsmParser &parser,
 
 Optional<Dialect::ParseOpHook> TFGraphDialect::getParseOperationHook(
     StringRef opName) const {
-  return ParseOpHook(parseCustomTfOp);
+  return ParseOpHook(ParseCustomTfOp);
 }
 
-static bool verifyGenericTFGOperation(Operation &op) {
+static bool VerifyGenericTFGOperation(Operation &op) {
   TFGraphDialect *dialect = dyn_cast<TFGraphDialect>(op.getDialect());
   if (!dialect) return true;
   ControlType control_ty = dialect->getControlType();
@@ -304,7 +305,7 @@ static bool verifyGenericTFGOperation(Operation &op) {
   // inputs (or results).
   auto check_ctl_at_end = [&](TypeRange types, StringRef input_or_output) {
     int has_control_dep = -1;
-    for (auto indexed_operand : llvm::enumerate(types)) {
+    for (auto &indexed_operand : llvm::enumerate(types)) {
       if (indexed_operand.value() == control_ty) {
         has_control_dep = indexed_operand.index();
         continue;
@@ -328,13 +329,13 @@ static bool verifyGenericTFGOperation(Operation &op) {
 // Graph Operation
 //===----------------------------------------------------------------------===//
 
-static void printGraphOp(OpAsmPrinter &p, GraphOp op) {
+static void PrintGraphOp(OpAsmPrinter &p, GraphOp op) {
   p << " " << op.version();
   p.printOptionalAttrDictWithKeyword(op->getAttrs(), {"version"});
   p.printRegion(op.getBodyRegion());
 }
 
-static ParseResult parseGraphOp(OpAsmParser &parser, OperationState &result) {
+static ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
   VersionAttr version;
   llvm::SMLoc loc = parser.getCurrentLocation();
   if (parser.parseAttribute(version)) {
@@ -351,9 +352,9 @@ static ParseResult parseGraphOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static LogicalResult verifyGraph(GraphOp graph_op) {
+static LogicalResult VerifyGraph(GraphOp graph_op) {
   // Check all ops in the body.
-  if (!all_of(*graph_op.getBody(), verifyGenericTFGOperation)) return failure();
+  if (!all_of(*graph_op.getBody(), VerifyGenericTFGOperation)) return failure();
 
   return success();
 }
@@ -397,7 +398,7 @@ LogicalResult GraphFuncOp::verifyBody() {
                          << getType().getNumInputs() << " args but block has "
                          << getBody()->getNumArguments();
 
-  for (auto arg_types : llvm::enumerate(
+  for (auto &arg_types : llvm::enumerate(
            llvm::zip(getType().getInputs(), getBody()->getArgumentTypes()))) {
     Type signature_arg = std::get<0>(arg_types.value());
     Type block_arg = std::get<1>(arg_types.value());
@@ -419,7 +420,7 @@ LogicalResult GraphFuncOp::verifyBody() {
     return emitOpError() << "expects " << type.getNumResults()
                          << " returned values but tfg.return has "
                          << return_op->getNumOperands() << " operands";
-  for (auto indexed_type : llvm::enumerate(type.getResults())) {
+  for (auto &indexed_type : llvm::enumerate(type.getResults())) {
     Type expected_type = indexed_type.value();
     int res_num = indexed_type.index();
     Type actual_type = return_op->getOperand(res_num).getType();
@@ -429,7 +430,7 @@ LogicalResult GraphFuncOp::verifyBody() {
                          << actual_type;
   }
   Type control_type = getDialect()->getControlType();
-  for (auto indexed_type : llvm::enumerate(llvm::drop_begin(
+  for (auto &indexed_type : llvm::enumerate(llvm::drop_begin(
            return_op->getOperandTypes(), type.getNumResults()))) {
     Type actual_type = indexed_type.value();
     if (actual_type != control_type) {
@@ -442,7 +443,7 @@ LogicalResult GraphFuncOp::verifyBody() {
   }
 
   // Check all ops in the body.
-  if (!all_of(*getBody(), verifyGenericTFGOperation)) return failure();
+  if (!all_of(*getBody(), VerifyGenericTFGOperation)) return failure();
 
   return success();
 }
@@ -469,7 +470,7 @@ LogicalResult GraphFuncOp::canonicalize(GraphFuncOp func_op,
   return failure();
 }
 
-static LogicalResult verifyGraphFunc(GraphFuncOp func_op) {
+static LogicalResult VerifyGraphFunc(GraphFuncOp func_op) {
   if (func_op.getNumArguments() % 2)
     return func_op.emitOpError() << "expects an even number of arguments";
   ArrayAttr args_attrs = func_op.getAllArgAttrs();
@@ -489,7 +490,7 @@ static LogicalResult verifyGraphFunc(GraphFuncOp func_op) {
   return success();
 }
 
-static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
+static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType> entry_args;
   SmallVector<Attribute> arg_attrs;
   SmallVector<Attribute> result_attrs;
@@ -513,7 +514,7 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
   // for the control dependency.
   if (parser.parseLParen()) return failure();
   Type control_ty = ControlType::get(builder.getContext());
-  SmallVector<std::unique_ptr<std::string>> control_operand_names;
+  SmallVector<std::string> control_operand_names;
 
   // Helper to parse a single argument and its attributes.
   auto parse_argument = [&]() -> ParseResult {
@@ -535,9 +536,8 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
     //   TFGraphOpAsmInterface::getAsmBlockArgumentNames()
     // at the top of this file.
     OpAsmParser::OperandType control_operand = entry_args.back();
-    control_operand_names.emplace_back(
-        std::make_unique<std::string>((control_operand.name + ".ctl").str()));
-    control_operand.name = *control_operand_names.back();
+    control_operand_names.push_back((control_operand.name + ".ctl").str());
+    control_operand.name = control_operand_names.back();
     entry_args.push_back(control_operand);
     arg_types.push_back(control_ty);
     arg_attrs.push_back(DictionaryAttr::get(context));
@@ -602,7 +602,7 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static void printGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
+static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   // Print the operation and the function name.
   p << " ";
   if (op.generic()) p << "generic ";
@@ -717,7 +717,7 @@ void GraphFuncOp::getAsmBlockArgumentNames(Region &region,
 
 // Verify that all control operands follow non-control operands, and return the
 // subrange of non-control operands.
-static FailureOr<TypeRange> verifyOperands(Operation *op) {
+static FailureOr<TypeRange> VerifyOperands(Operation *op) {
   ControlType control_ty =
       cast<TFGraphDialect>(op->getDialect())->getControlType();
   Operation::operand_type_iterator it =
@@ -732,7 +732,7 @@ static FailureOr<TypeRange> verifyOperands(Operation *op) {
 
 // Verify that the last result of an operation is the only control result, and
 // return a subrange of the non-control results.
-static FailureOr<TypeRange> verifyResults(Operation *op) {
+static FailureOr<TypeRange> VerifyResults(Operation *op) {
   ControlType control_ty =
       cast<TFGraphDialect>(op->getDialect())->getControlType();
   Operation::result_type_iterator it =
@@ -748,7 +748,7 @@ static FailureOr<TypeRange> verifyResults(Operation *op) {
 
 // Verify that the signature of the function matches the operation's operands
 // and results.
-static LogicalResult verifySignature(GraphFuncOp func, Operation *op,
+static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
                                      TypeRange operands, TypeRange results,
                                      const Twine &func_name) {
   auto attach_func = [&](InFlightDiagnostic diag) -> LogicalResult {
@@ -798,10 +798,10 @@ static LogicalResult verifySignature(GraphFuncOp func, Operation *op,
 // If-Like Ops
 
 template <typename IfLikeOp>
-static LogicalResult verifyIfLikeOp(IfLikeOp op) {
-  FailureOr<TypeRange> ins = verifyOperands(op);
+static LogicalResult VerifyIfLikeOp(IfLikeOp op) {
+  FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
-  FailureOr<TypeRange> outs = verifyResults(op);
+  FailureOr<TypeRange> outs = VerifyResults(op);
   if (failed(outs)) return failure();
 
   Operation *table_op = SymbolTable::getNearestSymbolTable(op);
@@ -814,13 +814,13 @@ static LogicalResult verifyIfLikeOp(IfLikeOp op) {
   auto then_func = dyn_cast_or_null<GraphFuncOp>(
       SymbolTable::lookupSymbolIn(table_op, then_name));
   if (then_func &&
-      failed(verifySignature(then_func, op, func_args, *outs, "then")))
+      failed(VerifySignature(then_func, op, func_args, *outs, "then")))
     return failure();
 
   auto else_func = dyn_cast_or_null<GraphFuncOp>(
       SymbolTable::lookupSymbolIn(table_op, else_name));
   if (else_func &&
-      failed(verifySignature(else_func, op, func_args, *outs, "else")))
+      failed(VerifySignature(else_func, op, func_args, *outs, "else")))
     return failure();
 
   return success();
@@ -830,10 +830,10 @@ static LogicalResult verifyIfLikeOp(IfLikeOp op) {
 // Case-Like Ops
 
 template <typename CaseLikeOp>
-static LogicalResult verifyCaseLikeOp(CaseLikeOp op) {
-  FailureOr<TypeRange> ins = verifyOperands(op);
+static LogicalResult VerifyCaseLikeOp(CaseLikeOp op) {
+  FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
-  FailureOr<TypeRange> outs = verifyResults(op);
+  FailureOr<TypeRange> outs = VerifyResults(op);
   if (failed(outs)) return failure();
 
   Operation *table_op = SymbolTable::getNearestSymbolTable(op);
@@ -845,7 +845,7 @@ static LogicalResult verifyCaseLikeOp(CaseLikeOp op) {
     SymbolRefAttr func_name = it.value().template cast<FuncAttr>().getName();
     auto func = dyn_cast_or_null<GraphFuncOp>(
         SymbolTable::lookupSymbolIn(table_op, func_name));
-    if (func && failed(verifySignature(func, op, func_args, *outs,
+    if (func && failed(VerifySignature(func, op, func_args, *outs,
                                        "branch #" + Twine(it.index()))))
       return failure();
   }
@@ -856,10 +856,10 @@ static LogicalResult verifyCaseLikeOp(CaseLikeOp op) {
 // While-Like Ops
 
 template <typename WhileLikeOp>
-static LogicalResult verifyWhileLikeOp(WhileLikeOp op) {
-  FailureOr<TypeRange> ins = verifyOperands(op);
+static LogicalResult VerifyWhileLikeOp(WhileLikeOp op) {
+  FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
-  FailureOr<TypeRange> outs = verifyResults(op);
+  FailureOr<TypeRange> outs = VerifyResults(op);
   if (failed(outs)) return failure();
 
   Operation *table_op = SymbolTable::getNearestSymbolTable(op);
@@ -871,12 +871,12 @@ static LogicalResult verifyWhileLikeOp(WhileLikeOp op) {
       SymbolTable::lookupSymbolIn(table_op, cond_name));
   auto i1_type = Builder(op.getContext()).getI1Type();
   if (cond_func &&
-      failed(verifySignature(cond_func, op, *ins, i1_type, "cond")))
+      failed(VerifySignature(cond_func, op, *ins, i1_type, "cond")))
     return failure();
 
   auto body_func = dyn_cast_or_null<GraphFuncOp>(
       SymbolTable::lookupSymbolIn(table_op, body_name));
-  if (body_func && failed(verifySignature(body_func, op, *ins, *outs, "body")))
+  if (body_func && failed(VerifySignature(body_func, op, *ins, *outs, "body")))
     return failure();
 
   return success();
@@ -885,10 +885,10 @@ static LogicalResult verifyWhileLikeOp(WhileLikeOp op) {
 //===----------------------------------------------------------------------===//
 // ForOp
 
-static LogicalResult verify(ForOp op) {
-  FailureOr<TypeRange> ins = verifyOperands(op);
+static LogicalResult VerifyForOp(ForOp op) {
+  FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
-  FailureOr<TypeRange> outs = verifyResults(op);
+  FailureOr<TypeRange> outs = VerifyResults(op);
   if (failed(outs)) return failure();
 
   SymbolRefAttr body_name = op.body().getName();
@@ -898,7 +898,7 @@ static LogicalResult verify(ForOp op) {
   // index is passed in.
   TypeRange func_args = llvm::drop_begin(*ins, /*N=*/2);
   if (body_func &&
-      failed(verifySignature(body_func, op, func_args, *outs, "body")))
+      failed(VerifySignature(body_func, op, func_args, *outs, "body")))
     return failure();
   return success();
 }

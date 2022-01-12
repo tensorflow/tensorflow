@@ -64,9 +64,9 @@ def TFGraph_GraphOp : TFGraph_Op<"graph",
   }];
 
   // Make the assembly pretty!
-  let printer = [{ print$cppClass(p, *this); }];
-  let parser = [{ return parse$cppClass(parser, result); }];
-  let verifier = [{ return verifyGraph(*this); }];
+  let printer = [{ PrintGraphOp(p, *this); }];
+  let parser = [{ return ParseGraphOp(parser, result); }];
+  let verifier = [{ return VerifyGraph(*this); }];
 }
 
 
@@ -165,9 +165,9 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
     LogicalResult verifyBody();
   }];
 
-  let parser = [{ return parseGraphFunc(parser, result); }];
-  let printer = [{ return printGraphFunc(*this, p); }];
-  let verifier = [{ return verifyGraphFunc(*this); }];
+  let parser = [{ return ParseGraphFunc(parser, result); }];
+  let printer = [{ return PrintGraphFunc(*this, p); }];
+  let verifier = [{ return VerifyGraphFunc(*this); }];
   let hasCanonicalizeMethod = 1;
 }
 
@@ -191,8 +191,8 @@ def TFGraph_ReturnOp : TFGraph_Op<"return",
     [{ build($_builder, $_state, llvm::None); }]>];
 
   // Use the dialect printer/parser like other unregistered ops in this dialect.
-  let parser = [{ return parseCustomTfOp(parser, result); }];
-  let printer = [{ printCustomTfOp(*this, p); }];
+  let parser = [{ return ParseCustomTfOp(parser, result); }];
+  let printer = [{ PrintCustomTfOp(*this, p); }];
 }
 
 
@@ -269,7 +269,7 @@ class TFGraph_IfLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
-  let verifier = [{ return verifyIfLikeOp(*this); }];
+  let verifier = [{ return VerifyIfLikeOp(*this); }];
 }
 
 def TFGraph_IfOp : TFGraph_IfLikeOp<"If"> {
@@ -297,7 +297,7 @@ class TFGraph_CaseLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
 
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
-  let verifier = [{ return verifyCaseLikeOp(*this); }];
+  let verifier = [{ return VerifyCaseLikeOp(*this); }];
 }
 
 def TFGraph_CaseOp : TFGraph_CaseLikeOp<"Case"> {
@@ -324,7 +324,7 @@ class TFGraph_WhileLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
-  let verifier = [{ return verifyWhileLikeOp(*this); }];
+  let verifier = [{ return VerifyWhileLikeOp(*this); }];
 }
 
 def TFGraph_WhileOp : TFGraph_WhileLikeOp<"While"> {
@@ -354,7 +354,7 @@ def TFGraph_ForOp : TFGraph_ConcreteOp<"For"> {
 
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
-  let verifier = [{ return ::mlir::tfg::verify(*this); }];
+  let verifier = [{ return VerifyForOp(*this); }];
 }
 
 #endif // TFG_OPS
