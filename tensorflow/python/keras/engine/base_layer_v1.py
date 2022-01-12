@@ -2351,13 +2351,17 @@ class Layer(base_layer.Layer):
   def _tracking_metadata(self):
     return self._trackable_saved_model_saver.tracking_metadata
 
-  def _list_extra_dependencies_for_serialization(self, serialization_cache):
-    return (self._trackable_saved_model_saver
-            .list_extra_dependencies_for_serialization(serialization_cache))
-
-  def _list_functions_for_serialization(self, serialization_cache):
-    return (self._trackable_saved_model_saver
-            .list_functions_for_serialization(serialization_cache))
+  def _trackable_children(self, save_type='checkpoint', **kwargs):
+    if save_type == 'savedmodel':
+      cache = kwargs['cache']
+      # TODO(b/213628533): This must be called before super() to ensure
+      # that any input shape changes are applied before getting the config of
+      # the model.
+      children = self._trackable_saved_model_saver.trackable_children(cache)
+    else:
+      children = {}
+    children.update(super()._trackable_children(save_type, **kwargs))
+    return children
 
   def __getstate__(self):
     # Override to support `copy.deepcopy` and pickling.
