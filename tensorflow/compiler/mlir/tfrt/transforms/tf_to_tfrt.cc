@@ -158,6 +158,10 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
                      llvm::isa<mlir::TF::TPUReplicatedInputOp,
                                mlir::TF::TPUReplicatedOutputOp>(op);
 
+    // TODO(b/214111933): Deprecate the special handling of variable ops.
+    bool is_variable_op =
+        llvm::isa<mlir::TF::AssignVariableOp, mlir::TF::ReadVariableOp>(op);
+
     // Currently the fallback executeop does not support GPU device. For GPU
     // device, we still lower it to corert executeop where more devices are
     // supported.
@@ -166,7 +170,7 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     // remove the conversion to corert.
     if (parsed_device_name->device_type == DEVICE_GPU ||
         (parsed_device_name->device_type == kDeviceTypeTpu &&
-         !tpu_lower_to_fallback_) ||
+         (!tpu_lower_to_fallback_ || is_variable_op)) ||
         // Convert ops running on TPU to CoreRT dialect to prevent the creation
         // of tfrt_fallback_async.createop for them.
         // These ops will be encountered here only when using fallback to run
@@ -201,8 +205,6 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     // whether a TF op should be lowered to FallbackExecute op.
     return !llvm::isa<
         mlir::TF::_TfrtSetResourceOp, mlir::TF::_TfrtGetResourceOp,
-        mlir::TF::_TPUCompileMlirOp, mlir::TF::TPUCompileSucceededAssertOp,
-        mlir::TF::TPUExecuteOp, mlir::TF::TPUCompileMlirAndExecuteOp,
         // Specifically handle control flow ops.
         mlir::TF::CaseOp, mlir::TF::IfOp, mlir::TF::WhileOp,
         mlir::TF::StatefulPartitionedCallOp, mlir::TF::PartitionedCallOp,
