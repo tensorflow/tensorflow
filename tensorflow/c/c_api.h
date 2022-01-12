@@ -1080,7 +1080,7 @@ TF_CAPI_EXPORT void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix,
 //              the nodes in the graph (except for the automatic skipping, see
 //              below).
 //  opers - Array of operations to become the body of the function or null.
-//          - If no array is given (`num_opers`  = -1), all the
+//          - If no array is given (`num_opers` = -1), all the
 //          operations in `fn_body` will become part of the function
 //          except operations referenced in `inputs`. These operations
 //          must have a single output (these operations are typically
