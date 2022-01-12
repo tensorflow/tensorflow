@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -101,8 +100,6 @@ class CoordinationServiceAgent {
 
   // Get config key-value from the service.
   virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
-  virtual StatusOr<std::string> GetKeyValue(const std::string& key,
-                                            absl::Duration timeout) = 0;
   virtual void GetKeyValueAsync(const std::string& key,
                                 StatusOrValueCallback done) = 0;
 

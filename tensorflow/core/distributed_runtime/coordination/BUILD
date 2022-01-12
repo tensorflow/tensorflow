@@ -93,25 +93,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-tf_cc_test(
-    name = "coordination_service_agent_test",
-    srcs = ["coordination_service_agent_test.cc"],
-    deps = [
-        ":coordination_client",
-        ":coordination_service_agent",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/time",
     ],
 )
 

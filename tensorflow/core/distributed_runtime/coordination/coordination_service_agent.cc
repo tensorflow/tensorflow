@@ -15,13 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 
-#include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
-#include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -64,8 +61,6 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   Status Reset() override;
 
   StatusOr<std::string> GetKeyValue(const std::string& key) override;
-  StatusOr<std::string> GetKeyValue(const std::string& key,
-                                    absl::Duration timeout) override;
   void GetKeyValueAsync(const std::string& key,
                         StatusOrValueCallback done) override;
   Status InsertKeyValue(const std::string& key,
@@ -356,26 +351,14 @@ Status CoordinationServiceAgentImpl::Reset() {
 
 StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
     const std::string& key) {
-  return GetKeyValue(key, /*timeout=*/absl::InfiniteDuration());
-}
-
-StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
-    const std::string& key, absl::Duration timeout) {
-  auto n = std::make_shared<absl::Notification>();
-  auto result = std::make_shared<StatusOr<std::string>>();
-  GetKeyValueAsync(key,
-                   [n, result](const StatusOr<std::string>& status_or_value) {
-                     *result = status_or_value;
-                     n->Notify();
-                   });
-  bool call_completed_before_timeout =
-      n->WaitForNotificationWithTimeout(timeout);
-  if (!call_completed_before_timeout) {
-    return errors::DeadlineExceeded(absl::Substitute(
-        "GetKeyValue() timed out with key: $0 and duration: $1", key,
-        absl::FormatDuration(timeout)));
-  }
-  return *result;
+  absl::Notification n;
+  StatusOr<std::string> result;
+  GetKeyValueAsync(key, [&](const StatusOr<std::string>& status_or_value) {
+    result = status_or_value;
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return result;
 }
 
 Status CoordinationServiceAgentImpl::InsertKeyValue(const std::string& key,
