@@ -16,9 +16,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Vector/VectorRewritePatterns.h"
-#include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
 
@@ -28,14 +29,46 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h.inc"
 
+using mlir::MLIRContext;
+using mlir::Operation;
+using mlir::vector::MultiDimReductionOp;
+using mlir::vector::VectorMultiReductionLowering;
+
 struct RewriteVectorMultiReductionPass
     : public RewriteVectorMultiReductionPassBase<
           RewriteVectorMultiReductionPass> {
   void runOnFunction() override {
-    mlir::RewritePatternSet patterns(&getContext());
+    MLIRContext* ctx = &getContext();
+    Operation* op = getOperation();
+    if (failed(RewriteTwoAndMoreDimReductions(ctx, op))) signalPassFailure();
+    if (failed(RewriteOneDimReductions(ctx, op))) signalPassFailure();
+  }
+
+  // Rewrite N-D reductions as the sequence of vector operations without
+  // horizontal reduction, i.e. `vector.reduction`.
+  mlir::LogicalResult RewriteTwoAndMoreDimReductions(MLIRContext* ctx,
+                                                     Operation* op) const {
+    mlir::ConversionTarget target(*ctx);
+    target.addLegalDialect<mlir::arith::ArithmeticDialect,
+                           mlir::vector::VectorDialect>();
+    target.addDynamicallyLegalOp<MultiDimReductionOp>(
+        [&](MultiDimReductionOp op) {
+          return op.getSourceVectorType().getRank() == 1;
+        });
+
+    mlir::RewritePatternSet patterns(ctx);
     mlir::vector::populateVectorMultiReductionLoweringPatterns(
-        patterns, mlir::vector::VectorMultiReductionLowering::InnerReduction);
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+        patterns, VectorMultiReductionLowering::InnerParallel);
+    return applyPartialConversion(op, target, std::move(patterns));
+  }
+
+  // Rewrite 1D reductions as a `vector.reduction`.
+  mlir::LogicalResult RewriteOneDimReductions(MLIRContext* ctx,
+                                              Operation* op) const {
+    mlir::RewritePatternSet patterns(ctx);
+    mlir::vector::populateVectorMultiReductionLoweringPatterns(
+        patterns, VectorMultiReductionLowering::InnerReduction);
+    return applyPatternsAndFoldGreedily(op, std::move(patterns));
   }
 };
 
