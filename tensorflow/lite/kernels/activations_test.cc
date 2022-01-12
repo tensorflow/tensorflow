@@ -2583,8 +2583,56 @@ class GeluOpModel : public SingleOpModel {
   int output_;
 };
 
+class BaseGeluOpModel : public SingleOpModel {
+ public:
+  BaseGeluOpModel(const TensorData& input, bool approximate) {
+    input_ = AddInput(input);
+    approximate_ = approximate;
+    output_ = AddOutput({input.type, input.shape, input.min, input.max});
+    SetBuiltinOp(BuiltinOperator_GELU, BuiltinOptions_GeluOptions,
+                 CreateGeluOptions(builder_, approximate).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+
+ protected:
+  int input_;
+  bool approximate_;
+  int output_;
+};
+
+// The FloatGeluOpModel class handles float input and output.
+class FloatGeluOpModel : public BaseGeluOpModel {
+ public:
+  using BaseGeluOpModel::BaseGeluOpModel;
+
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor(input_, data);
+  }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+};
+
+// The QuantizedGeluOpModel class handles quantized input and output.
+class QuantizedGeluOpModel : public BaseGeluOpModel {
+ public:
+  using BaseGeluOpModel::BaseGeluOpModel;
+
+  template <typename T>
+  void SetInput(std::initializer_list<float> data) {
+    QuantizeAndPopulate<T>(input_, data);
+  }
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
+  template <typename T>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
+  }
+};
+
 TEST(FloatActivationsOpTest, Gelu) {
-  GeluOpModel m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/false);
+  FloatGeluOpModel m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/false);
 
   m.SetInput({
       0.0f, 1.0f, 3.0f,    // Row 1
@@ -2598,7 +2646,7 @@ TEST(FloatActivationsOpTest, Gelu) {
 }
 
 TEST(FloatActivationsOpTest, GeluApproximate) {
-  GeluOpModel m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/true);
+  FloatGeluOpModel m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/true);
 
   m.SetInput({
       0.0f, 1.0f, 3.0f,    // Row 1
@@ -2609,6 +2657,73 @@ TEST(FloatActivationsOpTest, GeluApproximate) {
                                  0.0f, 0.841192f, 2.99636f,           // Row 1
                                  0.841192f, -0.158808f, -0.0454023f,  // Row 2
                              })));
+}
+
+TEST(QuantizedGeluOpTest, GeluInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedGeluOpModel m({TensorType_INT8, {2, 3}, 3 * kMin, 3 * kMax},
+                         /*approximate=*/false);
+  m.SetInput<int8_t>({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  0.f, 0.84375f, 2.97656f,          // Row 1
+                  0.84375f, -0.164062f, -0.046875f  // Row 2
+              })));
+}
+
+TEST(QuantizedGeluOpTest, GeluInt8Approximate) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedGeluOpModel m({TensorType_INT8, {2, 3}, 3 * kMin, 3 * kMax},
+                         /*approximate=*/true);
+  m.SetInput<int8_t>({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  0.f, 0.84375f, 2.97656f,          // Row 1
+                  0.84375f, -0.164062f, -0.046875f  // Row 2
+              })));
+}
+TEST(QuantizedGeluOpTest, GeluUInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedGeluOpModel m({TensorType_UINT8, {2, 3}, 3 * kMin, 3 * kMax},
+                         /*approximate=*/false);
+  m.SetInput<uint8_t>({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  0.f, 0.84375f, 2.97656f,          // Row 1
+                  0.84375f, -0.164062f, -0.046875f  // Row 2
+              })));
+}
+
+TEST(QuantizedGeluOpTest, GeluUInt8Approximate) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedGeluOpModel m({TensorType_UINT8, {2, 3}, 3 * kMin, 3 * kMax},
+                         /*approximate=*/true);
+  m.SetInput<uint8_t>({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  0.f, 0.84375f, 2.97656f,          // Row 1
+                  0.84375f, -0.164062f, -0.046875f  // Row 2
+              })));
 }
 
 INSTANTIATE_TEST_SUITE_P(

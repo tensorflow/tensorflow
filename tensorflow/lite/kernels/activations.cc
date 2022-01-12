@@ -1502,6 +1502,24 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+TfLiteStatus GeluPrepare(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  auto* params = reinterpret_cast<TfLiteGeluParams*>(node->builtin_data);
+
+  if (input->type == kTfLiteInt8) {
+    PopulateLookupTable<int8_t>(
+        data, input, output, reference_ops::GeluTransform(params->approximate));
+  } else if (input->type == kTfLiteUInt8) {
+    PopulateLookupTable<uint8_t>(
+        data, input, output, reference_ops::GeluTransform(params->approximate));
+  }
+  return GenericPrepare(context, node);
+}
+
 TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteGeluParams*>(node->builtin_data);
   const TfLiteTensor* input;
@@ -1516,9 +1534,16 @@ TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
                           GetTensorData<float>(output));
       return kTfLiteOk;
     }
+    case kTfLiteInt8:
+    case kTfLiteUInt8: {
+      OpData* data = reinterpret_cast<OpData*>(node->user_data);
+      EvalUsingLookupTable(data, input, output);
+      return kTfLiteOk;
+    }
     default:
-      TF_LITE_KERNEL_LOG(context, "Only float32 supported currently, got %s.",
-                         TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(
+          context, "Only float32, int8 and uint8 supported currently, got %s.",
+          TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -1685,8 +1710,8 @@ TfLiteRegistration* Register_HARD_SWISH_REF() {
 }
 
 TfLiteRegistration* Register_GELU() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 activations::GenericPrepare,
+  static TfLiteRegistration r = {activations::Init, activations::Free,
+                                 activations::GeluPrepare,
                                  activations::GeluEval};
   return &r;
 }
