@@ -71,4 +71,4 @@ func @reduce_1d_dynamic(%input: tensor<?xf32>) -> tensor<f32> {
 }
 // CHECK: scf.for
 // CHECK:   arith.addf %{{.*}}, %{{.*}} : vector<8xf32>
-// CHECK: linalg.generic
+// CHECK: vector.reduction

@@ -30,6 +30,7 @@ using mlir::failure;
 using mlir::success;
 using mlir::arith::ConstantIndexOp;
 using mlir::linalg::CodegenStrategy;
+using mlir::linalg::GenericOp;
 using mlir::linalg::TiledLoopOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
@@ -101,12 +102,17 @@ struct VectorizeTiledOpsPass
     mlir::OpPassManager dynamicPM2("builtin.func");
     CodegenStrategy strategy2;
     strategy2
-        .vectorize(
-            mlir::linalg::GenericOp::getOperationName(),
-            [](mlir::Operation *op) {
-              // TODO(b/206986898): Allow vectorization of non-tiled ops.
-              return success(op->getParentOfType<TiledLoopOp>() != nullptr);
-            })
+        .vectorize(GenericOp::getOperationName(),
+                   [](mlir::Operation *op) {
+                     auto generic = mlir::dyn_cast<GenericOp>(op);
+                     if (!generic) return failure();
+
+                     if (op->getParentOfType<TiledLoopOp>()) return success();
+
+                     // Allow vectorization of 1D reductions.
+                     return success(generic.getNumLoops() == 1 &&
+                                    generic.getNumReductionLoops() == 1);
+                   })
         .vectorLowering(
             mlir::linalg::LinalgVectorLoweringOptions()
                 .setVectorTransferToSCFOptions(vector_transfer_opts));
