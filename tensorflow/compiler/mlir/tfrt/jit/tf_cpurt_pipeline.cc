@@ -127,8 +127,9 @@ void CreateTfCpuRtPipeline(OpPassManager& pm,
   // Add the broadcast propagation pass first, because it can help to avoid
   // exponential complexity from the EarlyBroadcastInDimOp pattern which is used
   // in the merge assuming ops pass further down.
+  pm.addNestedPass<FuncOp>(
+      mlir::mhlo::createMergeAssumingOpsPass(/*propagate_broadcasts=*/false));
   pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
