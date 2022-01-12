@@ -16,6 +16,7 @@ limitations under the License.
 #include <sys/types.h>
 
 #include <string>
+#include <utility>
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/AffineMap.h"
@@ -26,14 +27,9 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/iterator_range.h"
-#include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/ErrorOr.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Analysis/shape_component_analysis.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
@@ -348,8 +344,6 @@ struct SymbolicShapeOptimizationPass
   }
 
   void runOnFunction() override {
-    FuncOp func = getFunction();
-
     MLIRContext* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
 
@@ -369,7 +363,10 @@ struct SymbolicShapeOptimizationPass
         op.getCanonicalizationPatterns(patterns, ctx);
     }
 
-    (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
+    if (failed(mlir::applyPatternsAndFoldGreedily(getFunction(),
+                                                  std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 
