@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_REQUEST_CONTEXT_H_
 
 #include "tensorflow/core/platform/status.h"
-#include "third_party/tf_runtime/backends/jitrt/include/tfrt/jitrt/cpurt.h"
+#include "tfrt/jitrt/cpurt.h"  // from @tf_runtime
 
 namespace tensorflow {
 

@@ -34,9 +34,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "third_party/tf_runtime/backends/jitrt/include/tfrt/jitrt/async_runtime.h"
-#include "third_party/tf_runtime/backends/jitrt/include/tfrt/jitrt/async_runtime_api.h"
-#include "third_party/tf_runtime/backends/jitrt/include/tfrt/jitrt/cpurt.h"
+#include "tfrt/jitrt/async_runtime.h"  // from @tf_runtime
+#include "tfrt/jitrt/async_runtime_api.h"  // from @tf_runtime
+#include "tfrt/jitrt/cpurt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
