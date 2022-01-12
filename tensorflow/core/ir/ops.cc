@@ -798,27 +798,27 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
 // If-Like Ops
 
 template <typename IfLikeOp>
-static LogicalResult VerifyIfLikeOp(IfLikeOp op) {
+static LogicalResult VerifyIfLikeOp(IfLikeOp op,
+                                    SymbolTableCollection &symbol_table) {
+  if (failed(op.verify())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(op);
   if (failed(outs)) return failure();
 
-  Operation *table_op = SymbolTable::getNearestSymbolTable(op);
-  if (!table_op) return op.emitOpError("is not contained in a symbol table");
   SymbolRefAttr then_name = op.then_branch().getName();
   SymbolRefAttr else_name = op.else_branch().getName();
   // The first operand is the condition and is not passed to the functions.
   TypeRange func_args = llvm::drop_begin(*ins);
 
-  auto then_func = dyn_cast_or_null<GraphFuncOp>(
-      SymbolTable::lookupSymbolIn(table_op, then_name));
+  auto then_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
+      op, op.then_branch().getName());
   if (then_func &&
       failed(VerifySignature(then_func, op, func_args, *outs, "then")))
     return failure();
 
-  auto else_func = dyn_cast_or_null<GraphFuncOp>(
-      SymbolTable::lookupSymbolIn(table_op, else_name));
+  auto else_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
+      op, op.else_branch().getName());
   if (else_func &&
       failed(VerifySignature(else_func, op, func_args, *outs, "else")))
     return failure();
@@ -830,21 +830,21 @@ static LogicalResult VerifyIfLikeOp(IfLikeOp op) {
 // Case-Like Ops
 
 template <typename CaseLikeOp>
-static LogicalResult VerifyCaseLikeOp(CaseLikeOp op) {
+static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
+                                      SymbolTableCollection &symbol_table) {
+  if (failed(op.verify())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(op);
   if (failed(outs)) return failure();
 
-  Operation *table_op = SymbolTable::getNearestSymbolTable(op);
-  if (!table_op) return op.emitOpError("is not contained in a symbol table");
   // The first operand is the branch index and is not passed to the functions.
   TypeRange func_args = llvm::drop_begin(*ins);
 
   for (auto &it : llvm::enumerate(op.branches())) {
     SymbolRefAttr func_name = it.value().template cast<FuncAttr>().getName();
-    auto func = dyn_cast_or_null<GraphFuncOp>(
-        SymbolTable::lookupSymbolIn(table_op, func_name));
+    auto func =
+        symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(op, func_name);
     if (func && failed(VerifySignature(func, op, func_args, *outs,
                                        "branch #" + Twine(it.index()))))
       return failure();
@@ -856,26 +856,25 @@ static LogicalResult VerifyCaseLikeOp(CaseLikeOp op) {
 // While-Like Ops
 
 template <typename WhileLikeOp>
-static LogicalResult VerifyWhileLikeOp(WhileLikeOp op) {
+static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
+                                       SymbolTableCollection &symbol_table) {
+  if (failed(op.verify())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(op);
   if (failed(outs)) return failure();
 
-  Operation *table_op = SymbolTable::getNearestSymbolTable(op);
-  if (!table_op) return op.emitOpError("is not contained in a symbol table");
-  SymbolRefAttr cond_name = op.cond().getName();
   SymbolRefAttr body_name = op.body().getName();
 
-  auto cond_func = dyn_cast_or_null<GraphFuncOp>(
-      SymbolTable::lookupSymbolIn(table_op, cond_name));
+  auto cond_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
+      op, op.cond().getName());
   auto i1_type = Builder(op.getContext()).getI1Type();
   if (cond_func &&
       failed(VerifySignature(cond_func, op, *ins, i1_type, "cond")))
     return failure();
 
-  auto body_func = dyn_cast_or_null<GraphFuncOp>(
-      SymbolTable::lookupSymbolIn(table_op, body_name));
+  auto body_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
+      op, op.body().getName());
   if (body_func && failed(VerifySignature(body_func, op, *ins, *outs, "body")))
     return failure();
 
@@ -885,20 +884,20 @@ static LogicalResult VerifyWhileLikeOp(WhileLikeOp op) {
 //===----------------------------------------------------------------------===//
 // ForOp
 
-static LogicalResult VerifyForOp(ForOp op) {
-  FailureOr<TypeRange> ins = VerifyOperands(op);
+LogicalResult ForOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
+  if (failed(verify())) return failure();
+  FailureOr<TypeRange> ins = VerifyOperands(*this);
   if (failed(ins)) return failure();
-  FailureOr<TypeRange> outs = VerifyResults(op);
+  FailureOr<TypeRange> outs = VerifyResults(*this);
   if (failed(outs)) return failure();
 
-  SymbolRefAttr body_name = op.body().getName();
-  auto body_func =
-      SymbolTable::lookupNearestSymbolFrom<GraphFuncOp>(op, body_name);
+  auto body_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
+      *this, body().getName());
   // The first three arguments are the for-loop indices, but the current loop
   // index is passed in.
   TypeRange func_args = llvm::drop_begin(*ins, /*N=*/2);
   if (body_func &&
-      failed(VerifySignature(body_func, op, func_args, *outs, "body")))
+      failed(VerifySignature(body_func, *this, func_args, *outs, "body")))
     return failure();
   return success();
 }

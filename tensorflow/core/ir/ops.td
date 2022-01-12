@@ -27,6 +27,7 @@ include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TFGraph op definitions
@@ -254,7 +255,9 @@ class TFGraph_ConcreteOp<string mnemonic, list<OpTrait> traits = []> :
     TFGraph_Op<mnemonic, traits>;
 
 // Base class for TFGraph if-like operations.
-class TFGraph_IfLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
+class TFGraph_IfLikeOp<string mnemonic>
+    : TFGraph_ConcreteOp<mnemonic,
+                         [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let arguments = (ins
     // Op operands.
     I1Tensor:$cond,
@@ -269,7 +272,12 @@ class TFGraph_IfLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
-  let verifier = [{ return VerifyIfLikeOp(*this); }];
+  let extraClassDefinition = [{
+    LogicalResult $cppClass::verifySymbolUses(
+        SymbolTableCollection &symbol_table) {
+      return VerifyIfLikeOp(*this, symbol_table);
+    }
+  }];
 }
 
 def TFGraph_IfOp : TFGraph_IfLikeOp<"If"> {
@@ -283,7 +291,9 @@ def TFGraph_StatefulIfOp : TFGraph_IfLikeOp<"StatefulIf"> {
 }
 
 // Base class for TFGraph case-like operations.
-class TFGraph_CaseLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
+class TFGraph_CaseLikeOp<string mnemonic>
+    : TFGraph_ConcreteOp<mnemonic,
+                         [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let arguments = (ins
     // Op operands.
     I32Tensor:$branch_index,
@@ -297,7 +307,12 @@ class TFGraph_CaseLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
 
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
-  let verifier = [{ return VerifyCaseLikeOp(*this); }];
+  let extraClassDefinition = [{
+    LogicalResult $cppClass::verifySymbolUses(
+        SymbolTableCollection &symbol_table) {
+      return VerifyCaseLikeOp(*this, symbol_table);
+    }
+  }];
 }
 
 def TFGraph_CaseOp : TFGraph_CaseLikeOp<"Case"> {
@@ -311,7 +326,9 @@ def TFGraph_StatefulCaseOp : TFGraph_CaseLikeOp<"StatefulCase"> {
 }
 
 // Base class for TFGraph while-like operations.
-class TFGraph_WhileLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
+class TFGraph_WhileLikeOp<string mnemonic>
+    : TFGraph_ConcreteOp<mnemonic,
+                         [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let arguments = (ins
     // Op operands.
     Variadic<TFGraph_TensorOrControlType>:$args,
@@ -324,7 +341,12 @@ class TFGraph_WhileLikeOp<string mnemonic> : TFGraph_ConcreteOp<mnemonic> {
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
-  let verifier = [{ return VerifyWhileLikeOp(*this); }];
+  let extraClassDefinition = [{
+    LogicalResult $cppClass::verifySymbolUses(
+        SymbolTableCollection &symbol_table) {
+      return VerifyWhileLikeOp(*this, symbol_table);
+    }
+  }];
 }
 
 def TFGraph_WhileOp : TFGraph_WhileLikeOp<"While"> {
@@ -338,7 +360,9 @@ def TFGraph_StatefulWhileOp : TFGraph_WhileLikeOp<"StatefulWhile"> {
 }
 
 // A functional for loop operation.
-def TFGraph_ForOp : TFGraph_ConcreteOp<"For"> {
+def TFGraph_ForOp
+    : TFGraph_ConcreteOp<"For",
+                         [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "A functional for-loop operation.";
 
   let arguments = (ins
@@ -353,8 +377,6 @@ def TFGraph_ForOp : TFGraph_ConcreteOp<"For"> {
   );
 
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
-
-  let verifier = [{ return VerifyForOp(*this); }];
 }
 
 #endif // TFG_OPS
