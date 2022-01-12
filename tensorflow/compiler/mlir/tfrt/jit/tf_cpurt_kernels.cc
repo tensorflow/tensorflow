@@ -376,6 +376,12 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
     opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
 
+    // TODO(b/202247905): Default binary compilation can be prohibitively
+    // expensive because of the exponential complexity in the broadcast
+    // propagation pass. Specialized binaries have most (often all)
+    // broadcasts removed, and typically are much cheaper to compile.
+    opts.specialization = CompilationOptions::Specialization::kAlways;
+
     // Register a custom pipeline for lowering from Tensorflow dialect.
     if (tf_cpurt_opts) {
       opts.register_pass_pipeline = [tf_cpurt_opts](OpPassManager& pm) {
