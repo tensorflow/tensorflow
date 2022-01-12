@@ -228,11 +228,9 @@ def TF_TPUCompileExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUCompileExecut
 // Trait for enforcing that a side-effecting op is executed, even if it would be
 // considered dead by MLIR (see b/195782952).
 // The trait is implemented as a write effect for a fake resource which is
-// treated as a read effect in side effect analysis to avoid unnecessary control
-// dependencies. Note that we still have control dependencies to/from unknown
-// side-effecting ops. This is necessary because ops are only executed if they
-// are connected to the control output of a function which wouldn't always be
-// the case otherwise.
+// ignored by side effect analysis, so it does not affect execution order
+// constraints and control dependencies at all (for example, multiple ops with
+// this trait do not have to execute in order).
 def TF_MustExecute : MemoryEffects<[MemWrite<TF_MustExecuteResource>]>;
 
 //===----------------------------------------------------------------------===//
