@@ -57,7 +57,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -1750,7 +1749,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
     std::string debug_info_key = (name + "@" + function_name).str();
     std::string name_for_name_loc =
         function_name.empty() ? name.str() : debug_info_key;
-    auto name_loc_id = mlir::Identifier::get(name_for_name_loc, context_);
+    auto name_loc_id = mlir::StringAttr::get(context_, name_for_name_loc);
 
     llvm::SmallVector<mlir::Location, 4> locations;
     // Prefer stack traces if available, fallback to debug info if not, and then
@@ -1760,7 +1759,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
       absl::Span<const StackFrame> frames = stack_trace->ToFrames();
       locations.reserve(frames.size());
       for (const StackFrame& frame : llvm::reverse(frames)) {
-        auto file_name = mlir::Identifier::get(frame.file_name, context_);
+        auto file_name = mlir::StringAttr::get(context_, frame.file_name);
         // Use col 1 as there is no column info in StackTrace.
         auto file_line_loc =
             mlir::FileLineColLoc::get(file_name, frame.line_number, 1);
@@ -1776,7 +1775,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
         locations.reserve(trace.file_line_cols_size());
         for (const auto& location : trace.file_line_cols()) {
           const auto& file = debug_info_.files(location.file_index());
-          auto file_name = mlir::Identifier::get(file, context_);
+          auto file_name = mlir::StringAttr::get(context_, file);
           auto file_line_loc = mlir::FileLineColLoc::get(
               file_name, location.line(), location.col());
           locations.push_back(file_line_loc);
@@ -1806,7 +1805,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
         context_,
         // Add the type operation for the propagation of op_type metadata.
         {mlir::NameLoc::get(
-             mlir::Identifier::get(node.type_string() + ":", context_)),
+             mlir::StringAttr::get(context_, node.type_string() + ":")),
          create_location(node.name(), function_name_for_debug_info_)});
   };
 
@@ -1834,7 +1833,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
     node_locations.reserve(original_nodes.size() + 2);
     // Add the type operation for the propagation of op_type metadata.
     node_locations.push_back(mlir::NameLoc::get(
-        mlir::Identifier::get(node.type_string() + ":", context_)));
+        mlir::StringAttr::get(context_, node.type_string() + ":")));
     // Retrieve the names from the experimental_debug_info.
     for (int i = 0, e = original_nodes.size(); i != e; ++i) {
       auto node_name = original_nodes[i];

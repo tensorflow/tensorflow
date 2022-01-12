@@ -1460,6 +1460,9 @@ cuda_py_test(
     name = "ragged_factory_ops_test",
     size = "small",
     srcs = ["ragged_factory_ops_test.py"],
+    tags = [
+        "no_gpu",  # TODO(b/213596871): times out
+    ],
     deps = [
         ":ragged_functional_ops",
         "//tensorflow/python:map_fn",

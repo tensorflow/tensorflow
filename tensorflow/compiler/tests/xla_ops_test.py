@@ -319,7 +319,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
   @parameterized.parameters(stateless_random_ops.Algorithm.THREEFRY,
                             stateless_random_ops.Algorithm.PHILOX,
                             stateless_random_ops.Algorithm.AUTO_SELECT)
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testRngBitGeneratorIsDeterministic(self, algorithm):
     dtype = np.uint32
     key = np.array([1, 2], dtype=np.uint64)

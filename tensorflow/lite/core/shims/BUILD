@@ -474,19 +474,6 @@ cc_library(
     ],
 )
 
-# Contains code to initialize TFLite through JNI in the internal version.
-cc_library(
-    name = "jni_initialization",
-    srcs = [],
-    # Prevent automated tools from removing this target as a dependency due to
-    # it being empty.
-    tags = ["keep_dep"],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
-    ],
-)
-
 #------------------------------------------------------------------------------
 
 tflite_portable_test_suite()

@@ -900,7 +900,7 @@ def _extract_shapes_from_node(node, key):
 
 
 def _get_engine_dtypes_from_node(node, key):
-  return [dtype.str() for dtype in node.attr[key].list.type]
+  return [dtypes._TYPE_TO_STRING[dtype] for dtype in node.attr[key].list.type]
 
 
 @tf_export("experimental.tensorrt.Converter", v1=[])

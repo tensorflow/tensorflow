@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-cpurt-codegen-reduction="reduction-2d-tile-sizes=4,4" \
+// RUN: tf-tfrt-opt -tf-cpurt-tile-reduction="reduction-2d-tile-sizes=4,4" \
 // RUN: %s -split-input-file | FileCheck %s
 
 func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
@@ -186,9 +186,9 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
 
 // CHECK-LABEL: func @reduce_sum_1d(
 // CHECK-SAME:    %[[LHS:.*]]: tensor<?xf32>, %[[RHS:.*]]: tensor<?xf32>)
-     // CHECK: %[[C0_F32:.*]] = arith.constant 0.000000e+00 : f32
-     // CHECK: %[[C0:.*]] = arith.constant 0 : index
-     // CHECK: %[[C8:.*]] = arith.constant 8 : index
+     // CHECK-DAG: %[[C0_F32:.*]] = arith.constant 0.000000e+00 : f32
+     // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+     // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : index
 
      // CHECK: %[[INIT:.*]] = linalg.init_tensor [] : tensor<f32>
      // CHECK: %[[FILL:.*]] = linalg.fill(%[[C0_F32]], %[[INIT]])

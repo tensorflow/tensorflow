@@ -1015,6 +1015,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )

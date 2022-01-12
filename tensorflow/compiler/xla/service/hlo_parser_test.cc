@@ -42,10 +42,8 @@ namespace {
 namespace m = ::xla::match;
 
 using ::absl::string_view;
-using ::testing::AllOf;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
-using ::testing::IsEmpty;
-using ::testing::Not;
 
 struct TestData {
   std::string test_name;
@@ -2146,6 +2144,22 @@ ENTRY test {
   ROOT root = (f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(add, add.anon, add)
 })"
 },
+
+{
+"BroadcastOfScalarDoesntNeedDimensionsAttr",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = sqrt(f32[10,10] broadcast(f32[] parameter(0)))
+})",
+R"(HloModule test
+
+ENTRY test {
+  parameter.anon = f32[] parameter(0)
+  broadcast.anon = f32[10,10]{1,0} broadcast(parameter.anon), dimensions={}
+  ROOT root = f32[10,10]{1,0} sqrt(broadcast.anon)
+})"
+},
 });
   // clang-format on
 }
@@ -3203,7 +3217,7 @@ TEST(HloParserSingleOpTest, SingleOpNoShapeProducesError) {
   ASSERT_TRUE(!module.status().ok());
   LOG(INFO) << "Status: " << module.status();
   EXPECT_THAT(module.status().ToString(),
-              ::testing::HasSubstr("expects '=' in instruction"));
+              HasSubstr("expects '=' in instruction"));
 }
 
 TEST(HloParserSingleOpTest, SingleOpNoOperandShapesProducesError) {
@@ -3213,7 +3227,7 @@ TEST(HloParserSingleOpTest, SingleOpNoOperandShapesProducesError) {
   ASSERT_TRUE(!module.status().ok());
   LOG(INFO) << "Status: " << module.status();
   EXPECT_THAT(module.status().ToString(),
-              ::testing::HasSubstr("Operand had no shape in HLO text"));
+              HasSubstr("Operand had no shape in HLO text"));
 }
 
 TEST(HloParserSingleOpTest, SingleOpNoNames) {
@@ -3327,8 +3341,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested_DoesNotExist) {
 })";
   auto status = ParseAndReturnUnverifiedModule(text).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("does not exist: x"));
+  EXPECT_THAT(status.error_message(), HasSubstr("does not exist: x"));
 }
 
 TEST(HloParserSingleOpTest, SingleOpWithNested_NoLhs) {
@@ -3339,7 +3352,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested_NoLhs) {
 })";
   auto status = ParseAndReturnUnverifiedModule(text).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("expects name"));
+  EXPECT_THAT(status.error_message(), HasSubstr("expects name"));
 }
 
 TEST(HloParserSingleOpTest, SingleOpWithNested_NoOperandName) {
@@ -3350,7 +3363,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested_NoOperandName) {
 })";
   auto status = ParseAndReturnUnverifiedModule(text).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("expects name"));
+  EXPECT_THAT(status.error_message(), HasSubstr("expects name"));
 }
 
 TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
@@ -3373,7 +3386,7 @@ TEST(HloParserSingleOpTest, MultipleOpsProducesError) {
   )";
   auto status = ParseAndReturnUnverifiedModule(text).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Expected eof"));
+  EXPECT_THAT(status.error_message(), HasSubstr("Expected eof"));
 }
 
 TEST_F(HloParserTest, IsScheduledIsFalse) {
@@ -3431,10 +3444,9 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
       module->schedule().is_computation_scheduled(module->entry_computation()));
   EXPECT_THAT(
       module->schedule().sequence(module->entry_computation()).instructions(),
-      ::testing::ElementsAre(
-          GmockMatch(m::Parameter()), GmockMatch(m::Broadcast()),
-          GmockMatch(m::Parameter()), GmockMatch(m::Multiply()),
-          GmockMatch(m::Parameter()), GmockMatch(m::Add())));
+      ElementsAre(GmockMatch(m::Parameter()), GmockMatch(m::Broadcast()),
+                  GmockMatch(m::Parameter()), GmockMatch(m::Multiply()),
+                  GmockMatch(m::Parameter()), GmockMatch(m::Add())));
 }
 
 TEST_F(HloParserTest, IsScheduledIsTrueDifferentOrder) {
@@ -3459,10 +3471,9 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
       module->schedule().is_computation_scheduled(module->entry_computation()));
   EXPECT_THAT(
       module->schedule().sequence(module->entry_computation()).instructions(),
-      ::testing::ElementsAre(
-          GmockMatch(m::Parameter()), GmockMatch(m::Parameter()),
-          GmockMatch(m::Parameter()), GmockMatch(m::Broadcast()),
-          GmockMatch(m::Multiply()), GmockMatch(m::Add())));
+      ElementsAre(GmockMatch(m::Parameter()), GmockMatch(m::Parameter()),
+                  GmockMatch(m::Parameter()), GmockMatch(m::Broadcast()),
+                  GmockMatch(m::Multiply()), GmockMatch(m::Add())));
 }
 
 TEST_F(HloParserTest, CustomCallWrongNumberofOperandConstraints) {
@@ -3736,7 +3747,7 @@ TEST_F(HloParserTest, NegativeParameterNumber) {
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   ASSERT_FALSE(result.status().ok());
   EXPECT_THAT(result.status().error_message(),
-              ::testing::HasSubstr("parameter number must be >= 0"));
+              HasSubstr("parameter number must be >= 0"));
 }
 
 TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
@@ -3746,8 +3757,8 @@ TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   ASSERT_FALSE(result.status().ok());
   EXPECT_THAT(result.status().error_message(),
-              ::testing::HasSubstr("parameter has 2 leaf buffers, but "
-                                   "parameter_replication has 3 elements"));
+              HasSubstr("parameter has 2 leaf buffers, but "
+                        "parameter_replication has 3 elements"));
 }
 
 TEST_F(HloParserTest, CheckIndexedConditionalDimension) {
@@ -3774,7 +3785,7 @@ TEST_F(HloParserTest, CheckIndexedConditionalDimension) {
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   EXPECT_NE(Status::OK(), result.status());
   EXPECT_THAT(result.status().error_message(),
-              ::testing::HasSubstr("The first operand must be a scalar"));
+              HasSubstr("The first operand must be a scalar"));
 }
 
 TEST_F(HloParserTest, CheckIndexedConditionalElementType) {
@@ -3801,8 +3812,7 @@ TEST_F(HloParserTest, CheckIndexedConditionalElementType) {
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   EXPECT_NE(Status::OK(), result.status());
   EXPECT_THAT(result.status().error_message(),
-              ::testing::HasSubstr(
-                  "The first operand must be a scalar of PRED or S32"));
+              HasSubstr("The first operand must be a scalar of PRED or S32"));
 }
 
 TEST_F(HloParserTest,
@@ -3829,9 +3839,8 @@ TEST_F(HloParserTest,
   )";
   auto result = ParseAndReturnUnverifiedModule(hlo_string);
   EXPECT_NE(Status::OK(), result.status());
-  EXPECT_THAT(
-      result.status().error_message(),
-      ::testing::HasSubstr("unexpected attribute \"branch_computations\""));
+  EXPECT_THAT(result.status().error_message(),
+              HasSubstr("unexpected attribute \"branch_computations\""));
 }
 
 // Result shape inference tests cases.
@@ -3942,6 +3951,18 @@ ENTRY TestComputation {
   auto result = ParseAndReturnVerifiedModule(hlo_string);
   TF_EXPECT_OK(result.status());
   EXPECT_TRUE(result.ValueOrDie()->config().alias_passthrough_params());
+}
+
+TEST_F(HloParserTest, NestedBroadcastWithoutDimensionsAttribute) {
+  const char* const hlo_string = R"(
+HloModule test
+ENTRY test {
+    ROOT root = sqrt(f32[10,10] broadcast(f32[10] parameter(0)))
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  EXPECT_NE(Status::OK(), result.status());
+  EXPECT_THAT(result.status().error_message(), HasSubstr("dimensions"));
 }
 
 }  // namespace

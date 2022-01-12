@@ -1136,13 +1136,13 @@ LogicalResult Conv2DOp::inferReturnTypes(
     return success();
   }
 
-  auto stride_h = op.stride_h().getInt();
-  auto stride_w = op.stride_w().getInt();
-  auto dilation_h = op.dilation_h_factor().getInt();
-  auto dilation_w = op.dilation_w_factor().getInt();
+  auto stride_h = op.stride_hAttr().getInt();
+  auto stride_w = op.stride_wAttr().getInt();
+  auto dilation_h = op.dilation_h_factorAttr().getInt();
+  auto dilation_w = op.dilation_w_factorAttr().getInt();
 
   // We don't have EXPLICIT PADDING in TfLite.
-  auto paddings = op.padding().getValue();
+  auto paddings = op.padding();
   tensorflow::Padding padding;
   auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
   if (!padding_is_valid.ok()) {
@@ -2128,7 +2128,7 @@ LogicalResult UnpackOp::inferReturnTypes(
     return emitOptionalError(loc, "input count should be equal to 1");
   }
 
-  const int64_t num_value = op.num().getInt();
+  const int64_t num_value = op.numAttr().getInt();
   auto input_type = operands[0].getType().dyn_cast<ShapedType>();
   if (!input_type || !input_type.hasRank()) {
     // If input is unranked, then so is output.
@@ -2147,14 +2147,14 @@ LogicalResult UnpackOp::inferReturnTypes(
     return emitOptionalError(loc, "input should be of rank larger than 0");
   }
 
-  int64_t axis_value = op.axis().getInt();
+  int64_t axis_value = op.axisAttr().getInt();
   if (axis_value < 0) {
     axis_value += rank;
   }
   if (axis_value < 0 || axis_value >= rank) {
     return emitOptionalError(
         loc, "attribute 'axis' should be in range [-rank, rank), got axis = ",
-        op.axis().getInt(), ", and rank = ", rank);
+        op.axisAttr().getInt(), ", and rank = ", rank);
   }
 
   if (!ShapedType::isDynamic(input_type.getDimSize(axis_value)) &&

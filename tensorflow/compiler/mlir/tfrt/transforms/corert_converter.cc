@@ -18,7 +18,6 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Identifier.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/PassManager.h"

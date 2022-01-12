@@ -197,7 +197,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
     auto loopType = use_parallel_loops_
                         ? linalg::LinalgTilingLoopType::ParallelLoops
                         : linalg::LinalgTilingLoopType::Loops;
-    return succeeded(linalg::tileLinalgOp(*b, op,
+    IRRewriter rewriter(*b);
+    return succeeded(linalg::tileLinalgOp(rewriter, op,
                                           linalg::LinalgTilingOptions()
                                               .setTileSizes(tile_sizes)
                                               .setLoopType(loopType)));

@@ -827,15 +827,13 @@ def HLO_IfOp: HLO_Op<"if", [
   }];
 
   let arguments = (ins
-    HLO_PredTensor:$pred,
-    HLO_TensorOrTuple:$true_arg,
-    HLO_TensorOrTuple:$false_arg
+    HLO_PredTensor:$pred
   );
 
   let regions = (region SizedRegion<1>:$true_branch,
                         SizedRegion<1>:$false_branch);
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs Variadic<HLO_TensorOrToken>);
 
   // TODO(b/129422361): ConditionalOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -866,13 +864,12 @@ def HLO_CaseOp: HLO_Op<"case", [
   }];
 
   let arguments = (ins
-    I32Tensor:$index,
-    Variadic<HLO_TensorOrTuple>:$branch_operands
+    I32Tensor:$index
   );
 
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 
-  let results = (outs Variadic<HLO_TensorOrTuple>);
+  let results = (outs Variadic<HLO_TensorOrToken>);
 
   let hasCustomHLOConverter = 1;
 
@@ -1956,7 +1953,8 @@ def HLO_TraceOp: HLO_Op<"trace", []> {
 }
 
 def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+      [NoSideEffect, SameOperandsAndResultElementType,
+       InferTensorTypeWithReify]> {
   let summary = "Transpose operator";
   let description = [{
     Permutes the dimensions of `operand` according to the given `permutation`.
@@ -1970,6 +1968,13 @@ def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
     I64ElementsAttr:$permutation
   );
   let results = (outs HLO_Tensor);
+
+  let extraClassDeclaration = [{
+    // Method from  InferTypeOpInterface interface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 
   let hasFolder = 1;
   let hasCanonicalizer = 1;

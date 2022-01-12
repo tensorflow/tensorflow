@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -1027,6 +1028,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kAfterAll:
     case HloOpcode::kAddDependency:
     case HloOpcode::kTuple:
+    case HloOpcode::kOptimizationBarrier:
       return kWhite;
     case HloOpcode::kConstant:
       // Constants aren't usually shown as their own nodes, but they'll be
@@ -1562,8 +1564,8 @@ NodeFilter MakeNodeFromToFilter(const HloInstruction* from,
   // Djikstra's algorithm.  The only real difference is, rather than stopping
   // when we find a (shortest) path, we continue until we've found max_nodes
   // nodes on some path.
-  std::unordered_set<const HloInstruction*> visited;
-  std::unordered_set<const HloInstruction*> to_display = {from, to};
+  absl::flat_hash_set<const HloInstruction*> visited;
+  absl::flat_hash_set<const HloInstruction*> to_display = {from, to};
   while (!queue.empty() && to_display.size() < max_nodes) {
     std::vector<const HloInstruction*> path = std::move(queue.front());
     queue.pop_front();

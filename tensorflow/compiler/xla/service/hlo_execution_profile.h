@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EXECUTION_PROFILE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EXECUTION_PROFILE_H_
 
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile_data.pb.h"
@@ -73,27 +73,27 @@ class HloProfileIndexMap {
     return instruction_count() + computation_count() + extra_metrics_count();
   }
 
-  const std::unordered_map<const HloInstruction*, int64_t>&
+  const absl::flat_hash_map<const HloInstruction*, int64_t>&
   instruction_to_profile_idx() const {
     return instruction_to_profile_idx_;
   }
 
-  const std::unordered_map<const HloComputation*, int64_t>&
+  const absl::flat_hash_map<const HloComputation*, int64_t>&
   computation_to_profile_idx() const {
     return computation_to_profile_idx_;
   }
 
-  const std::unordered_map<std::string, int64_t>& extra_metric_to_profile_idx()
+  const absl::flat_hash_map<std::string, int64_t>& extra_metric_to_profile_idx()
       const {
     return extra_metric_to_profile_idx_;
   }
 
  private:
-  std::unordered_map<const HloInstruction*, int64_t>
+  absl::flat_hash_map<const HloInstruction*, int64_t>
       instruction_to_profile_idx_;
-  std::unordered_map<const HloComputation*, int64_t>
+  absl::flat_hash_map<const HloComputation*, int64_t>
       computation_to_profile_idx_;
-  std::unordered_map<std::string, int64_t> extra_metric_to_profile_idx_;
+  absl::flat_hash_map<std::string, int64_t> extra_metric_to_profile_idx_;
 };
 
 // Create an instance of `HloProfilePrinterData`.

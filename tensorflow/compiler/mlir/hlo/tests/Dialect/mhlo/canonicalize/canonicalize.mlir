@@ -1608,13 +1608,11 @@ func @fold_if_true(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32> {
   // CHECK-NOT: mhlo.if
   // CHECK: return %[[ARG0]]
   %true = mhlo.constant dense<true> : tensor<i1>
-  %0 = "mhlo.if"(%true, %arg0, %arg1) ( {
-    ^bb0(%bbarg0: tensor<f32>):
-      "mhlo.return"(%bbarg0) : (tensor<f32>) -> ()
+  %0 = "mhlo.if"(%true) ( {
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
   },  {
-    ^bb0(%bbarg1: tensor<f32>):
-      "mhlo.return"(%bbarg1) : (tensor<f32>) -> ()
-  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+  }) : (tensor<i1>) -> tensor<f32>
   return %0 : tensor<f32>
 }
 
@@ -1626,13 +1624,11 @@ func @fold_if_false(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32> {
   // CHECK-NOT: mhlo.if
   // CHECK: return %[[ARG1]]
   %false = mhlo.constant dense<false> : tensor<i1>
-  %0 = "mhlo.if"(%false, %arg0, %arg1) ( {
-    ^bb0(%bbarg0: tensor<f32>):
-      "mhlo.return"(%bbarg0) : (tensor<f32>) -> ()
+  %0 = "mhlo.if"(%false) ( {
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
   },  {
-    ^bb0(%bbarg1: tensor<f32>):
-      "mhlo.return"(%bbarg1) : (tensor<f32>) -> ()
-  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+  }) : (tensor<i1>) -> tensor<f32>
   return %0 : tensor<f32>
 }
 
@@ -1645,16 +1641,13 @@ func @fold_case(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -
   // CHECK-NOT: mhlo.case
   // CHECK: return %[[ARG1]]
   %c1 = mhlo.constant dense<1> : tensor<i32>
-  %0 = "mhlo.case"(%c1, %arg0, %arg1, %arg2) ( {
-    ^bb0(%bbarg0: tensor<f32>):
-      "mhlo.return"(%bbarg0) : (tensor<f32>) -> ()
+  %0 = "mhlo.case"(%c1) ( {
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
     },  {
-    ^bb0(%bbarg1: tensor<f32>):
-      "mhlo.return"(%bbarg1) : (tensor<f32>) -> ()
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
   },  {
-    ^bb0(%bbarg2: tensor<f32>):
-      "mhlo.return"(%bbarg2) : (tensor<f32>) -> ()
-  }) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+      "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  }) : (tensor<i32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
 
@@ -1667,16 +1660,13 @@ func @fold_case_negative_index(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 :
   // CHECK-NOT: mhlo.case
   // CHECK: return %[[ARG2]]
   %m1000 = mhlo.constant dense<-1000> : tensor<i32>
-  %0 = "mhlo.case"(%m1000, %arg0, %arg1, %arg2) ( {
-    ^bb0(%bbarg0: tensor<f32>):
-      "mhlo.return"(%bbarg0) : (tensor<f32>) -> ()
+  %0 = "mhlo.case"(%m1000) ( {
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
     },  {
-    ^bb0(%bbarg1: tensor<f32>):
-      "mhlo.return"(%bbarg1) : (tensor<f32>) -> ()
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
   },  {
-    ^bb0(%bbarg2: tensor<f32>):
-      "mhlo.return"(%bbarg2) : (tensor<f32>) -> ()
-  }) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+      "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  }) : (tensor<i32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
 
@@ -1689,16 +1679,13 @@ func @fold_case_oob_index(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 : tens
   // CHECK-NOT: mhlo.case
   // CHECK: return %[[ARG2]]
   %c1000 = mhlo.constant dense<1000> : tensor<i32>
-  %0 = "mhlo.case"(%c1000, %arg0, %arg1, %arg2) ( {
-    ^bb0(%bbarg0: tensor<f32>):
-      "mhlo.return"(%bbarg0) : (tensor<f32>) -> ()
+  %0 = "mhlo.case"(%c1000) ( {
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
     },  {
-    ^bb0(%bbarg1: tensor<f32>):
-      "mhlo.return"(%bbarg1) : (tensor<f32>) -> ()
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
   },  {
-    ^bb0(%bbarg2: tensor<f32>):
-      "mhlo.return"(%bbarg2) : (tensor<f32>) -> ()
-  }) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+      "mhlo.return"(%arg2) : (tensor<f32>) -> ()
+  }) : (tensor<i32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
 

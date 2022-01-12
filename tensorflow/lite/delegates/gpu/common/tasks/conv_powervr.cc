@@ -940,16 +940,24 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   } else if (use_simd_broadcast) {
     int parts = local_mem_size / simd_size;
     int reminder = local_mem_size % simd_size;
+    const std::string read_start = gpu_info.SupportsPointersInKernels()
+                                       ? "filters_loc["
+                                       : "args.weights.Read(filters_offset + ";
+    const std::string read_end =
+        gpu_info.SupportsPointersInKernels() ? "]" : ")";
     for (int i = 0; i < parts; ++i) {
-      c += "    FLT4 simd_w" + std::to_string(i) + " = filters_loc[simd_id + " +
-           std::to_string(i * simd_size) + "];\n";
+      const std::string weights_index =
+          "simd_id + " + std::to_string(i * simd_size);
+      c += "    FLT4 simd_w" + std::to_string(i) + " = " + read_start +
+           weights_index + read_end + ";\n";
     }
     if (reminder) {
+      const std::string weights_index =
+          "simd_id + " + std::to_string(parts * simd_size);
       c += "    FLT4 simd_w" + std::to_string(parts) + ";\n";
       c += "    if (simd_id < " + std::to_string(reminder) + ") {\n";
-      c += "      simd_w" + std::to_string(parts) +
-           " = filters_loc[simd_id + " + std::to_string(parts * simd_size) +
-           "];\n";
+      c += "      simd_w" + std::to_string(parts) + " = " + read_start +
+           weights_index + read_end + ";\n";
       c += "    }\n";
     }
   } else if (conv_params.AreWeightsBuffer()) {  // GLOBAL_MEM/CONSTANT_MEM

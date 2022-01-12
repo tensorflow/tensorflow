@@ -980,7 +980,6 @@ cc_library(
         "transforms/tf_saved_model_passes.h",
     ],
     deps = [
-        ":lift_variables_lib",
         ":resource_value_typed_analyzer",
         ":tensorflow",
         ":tensorflow_ops",
@@ -990,6 +989,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",

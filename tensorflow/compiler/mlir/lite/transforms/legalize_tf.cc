@@ -451,13 +451,28 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
     return false;
   if (ExtractSingleElementAsInteger(num_cols).getInt() != -1) return false;
 
-  // Verify padding_value is an integer tensor with all 0s.
-  ElementsAttr padding_value;
-  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.padding_value(),
-                    m_Constant(&padding_value)))
+  // Verify padding_value is a tensor with all 0s.
+  mlir::Value padding_value = tf_matrix_diag_v2_or_v3_op.padding_value();
+  mlir::Type element_type =
+      padding_value.getType().cast<ShapedType>().getElementType();
+  if (element_type.isa<FloatType>()) {
+    DenseFPElementsAttr padding_attr;
+    if (!matchPattern(padding_value, m_Constant(&padding_attr)) ||
+        !padding_attr.isSplat() ||
+        !padding_attr.getSplatValue<APFloat>().isZero()) {
+      return false;
+    }
+  } else if (element_type.isa<IntegerType>()) {
+    DenseIntElementsAttr padding_attr;
+    if (!matchPattern(padding_value, m_Constant(&padding_attr)) ||
+        !padding_attr.isSplat() ||
+        !padding_attr.getSplatValue<APInt>().isZero()) {
+      return false;
+    }
+  } else {
+    // If the padding value is neither float nor int, conservatively assume it
+    // contains nonzeros.
     return false;
-  for (const auto& value : padding_value.getValues<APInt>()) {
-    if (value != 0) return false;
   }
 
   rewriter->replaceOpWithNewOp<MatrixDiagOp>(op, output_type, input);

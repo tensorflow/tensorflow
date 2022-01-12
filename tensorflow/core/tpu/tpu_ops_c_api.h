@@ -595,6 +595,12 @@ typedef struct TpuEmbeddingEngine_IsInitialized_Params {
 TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_IsInitialized(
     TpuEmbeddingEngine_IsInitialized_Params* params);
 
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_WriteParameters(
+    TpuEmbeddingEngineParameters* params, TF_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ReadParameters(
+    TpuEmbeddingEngineParameters* params, TF_Status* status);
+
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_XrtCompileAndBuild);
@@ -684,6 +690,8 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ConfigureCommunication);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_FinalizeConfiguration);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_IsInitialized);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_WriteParameters);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ReadParameters);
 };
 
 }  // extern "C"

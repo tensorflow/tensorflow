@@ -1,4 +1,6 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.bzl", "workspace_root")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -46,13 +48,34 @@ cc_library(
 
 cc_library(
     name = "gpu_model",
+    srcs = ["gpu_model.cc"],
     hdrs = ["gpu_model.h"],
     deps = [
         ":model",
         ":model_hints",
+        ":operations",
         ":status",
+        "//tensorflow/lite/delegates/gpu/common:gpu_model_cc_fbs",
+        "//tensorflow/lite/delegates/gpu/common/selectors:operation_selector",
+        "//tensorflow/lite/delegates/gpu/common/selectors:special_selector",
+        "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:serialization_base",
+        "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+flatbuffer_cc_library(
+    name = "gpu_model_cc_fbs",
+    srcs = ["gpu_model.fbs"],
+    flatc_args = [
+        "--scoped-enums",
+        "-I " + workspace_root,
+    ],
+    includes = [
+        "//tensorflow/lite/delegates/gpu/common/task:serialization_base_cc_fbs_includes",
     ],
 )
 

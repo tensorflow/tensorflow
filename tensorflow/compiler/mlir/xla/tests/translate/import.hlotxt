@@ -882,9 +882,9 @@ add {
 %test_reduce_window_multiple_outputs (Arg0: f32[4,6], Arg1: f32[4,6]) -> f32[4,3] {
   %Arg0 = f32[4,6] parameter(0)
   %Arg1 = f32[4,6] parameter(1)
-  // CHECK: [[CONST_FALSE:%.*]] = mhlo.constant dense<false>
-  // CHECK: [[CONST_INF:%.*]] = mhlo.constant dense<0xFF800000>
-  // CHECK: [[CONST_ZERO:%.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK-DAG: [[CONST_FALSE:%.*]] = mhlo.constant dense<false>
+  // CHECK-DAG: [[CONST_INF:%.*]] = mhlo.constant dense<0xFF800000>
+  // CHECK-DAG: [[CONST_ZERO:%.*]] = mhlo.constant dense<0.000000e+00>
   %constant.3 = pred[] constant(false)
   %constant.4 = f32[] constant(-inf)
   %constant.5 = f32[] constant(0)

@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -308,7 +307,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
                        .getValue());
     // Remove the attribute from the instruction as it is already converted to
     // op_name.
-    auto attr_id = mlir::Identifier::get("f", inst->getContext());
+    auto attr_id = mlir::StringAttr::get(inst->getContext(), "f");
     inst->removeAttr(attr_id);
   } else {
     // Some control flow ops in TensorFlow Graph have their respective "Ref" ops

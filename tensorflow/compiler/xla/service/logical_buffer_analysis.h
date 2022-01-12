@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LOGICAL_BUFFER_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LOGICAL_BUFFER_ANALYSIS_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -86,8 +87,8 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
 
   // A map from an hlo + shape index to the logical buffer representing
   // the appropriate output.
-  std::unordered_map<std::pair<const HloInstruction*, const ShapeIndex>,
-                     LogicalBuffer*, Hasher>
+  absl::flat_hash_map<std::pair<const HloInstruction*, const ShapeIndex>,
+                      LogicalBuffer*, Hasher>
       output_buffers_;
 
   // The ID of the next logical buffer created.

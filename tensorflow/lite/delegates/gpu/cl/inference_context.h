@@ -78,6 +78,7 @@ class InferenceContext {
   absl::Status Profile(ProfilingCommandQueue* queue, ProfilingInfo* result);
   // for profiling and memory statistics
   uint64_t GetSizeOfMemoryAllocatedForIntermediateTensors() const;
+  uint64_t GetConstantTensorsSize() const;
 
   absl::Status SetInputTensor(ValueId id, const TensorFloat32& tensor,
                               CLCommandQueue* queue);
@@ -112,7 +113,7 @@ class InferenceContext {
   friend flatbuffers::Offset<data::InferenceContext> Encode(
       const CLDevice& device, const InferenceContext& inference,
       const ProgramCache& program_cache,
-      flatbuffers::Offset<data::GpuModel> gpu_model_fb,
+      flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
       flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const CLContext& context, const CLDevice& device,
                              ProgramCache* program_cache,

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
@@ -162,7 +163,7 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
   for (const auto& companions : companion_sets_) {
     // A companion set must be composed at most of an instruction per
     // device/module.
-    std::unordered_set<int64_t> devices;
+    absl::flat_hash_set<int64_t> devices;
     for (HloInstruction* instruction : *companions) {
       // Go through all the communicating instructions (send, recv) of the given
       // companion, and record their device.
@@ -172,7 +173,7 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
         // instructions, if they are parent of companions.
         continue;
       }
-      std::unordered_set<int64_t> comm_devices;
+      absl::flat_hash_set<int64_t> comm_devices;
       for (HloInstruction* comm_instruction : it->second) {
         auto device = GetInstructionDevice(*comm_instruction);
         TF_RET_CHECK(device) << "Instruction " << comm_instruction->ToString()

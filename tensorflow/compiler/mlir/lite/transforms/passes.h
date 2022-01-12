@@ -55,6 +55,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
     bool default_to_single_batch = false);
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
+// Use quant_specs.ops_blocklist and quant_specs.nodes_blocklist if possible
+// as they are now structure variables of QuantizationSpecs.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
     const QuantizationSpecs& quant_specs, const StringSet& ops_blocklist = {},
     const StringSet& nodes_blocklist = {});

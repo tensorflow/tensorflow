@@ -63,8 +63,7 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
       backend_->platform()->Name(), gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
       amdgpu_arch,
-      /*profile_index_map=*/nullptr, /*mlir_context=*/nullptr,
-      llvm_module.get());
+      /*mlir_context=*/nullptr, llvm_module.get());
 
   HloModuleConfig module_config;
   module_config.set_debug_options(DefaultDebugOptionsIgnoringFlags());

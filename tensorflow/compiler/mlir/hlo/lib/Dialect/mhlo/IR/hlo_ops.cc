@@ -22,6 +22,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <numeric>
 #include <set>
@@ -54,6 +55,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -1375,9 +1377,8 @@ OpFoldResult BroadcastOp::fold(ArrayRef<Attribute> attrs) {
     if (complex.getElementType().isa<IntegerType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
-    } else {
-      return {};
     }
+    return {};
   }
 
   return SplatElementsAttr::get(
@@ -1514,9 +1515,8 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
     if (complex.getElementType().isa<IntegerType>()) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
-    } else {
-      return {};
     }
+    return {};
   }
 
   return SplatElementsAttr::get(
@@ -4115,22 +4115,14 @@ LogicalResult ReplicaIdOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult VerifyConditionalBranch(Operation* op, Region& region,
-                                             Value operand,
-                                             llvm::Twine branchName,
-                                             llvm::Twine operandName) {
-  mlir::Block& entryBlock = region.front();
-  if (entryBlock.getNumArguments() != 1)
+                                             llvm::Twine branchName) {
+  if (region.getNumArguments() != 0)
     return op->emitOpError()
-           << branchName << " block should have single argument, but found "
-           << entryBlock.getNumArguments();
+           << branchName << " must have 0 arguments, but found "
+           << region.getNumArguments();
 
-  Type operandType = operand.getType();
-  Type branchArgType = entryBlock.getArgument(0).getType();
-  if (branchArgType != operandType)
-    return op->emitOpError()
-           << operandName << " type (" << operandType << ") does not match "
-           << branchName << " block arg type (" << branchArgType << ")";
-  TypeRange branchReturnTypes = entryBlock.getTerminator()->getOperandTypes();
+  TypeRange branchReturnTypes =
+      region.front().getTerminator()->getOperandTypes();
   if (branchReturnTypes != op->getResultTypes())
     return op->emitOpError()
            << branchName << " returned types (" << branchReturnTypes
@@ -4140,15 +4132,13 @@ static LogicalResult VerifyConditionalBranch(Operation* op, Region& region,
 }
 
 static LogicalResult Verify(IfOp op) {
-  if (failed(VerifyConditionalBranch(op, op.true_branch(), op.true_arg(),
-                                     /*branchName=*/"true_branch",
-                                     /*operandName=*/"true_arg"))) {
+  if (failed(VerifyConditionalBranch(op, op.true_branch(),
+                                     /*branchName=*/"true_branch"))) {
     return failure();
   }
 
-  if (failed(VerifyConditionalBranch(op, op.false_branch(), op.false_arg(),
-                                     /*branchName=*/"false_branch",
-                                     /*operandName=*/"false_arg"))) {
+  if (failed(VerifyConditionalBranch(op, op.false_branch(),
+                                     /*branchName=*/"false_branch"))) {
     return failure();
   }
   return success();
@@ -4160,9 +4150,9 @@ static LogicalResult InlineIfConstantCondition(IfOp ifOp,
   if (!matchPattern(ifOp.pred(), m_Constant(&pred_attr))) return failure();
 
   if (pred_attr.getSplatValue<BoolAttr>().getValue()) {
-    ReplaceOpWithRegion(rewriter, ifOp, ifOp.true_branch(), ifOp.true_arg());
+    ReplaceOpWithRegion(rewriter, ifOp, ifOp.true_branch());
   } else {
-    ReplaceOpWithRegion(rewriter, ifOp, ifOp.false_branch(), ifOp.false_arg());
+    ReplaceOpWithRegion(rewriter, ifOp, ifOp.false_branch());
   }
   return success();
 }
@@ -4178,16 +4168,10 @@ void IfOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
 
 static LogicalResult Verify(CaseOp op) {
   auto num_branches = op.branches().size();
-  if (op.branch_operands().size() != num_branches)
-    return op.emitOpError() << " number of branches (" << num_branches
-                            << ") does not match number of branch operands ("
-                            << op.branch_operands().size() << ")";
 
   for (unsigned i = 0; i < num_branches; ++i)
-    if (failed(VerifyConditionalBranch(
-            op, op.branches()[i], op.branch_operands()[i],
-            /*branchName=*/"branch " + Twine(i),
-            /*operandName=*/"branch_operand " + Twine(i))))
+    if (failed(VerifyConditionalBranch(op, op.branches()[i],
+                                       /*branchName=*/"branch " + Twine(i))))
       return failure();
 
   return success();
@@ -4208,8 +4192,7 @@ static LogicalResult InlineCaseConstantCondition(CaseOp caseOp,
 
   Region& region = caseOp.getRegion(index);
   if (!llvm::hasSingleElement(region)) return failure();
-  ReplaceOpWithRegion(rewriter, caseOp, region,
-                      caseOp.branch_operands()[index]);
+  ReplaceOpWithRegion(rewriter, caseOp, region);
   return success();
 }
 
@@ -4949,59 +4932,37 @@ static LogicalResult EliminateRedundantTranspse(TransposeOp op,
   return success();
 }
 
+// transpose(broadcast_in_dim(X)) => broadcast_in_dim(X)
+static LogicalResult EliminateBroadcastInDimTranspose(
+    TransposeOp op, PatternRewriter& rewriter) {
+  auto broadcast_in_dim_op = op.operand().getDefiningOp<BroadcastInDimOp>();
+  if (!broadcast_in_dim_op) {
+    return failure();
+  }
+  DenseIntElementsAttr broadcast_dimensions =
+      broadcast_in_dim_op.broadcast_dimensions();
+  DenseIntElementsAttr permutation = op.permutation();
+  SmallVector<int64_t> new_broadcast_dimensions;
+  for (auto dimension : broadcast_dimensions.getValues<int64_t>()) {
+    int64_t index = 0;
+    for (auto p : permutation.getValues<int64_t>()) {
+      if (p == dimension) {
+        new_broadcast_dimensions.push_back(index);
+        break;
+      }
+      index++;
+    }
+  }
+  rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+      op, op->getResultTypes(), broadcast_in_dim_op.operand(),
+      rewriter.getI64TensorAttr(new_broadcast_dimensions));
+  return success();
+}
+
 void TransposeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
                                               MLIRContext* /*context*/) {
   results.insert(EliminateRedundantTranspse);
-}
-
-static LogicalResult Verify(TransposeOp op) {
-  // permutation is an attribute of the op so it has static shape.
-  auto permutationType = op.permutation().getType();
-  auto permutationRank = permutationType.getRank();
-  if (permutationRank != 1) {
-    return op.emitOpError(llvm::formatv(
-        "permutation has rank {0} instead of rank 1", permutationRank));
-  }
-  auto permutationSize = permutationType.getNumElements();
-
-  auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
-  if (operandType) {
-    auto operandRank = operandType.getRank();
-    if (operandRank != permutationSize) {
-      return op.emitOpError(llvm::formatv(
-          "operand rank ({0}) does not match permutation size ({1})",
-          operandRank, permutationSize));
-    }
-  }
-
-  auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
-  if (resultType) {
-    auto resultRank = resultType.getRank();
-    if (resultRank != permutationSize) {
-      return op.emitOpError(llvm::formatv(
-          "result rank ({0}) does not match permutation size ({1})", resultRank,
-          permutationSize));
-    }
-  }
-
-  if (!resultType || !operandType) return success();
-
-  auto operandRank = operandType.getRank();
-  SmallVector<int64_t, 4> expectedShape(operandRank);
-  for (int i = 0; i != operandRank; ++i) {
-    auto permutedDim = op.permutation().getValues<IntegerAttr>()[i].getInt();
-    expectedShape[i] = operandType.getDimSize(permutedDim);
-  }
-
-  auto expectedType =
-      RankedTensorType::get(expectedShape, resultType.getElementType());
-  if (failed(verifyCompatibleShape(resultType, expectedType))) {
-    return op.emitOpError(llvm::formatv(
-        "result type {0} is incompatible with the expected type {1}",
-        resultType, expectedType));
-  }
-
-  return success();
+  results.insert(EliminateBroadcastInDimTranspose);
 }
 
 LogicalResult TransposeOp::reifyReturnTypeShapes(
@@ -5038,6 +4999,48 @@ LogicalResult TransposeOp::reifyReturnTypeShapes(
       shape_values);
   reifiedReturnShapes.push_back(output_shape);
 
+  return success();
+}
+
+// Method for InferTypeOpInterface: infer the return type from the operand type
+// and the permutation.
+LogicalResult TransposeOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> loc, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnTypes) {
+  auto type = operands[0].getType();
+  auto rankedTy = type.dyn_cast<RankedTensorType>();
+  if (!rankedTy) {
+    auto shapedTy = type.dyn_cast<ShapedType>();
+    if (!shapedTy)
+      return emitOptionalError(loc,
+                               "expected shaped type operand, got: ", type);
+    inferredReturnTypes.emplace_back(shapedTy);
+    return success();
+  }
+  auto permutation = attributes.getAs<DenseIntElementsAttr>("permutation");
+  int64_t rank = rankedTy.getRank();
+  if (!permutation)
+    return emitOptionalError(loc,
+                             "missing permutation attribute on TransposeOp");
+
+  if (permutation.getType().getRank() != 1)
+    return emitOptionalError(loc, "TransposeOp permutation has rank ",
+                             permutation.getType().getRank(),
+                             " instead of rank 1");
+
+  if (permutation.size() != rank)
+    return emitOptionalError(loc, "TransposeOp operand rank ", rank,
+                             " does not match permutation size ",
+                             permutation.size());
+
+  SmallVector<int64_t> resultShape;
+  ArrayRef<int64_t> inputShape = rankedTy.getShape();
+  for (int64_t dim : permutation.getValues<int64_t>()) {
+    if (dim >= rank) return failure();
+    resultShape.push_back(inputShape[dim]);
+  }
+  inferredReturnTypes.emplace_back(resultShape, rankedTy.getElementType());
   return success();
 }
 

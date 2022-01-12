@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -3039,6 +3038,10 @@ Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
         hlo->called_computations(), branch_args));
   });
   return Status::OK();
+}
+
+Status SpmdPartitioningVisitor::HandleOptimizationBarrier(HloInstruction* hlo) {
+  return HandleElementwise(hlo);
 }
 
 Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {

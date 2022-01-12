@@ -48,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -1644,10 +1643,10 @@ static LogicalResult inferConvReturnTypes(
   const Value filter = op.filter();
   const TensorType input_ty = input.getType().template cast<TensorType>();
   const TensorType filter_ty = filter.getType().template cast<TensorType>();
-  const StringRef paddings = op.padding().getValue();
+  const StringRef paddings = op.padding();
 
   ArrayRef<Attribute> strides = op.strides().getValue();
-  StringRef data_format = op.data_format().getValue();
+  StringRef data_format = op.data_format();
   ArrayRef<Attribute> dilations = op.dilations().getValue();
 
   tensorflow::TensorFormat format;
@@ -2338,7 +2337,21 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
   ShapedType type = input().getType().dyn_cast<ShapedType>();
   if (!type || !type.hasRank()) return {};
   // If shape attribute equals input operand's type's shape, fold it to input.
-  if (type.getShape() == shape()) return input();
+  llvm::Optional<llvm::ArrayRef<int64_t>> shape_constraint = shape();
+  if (type.getShape() == shape_constraint) return input();
+
+  // If input operand's type's shape always satisfies the shape attribute, fold
+  // it to input.
+  if (shape_constraint.hasValue() &&
+      shape_constraint->size() == type.getShape().size()) {
+    for (int i = 0; i < shape_constraint->size(); ++i) {
+      if (!ShapedType::isDynamic(shape_constraint.getValue()[i]) &&
+          type.getDimSize(i) != shape_constraint.getValue()[i]) {
+        return {};
+      }
+    }
+    return input();
+  }
   // Else retain to enable failing dynamically.
   return {};
 }

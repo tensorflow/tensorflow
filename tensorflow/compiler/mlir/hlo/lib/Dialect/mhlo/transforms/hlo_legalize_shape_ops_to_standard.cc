@@ -171,22 +171,20 @@ struct CstrReshapableConversion
     // Must have no invalid dimensions.
     Value no_invalid = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, reduction->getResult(2), zero);
-    // If the old shape has size zero, the new shape must have size zero too.
-    // This can be a zero factor or a -1.
+    // If there is no dynamic dimension then the number of elements must match.
     Value has_one_dynamic = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, reduction->getResult(1), one);
-    Value equal_if_empty = rewriter.create<arith::OrIOp>(
+    Value equal_if_not_dynamic = rewriter.create<arith::OrIOp>(
         loc, has_one_dynamic,
-        rewriter.create<arith::CmpIOp>(
-            loc, arith::CmpIPredicate::eq, is_zero_elements,
-            rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq,
-                                           num_elements, zero)));
+        rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq,
+                                       num_elements, reduction->getResult(0)));
 
     Value all_passing = rewriter.create<arith::AndIOp>(
         loc, is_divisible,
         rewriter.create<arith::AndIOp>(
             loc, acceptably_dynamic,
-            rewriter.create<arith::AndIOp>(loc, no_invalid, equal_if_empty)));
+            rewriter.create<arith::AndIOp>(loc, no_invalid,
+                                           equal_if_not_dynamic)));
 
     rewriter.replaceOpWithNewOp<shape::CstrRequireOp>(
         op, all_passing, "Required valid reshape shape input");

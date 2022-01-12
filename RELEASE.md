@@ -17,16 +17,29 @@
 
 * `tf.keras`:
 
-  *   Added `tf.keras.optimizers.experimental.Optimizer`. The reworked
-      optimizer gives more control over different phases of optimizer calls,
-      and is easier to customize. We provide Adam, SGD, Adadelta, AdaGrad and
-      RMSprop optimizers based on `tf.keras.optimizers.experimental.Optimizer`.
-      Generally the new optimizers work in the same way as the old ones,
-      but support new constructor arguments. In the future,
-      the symbols `tf.keras.optimizers.Optimizer`/`Adam`/etc will point
-      to the new optimizers, and the previous generation of optimizers will
-      be moved to `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
+  * Added `tf.keras.optimizers.experimental.Optimizer`. The reworked
+    optimizer gives more control over different phases of optimizer calls,
+    and is easier to customize. We provide Adam, SGD, Adadelta, AdaGrad and
+    RMSprop optimizers based on `tf.keras.optimizers.experimental.Optimizer`.
+    Generally the new optimizers work in the same way as the old ones,
+    but support new constructor arguments. In the future,
+    the symbols `tf.keras.optimizers.Optimizer`/`Adam`/etc will point
+    to the new optimizers, and the previous generation of optimizers will
+    be moved to `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
+  * Added L2 unit normalization layer `tf.keras.layers.UnitNormalization`.
+  * Added APIs for switching between interactive logging and absl logging.
+    By default, Keras always writes the logs to stdout. However, this is not
+    optimal in a non-interactive environment, where you don't have
+    access to stdout, but can only view the logs. You can use
+    `tf.keras.utils.disable_interactive_logging()` to write the logs to absl
+    logging. You can also use `tf.keras.utils.enable_interactive_logging()`
+    to change it back to stdout, or
+    `tf.keras.utils.is_interactive_logging_enabled()` to check if interactive
+    logging is enabled.
+* `tf.lite`:
 
+  * Added TFLite builtin op support for the following TF ops:
+    * `tf.math.argmin`/`tf.math.argmax` for input data type `tf.bool` on CPU.
 # Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>

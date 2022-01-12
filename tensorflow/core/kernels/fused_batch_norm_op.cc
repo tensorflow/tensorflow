@@ -1586,12 +1586,14 @@ class FusedBatchNormGradOpBase : public OpKernel {
         context, saved_mean_or_pop_mean.NumElements() == num_channels,
         errors::InvalidArgument("reserve_space_1 must have the same number of "
                                 "elements as the channels of x, got ",
-                                scale.NumElements(), " and ", num_channels));
+                                saved_mean_or_pop_mean.NumElements(), " and ",
+                                num_channels));
     OP_REQUIRES(
         context, saved_maybe_inv_var_or_pop_var.NumElements() == num_channels,
         errors::InvalidArgument("reserve_space_2 must have the same number of "
                                 "elements as the channels of x, got ",
-                                scale.NumElements(), " and ", num_channels));
+                                saved_maybe_inv_var_or_pop_var.NumElements(),
+                                " and ", num_channels));
 
     Tensor* x_backprop = nullptr;
     auto alloc_shape = use_reshape ? dest_shape : x_shape;

@@ -155,6 +155,9 @@ class Arguments : public ArgumentsBinder {
   friend absl::Status Decode(const tflite::gpu::data::Arguments* fb_args,
                              Arguments* args);
 
+  absl::Status ResolveKernelGlobalSpaceBuffers(const GpuInfo& gpu_info,
+                                               std::string* code);
+
   friend class cl::CLArguments;
   friend class metal::MetalArguments;
 

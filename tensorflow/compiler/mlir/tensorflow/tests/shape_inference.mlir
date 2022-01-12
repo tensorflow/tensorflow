@@ -1300,6 +1300,25 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %0, %1, %2 : tensor<*xi32>, tensor<*xi32>, tensor<*xi32>
   }
 
+  // CHECK-LABEL: passthrough_takewhiledataset
+  func @passthrough_takewhiledataset(%arg0 : tensor<!tf_type.variant>,
+  %arg1 : tensor<!tf_type.resource<tensor<i1>>>, %arg2 : tensor<!tf_type.resource<tensor<i64>>>,
+  %arg3 : tensor<!tf_type.resource<tensor<i32>>>, %arg4 : tensor<!tf_type.resource<tensor<i32>>>,
+  %arg5 : tensor<!tf_type.resource<tensor<i32>>>, %arg6 : tensor<!tf_type.resource<tensor<i1>>>) {
+    %cst = arith.constant dense<30> : tensor<i64>
+    %cst_1 = arith.constant dense<-1> : tensor<i64>
+    %cst_2 = arith.constant dense<165000> : tensor<i64>
+    %0 = "tf.TakeDataset"(%arg0, %cst) {device = "", metadata = "", output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<!tf_type.variant>, tensor<i64>) -> tensor<!tf_type.variant>
+    %1 = "tf.TakeWhileDataset"(%0, %arg1, %arg2, %cst_1, %arg3, %arg4, %arg5, %arg6, %cst_2) {device = "", metadata = "", output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], predicate = @__inference_Dataset_take_while_predicate_7400, predicate._tf_data_function = true} : (tensor<!tf_type.variant>, tensor<!tf_type.resource<tensor<i1>>>, tensor<!tf_type.resource<tensor<i64>>>, tensor<i64>, tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i1>>>, tensor<i64>) -> tensor<!tf_type.variant>
+    return
+  }
+
+  // CHECK: @__inference_Dataset_take_while_predicate_7400(%arg0: tensor<!tf_type.string> {tf._user_specified_name = "args_0"}, %arg1: tensor<!tf_type.resource<tensor<i1>>>, %arg2: tensor<!tf_type.resource<tensor<i64>>>, %arg3: tensor<i64>, %arg4: tensor<!tf_type.resource<tensor<i32>>>, %arg5: tensor<!tf_type.resource<tensor<i32>>>, %arg6: tensor<!tf_type.resource<tensor<i32>>>, %arg7: tensor<!tf_type.resource<tensor<i1>>>, %arg8: tensor<i64>) -> tensor<i1> attributes {tf._tf_data_function = true, tf.signature.is_stateful}
+  func private @__inference_Dataset_take_while_predicate_7400(%arg0: tensor<!tf_type.string> {tf._user_specified_name = "args_0"}, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<*x!tf_type.resource>, %arg3: tensor<i64>, %arg4: tensor<*x!tf_type.resource>, %arg5: tensor<*x!tf_type.resource>, %arg6: tensor<*x!tf_type.resource>, %arg7: tensor<*x!tf_type.resource>, %arg8: tensor<i64>) -> tensor<i1> attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+    %cst = arith.constant dense<true> : tensor<i1>
+    return %cst : tensor<i1>
+  }
+
   // CHECK-LABEL: passthrough_reducedataset
   func @passthrough_reducedataset(
       %arg0 : tensor<!tf_type.resource<tensor<4096xf32>>>,

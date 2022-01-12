@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
@@ -833,7 +834,8 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
     // when vectorization is enabled it can lead to crashes.
     bool has_i1_integers = llvm::any_of(op->getOperandTypes(), IsI1Integer) ||
                            llvm::any_of(op->getResultTypes(), IsI1Integer);
-    if (has_i1_integers) return failure();
+    if (has_i1_integers && tensorflow::GetCpuRtFlags().vectorize)
+      return failure();
 
     // TODO(b/205905286): Unsigned integers support has a lot of gaps, and
     // similar to handling `i1` we need a type conversion to signless integers.

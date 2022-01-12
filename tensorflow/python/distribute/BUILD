@@ -651,6 +651,7 @@ distribute_py_test(
     shard_count = 12,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # b/213388775
         "no_rocm",
     ],
     tpu_tags = [
@@ -1126,6 +1127,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_gpu",  # TODO(b/213596871): times out
         "notsan",  # b/177098062
         "no_rocm", # broken in 4.1
     ],

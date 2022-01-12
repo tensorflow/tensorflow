@@ -44,7 +44,6 @@ using mlir::Type;
 using mlir::TypeRange;
 using mlir::Value;
 using mlir::linalg::GenericOp;
-using mlir::tensor::CollapseShapeOp;
 using mlir::tensor::ExtractOp;
 using mlir::tensor::FromElementsOp;
 
@@ -90,32 +89,6 @@ struct DetensorizeLinalgOp : public OpConversionPattern<GenericOp> {
   }
 };
 
-/// Canonicalizes the pattern of the form
-///
-/// %tensor = tensor.from_elements(%element) : (i32) -> tensor<1xi32>
-/// %reshaped_tensor = linalg.tensor_collapse_shape %tensor []
-///     : tensor<1xi32> into tensor<i32>
-/// %extracted_element = tensor.extract %reshaped_tensor[] : tensor<i32>
-///
-/// to just %element.
-struct ExtractFromReshapeFromElements : public OpRewritePattern<ExtractOp> {
-  using OpRewritePattern<ExtractOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ExtractOp extract,
-                                PatternRewriter& rewriter) const final {
-    if (!extract.indices().empty()) return failure();
-
-    auto reshape = extract.tensor().getDefiningOp<CollapseShapeOp>();
-    if (!reshape) return failure();
-
-    auto from_elements = reshape.src().getDefiningOp<FromElementsOp>();
-    if (!from_elements) return failure();
-
-    rewriter.replaceOp(extract, from_elements.elements());
-    return success();
-  }
-};
-
 struct DetensorizeLinalgPass
     : public DetensorizeLinalgBase<DetensorizeLinalgPass> {
   DetensorizeLinalgPass() = default;
@@ -140,7 +113,7 @@ struct DetensorizeLinalgPass
 
     // Canonicalize.
     mlir::RewritePatternSet canonicalization_patterns(context);
-    canonicalization_patterns.add<ExtractFromReshapeFromElements>(context);
+    FromElementsOp::getCanonicalizationPatterns(patterns, context);
     if (failed(applyPatternsAndFoldGreedily(
             func, std::move(canonicalization_patterns))))
       signalPassFailure();

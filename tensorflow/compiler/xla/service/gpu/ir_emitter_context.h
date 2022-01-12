@@ -41,7 +41,6 @@ class IrEmitterContext {
                    std::string platform_name, GpuDeviceInfo gpu_device_info,
                    se::CudaComputeCapability cuda_compute_capability,
                    std::string amdgpu_arch,
-                   const HloProfileIndexMap* profile_index_map,
                    mlir::MLIRContext* mlir_context, llvm::Module* llvm_module)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
@@ -49,7 +48,6 @@ class IrEmitterContext {
         gpu_device_info_(gpu_device_info),
         cuda_compute_capability_(cuda_compute_capability),
         amdgpu_arch_(amdgpu_arch),
-        profile_index_map_(profile_index_map),
         mlir_context_(mlir_context),
         llvm_module_(llvm_module) {}
   // Disallow copy and assign.
@@ -69,7 +67,6 @@ class IrEmitterContext {
   std::string amdgpu_arch() const {
     return amdgpu_arch_;
   }
-  const HloProfileIndexMap* profile_index_map() { return profile_index_map_; }
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
   llvm::Module* llvm_module() { return llvm_module_; }
   NameUniquer* name_uniquer() { return &name_uniquer_; }
@@ -96,7 +93,6 @@ class IrEmitterContext {
   GpuDeviceInfo gpu_device_info_;
   se::CudaComputeCapability cuda_compute_capability_;
   std::string amdgpu_arch_;
-  const HloProfileIndexMap* profile_index_map_;
   mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;

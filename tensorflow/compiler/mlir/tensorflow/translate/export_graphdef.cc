@@ -34,7 +34,6 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -669,7 +668,7 @@ Status Exporter::Convert(mlir::ModuleOp module,
                          FunctionLibraryDefinition* flib_def,
                          absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::Identifier entry_func_id =
-      mlir::Identifier::get("main", module.getContext());
+      mlir::StringAttr::get(module.getContext(), "main");
   absl::optional<FuncOp> entry_func;
   FunctionDefLibrary flib;
   llvm::SmallDenseSet<FuncOp> visited_functions;

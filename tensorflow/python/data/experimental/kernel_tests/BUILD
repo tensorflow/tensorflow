@@ -75,9 +75,12 @@ tf_py_test(
     size = "small",
     srcs = ["compression_ops_test.py"],
     deps = [
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/ops:compression_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
         "@absl_py//absl/testing:parameterized",
     ],
 )

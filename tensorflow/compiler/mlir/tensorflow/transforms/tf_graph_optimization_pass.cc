@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"

@@ -346,3 +346,40 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     return %val : tensor<0xf32>
   }
 }
+
+// -----
+
+// Test While region immutable case.
+
+module {
+  // CHECK-LABEL: @f()
+  func @f() -> tensor<0xf32> {
+    // CHECK-NOT: "tf.VarHandleOp"
+    %handle = "tf.VarHandleOp"() {container="", shared_name="var1", device = "/job:worker/replica:0/task:1/device:CPU:0"} : () -> tensor<!tf_type.resource<tensor<f32>>>
+    %res:2 = call @f_1(%handle) : (tensor<!tf_type.resource<tensor<f32>>>) -> (tensor<0xf32>, tensor<0xf32>)
+    return %res#0 : tensor<0xf32>
+  }
+
+  // CHECK: func private @f_1() -> (tensor<0xf32>, tensor<0xf32>)
+  func private @f_1(%arg0: tensor<!tf_type.resource<tensor<f32>>>)-> (tensor<0xf32>, tensor<0xf32>) {
+    %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %cst = "tf.Const"() {value = dense<1.0> : tensor<0xf32>} : () -> tensor<0xf32>
+    %1:3 = "tf.WhileRegion"(%arg0, %0, %cst) ( {
+      ^bb0(%carg0: tensor<*x!tf_type.resource>, %carg1: tensor<i32>, %carg2 : tensor<0xf32>):
+         %limit = arith.constant dense<5> : tensor<i32>
+         %cond = "tf.Less"(%carg1, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+         "tf.Yield"(%cond) : (tensor<i1>) -> ()
+    },  {
+      ^bb0(%barg0: tensor<*x!tf_type.resource>, %barg1: tensor<i32>, %barg2: tensor<0xf32>):
+        %val = "tf.PartitionedCall"(%barg0) {config = "", config_proto = "", executor_type = "", f = @f_callee_callee} : (tensor<*x!tf_type.resource>) -> (tensor<0xf32>)
+        "tf.Yield"(%barg0, %barg1, %val) : (tensor<*x!tf_type.resource>,tensor<i32>, tensor<0xf32>) -> ()
+    }) {is_stateless = true} : (tensor<!tf_type.resource<tensor<f32>>>, tensor<i32>, tensor<0xf32>) -> (tensor<*x!tf_type.resource>, tensor<i32>, tensor<0xf32>)
+    return %1#2, %1#2 : tensor<0xf32>, tensor<0xf32>
+  }
+
+  // CHECK: func private @f_callee_callee() -> tensor<0xf32>
+  func private @f_callee_callee(%arg0: tensor<*x!tf_type.resource>) -> tensor<0xf32> {
+    %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource>) -> (tensor<0xf32>)
+    return %0 : tensor<0xf32>
+  }
+}

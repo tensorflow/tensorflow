@@ -128,7 +128,7 @@ constexpr std::array<TrtTestMode, 3> ValidTrtModes = {
 
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
-  return lhs.shape_ == rhs.shape_ && lhs.TrtDType() == rhs.TrtDType() &&
+  return lhs.Shape() == rhs.Shape() && lhs.TrtDType() == rhs.TrtDType() &&
          lhs.GetPointer<int8>() == rhs.GetPointer<int8>();
 }
 
@@ -136,7 +136,7 @@ template <typename T>
 void ValidateWeights(const TRT_ShapedWeights& weights,
                      const std::vector<int>& expected_dims,
                      const std::vector<T>& expected_value) {
-  EXPECT_THAT(weights.shape_, DimsAreArray(expected_dims));
+  EXPECT_THAT(weights.Shape(), DimsAreArray(expected_dims));
   ASSERT_EQ(expected_value.size(), weights.count()) << weights.DebugString();
   const T* actual_values = weights.GetPointer<T>();
   for (int i = 0; i < expected_value.size(); ++i) {
@@ -200,7 +200,8 @@ TEST(TRT_ShapedWeights_Test, Basic) {
   {
     TrtWeightStore store;
     TRT_ShapedWeights weights =
-        store.GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims({2, 5}));
+        store.GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims({2, 5}))
+            .ValueOrDie();
     TRT_ShapedWeights copy(weights);
     for (auto ptr : {&weights, &copy}) {
       nvinfer1::Weights trt_weights = ptr->GetTrtWeights();
@@ -725,8 +726,10 @@ void TestPrepareTensorForShape(
     input = TRT_TensorOrWeights(converter->network()->addInput(
         "", nvinfer1::DataType::kFLOAT, CreateDims(input_dims)));
   } else {
-    input = TRT_TensorOrWeights(weight_store->GetTempWeights(
-        nvinfer1::DataType::kFLOAT, CreateDims(input_dims)));
+    input = TRT_TensorOrWeights(
+        weight_store
+            ->GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims(input_dims))
+            .ValueOrDie());
   }
   ITensorProxyPtr output_tensor = nullptr;
 
@@ -839,7 +842,7 @@ void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
   nvinfer1::DataType trt_type;
   TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &trt_type));
   TRT_ShapedWeights weights =
-      weight_store->GetTempWeights(trt_type, CreateDims({2, 3}));
+      weight_store->GetTempWeights(trt_type, CreateDims({2, 3})).ValueOrDie();
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
   memcpy(weights.GetPointer<int8>(), values.data(), weights.size_bytes());
 
@@ -913,7 +916,7 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
                                    CreateDims(shape), batch_size};
       }
       TRT_ShapedWeights weights;
-      weights.shape_ = CreateDims(shape);
+      weights.Shape() = CreateDims(shape);
       return TRT_TensorOrWeights(weights);
     };
 
@@ -1001,7 +1004,8 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
 TEST_F(ConverterTest, CreateConstantLayer) {
   for (auto dtype : {nvinfer1::DataType::kFLOAT, nvinfer1::DataType::kINT32}) {
     TRT_ShapedWeights weights =
-        weight_store_->GetTempWeights(dtype, CreateDims({2, 3, 5}));
+        weight_store_->GetTempWeights(dtype, CreateDims({2, 3, 5}))
+            .ValueOrDie();
     ITensorProxyPtr tensor =
         converter_->CreateConstantLayer(weights, CreateDims({3, 10}));
     ASSERT_NE(nullptr, tensor->trt_tensor());
@@ -1363,7 +1367,8 @@ class OpConverterTest : public ::testing::Test {
         << num_elements << " vs " << values.size();
     TRT_ShapedWeights weights(dtype);
     if (num_elements) {
-      weights = converter_->weight_store_.GetTempWeights(dtype, trt_dims);
+      weights = converter_->weight_store_.GetTempWeights(dtype, trt_dims)
+                    .ConsumeValueOrDie();
       QCHECK_EQ(weights.size_bytes(), sizeof(T) * values.size())
           << weights.size_bytes() << " vs " << sizeof(T) * values.size();
       memcpy(weights.GetPointer<int8>(), values.data(), weights.size_bytes());

@@ -91,6 +91,19 @@ class HloFunctionImporter {
   static mlir::NamedAttribute ConvertReplicaGroups(
       absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder);
 
+  // For mlir::IfOp or mlir::CaseOp, replace the uses of their region's block
+  // arguments with 'implicit_operands'. Here | implicit_operands | == sum of
+  // the number of arguments in all the regions in IfOp or CaseOp.
+  void ReplaceBlockArgumentsWithImplicitOperands(
+      mlir::Operation* op, llvm::ArrayRef<mlir::Value> implicit_operands);
+
+  // Create a TupleOp using the results of 'op' if 'type' is a mlir::TupleType.
+  // Otherwise, return 'op'.
+  mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
+                                            mlir::Location loc,
+                                            mlir::Operation* op,
+                                            mlir::Type type);
+
   // FlattenTupleType flattens the types in (nested) tuple-type 'type' and
   // stores them in 'types'.
   static void FlattenTupleType(

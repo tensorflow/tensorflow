@@ -25,9 +25,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -181,8 +181,8 @@ static void SetArgvFromEnv(absl::string_view envvar, EnvArgv* a) {
 
 // The simulated argv[] parsed from the environment, one for each different
 // environment variable we've seen.
-static std::unordered_map<std::string, EnvArgv>& EnvArgvs() {
-  static auto* env_argvs = new std::unordered_map<std::string, EnvArgv>();
+static absl::flat_hash_map<std::string, EnvArgv>& EnvArgvs() {
+  static auto* env_argvs = new absl::flat_hash_map<std::string, EnvArgv>();
   return *env_argvs;
 }
 

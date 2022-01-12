@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -43,7 +44,9 @@ class Runtime {
 
   StatusOr<FunctionDef> GetFunctionProto(StringPiece name);
 
-  Status CreateFunctionProto(FunctionDef fdef);
+  // # TODO(mdan): Enforce creation or rename to SetFunction.
+  Status CreateFunction(const FunctionDef& fdef);
+  Status CreateFunction(mlir::tfg::GraphFuncOp fop);
 
   StatusOr<ReturnValues> CallFunction(
       StringPiece name, absl::Span<AbstractTensorHandle* const> args);

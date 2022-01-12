@@ -52,10 +52,9 @@ func @cstr_reshapable_op(%arg0: index, %arg1: tensor<2xi32>) -> !shape.witness {
   // CHECK: %[[NOT_TOO_DYNAMIC:.*]] = arith.cmpi ule,  %[[VALID]]#1, %[[C1]] : index
   // CHECK: %[[ALL_VALID_DIMS:.*]] = arith.cmpi eq, %[[VALID]]#2, %[[C0]] : index
   // CHECK: %[[ONE_DYNAMIC:.*]] = arith.cmpi eq, %[[VALID]]#1, %[[C1]] : index
-  // CHECK: %[[NUM_ELS_ZERO:.*]] = arith.cmpi eq, %[[NUM_ELS]], %[[C0]] : index
-  // CHECK: %[[IS_ALL_ZERO_ELS:.*]] = arith.cmpi eq, %[[IS_ZERO_ELS]], %[[NUM_ELS_ZERO]] : i1
-  // CHECK: %[[EQUAL_IF_EMPTY:.*]] = arith.ori %[[ONE_DYNAMIC]], %[[IS_ALL_ZERO_ELS]] : i1
-  // CHECK: %[[PARTIAL_AND2:.*]] = arith.andi %[[ALL_VALID_DIMS]], %[[EQUAL_IF_EMPTY]] : i1
+  // CHECK: %[[IS_ALL_EQUAL:.*]] = arith.cmpi eq, %[[NUM_ELS]], %[[VALID]]#0 : index
+  // CHECK: %[[EQUAL_IF_NOT_DYNAMIC:.*]] = arith.ori %[[ONE_DYNAMIC]], %[[IS_ALL_EQUAL]] : i1
+  // CHECK: %[[PARTIAL_AND2:.*]] = arith.andi %[[ALL_VALID_DIMS]], %[[EQUAL_IF_NOT_DYNAMIC]] : i1
   // CHECK: %[[PARTIAL_AND:.*]] = arith.andi %[[NOT_TOO_DYNAMIC]], %[[PARTIAL_AND2]] : i1
   // CHECK: %[[ALL_CSTRS:.*]] = arith.andi %[[DIVISIBLE]], %[[PARTIAL_AND]] : i1
   // CHECK: %[[W:.*]] = shape.cstr_require %[[ALL_CSTRS]], "Required valid reshape shape input"

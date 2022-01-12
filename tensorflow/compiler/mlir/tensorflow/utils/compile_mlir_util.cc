@@ -677,8 +677,11 @@ Status BuildHloFromModule(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
   llvm::SmallVector<TensorOrResourceShape, 4> arg_shapes;
   TF_RETURN_IF_ERROR(
       CompileGraphSetup(module_op, args, &remaining_params, arg_shapes));
-  return BuildHloFromTf(module_op, builder, xla_params, returns, arg_shapes,
-                        device_type, custom_legalization_passes);
+  // Passing down only remaining (non-constant) xla_params.
+  llvm::SmallVector<xla::XlaOp, 2> remaining_xla_params;
+  for (auto i : remaining_params) remaining_xla_params.push_back(xla_params[i]);
+  return BuildHloFromTf(module_op, builder, remaining_xla_params, returns,
+                        arg_shapes, device_type, custom_legalization_passes);
 }
 
 Status CompileGraphToXlaHlo(

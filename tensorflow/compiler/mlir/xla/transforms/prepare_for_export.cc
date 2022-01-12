@@ -15,9 +15,11 @@ limitations under the License.
 
 // This file implements logic for some optimizations to reduce size on export.
 
+#include <cstdint>
 #include <memory>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -111,12 +113,42 @@ void prepareWhileOp(WhileOp while_op) {
   while_op->erase();
 }
 
+void prepareBroadcastInDim(BroadcastInDimOp bcast) {
+  DenseIntElementsAttr dims = bcast.broadcast_dimensions();
+  // If dimensions aren't sorted, there is a transpose fused into the op, which
+  // XLA Builder does not support, we unfuse here.
+  if (llvm::is_sorted(dims.getValues<int64_t>())) return;
+
+  // We need to compute a permutation that sorts the dimension before the
+  // broadcast.
+  // If the dims are [2, 4, 1], we create an array of indices: [0, 1, 2] and we
+  // sort it using the values of the first array to produce [2, 0, 1] which
+  // gives us the operand for the transpose.
+  SmallVector<int64_t> transposedDim =
+      to_vector(llvm::seq<int64_t>(0, dims.size()));
+  auto rawDims = dims.getValues<int64_t>();
+  llvm::sort(transposedDim, [&](int64_t lhs, int64_t rhs) {
+    return rawDims[lhs] < rawDims[rhs];
+  });
+  OpBuilder builder(bcast);
+  bcast.setOperand(builder.create<TransposeOp>(
+      bcast.getLoc(), bcast.operand(),
+      DenseIntElementsAttr::get(dims.getType(), transposedDim)));
+  // Now reuse the original broadcast_dimensions and sort it.
+  transposedDim.assign(rawDims.begin(), rawDims.end());
+  llvm::sort(transposedDim);
+  bcast.broadcast_dimensionsAttr(
+      DenseIntElementsAttr::get(dims.getType(), transposedDim));
+}
+
 void PrepareForExportPass::runOnFunction() {
   getFunction().walk([&](Operation *op) {
     mlir::SplatElementsAttr attr;
     if (matchPattern(op, m_Constant(&attr))) return prepareConstantOp(op, attr);
 
-    if (auto while_op = dyn_cast<WhileOp>(op)) return prepareWhileOp(while_op);
+    if (auto whileOp = dyn_cast<WhileOp>(op)) return prepareWhileOp(whileOp);
+    if (auto bcastOp = dyn_cast<BroadcastInDimOp>(op))
+      return prepareBroadcastInDim(bcastOp);
   });
 }
 

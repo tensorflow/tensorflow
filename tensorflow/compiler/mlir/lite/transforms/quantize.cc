@@ -200,31 +200,26 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
   bool legacy_float_scale_;
 };
 
-#define LIST_FLAG_OR_STRING_SET(list, set) \
-  (!list.empty() ? StringSet(list.begin(), list.end()) : set)
-
 // Applies quantization on the model in TFL dialect.
 struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
  public:
   // Constructor used by the PassRegistration and only used by test.
   explicit QuantizePass() {
+    quant_specs.inference_type = tensorflow::DT_QINT8;
+    quant_specs.verify_numeric = enable_numeric_verify;
+    quant_specs.whole_model_verify = enable_whole_model_verify;
     quant_specs.legacy_float_scale = enable_legacy_quantize;
+    quant_specs.weight_quantization = enable_dynamic_range_quantization;
     quant_specs.weight_only_quantization = enable_weight_only_quantization;
-    ops_blocklist =
+    quant_specs.ops_blocklist =
         StringSet(ops_blocklist_flag.begin(), ops_blocklist_flag.end());
-    nodes_blocklist =
+    quant_specs.nodes_blocklist =
         StringSet(nodes_blocklist_flag.begin(), nodes_blocklist_flag.end());
   }
 
   // Constructor used by manually creating the pass.
-  explicit QuantizePass(const QuantizationSpecs& quant_specs,
-                        const StringSet& ops_blocklist_set = {},
-                        const StringSet& nodes_blocklist_set = {})
-      : quant_specs(quant_specs),
-        ops_blocklist(
-            LIST_FLAG_OR_STRING_SET(ops_blocklist_flag, ops_blocklist_set)),
-        nodes_blocklist(LIST_FLAG_OR_STRING_SET(nodes_blocklist_flag,
-                                                nodes_blocklist_set)) {}
+  explicit QuantizePass(const QuantizationSpecs& quant_specs)
+      : quant_specs(quant_specs) {}
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -240,11 +235,7 @@ struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
 
  private:
   QuantizationSpecs quant_specs;
-  StringSet ops_blocklist;
-  StringSet nodes_blocklist;
 };
-
-#undef LIST_FLAG_OR_STRING_SET
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
 
@@ -254,19 +245,15 @@ void QuantizePass::runOnFunction() {
   auto* ctx = func.getContext();
 
   const quant::QuantPassSpec quant_params = {
-      {enable_numeric_verify || quant_specs.verify_numeric, error_tolerance,
-       enable_whole_model_verify || quant_specs.whole_model_verify,
-       enable_log_if_failed},
-      enable_weight_only_quantization || quant_specs.weight_only_quantization,
-      ops_blocklist,
-      nodes_blocklist};
+      {quant_specs.verify_numeric, error_tolerance,
+       quant_specs.whole_model_verify, enable_log_if_failed},
+      quant_specs};
 
   TFL::populateWithGenerated(patterns);
 
   // TODO(b/202451048): separate full and weight-only post-training dynamic
   // range quantization
-  if (quant_specs.weight_quantization || enable_dynamic_range_quantization ||
-      quant_specs.use_fake_quant_num_bits) {
+  if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits) {
     patterns.insert<TFLDynamicRangeQuantization>(ctx, quant_params);
   } else {
     patterns.insert<TFLFullQuantization, TFLFullQuantizationReverse>(
@@ -277,21 +264,28 @@ void QuantizePass::runOnFunction() {
   // Constant quantization is a lossy transformation, so they are applied only
   // after all the other patterns have been aplied.
   OwningRewritePatternList patterns_2(&getContext());
-  patterns_2.insert<QuantizeConstPattern>(
-      ctx, quant_specs.legacy_float_scale || enable_legacy_quantize);
-  if (quant_params.numeric_verify.whole_model_verify) {
+  patterns_2.insert<QuantizeConstPattern>(ctx, quant_specs.legacy_float_scale);
+  if (quant_params.numeric_verify_spec.whole_model_verify) {
     patterns_2.insert<quant::RemoveDebugAttrPattern>(ctx);
   }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 }
 }  // namespace
 
+#define UPDATE_STRING_SET(new_set, set) (!new_set.empty() ? new_set : set)
+
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
     const QuantizationSpecs& quant_specs, const StringSet& ops_blocklist,
     const StringSet& nodes_blocklist) {
-  return std::make_unique<QuantizePass>(quant_specs, ops_blocklist,
-                                        nodes_blocklist);
+  QuantizationSpecs updated_quant_specs;
+  updated_quant_specs = quant_specs;
+  // If there's new blocklists given, update quant_specs to use the new one.
+  updated_quant_specs.ops_blocklist =
+      UPDATE_STRING_SET(ops_blocklist, quant_specs.ops_blocklist);
+  updated_quant_specs.nodes_blocklist =
+      UPDATE_STRING_SET(nodes_blocklist, quant_specs.nodes_blocklist);
+  return std::make_unique<QuantizePass>(updated_quant_specs);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
@@ -301,9 +295,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
   quant_specs.verify_numeric = verify_numeric;
   quant_specs.whole_model_verify = whole_model_verify;
   quant_specs.legacy_float_scale = legacy_float_scale;
-  return std::make_unique<QuantizePass>(quant_specs, ops_blocklist,
-                                        nodes_blocklist);
+  quant_specs.ops_blocklist = ops_blocklist;
+  quant_specs.nodes_blocklist = nodes_blocklist;
+  return std::make_unique<QuantizePass>(quant_specs);
 }
+
 static PassRegistration<QuantizePass> pass;
 
 }  // namespace TFL

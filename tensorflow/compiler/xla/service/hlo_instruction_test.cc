@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 #include <set>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 

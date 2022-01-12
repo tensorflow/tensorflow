@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
@@ -33,6 +34,7 @@ namespace mlir {
 namespace TFL {
 
 using ::tflite::optimize::ReducedPrecisionSupport;
+using StringSet = absl::flat_hash_set<std::string>;
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -169,6 +171,12 @@ struct QuantizationSpecs {
 
   // Whether to use fake quant attributes to calculate quantization parameters.
   bool use_fake_quant_num_bits = false;
+
+  // Names of ops to block from quantization. Used in QuantizePass.
+  StringSet ops_blocklist;
+
+  // Names of locations to block from quantization. Used in QuantizePass.
+  StringSet nodes_blocklist;
 };
 
 // Parses the command line flag strings to the quantization specification for

@@ -16,7 +16,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Identifier.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"

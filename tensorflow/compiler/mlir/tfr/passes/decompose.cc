@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <numeric>
@@ -85,6 +86,10 @@ Attribute Quantize(float value, Attribute scale_attr, Attribute zp_attr,
   int64_t zp = zp_attr.cast<IntegerAttr>().getInt();
 
   int quantized = static_cast<int>(std::round(value / scale) + zp);
+  quantized =
+      std::min(quantized, static_cast<int>(std::numeric_limits<int8_t>::max()));
+  quantized =
+      std::max(quantized, static_cast<int>(std::numeric_limits<int8_t>::min()));
   return builder.getI32IntegerAttr(quantized);
 }
 

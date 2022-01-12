@@ -185,6 +185,7 @@ H AbslHashValue(H h, const CallSignature& s) {
     try {
       hash = py::hash(static_arg);
     } catch (const py::error_already_set& e) {
+      if (!e.matches(PyExc_TypeError)) throw;
       throw std::invalid_argument(absl::StrCat(
           "Non-hashable static arguments are not supported. An error occured "
           "during a call to '",
@@ -561,16 +562,9 @@ CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
 
 CompiledFunction::~CompiledFunction() = default;
 
-// Compute signature for arguments.
-//
-// Returns `Status::OK()` on success. Returning an error should lead to
-// calling the Python fallback.
-xla::Status ComputeSignature(bool jax_enable_x64,
-                             xla::PjRtDevice* default_device, bool is_committed,
-                             ParsedArgumentsAsBuffers& arguments) {
-  tensorflow::profiler::TraceMe traceme("ComputeSignature");
-
-  int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
+// Returns nullptr if arg has no sticky device
+static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
+    py::handle arg) {
   struct PythonTypes {
     py::object device_array;
   };
@@ -582,6 +576,49 @@ xla::Status ComputeSignature(bool jax_enable_x64,
     }
     return new PythonTypes{device_array};
   }();
+
+  // We specically only deal with DeviceArray (not ShardedDeviceArray).
+  // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
+  if (arg.get_type().ptr() == xla::PyBuffer::type()) {
+    xla::PyBuffer* buffer = xla::PyBuffer::AsPyBufferUnchecked(arg);
+    if (!buffer->sticky_device()) {
+      return nullptr;
+    }
+    return buffer->sticky_device();
+  }
+
+  if (arg.get_type().ptr() == types.device_array.ptr()) {
+    if (arg.attr("_device").is_none()) {
+      return nullptr;
+    }
+    try {
+      // This can fail, e.g. for cloud TPU 2VM buffers.
+      TF_ASSIGN_OR_RETURN(xla::PyBuffer * buffer,
+                          xla::PyBuffer::AsPyBuffer(arg.attr("device_buffer")));
+      return buffer->buffer()->device();
+    } catch (const py::cast_error& e) {
+      return xla::InvalidArgument(
+          "%s", absl::StrCat("[jaxjit] Unsupported subclass of `DeviceArray`: "
+                             "`device_buffer` field is of type ",
+                             py::cast<std::string>(
+                                 arg.attr("device_buffer").get_type().str()),
+                             " while a `PyBuffer` was expected."));
+    }
+  }
+
+  return nullptr;
+}
+
+// Compute signature for arguments.
+//
+// Returns `Status::OK()` on success. Returning an error should lead to
+// calling the Python fallback.
+xla::Status ComputeSignature(bool jax_enable_x64,
+                             xla::PjRtDevice* default_device, bool is_committed,
+                             ParsedArgumentsAsBuffers& arguments) {
+  tensorflow::profiler::TraceMe traceme("ComputeSignature");
+
+  int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
   // When the jitted function is not committed, we first check whether any
   // sticky `DeviceArray` is present and on which device they live. See also:
   // https://github.com/google/jax/pull/1884
@@ -593,38 +630,9 @@ xla::Status ComputeSignature(bool jax_enable_x64,
     data_device = default_device;
   } else {
     for (int i = 0; i < num_flat_dynamic_args; ++i) {
-      py::handle arg = arguments.flat_dynamic_args[i];
-      // We specically only deal with DeviceArray (not ShardedDeviceArray).
-      // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
-      xla::PjRtDevice* device = nullptr;
-      if (arg.get_type().ptr() == xla::PyBuffer::type()) {
-        xla::PyBuffer* buffer = xla::PyBuffer::AsPyBufferUnchecked(arg);
-        if (!buffer->sticky_device()) {
-          continue;
-        }
-        device = buffer->sticky_device();
-      } else if (arg.get_type().ptr() == types.device_array.ptr()) {
-        if (arg.attr("_device").is_none()) {  // Skip non-sticky devices.
-          continue;
-        }
-        try {
-          // This can fail, e.g. for cloud TPU 2VM buffers.
-          TF_ASSIGN_OR_RETURN(
-              xla::PyBuffer * buffer,
-              xla::PyBuffer::AsPyBuffer(arg.attr("device_buffer")));
-          device = buffer->buffer()->device();
-        } catch (const py::cast_error& e) {
-          return xla::InvalidArgument(
-              "%s",
-              absl::StrCat("[jaxjit] Unsupported subclass of `DeviceArray`: "
-                           "`device_buffer` field is of type ",
-                           py::cast<std::string>(
-                               arg.attr("device_buffer").get_type().str()),
-                           " while a `PyBuffer` was expected."
-
-                           ));
-        }
-      }
+      TF_ASSIGN_OR_RETURN(
+          xla::PjRtDevice * device,
+          GetJitArgumentStickyDevice(arguments.flat_dynamic_args[i]));
       if (device) {
         if (data_device && (device != data_device)) {
           throw std::invalid_argument(absl::StrCat(
@@ -1237,6 +1245,7 @@ void BuildJaxjitSubmodule(py::module& m) {
 
   // Add CompiledFunction to the xla_extension module so it can be pickled.
   m.attr("CompiledFunction") = cfun_type;
+  cfun.attr("__module__") = m.attr("__name__");
 
   cfun.attr("__signature__") =
       property_readonly([](py::handle self) -> xla::StatusOr<py::object> {

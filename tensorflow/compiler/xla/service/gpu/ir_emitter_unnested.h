@@ -506,7 +506,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Emits a kernel for the hlo instruction using the given kernel mapping
   // scheme.
-  TilingKernelInfo EmitTilingKernel(
+  StatusOr<TilingKernelInfo> EmitTilingKernel(
       const TilingScheme& tiling_scheme, llvm::Type* index_ty,
       const TileElementGenerator& tile_element_generator);
 
@@ -593,13 +593,13 @@ class IrEmitterUnnested : public IrEmitter {
       const HloReduceInstruction* reduction, int partial_result_idx);
 
   // Emits code for reductions in the output_instructions.
-  void EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
-                          absl::Span<HloInstruction* const> instr_index_group,
-                          HloComputation* fused_computation,
-                          FusedIrEmitter* fused_emitter,
-                          const ReductionOutputMap& result_ir_arrays,
-                          const ReductionCodegenInfo& reduction_info,
-                          const Shape& input_shape);
+  Status EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
+                            absl::Span<HloInstruction* const> instr_index_group,
+                            HloComputation* fused_computation,
+                            FusedIrEmitter* fused_emitter,
+                            const ReductionOutputMap& result_ir_arrays,
+                            const ReductionCodegenInfo& reduction_info,
+                            const Shape& input_shape);
 
   // Generate a single element of the tile (update the accumulator state) for a
   // given reducer of index `i`.
@@ -684,8 +684,8 @@ class IrEmitterUnnested : public IrEmitter {
   // In the presence of thread scaling in tiling scheme may return early if the
   // combination of thread_id/block_id does not correspond to a real block.
   // Assumes the current function returns void.
-  ThreadIdInfo EmitThreadIdInfo(const TilingScheme& tiling_scheme,
-                                llvm::Type* index_ty);
+  StatusOr<ThreadIdInfo> EmitThreadIdInfo(const TilingScheme& tiling_scheme,
+                                          llvm::Type* index_ty);
   // Emit __syncthreads(), synchronization barrier for all threads in a block.
   llvm::CallInst* EmitSyncThreads();
 
@@ -695,7 +695,7 @@ class IrEmitterUnnested : public IrEmitter {
   llvm::Value* EmitThreadId(int64_t threads_per_block, llvm::Type* index_ty);
 
   // Emits current block id.
-  llvm::Value* EmitBlockId(int64_t num_blocks, llvm::Type* index_ty);
+  llvm::Value* EmitBlockId(int32_t num_blocks, llvm::Type* index_ty);
 
   // Prints a given format string with the given arguments, prefixed with
   // thread id and block id, and postfixed with a newline.

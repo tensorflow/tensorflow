@@ -1561,6 +1561,9 @@ class HloCustomCallInstruction : public HloInstruction {
   // TODO(jpienaar): Remove this accessor in the follow up.
   const std::string& opaque() const { return raw_backend_config_string(); }
   const std::string& custom_call_target() const { return custom_call_target_; }
+  void set_custom_call_target(absl::string_view target) {
+    custom_call_target_ = std::string(target);
+  }
   void set_feature_group_count(int64_t feature_group_count) {
     feature_group_count_ = feature_group_count;
   }

@@ -51,7 +51,7 @@ llvm::SmallVector<mlir::OpOperand*> FindBufferForwardingCandidates(
 
     // Input buffer must have exactly one user after linalg.generic.
     llvm::SmallVector<mlir::Operation*> input_users(users.begin(), users.end());
-    if (input_users.size() > 1) continue;
+    if (input_users.size() != 1) continue;
 
     // And it must be a memref.dealloc operation.
     if (!mlir::isa<mlir::memref::DeallocOp>(input_users[0])) continue;
@@ -95,6 +95,14 @@ struct LinalgTrivialBufferForwardingPattern
       // Output must be allocated in the same function.
       auto* alloc = output_buffer->get().getDefiningOp();
       if (!alloc || !mlir::isa<mlir::memref::AllocOp>(alloc)) continue;
+
+      // We cannot forward the buffer if there are any users before the
+      // linalg.generic op in the block.
+      if (llvm::any_of(alloc->getUsers(), [op](mlir::Operation* user) {
+            return user->isBeforeInBlock(op);
+          })) {
+        continue;
+      }
 
       // Find compatible input buffer.
       for (mlir::OpOperand* input_buffer : forwarding_candidates) {

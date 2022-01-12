@@ -175,9 +175,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "a86951e569509c670c09f3e4a31fe6b01811e5c1d15cc2374f8b5554b45b4271",
-        strip_prefix = "oneDNN-2.5-rc",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.5-rc.tar.gz"),
+        sha256 = "f1c5a35c2c091e02417d7aa6ede83f863d35cf0ad91a132185952f5cca7b4887",
+        strip_prefix = "oneDNN-2.5.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.5.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -405,8 +405,8 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "absl_py",
-        sha256 = "0be59b82d65dfa1f995365dcfea2cc57989297b065fda696ef13f30fcc6c8e5b",
-        strip_prefix = "abseil-py-pypi-v0.15.0",
+        sha256 = "a7c51b2a0aa6357a9cbb2d9437e8cd787200531867dc02565218930b6a32166e",
+        strip_prefix = "abseil-py-1.0.0",
         system_build_file = "//third_party/systemlibs:absl_py.BUILD",
         system_link_files = {
             "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
@@ -414,16 +414,7 @@ def _tf_repositories():
             "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
             "//third_party/systemlibs:absl_py.absl.logging.BUILD": "absl/logging/BUILD",
         },
-        urls = tf_mirror_urls("https://github.com/abseil/abseil-py/archive/pypi-v0.15.0.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "enum34_archive",
-        urls = tf_mirror_urls("https://pypi.python.org/packages/bf/3e/31d502c25302814a7c2f1d3959d2a3b3f78e509002ba91aea64993936876/enum34-1.1.6.tar.gz"),
-        sha256 = "8ad8c4783bf61ded74527bffb48ed9b54166685e4230386a9ed9b1279e2df5b1",
-        build_file = "//third_party:enum34.BUILD",
-        system_build_file = "//third_party/systemlibs:enum34.BUILD",
-        strip_prefix = "enum34-1.1.6/enum",
+        urls = tf_mirror_urls("https://github.com/abseil/abseil-py/archive/refs/tags/v1.0.0.tar.gz"),
     )
 
     tf_http_archive(
@@ -704,11 +695,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "double_conversion",
-        build_file = "//third_party:double_conversion.BUILD",
-        sha256 = "2f7fbffac0d98d201ad0586f686034371a6d152ca67508ab611adc2386ad30de",
-        strip_prefix = "double-conversion-3992066a95b823efc8ccc1baf82a1cfc73f6e9b8",
+        sha256 = "a0204d6ab48223f2c8f53a932014e7f245125e7a5267764b1fbeebe4fa0ee8b9",
+        strip_prefix = "double-conversion-3.1.7",
         system_build_file = "//third_party/systemlibs:double_conversion.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/double-conversion/archive/3992066a95b823efc8ccc1baf82a1cfc73f6e9b8.zip"),
+        urls = tf_mirror_urls("https://github.com/google/double-conversion/archive/refs/tags/v3.1.7.tar.gz"),
     )
 
     tf_http_archive(

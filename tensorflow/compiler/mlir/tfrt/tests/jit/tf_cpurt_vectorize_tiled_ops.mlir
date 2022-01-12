@@ -164,3 +164,53 @@ func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
 // CHECK: vector.shape_cast %[[VECTOR]] : vector<8xf32> to vector<1x8xf32>
 // CHECK-NOT: tensor.expand_shape
 // CHECK: linalg.generic
+
+// -----
+
+#map0 = affine_map<(d0, d1) -> (d0, d1)>
+func @test_transfer_read_of_one_dim_expand_shape(
+    %in: tensor<10xf32>) -> tensor<5xf32> {
+  %c0 = arith.constant 0 : index
+  %zero_float = arith.constant 0.000000e+00 : f32
+  %0 = tensor.expand_shape %in [[0, 1]] : tensor<10xf32> into tensor<2x5xf32>
+  %1 = linalg.init_tensor [5] : tensor<5xf32>
+  %2 = vector.transfer_read %0[%c0, %c0], %zero_float
+    {in_bounds = [true, true], permutation_map = #map0}
+    : tensor<2x5xf32>, vector<2x5xf32>
+  %3 = vector.multi_reduction <maxf>, %2 [0]
+    : vector<2x5xf32> to vector<5xf32>
+  %4 = vector.transfer_write %3, %1[%c0] {in_bounds = [true]}
+    : vector<5xf32>, tensor<5xf32>
+  return %4 : tensor<5xf32>
+}
+// CHECK-LABEL: func @test_transfer_read_of_one_dim_expand_shape(
+// CHECK-SAME: %[[IN:.*]]: tensor<10xf32>
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[ZERO_FLOAT:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5] : tensor<5xf32>
+// CHECK: %[[TRANSFER_READ:.*]] = vector.transfer_read %[[IN]][%[[C0]]], %[[ZERO_FLOAT]] {in_bounds = [true]} : tensor<10xf32>, vector<10xf32>
+// CHECK: %[[SHAPE_CAST:.*]] = vector.shape_cast %[[TRANSFER_READ]] : vector<10xf32> to vector<2x5xf32>
+// CHECK: %[[MULTI_REDUCTION:.*]] = vector.multi_reduction <maxf>, %[[SHAPE_CAST]] [0] : vector<2x5xf32> to vector<5xf32>
+// CHECK: %[[TRANSFER_WRITE:.*]] = vector.transfer_write %[[MULTI_REDUCTION]], %[[INIT_TENSOR]][%[[C0]]] {in_bounds = [true]} : vector<5xf32>, tensor<5xf32>
+// CHECK: return %[[TRANSFER_WRITE]] : tensor<5xf32>
+
+// -----
+
+#map0 = affine_map<(d0, d1) -> (d0, 0)>
+func @test_transfer_read_of_one_dim_expand_shape_different_shape(
+    %in: tensor<1xf32>) -> tensor<18xf32> {
+  %c0 = arith.constant 0 : index
+  %zero_float = arith.constant 0.000000e+00 : f32
+  %0 = tensor.expand_shape %in [[0, 1]] : tensor<1xf32> into tensor<1x1xf32>
+  %1 = linalg.init_tensor [18] : tensor<18xf32>
+  %2 = vector.transfer_read %0[%c0, %c0], %zero_float
+    {in_bounds = [true, true], permutation_map = #map0}
+    : tensor<1x1xf32>, vector<1x18xf32>
+  %3 = vector.multi_reduction <maxf>, %2 [0]
+    : vector<1x18xf32> to vector<18xf32>
+  %4 = vector.transfer_write %3, %1[%c0] {in_bounds = [true]}
+    : vector<18xf32>, tensor<18xf32>
+  return %4 : tensor<18xf32>
+}
+// CHECK-LABEL: func @test_transfer_read_of_one_dim_expand_shape_different_shape
+// CHECK: %{{.*}} = tensor.expand_shape
