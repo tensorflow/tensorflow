@@ -98,16 +98,8 @@ namespace wrap {
   __macro(rocsolver_cunmqr)                 \
   __macro(rocsolver_zunmqr)                 \
   __macro(rocsolver_cungqr)                 \
-  __macro(rocsolver_zungqr)                 
+  __macro(rocsolver_zungqr)
 
-#if TF_ROCM_VERSION >= 40500
-#define FOREACH_ROCSOLVER_ROCM45_API(__macro) \
-  __macro(rocsolver_cheevd)                   \
-  __macro(rocsolver_zheevd)
-
-FOREACH_ROCSOLVER_ROCM45_API(ROCSOLVER_API_WRAPPER)
-#undef FOREACH_ROCSOLVER_ROCM45_API
-#endif
 // clang-format on
 
 FOREACH_ROCSOLVER_API(ROCSOLVER_API_WRAPPER)
