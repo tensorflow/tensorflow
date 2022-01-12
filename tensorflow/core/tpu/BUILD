@@ -5,6 +5,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
     "if_windows",
+    "tf_cc_test",
 )
 
 package(
@@ -63,8 +64,30 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_test(
+    name = "tpu_embedding_configuration_proto_rewrite_test",
+    srcs = ["tpu_embedding_configuration_proto_rewrite_test.cc"],
+    deps = [
+        ":tpu_embedding_configuration_proto_rewrite",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:test",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

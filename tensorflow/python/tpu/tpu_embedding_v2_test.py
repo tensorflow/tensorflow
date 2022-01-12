@@ -1732,8 +1732,6 @@ class TPUEmbeddingHighDimensionalTensorTest(parameterized.TestCase,
         [TensorShape((1, 3)),
          TensorShape((2, 4)),
          TensorShape((2, 4))])
-    # The GCD of batch size 1 and 2 should be 1.
-    self.assertEqual(mid_level_api._config_proto.batch_size_per_tensor_core, 1)
 
   def test_build_incorrect_output_shapes(self):
     _, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')

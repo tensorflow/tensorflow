@@ -9,12 +9,16 @@ message TPUEmbeddingConfiguration {
   message TableDescriptor {
     // Name of the table.
     string name = 1;
+
     // Size of the vocabulary (i.e., number of rows) in the table.
     int64 vocabulary_size = 2;
+
     // The embedding dimension (i.e., the width of the embedding table).
     int32 dimension = 3;
+
     // Number of features mapped to this table.
     int32 num_features = 4;
+
     // Details of the learning algorithm used to update the embedding
     // parameters.
     OptimizationParameters optimization_parameters = 5;
