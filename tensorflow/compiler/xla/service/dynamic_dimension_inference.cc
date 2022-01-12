@@ -875,6 +875,87 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicReshape(
 }
 
 Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
+  // First scan to see if we need to decompose the dynamic reshape into a
+  // flatten-unflatten pair. If so, find the dynamic dimension using
+  // hlo->inferred_dimension() and calculate the dynamic size for that
+  // dimension.
+  bool need_flatten_unflatten = false;
+  // For a reshape we need the inferred_dimension to be present to disambiguate
+  // dynamic dimensions of hlo. HloOpcode::kDynamicReshape on the other hand
+  // allows more precise specification of dynamic dimensions of hlo's shape.
+  if (hlo->inferred_dimension() != -1) {
+    TF_RETURN_IF_ERROR(ForEachOperandDynamicDimension(
+        hlo,
+        [&](HloInstruction* operand, ShapeIndex index,
+            int64_t input_dynamic_dimension, int64_t operand_index,
+            HloInstruction* operand_dynamic_size) -> Status {
+          auto common_factors = CommonFactors(operand->shape().dimensions(),
+                                              hlo->shape().dimensions());
+          int64_t input_dim_start = -1;
+          int64_t input_dim_end = -1;
+          int64_t output_dim_start = -1;
+          int64_t output_dim_end = -1;
+          // Find common_factors that the input belongs to.
+          for (int64_t i = 0; i < common_factors.size() - 1; ++i) {
+            auto start = common_factors[i];
+            auto end = common_factors[i + 1];
+            if (input_dynamic_dimension >= start.first &&
+                input_dynamic_dimension < end.first) {
+              // Found the common_factor group that the input_dim belongs to.
+              input_dim_start = start.first;
+              input_dim_end = end.first;
+              output_dim_start = start.second;
+              output_dim_end = end.second;
+            }
+          }
+          if ((input_dim_end - input_dim_start) > 1 &&
+              (output_dim_end - output_dim_start) > 1) {
+            need_flatten_unflatten = true;
+          }
+          return Status::OK();
+        }));
+    if (need_flatten_unflatten) {
+      HloInstruction* operand = hlo->mutable_operand(0);
+      HloComputation* comp = hlo->parent();
+      HloInstruction* dynamic_size = comp->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
+      int64_t static_size = 1;
+      for (int64_t i = 0; i < operand->shape().rank(); i++) {
+        HloInstruction* dynamic_dim_size =
+            parent_->GetDynamicSize(operand, {}, i);
+        if (dynamic_dim_size == nullptr) {
+          static_size *= operand->shape().dimensions(i);
+        } else {
+          dynamic_size = comp->AddInstruction(HloInstruction::CreateBinary(
+              dynamic_size->shape(), HloOpcode::kMultiply, dynamic_size,
+              dynamic_dim_size));
+        }
+      }
+      HloInstruction* static_size_hlo =
+          comp->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<int32_t>(static_size)));
+      // Total dynamic shape size.
+      dynamic_size = comp->AddInstruction(HloInstruction::CreateBinary(
+          dynamic_size->shape(), HloOpcode::kMultiply, dynamic_size,
+          static_size_hlo));
+
+      int64_t size_without_inferred_dim =
+          ShapeUtil::ElementsIn(hlo->shape()) /
+          hlo->shape().dimensions(hlo->inferred_dimension());
+      HloInstruction* size_without_inferred_dim_hlo =
+          comp->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<int32_t>(size_without_inferred_dim)));
+      dynamic_size = comp->AddInstruction(HloInstruction::CreateBinary(
+          dynamic_size->shape(), HloOpcode::kDivide, dynamic_size,
+          size_without_inferred_dim_hlo));
+      parent_->SetDynamicSize(hlo, {}, hlo->inferred_dimension(), dynamic_size);
+      VLOG(3)
+          << "Need to decopose a dynamic reshape to flatten-unflatten pair. "
+          << comp->parent()->ToString();
+      return Status::OK();
+    }
+  }
+
   return ForEachOperandDynamicDimension(
       hlo,
       [&](HloInstruction* operand, ShapeIndex index,
@@ -915,25 +996,9 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
 
         if ((input_dim_end - input_dim_start) > 1 &&
             (output_dim_end - output_dim_start) > 1) {
-          // We don't support the case when a dynamic dimension is both combined
-          // with and splitted into other dimensions:
-          //
-          //  [x, yz]
-          //     | Reshape
-          //  [xy, z]
-          //
-          // TODO(yunxing): This can be supported by canonicalizing
-          // the offending reshape into two reshapes:
-          //
-          //  [x,yz]
-          //     | Reshape
-          //  [x, y, z]
-          //     | Reshape
-          //  [xy, z]
-          //
-          return Unimplemented(
-              "Dynamic input dimension to reshape that is both splitted and "
-              "combined is not supported %s",
+          return InternalError(
+              "Should be handled by decomposing reshape into "
+              "flatten-unflatten pair. %s",
               hlo->ToString());
         }
 

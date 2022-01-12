@@ -447,7 +447,7 @@ Status RewriteDynamicReshapeSplitInput(
     absl::Span<const int64_t> output_dims,
     absl::Span<HloInstruction*> output_dynamic_dims,
     DynamicDimensionInference* dynamic_dimension_inference) {
-  VLOG(2) << "Reshaping input dim " << input_dim << "to "
+  VLOG(2) << "Reshaping input dim " << input_dim << " to "
           << VectorString(output_dims);
   const Shape operand_shape = reshape->operand(0)->shape();
   TF_RET_CHECK(output_dims.size() > 1);
@@ -464,7 +464,6 @@ Status RewriteDynamicReshapeSplitInput(
       HloInstruction::CreateConstant(LiteralUtil::One(S32)));
 
   // Step 1 -- generate binary mask.
-
   HloInstruction* input_shape_binary_mask =
       GenerateBinaryMask(reshape, input_dim, output_dims, output_dynamic_dims,
                          one, zero, /*split_input=*/true);
@@ -1633,17 +1632,106 @@ StatusOr<bool> RewriteDynamicReshape(
 
   auto common_factors = CommonFactors(operand->shape().dimensions(),
                                       reshape->shape().dimensions());
+
+  // Scan first to see if we need to decompose the reshape to a
+  // flatten-unflatten pair.
+  bool need_flatten_unflatten = false;
+  auto is_dynamic_dimension = [&](int64_t dim) {
+    HloInstruction* operand_dynamic_size =
+        dynamic_dimension_inference->GetDynamicSize(reshape, {}, dim);
+    return operand_dynamic_size != nullptr ||
+           reshape->shape().is_dynamic_dimension(dim);
+  };
+
+  auto should_skip_common_factor_group = [&](DimensionVector input_dims,
+                                             DimensionVector output_dims) {
+    if (input_dims.empty() || output_dims.empty()) {
+      return true;
+    }
+    if (absl::c_none_of(output_dims, is_dynamic_dimension)) {
+      // Don't need to rewrite any group without dynamic dimensions.
+      VLOG(2) << "All dimensions are static in this common factor group";
+      return true;
+    }
+    if (input_dims.size() == 1 && output_dims.size() == 1) {
+      // The dimension is unchanged. No rewrite needed.
+      return true;
+    }
+    return false;
+  };
+
+  for (int64_t i = 0; i < common_factors.size() - 1; ++i) {
+    auto start = common_factors[i];
+    auto end = common_factors[i + 1];
+    DimensionVector input_dims;
+    DimensionVector output_dims;
+    for (int64_t dim = start.first; dim < end.first; ++dim) {
+      input_dims.push_back(dim);
+    }
+    for (int64_t dim = start.second; dim < end.second; ++dim) {
+      output_dims.push_back(dim);
+    }
+    if (should_skip_common_factor_group(input_dims, output_dims)) {
+      continue;
+    }
+    if (input_dims.size() > 1 && output_dims.size() > 1) {
+      need_flatten_unflatten = true;
+      break;
+    }
+  }
+
+  if (need_flatten_unflatten) {
+    VLOG(2) << "Rewrite dynamic reshape to flatten-unflatten pair. "
+            << reshape->ToString();
+    HloComputation* comp = operand->parent();
+    int64_t num_elements = ShapeUtil::ElementsIn(operand->shape());
+    Shape flattened_shape =
+        ShapeUtil::MakeShape(operand->shape().element_type(), {num_elements});
+    HloInstruction* flatten = comp->AddInstruction(
+        HloInstruction::CreateReshape(flattened_shape, operand));
+
+    HloInstruction* dynamic_size =
+        comp->AddInstruction(HloInstruction::CreateConstant(
+            LiteralUtil::CreateR0<int32_t>(num_elements)));
+    for (int64_t i = 0; i < operand->shape().rank(); i++) {
+      HloInstruction* dynamic_dim_size =
+          dynamic_dimension_inference->GetDynamicSize(operand, {}, i);
+      if (dynamic_dim_size != nullptr) {
+        HloInstruction* static_dim_size = comp->AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
+                operand->shape().dimensions(i))));
+        dynamic_size = comp->AddInstruction(HloInstruction::CreateBinary(
+            dynamic_size->shape(), HloOpcode::kDivide, dynamic_size,
+            static_dim_size));
+        dynamic_size = comp->AddInstruction(HloInstruction::CreateBinary(
+            dynamic_size->shape(), HloOpcode::kMultiply, dynamic_size,
+            dynamic_dim_size));
+      }
+    }
+    dynamic_dimension_inference->SetDynamicSize(flatten, {}, 0, dynamic_size);
+
+    HloInstruction* unflatten = comp->AddInstruction(
+        HloInstruction::CreateReshape(reshape->shape(), flatten));
+    TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+        reshape, unflatten, {}));
+
+    TF_ASSIGN_OR_RETURN(
+        changed, RewriteDynamicReshape(flatten, dynamic_dimension_inference));
+    TF_ASSIGN_OR_RETURN(
+        changed, RewriteDynamicReshape(unflatten, dynamic_dimension_inference));
+    TF_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(unflatten));
+    return true;
+  }
+
   // Find common_factors that the input belongs to.
   for (int64_t i = 0; i < common_factors.size() - 1; ++i) {
     auto start = common_factors[i];
     auto end = common_factors[i + 1];
-    std::vector<int64_t> input_dims;
-    std::vector<int64_t> output_dims;
-    input_dims.reserve(end.first - start.first);
+    DimensionVector input_dims;
+    DimensionVector output_dims;
     for (int64_t dim = start.first; dim < end.first; ++dim) {
       input_dims.push_back(dim);
     }
-    output_dims.reserve(end.second - start.second);
     for (int64_t dim = start.second; dim < end.second; ++dim) {
       output_dims.push_back(dim);
     }
@@ -1651,53 +1739,28 @@ StatusOr<bool> RewriteDynamicReshape(
     VLOG(2) << "input_dims: " << VectorString(input_dims);
     VLOG(2) << "output_dims: " << VectorString(output_dims);
 
-    if (input_dims.empty() || output_dims.empty()) {
-      continue;
-    }
-    bool has_dynamic_dimension = absl::c_any_of(output_dims, [&](int64_t dim) {
-      HloInstruction* operand_dynamic_size =
-          dynamic_dimension_inference->GetDynamicSize(reshape, {}, dim);
-
-      return operand_dynamic_size != nullptr ||
-             reshape->shape().is_dynamic_dimension(dim);
-    });
-
-    if (!has_dynamic_dimension) {
-      // Don't need to rewrite any group without dynamic dimensions.
-      VLOG(2) << "All dimensions are static in this common factor group";
-      continue;
-    }
-
-    if (input_dims.size() == 1 && output_dims.size() == 1) {
-      // The dimension is unchanged. No rewrite needed.
+    if (should_skip_common_factor_group(input_dims, output_dims)) {
       continue;
     }
     if (input_dims.size() > 1 && output_dims.size() > 1) {
-      // We don't support the case when a dynamic dimension is both combined
-      // with and splitted into other dimensions:
-      //
-      //  [x, yz]
-      //     | Reshape
-      //  [xy, z]
-      //
-      // TODO(yunxing): This can be supported by canonicalizing
-      // the offending reshape into two reshapes:
-      //
-      //  [x,yz]
-      //     | Reshape
-      //  [x, y, z]
-      //     | Reshape
-      //  [xy, z]
-      //
-      return Unimplemented(
-          "Dynamic input dimension to reshape that is both splitted and "
-          "combined is not supported %s",
+      return InternalError(
+          "Should be handled by decomposing reshape into "
+          "flatten-unflatten pair. %s",
           reshape->ToString());
     }
 
     TF_RETURN_IF_ERROR(RewriteDynamicReshapeSingleGroup(
         reshape, input_dims, output_dims, absl::MakeSpan(input_dynamic_dims),
         absl::MakeSpan(output_dynamic_dims), dynamic_dimension_inference));
+  }
+
+  if (reshape->opcode() == HloOpcode::kDynamicReshape) {
+    auto* static_reshape =
+        reshape->parent()->AddInstruction(HloInstruction::CreateReshape(
+            reshape->shape(), reshape->mutable_operand(0)));
+    TF_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(static_reshape));
+    TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+        reshape, static_reshape, {}));
   }
 
   return changed;
@@ -2076,7 +2139,8 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
             changed, RewriteDynamicSort(inst, &dynamic_dimension_inference));
         continue;
       }
-      if (inst->opcode() == HloOpcode::kReshape) {
+      if (inst->opcode() == HloOpcode::kReshape ||
+          inst->opcode() == HloOpcode::kDynamicReshape) {
         TF_ASSIGN_OR_RETURN(
             changed, RewriteDynamicReshape(inst, &dynamic_dimension_inference));
         continue;
@@ -2096,17 +2160,6 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
         continue;
       }
 
-      if (inst->opcode() == HloOpcode::kDynamicReshape) {
-        TF_ASSIGN_OR_RETURN(
-            changed, RewriteDynamicReshape(inst, &dynamic_dimension_inference));
-        auto* static_reshape =
-            computation->AddInstruction(HloInstruction::CreateReshape(
-                inst->shape(), inst->mutable_operand(0)));
-        TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(static_reshape));
-        TF_RETURN_IF_ERROR(dynamic_dimension_inference.ForwardDynamicSize(
-            inst, static_reshape, {}));
-        continue;
-      }
       if (inst->IsCustomCall("DynamicConvolutionInputGrad")) {
         TF_ASSIGN_OR_RETURN(changed, RewriteDynamicConvolutionInputGrad(
                                          inst, &dynamic_dimension_inference));
@@ -2175,7 +2228,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
       }
     }
   }
-  if (changed == true) {
+  if (changed) {
     dynamic_padding_gauge->GetCell()->Set(changed);
     module->set_is_dynamic(true);
   }
