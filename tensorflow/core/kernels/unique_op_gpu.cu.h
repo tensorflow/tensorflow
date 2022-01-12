@@ -332,11 +332,7 @@ class UniqueOpGPU : public AsyncOpKernel {
       const GPUDevice& device = context->eigen_gpu_device();
       int64 uniq_size = (*last_idx_host.data()) + 1;
 
-#if GOOGLE_CUDA
-      se::cuda::ScopedActivateExecutorContext scoped_activation{
-#else
       se::gpu::ScopedActivateExecutorContext scoped_activation{
-#endif
           context->op_device_context()->stream()->parent()};
 
       Tensor unique_input_inds;
