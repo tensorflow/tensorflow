@@ -138,13 +138,14 @@ struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
 //
 // This is necessary to push horizontal reduction to the later stage.
 struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
-  OneDimReductionTilingPattern(int64_t vector_size,
+  OneDimReductionTilingPattern(int64_t vector_size, int64_t tile_size,
                                const LinalgTransformationFilter &filter,
                                mlir::MLIRContext *context,
                                mlir::PatternBenefit benefit = 1)
       : OpRewritePattern<GenericOp>(context, benefit),
         filter(filter),
-        vector_size(vector_size) {}
+        vector_size(vector_size),
+        tile_size(tile_size) {}
 
   LogicalResult matchAndRewrite(GenericOp linalg_op,
                                 PatternRewriter &rewriter) const override {
@@ -171,8 +172,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto element_type = init_op.getType().getElementType();
 
     Value zero = rewriter.create<ConstantIndexOp>(loc, 0);
-    Value vector_size_value =
-        rewriter.create<ConstantIndexOp>(loc, vector_size);
+    Value tile_size_value = rewriter.create<ConstantIndexOp>(loc, tile_size);
     Value new_init = rewriter.create<InitTensorOp>(loc, ValueRange{},
                                                    vector_size, element_type);
     Value new_fill =
@@ -181,17 +181,17 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     GenericOp tiled_reduction;
     auto tiled_loop_op = rewriter.create<TiledLoopOp>(
         loc, makeArrayRef(zero), makeArrayRef(input_size),
-        makeArrayRef(vector_size_value), inputs, makeArrayRef(new_fill),
+        makeArrayRef(tile_size_value), inputs, makeArrayRef(new_fill),
         rewriter.getStrArrayAttr(mlir::getReductionIteratorTypeName()),
         [&](OpBuilder &b, Location nested_loc, ValueRange ivs,
             ValueRange inputs, ValueRange outputs) {
           SmallVector<Value, 2> reshaped_tiled_inputs =
               TileAndReshapeInputTensors(b, nested_loc, ivs, inputs,
                                          neutral_value, input_size,
-                                         vector_size_value);
+                                         tile_size_value);
           // Create `linalg.generic` to combine
-          // `tensor<1xVECTOR_SIZExELEM_TYPE>1 input with the
-          // `tensor<VECTOR_SIZExELEM_TYPE>` output.
+          // `tensor<(TILE_SIZE/VECTOR_SIZE)xVECTOR_SIZExELEM_TYPE> input with
+          // the `tensor<VECTOR_SIZExELEM_TYPE>` output.
           SmallVector<mlir::StringRef, 2> iter_types{
               mlir::getReductionIteratorTypeName(),
               mlir::getParallelIteratorTypeName()};
@@ -224,10 +224,10 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
   }
 
   // Tiles, pads and reshapes every input argument of type tensor<?xELEM_TYPE>
-  // into tensor<1xVECTOR_SIZExELEM_TYPE>.
+  // into tensor<(TILE_SIZE/VECTOR_SIZE)xVECTOR_SIZExELEM_TYPE>.
   SmallVector<Value, 2> TileAndReshapeInputTensors(
       OpBuilder &b, Location nested_loc, ValueRange ivs, ValueRange inputs,
-      Value neutral_value, Value input_size, Value vector_size_value) const {
+      Value neutral_value, Value input_size, Value tile_size_value) const {
     SmallVector<Value, 2> reshaped_tiled_inputs;
 
     SmallVector<mlir::ReassociationIndices> indices = {{0, 1}};
@@ -235,22 +235,25 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto iv = ivs.front();
 
     auto tile_sizes = mlir::linalg::computeTileSizes(
-        b, nested_loc, ivs, vector_size_value, input_size);
+        b, nested_loc, ivs, tile_size_value, input_size);
     for (auto input : inputs) {
       // Extract slice of input.
       Value slice = mlir::linalg::makeTiledShape(
-          b, nested_loc, input, vector_size_value, identity_1d_map, iv,
+          b, nested_loc, input, tile_size_value, identity_1d_map, iv,
           input_size, tile_sizes);
       auto element_type = slice.getType().cast<ShapedType>().getElementType();
 
       // Pad input tile.
       Value pad = PadTensorOp::createPadHighOp(
-          RankedTensorType::get({vector_size}, element_type), slice,
+          RankedTensorType::get({tile_size}, element_type), slice,
           neutral_value, false, nested_loc, b);
 
-      // Reshape input tile to tensor<1xVECTOR_SIZExELEM_TYPE>.
+      // Reshape input tile to
+      // tensor<(TILE_SIZE/VECTOR_SIZE)xVECTOR_SIZExELEM_TYPE>.
       Value expand_shape = b.create<ExpandShapeOp>(
-          nested_loc, RankedTensorType::get({1, vector_size}, element_type),
+          nested_loc,
+          RankedTensorType::get({tile_size / vector_size, vector_size},
+                                element_type),
           pad, indices);
       reshaped_tiled_inputs.push_back(expand_shape);
     }
@@ -289,6 +292,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
  private:
   LinalgTransformationFilter filter;
   int64_t vector_size;
+  int64_t tile_size;
 };
 
 // Match 1D or 2D reduction.
@@ -302,8 +306,9 @@ bool isCanonicalizedReduction(Operation *op) {
 
 struct TileReductionPass : public TileReductionBase<TileReductionPass> {
   TileReductionPass() = default;
-  TileReductionPass(int64_t reduction_1d_tile,
+  TileReductionPass(int64_t vector_size, int64_t reduction_1d_tile,
                     llvm::ArrayRef<int64_t> reduction_2d_tiles) {
+    reduction_vector_size = vector_size;
     reduction_1d_tile_size = reduction_1d_tile;
     reduction_2d_tile_sizes = reduction_2d_tiles;
   }
@@ -316,10 +321,13 @@ struct TileReductionPass : public TileReductionBase<TileReductionPass> {
                       .addFilter([](Operation *op) {
                         return success(isCanonicalizedReduction(op));
                       });
+    assert(reduction_1d_tile_size % reduction_vector_size == 0 &&
+           "Tile size for 1D reduction should be a multiple of vector size");
     auto patterns =
         mlir::linalg::getLinalgTilingCanonicalizationPatterns(context);
     patterns.insert<OneDimReductionTilingPattern>(
-        reduction_1d_tile_size, filter, patterns.getContext());
+        reduction_vector_size, reduction_1d_tile_size, filter,
+        patterns.getContext());
 
     assert(reduction_2d_tile_sizes.size() == 2 &&
            "Tiling sizes for 2D reductions should have two elements");
@@ -344,10 +352,10 @@ std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass() {
 }
 
 std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass(
-    int64_t reduction_1d_tile_size,
+    int64_t reduction_vector_size, int64_t reduction_1d_tile_size,
     llvm::ArrayRef<int64_t> reduction_2d_tile_sizes) {
-  return std::make_unique<TileReductionPass>(reduction_1d_tile_size,
-                                             reduction_2d_tile_sizes);
+  return std::make_unique<TileReductionPass>(
+      reduction_vector_size, reduction_1d_tile_size, reduction_2d_tile_sizes);
 }
 
 }  // namespace tensorflow

@@ -36,15 +36,13 @@ struct TfCpuRtPipelineOptions
       llvm::cl::desc("Enable fusion of `linalg.fill` into a tiled reduction."),
       llvm::cl::init(true)};
 
-  Option<int64_t> cwise_tile_size{
-      *this, "cwise-tile-size",
-      llvm::cl::desc(
-          "Tile size for the innermost dimension of an elementwise op."),
-      llvm::cl::init(8)};
+  Option<int64_t> vector_size{*this, "vector-size",
+                              llvm::cl::desc("Vector size for a 1D reduction."),
+                              llvm::cl::init(8)};
 
   Option<int64_t> reduction_1d_tile_size{
       *this, "reduction-1d-tile-size",
-      llvm::cl::desc("Tile size for a 1D reduction."), llvm::cl::init(8)};
+      llvm::cl::desc("Tile size for a 1D reduction."), llvm::cl::init(32)};
 
   ListOption<int64_t> reduction_2d_tile_sizes{
       *this, "reduction-2d-tile-sizes",

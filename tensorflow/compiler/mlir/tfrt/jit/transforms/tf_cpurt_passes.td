@@ -88,8 +88,10 @@ def TileReduction : FunctionPass<"tf-cpurt-tile-reduction"> {
   }];
 
   let options = [
+    Option<"reduction_vector_size", "reduction-vector-size",
+           "int64_t", /*default=*/"8", "Vector size.">,
     Option<"reduction_1d_tile_size", "reduction-1d-tile-size",
-           "int64_t", /*default=*/"8", "Tile size for a 1D reduction.">,
+           "int64_t", /*default=*/"32", "Tile size for a 1D reduction.">,
     ListOption<"reduction_2d_tile_sizes", "reduction-2d-tile-sizes", "int64_t",
                "Tile sizes for a 2D reduction.",
                "llvm::cl::MiscFlags::CommaSeparated">,

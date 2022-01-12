@@ -1,5 +1,6 @@
-// RUN: tf-tfrt-opt -tf-cpurt-tile-reduction="reduction-2d-tile-sizes=4,4" \
-// RUN: %s -split-input-file | FileCheck %s
+// RUN: tf-tfrt-opt %s -split-input-file \
+// RUN:   -tf-cpurt-tile-reduction="reduction-2d-tile-sizes=4,4 reduction-vector-size=8 reduction-1d-tile-size=16" \
+// RUN: | FileCheck %s
 
 func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
                         %rhs: tensor<?x?xf32>) -> tensor<?xf32> {
@@ -188,7 +189,7 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
 // CHECK-SAME:    %[[LHS:.*]]: tensor<?xf32>, %[[RHS:.*]]: tensor<?xf32>)
      // CHECK-DAG: %[[C0_F32:.*]] = arith.constant 0.000000e+00 : f32
      // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-     // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : index
+     // CHECK-DAG: %[[C16:.*]] = arith.constant 16 : index
 
      // CHECK: %[[INIT:.*]] = linalg.init_tensor [] : tensor<f32>
      // CHECK: %[[FILL:.*]] = linalg.fill(%[[C0_F32]], %[[INIT]])
@@ -197,7 +198,7 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
      // CHECK: %[[TMP_INIT:.*]] = linalg.init_tensor [8] : tensor<8xf32>
      // CHECK: %[[TMP_FILL:.*]] = linalg.fill(%[[C0_F32]], %[[TMP_INIT]])
      // CHECK: %[[TMP_SUM:.*]] = linalg.tiled_loop (%[[I:.*]]) = (%[[C0]])
-// CHECK-SAME:   to (%[[INPUT_SIZE]]) step (%[[C8]])
+// CHECK-SAME:   to (%[[INPUT_SIZE]]) step (%[[C16]])
 // CHECK-SAME:   ins (%[[LHS_:.*]] = %[[LHS]]: tensor<?xf32>,
 // CHECK-SAME:        %[[RHS_:.*]] = %[[RHS]]: tensor<?xf32>)
 // CHECK-SAME:   outs (%[[TMP_INIT_:.*]] = %[[TMP_FILL]]: tensor<8xf32>)
@@ -206,17 +207,17 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
      // CHECK: %[[LHS_PAD:.*]] = linalg.pad_tensor %[[LHS_SUB]]
      // CHECK: %[[LHS_RESHAPE:.*]] = tensor.expand_shape %[[LHS_PAD]]
 // CHECK-SAME:   {{\[\[}}0, 1]]
-// CHECK-SAME:   : tensor<8xf32> into tensor<1x8xf32>
+// CHECK-SAME:   : tensor<16xf32> into tensor<2x8xf32>
 
      // CHECK: %[[RHS_SUB:.*]] = tensor.extract_slice %[[RHS_]][%[[I]]]
      // CHECK: %[[RHS_PAD:.*]] = linalg.pad_tensor %[[RHS_SUB]]
      // CHECK: %[[RHS_RESHAPE:.*]] = tensor.expand_shape %[[RHS_PAD]]
 // CHECK-SAME:   {{\[\[}}0, 1]]
-// CHECK-SAME:   : tensor<8xf32> into tensor<1x8xf32>
+// CHECK-SAME:   : tensor<16xf32> into tensor<2x8xf32>
 
      // CHECK: %[[SUM_OF_PROD:.*]] = linalg.generic
 // CHECK-SAME:   ins(%[[LHS_RESHAPE]], %[[RHS_RESHAPE]]
-// CHECK-SAME:       tensor<1x8xf32>, tensor<1x8xf32>)
+// CHECK-SAME:       tensor<2x8xf32>, tensor<2x8xf32>)
 // CHECK-SAME:   outs(%[[TMP_INIT_]] : tensor<8xf32>) {
      // CHECK:   ^bb0(%[[L:.*]]: f32, %[[R:.*]]: f32, %[[O:.*]]: f32):
      // CHECK:     %[[MUL:.*]] = arith.mulf %[[L]], %[[R]] : f32
