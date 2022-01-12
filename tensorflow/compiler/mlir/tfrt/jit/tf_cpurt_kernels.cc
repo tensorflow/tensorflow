@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/jitrt/async_runtime.h"  // from @tf_runtime
 #include "tfrt/jitrt/async_runtime_api.h"  // from @tf_runtime
-#include "tfrt/jitrt/cpurt.h"  // from @tf_runtime
+#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime

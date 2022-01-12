@@ -21,7 +21,7 @@ include "mlir/IR/OpBase.td"
 include "tfrt/tfrt_op_base.td"
 include "tfrt/compiler/opdefs/tfrt_op_interfaces.td"
 include "tfrt/compiler/opdefs/tfrt_traits.td"
-include "tfrt/jitrt/opdefs/cpurt_base.td"
+include "tfrt/jitrt/opdefs/jitrt_base.td"
 
 include "tfrt_fallback.td"
 
