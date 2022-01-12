@@ -116,7 +116,7 @@ using ::tensorflow::tfrt_stub::FallbackTensor;
 class CompilationThreadPool : public SharedContext {
  public:
   explicit CompilationThreadPool(HostContext* host)
-      : thread_pool_(Env::Default(), "tf-cpurt-compiler", /*num_threads=*/16) {}
+      : thread_pool_(Env::Default(), "tf-cpurt-compiler", /*num_threads=*/32) {}
 
   static CompilationThreadPool& Get(const ExecutionContext& exec_ctx) {
     return exec_ctx.host()->GetOrCreateSharedContext<CompilationThreadPool>();
