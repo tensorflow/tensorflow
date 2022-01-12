@@ -987,7 +987,7 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
     np.random.seed(1618)
     n, m = np.random.choice(20, size=2)
 
-    for dtype in [np.float32, np.float64]:
+    for dtype in [np.float16, np.float32, np.float64]:
       sp_vals_np = np.random.rand(n, m).astype(dtype)
 
       batched_sp_t, unused_nnz1 = _sparsify(
