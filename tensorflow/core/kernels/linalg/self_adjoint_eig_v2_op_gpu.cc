@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || (TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 40500)
 
 #include <numeric>
 #include <type_traits>
@@ -125,7 +125,7 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
     cublasFillMode_t fill = CUBLAS_FILL_MODE_UPPER;
     cusolverEigMode_t jobz =
         compute_v_ ? CUSOLVER_EIG_MODE_VECTOR : CUSOLVER_EIG_MODE_NOVECTOR;
-#elif TENSORFLOW_USE_ROCM
+#elif (TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 40500)
     rocblas_fill fill = rocblas_fill_upper;
     rocblas_evect jobz =
         compute_v_ ? rocblas_evect_original : rocblas_evect_none;
@@ -191,4 +191,4 @@ REGISTER(std::complex<double>)
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || (TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 40500)

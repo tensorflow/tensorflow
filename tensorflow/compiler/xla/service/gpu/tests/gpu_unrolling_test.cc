@@ -70,7 +70,7 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
   config.set_debug_options(debug_options);
   auto hlo_module =
       ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
-  const string pattern1 = R"(
+  const std::string pattern1 = R"(
 ; CHECK-LABEL: @fusion
 ; CHECK: fadd
 ; CHECK: fadd
@@ -80,7 +80,7 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
 ; CHECK: }
       )";
 
-  const string pattern2 = R"(
+  const std::string pattern2 = R"(
 ; CHECK-LABEL: @fusion
 ; CHECK: fadd <2 x float>
 ; CHECK: fadd <2 x float>
@@ -89,7 +89,7 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
       )";
 
   CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<string>{pattern1,pattern2},
+                     std::vector<std::string>{pattern1,pattern2},
                      /*match_optimized_ir=*/true);
 }
 
@@ -99,7 +99,7 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   config.set_debug_options(GetDebugOptionsFromFlags());
   auto hlo_module =
       ParseAndReturnVerifiedModule(kAddModule, config).ValueOrDie();
-  const string pattern1 = R"(
+  const std::string pattern1 = R"(
 ; CHECK-LABEL: @fusion
 ; CHECK: load <4 x float>
 ; CHECK: fadd
@@ -111,7 +111,7 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 ; CHECK: }
       )";
 
-  const string pattern2 = R"(
+  const std::string pattern2 = R"(
 ; CHECK-LABEL: @fusion
 ; CHECK: fadd <2 x float>
 ; CHECK: fadd <2 x float>
@@ -120,7 +120,7 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 ; CHECK: }
       )";
   CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<string>{pattern1,pattern2},
+                     std::vector<std::string>{pattern1,pattern2},
                      /*match_optimized_ir=*/true);
 }
 
@@ -140,7 +140,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
     })";
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).ValueOrDie();
-  const string pattern1 = R"(
+  const std::string pattern1 = R"(
 ; CHECK-LABEL: @add
 ; CHECK: load <4 x float>
 ; CHECK: fadd
@@ -152,7 +152,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
 ; CHECK: }
       )";
 
-  const string pattern2 = R"(
+  const std::string pattern2 = R"(
 ; CHECK-LABEL: @add
 ; CHECK: fadd <2 x float>
 ; CHECK: fadd <2 x float>
@@ -162,7 +162,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
       )";
 
   CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<string>{pattern1,pattern2},
+                     std::vector<std::string>{pattern1,pattern2},
                     /*match_optimized_ir=*/true);
 }
 
@@ -323,7 +323,7 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
       ParseAndReturnVerifiedModule(kMultiOutputFusionModule, config)
           .ValueOrDie();
 
-  string pattern1 = R"(
+  std::string pattern1 = R"(
 ; CHECK-LABEL: @fusion
 ; CHECK: load <2 x float>
 ; CHECK: load <2 x float>
@@ -340,7 +340,7 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
 ; CHECK: }
       )";
 
-  string pattern2 = R"(
+  std::string pattern2 = R"(
 ; CHECK-LABEL: @fusion
 ; CHECK: load <2 x float>
 ; CHECK: load <2 x float>
@@ -356,7 +356,7 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
       )";
 
   CompileAndVerifyIr(std::move(hlo_module),
-                     std::vector<string>{pattern1,pattern2},
+                     std::vector<std::string>{pattern1,pattern2},
                      /*match_optimized_ir=*/true);
 }
 

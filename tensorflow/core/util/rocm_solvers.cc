@@ -424,6 +424,7 @@ TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
 
 TF_CALL_LAPACK_TYPES(GETRS_BATCHED_INSTANCE);
 
+#if TF_ROCM_VERSION >= 40500
 #define HEEVD_INSTANCE(Scalar, type_prefix)                                   \
   template <>                                                                 \
   Status GpuSolver::Heevd<Scalar>(                                            \
@@ -443,6 +444,8 @@ TF_CALL_LAPACK_TYPES(GETRS_BATCHED_INSTANCE);
   }
 
 TF_CALL_LAPACK_TYPES_NO_REAL(HEEVD_INSTANCE);
+#endif
+
 #define GETRI_BATCHED_INSTANCE(Scalar, type_prefix)                           \
   template <>                                                                 \
   Status GpuSolver::GetriBatched<Scalar>(                                     \
