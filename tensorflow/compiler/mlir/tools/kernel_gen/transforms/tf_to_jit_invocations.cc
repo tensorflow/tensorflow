@@ -167,6 +167,7 @@ struct PackJITCompileOpPattern
         unroll_factors(unroll_factors),
         max_supported_rank(max_supported_rank),
         enable_ftz(enable_ftz),
+        index_64bit_if_jit_compiling(index_64bit_if_jit_compiling),
         cpu_codegen(cpu_codegen) {}
 
   LogicalResult matchAndRewrite(tf_framework::JITCompileOp op,
@@ -204,6 +205,7 @@ struct PackJITCompileOpPattern
         rewriter.getI64ArrayAttr(unroll_factors),
         rewriter.getI64IntegerAttr(max_supported_rank),
         rewriter.getBoolAttr(enable_ftz),
+        rewriter.getBoolAttr(index_64bit_if_jit_compiling),
         rewriter.getBoolAttr(cpu_codegen));
 
     return success();
@@ -214,6 +216,7 @@ struct PackJITCompileOpPattern
   llvm::ArrayRef<int64_t> unroll_factors;
   int64_t max_supported_rank;
   bool enable_ftz;
+  bool index_64bit_if_jit_compiling;
   bool cpu_codegen;
 };
 

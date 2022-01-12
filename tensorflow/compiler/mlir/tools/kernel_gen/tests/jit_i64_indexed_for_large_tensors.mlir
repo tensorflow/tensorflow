@@ -27,6 +27,7 @@ func @unary_tanh_rint(%arg : tensor<*xf32>) -> (tensor<*xf32>) {
   // CHECK-SAME:   {
   // CHECK-SAME:     cpuCodegen = false
   // CHECK-SAME:     enableFtz = false
+  // CHECK-SAME:     index64Bit = true
   // CHECK-SAME:     maxSupportedRank = 32
   // CHECK-SAME:     tileSizes = [1, 2, 3]
   // CHECK-SAME:     unrollFactors = [3, 2, 1]
