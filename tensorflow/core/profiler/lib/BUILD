@@ -131,7 +131,6 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ],
 )
