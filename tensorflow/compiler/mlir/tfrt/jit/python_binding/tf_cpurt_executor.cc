@@ -51,12 +51,12 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::StrCat;
-using ::tfrt::cpu::jit::CompilationOptions;
-using ::tfrt::cpu::jit::Executable;
-using ::tfrt::cpu::jit::JitExecutable;
-using ::tfrt::cpu::jit::MemrefDesc;
-using ::tfrt::cpu::jit::ReturnStridedMemref;
-using ::tfrt::cpu::jit::ReturnValueConverter;
+using ::tfrt::jitrt::CompilationOptions;
+using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::JitExecutable;
+using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::ReturnStridedMemref;
+using ::tfrt::jitrt::ReturnValueConverter;
 
 namespace tensorflow {
 

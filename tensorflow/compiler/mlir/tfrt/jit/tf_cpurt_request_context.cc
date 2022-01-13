@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-using ::tfrt::cpu::jit::JitExecutableCache;
+using ::tfrt::jitrt::JitExecutableCache;
 
 Status SetUpTfCpuRtRequestContext(tfrt::RequestContextBuilder* builder) {
   // TODO(ezhulenev): Instead of keeping JitExecutableCache in the

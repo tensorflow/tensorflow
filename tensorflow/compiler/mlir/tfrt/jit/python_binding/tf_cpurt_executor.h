@@ -34,7 +34,7 @@ namespace tensorflow {
 class TfCpurtExecutor {
  public:
   using Handle = int64_t;
-  using Specialization = tfrt::cpu::jit::CompilationOptions::Specialization;
+  using Specialization = tfrt::jitrt::CompilationOptions::Specialization;
 
   TfCpurtExecutor();
 
@@ -56,7 +56,7 @@ class TfCpurtExecutor {
 
  private:
   tfrt::HostContext host_context_;
-  llvm::DenseMap<Handle, tfrt::cpu::jit::JitExecutable> jit_executables_;
+  llvm::DenseMap<Handle, tfrt::jitrt::JitExecutable> jit_executables_;
 };
 
 }  // namespace tensorflow

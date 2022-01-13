@@ -23,11 +23,11 @@ namespace tensorflow {
 
 struct TfCpuRtRequestState {
   explicit TfCpuRtRequestState(
-      tfrt::cpu::jit::JitExecutableCache* jit_executable_cache)
+      tfrt::jitrt::JitExecutableCache* jit_executable_cache)
       : jit_executable_cache(jit_executable_cache) {}
 
   // A pointer to the Jit Executable cache owned by the resource context.
-  tfrt::cpu::jit::JitExecutableCache* jit_executable_cache;
+  tfrt::jitrt::JitExecutableCache* jit_executable_cache;
 };
 
 // Sets up RequestContext with the CpuRt state required for running `tf_cpurt`

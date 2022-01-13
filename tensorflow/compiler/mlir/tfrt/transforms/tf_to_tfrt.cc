@@ -1415,13 +1415,13 @@ constexpr char kCpuRtDevice[] = "CPU";
 
 // Convert cpurt.call operations to the tf_cpurt.fallback.execute operation.
 class CpuRtCallToCpurtCompileAndExecuteConversion
-    : public OpConversionPattern<tfrt::cpu::jit::CallOp> {
+    : public OpConversionPattern<tfrt::jitrt::CallOp> {
  public:
   explicit CpuRtCallToCpurtCompileAndExecuteConversion(MLIRContext *context)
-      : OpConversionPattern<tfrt::cpu::jit::CallOp>(context) {}
+      : OpConversionPattern<tfrt::jitrt::CallOp>(context) {}
 
   LogicalResult matchAndRewrite(
-      tfrt::cpu::jit::CallOp call, OpAdaptor adaptor,
+      tfrt::jitrt::CallOp call, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Convert operands to fallback tensors.
     llvm::SmallVector<Value, 4> fallback_operands;
@@ -1455,7 +1455,7 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
   target->addLegalDialect<tf_cpurt::CpuRuntimeDialect>();
   target->addIllegalDialect<TF::TensorFlowDialect>();
   target->addIllegalDialect<tf_device::TensorFlowDeviceDialect>();
-  target->addIllegalDialect<tfrt::cpu::jit::CpuRuntimeDialect>();
+  target->addIllegalDialect<tfrt::jitrt::JitRuntimeDialect>();
   target->addDynamicallyLegalOp<mlir::FuncOp>([func_type_converter,
                                                chain_type](FuncOp op) {
     auto func_type = op.getType();
@@ -1908,7 +1908,7 @@ class OutlineCpuRtClustersPass
   void runOnOperation() override;
 
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
-    registry.insert<tfrt::cpu::jit::CpuRuntimeDialect>();
+    registry.insert<tfrt::jitrt::JitRuntimeDialect>();
   }
 
  private:
@@ -2060,7 +2060,7 @@ LogicalResult OutlineCpuRtClustersPass::OutlineClusterOp(
   auto func_ref = mlir::SymbolRefAttr::get(builder.getContext(), module_name,
                                            {func_flat_ref});
 
-  auto cluster_func_op = builder.create<tfrt::cpu::jit::CallOp>(
+  auto cluster_func_op = builder.create<tfrt::jitrt::CallOp>(
       loc, cluster.getResultTypes(), func_ref,
       compiled_module.operands.getArrayRef());
 

@@ -28,8 +28,8 @@ limitations under the License.
 namespace tensorflow {
 
 using ::tfrt::HostContext;
-using ::tfrt::cpu::jit::CompilationOptions;
-using ::tfrt::cpu::jit::MemrefType;
+using ::tfrt::jitrt::CompilationOptions;
+using ::tfrt::jitrt::MemrefType;
 
 const bool kStaticDim = false;
 const bool kDynamicDim = true;

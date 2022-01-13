@@ -64,7 +64,7 @@ class MemrefTensorBuffer : public TensorBuffer {
 // Reuse conversion context as a kernel context for convenience, can be a
 // separate allocation if needed.
 struct TensorflowConversionContext
-    : public tfrt::cpu::jit::Executable::KernelContext {
+    : public tfrt::jitrt::Executable::KernelContext {
   // Keep track of compiled kernel operands to detect input to output
   // forwarding, and tensors returned multiple times.
   using TensorOrBuffer = llvm::PointerUnion<const Tensor*, TensorBuffer*>;

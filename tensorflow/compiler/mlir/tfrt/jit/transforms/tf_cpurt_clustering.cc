@@ -856,7 +856,7 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
       continue;
 
     if (constraint == ValueConstraint::kValue &&
-        tfrt::cpu::jit::SupportsValueSpecialization(value.getType()))
+        tfrt::jitrt::SupportsValueSpecialization(value.getType()))
       continue;
 
     Operation* op = value.getDefiningOp();

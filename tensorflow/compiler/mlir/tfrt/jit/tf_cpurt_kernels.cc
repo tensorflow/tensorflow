@@ -90,16 +90,16 @@ using ::tfrt::StrCat;
 using ::tfrt::StringAttribute;
 using ::tfrt::TaskFunction;
 
-using ::tfrt::cpu::jit::CompilationOptions;
-using ::tfrt::cpu::jit::EmitErrors;
-using ::tfrt::cpu::jit::Executable;
-using ::tfrt::cpu::jit::JitExecutable;
-using ::tfrt::cpu::jit::JitExecutableCache;
-using ::tfrt::cpu::jit::MemrefDesc;
-using ::tfrt::cpu::jit::OperandConstraint;
-using ::tfrt::cpu::jit::ReturnAsyncStridedMemref;
-using ::tfrt::cpu::jit::ReturnStridedMemref;
-using ::tfrt::cpu::jit::ReturnValueConverter;
+using ::tfrt::jitrt::CompilationOptions;
+using ::tfrt::jitrt::EmitErrors;
+using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::JitExecutable;
+using ::tfrt::jitrt::JitExecutableCache;
+using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::OperandConstraint;
+using ::tfrt::jitrt::ReturnAsyncStridedMemref;
+using ::tfrt::jitrt::ReturnStridedMemref;
+using ::tfrt::jitrt::ReturnValueConverter;
 
 using ::tensorflow::Env;
 using ::tensorflow::thread::ThreadPool;
