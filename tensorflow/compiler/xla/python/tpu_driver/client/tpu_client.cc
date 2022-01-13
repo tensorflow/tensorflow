@@ -25,7 +25,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -865,6 +867,19 @@ PyTpuExecutable::ExecuteShardedOnLocalDevices(
   return absl::make_unique<PyTpuExecutable>(
       std::move(compiled_program), std::move(*device_assignment),
       std::move(client), std::move(result_layout), tuple_arguments);
+}
+
+/*static*/ StatusOr<std::unique_ptr<PyTpuExecutable>>
+PyTpuExecutable::CompileMlir(
+    mlir::ModuleOp module, absl::optional<std::vector<Shape>> argument_layouts,
+    const ExecutableBuildOptions* build_options,
+    std::shared_ptr<PyTpuClient> client, bool tuple_arguments) {
+  XlaComputation xla_computation;
+  TF_RETURN_IF_ERROR(MlirToXlaComputation(module, xla_computation,
+                                          /*use_tuple_args=*/tuple_arguments,
+                                          /*return_tuple=*/false));
+  return Compile(xla_computation, argument_layouts, build_options, client,
+                 tuple_arguments);
 }
 
 }  // namespace xla
