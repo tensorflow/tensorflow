@@ -1036,7 +1036,7 @@ gentbl_cc_library(
         ),
         (
             ["-gen-pass-doc"],
-            "g3doc/includes/tf_passes.md",
+            "g3doc/_includes/tf_passes.md",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
