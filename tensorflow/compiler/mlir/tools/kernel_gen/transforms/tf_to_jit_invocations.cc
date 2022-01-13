@@ -47,6 +47,7 @@ namespace mlir {
 namespace kernel_gen {
 namespace transforms {
 namespace {
+
 constexpr int64_t i32BitLimit = 4294967296;
 using shape::ShapeOfOp;
 
