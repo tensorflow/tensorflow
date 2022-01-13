@@ -21,14 +21,15 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 
 #include "absl/synchronization/mutex.h"
-#include "third_party/gpus/cuda/include/cublasLt.h"
-#include "third_party/gpus/cuda/include/cublas_v2.h"
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
+#include "third_party/gpus/cuda/include/cublasLt.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 
 typedef struct cublasContext *cublasHandle_t;
 
@@ -130,6 +131,14 @@ class CUDABlas : public blas::BlasSupport {
                                    const DeviceMemory<T> &x, int incx,
                                    const T &beta, DeviceMemory<T> *y, int incy,
                                    blas::ProfileResult *output_profile_result);
+
+#if CUDA_VERSION >= 11000
+  template <typename T>
+  port::StatusOr<blas::PlanAndAlgorithms*> GetBlasLtPlanAndAlgorithms(
+      int64_t batch_size, blas::MatrixDescriptor lhs_matrix,
+      blas::MatrixDescriptor rhs_matirx, blas::MatrixDescriptor output_matrix,
+      Stream* stream);
+#endif
 
 #if CUDA_VERSION >= 11000
   // Helper function for implementing DoBlasLtMatmul.

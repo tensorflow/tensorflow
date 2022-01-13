@@ -737,6 +737,8 @@ cc_library(
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor:blas",
+        "//tensorflow/stream_executor:matmul_util",
+        "//tensorflow/core/kernels:gpu_utils",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:kernel",
@@ -883,6 +885,7 @@ cc_library(
     name = "gemm_thunk",
     srcs = ["gemm_thunk.cc"],
     hdrs = ["gemm_thunk.h"],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -898,6 +901,8 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/core/kernels:gpu_utils",
+        "//tensorflow/stream_executor:matmul_util",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream_header",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -907,9 +912,10 @@ cc_library(
 
 cc_library(
     name = "gemm_algorithm_picker",
-    srcs = if_cuda_is_configured(["gemm_algorithm_picker.cc"]),
-    hdrs = if_cuda_is_configured(["gemm_algorithm_picker.h"]),
-    deps = if_cuda_is_configured([
+    srcs = ["gemm_algorithm_picker.cc"],
+    hdrs = ["gemm_algorithm_picker.h"],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    deps = [
         ":backend_configs_cc",
         ":buffer_comparator",
         ":gemm_thunk",
@@ -930,7 +936,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
-    ]),
+    ],
 )
 
 cc_library(

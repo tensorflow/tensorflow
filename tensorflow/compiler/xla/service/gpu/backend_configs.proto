@@ -58,6 +58,8 @@ message GemmBackendConfig {
 
   int64 batch_size = 8;
 
+  int64 activation_mode = 4;
+
   int64 lhs_stride = 10;
   int64 rhs_stride = 11;
 }

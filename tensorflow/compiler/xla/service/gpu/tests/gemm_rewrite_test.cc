@@ -126,12 +126,23 @@ ENTRY AddDotsFunc {
       backend().compiler()->RunHloPasses(
           *get_module(), backend().default_stream_executor(),
           backend().default_stream_executor()->GetAllocator()));
-  StatusOr<bool> filecheck_result = RunFileCheck(optimized_module->ToString(),
-                                                 R"(
+  StatusOr<bool> filecheck_result_cublas =
+      RunFileCheck(optimized_module->ToString(),
+                   R"(
 ; CHECK:    \"selected_algorithm\":\"-1\"
       )");
-  TF_ASSERT_OK(filecheck_result.status());
-  EXPECT_TRUE(filecheck_result.ValueOrDie());
+  TF_ASSERT_OK(filecheck_result_cublas.status());
+
+  // With cublasLt enabled, selected_algorithm is se::blas::kNoAlgorithm
+  StatusOr<bool> filecheck_result_cublasLt =
+      RunFileCheck(optimized_module->ToString(),
+                   R"(
+; CHECK:    \"selected_algorithm\":\"-4\"
+      )");
+  TF_ASSERT_OK(filecheck_result_cublasLt.status());
+  bool filecheck_result = filecheck_result_cublas.ValueOrDie() ||
+                          filecheck_result_cublasLt.ValueOrDie();
+  EXPECT_TRUE(filecheck_result);
   EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-5, 1e-5}));
 }
 

@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 #include <unordered_map>
 
 #include "absl/strings/str_cat.h"
@@ -29,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/lazy_op_runner.h"
 
@@ -63,11 +62,14 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
                    AutotuneResult* autotune_result);
 
 template <typename T>
-inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
+inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64_t size) {
   se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
   se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
+
+// Env var to enable the use of cuBLASLt
+bool EnableCublasLtGemm();
 
 // A helper class that looks up the best autotuned config from parameters.
 // Due to the noisy nature of autotune, especially with multiple devices, it
@@ -90,7 +92,18 @@ class AutotuneMap {
   };
 
  public:
-  bool Find(const Parameters& params, Config* config) const {
+  bool Find(const Parameters& params, Config* config) {
+    mutex_lock lock(mu_);
+    auto iter = params_config_map_.find(params);
+
+    if (iter == params_config_map_.end()) {
+      return false;
+    }
+    *config = iter->second.config;
+    return true;
+  }
+
+  bool FindBasedOnScore(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
     auto iter = params_config_map_.find(params);
     if (iter == params_config_map_.end() ||
@@ -101,7 +114,19 @@ class AutotuneMap {
     *config = iter->second.config;
     return true;
   }
+
   void Insert(const Parameters& params, const Config& config) {
+    mutex_lock lock(mu_);
+    auto iter = params_config_map_.find(params);
+    if (iter == params_config_map_.end()) {
+      // Create a new entry if params is new.
+      VLOG(1) << GetActionSummary("creates", params, config);
+      params_config_map_.insert(
+          std::make_pair(params, ValueType{config, 1, 1}));
+    }
+  }
+
+  void InsertBasedOnScore(const Parameters& params, const Config& config) {
     mutex_lock lock(mu_);
     auto iter = params_config_map_.find(params);
     int new_score = 0;
@@ -400,8 +425,42 @@ StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
         std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
         runners);
 
-}  // namespace tensorflow
+// Get a workspace limit from the environment variable, which is in MB.
+// Return the workspace memory limit in bytes. If no value is set, return the
+// default value.
+int64_t GetWorkspaceLimit(const string& envvar_in_mb,
+                          int64_t default_value_in_bytes);
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Get the Dnn workspace limit from the environment variable, which is in MB.
+// Return the workspace memory limit in bytes. If no value is set, return the
+// default value.
+int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
+                             int64_t default_value_in_bytes);
+
+// A class to provide scratch-space allocator for Stream-Executor callbacks in
+// CUDA libraries (CUDNN etc.).
+// TensorFlow is responsible for releasing the temporary buffers after
+// the kernel finishes.
+class GpuScratchAllocator : public se::ScratchAllocator {
+ public:
+  virtual ~GpuScratchAllocator() {}
+
+  GpuScratchAllocator(int64_t memory_limit, OpKernelContext* context);
+
+  int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
+
+  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+      int64_t byte_size) override;
+
+  int64_t TotalByteSize() { return total_byte_size_; }
+
+ private:
+  int64_t memory_limit_;
+  int64_t total_byte_size_;
+  OpKernelContext* context_;
+  std::vector<Tensor> allocated_tensors_;
+};
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
