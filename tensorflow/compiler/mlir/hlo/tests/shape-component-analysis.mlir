@@ -162,9 +162,9 @@ func @extract(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
 // CHECK-LABEL: Testing : symbolic_constraint
 func @symbolic_constraint(
   %arg0: tensor<?x?xf32>
-    {cpurt.symbolic_shape = dense<[-3, -2]> : tensor<2xi64>},
+    {jitrt.symbolic_shape = dense<[-3, -2]> : tensor<2xi64>},
   %arg1: tensor<?x?xf32>
-    {cpurt.symbolic_shape = dense<[-4, -2]> : tensor<2xi64>}
+    {jitrt.symbolic_shape = dense<[-4, -2]> : tensor<2xi64>}
 ) -> tensor<2xi32> {
   %0 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %1 = shape.shape_of %arg1 : tensor<?x?xf32> -> tensor<2xindex>

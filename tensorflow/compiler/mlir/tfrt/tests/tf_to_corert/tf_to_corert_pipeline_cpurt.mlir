@@ -144,7 +144,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 // CHECK:      module @kernel attributes {tfrt.compiled}
 // CHECK:      func @compute(
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
-// CHECK-SAME:   %[[ARG1:.*]]: tensor<?xi32> {cpurt.constraint = "value"}
+// CHECK-SAME:   %[[ARG1:.*]]: tensor<?xi32> {jitrt.constraint = "value"}
 // CHECK-SAME: ) -> tensor<?x?xf32> {
 // CHECK-NEXT:   %[[RET:.*]] = "tf.Transpose"(%[[ARG0]], %[[ARG1]])
 // CHECK:        return %[[RET]]
