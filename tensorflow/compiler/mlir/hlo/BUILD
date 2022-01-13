@@ -2003,7 +2003,7 @@ cc_library(
     hdrs = CAPI_HEADERS,
     deps = [
         ":hlo",
-        "@llvm-project//mlir:CAPIIR",
+        "@llvm-project//mlir:CAPIIRObjects",
     ],
     alwayslink = True,
 )
