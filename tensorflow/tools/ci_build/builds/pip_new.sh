@@ -305,10 +305,6 @@ fi
 # Check that global variables are properly set.
 check_global_vars
 
-# TODO(mihaimaruseac): Find a better place for this
-# It seems that now TB is needed to build TF API, so install it.
-pip install tb-nightly
-
 # Check if in a virtualenv and exit if yes.
 # TODO(rameshsampath): Python 3.10 has pip conflicts when using global env, so build in virtualenv
 # Once confirmed to work, run builds for all python env in a virtualenv
@@ -328,6 +324,10 @@ fi
 if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
+
+# TODO(mihaimaruseac): Find a better place for this
+# It seems that now TB is needed to build TF API, so install it.
+${PYTHON_BIN_PATH} -m pip install tb-nightly
 
 # Bazel build the file.
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
