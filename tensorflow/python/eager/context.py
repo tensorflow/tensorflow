@@ -482,8 +482,6 @@ class Context(object):
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
 
-    self._is_global_context = False
-
   # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
@@ -591,16 +589,6 @@ class Context(object):
       self._context_handle = context_handle
       self._initialize_logical_devices()
       self._initialized = True
-
-      if self._is_global_context:
-        pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
-
-  def mark_as_global_context(self):
-    # If the context was already initialized, publish it. Otherwise wait with
-    # publication until it's initialized.
-    if self._initialized:
-      pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
-    self._is_global_context = True
 
   def _clear_caches(self):
     self.ones_rank_cache().flush()
@@ -2008,7 +1996,7 @@ class _EagerDeviceContext(object):
     ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
 
 
-# Do not change directly.
+# Do not set directly. Use _set_context.
 _context = None
 _context_lock = threading.Lock()
 
@@ -2016,7 +2004,6 @@ _context_lock = threading.Lock()
 def _set_context_locked(ctx):
   global _context
   pywrap_tfe.TFE_Py_SetEagerContext(ctx)
-  ctx.mark_as_global_context()
   _context = ctx
 
 

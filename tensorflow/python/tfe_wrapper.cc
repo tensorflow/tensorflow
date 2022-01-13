@@ -1200,9 +1200,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_SetEagerContext", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_SetEagerContext(o.ptr()));
   });
-  m.def("TFE_Py_SetCEagerContext", [](const py::handle& ctx) {
-    TFE_Py_SetCEagerContext(tensorflow::InputTFE_Context(ctx));
-  });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
   });
