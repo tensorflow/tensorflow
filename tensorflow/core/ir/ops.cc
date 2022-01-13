@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <list>
 #include <memory>
 #include <string>
 
@@ -514,7 +515,7 @@ static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
   // for the control dependency.
   if (parser.parseLParen()) return failure();
   Type control_ty = ControlType::get(builder.getContext());
-  SmallVector<std::string> control_operand_names;
+  std::list<std::string> control_operand_names;
 
   // Helper to parse a single argument and its attributes.
   auto parse_argument = [&]() -> ParseResult {
