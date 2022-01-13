@@ -85,13 +85,15 @@ TfLiteStatus ComparisonPrepareCommon(TfLiteContext* context, TfLiteNode* node,
 
   if (input1->type == kTfLiteInt8 || input1->type == kTfLiteUInt8 ||
       input1->type == kTfLiteInt16) {
-    data->left_shift = (input1->type == kTfLiteInt16) ? 16 : 23;
-    const double max_input_scale =
-        std::max(input1->params.scale, input2->params.scale);
+    // Use the same scaling as for the ADD and SUB operators
+    // for result consitency.
+    data->left_shift = (input1->type == kTfLiteInt16) ? 15 : 20;
+    const double twice_max_input_scale =
+        2 * std::max(input1->params.scale, input2->params.scale);
     const double real_input1_multiplier =
-        input1->params.scale / max_input_scale;
+        input1->params.scale / twice_max_input_scale;
     const double real_input2_multiplier =
-        input2->params.scale / max_input_scale;
+        input2->params.scale / twice_max_input_scale;
 
     QuantizeMultiplier(real_input1_multiplier, &data->input1_multiplier,
                        &data->input1_shift);
