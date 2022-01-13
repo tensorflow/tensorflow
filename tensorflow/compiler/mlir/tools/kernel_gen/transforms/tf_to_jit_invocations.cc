@@ -16,11 +16,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "mlir/Dialect/SCF/SCF.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -45,6 +47,8 @@ namespace mlir {
 namespace kernel_gen {
 namespace transforms {
 namespace {
+constexpr int64_t i32BitLimit = 4294967296;
+using shape::ShapeOfOp;
 
 bool IsTFOperation(Operation *op) {
   return op != nullptr &&
@@ -52,10 +56,15 @@ bool IsTFOperation(Operation *op) {
              op->getContext()->getLoadedDialect<TF::TensorFlowDialect>();
 }
 
+bool IsUnaryTFOperation(Operation *op) {
+  return IsTFOperation(op) && op->getNumOperands() == 1;
+}
+
 struct ModuleParameters {
   llvm::ArrayRef<int64_t> tile_sizes;
   llvm::ArrayRef<int64_t> unroll_factors;
   int64_t max_supported_rank;
+  bool index_64bit;
   bool cpu_codegen;
 };
 
@@ -150,12 +159,14 @@ struct PackJITCompileOpPattern
                                    llvm::ArrayRef<int64_t> tile_sizes,
                                    llvm::ArrayRef<int64_t> unroll_factors,
                                    int64_t max_supported_rank, bool enable_ftz,
+                                   bool index_64bit_if_jit_compiling,
                                    bool cpu_codegen)
       : OpRewritePattern<tf_framework::JITCompileOp>(ctx),
         tile_sizes(tile_sizes),
         unroll_factors(unroll_factors),
         max_supported_rank(max_supported_rank),
         enable_ftz(enable_ftz),
+        index_64bit_if_jit_compiling(index_64bit_if_jit_compiling),
         cpu_codegen(cpu_codegen) {}
 
   LogicalResult matchAndRewrite(tf_framework::JITCompileOp op,
@@ -192,7 +203,9 @@ struct PackJITCompileOpPattern
         rewriter.getI64ArrayAttr(tile_sizes),
         rewriter.getI64ArrayAttr(unroll_factors),
         rewriter.getI64IntegerAttr(max_supported_rank),
-        rewriter.getBoolAttr(enable_ftz), rewriter.getBoolAttr(cpu_codegen));
+        rewriter.getBoolAttr(enable_ftz),
+        rewriter.getBoolAttr(index_64bit_if_jit_compiling),
+        rewriter.getBoolAttr(cpu_codegen));
 
     return success();
   }
@@ -202,6 +215,7 @@ struct PackJITCompileOpPattern
   llvm::ArrayRef<int64_t> unroll_factors;
   int64_t max_supported_rank;
   bool enable_ftz;
+  bool index_64bit_if_jit_compiling;
   bool cpu_codegen;
 };
 
@@ -211,17 +225,21 @@ struct PackJITCompileOpPattern
 struct TFToJITInvocationPass
     : public TFToJITInvocationPassBase<TFToJITInvocationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
+    registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect,
+                    scf::SCFDialect, shape::ShapeDialect>();
   }
   explicit TFToJITInvocationPass(llvm::ArrayRef<int64_t> tile_sizes,
                                  llvm::ArrayRef<int64_t> unroll_factors,
                                  int64_t max_supported_rank, bool enable_ftz,
-                                 bool cpu_codegen) {
+                                 bool index_64bit, bool cpu_codegen,
+                                 bool jit_i64_indexed_for_large_tensors) {
     tile_sizes_ = tile_sizes;
     unroll_factors_ = unroll_factors;
     max_supported_rank_ = max_supported_rank;
     enable_ftz_ = enable_ftz;
+    index_64bit_ = index_64bit;
     cpu_codegen_ = cpu_codegen;
+    jit_i64_indexed_for_large_tensors_ = jit_i64_indexed_for_large_tensors;
   }
 
   void runOnFunction() override {
@@ -229,7 +247,8 @@ struct TFToJITInvocationPass
     RewritePatternSet patterns(ctx);
     PopulateTFToJITInvocationPatterns(ctx, &patterns, tile_sizes_,
                                       unroll_factors_, max_supported_rank_,
-                                      enable_ftz_, cpu_codegen_);
+                                      enable_ftz_, index_64bit_, cpu_codegen_,
+                                      jit_i64_indexed_for_large_tensors_);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
       return signalPassFailure();
@@ -237,25 +256,99 @@ struct TFToJITInvocationPass
   }
 };
 
+struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
+  explicit TFToI64JITInvocationForLargeTensorsPattern(MLIRContext *ctx)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    if (!IsUnaryTFOperation(op) || !llvm::isa<FuncOp>(op->getParentOp())) {
+      return failure();
+    }
+
+    auto results = llvm::to_vector<16>(op->getResults());
+    auto operand_types = llvm::to_vector<16>(llvm::map_range(
+        op->getOperands(), [](Value v) { return v.getType(); }));
+    auto result_types = llvm::to_vector<16>(
+        llvm::map_range(results, [](Value v) { return v.getType(); }));
+
+    // Create the JIT compile op.
+    auto loc = op->getLoc();
+    Value shape_size_limit =
+        rewriter.create<arith::ConstantIndexOp>(loc, i32BitLimit);
+    auto arg = op->getOperands().front();
+    auto shape = rewriter.create<shape::ShapeOfOp>(loc, arg);
+    auto num_elems = rewriter.create<shape::NumElementsOp>(loc, shape);
+    Value coniditon_check_main = rewriter.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::sgt, num_elems, shape_size_limit);
+
+    Value conditional_path =
+        rewriter
+            .create<scf::IfOp>(
+                loc, op->getResultTypes(), coniditon_check_main,
+                [&](OpBuilder &b, Location l) {
+                  auto jit_compile_op =
+                      rewriter.create<tf_framework::JITCompileOp>(
+                          loc,
+                          rewriter.getType<tf_framework::JITCallableType>(),
+                          llvm::None);
+                  BlockAndValueMapping bvm;
+                  {
+                    OpBuilder::InsertionGuard guard(rewriter);
+                    Block *block = rewriter.createBlock(&jit_compile_op.body(),
+                                                        {}, operand_types);
+                    for (auto it :
+                         llvm::zip(op->getOperands(), block->getArguments()))
+                      bvm.map(std::get<0>(it), std::get<1>(it));
+                    rewriter.setInsertionPointToStart(block);
+                    rewriter.clone(*op, bvm);
+                    auto new_op = rewriter.clone(*op, bvm);
+                    rewriter.create<tf_framework::JITCompileYieldOp>(
+                        loc, TypeRange{}, new_op->getResults());
+                  }
+                  auto jit_execute_op =
+                      rewriter.create<tf_framework::JITExecuteOp>(
+                          loc, result_types, Value(), jit_compile_op.result(),
+                          op->getOperands());
+                  b.create<scf::YieldOp>(l, jit_execute_op.results());
+                },
+                [&](OpBuilder &b, Location l) {
+                  auto new_op = rewriter.clone(*op);
+                  b.create<scf::YieldOp>(l, new_op->getResult(0));
+                })
+            .getResult(0);
+
+    rewriter.replaceOp(op, conditional_path);
+    return success();
+  }
+};
 }  // namespace
 
-void PopulateTFToJITInvocationPatterns(MLIRContext *ctx,
-                                       RewritePatternSet *patterns,
-                                       llvm::ArrayRef<int64_t> tile_sizes,
-                                       llvm::ArrayRef<int64_t> unroll_factors,
-                                       int64_t max_supported_rank,
-                                       bool enable_ftz, bool cpu_codegen) {
-  patterns->insert<TFToJITInvocationsPattern>(ctx);
-  patterns->insert<PackJITCompileOpPattern>(ctx, tile_sizes, unroll_factors,
-                                            max_supported_rank, enable_ftz,
-                                            cpu_codegen);
+void PopulateTFToJITInvocationPatterns(
+    MLIRContext *ctx, RewritePatternSet *patterns,
+    llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
+    int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
+    bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {
+  if (jit_i64_indexed_for_large_tensors) {
+    patterns->insert<TFToI64JITInvocationForLargeTensorsPattern>(ctx);
+  } else {
+    patterns->insert<TFToJITInvocationsPattern>(ctx);
+  }
+
+  bool index_64bit_if_jit_compiling =
+      jit_i64_indexed_for_large_tensors ? true : index_64bit;
+  patterns->insert<PackJITCompileOpPattern>(
+      ctx, tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
+      index_64bit_if_jit_compiling, cpu_codegen);
 }
 
 std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
-    int64_t max_supported_rank, bool enable_ftz, bool cpu_codegen) {
+    int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
+    bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {
   return std::make_unique<TFToJITInvocationPass>(
-      tile_sizes, unroll_factors, max_supported_rank, enable_ftz, cpu_codegen);
+      tile_sizes, unroll_factors, max_supported_rank, enable_ftz, index_64bit,
+      cpu_codegen, jit_i64_indexed_for_large_tensors);
 }
 
 }  // namespace transforms
