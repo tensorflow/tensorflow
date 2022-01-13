@@ -83,6 +83,7 @@ RUN python3 -m pip --no-cache-dir install \
     Pillow \
     h5py \
     keras_preprocessing \
+    tb-nightly \
     matplotlib \
     mock \
     'numpy<1.19.0' \
