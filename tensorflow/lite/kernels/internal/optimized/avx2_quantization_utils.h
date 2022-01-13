@@ -62,6 +62,28 @@ static inline __m256i rounding_right_shift(const __m256i &value,
       mask_num_plus_nudge_overflow);
 }
 
+static inline __m256i rounding_right_shift(const __m256i &value,
+                                           const __m256i right_shift) {
+  const __m256i zeros = _mm256_setzero_si256();
+  const __m256i mask_rightshift_gtz = _mm256_cmpgt_epi32(right_shift, zeros);
+  const __m256i one_shift_exp_minus1 =
+      _mm256_sllv_epi32(_mm256_set1_epi32(1),
+                        _mm256_sub_epi32(right_shift, _mm256_set1_epi32(1)));
+  __m256i nudge =
+      mm256_blendv_epi32(zeros, one_shift_exp_minus1, mask_rightshift_gtz);
+  const __m256i r_plus_nudge = _mm256_add_epi32(value, nudge);
+  const __m256i shifted_sum = _mm256_srav_epi32(r_plus_nudge, right_shift);
+
+  // Identify overflow in each lane and create mask.
+  const __m256i mask_num_plus_nudge_overflow = _mm256_cmpgt_epi32(
+      value, _mm256_sub_epi32(_mm256_set1_epi32(0x7fffffff), nudge));
+  // Fill results with either (value + nudge) >> exponent or
+  // std::numeric_limits<std::int32_t>::max() in the case of overflow.
+  return mm256_blendv_epi32(
+      shifted_sum, _mm256_set1_epi32(std::numeric_limits<std::int32_t>::max()),
+      mask_num_plus_nudge_overflow);
+}
+
 inline void CastInt32ToInt16AndStore(int16 *dst, const __m256i v) {
   // As _mm256_cvtepi32_epi16 is not supported in AVX2, use the below repack.
   // Select bytes 0, 1, 4, 5, 8, 9, 12, 13 within each lane, effectively
@@ -99,6 +121,38 @@ inline __m256i MultiplyByQuantizedMultiplier(const __m256i &value,
   return rounding_right_shift(result, -left_shift);
 }
 
+inline __m256i MultiplyByQuantizedMultiplier(const __m256i &value,
+                                             const __m256i multiplier,
+                                             const __m256i left_shift) {
+  const __m256i zero_vector = _mm256_setzero_si256();
+  const __m256i positive_left_shift = _mm256_max_epi32(left_shift, zero_vector);
+  const __m256i positive_right_shift =
+      _mm256_max_epi32(_mm256_sub_epi32(zero_vector, left_shift), zero_vector);
+
+  const __m256i repack_perm = _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7);
+  const __m256i shifted_value = _mm256_sllv_epi32(value, positive_left_shift);
+
+  const __m256i multiplier_low =
+      _mm256_cvtepi32_epi64(_mm256_extracti128_si256(multiplier, 0));
+  const __m256i multiplier_high =
+      _mm256_cvtepi32_epi64(_mm256_extracti128_si256(multiplier, 1));
+
+  __m256i scaled_v_low = _mm256_mul_epi32(
+      _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_value, 0)),
+      multiplier_low);
+  __m256i scaled_v_high = _mm256_mul_epi32(
+      _mm256_cvtepi32_epi64(_mm256_extracti128_si256(shifted_value, 1)),
+      multiplier_high);
+
+  scaled_v_low = _mm256_srlv_epi64(scaled_v_low, _mm256_set1_epi64x(31));
+  scaled_v_high = _mm256_srlv_epi64(scaled_v_high, _mm256_set1_epi64x(31));
+  // As _mm256_cvtepi64_epi32 is not supported in AVX2, use the below permute.
+  scaled_v_high = _mm256_slli_epi64(scaled_v_high, 32);
+  __m256i result = _mm256_blend_epi32(scaled_v_low, scaled_v_high, 0xaa);
+  result = _mm256_permutevar8x32_epi32(result, repack_perm);
+
+  return rounding_right_shift(result, positive_right_shift);
+}
 }  // namespace avx2_utils
 }  // namespace tflite
 

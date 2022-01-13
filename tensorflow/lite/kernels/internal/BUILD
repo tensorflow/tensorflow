@@ -286,6 +286,7 @@ cc_library(
         "optimized/integer_ops/depthwise_conv_hybrid.h",
         "optimized/integer_ops/depthwise_conv_hybrid_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
+        "optimized/integer_ops/leaky_relu.h",
         "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",

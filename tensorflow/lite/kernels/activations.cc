@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/leaky_relu.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
@@ -1406,7 +1407,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-template <typename T>
+template <KernelType kernel_type, typename T>
 void QuantizeLeakyRelu(const TfLiteTensor* input, TfLiteTensor* output,
                        const LeakyReluOpData* data) {
   LeakyReluParams op_params;
@@ -1417,11 +1418,18 @@ void QuantizeLeakyRelu(const TfLiteTensor* input, TfLiteTensor* output,
   op_params.output_shift_alpha = data->output_shift_alpha;
   op_params.output_multiplier_identity = data->output_multiplier_identity;
   op_params.output_shift_identity = data->output_shift_identity;
-  reference_ops::QuantizeLeakyRelu(
-      op_params, GetTensorShape(input), GetTensorData<T>(input),
-      GetTensorShape(output), GetTensorData<T>(output));
+  if (kernel_type != KernelType::kReference && input->type == kTfLiteInt16) {
+    optimized_integer_ops::QuantizeLeakyRelu(
+        op_params, GetTensorShape(input), GetTensorData<int16>(input),
+        GetTensorShape(output), GetTensorData<int16>(output));
+  } else {
+    reference_ops::QuantizeLeakyRelu(
+        op_params, GetTensorShape(input), GetTensorData<T>(input),
+        GetTensorShape(output), GetTensorData<T>(output));
+  }
 }
 
+template <KernelType kernel_type>
 TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
@@ -1442,15 +1450,15 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteUInt8: {
-      QuantizeLeakyRelu<uint8_t>(input, output, data);
+      QuantizeLeakyRelu<kernel_type, uint8_t>(input, output, data);
       return kTfLiteOk;
     }
     case kTfLiteInt8: {
-      QuantizeLeakyRelu<int8_t>(input, output, data);
+      QuantizeLeakyRelu<kernel_type, int8_t>(input, output, data);
       return kTfLiteOk;
     }
     case kTfLiteInt16: {
-      QuantizeLeakyRelu<int16_t>(input, output, data);
+      QuantizeLeakyRelu<kernel_type, int16_t>(input, output, data);
       return kTfLiteOk;
     }
     default:
@@ -1686,10 +1694,19 @@ TfLiteRegistration* Register_PRELU() {
   return &r;
 }
 
+TfLiteRegistration* Register_LEAKY_RELU_REF() {
+  static TfLiteRegistration r = {
+      activations::LeakyReluInit, activations::LeakyReluFree,
+      activations::LeakyReluPrepare,
+      activations::LeakyReluEval<activations::kReference>};
+  return &r;
+}
+
 TfLiteRegistration* Register_LEAKY_RELU() {
   static TfLiteRegistration r = {
       activations::LeakyReluInit, activations::LeakyReluFree,
-      activations::LeakyReluPrepare, activations::LeakyReluEval};
+      activations::LeakyReluPrepare,
+      activations::LeakyReluEval<activations::kGenericOptimized>};
   return &r;
 }
 
