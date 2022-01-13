@@ -3999,27 +3999,42 @@ void TFE_Py_EnableInteractivePythonLogging() {
 }
 
 namespace {
-// weak reference to Python Context object currently active
-PyObject* weak_eager_context = nullptr;
+// TODO(mdan): Clean this. Maybe by decoupling context lifetime from Python GC?
+// Weak reference to the Python Context (see tensorflow/python/eager/context.py)
+// object currently active. This object is opaque and wrapped inside a Python
+// Capsule. However, the EagerContext object it holds is tracked by the
+// global_c_eager_context object.
+PyObject* global_py_eager_context = nullptr;
+
+// This object tracks the EagerContext owned by global_py_eager_context. Since
+// the vast majority of the Python API is dependent on that
+// global_py_eager_context (including memory management), the Py object owns the
+// C object, so this pointer is non-owning.
+TFE_Context* global_c_eager_context = nullptr;
 }  // namespace
 
+void TFE_Py_SetCEagerContext(TFE_Context* ctx) { global_c_eager_context = ctx; }
+
+TFE_Context* GetCEagerContext() { return global_c_eager_context; }
+
 PyObject* TFE_Py_SetEagerContext(PyObject* py_context) {
-  Py_XDECREF(weak_eager_context);
-  weak_eager_context = PyWeakref_NewRef(py_context, nullptr);
-  if (weak_eager_context == nullptr) {
+  Py_XDECREF(global_py_eager_context);
+  global_py_eager_context = PyWeakref_NewRef(py_context, nullptr);
+  if (global_py_eager_context == nullptr) {
     return nullptr;
   }
   Py_RETURN_NONE;
 }
 
 PyObject* GetPyEagerContext() {
-  if (weak_eager_context == nullptr) {
+  if (global_py_eager_context == nullptr) {
     PyErr_SetString(PyExc_RuntimeError, "Python eager context is not set");
     return nullptr;
   }
-  PyObject* py_context = PyWeakref_GET_OBJECT(weak_eager_context);
+  PyObject* py_context = PyWeakref_GET_OBJECT(global_py_eager_context);
   if (py_context == Py_None) {
-    PyErr_SetString(PyExc_RuntimeError, "Eager context has been destroyed");
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Python eager context has been destroyed");
     return nullptr;
   }
   Py_INCREF(py_context);
