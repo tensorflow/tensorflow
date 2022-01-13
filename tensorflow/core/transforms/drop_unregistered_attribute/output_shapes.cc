@@ -36,7 +36,7 @@ struct DropOutputShapesAttrPass
     : DropOutputShapesAttrBase<DropOutputShapesAttrPass> {
   LogicalResult initialize(MLIRContext* context) override {
     for (auto& str : skip_) {
-      skip_id.insert(StringAttr::get(str, context));
+      skip_id.insert(StringAttr::get(context, str));
     }
     return success();
   }
