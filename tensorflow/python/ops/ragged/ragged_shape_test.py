@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -1672,6 +1673,23 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(
         '<RaggedShape lengths=[2, (1, 2), 3] num_row_partitions=1>', actual)
 
+  def assertDimsEqual(self, x: tensor_shape.TensorShape,
+                      y: tensor_shape.TensorShape):
+    if x.rank is None:
+      self.assertIsNone(
+          y.rank,
+          'x has an unknown rank, but y does not: x={}, y={}'.format(x, y))
+      return
+    self.assertIsNotNone(
+        y.rank,
+        'y has an unknown rank, but x does not: x={}, y={}'.format(x, y))
+    self.assertAllEqual(x.as_list(), y.as_list())
+
+  def testToTensorShapeRankKnown(self):
+    a = RaggedShape.from_lengths([2, (1, 2), 3])
+    actual = a._to_tensor_shape()
+    self.assertDimsEqual(tensor_shape.TensorShape([2, None, 3]), actual)
+
   def testReprRankUnknown(self):
 
     @def_function.function(
@@ -1681,6 +1699,17 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       actual = str(a)
       self.assertEqual(
           '<RaggedShape lengths=[2, (3, 3), ...] num_row_partitions=1>', actual)
+
+    foo([6, 3])
+
+  def testToTensorShapeRankUnknown(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+    def foo(inner_shape):
+      a = RaggedShape([RowPartition.from_row_lengths([3, 3])], inner_shape)
+      actual = a._to_tensor_shape()
+      self.assertDimsEqual(
+          tensor_shape.TensorShape(None), actual)
 
     foo([6, 3])
 

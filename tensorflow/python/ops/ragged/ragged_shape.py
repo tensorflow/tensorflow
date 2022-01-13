@@ -267,11 +267,12 @@ class RaggedShape:
       return RaggedShape([], lengths, dtype=dtype)
 
   @classmethod
-  def from_row_partitions(cls, row_partitions):
+  def from_row_partitions(cls, row_partitions, dtype=None):
     """Create a shape from row_partitions.
 
     Args:
       row_partitions: a nonempty list of RowPartition objects.
+      dtype: the dtype to use, or None to use the row_partitions dtype.
 
     Returns:
       a RaggedShape with inner_rank==1.
@@ -279,7 +280,7 @@ class RaggedShape:
     if not row_partitions:
       raise ValueError("row_partitions cannot be empty")
     inner_shape = [row_partitions[-1].nvals()]
-    return RaggedShape(row_partitions, inner_shape)
+    return RaggedShape(row_partitions, inner_shape, dtype=dtype)
 
   @classmethod
   def _from_inner_shape(cls, inner_shape, dtype=None):
@@ -321,18 +322,22 @@ class RaggedShape:
       return result[1:]
     return result
 
-  def static_lengths(self):
-    """A prefix of the known lengths.
+  def static_lengths(self, ragged_lengths=True):
+    """Returns a list of statically known axis lengths.
 
     This represents what values are known. For each row partition, it presents
     either the uniform row length (if statically known),
     the list of row lengths, or none if it is not statically known.
     For the inner shape, if the rank is known, then each dimension is reported
     if known, and None otherwise. If the rank of the inner shape is not known,
-    it is left out entirely.
+    then the returned list ends with an ellipsis.
+
+    Args:
+      ragged_lengths: If false, returns None for all ragged dimensions.
 
     Returns:
-      A Sequence[Union[Sequence[int],int, None]] of lengths.
+      A Sequence[Union[Sequence[int],int, None]] of lengths, with a possible
+      Ellipsis at the end.
     """
     if self.num_row_partitions == 0:
       return self._static_inner_shape(False)
@@ -343,12 +348,14 @@ class RaggedShape:
     for rp in self.row_partitions:
       if rp.is_uniform():
         rp_dims.append(rp.static_uniform_row_length)
-      else:
+      elif ragged_lengths:
         const_vals = tensor_util.constant_value(rp.row_lengths())
         if const_vals is None:
           rp_dims.append(None)
         else:
           rp_dims.append(tuple(const_vals.tolist()))
+      else:
+        rp_dims.append(None)
 
     return rp_dims + self._static_inner_shape(True)
 
@@ -357,6 +364,15 @@ class RaggedShape:
     return ("<RaggedShape "
             "lengths=%s num_row_partitions=%r>" %
             (lengths, self.num_row_partitions))
+
+  def _to_tensor_shape(self) -> tensor_shape.TensorShape:
+    """Returns a TensorShape representation of the shape."""
+    lengths = self.static_lengths(ragged_lengths=False)
+    if not lengths:
+      return tensor_shape.TensorShape(())
+    if lengths[-1] == Ellipsis:
+      return tensor_shape.TensorShape(None)
+    return tensor_shape.TensorShape(lengths)
 
   def _slice_shape(self, start, stop):
     """Returns a shape self[start:stop].
