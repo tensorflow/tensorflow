@@ -15,6 +15,7 @@
 """Mid level API for TPU Embeddings."""
 
 import functools
+import math
 from typing import Any, Callable, Dict, Iterable, List, Optional, Text, Tuple, Union
 
 from absl import logging
@@ -554,13 +555,25 @@ class TPUEmbedding(tracking.AutoTrackable):
     """
 
     config_proto = tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration()
+    # The tensor core batch size should be the GCD of all the input batch size.
+    tensor_core_batch_size = self._get_tensor_core_batch_size(
+        self._output_shapes)
+
+    # There are several things that need to be computed here:
+    # 1. Each table has a num_features, which corresponds to the number of
+    #    output rows per example for this table. Sequence features count for
+    #    their maximum sequence length.
+    # 2. Learning rate index: the index of the dynamic learning rate for this
+    #    table (if it exists) in the list we created at initialization.
+    #    We don't simply create one learning rate index per table as this has
+    #    extremely bad performance characteristics. The more separate
+    #    optimization configurations we have, the worse the performance will be.
+    num_features = {table: 0 for table in self._table_config}
+    for i, feature in enumerate(nest.flatten(self._feature_config)):
+      num_features[feature.table] += self._get_reduce_prod(
+          self._output_shapes[i]) // tensor_core_batch_size
 
     # Map each callable dynamic learning rate to its in index in the list.
-    # The learning rate index is the index of the dynamic learning rate for this
-    # table (if it exists) in the list we created at initialization. We don't
-    # simply create one learning rate index per table as this has extremely bad
-    # performance characteristics. The more separate optimization configurations
-    # we have, the worse the performance will be.
     learning_rate_index = {r: i for i, r in enumerate(
         self._dynamic_learning_rates)}
 
@@ -573,6 +586,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       table_descriptor.vocabulary_size = max(table.vocabulary_size,
                                              self._strategy.extended.num_hosts)
       table_descriptor.dimension = table.dim
+
+      table_descriptor.num_features = num_features[table]
 
       parameters = table_descriptor.optimization_parameters
 
@@ -608,6 +623,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     config_proto.mode = (
         tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration.TRAINING)
 
+    config_proto.batch_size_per_tensor_core = tensor_core_batch_size
     config_proto.num_hosts = self._strategy.extended.num_hosts
     config_proto.num_tensor_cores = self._strategy.num_replicas_in_sync
 
@@ -1428,6 +1444,21 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     return TensorShape(shape)
 
+  def _get_tensor_core_batch_size(self, output_shapes):
+    """Get the tensor core batch size based on the output shapes."""
+    tensor_core_batch_size = self._get_reduce_prod(output_shapes[0])
+    for output_shape in output_shapes[1:]:
+      tensor_core_batch_size = math.gcd(tensor_core_batch_size,
+                                        self._get_reduce_prod(output_shape))
+    return tensor_core_batch_size
+
+  def _get_reduce_prod(self, shape: TensorShape) -> int:
+    """Get the reduce prod of a tensorshape."""
+    result = 1
+    for dim in shape.as_list():
+      result *= dim
+    return result
+
   def _update_output_shapes(self, incoming_output_shapes: List[TensorShape]):
     """Update the existing output shapes based on the new output shapes.
 
@@ -1453,7 +1484,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     # output shapes.
     nest.assert_same_structure(self._output_shapes, incoming_output_shapes)
 
-    for (path, _), old_output_shape, incoming_output_shape in zip(
+    for (path, feature), old_output_shape, incoming_output_shape in zip(
         nest.flatten_with_joined_string_paths(self._feature_config),
         self._output_shapes, incoming_output_shapes):
       # First check if both shapes are not None.
@@ -1474,7 +1505,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
   def _check_output_shapes_fully_defined(self):
     """Check if the output shape is fully defined."""
-    for (path, _), output_shape in zip(
+    for (path, feature), output_shape in zip(
         nest.flatten_with_joined_string_paths(self._feature_config),
         self._output_shapes):
       if not output_shape.is_fully_defined():
