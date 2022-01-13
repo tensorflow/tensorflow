@@ -1543,6 +1543,9 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     """Sequence of variables for this function."""
     return tuple(self._func_graph.variables)
 
+  def set_variables(self, variables):
+    self._func_graph.variables = variables
+
   @property
   def trainable_variables(self):
     """Sequence of trainable variables for this function."""

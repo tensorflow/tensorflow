@@ -644,6 +644,7 @@ py_library(
         ":execute",
         ":forwardprop_util",
         ":function_cache",
+        ":function_saved_model_utils",
         ":graph_only_ops",
         ":tape",
         "//tensorflow/python:dtypes",
@@ -659,6 +660,13 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
+)
+
+py_library(
+    name = "function_saved_model_utils",
+    srcs = ["function_saved_model_utils.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
 )
 
 pybind_extension(
