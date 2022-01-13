@@ -56,7 +56,7 @@ class PprofProfileBuilder {
 // extensions that contain the same protocol buffer message. Instead, we accept
 // a JSON representation from Python and use this function to serialize it to
 // a uncompressed binary protocol buffer.
-StatusOr<pybind11::bytes> JsonToPprofProfile(absl::string_view json);
+StatusOr<pybind11::bytes> JsonToPprofProfile(std::string json);
 
 // The reverse, useful for testing.
 StatusOr<std::string> PprofProfileToJson(pybind11::bytes binary_proto);

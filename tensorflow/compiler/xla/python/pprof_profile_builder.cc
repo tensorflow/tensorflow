@@ -64,7 +64,7 @@ int PprofProfileBuilder::LocationId(PyCodeObject* code, int instruction) {
   return ret.first->second;
 }
 
-StatusOr<pybind11::bytes> JsonToPprofProfile(absl::string_view json) {
+StatusOr<pybind11::bytes> JsonToPprofProfile(std::string json) {
   tensorflow::tfprof::pprof::Profile profile;
   auto status = tensorflow::protobuf::util::JsonStringToMessage(json, &profile);
   if (!status.ok()) {
