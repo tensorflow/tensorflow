@@ -165,6 +165,13 @@ inline std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
+// Prints the TensorFormat enum name to the stream.
+std::ostream& operator<<(std::ostream& os,
+                         const nvinfer1::TensorFormat& format);
+
+// Prints the DataType enum name to the stream.
+std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& data_type);
+
 }  // namespace nvinfer1
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
