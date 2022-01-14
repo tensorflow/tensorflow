@@ -400,18 +400,6 @@ Status GpuCompiler::OptimizeHloModule(
                             stream_exec);
     pipeline.AddPass<BFloat16Normalization>(&bf16);
 
-    // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
-    // where possible.  Not every batchnorm op can be implemented as a call to
-    // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
-    if (debug_options.xla_gpu_use_cudnn_batchnorm()) {
-      // Since BatchNorm inference is essentially pointwise operations, it is
-      // always advantageous to use kernel fusion rather than cudnn.
-      pipeline.AddPass<BatchNormExpander>(
-          /*rewrite_training_op=*/false,
-          /*rewrite_inference_op=*/true,
-          /*rewrite_grad_op=*/false);
-      pipeline.AddPass<CudnnBatchNormRewriter>();
-    }
     pipeline.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
