@@ -440,6 +440,7 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
   // group[1] = (0,2), (0,3), (1,2), (1,3)
   // where each pair is (replica_id, partition_id).
   bool use_global_device_ids() const { return use_global_device_ids_; }
+  void set_use_global_device_ids(bool value) { use_global_device_ids_ = value; }
 
  protected:
   std::vector<std::string> ExtraAttributesToStringImpl(
