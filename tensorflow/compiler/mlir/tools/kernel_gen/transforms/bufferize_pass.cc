@@ -148,7 +148,7 @@ struct ComputeOpAndFuncBufferizePass
                        linalg::TiledLoopOp>(user);
           });
         });
-    populateFuncOpTypeConversionPattern(patterns, converter);
+    populateFunctionLikeTypeConversionPattern<FuncOp>(patterns, converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);

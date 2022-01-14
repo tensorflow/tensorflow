@@ -3401,7 +3401,7 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
     int64_t input_dim_size = input_type.getDimSize(dim_index);
     // If we are splitting along the dynamic dimension then we cannot compute
     // the static dimension length.
-    if (TensorType::isDynamic(input_dim_size)) return failure();
+    if (ShapedType::isDynamic(input_dim_size)) return failure();
 
     int64_t num_splits = op.getNumResults();
     int64_t slice_size = input_dim_size / num_splits;
@@ -3465,7 +3465,7 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
     // slice along the split dimension. We are splitting along the dynamic
     // dimension, or using static pattern transform
     int64_t c_input_dim_size = input_type.getDimSize(dim_index);
-    if (!TensorType::isDynamic(c_input_dim_size)) return failure();
+    if (!ShapedType::isDynamic(c_input_dim_size)) return failure();
 
     Value input_dim_size =
         rewriter.create<tensor::DimOp>(loc, input, dim_index);
@@ -3601,7 +3601,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     if (dim_index < 0) dim_index += input_rank;
 
     int64_t input_dim_size = input_type.getDimSize(dim_index);
-    if (TensorType::isDynamic(input_dim_size)) return failure();
+    if (ShapedType::isDynamic(input_dim_size)) return failure();
 
     assert(((dynamic_dim_index && total_dim_size <= input_dim_size) ||
             (!dynamic_dim_index && total_dim_size == input_dim_size)) &&

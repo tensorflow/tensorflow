@@ -51,8 +51,8 @@ void WrapOpInLaunch(Operation* host_op, llvm::StringRef host_device) {
           .create<tf_device::ReturnOp>(host_op->getLoc(), host_op->getResults())
           .getOperation();
   MLIRContext* context = launch_op.getContext();
-  host_op->removeAttr(Identifier::get(kXlaOutsideCompilationAttr, context));
-  host_op->removeAttr(Identifier::get(kDeviceAttr, context));
+  host_op->removeAttr(StringAttr::get(context, kXlaOutsideCompilationAttr));
+  host_op->removeAttr(StringAttr::get(context, kDeviceAttr));
   host_op->moveBefore(return_op);
 }
 

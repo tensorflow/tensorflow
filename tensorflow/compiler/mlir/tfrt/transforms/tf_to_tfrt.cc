@@ -140,7 +140,7 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
 
     // Convert the function (symbol) attributes to an array of string
     // attributes, which represents the function names.
-    llvm::SmallVector<mlir::Identifier, 4> func_attr_keys;
+    llvm::SmallVector<mlir::StringAttr, 4> func_attr_keys;
     mlir::ArrayAttr op_func_attrs =
         corert_converter_.CreateOpFuncAttrs(op->getAttrs(), &func_attr_keys);
 
@@ -558,7 +558,7 @@ class FallbackBatchFunctionOpConversion
     // TODO(chky): The device attribute should be passed explicitly. This can be
     // once we change the kernel implementation to choose device based on
     // attributes.
-    op->removeAttr(rewriter.getIdentifier(kDeviceAttr));
+    op->removeAttr(rewriter.getStringAttr(kDeviceAttr));
 
     SymbolRefAttr f = op.fAttr();
 
@@ -825,7 +825,7 @@ class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
 
     // Convert the function (symbol) attributes to an array of string
     // attributes, which represents the function names.
-    llvm::SmallVector<mlir::Identifier, 4> func_attr_keys;
+    llvm::SmallVector<mlir::StringAttr, 4> func_attr_keys;
     ArrayAttr op_func_attrs =
         corert_converter_.CreateOpFuncAttrs(op->getAttrs(), &func_attr_keys);
 

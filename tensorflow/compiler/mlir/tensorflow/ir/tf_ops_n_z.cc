@@ -752,7 +752,7 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
   output_ty_shape.reserve(shape_attr.getNumElements());
   for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
-    if (size == ShapedType::kDynamicSize) {
+    if (ShapedType::isDynamic(size)) {
       if (unknown_index != -1)
         return error_handler(llvm::formatv(
             "requires 'shape' to have at most one dynamic dimension, but got "
@@ -1507,7 +1507,7 @@ static LogicalResult Verify(SplitOp op) {
 
   int64_t input_dim_size =
       op.value().getType().cast<RankedTensorType>().getDimSize(*dim_index);
-  if (input_dim_size == ShapedType::kDynamicSize) return success();
+  if (ShapedType::isDynamic(input_dim_size)) return success();
 
   if (input_dim_size % op.getNumResults() != 0)
     return op.emitOpError("dimension #")
@@ -1526,7 +1526,7 @@ static LogicalResult Verify(SplitVOp op) {
   if (!split_sizes_type) return success();
 
   if (split_sizes_type.getRank() != 1 ||
-      (split_sizes_type.getDimSize(0) != ShapedType::kDynamicSize &&
+      (!ShapedType::isDynamic(split_sizes_type.getDimSize(0)) &&
        split_sizes_type.getDimSize(0) != op.getNumResults()))
     return op.emitOpError("split sizes should be a 1D tensor of ")
            << op.getNumResults() << " elements";
@@ -1537,7 +1537,7 @@ static LogicalResult Verify(SplitVOp op) {
 
   int64_t input_dim_size =
       op.value().getType().cast<RankedTensorType>().getDimSize(*dim_index);
-  if (input_dim_size == ShapedType::kDynamicSize) return success();
+  if (ShapedType::isDynamic(input_dim_size)) return success();
 
   // If split sizes come from a constant, they must sum to the dimension size
   // along split_dim, and we can have no more than one dynamic dimension.
@@ -1555,7 +1555,7 @@ static LogicalResult Verify(SplitVOp op) {
   for (auto dim : llvm::enumerate(split_sizes_attr)) {
     int64_t dim_val = dim.value().getSExtValue();
     split_sizes.push_back(dim_val);
-    if (dim_val == ShapedType::kDynamicSize) {
+    if (ShapedType::isDynamic(dim_val)) {
       // We cannot have more than one dynamic dimension.
       if (dynamic_dim_index)
         return op.emitOpError(
@@ -2531,8 +2531,8 @@ static LogicalResult Verify(TransposeOp op) {
       const int64_t y_dim = y_type.getDimSize(y_idx);
       const int64_t x_idx = e.value().getSExtValue();
       const int64_t x_dim = x_type.getDimSize(x_idx);
-      if (y_dim != ShapedType::kDynamicSize &&
-          x_dim != ShapedType::kDynamicSize && y_dim != x_dim) {
+      if (!ShapedType::isDynamic(y_dim) && !ShapedType::isDynamic(x_dim) &&
+          y_dim != x_dim) {
         return op.emitOpError()
                << "requires y.shape[" << y_idx << "] (" << y_dim << ") "
                << "to be equal to x.shape[perm[" << x_idx << "]] "
@@ -3297,9 +3297,9 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
         return emitOptionalError(location, "dim_index (", dim_index,
                                  ") is out of range [0, ", rank, ")");
       }
-      shape[dim_index] = RankedTensorType::kDynamicSize;
+      shape[dim_index] = ShapedType::kDynamicSize;
     } else {
-      shape.assign(shape.size(), RankedTensorType::kDynamicSize);
+      shape.assign(shape.size(), ShapedType::kDynamicSize);
     }
     result_ty = RankedTensorType::get(shape, element_ty);
   } else {

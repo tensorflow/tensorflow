@@ -138,7 +138,7 @@ static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
     mapping.map(get_global_op, builder.clone(*get_global_op)->getResult(0));
   }
   auto* clone = builder.clone(*op, mapping);
-  auto name_loc = mlir::NameLoc::get(builder.getIdentifier(func_name));
+  auto name_loc = mlir::NameLoc::get(builder.getStringAttr(func_name));
   clone->setLoc(mlir::FusedLoc::get(context, {loc, name_loc}));
   builder.create<mlir::lmhlo::TerminatorOp>(loc);
 

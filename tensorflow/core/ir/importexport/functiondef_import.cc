@@ -160,8 +160,8 @@ Status ImportNodes(ValueMapManager value_manager,
   Type control_ty = ControlType::get(context);
   TFGraphDialect* tfgDialect =
       cast<TFGraphDialect>(context->getLoadedDialect("tfg"));
-  Identifier device_attr = tfgDialect->getDeviceAttrIdentifier();
-  Identifier name_attr = tfgDialect->getNameAttrIdentifier();
+  StringAttr device_attr = tfgDialect->getDeviceAttrIdentifier();
+  StringAttr name_attr = tfgDialect->getNameAttrIdentifier();
   // Process every node and create a matching MLIR operation
   for (const NodeDef& node : nodes) {
     DVLOG(0) << "Processing node " << node.name() << "\n";

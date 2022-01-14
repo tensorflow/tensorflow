@@ -96,10 +96,10 @@ void TFGraphDialect::initialize() {
   allowUnknownOperations();
 
   // Caching some often used context-owned informations for fast-access.
-  name_key_ = Identifier::get(getNameAttrKey(), getContext());
-  device_key_ = Identifier::get(getDeviceAttrKey(), getContext());
+  name_key_ = StringAttr::get(getContext(), getNameAttrKey());
+  device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
   assigned_device_key_ =
-      Identifier::get(getAssignedDeviceAttrKey(), getContext());
+      StringAttr::get(getContext(), getAssignedDeviceAttrKey());
   control_ty_ = ControlType::get(getContext());
 }
 

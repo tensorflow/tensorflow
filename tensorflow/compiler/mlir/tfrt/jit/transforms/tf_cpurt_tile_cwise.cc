@@ -111,8 +111,8 @@ struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
     tiling_options.setLoopType(mlir::linalg::LinalgTilingLoopType::TiledLoops);
 
     auto filter = LinalgTransformationFilter(
-                      llvm::ArrayRef<mlir::Identifier>{},
-                      {mlir::Identifier::get(kTiledId, func.getContext())})
+                      llvm::ArrayRef<mlir::StringAttr>{},
+                      {mlir::StringAttr::get(func.getContext(), kTiledId)})
                       .addFilter([](Operation *op) {
                         return success(isNonTiledCwise(op));
                       });

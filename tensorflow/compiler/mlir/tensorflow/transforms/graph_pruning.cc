@@ -48,7 +48,7 @@ class GraphPruningPass
   bool ShouldPreserveIsland(IslandOp island);
   void PruneGraph(GraphOp graph);
 
-  llvm::SmallDenseSet<mlir::Identifier, 4> ops_to_preserve_ids_;
+  llvm::SmallDenseSet<mlir::StringAttr, 4> ops_to_preserve_ids_;
 };
 
 // Checks if a tf_executor.Graph can be pruned.
