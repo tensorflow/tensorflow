@@ -68,9 +68,6 @@ inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64_t size) {
   return typed;
 }
 
-// Env var to enable the use of cuBLASLt
-bool EnableCublasLtGemm();
-
 // A helper class that looks up the best autotuned config from parameters.
 // Due to the noisy nature of autotune, especially with multiple devices, it
 // only accepts a config if its margin exceeds a threshold.

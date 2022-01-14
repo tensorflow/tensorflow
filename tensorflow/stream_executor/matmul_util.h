@@ -19,6 +19,10 @@ limitations under the License.
 #include "tensorflow/core/util/matmul_autotune.h"
 #include "tensorflow/stream_executor/blas.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_driver.h"
+#endif  // GOOGLE_CUDA
+
 namespace stream_executor {
 template <typename T>
 DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
@@ -34,7 +38,7 @@ static inline int64_t GetBlasWorkspaceLimit(const string& envvar_in_mb,
   return tensorflow::GetWorkspaceLimit(envvar_in_mb, default_value_in_bytes);
 }
 
-// Encapsulate all of the shape, dtype etc. information that defines a unique
+// Encapsulates information which defines a unique
 // batched matmul operation.
 class BatchMatmulParameters {
  public:
@@ -84,7 +88,7 @@ class BatchMatmulParameters {
 
   string ToString() const {
     // clang-format off
-    return tensorflow::strings::StrCat(
+    return absl::StrCat(
         trans_a_, ", ", trans_b_, ", ", adj_a_, ", ", adj_b_, ", ",
         m_, ", ", n_, ", ", k_, ", ", batch_count_, ", ",
         broadcast_a_, ", ", broadcast_b_, ", ",
@@ -121,9 +125,9 @@ class BatchMatmulParameters {
   uint64 hash_code_;
 };
 
-static inline bool GetBlasComputationType(const tensorflow::DataType& dtype,
-                                          bool allow_tf32,
-                                          blas::ComputationType* compute_type) {
+static inline port::Status GetBlasComputationType(
+    const tensorflow::DataType& dtype, bool allow_tf32,
+    blas::ComputationType* compute_type) {
   using blas::ComputationType;
   static bool use_f32_for_f16_computation =
       tensorflow::MatmulDoFP32ComputationFP16Input();
@@ -134,22 +138,22 @@ static inline bool GetBlasComputationType(const tensorflow::DataType& dtype,
     case tensorflow::DT_BFLOAT16:
       *compute_type =
           use_f32_for_f16_computation ? f32_type : ComputationType::kF16;
-      return true;
+      return port::Status::OK();
     case tensorflow::DT_FLOAT:
       *compute_type = f32_type;
-      return true;
+      return port::Status::OK();
     case tensorflow::DT_DOUBLE:
       *compute_type = ComputationType::kF64;
-      return true;
+      return port::Status::OK();
     case tensorflow::DT_COMPLEX64:
       *compute_type = f32_type;
-      return true;
+      return port::Status::OK();
     case tensorflow::DT_COMPLEX128:
       *compute_type = ComputationType::kComplexF64;
-      return true;
+      return port::Status::OK();
     default:
       // Unsupported compute_type, return false.
-      return false;
+      return port::InternalError("Unsupported dtype for batched matmul 2");
   }
 }
 
@@ -196,7 +200,7 @@ struct BlasLtPlanMapSingleton {
 typedef BlasLtPlanMapSingleton<BatchMatmulParameters>
     BatchMatmulPlanMapSingleton;
 
-// A dummy type to group matmul autotune results together.
+// Dummy type to group matmul autotune results together.
 struct BatchMatmulAutoTuneGroup {
   static string name() { return "MatmulLt"; }
 };
@@ -214,18 +218,21 @@ struct CoefficientType<Eigen::half> {
   typedef float type;
 };
 
-inline tensorflow::Status FromExecutorStatus(const port::Status& s) {
-  return s.ok() ? tensorflow::Status::OK()
-                : tensorflow::Status(static_cast<tensorflow::error::Code>(
-                                         static_cast<int>(s.code())),
-                                     s.error_message());
-}
+#if GOOGLE_CUDA && CUDA_VERSION >= 11000
+port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithm(
+    Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
+    blas::DataType blas_dtype, tensorflow::DataType dtype,
+    blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
+    blas::MatrixDescriptor output_matrix);
+#endif  // GOOGLE_CUDA && CUDA_VERSION >= 11000
 
-template <typename T>
-inline tensorflow::Status FromExecutorStatus(const port::StatusOr<T>& s) {
-  return FromExecutorStatus(s.status());
-}
-
-}  // namespace stream_executor
+#if GOOGLE_CUDA && CUDA_VERSION >= 11000
+port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
+    int64_t batch_size, blas::DataType blas_dtype, tensorflow::DataType dtype,
+    blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
+    blas::MatrixDescriptor output_matrix);
+#endif  // GOOGLE_CUDA && CUDA_VERSION >= 11000
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_MATMUL_UTIL_H_
+
+}  // namespace stream_executor

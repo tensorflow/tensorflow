@@ -936,6 +936,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/stream_executor:matmul_util",
     ],
 )
 

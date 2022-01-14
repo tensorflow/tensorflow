@@ -6,6 +6,7 @@
 
 load("//tensorflow:tensorflow.bzl", "filegroup", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/core/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured",)
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "if_cuda_or_rocm",)
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
@@ -113,7 +114,9 @@ MATH_DEPS = [
 
 cc_library(
     name = "matmul_util",
+    srcs = ["matmul_util.cc"],
     hdrs = ["matmul_util.h"],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = MATH_DEPS + if_cuda_or_rocm(["//tensorflow/core/kernels:gpu_utils"]),
 )
 

@@ -61,13 +61,8 @@ struct GpuGemmConfig {
   Shape rhs_shape;
   Shape output_shape;
   GemmBackendConfig backend_config;
+  bool use_cublaslt;
 };
-
-StatusOr<se::blas::BlasLtMatmulPlanParams> CreatePlanParams(
-    int64_t batch_size, se::blas::DataType blas_dtype,
-    tensorflow::DataType dtype, se::blas::MatrixDescriptor lhs_matrix,
-    se::blas::MatrixDescriptor rhs_matrix,
-    se::blas::MatrixDescriptor output_matrix);
 
 // This is thread-compatible.
 class GemmThunk : public Thunk {

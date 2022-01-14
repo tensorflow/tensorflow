@@ -60,43 +60,10 @@ GpuGemmConfig GetGpuGemmConfig(const HloInstruction* gemm) {
   config.rhs_shape = gemm->operand(1)->shape();
   config.backend_config =
       gemm->backend_config<GemmBackendConfig>().ValueOrDie();
+  config.use_cublaslt =
+      gemm->GetModule()->config().debug_options().xla_gpu_enable_cublaslt();
   return config;
 }
-
-#if GOOGLE_CUDA && CUDA_VERSION >= 11000
-StatusOr<const se::blas::PlanAndAlgorithms*> GetPlanAndAlgorithm(
-    se::Stream* stream, se::BatchMatmulParameters matmul_parameters,
-    int64_t batch_size, se::blas::DataType blas_dtype,
-    tensorflow::DataType dtype, se::blas::MatrixDescriptor lhs_matrix,
-    se::blas::MatrixDescriptor rhs_matrix,
-    se::blas::MatrixDescriptor output_matrix) {
-  static const int64_t max_scratch_size = se::GetBlasWorkspaceLimit(
-      "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
-  static const int64_t max_autotune_algorithm_count =
-      tensorflow::MatmulMaxAutotuneAlgorithmCount();
-  const se::blas::PlanAndAlgorithms* plan_and_algorithms =
-      se::BatchMatmulPlanMapSingleton::GetInstance()->Find(matmul_parameters);
-  if (!plan_and_algorithms) {
-    TF_ASSIGN_OR_RETURN(
-        se::blas::BlasLtMatmulPlanParams plan_params,
-        CreatePlanParams(batch_size, blas_dtype, dtype, lhs_matrix, rhs_matrix,
-                         output_matrix));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::blas::IBlasLtMatmulPlan> plan,
-                        stream->parent()->CreateBlasLtMatmulPlan(plan_params));
-    TF_ASSIGN_OR_RETURN(
-        std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>
-            algorithms,
-        stream->parent()->GetBlasLtMatmulAlgorithms(
-            plan.get(), max_scratch_size,
-            /* max_algorithm_count */ max_autotune_algorithm_count));
-
-    plan_and_algorithms =
-        se::BatchMatmulPlanMapSingleton::GetInstance()->Insert(
-            matmul_parameters, {std::move(plan), std::move(algorithms)});
-  }
-  return plan_and_algorithms;
-}
-#endif  // GOOGLE_CUDA && CUDA_VERSION >= 11000
 
 // Experimentally tries to pick the best algorithm for the given gemm.
 //
@@ -282,7 +249,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   const Shape& output_shape = config.output_shape;
   std::unordered_set<PrimitiveType> enabled_types = {F16, F32, F64, C64, C128};
 
-  if (tensorflow::EnableCublasLtGemm() &&
+  if (config.use_cublaslt &&
       enabled_types.find(output_shape.element_type()) != enabled_types.end()) {
     se::blas::MatrixDescriptor lhs_matrix, rhs_matrix, output_matrix;
     std::tie(lhs_matrix, rhs_matrix, output_matrix) =
@@ -337,9 +304,9 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
         /*broadcast_a*/ broadcast, /*broadcast_b*/ broadcast, dtype, dtype,
         allow_tf32, device_id);
 
-    TF_ASSIGN_OR_RETURN(
-        const se::blas::PlanAndAlgorithms* plan_and_algorithms,
-        GetPlanAndAlgorithm(stream, matmul_parameters, batch_size, blas_dtype,
+    TF_ASSIGN_OR_RETURN(const se::blas::PlanAndAlgorithms* plan_and_algorithms,
+                        se::GetPlanAndAlgorithm(
+                            stream, matmul_parameters, batch_size, blas_dtype,
                             dtype, lhs_matrix, rhs_matrix, output_matrix));
 
     const std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>&
