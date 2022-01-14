@@ -15,6 +15,7 @@ tf_py_test(
     deps = [
         ":multi_process_cluster",
         ":test_base",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -199,6 +200,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":test_base",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/distribute:multi_process_lib",
         "//tensorflow/python/platform:test",

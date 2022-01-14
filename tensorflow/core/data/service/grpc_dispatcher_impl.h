@@ -53,6 +53,7 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
   HANDLER(ClientHeartbeat);
   HANDLER(GetWorkers);
   HANDLER(GetDataServiceMetadata);
+  HANDLER(GetDataServiceConfig);
 #undef HANDLER
 
  private:

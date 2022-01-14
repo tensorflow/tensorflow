@@ -54,6 +54,7 @@ HANDLER(GetOrCreateJob);
 HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);
 HANDLER(GetDataServiceMetadata);
+HANDLER(GetDataServiceConfig);
 #undef HANDLER
 
 }  // namespace data

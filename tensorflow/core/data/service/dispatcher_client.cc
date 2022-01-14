@@ -237,6 +237,20 @@ Status DataServiceDispatcherClient::GetDataServiceMetadata(
   return Status::OK();
 }
 
+Status DataServiceDispatcherClient::GetDataServiceConfig(
+    DataServiceConfig& config) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  GetDataServiceConfigRequest request;
+  GetDataServiceConfigResponse response;
+  grpc::ClientContext ctx;
+  grpc::Status s = stub_->GetDataServiceConfig(&ctx, request, &response);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get data service config", s);
+  }
+  config = response.config();
+  return Status::OK();
+}
+
 Status DataServiceDispatcherClient::EnsureInitialized() {
   mutex_lock l(mu_);
   if (stub_) {

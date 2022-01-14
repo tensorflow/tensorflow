@@ -82,6 +82,12 @@ TEST_F(DispatcherClientTest, DatasetDoesNotExist) {
       StatusIs(error::NOT_FOUND, HasSubstr("Dataset id -1000 not found")));
 }
 
+TEST_F(DispatcherClientTest, GetDataServiceConfig) {
+  DataServiceConfig config;
+  TF_ASSERT_OK(dispatcher_client_->GetDataServiceConfig(config));
+  EXPECT_EQ(config.deployment_mode(), DEPLOYMENT_MODE_COLOCATED);
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

@@ -157,6 +157,8 @@ class DataServiceDispatcherImpl {
                               GetOrRegisterDatasetResponse* response);
   Status GetDataServiceMetadata(const GetDataServiceMetadataRequest* request,
                                 GetDataServiceMetadataResponse* response);
+  Status GetDataServiceConfig(const GetDataServiceConfigRequest* request,
+                              GetDataServiceConfigResponse* response);
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
   Status ReleaseJobClient(const ReleaseJobClientRequest* request,

@@ -520,6 +520,14 @@ Status DataServiceDispatcherImpl::GetDataServiceMetadata(
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::GetDataServiceConfig(
+    const GetDataServiceConfigRequest* request,
+    GetDataServiceConfigResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  response->mutable_config()->set_deployment_mode(config_.deployment_mode());
+  return Status::OK();
+}
+
 Status DataServiceDispatcherImpl::GetOrCreateJob(
     const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());

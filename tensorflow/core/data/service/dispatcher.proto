@@ -97,6 +97,14 @@ message GetDataServiceMetadataResponse {
   DataServiceMetadata metadata = 1;
 }
 
+// Next tag: 1
+message GetDataServiceConfigRequest {}
+
+// Next tag: 2
+message GetDataServiceConfigResponse {
+  DataServiceConfig config = 1;
+}
+
 // Next tag: 3
 message JobKey {
   // A name for the job.
@@ -245,4 +253,8 @@ service DispatcherService {
   // Returns the data service metadata for the registered dataset.
   rpc GetDataServiceMetadata(GetDataServiceMetadataRequest)
       returns (GetDataServiceMetadataResponse);
+
+  // Returns the config of a data service cluster.
+  rpc GetDataServiceConfig(GetDataServiceConfigRequest)
+      returns (GetDataServiceConfigResponse);
 }
