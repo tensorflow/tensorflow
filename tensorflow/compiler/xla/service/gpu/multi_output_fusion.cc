@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -49,8 +50,8 @@ bool IsProfitableOperand(HloInstruction* instr) {
   return true;
 }
 
-bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
-                 FusionInfoCache* fusion_info_cache) {
+FusionDecision LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
+                           FusionInfoCache* fusion_info_cache) {
   // If we're fusing fusions only do it if the fusion kind matches. Loop fusions
   // merge into bigger loop fusions and input (reduce) fusions become fusions
   // with multiple reduce outputs. We could fuse reduce and loop fusions
@@ -62,7 +63,7 @@ bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
        instr1->fusion_kind() != instr2->fusion_kind()) ||
       (IsReductionFromOrToContiguousDimensions(*instr2) &&
        instr1->IsLoopFusion())) {
-    return false;
+    return "Can't merge fusions of two different types";
   }
   // The emitter only supports in-place DUS for fusions with a single DUS at the
   // root. Don't sibling fuse DUS for now.
@@ -73,12 +74,13 @@ bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
       (instr2->opcode() == HloOpcode::kFusion &&
        instr2->fused_expression_root()->opcode() ==
            HloOpcode::kDynamicUpdateSlice)) {
-    return false;
+    return "Can't fuse multiple DUSs";
   }
+
   // Do this check last, as it may be expensive.
-  return !FusionWouldBeTooLarge(*instr1, *instr2,
-                                /*is_consumer_producer_fusion=*/false,
-                                fusion_info_cache);
+  return FusionFitsInBudget(*instr1, *instr2,
+                            /*is_consumer_producer_fusion=*/false,
+                            fusion_info_cache);
 }
 
 // We prefer multi-output fusions over other fusions over unfused ops, because
@@ -148,9 +150,9 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
       VLOG(3) << producer->name() << " would introduce a cycle when fused.";
       continue;
     }
-    if (FusionWouldBeTooLarge(*producer, *consumer,
-                              /*is_consumer_producer_fusion=*/false,
-                              fusion_info_cache)) {
+    if (!FusionFitsInBudget(*producer, *consumer,
+                            /*is_consumer_producer_fusion=*/false,
+                            fusion_info_cache)) {
       VLOG(3) << producer->name() << " and " << consumer->name()
               << " would be too large of a fusion.";
       continue;
@@ -199,6 +201,7 @@ void GpuMultiOutputFusion::RecomputeReachability() {
 bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
                                         FusionInfoCache* fusion_info_cache) {
   if (!IsProfitableOperand(parent)) {
+    VLOG(3) << "Operand " << parent->ToShortString() << " is not profitable";
     return false;
   }
   bool changed = false;

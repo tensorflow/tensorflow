@@ -282,7 +282,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Skip 'fusion' instruction if merging it into at least one of the users
   // would make the fusion too big.
   if (absl::c_any_of(fusion->users(), [fusion](const HloInstruction* user) {
-        return FusionWouldBeTooLarge(*fusion, *user);
+        return !FusionFitsInBudget(*fusion, *user).CanFuse();
       })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Contains one or more users where fusing would cause "

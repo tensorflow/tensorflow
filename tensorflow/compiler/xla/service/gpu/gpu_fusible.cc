@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -243,40 +244,31 @@ bool IsLoopFusible(const HloInstruction& instr) {
           instr.opcode() == HloOpcode::kTranspose);
 }
 
-bool IsProducerConsumerFusible(const HloInstruction& producer,
-                               const HloInstruction& consumer) {
+FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
+                                         const HloInstruction& consumer) {
   if (!IsLoopFusible(producer)) {
-    VLOG(5) << "Producer " << producer.name() << " is not loop-fusible";
-    return false;
+    return "the producer is not loop-fusible";
   }
 
   if (!IsInputFusible(consumer) && !IsLoopFusible(consumer)) {
-    VLOG(5) << "Consumer " << consumer.name()
-            << "is not input-fusible and not loop-fusible";
-    return false;
+    return "the consumer is not input-fusible and not loop-fusible";
   }
 
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
-    VLOG(5) << "Producer " << producer.name()
-            << " is not fusible as it is a multi-output fusion";
-    return false;
+    return "the producer is not fusible as it is a multi-output fusion";
   }
 
   if (CreatesNestedLoop(producer, consumer)) {
-    VLOG(5) << "Fusing " << producer.name() << " into " << consumer.name()
-            << " creates nested loop";
-    return false;
+    return "the fusion would create a nested loop";
   }
 
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(consumer) &&
       !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
-    VLOG(5) << "Layout of " << producer.name()
-            << " is not fusion-friendly for consumer reduction "
-            << consumer.name();
-    return false;
+    return "the producer layout is not fusion-friendly for the consumer "
+           "reduction";
   }
 
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
@@ -290,12 +282,10 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
   if (producer.opcode() == HloOpcode::kConstant &&
       (!ShapeUtil::IsEffectiveScalar(producer.shape()) ||
        consumer.opcode() != HloOpcode::kFusion)) {
-    VLOG(5) << "Not fusing constant " << producer.name() << " into "
-            << consumer.name();
-    return false;
+    return "not fusing constant";
   }
 
-  return true;
+  return {};
 }
 
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
@@ -435,24 +425,22 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr,
 // If the fusion is a producer/consumer fusion and instr1 is the
 // consumer and instr2 is the producer, set is_consumer_producer_fusion
 // to true to enable more fusion.
-bool FusionWouldBeTooLarge(const HloInstruction& instr1,
-                           const HloInstruction& instr2,
-                           bool is_consumer_producer_fusion,
-                           FusionInfoCache* cache /*=nullptr*/) {
+FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
+                                  const HloInstruction& instr2,
+                                  bool is_consumer_producer_fusion,
+                                  FusionInfoCache* cache /*=nullptr*/) {
   if (SharedMemoryUsage(instr1, cache) + SharedMemoryUsage(instr2, cache) >
       kSharedMemoryBudgetInBytes) {
-    VLOG(5) << "Shared memory usage of fusion of " << instr1.ToString()
-            << " and " << instr2.ToString() << " would be over the budget of "
-            << kSharedMemoryBudgetInBytes << "B";
-    return true;
+    return FusionDecision{}
+           << "shared memory usage would be over the budget of "
+           << kSharedMemoryBudgetInBytes << "B";
   }
 
   if (NumUnnestedReductions(instr1, cache) +
           NumUnnestedReductions(instr2, cache) >
       kMaxUnnestedReductionOutputsPerFusion) {
-    VLOG(5) << "Not fusing over " << kMaxUnnestedReductionOutputsPerFusion
-            << " unnested reductions in fusion";
-    return true;
+    return FusionDecision{} << "over " << kMaxUnnestedReductionOutputsPerFusion
+                            << " unnested reductions in fusion";
   }
 
   // Compute the number of outputs of the (possibly multi-output) fusion node
@@ -483,7 +471,7 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   if (instr1.operand_count() + instr2.operand_count() - 1 +
           num_output_buffers <=
       MaxOperandsAndOutputsPerFusion()) {
-    return false;
+    return {};
   } else {
     VLOG(5) << "Operand count of "
             << "(" << instr1.ToString() << " ) = " << instr1.operand_count()
@@ -509,12 +497,15 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   // consumer numbers of output. So no need to check it.
   if (is_consumer_producer_fusion &&
       operands.size() <= instr1.operands().size()) {
-    return false;
+    return {};
   }
 
   // Does the new fusion have more operands and outputs than the max?
-  return operands.size() + num_output_buffers >
-         MaxOperandsAndOutputsPerFusion();
+  if (operands.size() + num_output_buffers > MaxOperandsAndOutputsPerFusion()) {
+    return "Number of operands and output buffers is larger than allowed "
+           "budget per fusion";
+  }
+  return {};
 }
 
 bool CreatesNestedLoop(const HloInstruction& producer,

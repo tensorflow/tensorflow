@@ -2204,6 +2204,7 @@ cc_library(
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:instruction_fusion",
     ],
 )
 

@@ -512,12 +512,16 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     }
     auto fusion_queue = GetFusionQueue(computation_);
 
+    if (module->config().debug_options().xla_dump_fusion_visualization()) {
+      TF_RETURN_IF_ERROR(RegisterFusionState(*computation, ""));
+    }
+
     // Instruction fusion effectively fuses edges in the computation graph
     // (producer instruction -> consumer instruction) so we iterate over all
     // edges. When we fuse an edge, we create a copy of the producer inside the
     // fusion instruction.
     while (true) {
-      auto next_entry =
+      std::pair<HloInstruction*, std::vector<int64_t>> next_entry =
           fusion_queue->DequeueNextInstructionAndOperandsToFuseInOrder();
       HloInstruction* instruction = next_entry.first;
       if (instruction == nullptr) {
@@ -552,24 +556,52 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         };
 
         HloInstruction* fusion_instruction = nullptr;
+
+        FusionDecision should_fuse(do_not_duplicate.count(operand) == 0,
+                                   "operand can not be duplicated");
+
         // Try "regular" fusion if the operand may be duplicated. Otherwise,
         // perform multi-output fusion, unless this creates a cycle.
-        if (do_not_duplicate.count(operand) == 0 &&
-            ShouldFuse(instruction, i)) {
-          if (consume_fuel()) {
+        if (should_fuse) {
+          should_fuse = ShouldFuse(instruction, i);
+          if (should_fuse && consume_fuel()) {
             fusion_queue->PreFusion(operand, instruction);
             fusion_instruction = Fuse(operand, instruction);
           }
-        } else if (ShouldFuseIntoMultiOutput(instruction, i) &&
-                   !MultiOutputFusionCreatesCycle(operand, instruction)) {
-          if (consume_fuel()) {
-            fusion_queue->PreFusion(operand, instruction);
-            fusion_instruction = FuseIntoMultiOutput(operand, instruction);
+        }
+
+        if (!should_fuse) {
+          FusionDecision can_fuse_mof =
+              ShouldFuseIntoMultiOutput(instruction, i);
+          if (can_fuse_mof) {
+            can_fuse_mof = can_fuse_mof.And(FusionDecision{
+                !MultiOutputFusionCreatesCycle(operand, instruction),
+                "multi-output fusion creates a cycle"});
           }
+          if (can_fuse_mof) {
+            if (consume_fuel()) {
+              fusion_queue->PreFusion(operand, instruction);
+              fusion_instruction = FuseIntoMultiOutput(operand, instruction);
+            }
+          }
+          should_fuse = should_fuse.Or(can_fuse_mof);
         }
 
         if (fusion_instruction == nullptr) {
           fusion_queue->NotFusingInstruction(operand, instruction);
+          if (module->config()
+                  .debug_options()
+                  .xla_dump_fusion_visualization()) {
+            VLOG(2) << "Not fusing " << operand->ToShortString() << "| into |"
+                    << instruction->ToShortString() << "| as "
+                    << should_fuse.Explain();
+            TF_RETURN_IF_ERROR(RegisterFusionState(
+                *computation,
+                absl::StrCat("Not fusing |", operand->ToShortString(),
+                             "| into |", instruction->ToShortString(), "| as ",
+                             should_fuse.Explain()),
+                /*changed=*/false));
+          }
           continue;
         }
 
@@ -577,6 +609,15 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
                                           instruction);
         changed = true;
         ++fuse_count;
+
+        if (module->config().debug_options().xla_dump_fusion_visualization()) {
+          TF_RETURN_IF_ERROR(RegisterFusionState(
+              *computation,
+              absl::StrCat("Fused |", operand->ToShortString(), "| into |",
+                           instruction->ToShortString(),
+                           "| inside InstructionFusion with may_duplicate=",
+                           may_duplicate_)));
+        }
 
         if (operand->user_count() == 0) {
           do_not_duplicate.erase(operand);
@@ -590,12 +631,6 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           do_not_duplicate.erase(instruction);
         }
         break;
-      }
-
-      if (module->config().debug_options().xla_dump_fusion_visualization()) {
-        TF_RETURN_IF_ERROR(RegisterFusionState(
-            *computation,
-            absl::StrCat("InstructionFusion, may_duplicate=", may_duplicate_)));
       }
     }
 
@@ -748,14 +783,14 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
 
 }  // namespace
 
-/*static*/ bool InstructionFusion::ShouldFuseInPlaceOp(
+/*static*/ FusionDecision InstructionFusion::ShouldFuseInPlaceOp(
     const HloInstruction* producer, const HloInstruction* consumer) {
   // Don't fuse if the producer is a non-elementwise op that has the same
   // operand as an in-place operand of the consumer. The consumer will modify
   // the buffer in-place, which will cause producer's operand to change if we
   // allow them to fuse.
   if (producer->IsElementwise()) {
-    return true;
+    return {};
   }
   std::vector<std::pair<HloUse, ShapeIndex>> in_place_input_output_pairs =
       HloDataflowAnalysis::GetInPlaceInputOutputPairs(
@@ -795,9 +830,8 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
           });
       if (dus == nullptr || producer_nonelementwise == nullptr ||
           producer_nonelementwise->shape() != dus->operand(1)->shape()) {
-        VLOG(4) << "Comsumer is not a dus or the producer fusion has multiple "
-                   "non-elementwise ops, bailing.";
-        return false;
+        return "Consumer is not a dus or the producer fusion has multiple "
+               "non-elementwise ops, bailing.";
       }
       if (producer_nonelementwise->opcode() == HloOpcode::kSlice) {
         for (int i = 0; i < dus->shape().rank(); ++i) {
@@ -807,12 +841,11 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
           if (!constant_operand ||
               *constant_operand != producer_nonelementwise->slice_starts(i) ||
               producer_nonelementwise->slice_strides(i) != 1) {
-            VLOG(4) << "DUS and slice index mismatch";
-            return false;
+            return "DUS and slice index mismatch";
           }
         }
         VLOG(4) << "DUS and slice index match";
-        return true;
+        return {};
       }
       if (producer_nonelementwise->opcode() == HloOpcode::kDynamicSlice) {
         for (int i = 0; i < dus->shape().rank(); ++i) {
@@ -824,43 +857,39 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
           auto constant_dus_operand = get_constant_operand(dus_operand);
           if (constant_ds_operand != constant_dus_operand ||
               (!constant_ds_operand && ds_operand != dus_operand)) {
-            VLOG(4) << "DUS and DS index mismatch";
-            return false;
+            return "DUS and DS index mismatch";
           }
         }
         VLOG(4) << "DUS and DS index match";
-        return true;
+        return {};
       }
-      return false;
+      return "unrecognized inplace update non-elementwise output pair";
     }
   }
-  return true;
+  return {};
 }
 
-bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
-                                   int64_t operand_index) {
+FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
+                                             int64_t operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Don't fuse across a root instruction.
   if (producer == producer->parent()->root_instruction()) {
-    VLOG(4) << "Not fusing into the output of the root instruction";
-    return false;
+    return "not fusing into the output of the root instruction";
   }
 
   // Cost condition: don't duplicate expensive instructions.
   if (FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&
       !IsAlwaysDuplicable(*producer)) {
-    VLOG(4) << "Stopping: fusion may duplicate operand ("
-            << producer->ToString() << ") , and this is expensive";
-    return false;
+    return "expensive producer would be duplicated";
   }
 
-  if (!ShouldFuseInPlaceOp(producer, consumer)) {
-    return false;
+  if (NoFusionPossible fusible = !ShouldFuseInPlaceOp(producer, consumer)) {
+    return !fusible;
   }
 
-  return true;
+  return {};
 }
 
 HloInstruction::FusionKind InstructionFusion::ChooseKind(
