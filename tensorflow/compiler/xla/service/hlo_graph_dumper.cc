@@ -1796,6 +1796,8 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
   <style>
     html, body {height: 100%; text-align: center;}
     #rendered {height: 80%; width: 80%; border:1px solid black; margin: auto; }
+    #label {width: 80%; margin: auto;}
+    #performance_note { font-size: small; color: gray; }
   </style>
 </head>
 <body>
@@ -1823,8 +1825,7 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
     var dot_txt = dots[frame[0]];
     var label = frame[1];
     document.getElementById('label').innerText = label;
-
-    document.getElementById.innerText = "Loading...";
+    document.getElementById('performance_note').innerText = "Rendering...";
 
     var results = cssregex.exec(dot_txt)
     var css_data = ''
@@ -1836,6 +1837,7 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
         dot_txt = dot_txt.replace(cssregex, ''); // Remove the stylesheet
     }
 
+    var render_start = performance.now();
     viz.renderSVGElement(dot_txt).then(function(svg) {
       var style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
       style.appendChild(document.createTextNode(css_data));
@@ -1860,6 +1862,8 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
           panzoom.fit();
           panzoom.center();
       };
+      document.getElementById('performance_note').innerText =
+        `Rendering took ${(performance.now() - render_start).toFixed(2)}ms`;
     });
   };
 
@@ -1959,7 +1963,8 @@ void RegisterGraphToURLRenderer(
 }
 
 Status RegisterFusionState(const HloComputation& computation,
-                           absl::string_view label, bool changed) {
+                           absl::string_view label,
+                           const HloInstruction* consumer, bool changed) {
   tensorflow::mutex_lock lock(fusion_visualizer_state_mu);
   FusionVisualizerProgress& fusion_progress =
       fusion_visualizer_states[FusionVisualizerStateKey(computation)];
@@ -1967,12 +1972,15 @@ Status RegisterFusionState(const HloComputation& computation,
     fusion_progress.RegisterFusionStateUnchanged(label);
     return Status::OK();
   }
+
+  // Radius size in which to render.
+  static constexpr int kRenderRadius = 5;
   TF_ASSIGN_OR_RETURN(
       std::string dot_graph,
-      RenderGraph(computation, "",
-                  /*debug_options=*/{}, xla::RenderedGraphFormat::kDot,
-                  /*hlo_execution_profile=*/nullptr,
-                  /*hlo_render_options=*/{}));
+      RenderNeighborhoodAround(
+          consumer ? *consumer : *computation.root_instruction(), kRenderRadius,
+          xla::RenderedGraphFormat::kDot,
+          /*hlo_render_options=*/{}));
   fusion_progress.RegisterFusionStateChanged(dot_graph, label);
   return Status::OK();
 }

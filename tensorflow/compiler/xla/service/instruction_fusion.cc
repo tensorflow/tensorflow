@@ -588,7 +588,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         }
 
         if (fusion_instruction == nullptr) {
-          fusion_queue->NotFusingInstruction(operand, instruction);
+          CHECK(!should_fuse.CanFuse());
           if (module->config()
                   .debug_options()
                   .xla_dump_fusion_visualization()) {
@@ -600,24 +600,28 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
                 absl::StrCat("Not fusing |", operand->ToShortString(),
                              "| into |", instruction->ToShortString(), "| as ",
                              should_fuse.Explain()),
+                instruction,
                 /*changed=*/false));
           }
+
+          fusion_queue->NotFusingInstruction(operand, instruction);
           continue;
+        }
+
+        if (module->config().debug_options().xla_dump_fusion_visualization()) {
+          TF_RETURN_IF_ERROR(RegisterFusionState(
+              *computation,
+              absl::StrCat("Fused |", operand->ToShortString(), "| into |",
+                           fusion_instruction->ToShortString(),
+                           "| inside InstructionFusion with may_duplicate=",
+                           may_duplicate_),
+              fusion_instruction, /*changed=*/true));
         }
 
         fusion_queue->OnFusingInstruction(fusion_instruction, operand,
                                           instruction);
         changed = true;
         ++fuse_count;
-
-        if (module->config().debug_options().xla_dump_fusion_visualization()) {
-          TF_RETURN_IF_ERROR(RegisterFusionState(
-              *computation,
-              absl::StrCat("Fused |", operand->ToShortString(), "| into |",
-                           instruction->ToShortString(),
-                           "| inside InstructionFusion with may_duplicate=",
-                           may_duplicate_)));
-        }
 
         if (operand->user_count() == 0) {
           do_not_duplicate.erase(operand);

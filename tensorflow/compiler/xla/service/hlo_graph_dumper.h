@@ -96,8 +96,13 @@ StatusOr<std::string> RenderAllPathsFromTo(
 
 // Registers the fusion state of the graph for future visualization using
 // the kFusionVisulization render format.
+//
+// The `consumer` node defines the area which should be rendered: if left null,
+// computation root is used by default.
 Status RegisterFusionState(const HloComputation& computation,
-                           absl::string_view label, bool changed = true);
+                           absl::string_view label,
+                           const HloInstruction* consumer = nullptr,
+                           bool changed = true);
 
 // Registers a function which implements RenderedGraphFormat::kUrl.
 //
