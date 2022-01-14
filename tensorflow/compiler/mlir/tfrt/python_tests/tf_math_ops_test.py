@@ -21,10 +21,10 @@ from absl import flags
 from absl.testing import parameterized
 from tensorflow import math
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfCpurtExecutor()
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('iters', '1000', 'Number of test iterations')
@@ -49,7 +49,7 @@ def mlir_func_1d(op_name):
 
 
 def test_1d(op_name, fn, vectorize=False, lb=-1.0, ub=1.0, rtol_enum=Rtol.BASE):
-  compiled = cpurt.compile(mlir_func_1d(op_name), 'test', vectorize=vectorize)
+  compiled = jitrt.compile(mlir_func_1d(op_name), 'test', vectorize=vectorize)
   rtols = {}
   rtols[Rtol.ZERO] = 0.0
   # Not all approximations are identical to TF's.
@@ -60,7 +60,7 @@ def test_1d(op_name, fn, vectorize=False, lb=-1.0, ub=1.0, rtol_enum=Rtol.BASE):
   # elements differently (e.g. via libc).
   rtols[Rtol.AVX2] = rtols[Rtol.BASE]
   # Use 16 as the machine vector's length to be both simple and future-proof.
-  if cpurt.built_with('AVX2') and FLAGS.vector_size % 16 == 0:
+  if jitrt.built_with('AVX2') and FLAGS.vector_size % 16 == 0:
     rtols[Rtol.AVX2] = 0.0
 
   rtol = rtols[rtol_enum]
@@ -68,7 +68,7 @@ def test_1d(op_name, fn, vectorize=False, lb=-1.0, ub=1.0, rtol_enum=Rtol.BASE):
   for _ in range(FLAGS.iters):
     arg = np.random.uniform(lb, ub, size=(FLAGS.vector_size)).astype(np.float32)
 
-    [res] = cpurt.execute(compiled, [arg])
+    [res] = jitrt.execute(compiled, [arg])
     np.testing.assert_allclose(res, fn(arg), rtol=rtol, atol=1e-7)
 
 

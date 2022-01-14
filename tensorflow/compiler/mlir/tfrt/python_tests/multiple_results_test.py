@@ -16,16 +16,16 @@
 
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
 specializations = [
-    tf_cpurt.Specialization.ENABLED,
-    tf_cpurt.Specialization.DISABLED,
-    tf_cpurt.Specialization.ALWAYS,
+    tf_jitrt.Specialization.ENABLED,
+    tf_jitrt.Specialization.DISABLED,
+    tf_jitrt.Specialization.ALWAYS,
 ]
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfCpurtExecutor()
 
 
 class MultipleResultsTest(test.TestCase):
@@ -43,12 +43,12 @@ class MultipleResultsTest(test.TestCase):
           return %1, %2 : tensor<?xf32>, tensor<?xf32>
         }"""
 
-      compiled = cpurt.compile(mlir_function, 'test', specialize)
+      compiled = jitrt.compile(mlir_function, 'test', specialize)
 
       d0 = np.random.randint(1, 10)
       arg0 = np.zeros(d0, np.float32)
 
-      [res0, res1] = cpurt.execute(compiled, [arg0])
+      [res0, res1] = jitrt.execute(compiled, [arg0])
       np.testing.assert_allclose(res0, arg0 + 1.0, atol=0.0)
       np.testing.assert_allclose(res1, arg0 + 2.0, atol=0.0)
 
@@ -68,12 +68,12 @@ class MultipleResultsTest(test.TestCase):
           return %1, %2, %3 : tensor<?xf32>, tensor<?xf32>, tensor<?xf32>
         }"""
 
-      compiled = cpurt.compile(mlir_function, 'test', specialize)
+      compiled = jitrt.compile(mlir_function, 'test', specialize)
 
       d0 = np.random.randint(1, 10)
       arg0 = np.zeros(d0, np.float32)
 
-      [res0, res1, res2] = cpurt.execute(compiled, [arg0])
+      [res0, res1, res2] = jitrt.execute(compiled, [arg0])
       np.testing.assert_allclose(res0, arg0 + 1.0, atol=0.0)
       np.testing.assert_allclose(res1, arg0 + 2.0, atol=0.0)
       np.testing.assert_allclose(res2, arg0 + 3.0, atol=0.0)
@@ -89,12 +89,12 @@ class MultipleResultsTest(test.TestCase):
           return %1, %1 : tensor<?xf32>, tensor<?xf32>
         }"""
 
-      compiled = cpurt.compile(mlir_function, 'test', specialize)
+      compiled = jitrt.compile(mlir_function, 'test', specialize)
 
       d0 = np.random.randint(1, 10)
       arg0 = np.zeros(d0, np.float32)
 
-      [res0, res1] = cpurt.execute(compiled, [arg0])
+      [res0, res1] = jitrt.execute(compiled, [arg0])
       np.testing.assert_allclose(res0, arg0 + 1.0, atol=0.0)
       np.testing.assert_allclose(res1, arg0 + 1.0, atol=0.0)
 

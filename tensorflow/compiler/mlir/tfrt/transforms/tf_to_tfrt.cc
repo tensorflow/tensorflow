@@ -46,9 +46,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 #include "tensorflow/compiler/mlir/tfrt/analysis/tensor_array_side_effect_analysis.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_cpurt_ops.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_clustering.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_cpurt_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_jitrt_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_clustering.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -1413,7 +1413,7 @@ mlir::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
 // any other devices and do not support distributed models.
 constexpr char kCpuRtDevice[] = "CPU";
 
-// Convert cpurt.call operations to the tf_cpurt.fallback.execute operation.
+// Convert jitrt.call operations to the tf_cpurt.fallback.execute operation.
 class CpuRtCallToCpurtCompileAndExecuteConversion
     : public OpConversionPattern<tfrt::jitrt::CallOp> {
  public:

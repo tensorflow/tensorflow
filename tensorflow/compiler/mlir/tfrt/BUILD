@@ -36,8 +36,8 @@ package_group(
 exports_files(["run_lit.sh"])
 
 td_library(
-    name = "tf_cpurt_ops_td_files",
-    srcs = ["jit/opdefs/tf_cpurt_ops.td"],
+    name = "tf_jitrt_ops_td_files",
+    srcs = ["jit/opdefs/tf_jitrt_ops.td"],
     deps = [
         "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
@@ -49,28 +49,28 @@ td_library(
 )
 
 gentbl_cc_library(
-    name = "tf_cpurt_ops_inc_gen",
+    name = "tf_jitrt_ops_inc_gen",
     tbl_outs = [
         (
             ["-gen-op-decls"],
-            "tf_cpurt_ops.h.inc",
+            "tf_jitrt_ops.h.inc",
         ),
         (
             ["-gen-op-defs"],
-            "tf_cpurt_ops.cc.inc",
+            "tf_jitrt_ops.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "jit/opdefs/tf_cpurt_ops.td",
-    deps = [":tf_cpurt_ops_td_files"],
+    td_file = "jit/opdefs/tf_jitrt_ops.td",
+    deps = [":tf_jitrt_ops_td_files"],
 )
 
 tfrt_cc_library(
-    name = "tf_cpurt_opdefs",
-    srcs = ["jit/opdefs/tf_cpurt_ops.cc"],
-    hdrs = ["jit/opdefs/tf_cpurt_ops.h"],
+    name = "tf_jitrt_opdefs",
+    srcs = ["jit/opdefs/tf_jitrt_ops.cc"],
+    hdrs = ["jit/opdefs/tf_jitrt_ops.h"],
     deps = [
-        ":tf_cpurt_ops_inc_gen",
+        ":tf_jitrt_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
         "@llvm-project//mlir:IR",
@@ -85,19 +85,19 @@ tfrt_cc_library(
 )
 
 tfrt_cc_library(
-    name = "tf_cpurt_registration",
-    srcs = ["jit/tf_cpurt_registration.cc"],
-    hdrs = ["jit/tf_cpurt_registration.h"],
+    name = "tf_jitrt_registration",
+    srcs = ["jit/tf_jitrt_registration.cc"],
+    hdrs = ["jit/tf_jitrt_registration.h"],
     deps = [
-        ":tf_cpurt_opdefs",
+        ":tf_jitrt_opdefs",
         "@llvm-project//mlir:IR",
     ],
 )
 
 cc_library(
-    name = "tf_cpurt_pipeline",
-    srcs = ["jit/tf_cpurt_pipeline.cc"],
-    hdrs = ["jit/tf_cpurt_pipeline.h"],
+    name = "tf_jitrt_pipeline",
+    srcs = ["jit/tf_jitrt_pipeline.cc"],
+    hdrs = ["jit/tf_jitrt_pipeline.h"],
     deps = [
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/hlo",
@@ -106,7 +106,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_passes",
+        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "@llvm-project//llvm:Support",
@@ -129,8 +129,8 @@ cc_library(
 )
 
 tfrt_cc_library(
-    name = "tf_cpurt",
-    hdrs = ["jit/tf_cpurt.h"],
+    name = "tf_jitrt",
+    hdrs = ["jit/tf_jitrt.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -144,15 +144,15 @@ tfrt_cc_library(
 )
 
 tfrt_cc_library(
-    name = "tf_cpurt_kernels",
-    srcs = ["jit/tf_cpurt_kernels.cc"],
-    alwayslink_static_registration_src = "jit/tf_cpurt_kernels_registration.cc",
+    name = "tf_jitrt_kernels",
+    srcs = ["jit/tf_jitrt_kernels.cc"],
+    alwayslink_static_registration_src = "jit/tf_jitrt_kernels_registration.cc",
     deps = [
-        ":tf_cpurt",
-        ":tf_cpurt_pipeline",
-        ":tf_cpurt_request_context",
+        ":tf_jitrt",
+        ":tf_jitrt_pipeline",
+        ":tf_jitrt_request_context",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_passes",
+        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:platform_base",
         "//tensorflow/core/platform:dynamic_annotations",
@@ -177,9 +177,9 @@ tfrt_cc_library(
 )
 
 tfrt_cc_library(
-    name = "tf_cpurt_request_context",
-    srcs = ["jit/tf_cpurt_request_context.cc"],
-    hdrs = ["jit/tf_cpurt_request_context.h"],
+    name = "tf_jitrt_request_context",
+    srcs = ["jit/tf_jitrt_request_context.cc"],
+    hdrs = ["jit/tf_jitrt_request_context.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
     deps = [
         "//tensorflow/core/platform:status",
@@ -304,8 +304,8 @@ cc_library(
         ":cost_analysis",
         ":fallback_converter",
         ":tensor_array_side_effect_analysis",
-        ":tf_cpurt_opdefs",
-        ":tf_cpurt_pipeline",
+        ":tf_jitrt_opdefs",
+        ":tf_jitrt_pipeline",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -322,8 +322,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_passes",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_clustering",
+        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
+        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_clustering",
         "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:tstring",
@@ -591,8 +591,8 @@ cc_library(
         ":__subpackages__",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_passes",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_test_passes",
+        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
+        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_test_passes",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt_data",
     ] + if_google([
@@ -615,9 +615,9 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_opdefs",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_passes",
-        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_cpurt_test_passes",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_opdefs",
+        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
+        "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_test_passes",
         "//tensorflow/core:lib",
         "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_async_opdefs",
         "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
@@ -659,7 +659,7 @@ tf_cc_binary(
     srcs = ["tools/tfrt_translate/static_registration.cc"],
     visibility = [":friends"],
     deps = [
-        ":tf_cpurt_registration",
+        ":tf_jitrt_registration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Translation",
         "@tf_runtime//:beftomlir_translate",
@@ -676,7 +676,7 @@ tf_cc_binary(
     testonly = True,
     visibility = [":friends"],
     deps = [
-        ":tf_cpurt_kernels_alwayslink",
+        ":tf_jitrt_kernels_alwayslink",
         "@tf_runtime//:dtype",
         "@tf_runtime//:simple_tracing_sink",
         "@tf_runtime//tools:bef_executor_expensive_kernels",

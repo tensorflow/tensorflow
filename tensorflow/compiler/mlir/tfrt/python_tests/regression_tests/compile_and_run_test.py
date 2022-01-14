@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Tensorflow -> CPURT compilation."""
+"""Tests for Tensorflow -> jitrt compilation."""
 
 import os
 import time
@@ -21,7 +21,7 @@ from absl import flags
 from mlir import ir
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
@@ -36,7 +36,7 @@ flags.DEFINE_string(
 flags.DEFINE_boolean('vectorize', None,
                      'Whether vectorization should be enabled')
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfCpurtExecutor()
 
 
 _STATIC_TYPE_ATTRIBUTE_NAME = 'python_test_attrs.static_type'
@@ -92,10 +92,10 @@ class CompileAndRunTest(test.TestCase):
           arg_attrs = ir.ArrayAttr(func.attributes[_ARG_ATTRIBUTES_NAME])
       logging.info(f'processing {filename}')
       start = time.perf_counter()
-      compiled = cpurt.compile(
+      compiled = jitrt.compile(
           mlir_function,
           function_name,
-          tf_cpurt.Specialization.ENABLED,
+          tf_jitrt.Specialization.ENABLED,
           vectorize=FLAGS.vectorize)
       end = time.perf_counter()
       logging.info(f'compiled {filename} in {end-start:0.4f} seconds')
@@ -124,7 +124,7 @@ class CompileAndRunTest(test.TestCase):
             'expected valid python_test_attrs attributes for each argument')
         return
       start = time.perf_counter()
-      cpurt.execute(compiled, args)
+      jitrt.execute(compiled, args)
       end = time.perf_counter()
       logging.info(f'executed {filename} in {end-start:0.4f} seconds')
 

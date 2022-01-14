@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Translation.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_registration.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_registration.h"
 #include "tfrt/bef_converter/bef_to_mlir_translate.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime

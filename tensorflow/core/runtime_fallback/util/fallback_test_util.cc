@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/util/fallback_test_util.h"
 
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_request_context.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
