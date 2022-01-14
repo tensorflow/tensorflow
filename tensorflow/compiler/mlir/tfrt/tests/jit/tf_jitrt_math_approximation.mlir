@@ -1,8 +1,8 @@
-// RUN: tf-tfrt-opt %s -tf-cpurt-math-approximation="oplist=all"               \
+// RUN: tf-tfrt-opt %s -tf-jitrt-math-approximation="oplist=all"               \
 // RUN: | FileCheck %s
-// RUN: tf-tfrt-opt %s -tf-cpurt-math-approximation="oplist=exp"               \
+// RUN: tf-tfrt-opt %s -tf-jitrt-math-approximation="oplist=exp"               \
 // RUN: | FileCheck --check-prefix=EXP %s
-// RUN: tf-tfrt-opt %s -tf-cpurt-math-approximation                            \
+// RUN: tf-tfrt-opt %s -tf-jitrt-math-approximation                            \
 // RUN: | FileCheck --check-prefix=NOOP %s
 
 // CHECK-LABEL: func @exp_scalar(

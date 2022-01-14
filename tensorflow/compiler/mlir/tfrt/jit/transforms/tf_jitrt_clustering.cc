@@ -67,7 +67,7 @@ using mlir::TF::TransposeOp;
 
 namespace {
 
-// A set of clustering constraints that allow TF -> CPURT compilation pipeline
+// A set of clustering constraints that allow TF -> JitRt compilation pipeline
 // to lower Tensorflow operations to MHLO and then to Linalg. Tensorflow
 // dynamism is not fully representable at Linalg level, so by providing a
 // clustering policy we ensure that we can successfully compile all clustered
@@ -78,8 +78,8 @@ namespace {
 // operations are completely removed from the IR, and some constraints just
 // enable TF->MHLO or MHLO->Linalg lowering.
 
-// Returns true if all types are supported by the Tensorflow -> CPURT
-// compilation pipeline and TFRT JIT runtime integration (see cpurt.h).
+// Returns true if all types are supported by the Tensorflow -> JitRt
+// compilation pipeline and TFRT JIT runtime integration (see jitrt.h).
 template <typename TypeRange>
 static bool IsSupportedDataTypes(TypeRange&& types) {
   return llvm::all_of(types, [](Type type) -> bool {
@@ -124,7 +124,7 @@ class TensorflowOpClusteringPolicy : public ClusteringPolicy {
 };
 
 // -------------------------------------------------------------------------- //
-// Default clustering policy for TF -> CPURT compilation.
+// Default clustering policy for TF -> JitRt compilation.
 // -------------------------------------------------------------------------- //
 
 // Default clustering policy for Tensorflow -> TFRT JIT compilation propagates
@@ -614,7 +614,7 @@ class ShapeOpClusteringPolicy : public TensorflowOpClusteringPolicy<ShapeOp> {
   LogicalResult MatchAndUpdateConstraints(
       ShapeOp op, const ValuesConstraintSet& results,
       ValuesConstraintSet& operands) const final {
-    // Unranked inputs aren't supported by CPURT.
+    // Unranked inputs aren't supported by JitRt.
     operands.Insert(op.input(), ValueConstraint::kRank);
 
     // Check constraint on the result value.
@@ -750,37 +750,37 @@ class StridedSliceOpClusteringPolicy
 
 }  // namespace
 
-void populateTfCpurtClusteringPolicies(ClusteringPolicySet& policies,
-                                       CpurtClusteringTier tier) {
-  // Returns true if the given cpurt compilation tier is enabled.
-  auto is_enabled = [&](CpurtClusteringTier requested) -> bool {
+void populateTfJitRtClusteringPolicies(ClusteringPolicySet& policies,
+                                       JitRtClusteringTier tier) {
+  // Returns true if the given jitrt compilation tier is enabled.
+  auto is_enabled = [&](JitRtClusteringTier requested) -> bool {
     return (static_cast<uint8_t>(tier) & static_cast<uint8_t>(requested)) ==
            static_cast<uint8_t>(requested);
   };
 
-  if (is_enabled(CpurtClusteringTier::kCwise)) {
+  if (is_enabled(JitRtClusteringTier::kCwise)) {
     policies.Add<CwiseBinaryOpClusteringPolicy,   //
                  CwiseUnaryOpClusteringPolicy,    //
                  CwiseTernaryOpClusteringPolicy,  //
                  StopGradientOpClusteringPolicy>();
   }
 
-  if (is_enabled(CpurtClusteringTier::kTranspose)) {
+  if (is_enabled(JitRtClusteringTier::kTranspose)) {
     policies.Add<TransposeOpClusteringPolicy>();
   }
 
-  if (is_enabled(CpurtClusteringTier::kReductions)) {
+  if (is_enabled(JitRtClusteringTier::kReductions)) {
     policies.Add<ReductionOpClusteringPolicy>();
   }
 
-  if (is_enabled(CpurtClusteringTier::kMetadata)) {
+  if (is_enabled(JitRtClusteringTier::kMetadata)) {
     policies.Add<ExpandDimsOpClusteringPolicy,  //
                  ReshapeOpClusteringPolicy,     //
                  ShapeOpClusteringPolicy,       //
                  SqueezeOpClusteringPolicy>();
   }
 
-  if (is_enabled(CpurtClusteringTier::kAll)) {
+  if (is_enabled(JitRtClusteringTier::kAll)) {
     policies.Add<BatchMatMulV2OpClusteringPolicy,  //
                  BroadcastToOpClusteringPolicy,    //
                  ConcatV2OpClusteringPolicy,       //
@@ -796,9 +796,9 @@ void populateTfCpurtClusteringPolicies(ClusteringPolicySet& policies,
   }
 }
 
-void populateTfCpurtConstraintsPolicies(ClusteringPolicySet& policies,
-                                        CpurtClusteringTier tier) {
-  populateTfCpurtClusteringPolicies(policies, tier);
+void populateTfJitRtConstraintsPolicies(ClusteringPolicySet& policies,
+                                        JitRtClusteringTier tier) {
+  populateTfJitRtClusteringPolicies(policies, tier);
   policies.Add<ConstOpClusteringPolicy>();
 }
 
@@ -834,7 +834,7 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
     // when vectorization is enabled it can lead to crashes.
     bool has_i1_integers = llvm::any_of(op->getOperandTypes(), IsI1Integer) ||
                            llvm::any_of(op->getResultTypes(), IsI1Integer);
-    if (has_i1_integers && tensorflow::GetCpuRtFlags().vectorize)
+    if (has_i1_integers && tensorflow::GetJitRtFlags().vectorize)
       return failure();
 
     // TODO(b/205905286): Unsigned integers support has a lot of gaps, and

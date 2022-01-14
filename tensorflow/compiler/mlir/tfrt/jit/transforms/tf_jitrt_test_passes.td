@@ -15,9 +15,9 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TestClustering : FunctionPass<"tf-cpurt-test-clustering"> {
+def TestClustering : FunctionPass<"tf-jitrt-test-clustering"> {
   let summary = "Creates `tf_device.cluster` operations according to the TF "
-                "CPURT clustering policy. Add value constraints remarks to the "
+                "JitRt clustering policy. Add value constraints remarks to the "
                 "function inputs inferred from the clustering policy.";
 
   let options = [
@@ -25,13 +25,13 @@ def TestClustering : FunctionPass<"tf-cpurt-test-clustering"> {
           "Do not form clusters smaller of the given size.">,
   ];
 
-  let constructor = "tensorflow::CreateTestTfCpurtClusteringPass()";
+  let constructor = "tensorflow::CreateTestTfJitRtClusteringPass()";
 
   let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 }
 
-def TestClusteringPolicy : FunctionPass<"tf-cpurt-test-clustering-policy"> {
+def TestClusteringPolicy : FunctionPass<"tf-jitrt-test-clustering-policy"> {
   let summary = "Annotates operations with clustering constraints inferred "
-                "from the TF CPURT clustering policies";
-  let constructor = "tensorflow::CreateTestTfCpurtClusteringPolicyPass()";
+                "from the TF JitRt clustering policies";
+  let constructor = "tensorflow::CreateTestTfJitRtClusteringPolicyPass()";
 }

@@ -150,8 +150,8 @@ struct MlirCommonFlags {
   bool tf_mlir_enable_convert_control_to_data_outputs_pass;
 };
 
-// Flags for the CpuRt pipeline -- see tf_cpurt_pipeline.h for details.
-struct CpuRtFlags {
+// Flags for the JitRt pipeline -- see tf_jitrt_pipeline.h for details.
+struct JitRtFlags {
   bool vectorize;
 };
 
@@ -174,7 +174,7 @@ MlirCommonFlags* GetMlirCommonFlags();
 
 void ResetJitCompilerFlags();
 
-const CpuRtFlags& GetCpuRtFlags();
+const JitRtFlags& GetJitRtFlags();
 
 // Returns the effective MLIR bridge rollout state based on the flags and the
 // optional configuration.

@@ -1,5 +1,5 @@
 // RUN: tf-tfrt-opt %s -split-input-file \
-// RUN:   -tf-cpurt-tile-reduction="reduction-2d-tile-sizes=4,4 reduction-vector-size=8 reduction-1d-tile-size=16" \
+// RUN:   -tf-jitrt-tile-reduction="reduction-2d-tile-sizes=4,4 reduction-vector-size=8 reduction-1d-tile-size=16" \
 // RUN: | FileCheck %s
 
 func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,

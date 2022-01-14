@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 
 #include <mutex>  // NOLINT
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/numbers.h"
@@ -35,8 +36,8 @@ XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
 IntroduceFloatingPointJitterPassFlags* jitter_flags;
 MlirCommonFlags* mlir_flags;
-CpuRtFlags* cpurt_flags;
-std::vector<Flag>* cpurt_flag_list;
+JitRtFlags* jitrt_flags;
+std::vector<Flag>* jitrt_flag_list;
 
 std::vector<Flag>* flag_list;
 absl::once_flag flags_init;
@@ -140,13 +141,13 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
-void AllocateAndParseCpurtFlags() {
-  cpurt_flags = new CpuRtFlags;
-  cpurt_flags->vectorize = false;
-  cpurt_flag_list = new std::vector<Flag>({
-      Flag("vectorize", &cpurt_flags->vectorize, ""),
+void AllocateAndParseJitRtFlags() {
+  jitrt_flags = new JitRtFlags;
+  jitrt_flags->vectorize = false;
+  jitrt_flag_list = new std::vector<Flag>({
+      Flag("vectorize", &jitrt_flags->vectorize, ""),
   });
-  xla::ParseFlagsFromEnvAndDieIfUnknown("TF_CPURT_FLAGS", *cpurt_flag_list);
+  xla::ParseFlagsFromEnvAndDieIfUnknown("TF_JITRT_FLAGS", *jitrt_flag_list);
 }
 
 void AllocateAndParseFlags() {
@@ -301,7 +302,7 @@ void AllocateAndParseFlags() {
         MlirDumpConfig::Dialect::kTFG));
   }
 
-  AllocateAndParseCpurtFlags();
+  AllocateAndParseJitRtFlags();
 }
 
 void ResetFlags() {
@@ -312,8 +313,8 @@ void ResetFlags() {
   delete jitter_flags;
   delete mlir_flags;
   delete flag_list;
-  delete cpurt_flags;
-  delete cpurt_flag_list;
+  delete jitrt_flags;
+  delete jitrt_flag_list;
   AllocateAndParseFlags();
 }
 
@@ -357,9 +358,9 @@ MlirCommonFlags* GetMlirCommonFlags() {
 
 void ResetJitCompilerFlags() { ResetFlags(); }
 
-const CpuRtFlags& GetCpuRtFlags() {
+const JitRtFlags& GetJitRtFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
-  return *cpurt_flags;
+  return *jitrt_flags;
 }
 
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(

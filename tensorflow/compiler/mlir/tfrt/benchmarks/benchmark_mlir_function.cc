@@ -88,10 +88,10 @@ static llvm::SmallVector<Tensor> GetInputTensors(
 }
 
 // -------------------------------------------------------------------------- //
-// Run function benchmark via the TF CPURT compilation.
+// Run function benchmark via the TF JitRt compilation.
 // -------------------------------------------------------------------------- //
 
-void RunCpurtBenchmark(::testing::benchmark::State& state,
+void RunJitRtBenchmark(::testing::benchmark::State& state,
                        llvm::StringRef mlir_input,
                        llvm::StringRef function_name,
                        llvm::ArrayRef<InputTensorSpec> input_specs,
@@ -104,11 +104,11 @@ void RunCpurtBenchmark(::testing::benchmark::State& state,
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
-  TfCpuRtPipelineOptions tf_cpurt_opts;
-  tf_cpurt_opts.vectorize = vectorize;
+  TfJitRtPipelineOptions tf_jitrt_opts;
+  tf_jitrt_opts.vectorize = vectorize;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
-                          /*lower_from_tensorflow=*/true, tf_cpurt_opts);
+                          /*lower_from_tensorflow=*/true, tf_jitrt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =

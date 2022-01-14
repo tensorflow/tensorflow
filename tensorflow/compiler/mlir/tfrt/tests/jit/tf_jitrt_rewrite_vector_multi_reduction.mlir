@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RUN: tf-tfrt-opt %s --tf-cpurt-rewrite-vector-multi-reduction \
+// RUN: tf-tfrt-opt %s --tf-jitrt-rewrite-vector-multi-reduction \
 // RUN: | FileCheck %s
 
 // CHECK-LABEL: func @vector_row

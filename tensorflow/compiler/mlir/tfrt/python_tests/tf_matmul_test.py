@@ -32,7 +32,7 @@ def matmul():
   }"""
 
 
-jitrt = tf_jitrt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 def verify_matmul(compiled, m, k, n):

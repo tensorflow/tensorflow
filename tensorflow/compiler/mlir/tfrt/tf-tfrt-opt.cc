@@ -36,9 +36,9 @@ int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::registerTensorFlowPasses();
 
-  // Register passes for TF->CPURT compilation.
-  registerTFCPURTPasses();
-  registerTFCPURTTestPasses();
+  // Register passes for TF->JitRt compilation.
+  registerTfJitRtPasses();
+  registerTfJitRtTestPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::mhlo::MhloDialect>();
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
-  registry.insert<mlir::tf_cpurt::CpuRuntimeDialect>();
+  registry.insert<mlir::tf_jitrt::JitRuntimeDialect>();
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
   tensorflow::RegisterTPUDialects(&registry);

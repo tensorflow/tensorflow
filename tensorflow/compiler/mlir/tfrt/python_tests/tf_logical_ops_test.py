@@ -35,7 +35,7 @@ def logical_op_1d(op_name):
   }}"""
 
 
-jitrt = tf_jitrt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 def test_logical_op(mlir_blob, reference_fn, rank):

@@ -31,12 +31,12 @@ namespace tensorflow {
 // PyBind integration to compile and execute tf_jitrt MLIR modules. The only
 // intended use case is testing tests for tf_jitrt in python, as an alternative
 // of writing them directly in MLIR and executing with bef_executor.
-class TfCpurtExecutor {
+class TfJitRtExecutor {
  public:
   using Handle = int64_t;
   using Specialization = tfrt::jitrt::CompilationOptions::Specialization;
 
-  TfCpurtExecutor();
+  TfJitRtExecutor();
 
   // Compiles mlir module and caches it. Returns a handle, that can be passed to
   // execute function.
@@ -51,7 +51,7 @@ class TfCpurtExecutor {
 
   // Returns true if the binary was built with the given CPU feature.
   // The list of supported CPU features is purposedly incomplete; we
-  // will only add features if CPURT relies on them.
+  // will only add features if JitRt relies on them.
   bool BuiltWith(const std::string& cpu_feature);
 
  private:

@@ -42,7 +42,7 @@ def acos_2d():
   }"""
 
 
-jitrt = tf_jitrt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 def test_acos(fn, rank):

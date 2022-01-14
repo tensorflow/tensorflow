@@ -60,7 +60,7 @@ using ::tfrt::jitrt::ReturnValueConverter;
 
 namespace tensorflow {
 
-TfCpurtExecutor::TfCpurtExecutor()
+TfJitRtExecutor::TfJitRtExecutor()
     : host_context_(
           [](const DecodedDiagnostic& diag) {
             llvm::errs() << "Encountered runtime error: " << diag.message
@@ -68,7 +68,7 @@ TfCpurtExecutor::TfCpurtExecutor()
           },
           CreateMallocAllocator(), CreateMultiThreadedWorkQueue(4, 4)) {}
 
-TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
+TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
                                                  const std::string& entrypoint,
                                                  Specialization specialization,
                                                  bool vectorize,
@@ -84,10 +84,10 @@ TfCpurtExecutor::Handle TfCpurtExecutor::Compile(const std::string& mlir_module,
     mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
   };
   opts.register_pass_pipeline = [=](mlir::OpPassManager& pm) {
-    tensorflow::TfCpuRtPipelineOptions opts;
+    tensorflow::TfJitRtPipelineOptions opts;
     opts.vectorize = vectorize;
     opts.legalize_i1_tensors = legalize_i1_tensors;
-    tensorflow::CreateTfCpuRtPipeline(pm, opts);
+    tensorflow::CreateTfJitRtPipeline(pm, opts);
   };
   opts.specialization = specialization;
   opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
@@ -243,7 +243,7 @@ static bool IsAligned(const T* ptr) {
 }
 
 // Converts StridedMemrefType to the Python array. This struct satisfies
-// ReturnStridedMemref's concept (see cpurt.h).
+// ReturnStridedMemref's concept (see jitrt.h).
 //
 // TODO(ezhulenev): Currently this converter transfers ownership of the memref
 // to the Python array. This is not correct in general, because memref does not
@@ -275,7 +275,7 @@ struct MemrefToPyArray {
   }
 };
 
-std::vector<py::array> TfCpurtExecutor::Execute(
+std::vector<py::array> TfJitRtExecutor::Execute(
     Handle handle, const std::vector<py::array>& arguments) {
   // Verify that we have a compilatio result for the handle.
   auto it = jit_executables_.find(handle);
@@ -336,7 +336,7 @@ std::vector<py::array> TfCpurtExecutor::Execute(
   return ret_values;
 }
 
-bool TfCpurtExecutor::BuiltWith(const std::string& cpu_feature) {
+bool TfJitRtExecutor::BuiltWith(const std::string& cpu_feature) {
   if (cpu_feature == "AVX2") {
 #ifdef __AVX2__
     return true;
@@ -350,19 +350,19 @@ bool TfCpurtExecutor::BuiltWith(const std::string& cpu_feature) {
 }  // namespace tensorflow
 
 PYBIND11_MODULE(_tf_jitrt_executor, m) {
-  py::enum_<tensorflow::TfCpurtExecutor::Specialization>(m, "Specialization")
-      .value("ENABLED", tensorflow::TfCpurtExecutor::Specialization::kEnabled)
-      .value("DISABLED", tensorflow::TfCpurtExecutor::Specialization::kDisabled)
-      .value("ALWAYS", tensorflow::TfCpurtExecutor::Specialization::kAlways);
+  py::enum_<tensorflow::TfJitRtExecutor::Specialization>(m, "Specialization")
+      .value("ENABLED", tensorflow::TfJitRtExecutor::Specialization::kEnabled)
+      .value("DISABLED", tensorflow::TfJitRtExecutor::Specialization::kDisabled)
+      .value("ALWAYS", tensorflow::TfJitRtExecutor::Specialization::kAlways);
 
-  py::class_<tensorflow::TfCpurtExecutor>(m, "TfCpurtExecutor")
+  py::class_<tensorflow::TfJitRtExecutor>(m, "TfJitRtExecutor")
       .def(py::init<>())
-      .def("compile", &tensorflow::TfCpurtExecutor::Compile,
+      .def("compile", &tensorflow::TfJitRtExecutor::Compile,
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
-               tensorflow::TfCpurtExecutor::Specialization::kEnabled,
+               tensorflow::TfJitRtExecutor::Specialization::kEnabled,
            py::arg("vectorize") = false, py::arg("legalize_i1_tensors") = false)
-      .def("execute", &tensorflow::TfCpurtExecutor::Execute)
-      .def("built_with", &tensorflow::TfCpurtExecutor::BuiltWith,
+      .def("execute", &tensorflow::TfJitRtExecutor::Execute)
+      .def("built_with", &tensorflow::TfJitRtExecutor::BuiltWith,
            py::arg("cpu_feature"));
 }

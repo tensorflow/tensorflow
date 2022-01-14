@@ -27,7 +27,7 @@ namespace tensorflow {
 // Tier 1 operations are simple enough and well tested, so they can be safely
 // enabled for all models. We'll be introducing new tiers based on the
 // completeness of lowering and testing, and eventually will remove this flag.
-enum class CpurtClusteringTier : uint8_t {
+enum class JitRtClusteringTier : uint8_t {
   kCwise = 0x1,
   kTranspose = 0x2,
   kMetadata = 0x4,    // shape, reshape, ...
@@ -52,18 +52,18 @@ enum class CpurtClusteringTier : uint8_t {
   kAll = 0xff
 };
 
-// Adds policies for clustering operations for TF->CPURT JIT compilation.
-void populateTfCpurtClusteringPolicies(
+// Adds policies for clustering operations for TF->JitRt JIT compilation.
+void populateTfJitRtClusteringPolicies(
     mlir::TFDevice::ClusteringPolicySet& policies,
-    CpurtClusteringTier tier = CpurtClusteringTier::kAll);
+    JitRtClusteringTier tier = JitRtClusteringTier::kAll);
 
 // Adds policies for propagating constraints through Tensorflow operations. We
 // do not add `tf.Const` operations to the clusters, however before compilation
 // we sink some of them into the cluster body, and to properly verify compiled
 // function body and infer operands constraints we need a policy for constants.
-void populateTfCpurtConstraintsPolicies(
+void populateTfJitRtConstraintsPolicies(
     mlir::TFDevice::ClusteringPolicySet& policies,
-    CpurtClusteringTier tier = CpurtClusteringTier::kAll);
+    JitRtClusteringTier tier = JitRtClusteringTier::kAll);
 
 // Returns success if constant value can be sunk into the compiled function. We
 // currently only support small integer constants that typically correspond to
@@ -74,7 +74,7 @@ void populateTfCpurtConstraintsPolicies(
 // compiled regions, and rely on the runtime to instantiate them as tensors.
 mlir::LogicalResult IsCompilableConstant(mlir::ElementsAttr value);
 
-// Verifies that discovered operations cluster satisfies TF->CPURT JIT
+// Verifies that discovered operations cluster satisfies TF->JitRt JIT
 // compilation constraints.
 mlir::LogicalResult VerifyCluster(const mlir::TFDevice::Cluster& cluster);
 

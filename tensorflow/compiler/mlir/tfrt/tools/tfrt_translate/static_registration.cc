@@ -25,13 +25,13 @@ static mlir::TranslateFromMLIRRegistration mlir_to_bef_registration(
     [](mlir::DialectRegistry &registry) {
       tfrt::RegisterTFRTDialects(registry);
       tfrt::RegisterTFRTCompiledDialects(registry);
-      tensorflow::RegisterTfCpurtDialect(registry);
+      tensorflow::RegisterTfJitRtDialect(registry);
     });
 
 static mlir::TranslateToMLIRRegistration bef_to_mlir_registration(
     "bef-to-mlir", [](llvm::SourceMgr &source_mgr, mlir::MLIRContext *context) {
       mlir::DialectRegistry registry;
-      tensorflow::RegisterTfCpurtDialect(registry);
+      tensorflow::RegisterTfJitRtDialect(registry);
       context->appendDialectRegistry(registry);
       return tfrt::BEFToMLIRTranslate(source_mgr, context);
     });

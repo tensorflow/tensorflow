@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "llvm/ADT/STLExtras.h"
@@ -41,7 +42,7 @@ using mlir::TFDevice::CreateClusterOp;
 using mlir::TFDevice::FindClustersInTheBlock;
 
 // -------------------------------------------------------------------------- //
-// Cluster operations based on the TF CPURT clustering policy.
+// Cluster operations based on the TF JitRt clustering policy.
 // -------------------------------------------------------------------------- //
 struct ClusteringPass : public ClusteringBase<ClusteringPass> {
   ClusteringPass() = default;
@@ -55,19 +56,19 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
     // Parse clustering tier and operations filter from the oplist.
     llvm::DenseSet<llvm::StringRef> opset;
-    llvm::Optional<CpurtClusteringTier> tier;
+    llvm::Optional<JitRtClusteringTier> tier;
 
     for (const auto& op : oplist) {
       if (op == "tier0") {
-        tier = CpurtClusteringTier::kTier0;
+        tier = JitRtClusteringTier::kTier0;
       } else if (op == "tier1") {
-        tier = CpurtClusteringTier::kTier1;
+        tier = JitRtClusteringTier::kTier1;
       } else if (op == "tier1metadata") {
-        tier = CpurtClusteringTier::kTier1Metadata;
+        tier = JitRtClusteringTier::kTier1Metadata;
       } else if (op == "tier1reductions") {
-        tier = CpurtClusteringTier::kTier1Reductions;
+        tier = JitRtClusteringTier::kTier1Reductions;
       } else if (op == "all") {
-        tier = CpurtClusteringTier::kAll;
+        tier = JitRtClusteringTier::kAll;
       } else {
         opset.insert(op);
       }
@@ -79,8 +80,8 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
     // If the clustering tier is not defined, it means that the opset will later
     // filter supported operations, so it's ok to use `all` tier.
-    populateTfCpurtClusteringPolicies(
-        policies, tier.getValueOr(CpurtClusteringTier::kAll));
+    populateTfJitRtClusteringPolicies(
+        policies, tier.getValueOr(JitRtClusteringTier::kAll));
 
     // If opset is not empty restrict operations that are enabled for
     // clustering.
@@ -152,11 +153,11 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass() {
+std::unique_ptr<mlir::FunctionPass> CreateTfJitRtClusteringPass() {
   return std::make_unique<ClusteringPass>();
 }
 
-std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass(
+std::unique_ptr<mlir::FunctionPass> CreateTfJitRtClusteringPass(
     llvm::ArrayRef<std::string> oplist, int min_cluster_size) {
   return std::make_unique<ClusteringPass>(oplist, min_cluster_size);
 }

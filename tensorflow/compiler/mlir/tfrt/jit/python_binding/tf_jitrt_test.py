@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf_cpurt python binding."""
+"""Tests for tf_jitrt python binding."""
 
 import numpy as np
 
@@ -28,10 +28,10 @@ def log_1d():
   }"""
 
 
-jitrt = tf_jitrt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
-class TfCpurtTest(googletest.TestCase):
+class TfJitRtTest(googletest.TestCase):
 
   def test_log_1d(self):
     compiled = jitrt.compile(log_1d(), "log_1d")

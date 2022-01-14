@@ -19,8 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-void RegisterTfCpurtDialect(mlir::DialectRegistry &registry) {
-  registry.insert<mlir::tf_cpurt::CpuRuntimeDialect>();
+void RegisterTfJitRtDialect(mlir::DialectRegistry &registry) {
+  registry.insert<mlir::tf_jitrt::JitRuntimeDialect>();
 }
 
 }  // namespace tensorflow

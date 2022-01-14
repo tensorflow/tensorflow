@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -split-input-file -tf-outline-cpurt-cluster %s             \
+// RUN: tf-tfrt-opt -split-input-file -tf-outline-jitrt-cluster %s             \
 // RUN: | FileCheck %s
 
 // -----

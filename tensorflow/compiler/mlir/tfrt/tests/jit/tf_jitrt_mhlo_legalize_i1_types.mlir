@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt %s -tf-cpurt-legalize-i1-types -split-input-file | FileCheck %s
+// RUN: tf-tfrt-opt %s -tf-jitrt-legalize-i1-types -split-input-file | FileCheck %s
 
 func @func_op(%arg0: tensor<?x?xi1>) -> tensor<?x?xi1> {
   return %arg0 : tensor<?x?xi1>

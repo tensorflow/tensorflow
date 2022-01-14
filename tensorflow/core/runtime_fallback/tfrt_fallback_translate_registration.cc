@@ -28,5 +28,5 @@ static mlir::TranslateFromMLIRRegistration registration(
       tfrt::RegisterTFRTDialects(registry);
       tfrt::RegisterTFRTCompiledDialects(registry);
       tensorflow::tfd::RegisterTfrtFallbackDialect(registry);
-      tensorflow::RegisterTfCpurtDialect(registry);
+      tensorflow::RegisterTfJitRtDialect(registry);
     });

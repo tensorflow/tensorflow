@@ -1,5 +1,5 @@
 // RUN: tf-tfrt-opt %s                                                         \
-// RUN:   -tf-cpurt-clustering="oplist=tf.Add,tf.Sub,tf.Neg min-cluster-size=2"\
+// RUN:   -tf-jitrt-clustering="oplist=tf.Add,tf.Sub,tf.Neg min-cluster-size=2"\
 // RUN: | FileCheck %s
 
 // CHECK-LABEL: func @single_cluster_one_result

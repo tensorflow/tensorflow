@@ -42,7 +42,7 @@ def log1p_2d():
   }"""
 
 
-jitrt = tf_jitrt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 def test_log1p(fn, rank):

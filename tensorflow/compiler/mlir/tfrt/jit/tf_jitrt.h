@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_H_
 
 #include <utility>
 
@@ -48,7 +48,7 @@ class MemrefTensorBuffer : public TensorBuffer {
 
   void FillAllocationDescription(AllocationDescription* proto) const override {
     proto->set_requested_bytes(size());
-    proto->set_allocator_name("tf_cpurt");
+    proto->set_allocator_name("tf_jitrt");
   }
 
   size_t size() const override { return size_; }
@@ -104,7 +104,7 @@ inline bool IsStaticStorageDuration(StridedMemRefType<T, rank>* memref) {
 }  // namespace internal
 
 // Converts StridedMemrefType to the Tensor. This struct satisfies
-// ReturnStridedMemref's concept (see cpurt.h).
+// ReturnStridedMemref's concept (see jitrt.h).
 struct ConvertTensor {
   using ResultType = tfrt_stub::FallbackTensor;
   using ConversionContext = TensorflowConversionContext;
@@ -187,4 +187,4 @@ struct ConvertTensor {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_H_

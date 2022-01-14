@@ -187,8 +187,8 @@ static void populateI1TypeConversionPatterns(
                                                           type_converter);
 }
 
-struct CpuRtLegalizeI1TypesPass
-    : public CpuRtLegalizeI1TypesBase<CpuRtLegalizeI1TypesPass> {
+struct JitRtLegalizeI1TypesPass
+    : public JitRtLegalizeI1TypesBase<JitRtLegalizeI1TypesPass> {
   void runOnOperation() override {
     MLIRContext &context = getContext();
     I1TypeConverter type_converter;
@@ -231,8 +231,8 @@ struct CpuRtLegalizeI1TypesPass
 };
 
 std::unique_ptr<OperationPass<mlir::ModuleOp>>
-CreateCpuRtLegalizeI1TypesPass() {
-  return std::make_unique<CpuRtLegalizeI1TypesPass>();
+CreateJitRtLegalizeI1TypesPass() {
+  return std::make_unique<JitRtLegalizeI1TypesPass>();
 }
 
 }  // namespace tensorflow

@@ -84,7 +84,7 @@ static llvm::SmallVector<InputTensorSpec> Inputs13() {
   };
 }
 
-BM_Cpurt(Compute13, mlir_input13, "compute", Inputs13())->Arg(0);
+BM_Jitrt(Compute13, mlir_input13, "compute", Inputs13())->Arg(0);
 
 static const char* const mlir_fresh0 = R"(
   func @compute(%arg0: tensor<i64>) -> tensor<i64> {
@@ -122,7 +122,7 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh0() {
 
 #define BM(FN) BM_##FN->Arg(0)->Arg(4)->Arg(8);
 
-BM(Cpurt(Fresh0, mlir_fresh0, "compute", InputsFresh0()));
+BM(Jitrt(Fresh0, mlir_fresh0, "compute", InputsFresh0()));
 BM(Tfrt(Fresh0, mlir_fresh0, "compute", InputsFresh0()));
 
 static const char* const mlir_fresh1 = R"(
@@ -154,8 +154,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh1() {
   };
 }
 
-BM(Cpurt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
-BM(CpurtV(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
+BM(Jitrt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
+BM(JitrtV(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
 BM(Tfrt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
 
 static const char* const mlir_fresh2 = R"(
@@ -200,8 +200,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh2() {
   };
 }
 
-BM(Cpurt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
-BM(CpurtV(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
+BM(Jitrt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
+BM(JitrtV(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 BM(Tfrt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 
 static const char* const mlir_factorized0 = R"(
@@ -255,8 +255,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFactorized0() {
   };
 }
 
-BM(Cpurt(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
-BM(CpurtV(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
+BM(Jitrt(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
+BM(JitrtV(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
 BM(Tfrt(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
 
 static const char* const mlir_factorized1 = R"(
@@ -280,8 +280,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFactorized1() {
   };
 }
 
-BM(Cpurt(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
-BM(CpurtV(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
+BM(Jitrt(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
+BM(JitrtV(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
 BM(Tfrt(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
 
 static const char* const mlir_factorized2 = R"(
@@ -305,8 +305,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFactorized2() {
   };
 }
 
-BM(Cpurt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
-BM(CpurtV(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
+BM(Jitrt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
+BM(JitrtV(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
 BM(Tfrt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
 
 static const char* const mlir_factorized3 = R"(
@@ -348,8 +348,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFactorized3() {
   };
 }
 
-BM(Cpurt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
-BM(CpurtV(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
+BM(Jitrt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
+BM(JitrtV(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
 BM(Tfrt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
 
 static const char* const mlir_factorized4 = R"(
@@ -382,8 +382,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFactorized4() {
   };
 }
 
-BM(Cpurt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
-BM(CpurtV(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
+BM(Jitrt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
+BM(JitrtV(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
 BM(Tfrt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
 
 }  // namespace

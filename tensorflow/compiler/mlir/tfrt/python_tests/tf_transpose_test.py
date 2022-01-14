@@ -25,7 +25,7 @@ specializations = [
     tf_jitrt.Specialization.ALWAYS,
 ]
 
-jitrt = tf_jitrt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 class TfTransposeTest(test.TestCase):

@@ -60,7 +60,7 @@ struct AddTensorflowProducerVersion
 
 // Adds Linalg passes to perform fusion, tiling, peeling and vectorization.
 void AddLinalgTransformations(OpPassManager& pm,
-                              const TfCpuRtPipelineOptions& options) {
+                              const TfJitRtPipelineOptions& options) {
   pm.addNestedPass<FuncOp>(CreateFusionPass());
 
   if (!options.vectorize) return;
@@ -95,11 +95,11 @@ void AddLinalgTransformations(OpPassManager& pm,
 }  // namespace
 
 // -------------------------------------------------------------------------- //
-// Assemble a TF-CPURT pipeline to lower from Tensorflow dialects to Linalg on
+// Assemble a TF JitRt pipeline to lower from Tensorflow dialects to Linalg on
 // buffers via progressive lowering to MHLO and Linalg.
 // -------------------------------------------------------------------------- //
-void CreateTfCpuRtPipeline(OpPassManager& pm,
-                           const TfCpuRtPipelineOptions& options) {
+void CreateTfJitRtPipeline(OpPassManager& pm,
+                           const TfJitRtPipelineOptions& options) {
   // Break Tensorflow fused operations into primitive operations before
   // lowering to HLO.
   pm.addNestedPass<FuncOp>(CreateFissionPass());
@@ -114,7 +114,7 @@ void CreateTfCpuRtPipeline(OpPassManager& pm,
 
   if (options.legalize_i1_tensors) {
     // Convert 'i1' tensors into 'i8' tensors.
-    pm.addPass(CreateCpuRtLegalizeI1TypesPass());
+    pm.addPass(CreateJitRtLegalizeI1TypesPass());
   }
 
   // Resolve all shape constraints (e.g. broadcast constraints that can be
@@ -208,15 +208,15 @@ void CreateTfCpuRtPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(CreateMathApproximationPass({"all"}));
 }
 
-void CreateDefaultTfCpuRtPipeline(OpPassManager& pm) {
-  TfCpuRtPipelineOptions options;
-  options.vectorize = tensorflow::GetCpuRtFlags().vectorize;
-  CreateTfCpuRtPipeline(pm, options);
+void CreateDefaultTfJitRtPipeline(OpPassManager& pm) {
+  TfJitRtPipelineOptions options;
+  options.vectorize = tensorflow::GetJitRtFlags().vectorize;
+  CreateTfJitRtPipeline(pm, options);
 }
 
-static mlir::PassPipelineRegistration<TfCpuRtPipelineOptions> tf_jitrt_pipeline(
-    "tf-cpurt-pipeline",
-    "Convert Tensorflow dialect to TFRT's CPURT compatible dialects",
-    CreateTfCpuRtPipeline);
+static mlir::PassPipelineRegistration<TfJitRtPipelineOptions> tf_jitrt_pipeline(
+    "tf-jitrt-pipeline",
+    "Convert Tensorflow dialect to TFRT's JitRt compatible dialects",
+    CreateTfJitRtPipeline);
 
 }  // namespace tensorflow

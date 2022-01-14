@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_PASSES_H_
 
 #include <memory>
 #include <string>
@@ -51,7 +51,7 @@ std::unique_ptr<mlir::FunctionPass> CreateFuseFillIntoTiledReductionPass();
 // temporary workaround to avoid the problem of vectorizing 'i1' tensors (see
 // b/205714705).
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateCpuRtLegalizeI1TypesPass();
+CreateJitRtLegalizeI1TypesPass();
 
 // Pass to vectorize linalg ops.
 std::unique_ptr<mlir::FunctionPass> CreateVectorizeTiledOpsPass();
@@ -77,10 +77,10 @@ std::unique_ptr<mlir::FunctionPass> CreateSymbolicShapeOptimizationPass(
 // Pass to replace 0-d tensor inputs to LinalgOp with extracted elements.
 std::unique_ptr<mlir::FunctionPass> CreateDetensorizeLinalgPass();
 
-// Creates `tf_device.cluster` operations according to the TF CPURT clustering
+// Creates `tf_device.cluster` operations according to the TF JitRt clustering
 // policy.
-std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass();
-std::unique_ptr<mlir::FunctionPass> CreateTfCpurtClusteringPass(
+std::unique_ptr<mlir::FunctionPass> CreateTfJitRtClusteringPass();
+std::unique_ptr<mlir::FunctionPass> CreateTfJitRtClusteringPass(
     llvm::ArrayRef<std::string> oplist, int min_cluster_size);
 
 // Pass to replace math ops with approximations.
@@ -100,4 +100,4 @@ mlir::FailureOr<mlir::Operation *> DetectCombiner(
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_PASSES_H_

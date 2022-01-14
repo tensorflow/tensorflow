@@ -30,20 +30,20 @@ limitations under the License.
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 
 namespace mlir {
-namespace tf_cpurt {
+namespace tf_jitrt {
 
 //===----------------------------------------------------------------------===//
-// CpuRuntimeDialect Interfaces
+// JitRuntimeDialect Interfaces
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Operations in the `tf_cpurt` dialect are always safe to inline because they
+// Operations in the `tf_jitrt` dialect are always safe to inline because they
 // are pure compute operations.
 struct CpuRuntimeInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
   bool isLegalToInline(Operation*, Operation*, bool) const final {
-    assert(false && "tf_cpurt doesn't have callable operations");
+    assert(false && "tf_jitrt doesn't have callable operations");
     return true;
   }
 
@@ -60,12 +60,12 @@ struct CpuRuntimeInlinerInterface : public DialectInlinerInterface {
 }  // namespace
 
 //===----------------------------------------------------------------------===//
-// CpuRuntimeDialect Dialect
+// JitRuntimeDialect Dialect
 //===----------------------------------------------------------------------===//
 
-CpuRuntimeDialect::CpuRuntimeDialect(mlir::MLIRContext* context)
-    : Dialect(/*name*/ "tf_cpurt", context,
-              mlir::TypeID::get<CpuRuntimeDialect>()) {
+JitRuntimeDialect::JitRuntimeDialect(mlir::MLIRContext* context)
+    : Dialect(/*name*/ "tf_jitrt", context,
+              mlir::TypeID::get<JitRuntimeDialect>()) {
   addInterfaces<CpuRuntimeInlinerInterface>();
   addOperations<
 #define GET_OP_LIST
@@ -136,7 +136,7 @@ int64_t FallbackExecuteOp::cost() {
   return std::max<int64_t>(1, cost);
 }
 
-}  // namespace tf_cpurt
+}  // namespace tf_jitrt
 }  // end namespace mlir
 
 #define GET_OP_CLASSES

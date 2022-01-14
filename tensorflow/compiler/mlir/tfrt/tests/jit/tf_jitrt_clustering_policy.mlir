@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -verify-diagnostics -tf-cpurt-test-clustering-policy %s    \
+// RUN: tf-tfrt-opt -verify-diagnostics -tf-jitrt-test-clustering-policy %s    \
 // RUN:   | FileCheck %s
 
 // -------------------------------------------------------------------------- //

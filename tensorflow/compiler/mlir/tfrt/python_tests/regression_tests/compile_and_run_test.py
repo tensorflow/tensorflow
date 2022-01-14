@@ -36,7 +36,7 @@ flags.DEFINE_string(
 flags.DEFINE_boolean('vectorize', None,
                      'Whether vectorization should be enabled')
 
-jitrt = tf_jitrt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 _STATIC_TYPE_ATTRIBUTE_NAME = 'python_test_attrs.static_type'

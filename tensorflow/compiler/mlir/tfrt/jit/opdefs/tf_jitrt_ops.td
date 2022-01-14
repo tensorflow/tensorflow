@@ -29,17 +29,17 @@ include "tfrt_fallback.td"
 // Tensorflow/JitRT Runtime dialect definitions
 //===----------------------------------------------------------------------===//
 
-def TF_CPURT_Dialect : Dialect {
-  let name = "tf_cpurt";
+def TF_JITRT_Dialect : Dialect {
+  let name = "tf_jitrt";
 
   let description = [{
     The Tensorflow JIT CPU runtime dialect.
 
     This dialect contains Tensorflow specific operations to support JIT
-    compilation and exection built on top of TFRT CPURT.
+    compilation and exection built on top of TFRT JitRt.
   }];
 
-  let cppNamespace = "::mlir::tf_cpurt";
+  let cppNamespace = "::mlir::tf_jitrt";
 
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
@@ -48,16 +48,16 @@ def TF_CPURT_Dialect : Dialect {
 // TF CPU Runtime op definitions
 //===----------------------------------------------------------------------===//
 
-class TF_CPURT_Op<string mnemonic, list<OpTrait> traits = []> :
-      Op<TF_CPURT_Dialect, mnemonic, traits> {
+class TF_JITRT_Op<string mnemonic, list<OpTrait> traits = []> :
+      Op<TF_JITRT_Dialect, mnemonic, traits> {
 }
 
-def FallbackCompileOp : TF_CPURT_Op<"fallback.compile",
+def FallbackCompileOp : TF_JITRT_Op<"fallback.compile",
     [TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
   let summary = "compiles kernel at runtime using LLVM JIT compiler";
   let description = [{
-    `tf_cpurt.fallback.compile` schedules the compilation of a Tensorflow
-    program defined by the kernel function in the nested module to the CPURT JIT
+    `tf_jitrt.fallback.compile` schedules the compilation of a Tensorflow
+    program defined by the kernel function in the nested module to the JitRt JIT
     executable using LLVM JIT APIs and caches it in the JitExecutableCache owned
     by the resource context.
 
@@ -83,12 +83,12 @@ def FallbackCompileOp : TF_CPURT_Op<"fallback.compile",
   }];
 }
 
-def FallbackExecuteOp : TF_CPURT_Op<"fallback.execute",
+def FallbackExecuteOp : TF_JITRT_Op<"fallback.execute",
     [NoSideEffect, DeclareOpInterfaceMethods<TFRT_CostFunctionInterface>]> {
-  let summary = "cpurt execute operation with a fallback runtime interop";
+  let summary = "jitrt execute operation with a fallback runtime interop";
   let description = [{
-    `tf_cpurt.fallback.execute` compiles a Tensorflow program defined by the
-    kernel function in the nested module to the CPURT JIT executable using
+    `tf_jitrt.fallback.execute` compiles a Tensorflow program defined by the
+    kernel function in the nested module to the JitRt JIT executable using
     LLVM JIT APIs and calls it with provided fallback tensors operands, and
     returns back a fallback tensor for each result.
 
@@ -109,7 +109,7 @@ def FallbackExecuteOp : TF_CPURT_Op<"fallback.execute",
 
       %operand = ... : !tfrt_fallback.tf_tensor
 
-      %result = tf_cpurt.fallback.execute @kernel::@main (%operand)
+      %result = tf_jitrt.fallback.execute @kernel::@main (%operand)
                                            device("/CPU:0")
                   : (!tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor
     ```
@@ -131,11 +131,11 @@ def FallbackExecuteOp : TF_CPURT_Op<"fallback.execute",
   }];
 }
 
-def FallbackDebugExecuteOp : TF_CPURT_Op<"fallback.debug.execute"> {
-  let summary = "cpurt debug-execute operation with a fallback runtime interop";
+def FallbackDebugExecuteOp : TF_JITRT_Op<"fallback.debug.execute"> {
+  let summary = "jitrt debug-execute operation with a fallback runtime interop";
   let description = [{
-    Same as `tf_cpurt.fallback.execute`, except that this kernel allows to pass
-    compilation options to the tf-cpurt-pipeline and optionally print
+    Same as `tf_jitrt.fallback.execute`, except that this kernel allows to pass
+    compilation options to the tf-jitrt-pipeline and optionally print
     specialization-related debug information to standard output.
   }];
 
@@ -147,10 +147,10 @@ def FallbackDebugExecuteOp : TF_CPURT_Op<"fallback.debug.execute"> {
     // operands shapes or values.
     BoolAttr:$debug_specializations,
     // Compiler options for lowering from Tensorflow dialect to the dialects
-    // supported by the CPURT (see the `tf-cpurt-pipeline` options).
+    // supported by the JitRt (see the `tf-jitrt-pipeline` options).
     BoolAttr:$vectorize,
     // Compiler options for lowering from Tensorflow dialect to the dialects
-    // supported by the CPURT (see the `tf-cpurt-pipeline` options).
+    // supported by the JitRt (see the `tf-jitrt-pipeline` options).
     BoolAttr:$legalize_i1_tensors
   );
 

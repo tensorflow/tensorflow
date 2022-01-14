@@ -24,7 +24,7 @@ from tensorflow import math
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
-jitrt = tf_jitrt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('iters', '1000', 'Number of test iterations')

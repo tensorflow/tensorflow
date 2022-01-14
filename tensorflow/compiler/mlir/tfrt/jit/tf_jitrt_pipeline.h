@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_PIPELINE_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_PIPELINE_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_PIPELINE_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_PIPELINE_H_
 
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
@@ -22,8 +22,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct TfCpuRtPipelineOptions
-    : public mlir::PassPipelineOptions<TfCpuRtPipelineOptions> {
+struct TfJitRtPipelineOptions
+    : public mlir::PassPipelineOptions<TfJitRtPipelineOptions> {
   Option<bool> vectorize{*this, "vectorize",
                          llvm::cl::desc("Enable tiling for vectorization."),
                          llvm::cl::init(false)};
@@ -55,20 +55,20 @@ struct TfCpuRtPipelineOptions
       llvm::cl::init(false)};
 };
 
-// Make TfCpuRtPipelineOptions hashable.
-inline ::llvm::hash_code hash_value(const TfCpuRtPipelineOptions& opts) {
+// Make TfJitRtPipelineOptions hashable.
+inline ::llvm::hash_code hash_value(const TfJitRtPipelineOptions& opts) {
   return ::llvm::hash_value(static_cast<bool>(opts.vectorize));
 }
 
 // Creates a pipeline that lowers modules from the Tensorflow dialect to
-// the Linalg on buffers. `TfCpuRtPipelineOptions` contains flags to
+// the Linalg on buffers. `TfJitRtPipelineOptions` contains flags to
 // enable/disable experimental features.
-void CreateTfCpuRtPipeline(mlir::OpPassManager& pm,
-                           const TfCpuRtPipelineOptions& options);
+void CreateTfJitRtPipeline(mlir::OpPassManager& pm,
+                           const TfJitRtPipelineOptions& options);
 
-// Calls CreateTfCpuRtPipeline with the default TfCpuRtPipelineOptions.
-void CreateDefaultTfCpuRtPipeline(mlir::OpPassManager& pm);
+// Calls CreateTfJitRtPipeline with the default TfJitRtPipelineOptions.
+void CreateDefaultTfJitRtPipeline(mlir::OpPassManager& pm);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_PIPELINE_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_PIPELINE_H_

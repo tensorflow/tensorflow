@@ -38,12 +38,12 @@ using mlir::TFDevice::FindClustersInTheBlock;
 using mlir::TFDevice::ValuesConstraintSet;
 
 // -------------------------------------------------------------------------- //
-// Cluster operations based on the TF CPURT clustering policy.
+// Cluster operations based on the TF JitRt clustering policy.
 // -------------------------------------------------------------------------- //
 struct TestClusteringPass : public TestClusteringBase<TestClusteringPass> {
   void runOnFunction() override {
     ClusteringPolicySet policies;
-    populateTfCpurtClusteringPolicies(policies);
+    populateTfJitRtClusteringPolicies(policies);
 
     getFunction().walk([&](mlir::Block* block) {
       for (Cluster& cluster : FindClustersInTheBlock(block, policies)) {
@@ -60,7 +60,7 @@ struct TestClusteringPass : public TestClusteringBase<TestClusteringPass> {
 };
 
 // -------------------------------------------------------------------------- //
-// Test TF CPURT clustering policy by annotating ops with constraints.
+// Test TF JitRt clustering policy by annotating ops with constraints.
 // -------------------------------------------------------------------------- //
 struct TestClusteringPolicyPass
     : public TestClusteringPolicyBase<TestClusteringPolicyPass> {
@@ -69,7 +69,7 @@ struct TestClusteringPolicyPass
     ValuesConstraintSet constraints;
 
     ClusteringPolicySet policies;
-    populateTfCpurtClusteringPolicies(policies);
+    populateTfJitRtClusteringPolicies(policies);
 
     // Initialize constraints based on the return type attributes.
     if (failed(InferFunctionBodyValuesConstraints(func, constraints)))
@@ -88,11 +88,11 @@ struct TestClusteringPolicyPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateTestTfCpurtClusteringPass() {
+std::unique_ptr<mlir::FunctionPass> CreateTestTfJitRtClusteringPass() {
   return std::make_unique<TestClusteringPass>();
 }
 
-std::unique_ptr<mlir::FunctionPass> CreateTestTfCpurtClusteringPolicyPass() {
+std::unique_ptr<mlir::FunctionPass> CreateTestTfJitRtClusteringPolicyPass() {
   return std::make_unique<TestClusteringPolicyPass>();
 }
 

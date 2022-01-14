@@ -19,7 +19,7 @@ import numpy as np
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
-jitrt = tf_jitrt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 # Metadata operations that are noop at runtime, but exist in the Tensorflow

@@ -116,7 +116,7 @@ using ::tensorflow::tfrt_stub::FallbackTensor;
 class CompilationThreadPool : public SharedContext {
  public:
   explicit CompilationThreadPool(HostContext* host)
-      : thread_pool_(Env::Default(), "tf-cpurt-compiler", /*num_threads=*/32) {}
+      : thread_pool_(Env::Default(), "tf-jitrt-compiler", /*num_threads=*/32) {}
 
   static CompilationThreadPool& Get(const ExecutionContext& exec_ctx) {
     return exec_ctx.host()->GetOrCreateSharedContext<CompilationThreadPool>();
@@ -167,10 +167,10 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
 // Compile compilation unit attribute to an executable result.
 // -------------------------------------------------------------------------- //
 
-// Options for the `tf-cpurt-pipeline`. We do not use MLIR pass options directly
+// Options for the `tf-jitrt-pipeline`. We do not use MLIR pass options directly
 // because they are not copyable or movable, and we need to pass them cheaply
 // across the async compilation tasks boundary.
-struct TfCpuRtPipelineOpts {
+struct TfJitRtPipelineOpts {
   bool vectorize;
   bool legalize_i1_tensors;
 };
@@ -237,17 +237,16 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
 
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     CompilationUnitAttribute kernel, const ExecutionContext& exec_ctx,
-    const Optional<TfCpuRtPipelineOpts>& opts = None) {
+    const Optional<TfJitRtPipelineOpts>& opts = None) {
   // We only support functions nested in top level compiled module.
   if (kernel.nested_symbols().size() != 1)
     return MakeStringError(
         "kernel function has to be defined in a top-level module");
 
   // Request context must be initialized with the tf_jitrt state.
-  TfCpuRtRequestState* state =
-      exec_ctx.request_ctx()->GetDataIfExists<TfCpuRtRequestState>();
+  auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
   if (!state)
-    return MakeStringError("cpurt state not found in the request context");
+    return MakeStringError("tf_jitrt state not found in the request context");
 
   JitExecutableCache* jit_executable_cache = state->jit_executable_cache;
 
@@ -385,13 +384,13 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // Register a custom pipeline for lowering from Tensorflow dialect.
     if (tf_jitrt_opts) {
       opts.register_pass_pipeline = [tf_jitrt_opts](OpPassManager& pm) {
-        TfCpuRtPipelineOptions opts;
+        TfJitRtPipelineOptions opts;
         opts.vectorize = tf_jitrt_opts->vectorize;
         opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
-        return CreateTfCpuRtPipeline(pm, opts);
+        return CreateTfJitRtPipeline(pm, opts);
       };
     } else {
-      opts.register_pass_pipeline = CreateDefaultTfCpuRtPipeline;
+      opts.register_pass_pipeline = CreateDefaultTfJitRtPipeline;
     }
 
     auto entrypoint = kernel.nested_symbols()[0];
@@ -412,7 +411,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 }
 
 // -------------------------------------------------------------------------- //
-// TFRT kernel function definition for tf_cpurt.fallback.compile operation.
+// TFRT kernel function definition for tf_jitrt.fallback.compile operation.
 // -------------------------------------------------------------------------- //
 
 // Compiles kernel into the JitExecutable and updates JitExecutableCache.
@@ -432,7 +431,7 @@ static AsyncValueRef<Chain> Compile(StringAttribute device,
 }
 
 // -------------------------------------------------------------------------- //
-// Execute compiled CPURT kernels with Fallback Runtime interop.
+// Execute compiled JitRt kernels with Fallback Runtime interop.
 // -------------------------------------------------------------------------- //
 
 using TensorflowReturnValueConverter =
@@ -522,7 +521,7 @@ static void ExecuteImpl(Executable& executable,
   for (auto& t : operands)
     ctx->runtime_tensors.insert({t.tensor().data(), &t.tensor()});
 
-  // Tensorflow -> CPURT only supports returning Memrefs as Tensors.
+  // Tensorflow -> JitRt only supports returning Memrefs as Tensors.
   TensorflowReturnValueConverter converter(results, std::move(ctx));
   converter.AddConversion(ReturnAsyncStridedMemref<ConvertTensor>);
   converter.AddConversion(ReturnStridedMemref<ConvertTensor>);
@@ -620,7 +619,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results, StringAttribute device,
                         CompilationUnitAttribute kernel,
                         const ExecutionContext& exec_ctx, bool debug = false,
-                        const Optional<TfCpuRtPipelineOpts>& opts = None) {
+                        const Optional<TfJitRtPipelineOpts>& opts = None) {
   // Compile kernel module into the JitExecutable.
   Expected<AsyncValuePtr<JitExecutable>> jit_executable =
       CompileImpl(kernel, exec_ctx, opts);
@@ -673,7 +672,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
 }
 
 // -------------------------------------------------------------------------- //
-// TFRT kernel function definitions for tf_cpurt.fallback.execute operations.
+// TFRT kernel function definitions for tf_jitrt.fallback.execute operations.
 // -------------------------------------------------------------------------- //
 
 // Compiles kernel into the JitExecutable and executes it with the fallback
@@ -695,7 +694,7 @@ void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
                   CompilationUnitAttribute kernel, Attribute<bool> vectorize,
                   Attribute<bool> legalize_i1_tensors,
                   const ExecutionContext& exec_ctx) {
-  TfCpuRtPipelineOpts opts;
+  TfJitRtPipelineOpts opts;
   opts.vectorize = *vectorize;
   opts.legalize_i1_tensors = *legalize_i1_tensors;
   ExecuteImpl(operands, results, device, kernel, exec_ctx,
@@ -705,9 +704,9 @@ void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
 }  // namespace
 
 void RegisterTfCpuRuntimeKernels(KernelRegistry* registry) {
-  registry->AddKernel("tf_cpurt.fallback.compile", TFRT_KERNEL(Compile));
-  registry->AddKernel("tf_cpurt.fallback.execute", TFRT_KERNEL(Execute));
-  registry->AddKernel("tf_cpurt.fallback.debug.execute",
+  registry->AddKernel("tf_jitrt.fallback.compile", TFRT_KERNEL(Compile));
+  registry->AddKernel("tf_jitrt.fallback.execute", TFRT_KERNEL(Execute));
+  registry->AddKernel("tf_jitrt.fallback.debug.execute",
                       TFRT_KERNEL(ExecuteDebug));
 }
 

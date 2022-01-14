@@ -16,14 +16,14 @@ limitations under the License.
 include "mlir/Pass/PassBase.td"
 
 def LinalgTrivialBufferForwarding
-    : FunctionPass<"tf-cpurt-linalg-trivial-buffer-forwarding"> {
+    : FunctionPass<"tf-jitrt-linalg-trivial-buffer-forwarding"> {
   let summary = "Trivial input to output buffer forwarding for linalg.generic"
                 " operations";
   let constructor = "tensorflow::CreateLinalgTrivialBufferForwardingPass()";
   let description = [{
     Trivial pass that reuses input buffers as outputs in linalg.generic
     operations. This pass does not try to do any buffer alias analysis, and
-    is intented to work only as a part of TF -> CPURT compilation pipeline. It
+    is intented to work only as a part of TF -> JitRt compilation pipeline. It
     will almost certainly produce invalid IR in any other use case.
 
     Input buffer forwarding requirements:
@@ -38,7 +38,7 @@ def LinalgTrivialBufferForwarding
 }
 
 def LinalgTrivialCopyRemoval
-    : FunctionPass<"tf-cpurt-linalg-trivial-copy-removal"> {
+    : FunctionPass<"tf-jitrt-linalg-trivial-copy-removal"> {
   let summary = "Trivial removal of linalg.copy operations";
   let constructor = "tensorflow::CreateLinalgTrivialCopyRemovalPass()";
   let description = [{
@@ -52,7 +52,7 @@ def LinalgTrivialCopyRemoval
   }];
 }
 
-def TileCWise : FunctionPass<"tf-cpurt-tile-cwise"> {
+def TileCWise : FunctionPass<"tf-jitrt-tile-cwise"> {
   let summary = "Tile elementwise ops on tensors";
   let constructor = "tensorflow::CreateTileCWisePass()";
 
@@ -65,7 +65,7 @@ def TileCWise : FunctionPass<"tf-cpurt-tile-cwise"> {
   ];
 }
 
-def PeelTiledLoops : FunctionPass<"tf-cpurt-peel-tiled-loops"> {
+def PeelTiledLoops : FunctionPass<"tf-jitrt-peel-tiled-loops"> {
   let summary = "Optimize away padding in tiled loops";
   let constructor = "tensorflow::CreatePeelTiledLoopsPass()";
   let dependentDialects = [
@@ -73,7 +73,7 @@ def PeelTiledLoops : FunctionPass<"tf-cpurt-peel-tiled-loops"> {
   ];
 }
 
-def TileReduction : FunctionPass<"tf-cpurt-tile-reduction"> {
+def TileReduction : FunctionPass<"tf-jitrt-tile-reduction"> {
   let summary = "Tile and fuse linalg.generic reduction on tensors.";
   let constructor = "tensorflow::CreateTileReductionPass()";
   let dependentDialects = [
@@ -99,7 +99,7 @@ def TileReduction : FunctionPass<"tf-cpurt-tile-reduction"> {
 }
 
 def FuseFillIntoTiledReduction
-    : FunctionPass<"tf-cpurt-fuse-fill-into-tiled-reduction"> {
+    : FunctionPass<"tf-jitrt-fuse-fill-into-tiled-reduction"> {
   let summary = "Fuse `linalg.fill` into `linalg.tiled_loop` with a reduction.";
   let constructor = "tensorflow::CreateFuseFillIntoTiledReductionPass()";
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
@@ -110,7 +110,7 @@ def FuseFillIntoTiledReduction
   }];
 }
 
-def Fission : FunctionPass<"tf-cpurt-fission"> {
+def Fission : FunctionPass<"tf-jitrt-fission"> {
   let summary = "Split _Fused Tensorflow kernels into primitives";
   let constructor = "tensorflow::CreateFissionPass()";
   let dependentDialects = [
@@ -118,7 +118,7 @@ def Fission : FunctionPass<"tf-cpurt-fission"> {
   ];
 }
 
-def Fusion : FunctionPass<"tf-cpurt-fusion"> {
+def Fusion : FunctionPass<"tf-jitrt-fusion"> {
   let summary = "Fuse Linalg generic operations on Tensors";
   let constructor = "tensorflow::CreateFusionPass()";
   let description = [{
@@ -130,9 +130,10 @@ def Fusion : FunctionPass<"tf-cpurt-fusion"> {
   ];
 }
 
-def CpuRtLegalizeI1Types : Pass<"tf-cpurt-legalize-i1-types", "mlir::ModuleOp"> {
+def JitRtLegalizeI1Types
+    : Pass<"tf-jitrt-legalize-i1-types", "mlir::ModuleOp"> {
   let summary = "Legalize 'i1' tensor types";
-  let constructor = "tensorflow::CreateCpuRtLegalizeI1TypesPass()";
+  let constructor = "tensorflow::CreateJitRtLegalizeI1TypesPass()";
   let description = [{
     Convert 'i1' tensor types used in any operation into 'i8' tensor types.
   }];
@@ -144,7 +145,7 @@ def CpuRtLegalizeI1Types : Pass<"tf-cpurt-legalize-i1-types", "mlir::ModuleOp"> 
 }
 
 def SymbolicShapeOptimization
-    : FunctionPass<"tf-cpurt-symbolic-shape-optimization"> {
+    : FunctionPass<"tf-jitrt-symbolic-shape-optimization"> {
   let summary = "Optimizes broadcasts based on the symbolic shapes";
   let constructor = "tensorflow::CreateSymbolicShapeOptimizationPass()";
   let description = [{
@@ -166,49 +167,49 @@ def SymbolicShapeOptimization
   ];
 }
 
-def Clustering : FunctionPass<"tf-cpurt-clustering"> {
+def Clustering : FunctionPass<"tf-jitrt-clustering"> {
   let summary = "Creates `tf_device.cluster` operations according to the TF "
-                "CPURT clustering policy";
+                "JitRt clustering policy";
 
-  let constructor = "tensorflow::CreateTfCpurtClusteringPass()";
+  let constructor = "tensorflow::CreateTfJitRtClusteringPass()";
 
   let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 
   let options = [
    Option<"min_cluster_size", "min-cluster-size", "int" , /*default=*/"1",
           "Do not form clusters smaller of the given size.">,
-   // TODO(ezhulenev): This is a temporary workaround to control TF->CPURT
+   // TODO(ezhulenev): This is a temporary workaround to control TF->JitRt
    // clustering policy at runtime.
    ListOption<"oplist", "oplist", "std::string",
                "Explicitly allow operations for clustering. Only operations in "
-               "this list will be passed to the TF->CPURT clustering policy. "
+               "this list will be passed to the TF->JitRt clustering policy. "
                "Alternatively use 'tier1', ..., 'all' to allow clustering for "
                "all operations included in the given clustering tier.",
                "llvm::cl::MiscFlags::CommaSeparated">
   ];
 }
 
-def VectorizeTiledOps : FunctionPass<"tf-cpurt-vectorize-tiled-ops"> {
+def VectorizeTiledOps : FunctionPass<"tf-jitrt-vectorize-tiled-ops"> {
   let summary = "Vectorize tiled Linalg ops inside `tiled_loop`";
   let constructor = "tensorflow::CreateVectorizeTiledOpsPass()";
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
 def RewriteVectorMultiReductionPass :
-    FunctionPass<"tf-cpurt-rewrite-vector-multi-reduction"> {
+    FunctionPass<"tf-jitrt-rewrite-vector-multi-reduction"> {
   let summary = "Convert `vector.multi_reduction` into `vector.reduction` ops.";
   let constructor = "tensorflow::createRewriteVectorMultiReductionPass()";
   let dependentDialects = ["mlir::memref::MemRefDialect"];
 }
 
 
-def DetensorizeLinalg : FunctionPass<"tf-cpurt-detensorize-linalg"> {
+def DetensorizeLinalg : FunctionPass<"tf-jitrt-detensorize-linalg"> {
   let summary = "Replace 0d tensor inputs to LinalgOp with extracted elements.";
   let constructor = "tensorflow::CreateDetensorizeLinalgPass()";
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
-def MathApproximation : FunctionPass<"tf-cpurt-math-approximation"> {
+def MathApproximation : FunctionPass<"tf-jitrt-math-approximation"> {
   let summary = "Approximate math operations with an implementation meant to "
                 "match Eigen's results. This is a useful property to have when "
                 "comparing results from compiled TF code vs TF1 and TFRT, "

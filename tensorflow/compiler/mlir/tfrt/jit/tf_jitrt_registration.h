@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_REGISTRATION_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_REGISTRATION_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_REGISTRATION_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_REGISTRATION_H_
 
 #include "mlir/IR/Dialect.h"
 
 namespace tensorflow {
 
-void RegisterTfCpurtDialect(mlir::DialectRegistry &registry);
+void RegisterTfJitRtDialect(mlir::DialectRegistry &registry);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_REGISTRATION_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_REGISTRATION_H_

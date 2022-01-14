@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Minimal Python binding for Tensorflow CPURT JIT compilation.
+"""Minimal Python binding for Tensorflow JitRt JIT compilation.
 
-This is only for testing Tensorflow CPURT compilation pipeline.
+This is only for testing Tensorflow JitRt compilation pipeline.
 """
 
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import _tf_jitrt_executor
 
 
-class TfCpurtExecutor(_tf_jitrt_executor.TfCpurtExecutor):
-  """Python binding of `tensorflow::TfCpurtExecutor` class."""
+class TfJitRtExecutor(_tf_jitrt_executor.TfJitRtExecutor):
+  """Python binding of `tensorflow::TfJitRtExecutor` class."""
 
 class Specialization(_tf_jitrt_executor.Specialization):
-  """Python binding of `tensorflow::TfCpurtExecutor::Specialization` enum."""
+  """Python binding of `tensorflow::TfJitRtExecutor::Specialization` enum."""

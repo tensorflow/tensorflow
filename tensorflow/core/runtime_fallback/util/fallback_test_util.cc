@@ -56,7 +56,7 @@ tfrt::ExecutionContext CreateFallbackTestExecutionContext(
       eager_context->pflr(), user_intra_op_threadpool);
   TF_DCHECK_OK(status);
 
-  status = SetUpTfCpuRtRequestContext(&request_context_builder);
+  status = SetUpTfJitRtRequestContext(&request_context_builder);
   TF_DCHECK_OK(status);
 
   auto request_context = std::move(request_context_builder).build();

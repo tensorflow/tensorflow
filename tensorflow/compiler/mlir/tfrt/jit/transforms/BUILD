@@ -28,7 +28,7 @@ gentbl_cc_library(
         (
             [
                 "-gen-pass-decls",
-                "-name=TFCPURT",
+                "-name=TfJitRt",
             ],
             "tf_jitrt_passes.h.inc",
         ),
@@ -96,7 +96,7 @@ gentbl_cc_library(
         (
             [
                 "-gen-pass-decls",
-                "-name=TFCPURTTest",
+                "-name=TfJitRtTest",
             ],
             "tf_jitrt_test_passes.h.inc",
         ),

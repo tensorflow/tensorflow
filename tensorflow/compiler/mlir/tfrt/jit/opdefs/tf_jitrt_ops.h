@@ -24,15 +24,15 @@ limitations under the License.
 #include "tfrt/compiler/opdefs/tfrt_traits.h"  // from @tf_runtime
 
 namespace mlir {
-namespace tf_cpurt {
+namespace tf_jitrt {
 
-class CpuRuntimeDialect : public mlir::Dialect {
+class JitRuntimeDialect : public mlir::Dialect {
  public:
-  explicit CpuRuntimeDialect(mlir::MLIRContext *context);
-  static mlir::StringRef getDialectNamespace() { return "tf_cpurt"; }
+  explicit JitRuntimeDialect(mlir::MLIRContext *context);
+  static mlir::StringRef getDialectNamespace() { return "tf_jitrt"; }
 };
 
-}  // namespace tf_cpurt
+}  // namespace tf_jitrt
 }  // namespace mlir
 
 #define GET_OP_CLASSES

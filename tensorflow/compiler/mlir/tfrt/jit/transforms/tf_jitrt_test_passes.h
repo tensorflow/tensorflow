@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_CPURT_TEST_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_CPURT_TEST_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_JITRT_TEST_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_JITRT_TEST_PASSES_H_
+
+#include <memory>
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -22,12 +24,12 @@ limitations under the License.
 namespace tensorflow {
 
 // See `tf_jitrt_test_passes.td` for the passes documentation.
-std::unique_ptr<mlir::FunctionPass> CreateTestTfCpurtClusteringPass();
-std::unique_ptr<mlir::FunctionPass> CreateTestTfCpurtClusteringPolicyPass();
+std::unique_ptr<mlir::FunctionPass> CreateTestTfJitRtClusteringPass();
+std::unique_ptr<mlir::FunctionPass> CreateTestTfJitRtClusteringPolicyPass();
 
 }  // namespace tensorflow
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_test_passes.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_CPURT_TEST_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TRANSFORMS_TF_JITRT_TEST_PASSES_H_

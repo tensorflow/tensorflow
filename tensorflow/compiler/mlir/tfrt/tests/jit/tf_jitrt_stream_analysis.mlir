@@ -53,7 +53,7 @@ func @rsqrt(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   // stream 0 cost = 1 (root) + 1 (%arg0) + 513 (cost @rsqrt_m)
   //               = 515
   // expected-remark@+1 {{stream id: 0, stream cost: 515, parent stream: -1}}
-  %res = tf_cpurt.fallback.execute @rsqrt_m::@compute (%arg0)
+  %res = tf_jitrt.fallback.execute @rsqrt_m::@compute (%arg0)
            device("/device:CPU:0")
            :  (!tfrt_fallback.tf_tensor)
            -> (!tfrt_fallback.tf_tensor)
@@ -67,7 +67,7 @@ func @add(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   // stream 0 cost = 1 (root) + 1 (%arg0) + (1 + 512 * 512) (cost @add_m)
   //               = 262147
   // expected-remark@+1 {{stream id: 0, stream cost: 262147, parent stream: -1}}
-  %res = tf_cpurt.fallback.execute @add_m::@compute (%arg0, %arg0)
+  %res = tf_jitrt.fallback.execute @add_m::@compute (%arg0, %arg0)
            device("/device:CPU:0")
            :  (!tfrt_fallback.tf_tensor, !tfrt_fallback.tf_tensor)
            -> (!tfrt_fallback.tf_tensor)
@@ -81,7 +81,7 @@ func @fusion(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   // stream 0 cost = 1 (root) + 1 (%arg0) + 513 * 5 (cost @fusion_m)
   //               = 1 + 1 + 2565 = 2567
   // expected-remark@+1 {{stream id: 0, stream cost: 2567, parent stream: -1}}
-  %res = tf_cpurt.fallback.execute @fusion_m::@compute (%arg0)
+  %res = tf_jitrt.fallback.execute @fusion_m::@compute (%arg0)
            device("/device:CPU:0")
            :  (!tfrt_fallback.tf_tensor)
            -> (!tfrt_fallback.tf_tensor)
@@ -97,7 +97,7 @@ func @dyn(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   //                  + 3 [Mul] + 130 [AddV2]) (cost @dyn_m)
   //               = 2 + (9 + 390) = 401
   // expected-remark@+1 {{stream id: 0, stream cost: 401, parent stream: -1}}
-  %res = tf_cpurt.fallback.execute @dyn_m::@compute (%arg0)
+  %res = tf_jitrt.fallback.execute @dyn_m::@compute (%arg0)
            device("/device:CPU:0")
            :  (!tfrt_fallback.tf_tensor)
            -> (!tfrt_fallback.tf_tensor)

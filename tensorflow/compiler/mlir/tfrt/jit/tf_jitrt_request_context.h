@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_REQUEST_CONTEXT_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_REQUEST_CONTEXT_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_REQUEST_CONTEXT_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_REQUEST_CONTEXT_H_
 
 #include "tensorflow/core/platform/status.h"
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 
 namespace tensorflow {
 
-struct TfCpuRtRequestState {
-  explicit TfCpuRtRequestState(
+struct TfJitRtRequestState {
+  explicit TfJitRtRequestState(
       tfrt::jitrt::JitExecutableCache* jit_executable_cache)
       : jit_executable_cache(jit_executable_cache) {}
 
@@ -30,10 +30,10 @@ struct TfCpuRtRequestState {
   tfrt::jitrt::JitExecutableCache* jit_executable_cache;
 };
 
-// Sets up RequestContext with the CpuRt state required for running `tf_cpurt`
+// Sets up RequestContext with the JitRt state required for running `tf_jitrt`
 // kernels (enables fast lookup of required resources in the request context).
-Status SetUpTfCpuRtRequestContext(tfrt::RequestContextBuilder* builder);
+Status SetUpTfJitRtRequestContext(tfrt::RequestContextBuilder* builder);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_CPURT_REQUEST_CONTEXT_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_REQUEST_CONTEXT_H_

@@ -69,7 +69,7 @@ Eigen::Tensor<T, rank, Eigen::RowMajor> GenRandomTensor(
 }
 
 // -------------------------------------------------------------------------- //
-// Run benchmark by compiling MLIR function using TFRT CPURT API.
+// Run benchmark by compiling MLIR function using TFRT JitRt API.
 // -------------------------------------------------------------------------- //
 
 // Do not record any information about operands for the results conversion.
@@ -90,7 +90,7 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
                                    llvm::StringRef mlir_input,
                                    llvm::StringRef function_name,
                                    bool lower_from_tensorflow,
-                                   const TfCpuRtPipelineOptions& tf_cpurt_opts);
+                                   const TfJitRtPipelineOptions& tf_jitrt_opts);
 
 // Converts Eigen Tensor to Memref descriptor.
 template <typename T, int rank>

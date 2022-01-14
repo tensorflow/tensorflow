@@ -87,7 +87,7 @@ void getDependentConversionDialects(mlir::DialectRegistry &registry) {
   registry.insert<tfrt::corert::CoreRTDialect,
                   tfrt::fallback_async::FallbackAsyncDialect,
                   tfrt::compiler::TFRTDialect, tfrt::dist::DistributedDialect,
-                  tf_cpurt::CpuRuntimeDialect>();
+                  tf_jitrt::JitRuntimeDialect>();
 }
 
 mlir::Value GetFunctionInputChain(mlir::Operation *op) {
@@ -1411,13 +1411,13 @@ mlir::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
 // use this device to convert operands and results from/to corert handles.
 // For now it is safe to assume that it is "CPU" because we do not support
 // any other devices and do not support distributed models.
-constexpr char kCpuRtDevice[] = "CPU";
+constexpr char kJitRtDevice[] = "/job:localhost/replica:0/task:0/device:CPU:0";
 
-// Convert jitrt.call operations to the tf_cpurt.fallback.execute operation.
-class CpuRtCallToCpurtCompileAndExecuteConversion
+// Convert jitrt.call operations to the tf_jitrt.fallback.execute operation.
+class JitRtCallToJitRtCompileAndExecuteConversion
     : public OpConversionPattern<tfrt::jitrt::CallOp> {
  public:
-  explicit CpuRtCallToCpurtCompileAndExecuteConversion(MLIRContext *context)
+  explicit JitRtCallToJitRtCompileAndExecuteConversion(MLIRContext *context)
       : OpConversionPattern<tfrt::jitrt::CallOp>(context) {}
 
   LogicalResult matchAndRewrite(
@@ -1426,18 +1426,18 @@ class CpuRtCallToCpurtCompileAndExecuteConversion
     // Convert operands to fallback tensors.
     llvm::SmallVector<Value, 4> fallback_operands;
     if (failed(tfrt_compiler::ConvertFallbackOperands(
-            call, kCpuRtDevice, adaptor.getOperands(), &fallback_operands,
+            call, kJitRtDevice, adaptor.getOperands(), &fallback_operands,
             rewriter)))
       return rewriter.notifyMatchFailure(call, "failed to convert operand");
 
-    // tf_cpurt.fallback.execute always produces fallback tensors.
+    // tf_jitrt.fallback.execute always produces fallback tensors.
     llvm::SmallVector<Type, 4> result_types(
         call->getNumResults(),
         rewriter.getType<tfrt::fallback::TFTensorType>());
 
-    // Replace cpurt.call operation with a tf_cpurt.fallback.execute operation.
-    rewriter.replaceOpWithNewOp<tf_cpurt::FallbackExecuteOp>(
-        call, result_types, call.callee(), fallback_operands, kCpuRtDevice);
+    // Replace jitrt.call operation with a tf_jitrt.fallback.execute operation.
+    rewriter.replaceOpWithNewOp<tf_jitrt::FallbackExecuteOp>(
+        call, result_types, call.callee(), fallback_operands, kJitRtDevice);
 
     return success();
   }
@@ -1452,7 +1452,7 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
   target->addLegalDialect<tfrt::compiler::TFRTDialect>();
   target->addLegalDialect<tfrt::dist::DistributedDialect>();
   target->addLegalDialect<tfrt::test::TestDialect>();
-  target->addLegalDialect<tf_cpurt::CpuRuntimeDialect>();
+  target->addLegalDialect<tf_jitrt::JitRuntimeDialect>();
   target->addIllegalDialect<TF::TensorFlowDialect>();
   target->addIllegalDialect<tf_device::TensorFlowDeviceDialect>();
   target->addIllegalDialect<tfrt::jitrt::JitRuntimeDialect>();
@@ -1469,12 +1469,12 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
   });
 }
 
-// Helper function for inserting TFRT CpuRT dialect conversions.
-void PopulateCpuRtConversionPatterns(MLIRContext *context,
+// Helper function for inserting TFRT JitRt dialect conversions.
+void PopulateJitRtConversionPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns,
                                      CoreRTConverter *corert_converter) {
-  // Lower cpurt.call to the pair of compile and execute operations.
-  patterns->insert<CpuRtCallToCpurtCompileAndExecuteConversion>(context);
+  // Lower jitrt.call to the pair of compile and execute operations.
+  patterns->insert<JitRtCallToJitRtCompileAndExecuteConversion>(context);
 }
 
 // Helper function for inserting TF dialect to TFRT dialect op conversion
@@ -1641,7 +1641,7 @@ class TfToTfrtConversionPass
     }
     SetUpTFToTFRTConversionLegality(&target, func_type_converter,
                                     corert_converter.chain_type());
-    PopulateCpuRtConversionPatterns(&context, &patterns, &corert_converter);
+    PopulateJitRtConversionPatterns(&context, &patterns, &corert_converter);
 
     PopulateTFToTFRTConversionPatterns(
         &context, &patterns, &corert_converter, &fallback_converter,
@@ -1771,11 +1771,11 @@ class TfToTfrtConversionPass
     llvm::DenseSet<mlir::Attribute> kernels;
 
     // Compile all kernels in parallell.
-    module.walk([&](tf_cpurt::FallbackExecuteOp execute) {
+    module.walk([&](tf_jitrt::FallbackExecuteOp execute) {
       // Do not compiled the same kernel multiple times.
       if (kernels.contains(execute.kernel())) return;
 
-      auto compile = builder.create<tf_cpurt::FallbackCompileOp>(
+      auto compile = builder.create<tf_jitrt::FallbackCompileOp>(
           execute.getLoc(), chain_type, execute.kernel(), execute.device());
       compiled.push_back(compile.getResult());
       kernels.insert(compile.kernel());
@@ -1891,18 +1891,18 @@ CreateTfToTfrtConversionPass(const TfrtPipelineOptions &options) {
 
 // -------------------------------------------------------------------------- //
 // Outline tf_device.cluster operation regions into functions in the nested
-// modules and replaces all cluster operations with cpurt.call operations.
+// modules and replaces all cluster operations with jitrt.call operations.
 // -------------------------------------------------------------------------- //
 
-class OutlineCpuRtClustersPass
-    : public PassWrapper<OutlineCpuRtClustersPass, OperationPass<ModuleOp>> {
+class OutlineJitRtClustersPass
+    : public PassWrapper<OutlineJitRtClustersPass, OperationPass<ModuleOp>> {
  public:
   llvm::StringRef getArgument() const final {
-    return "tf-outline-cpurt-cluster";
+    return "tf-outline-jitrt-cluster";
   }
   llvm::StringRef getDescription() const final {
     return "Outlines `tf_device.cluster` operations into functions and "
-           "replaces them with `cpurt.call` operations.";
+           "replaces them with `jitrt.call` operations.";
   }
 
   void runOnOperation() override;
@@ -1928,7 +1928,7 @@ class OutlineCpuRtClustersPass
   LogicalResult SetEntrypointConstraints(CompiledModule &compiled);
 
   // Outlines cluster operation regions into compiled modules, and replaces
-  // cluster operation with a cpurt.call operation.
+  // cluster operation with a jitrt.call operation.
   LogicalResult OutlineClusterOp(tf_device::ClusterOp cluster,
                                  SymbolTable *symbol_table);
 
@@ -1938,8 +1938,8 @@ class OutlineCpuRtClustersPass
   llvm::StringMap<std::pair<ModuleOp, FuncOp>> outlined_;
 };
 
-OutlineCpuRtClustersPass::CompiledModule
-OutlineCpuRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
+OutlineJitRtClustersPass::CompiledModule
+OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
                                                SymbolTable *symbol_table) {
   MLIRContext *ctx = cluster->getContext();
   Location loc = cluster.getLoc();
@@ -2012,15 +2012,15 @@ OutlineCpuRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   return {compiled_module, compiled_func, live_ins};
 }
 
-LogicalResult OutlineCpuRtClustersPass::SetEntrypointConstraints(
+LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
     CompiledModule &compiled) {
   FuncOp func = compiled.entrypoint;
 
-  // Functions outlined from cpurt device clusters must have a single block.
+  // Functions outlined from jitrt device clusters must have a single block.
   assert(func.body().getBlocks().size() == 1 && "expected single block");
 
   mlir::TFDevice::ClusteringPolicySet policies;
-  populateTfCpurtConstraintsPolicies(policies);
+  populateTfJitRtConstraintsPolicies(policies);
 
   // Infer constraints on the values defined in the entrypoint function
   // (including function entry block arguments).
@@ -2041,7 +2041,7 @@ LogicalResult OutlineCpuRtClustersPass::SetEntrypointConstraints(
   return success();
 }
 
-LogicalResult OutlineCpuRtClustersPass::OutlineClusterOp(
+LogicalResult OutlineJitRtClustersPass::OutlineClusterOp(
     tf_device::ClusterOp cluster, SymbolTable *symbol_table) {
   Location loc = cluster->getLoc();
   OpBuilder builder(cluster);
@@ -2052,7 +2052,7 @@ LogicalResult OutlineCpuRtClustersPass::OutlineClusterOp(
   // Add constraints to the entrypoint arguments.
   if (failed(SetEntrypointConstraints(compiled_module))) return failure();
 
-  // Replace device cluster with a cpurt.call operation.
+  // Replace device cluster with a jitrt.call operation.
   auto module_name = *compiled_module.module.sym_name();
   auto func_name = compiled_func.sym_name();
   auto func_flat_ref =
@@ -2070,7 +2070,7 @@ LogicalResult OutlineCpuRtClustersPass::OutlineClusterOp(
   return success();
 }
 
-void OutlineCpuRtClustersPass::runOnOperation() {
+void OutlineJitRtClustersPass::runOnOperation() {
   ModuleOp module = getOperation();
   SymbolTable symbol_table(module);
 
@@ -2092,8 +2092,8 @@ void OutlineCpuRtClustersPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<Pass> CreateOutlineCpuRtClustersPass() {
-  return std::make_unique<OutlineCpuRtClustersPass>();
+static std::unique_ptr<Pass> CreateOutlineJitRtClustersPass() {
+  return std::make_unique<OutlineJitRtClustersPass>();
 }
 
 // -------------------------------------------------------------------------- //
@@ -2211,7 +2211,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   // as operands, so we disable these passes if we can have native ops after
   // lowering.
   if (!options.enable_native_ops) {
-    pm.addNestedPass<mlir::FuncOp>(CreateTfCpurtClusteringPass(
+    pm.addNestedPass<mlir::FuncOp>(CreateTfJitRtClusteringPass(
         options.auto_fusion_oplist, options.auto_fusion_min_cluster_size));
 
     // Sink small constants into the outlined clusters to reduce the number of
@@ -2222,7 +2222,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
       auto policy = cluster->getAttr("policy").dyn_cast_or_null<StringAttr>();
       if (!policy || policy.getValue() != "tfrt.auto-fusion") return false;
 
-      // Check that TF->CPURT compiler supports constant compilation.
+      // Check that TF->JitRt compiler supports constant compilation.
       return mlir::succeeded(IsCompilableConstant(value));
     };
 
@@ -2230,7 +2230,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
         mlir::TFDevice::CreateClusterConstantSinkingPass(is_compilable_const));
 
     // Outline formed JIT compiled device clusters into function.
-    pm.addPass(CreateOutlineCpuRtClustersPass());
+    pm.addPass(CreateOutlineJitRtClustersPass());
   }
 
   // Rewriter operation sequences to device specific fusions.
@@ -2299,8 +2299,8 @@ void CreateTfExecutorToTfrtPipeline(mlir::PassManager &pm,
 
 static mlir::PassRegistration<TfToTfrtConversionPass> tf_to_tfrt_pass;
 
-static mlir::PassRegistration<OutlineCpuRtClustersPass>
-    tf_outline_cpurt_cluster_pass(CreateOutlineCpuRtClustersPass);
+static mlir::PassRegistration<OutlineJitRtClustersPass>
+    tf_outline_jitrt_cluster_pass(CreateOutlineJitRtClustersPass);
 
 static mlir::PassPipelineRegistration<TfrtPipelineOptions> tf_pipeline(
     "tf-executor-to-tfrt-pipeline",

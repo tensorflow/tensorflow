@@ -1,5 +1,5 @@
 // RUN: tf-tfrt-opt %s                                                         \
-// RUN:   -tf-cpurt-test-clustering="min-cluster-size=1" -verify-diagnostics   \
+// RUN:   -tf-jitrt-test-clustering="min-cluster-size=1" -verify-diagnostics   \
 // RUN: | FileCheck %s
 
 // CHECK-LABEL: func @no_clusters
