@@ -336,10 +336,13 @@ cc_library(
 cc_library(
     name = "tpu_ops_c_api_hdrs",
     srcs = [],
-    hdrs = ["tpu_ops_c_api.h"],
+    hdrs = [
+        "tpu_ops_c_api.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
+        "//tensorflow/c:tf_tstring",
         "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "@com_google_absl//absl/types:optional",
