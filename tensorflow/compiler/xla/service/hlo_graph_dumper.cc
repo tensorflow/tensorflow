@@ -1998,12 +1998,20 @@ Status RegisterFusionState(const HloComputation& computation,
 
   // Radius size in which to render.
   static constexpr int kRenderRadius = 4;
+
+  absl::flat_hash_set<const HloInstruction*> render_boundary;
+  if (consumer) {
+    for (const HloInstruction* user : consumer->users()) {
+      render_boundary.insert(user);
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(
       std::string dot_graph,
       RenderNeighborhoodAround(
           consumer ? *consumer : *computation.root_instruction(), kRenderRadius,
           xla::RenderedGraphFormat::kDot,
-          /*hlo_render_options=*/{}));
+          /*hlo_render_options=*/{}, render_boundary));
   fusion_progress.RegisterFusionStateChanged(dot_graph, label);
   return Status::OK();
 }
