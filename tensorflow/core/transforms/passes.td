@@ -95,3 +95,42 @@ def GraphToFunc : Pass<"tfg-lift-graph-to-func", "ModuleOp"> {
               "llvm::cl::MiscFlags::CommaSeparated">
   ];
 }
+
+def ControlFlowSink : Pass<"tfg-cf-sink", "ModuleOp"> {
+  let summary = "Perform control-flow sink on region-based control-flow ops.";
+  let description = [{
+    This pass implements control-flow sinking on TFG region-based control-flow
+    ops. Singly-executed regions (i.e. regions known to be executed at most
+    once) are analyzed for values whose only uses are within the region. If the
+    value is produced by a stateless/side-effect free op, the op is moved inside
+    the region so that it is not computed along control paths where its result
+    is not needed.
+
+    This pass affects all regions of `tfg.IfRegion` and `tfg.CaseRegion` only,
+    as their regions are known to be executed at most once.
+
+    Example:
+
+    ```mlir
+    %Add, %ctl = Add(%arg0, %arg1)
+    %IfRegion, %ctl_0 = If %cond then {
+      yield(%Add) // only use of %Add
+    } else {
+      yield(%arg0)
+    }
+    ```
+
+    Will become:
+
+    ```mlir
+    %IfRegion, %ctl_0 = If %cond then {
+      %Add, %ctl = Add(%arg0, %arg1)
+      yield(%Add)
+    } else {
+      yield(%arg0)
+    }
+    ```
+  }];
+
+  let constructor = "CreateControlFlowSinkPass()";
+}
