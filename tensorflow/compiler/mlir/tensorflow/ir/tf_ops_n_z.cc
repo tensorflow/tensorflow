@@ -3337,6 +3337,73 @@ void XlaReduceOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// XlaReduceWindowOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(XlaReduceWindowOp op) {
+  const auto &input_ty = op.input().getType().cast<ShapedType>();
+
+  auto check = [&](mlir::Value val, std::string attr_name) -> LogicalResult {
+    ElementsAttr attr;
+    if (matchPattern(val, m_Constant(&attr))) {
+      if (attr.getType().getRank() != 1) {
+        return op.emitOpError() << "expects the rank of " << attr_name
+                                << "to be 1, got " << attr.getType().getRank();
+      }
+      if (input_ty.hasRank()) {
+        int64_t input_rank = input_ty.getRank();
+        int64_t size = attr.size();
+        if (input_rank != size) {
+          return op.emitOpError() << "expects the size of " << attr_name
+                                  << " to be equal to the input "
+                                     "rank ("
+                                  << size << " vs. " << input_rank << ")";
+        }
+      }
+    }
+    return success();
+  };
+
+  if (check(op.window_dimensions(), "window_dimensions").failed())
+    return failure();
+
+  if (check(op.window_strides(), "window_strides").failed()) return failure();
+
+  if (check(op.base_dilations(), "base_dilations").failed()) return failure();
+
+  if (check(op.window_dilations(), "window_dilations").failed())
+    return failure();
+
+  ElementsAttr padding;
+  if (matchPattern(op.padding(), m_Constant(&padding))) {
+    const ShapedType &padding_ty = padding.getType();
+    if (padding_ty.getRank() != 2 || padding_ty.getDimSize(1) != 2) {
+      return op.emitOpError()
+             << "expects padding to be a matrix with minor dimension 2, got "
+             << padding.getType().getShape();
+    }
+  }
+
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  auto func = dyn_cast_or_null<mlir::FuncOp>(
+      SymbolTable::lookupSymbolIn(module, op.computation()));
+  if (!func) {
+    return op.emitOpError() << "has no reduction function specified";
+  }
+
+  auto func_type = func.getType();
+
+  if (func_type.getNumInputs() != 2) {
+    return op.emitOpError()
+           << "expects reduction function to take 2 parameters, but "
+              "has "
+           << func_type.getNumInputs() << " parameter(s)";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // XlaVariadicReduceOp
 //===----------------------------------------------------------------------===//
 

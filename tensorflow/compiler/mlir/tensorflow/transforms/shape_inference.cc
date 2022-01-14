@@ -64,6 +64,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"
@@ -776,6 +778,9 @@ class ShapeInference {
   // update the subtypes of the resource type.
   bool InferShapeForVarHandleOp(VarHandleOp op);
 
+  // Infers the output shape of XlaReduceWindowOp based on the input shapes.
+  bool InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op);
+
   bool RefineWithInferTypeOpInterface(InferTypeOpInterface infer_ti);
 
   // Returns all the callers of a function.
@@ -1251,6 +1256,183 @@ bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
   return changed;
 }
 
+// Helper function for creating a Window proto from user-supplied data.
+// Returns llvm::None if the user-supplied data was invalid.
+llvm::Optional<xla::Window> InferWindowFromDimensions(
+    llvm::SmallVector<int64_t> window_dimensions,
+    llvm::SmallVector<int64_t> window_strides,
+    llvm::SmallVector<std::pair<int64_t, int64_t>> padding,
+    llvm::SmallVector<int64_t> lhs_dilation,
+    llvm::SmallVector<int64_t> rhs_dilation) {
+  const auto verify_size = [&](const size_t x, const char* x_name) {
+    if (x == 0 || x == window_dimensions.size()) {
+      return true;
+    } else {
+      llvm::errs()
+          << "Window has different number of window dimensions than of "
+          << x_name
+          << "\nNumber of window dimensions: " << window_dimensions.size()
+          << "\nNumber of " << x_name << ": " << x << "\n";
+      return false;
+    }
+  };
+
+  if (!(verify_size(window_dimensions.size(), "window_dimensions") &&
+        verify_size(window_strides.size(), "window strides") &&
+        verify_size(padding.size(), "padding entries") &&
+        verify_size(lhs_dilation.size(), "lhs dilation factors") &&
+        verify_size(rhs_dilation.size(), "rhs dilation factors")))
+    return llvm::None;
+
+  xla::Window window;
+  for (size_t i = 0; i < window_dimensions.size(); i++) {
+    auto dim = window.add_dimensions();
+    dim->set_size(window_dimensions[i]);
+    if (!window_strides.empty()) {
+      dim->set_stride(window_strides[i]);
+    } else {
+      dim->set_stride(1);
+    }
+    if (!padding.empty()) {
+      dim->set_padding_low(padding[i].first);
+      dim->set_padding_high(padding[i].second);
+    } else {
+      dim->set_padding_low(0);
+      dim->set_padding_high(0);
+    }
+    if (!lhs_dilation.empty()) {
+      dim->set_base_dilation(lhs_dilation[i]);
+    } else {
+      dim->set_base_dilation(1);
+    }
+    if (!rhs_dilation.empty()) {
+      dim->set_window_dilation(rhs_dilation[i]);
+    } else {
+      dim->set_window_dilation(1);
+    }
+    dim->set_window_reversal(false);
+  }
+  return window;
+}
+
+llvm::Optional<RankedTensorType> InferWindowOutputShape(
+    const ShapedType& base_shape, const xla::Window& window,
+    Type element_type) {
+  if (window.dimensions_size() != base_shape.getRank()) {
+    llvm::errs() << "Window has dimension " << window.dimensions_size()
+                 << " but base shape has dimension " << base_shape.getRank()
+                 << "\n";
+    return llvm::None;
+  }
+
+  std::vector<int64_t> output_dimensions(window.dimensions_size());
+  std::vector<bool> output_is_dynamic(window.dimensions_size());
+  for (int64_t i = 0; i < window.dimensions_size(); ++i) {
+    const auto& dim = window.dimensions(i);
+    if (dim.size() <= 0) {
+      llvm::errs() << "Window " << window.DebugString()
+                   << " has a non-positive dimension.\n";
+      return llvm::None;
+    }
+    if (dim.stride() <= 0) {
+      llvm::errs() << "Window " << window.DebugString()
+                   << " has a non-positive stride.\n";
+      return llvm::None;
+    }
+    if (dim.base_dilation() < 1) {
+      llvm::errs() << "Window " << window.DebugString()
+                   << " has a non-positive base area dilation factor.\n";
+      return llvm::None;
+    }
+    if (dim.window_dilation() < 1) {
+      llvm::errs() << "Window " << window.DebugString()
+                   << " has a non-positive window dilation factor.\n";
+      return llvm::None;
+    }
+
+    if (base_shape.isDynamicDim(i)) {
+      output_dimensions[i] = ShapedType::kDynamicSize;
+    } else {
+      const int64_t dilated_base = xla::window_util::DilatedBound(
+          base_shape.getDimSize(i), dim.base_dilation());
+      const int64_t padded_dilated_base =
+          dim.padding_low() + dilated_base + dim.padding_high();
+      const int64_t dilated_window =
+          xla::window_util::DilatedBound(dim.size(), dim.window_dilation());
+
+      output_dimensions[i] = xla::window_util::StridedBound(
+          padded_dilated_base, dilated_window, dim.stride());
+    }
+  }
+
+  return RankedTensorType::get(output_dimensions, element_type);
+}
+
+bool ShapeInference::InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op) {
+  DCOMMENT_OP(op, "Inferring shape for XlaReduceWindowOp");
+
+  bool changed = false;
+
+  auto input_ty = op.input().getType().cast<ShapedType>();
+  DenseElementsAttr window_dimensions, window_strides, base_dilations,
+      window_dilations, padding;
+  if (input_ty.hasStaticShape() &&
+      matchPattern(op.window_dimensions(), m_Constant(&window_dimensions)) &&
+      matchPattern(op.window_strides(), m_Constant(&window_strides)) &&
+      matchPattern(op.base_dilations(), m_Constant(&base_dilations)) &&
+      matchPattern(op.window_dilations(), m_Constant(&window_dilations)) &&
+      matchPattern(op.padding(), m_Constant(&padding))) {
+    llvm::SmallVector<int64_t> window_dimensions_vec, window_strides_vec,
+        base_dilations_vec, window_dilations_vec;
+    llvm::SmallVector<std::pair<int64_t, int64_t>> padding_pairs(
+        padding.getNumElements() / 2);
+
+    for (auto i = 0; i < window_dimensions.size(); ++i) {
+      window_dimensions_vec.push_back(
+          window_dimensions.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < window_strides.size(); ++i) {
+      window_strides_vec.push_back(
+          window_strides.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < base_dilations.size(); ++i) {
+      base_dilations_vec.push_back(
+          base_dilations.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < window_dilations.size(); ++i) {
+      window_dilations_vec.push_back(
+          window_dilations.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < padding_pairs.size(); ++i) {
+      padding_pairs[i] = {padding.getValues<IntegerAttr>()[i * 2].getInt(),
+                          padding.getValues<IntegerAttr>()[i * 2 + 1].getInt()};
+    }
+
+    auto window = InferWindowFromDimensions(
+        window_dimensions_vec, window_strides_vec, padding_pairs,
+        base_dilations_vec, window_dilations_vec);
+    if (!window) {
+      op->emitOpError("failed to create window");
+    }
+    auto output_shape = InferWindowOutputShape(
+        input_ty, window.getValue(),
+        op.init_value().getType().cast<ShapedType>().getElementType());
+
+    if (!output_shape) {
+      op->emitOpError("failed to infer output shape");
+    }
+
+    changed = RefineResultType(op.getOperation(), op.getResult(),
+                               output_shape.getValue());
+  }
+
+  return changed;
+}
+
 bool ShapeInference::RefineWithInferTypeOpInterface(
     InferTypeOpInterface infer_ti) {
   Operation* op = infer_ti.getOperation();
@@ -1561,6 +1743,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     return InferShapeForVarHandleOp(var_handle_op);
   }
 
+  if (auto xla_reduce_window_op = dyn_cast<XlaReduceWindowOp>(op)) {
+    return InferShapeForXlaReduceWindowOp(xla_reduce_window_op);
+  }
+
   // Return operand as a constant attribute.
   auto operand_as_constant_fn = [&](Value operand) {
     ValuePort vp(operand);
@@ -1849,23 +2035,28 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
       PropagateConstantFromCallee(call_op, func, module);
       return failure_or_converged;
     }
-  } else if (isa<TF::XlaVariadicReduceV2Op>(op) ||
+  } else if (isa<TF::XlaReduceWindowOp>(op) ||
+             isa<TF::XlaVariadicReduceV2Op>(op) ||
              isa<TF::XlaVariadicSortOp>(op)) {
-    SymbolRefAttr func_sym;
-    if (auto xla_variadic_reduce_v2_op =
-            dyn_cast<TF::XlaVariadicReduceV2Op>(op)) {
-      func_sym = xla_variadic_reduce_v2_op.reducer();
+    auto propagate_shape_to = [&](mlir::SymbolRefAttr func_sym) {
+      auto func = llvm::cast<mlir::FuncOp>(
+          mlir::SymbolTable::lookupSymbolIn(module, func_sym));
+      mlir::SmallVector<mlir::Type, 2> types;
+      for (auto type : func.getType().getInputs()) {
+        types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
+      }
+      return PropagateShapeToFunctions(module, types, {func}, max_iterations);
+    };
+
+    if (auto xla_reduce_window_op = dyn_cast<TF::XlaReduceWindowOp>(op)) {
+      return propagate_shape_to(xla_reduce_window_op.computation());
+    } else if (auto xla_variadic_reduce_v2_op =
+                   dyn_cast<TF::XlaVariadicReduceV2Op>(op)) {
+      return propagate_shape_to(xla_variadic_reduce_v2_op.reducer());
     } else if (auto xla_variadic_sort_op =
                    dyn_cast<TF::XlaVariadicSortOp>(op)) {
-      func_sym = xla_variadic_sort_op.comparator();
+      return propagate_shape_to(xla_variadic_sort_op.comparator());
     }
-    auto func = llvm::cast<mlir::FuncOp>(
-        mlir::SymbolTable::lookupSymbolIn(module, func_sym));
-    mlir::SmallVector<mlir::Type, 2> types;
-    for (auto type : func.getType().getInputs()) {
-      types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
-    }
-    return PropagateShapeToFunctions(module, types, {func}, max_iterations);
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.

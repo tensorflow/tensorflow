@@ -6251,6 +6251,52 @@ class ConvertXlaReduceScatterOp
   }
 };
 
+// Converts tf.XlaReduceWindow to mhlo.ReduceWindow
+class ConvertXlaReduceWindowOp
+    : public OpRewritePattern<TF::XlaReduceWindowOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaReduceWindowOp op,
+                                PatternRewriter &rewriter) const override {
+    DenseElementsAttr window_dimensions, window_strides, base_dilations,
+        window_dilations, padding;
+    if (!(matchPattern(op.window_dimensions(),
+                       m_Constant(&window_dimensions)) &&
+          matchPattern(op.window_strides(), m_Constant(&window_strides)) &&
+          matchPattern(op.base_dilations(), m_Constant(&base_dilations)) &&
+          matchPattern(op.window_dilations(), m_Constant(&window_dilations)) &&
+          matchPattern(op.padding(), m_Constant(&padding))))
+      return failure();
+
+    Location loc = op.getLoc();
+
+    SmallVector<Type> result_types{op.getResult().getType()};
+    // Create the mhlo.SelectAndScatter op.
+    auto reduce_window_op = rewriter.create<mhlo::ReduceWindowOp>(
+        loc, result_types, op.input(), op.init_value(),
+        hlo::ConvertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(window_strides, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(base_dilations, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(window_dilations, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(padding, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>());
+    // Insert a call to the reducer in the region of the mhlo op.
+    mlir::SymbolRefAttr func = op.computation();
+    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+        op->getParentOfType<mlir::ModuleOp>(), func));
+    auto func_ty = func_op.getType();
+    BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_window_op.body());
+
+    rewriter.replaceOp(op, reduce_window_op.getResults());
+
+    return success();
+  }
+};
+
 // Converts ClipByValue to XLA's clamp operation. Includes the broadcasting
 // semantics for static and dynamic cases.
 class ConvertClipByValueOp : public OpRewritePattern<TF::ClipByValueOp> {
@@ -7269,6 +7315,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaShardingOp,
     ConvertXlaDynamicUpdateSliceOp,
     ConvertXlaReduceScatterOp,
+    ConvertXlaReduceWindowOp,
     ConvertXlaRngBitGeneratorOp,
     ConvertXlaSortOp,
     ConvertXlaVariadicReduceV2Op,
