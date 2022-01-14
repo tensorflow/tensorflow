@@ -35,31 +35,25 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-int3 GetWorkGroupsCount(int grid_dimension, const int3& grid_size,
-                        const int3& work_group_size,
-                        const int3& work_group_launch_order) {
-  int3 work_groups_count;
-  if (grid_dimension == 1) {
-    work_groups_count.x = DivideRoundUp(grid_size.x, work_group_size.x);
-    work_groups_count.y = 1;
-    work_groups_count.z = 1;
-  } else if (grid_dimension == 2) {
-    int3 wgs;
-    wgs.x = DivideRoundUp(grid_size.x, work_group_size.x);
-    wgs.y = DivideRoundUp(grid_size.y, work_group_size.y);
-    work_groups_count.x = wgs[work_group_launch_order[0]];
-    work_groups_count.y = wgs[work_group_launch_order[1]];
-    work_groups_count.z = 1;
-  } else {  // grid_dimension == 3
-    int3 wgs;
-    wgs.x = DivideRoundUp(grid_size.x, work_group_size.x);
-    wgs.y = DivideRoundUp(grid_size.y, work_group_size.y);
-    wgs.z = DivideRoundUp(grid_size.z, work_group_size.z);
-    work_groups_count.x = wgs[work_group_launch_order[0]];
-    work_groups_count.y = wgs[work_group_launch_order[1]];
-    work_groups_count.z = wgs[work_group_launch_order[2]];
+bool IsWordSymbol(char symbol) {
+  return absl::ascii_isalnum(symbol) || symbol == '_';
+}
+
+void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
+                     std::string* str) {
+  size_t position = str->find(old_word);
+  while (position != std::string::npos) {
+    const char prev = position == 0 ? ' ' : (*str)[position - 1];
+    const char next = position + old_word.size() < str->size()
+                          ? (*str)[position + old_word.size()]
+                          : ' ';
+    if (IsWordSymbol(prev) || IsWordSymbol(next)) {
+      position = str->find(old_word, position + 1);
+      continue;
+    }
+    str->replace(position, old_word.size(), new_word);
+    position = str->find(old_word, position + new_word.size());
   }
-  return work_groups_count;
 }
 }  // namespace
 
@@ -124,6 +118,11 @@ absl::Status ComputeTask::Compile(MetalDevice* device) {
 
   operation_->args_.ReleaseCPURepresentation();
 
+  // manually resolving this defines, so as Metal has reserved words for them
+  ReplaceAllWords("float16", "float4x4", &operation_->code_);
+  ReplaceAllWords("half16", "half4x4", &operation_->code_);
+  ReplaceAllWords("float8", "float2x4", &operation_->code_);
+  ReplaceAllWords("half8", "half2x4", &operation_->code_);
   return CompileProgram(device, operation_->GetDefinition().precision,
                         operation_->code_);
 }
@@ -155,10 +154,6 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
     }
   }
   std::map<std::string, std::string> macros = {
-      {"float16", "float4x4"},
-      {"half16", "half4x4"},
-      {"float8", "float2x4"},
-      {"half8", "half2x4"},
       {"FLT16_0123(V)", "V[0]"},
       {"FLT16_4567(V)", "V[1]"},
       {"FLT16_89ab(V)", "V[2]"},
