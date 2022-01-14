@@ -129,10 +129,6 @@ cc_library(
     name = "profiler_interface",
     hdrs = ["profiler_interface.h"],
     copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow:internal",
-        "//tensorflow/core/profiler:internal",
-    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
