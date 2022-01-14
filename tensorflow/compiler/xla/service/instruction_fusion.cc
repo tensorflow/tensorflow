@@ -595,13 +595,19 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
             VLOG(2) << "Not fusing " << operand->ToShortString() << "| into |"
                     << instruction->ToShortString() << "| as "
                     << should_fuse.Explain();
-            TF_RETURN_IF_ERROR(RegisterFusionState(
-                *computation,
-                absl::StrCat("Not fusing |", operand->ToShortString(),
-                             "| into |", instruction->ToShortString(), "| as ",
-                             should_fuse.Explain()),
-                instruction,
-                /*changed=*/false));
+
+            // Readability optimizations: lack of fusion for tuple accesses
+            // generates a lot of noise.
+            if (operand->opcode() != HloOpcode::kGetTupleElement &&
+                instruction->opcode() != HloOpcode::kGetTupleElement) {
+              TF_RETURN_IF_ERROR(RegisterFusionState(
+                  *computation,
+                  absl::StrCat("Not fusing |", operand->ToShortString(),
+                               "| into |", instruction->ToShortString(),
+                               "| as ", should_fuse.Explain()),
+                  instruction,
+                  /*changed=*/false));
+            }
           }
 
           fusion_queue->NotFusingInstruction(operand, instruction);
