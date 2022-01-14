@@ -352,8 +352,6 @@ static std::vector<std::string> DumpHloModuleImpl(
                             render_graph(RenderedGraphFormat::kHtml), opts));
   }
 
-  // TODO(cheshire): More descriptive filename which still avoids char limit.
-  static std::atomic<int> counter;
 
   if (opts.dump_fusion_visualization) {
     for (const HloComputation* computation :
@@ -363,6 +361,7 @@ static std::vector<std::string> DumpHloModuleImpl(
           /*label=*/absl::StrCat(filename, "_", computation->name()),
           module.config().debug_options(),
           RenderedGraphFormat::kFusionVisualization, profile);
+
       if (IsTrivial(*computation)) {
         VLOG(1) << "Skipping computation " << computation->name()
                 << " as trivial";
@@ -375,8 +374,8 @@ static std::vector<std::string> DumpHloModuleImpl(
         continue;
       }
       file_paths.push_back(DumpToFileInDirImpl(
-          StrFormat("%d_fusion_visualization.html", ++counter), *rendered_graph,
-          opts));
+          FilenameFor(module, computation->name(), "_fusion.html"),
+          *rendered_graph, opts));
     }
   }
 
