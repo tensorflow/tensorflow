@@ -49,7 +49,9 @@ limitations under the License.
 
 #if BEF_EXECUTABLE
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
+#include "tfrt/bef_converter/bef_to_mlir.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -128,12 +131,14 @@ struct GpuExecutable::BefExecutable {
     }
     tfrt::ExecutionContext exec_ctx(*req_ctx);
 
-    auto entry_point = tfrt::gpu::GetEntryPoint(*bef_file, exec_ctx);
-    if (!entry_point) {
-      return tensorflow::errors::Internal(toString(entry_point.takeError()));
+    auto expected_entry_point = tfrt::gpu::GetEntryPoint(*bef_file, exec_ctx);
+    if (!expected_entry_point) {
+      return tensorflow::errors::Internal(
+          toString(expected_entry_point.takeError()));
     }
+    entry_point = *expected_entry_point;
 
-    const auto& func_name = entry_point->function_name;
+    const auto& func_name = entry_point.function_name;
     function = bef_file->GetFunction(func_name);
     if (!function) {
       return InternalError("Failed to get '%s' function", func_name);
@@ -153,6 +158,7 @@ struct GpuExecutable::BefExecutable {
   mlir::MLIRContext mlir_ctx;
   tfrt::HostContext host_ctx;
   tfrt::RCReference<tfrt::BEFFile> bef_file;
+  tfrt::gpu::EntryPoint entry_point;
   // Signature: (chain, stream, inputs..., outputs...) -> (chain).
   const tfrt::Function* function;
   tensorflow::mutex mutex;
@@ -197,6 +203,26 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
           params.verbose_buffer_assignment_string_dumper),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
+  XlaDebugInfoManager::Get()->RegisterModule(
+      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
+      debug_buffer_assignment_);
+}
+
+GpuExecutable::GpuExecutable(
+    std::shared_ptr<HloModule> hlo_module, GpuVersion gpu_version,
+    xla::EntryFunctionAttributes entry_func_attrs,
+    absl::string_view module_name, Shape xla_output_shape,
+    std::vector<BufferAllocation> allocations,
+    absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
+    BefExecutable* bef_executable)
+    : Executable(std::move(hlo_module)),
+      gpu_version_(gpu_version),
+      entry_func_attrs_(entry_func_attrs),
+      module_name_(module_name),
+      output_shape_(xla_output_shape),
+      allocations_(std::move(allocations)),
+      output_info_(std::move(output_info)),
+      bef_executable_(bef_executable) {
   XlaDebugInfoManager::Get()->RegisterModule(
       ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
       debug_buffer_assignment_);
@@ -839,12 +865,17 @@ Status GpuExecutable::SetUpMlirAllocation(
     mlir::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
     std::vector<BufferAllocation>* allocations,
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
-    Shape* output_shape) {
+    Shape* output_shape, int buffer_param_offset) {
   for (int i = 0; i < buffer_sizes.size(); i++) {
     allocations->emplace_back(i, buffer_sizes[i], 0);
   }
 
   for (int i = 0; i < func.getNumArguments(); i++) {
+    if (i < buffer_param_offset) {
+      continue;
+    }
+    const int buffer_index = i - buffer_param_offset;
+
     if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
       xla::ShapeIndex shape_index;
       if (auto shape_index_attr =
@@ -854,17 +885,18 @@ Status GpuExecutable::SetUpMlirAllocation(
           shape_index.push_back(element.getSExtValue());
         }
       }
-      allocations->at(i).set_entry_computation_parameter(
-          param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
-          static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
+      allocations->at(buffer_index)
+          .set_entry_computation_parameter(
+              param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
+              static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
     }
     // TODO(timshen): this information is redundant. This is here only for
     // smooth migration to LMHLO. Remove it.
     if (func.getArgAttr(i, "lmhlo.constant_name")) {
-      allocations->at(i).set_constant(true);
+      allocations->at(buffer_index).set_constant(true);
     }
     if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
-      allocations->at(i).set_maybe_live_out(true);
+      allocations->at(buffer_index).set_maybe_live_out(true);
 
       // Reconstruct a shape index from output_index.
       ShapeIndex shape_index;
@@ -873,7 +905,7 @@ Status GpuExecutable::SetUpMlirAllocation(
         shape_index.push_back(element.getSExtValue());
       }
       auto& o = (*output_info)[shape_index];
-      o.allocation_index = i;
+      o.allocation_index = buffer_index;
       if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
         HloInputOutputAliasConfig::AliasKind kind =
             HloInputOutputAliasConfig::kMayAlias;
@@ -906,6 +938,98 @@ Status GpuExecutable::SetUpMlirAllocation(
                      .str()));
 
   return Status::OK();
+}
+
+#if BEF_EXECUTABLE
+static void ApplyEntryFunctionAttributes(
+    mlir::MLIRContext& context, mlir::FuncOp& func,
+    xla::EntryFunctionAttributes entry_func_attrs, int buffer_param_offset) {
+  mlir::OpBuilder builder(&context);
+  llvm::SmallVector<mlir::DictionaryAttr, 8> args_attrs;
+  for (int i = 0; i < func.getNumArguments(); i++) {
+    mlir::NamedAttrList arg_attr_list;
+    if (i < buffer_param_offset) {
+      args_attrs.push_back(arg_attr_list.getDictionary(&context));
+      continue;
+    }
+    const auto& buffer = entry_func_attrs.buffers(i - buffer_param_offset);
+
+    if (buffer.lmhlo_params_present()) {
+      arg_attr_list.set("lmhlo.params",
+                        builder.getIndexAttr(buffer.lmhlo_params()));
+    }
+    if (buffer.has_lmhlo_param_shape_index()) {
+      arg_attr_list.set("lmhlo.param_shape_index",
+                        builder.getI64TensorAttr(llvm::makeArrayRef(
+                            buffer.lmhlo_param_shape_index().indices().begin(),
+                            buffer.lmhlo_param_shape_index().indices().end())));
+    }
+    if (!buffer.lmhlo_constant_name().empty()) {
+      arg_attr_list.set("lmhlo.constant_name",
+                        builder.getStringAttr(buffer.lmhlo_constant_name()));
+    }
+    if (buffer.lmhlo_must_alias()) {
+      arg_attr_list.set("lmhlo.must_alias", builder.getUnitAttr());
+    }
+    if (buffer.has_lmhlo_output_index()) {
+      arg_attr_list.set("lmhlo.output_index",
+                        builder.getI64TensorAttr(llvm::makeArrayRef(
+                            buffer.lmhlo_output_index().indices().begin(),
+                            buffer.lmhlo_output_index().indices().end())));
+    }
+    args_attrs.push_back(arg_attr_list.getDictionary(&context));
+  }
+  func.setAllArgAttrs(args_attrs);
+  func->setAttr("result_xla_shape",
+                builder.getStringAttr(entry_func_attrs.result_xla_shape()));
+}
+#endif  // BEF_EXECUTABLE
+
+StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
+    std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
+    xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version) {
+#if BEF_EXECUTABLE
+  OwnedBefBuffer bef_buffer = [bef]() {
+    auto ptr = static_cast<uint8_t*>(
+        tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
+    std::copy(bef.begin(), bef.end(), ptr);
+    return OwnedBefBuffer(ptr, {bef.size()});
+  }();
+
+  mlir::MLIRContext context;
+  context.allowUnregisteredDialects();
+  mlir::Location location = mlir::UnknownLoc::get(&context);
+  llvm::ArrayRef<uint8_t> bef_array(bef_buffer.get(),
+                                    bef_buffer.get_deleter().size);
+  auto module = tfrt::ConvertBEFToMLIR(location, bef_array, &context);
+  TF_ASSIGN_OR_RETURN(BefExecutable * bef_executable,
+                      BefExecutable::Create(std::move(bef_buffer)));
+  auto func = mlir::cast<mlir::FuncOp>(
+      module->lookupSymbol(bef_executable->entry_point.function_name));
+  // In tfrt_gpu dialect, buffer arguments start from the third parameter (after
+  // tfrt::Chain and GpuStream).
+  int buffer_param_offset = 2;
+  ApplyEntryFunctionAttributes(context, func, entry_func_attrs,
+                               buffer_param_offset);
+
+  std::vector<BufferAllocation> allocations;
+  absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
+  Shape result_xla_shape;
+  TF_RETURN_IF_ERROR(SetUpMlirAllocation(
+      func, bef_executable->entry_point.buffer_sizes, &allocations,
+      &output_info, &result_xla_shape, buffer_param_offset));
+
+  std::unique_ptr<Executable> executable;
+  std::string module_name = mlir::GetNameFromLoc(module->getLoc());
+  // Calling private constructor.
+  executable = absl::WrapUnique(
+      new GpuExecutable(std::move(hlo_module), gpu_version, entry_func_attrs,
+                        module_name, result_xla_shape, std::move(allocations),
+                        std::move(output_info), bef_executable));
+  return executable;
+#else   // BEF_EXECUTABLE
+  return FailedPrecondition("LoadFromBef only supported with BEF_EXECUTABLE");
+#endif  // BEF_EXECUTABLE
 }
 
 StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

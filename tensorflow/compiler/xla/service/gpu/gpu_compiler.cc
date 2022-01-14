@@ -159,6 +159,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
@@ -256,6 +257,23 @@ bool ConvIsLowerable(HloInstruction* conv) {
 
 using OwnedThunkSchedule = GpuExecutable::OwnedThunkSchedule;
 using OwnedBefBuffer = GpuExecutable::OwnedBefBuffer;
+
+StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
+    Compiler* compiler, se::StreamExecutor* executor) const {
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig hlo_module_config,
+      HloModule::CreateModuleConfigFromProto(bef_executable_.hlo_module_proto(),
+                                             GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(bef_executable_.hlo_module_proto(),
+                                 hlo_module_config));
+  auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
+  return GpuExecutable::LoadFromBef(std::move(hlo_module),
+                                    bef_executable_.bef(),
+                                    bef_executable_.entry_func_attrs(),
+                                    gpu_compiler->GetGpuVersion(executor));
+}
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
@@ -1263,6 +1281,15 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
 }
 
+StatusOr<std::unique_ptr<AotCompilationResult>>
+GpuCompiler::LoadAotCompilationResult(
+    const std::string& serialized_aot_result) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AotCompilationResult> aot_result,
+      GpuAotCompilationResult::FromString(serialized_aot_result));
+  return aot_result;
+}
+
 GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec) {
   GpuDeviceInfo gpu_device_info;
   gpu_device_info.threads_per_block_limit =
@@ -1286,7 +1313,64 @@ GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec) {
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
-  return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
+#if BEF_EXECUTABLE
+  CHECK(options.PlatformId() == se::cuda::kCudaPlatformId);
+  CHECK(options.executor() != nullptr);
+  auto stream_exec = options.executor();
+
+  std::vector<std::unique_ptr<HloModule>> modules =
+      module_group->ConsumeModules();
+  std::vector<std::unique_ptr<AotCompilationResult>> results;
+
+  for (const auto& module : modules) {
+    XLA_SCOPED_LOGGING_TIMER(
+        "GpuCompiler::CompileAheadOfTime - compiling one HloModule");
+    std::string slow_compilation_msg =
+        absl::StrCat("Compiling module ", module->name());
+    auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
+
+    llvm::LLVMContext llvm_context;
+
+    GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
+
+    if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
+      HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
+      cost_analysis.set_bytes_per_second(
+          stream_exec->GetDeviceDescription().memory_bandwidth());
+      TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
+      VLOG(1) << "HLO memory read+written: "
+              << tensorflow::strings::HumanReadableNumBytes(
+                     cost_analysis.bytes_accessed());
+      if (module->config().hlo_profiling_enabled()) {
+        LOG(ERROR) << "--xla_hlo_profile for GPU is unsupported.";
+      }
+    }
+
+    CompileModuleResults compile_module_results;
+    TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
+        module.get(), &llvm_context, target_triple_, data_layout_,
+        stream_exec->platform()->Name(), gpu_device_info,
+        stream_exec->GetDeviceDescription().cuda_compute_capability(),
+        GetCanShareBuffer(), pointer_size_, &compile_module_results));
+
+    if (!absl::holds_alternative<OwnedBefBuffer>(
+            compile_module_results.thunks_or_bef)) {
+      return FailedPrecondition("Expected BefBuffer is not supplied.");
+    }
+    const auto& bef_buffer =
+        absl::get<OwnedBefBuffer>(compile_module_results.thunks_or_bef);
+    const std::string bef(reinterpret_cast<char*>(bef_buffer.get()),
+                          bef_buffer.get_deleter().size);
+
+    results.emplace_back(absl::make_unique<GpuAotCompilationResult>(
+        module->ToProto(), bef, compile_module_results.entry_func_attrs));
+  }
+
+  return std::move(results);
+#else   // BEF_EXECUTABLE
+  return FailedPrecondition(
+      "GpuCompiler::CompileAheadOfTime only supported with BEF_EXECUTABLE");
+#endif  // BEF_EXECUTABLE
 }
 
 HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
@@ -1349,6 +1433,7 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
   for (int i = 0; i < func.getNumArguments(); i++) {
     auto buffer = entry_func_attrs->add_buffers();
     if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
+      buffer->set_lmhlo_params_present(true);
       buffer->set_lmhlo_params(param_attr.cast<mlir::IntegerAttr>().getInt());
     }
     if (auto shape_index_attr = func.getArgAttr(i, "lmhlo.param_shape_index")) {

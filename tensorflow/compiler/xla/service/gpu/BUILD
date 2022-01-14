@@ -840,11 +840,13 @@ cc_library(
         ":is_bef_executable_enabled": [
             ":xlir_kernels",
             "@llvm-project//llvm:Support",
+            "//tensorflow/compiler/mlir:name_utils",
             "//tensorflow/core/tfrt/runtime:work_queue_interface",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:befexecutor",
+            "@tf_runtime//:beftomlir",
             "@tf_runtime//:bef",
             "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
@@ -1861,6 +1863,28 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_aot_compilation_test",
+    srcs = [
+        "gpu_aot_compilation_test.cc",
+    ],
+    tags = [
+        "gpu",
+        "manual",  # Requires --//tensorflow/compiler/xla/service/gpu:enable_bef_executable=true
+        "no_oss",
+        "no_rocm",
+        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false
+        "notap",
+        # positives in msan.
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":nvptx_compiler_impl",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
     ],
