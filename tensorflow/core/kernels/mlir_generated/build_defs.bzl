@@ -190,6 +190,7 @@ _gen_kernel_bin_rule = rule(
         "gpu_archs": attr.string_list(),
         "jit": attr.bool(),
         "cpu_codegen": attr.bool(),
+        "index_64Bit": attr.bool(),
         "extra_args": attr.string_list(),
         # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
         "_tfso": attr.label(
@@ -253,7 +254,8 @@ def _gen_kernel_library(
         unroll_factors_override = {},
         extra_args = [],
         test_tags = [],
-        test_size = "medium"):
+        test_size = "medium",
+        jit_i64_indexed_for_large_tensors_types = []):
     """ Generate a library with GPU or CPU kernels for a specific tensorflow op.
 
     Args:
@@ -284,16 +286,29 @@ def _gen_kernel_library(
       extra_args: Extra arguments to pass to the generator tool.
       test_tags: The tags to pass to the generated test.
       test_size: The "size" argument to pass to the test.
+      jit_i64_indexed_for_large_tensors_types: The type to apply to the Kernel's 
+                                               indexing.
     """
 
     enable_cpu = bool(platform == "cpu")
-
-    aot_kernels = zip(types, output_types or types, [False for t in types])
-    jit_kernels = zip(jit_types, output_jit_types or jit_types, [True for t in jit_types])
-    all_kernels = aot_kernels + jit_kernels
-
+    if not output_types:
+        output_types =  
+    if not jit_types:
+        jit_types = []
+    if not output_jit_types:
+        output_jit_types = jit_types
+    use_i64_indices = [True if jit_types[i] in jit_i64_indexed_for_large_tensors_types 
+                            else False  
+                            for i in jit_types]
+    true_jits = [True for i in jit_types]
+    all_jit_kernels = zip(jit_types, output_jit_types, true_jits, use_i64_indices)
+    false_jits = [False for i in types]
+    all_precomp_kernels = zip(types, output_types, false_jits, false_jits)
+    all_kernels = all_precomp_kernels
+    if if_mlir_generated_experimental_kernels_enabled(True, False):
+        all_kernels += all_jit_kernels
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
-        for (type, output_type, jit) in all_kernels:
+        for (type, output_type, jit, i64_index) in all_kernels:
             # Disable unrolling for integer types while LLVM does not vectorize these.
             # See b/182343395 for context.
             integer_types = ["i1", "i8", "i16", "i32", "i64", "ui8", "ui16", "ui32", "ui64"]
@@ -327,6 +342,7 @@ def _gen_kernel_library(
                 ),
                 tile_size = typed_tile_size,
                 unroll_factors = typed_unroll_factors,
+                index_64Bit = i64_index,
             )
 
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
