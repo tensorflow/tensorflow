@@ -354,7 +354,9 @@ class QuantizationPattern : public RewritePattern {
         return success();
       }
 
-      if (!ops_blocklist.empty() &&
+      // Blocklist op is checked in advance for non-dynamic range quantization
+      // case.
+      if (!quant_params_.quant_spec.weight_quantization &&
           (ops_blocklist.find(quantizing_op->getName().getStringRef().str()) !=
            ops_blocklist.end())) {
         return failure();
@@ -398,7 +400,8 @@ class QuantizationPattern : public RewritePattern {
           if (dq_op && dynamic_range_op &&
               inference_type == tensorflow::DT_QINT8 &&
               dynamic_range_op.GetDynamicRangeQuantKernelSupport() &&
-              !weight_only_quantization) {
+              !static_cast<const ConcretTy*>(this)->IsWeightOnlyOp(
+                  quantizing_op, ops_blocklist, weight_only_quantization)) {
             // Dynamic range quantization is applied by having Q as an input.
             // Only int8 weight is supported for now.
             inputs.push_back(dq_op.input());

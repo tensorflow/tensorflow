@@ -2,11 +2,13 @@
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization --tfl-enable-weight-only-quantization | FileCheck --check-prefix=PerChannelWeightOnly %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization --tfl-enable-dynamic-range-per-channel-quantization=false | FileCheck --check-prefix=PerTensor %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization --tfl-enable-weight-only-quantization --tfl-enable-dynamic-range-per-channel-quantization=false | FileCheck --check-prefix=PerTensorWeightOnly %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization --tfl-enable-dynamic-range-per-channel-quantization=false --tfl-ops-blocklist="tfl.conv_2d" | FileCheck --check-prefix=BLOCK %s
 
 // CHECK-LABEL: QuantizeConv2D
 // PerTensor-LABEL: QuantizeConv2D
 // PerChannelWeightOnly-LABEL: QuantizeConv2D
 // PerTensorWeightOnly-LABEL: QuantizeConv2D
+// BLOCK-LABEL: QuantizeConv2D
 func @QuantizeConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32> {
   %w = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
   %b = arith.constant dense<-1.23697901> : tensor<64xf32>
@@ -42,6 +44,12 @@ func @QuantizeConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32>
 // PerTensorWeightOnly-NOT: asymmetric_quantize_inputs = true
 // PerTensorWeightOnly-SAME: dilation_h_factor = 1 : i32
 // PerTensorWeightOnly: return %[[conv:.*]]
+
+// BLOCK: %[[b:.*]] = arith.constant dense<-1.23697901> : tensor<64xf32>
+// BLOCK: %[[w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// BLOCK: %[[dq_w:.*]] = "tfl.dequantize"(%[[w]]) : (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// BLOCK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq_w]], %[[b]]) {
+// BLOCK: return %[[conv:.*]]
 }
 
 // CHECK-LABEL: QuantizeDepthwiseConv2D
@@ -116,12 +124,12 @@ func @QuantizeMatmulWithActConst(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x3x3x1
   %mm = "tfl.batch_matmul"(%arg0, %w) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x12xf32>) -> tensor<1x3x3x12xf32>
   return %mm : tensor<1x3x3x12xf32>
 
-// CHECK: %[[w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<512x12x!quant.uniform<i8:f32, 0.49803921568627452:-128>>,
+// CHECK: %[[w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<512x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>,
 // CHECK: %[[mm:.*]] = "tfl.batch_matmul"(%arg0, %[[w]]) {adj_x = false, adj_y = false
 // CHECK-SAME: , asymmetric_quantize_inputs = true
 // CHECK: return %[[mm:.*]]
 
-// PerTensor: %[[w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<512x12x!quant.uniform<i8:f32, 0.49803921568627452:-128>>,
+// PerTensor: %[[w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<512x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>,
 // PerTensor: %[[mm:.*]] = "tfl.batch_matmul"(%arg0, %[[w]]) {adj_x = false, adj_y = false
 // PerTensor-SAME: , asymmetric_quantize_inputs = true
 // PerTensor: return %[[mm:.*]]
@@ -203,6 +211,7 @@ func @NotQuantizeConv3D(%arg0: tensor<1x32x32x32x8xf32>) -> tensor<1x32x32x32x16
 
 // CHECK-LABEL: QuantizeMultiUses
 // PerTensor-LABEL: QuantizeMultiUses
+// BLOCK-LABEL: QuantizeMultiUses
 func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>, %arg1: tensor<3xi32>) -> (tensor<1x112x112x122xf32>, tensor<3x3x3x3xf32>) {
   %w = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
   %b = arith.constant dense<-1.23697901> : tensor<64xf32>
@@ -213,8 +222,8 @@ func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>, %arg1: tensor<3xi32>) ->
   return %bmm, %emb : tensor<1x112x112x122xf32>, tensor<3x3x3x3xf32>
 
 // CHECK: %[[b:.*]] = arith.constant dense<-1.23697901> : tensor<64xf32>
-// CHECK: %[[w1:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8:f32, 0.49803921568627452:-128>>
-// CHECK: %[[dq_w1:.*]] = "tfl.dequantize"(%[[w1]]) : (tensor<64x3x3x3x!quant.uniform<i8:f32, 0.49803921568627452:-128>>) -> tensor<64x3x3x3xf32>
+// CHECK: %[[w1:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// CHECK: %[[dq_w1:.*]] = "tfl.dequantize"(%[[w1]]) : (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<64x3x3x3xf32>
 // CHECK: %[[w2:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32:3, {1.000000e+00,1.000000e+00,1.000000e+00}
 // CHECK: %[[w3:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32:0, {1.000000e+00,1.000000e+00,1.000000e+00
 // CHECK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[w3]], %[[b]])
@@ -226,12 +235,10 @@ func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>, %arg1: tensor<3xi32>) ->
 // CHECK: return %[[bmm:.*]], %[[emb:.*]]
 
 // PerTensor: %[[b:.*]] = arith.constant dense<-1.23697901> : tensor<64xf32>
-// PerTensor: %[[w1:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8:f32, 0.49803921568627452:-128>>
-// PerTensor: %[[dq_w1:.*]] = "tfl.dequantize"(%[[w1]]) : (tensor<64x3x3x3x!quant.uniform<i8:f32, 0.49803921568627452:-128>>) -> tensor<64x3x3x3xf32>
-// PerTensor: %[[w2:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
-// PerTensor: %[[w3:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
-// PerTensor: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[w3]], %[[b]])
-// PerTensor: %[[dconv:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[w2]], %[[b]])
+// PerTensor: %[[w1:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// PerTensor: %[[dq_w1:.*]] = "tfl.dequantize"(%[[w1]]) : (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<64x3x3x3xf32>
+// PerTensor: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[w1]], %[[b]])
+// PerTensor: %[[dconv:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[w1]], %[[b]])
 // PerTensor: %[[emb:.*]] = "tfl.gather"(%[[dq_w1]], %arg1)
 // PerTensor: %[[bmm:.*]] = "tfl.batch_matmul"(%[[conv]], %[[dconv]]) {adj_x = false, adj_y = true
 // PerTensor-NOT: , asymmetric_quantize_inputs = true
@@ -239,8 +246,8 @@ func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>, %arg1: tensor<3xi32>) ->
 // PerTensor: return %[[bmm:.*]], %[[emb:.*]]
 
 // PerChannelWeightOnly: %[[b:.*]] = arith.constant dense<-1.23697901> : tensor<64xf32>
-// PerChannelWeightOnly: %[[w1:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8:f32, 0.49803921568627452:-128>>
-// PerChannelWeightOnly: %[[dq_w1:.*]] = "tfl.dequantize"(%[[w1]]) : (tensor<64x3x3x3x!quant.uniform<i8:f32, 0.49803921568627452:-128>>) -> tensor<64x3x3x3xf32>
+// PerChannelWeightOnly: %[[w1:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// PerChannelWeightOnly: %[[dq_w1:.*]] = "tfl.dequantize"(%[[w1]]) : (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<64x3x3x3xf32>
 // PerChannelWeightOnly: %[[w2:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32:3, {1.000000e+00,1.000000e+00,1.000000e+00}
 // PerChannelWeightOnly: %[[dq_w2:.*]] = "tfl.dequantize"(%[[w2]]) : (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32:3, {1.000000e+00,1.000000e+00,1.000000e+00}>>) -> tensor<64x3x3x3xf32>
 // PerChannelWeightOnly: %[[w3:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32:0, {1.000000e+00,1.000000e+00,1.000000e+00
@@ -252,4 +259,13 @@ func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>, %arg1: tensor<3xi32>) ->
 // PerChannelWeightOnly-NOT: , asymmetric_quantize_inputs = true
 // PerChannelWeightOnly-SAME: }
 // PerChannelWeightOnly: return %[[bmm:.*]], %[[emb:.*]]
+
+// BLOCK: %[[b:.*]] = arith.constant dense<-1.23697901> : tensor<64xf32>
+// BLOCK: %[[w1:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// BLOCK: %[[dq_w1:.*]] = "tfl.dequantize"(%[[w1]]) : (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<64x3x3x3xf32>
+// BLOCK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq_w1]], %[[b]])
+// BLOCK: %[[dconv:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[w1]], %[[b]])
+// BLOCK: %[[emb:.*]] = "tfl.gather"(%[[dq_w1]], %arg1)
+// BLOCK: %[[bmm:.*]] = "tfl.batch_matmul"(%[[conv]], %[[dconv]]) {adj_x = false, adj_y = true
+// BLOCK: return %[[bmm:.*]], %[[emb:.*]]
 }
