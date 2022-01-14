@@ -73,6 +73,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor
@@ -579,7 +580,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     """
     self._lock = threading.RLock()
     self._python_function = python_function
-    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
         python_function,
         input_signature,
         jit_compile=jit_compile,
@@ -839,7 +840,7 @@ class Function(core.GenericFunction, trackable.Trackable):
           "Functions cannot be decorated after they have been traced.")
 
     self._python_function = decorator(self._python_function)
-    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
         self._python_function, self.input_signature)
 
   # TODO: Remove this private method after updating all its uses
