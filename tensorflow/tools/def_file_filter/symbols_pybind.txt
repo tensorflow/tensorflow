@@ -200,6 +200,8 @@ TFE_Py_TensorShapeSlice
 TFE_Py_TensorShapeOnDevice
 TFE_Py_EnableInteractivePythonLogging
 TFE_Py_SetEagerContext
+TFE_Py_SetCEagerContext
+GetCEagerContext
 tensorflow::MakeEagerContextThreadLocalData
 tensorflow::GetEagerContextThreadLocalData
 tensorflow::DestroyEagerContextThreadLocalData
