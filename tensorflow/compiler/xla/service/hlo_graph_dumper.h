@@ -101,8 +101,7 @@ StatusOr<std::string> RenderAllPathsFromTo(
 // computation root is used by default.
 Status RegisterFusionState(const HloComputation& computation,
                            absl::string_view label,
-                           const HloInstruction* consumer = nullptr,
-                           bool changed = true);
+                           const HloInstruction& consumer, bool changed = true);
 
 // Registers a function which implements RenderedGraphFormat::kUrl.
 //

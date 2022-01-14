@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -260,13 +261,13 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
 
-  auto dump_fusion_state = [&] {
+  auto dump_fusion_state = [&](const HloInstruction& consumer,
+                               absl::string_view label) {
     if (computation_->parent()
             ->config()
             .debug_options()
             .xla_dump_fusion_visualization()) {
-      TF_RETURN_IF_ERROR(
-          RegisterFusionState(*computation_, "GpuMultiOutputFusion"));
+      TF_RETURN_IF_ERROR(RegisterFusionState(*computation_, label, consumer));
     }
     return Status::OK();
   };
@@ -276,6 +277,9 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     // Traverse the HLO in uses-before-defs order by removing instruction from
     // the back of the vector.
     HloInstruction* producer = defs_before_uses.back();
+
+    // Copy on purpose: to use after removing the producer.
+    std::string producer_name = producer->name();
     defs_before_uses.pop_back();
     // Never multi-output fuse constants.  To the extent that we want to fuse
     // constants, that should be handled by the regular fusion pass.
@@ -318,7 +322,10 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
         TF_CHECK_OK(computation_->RemoveInstruction(producer));
       }
 
-      TF_RETURN_IF_ERROR(dump_fusion_state());
+      TF_RETURN_IF_ERROR(dump_fusion_state(
+          *consumer_for_fusion,
+          absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
+                       consumer_for_fusion->name(), "| inside MOF-fusion")));
       RecomputeReachability();
       continue;
     }
@@ -339,7 +346,10 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
       TF_CHECK_OK(computation_->RemoveInstruction(producer));
     }
 
-    TF_RETURN_IF_ERROR(dump_fusion_state());
+    TF_RETURN_IF_ERROR(dump_fusion_state(
+        *input_fusion,
+        absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
+                     input_fusion->name(), "| inside MOF-fusion")));
     RecomputeReachability();
   }
   return changed;

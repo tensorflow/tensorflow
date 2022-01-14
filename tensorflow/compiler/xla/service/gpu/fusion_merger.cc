@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -131,7 +132,11 @@ double GetMergedBytesTransferred(HloInstruction* fusion) {
 class FusionInstructionMerger {
  public:
   explicit FusionInstructionMerger(HloComputation* computation)
-      : computation_(computation) {}
+      : computation_(computation),
+        dump_fusion_visualization_(computation->parent()
+                                       ->config()
+                                       .debug_options()
+                                       .xla_dump_fusion_visualization()) {}
 
   Status Run();
 
@@ -142,6 +147,7 @@ class FusionInstructionMerger {
 
   HloComputation* computation_;
   bool changed_ = false;
+  bool dump_fusion_visualization_ = false;
 
   // Fusion instruction merge stats.
   int total_visited_ = 0;
@@ -182,6 +188,7 @@ Status FusionInstructionMerger::Run() {
 
 Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   ++total_visited_;
+
   // Skip 'fusion' instruction if there are no users into which we can merge.
   if (fusion->users().empty()) {
     VLOG(3) << "Not merging " << fusion->name() << ": Has no users.";
@@ -294,14 +301,22 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Merge fused instructions from 'fusion' into each user.
   std::vector<HloInstruction*> users = fusion->users();
   for (HloInstruction* user : users) {
+    HloInstruction* consumer = user;
     if (user->opcode() == HloOpcode::kFusion) {
       user->MergeFusionInstruction(fusion);
     } else {
-      HloInstruction* fused_user =
-          computation_->AddInstruction(HloInstruction::CreateFusion(
-              user->shape(), ChooseFusionKind(*fusion, *user), user));
-      TF_CHECK_OK(computation_->ReplaceInstruction(user, fused_user));
-      fused_user->MergeFusionInstruction(fusion);
+      consumer = computation_->AddInstruction(HloInstruction::CreateFusion(
+          user->shape(), ChooseFusionKind(*fusion, *user), user));
+      TF_CHECK_OK(computation_->ReplaceInstruction(user, consumer));
+      consumer->MergeFusionInstruction(fusion);
+    }
+
+    if (dump_fusion_visualization_) {
+      TF_RETURN_IF_ERROR(RegisterFusionState(
+          *computation_,
+          absl::StrCat("Fused |", fusion->name(), "| into |", user->name(),
+                       "| inside FusionMerger"),
+          *consumer));
     }
     changed_ = true;
   }
@@ -317,12 +332,6 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Remove 'fusion' instruction.
   CHECK_EQ(0, fusion->user_count()) << fusion->ToString();
   TF_RETURN_IF_ERROR(computation_->RemoveInstruction(fusion));
-  if (computation_->parent()
-          ->config()
-          .debug_options()
-          .xla_dump_fusion_visualization()) {
-    TF_RETURN_IF_ERROR(RegisterFusionState(*computation_, "fusion merger"));
-  }
 
   return Status::OK();
 }

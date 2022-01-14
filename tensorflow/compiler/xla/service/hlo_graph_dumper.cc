@@ -1732,26 +1732,15 @@ namespace {
 
 // Fusion state: a sequence of rendered graphs in DOT formats with explanations.
 // Rendered graphs can be shared across frames, hence the storage indirection.
-//
-// Additionally, performs escaping: DOT graphs can't contain backquotes, and
-// labels can't contain quotes.
 struct FusionVisualizerProgress {
-  // Creates a frame reusing last rendered graph.
-  void RegisterFusionStateUnchanged(absl::string_view explanation) {
-    frames.push_back(
-        std::make_pair(dot_graphs.size() - 1,
-                       absl::StrReplaceAll(explanation, {{"\"", "|"}})));
-  }
-
-  // Creates a frame with a new rendered graph. In this case `explanation` is
-  // only interesting if the state actually changes, we ignore this frame
-  // otherwise.
+  // Creates a frame with a new rendered graph.
   void RegisterFusionStateChanged(absl::string_view dot,
                                   absl::string_view explanation) {
     if (dot_graphs.empty() || dot_graphs.back() != dot) {
-      dot_graphs.push_back(absl::StrReplaceAll(dot, {{"`", "|"}}));
-      RegisterFusionStateUnchanged(explanation);
+      dot_graphs.push_back(std::string(dot));
     }
+    frames.push_back(
+        std::make_pair(dot_graphs.size() - 1, std::string(explanation)));
   }
 
   std::vector<std::string> dot_graphs;
@@ -1987,31 +1976,24 @@ void RegisterGraphToURLRenderer(
 
 Status RegisterFusionState(const HloComputation& computation,
                            absl::string_view label,
-                           const HloInstruction* consumer, bool changed) {
+                           const HloInstruction& consumer, bool changed) {
   tensorflow::mutex_lock lock(fusion_visualizer_state_mu);
   FusionVisualizerProgress& fusion_progress =
       fusion_visualizer_states[FusionVisualizerStateKey(computation)];
-  if (!changed) {
-    fusion_progress.RegisterFusionStateUnchanged(label);
-    return Status::OK();
-  }
 
   // Radius size in which to render.
   static constexpr int kRenderRadius = 4;
 
   absl::flat_hash_set<const HloInstruction*> render_boundary;
-  if (consumer) {
-    for (const HloInstruction* user : consumer->users()) {
-      render_boundary.insert(user);
-    }
+  for (const HloInstruction* user : consumer.users()) {
+    render_boundary.insert(user);
   }
 
   TF_ASSIGN_OR_RETURN(
       std::string dot_graph,
-      RenderNeighborhoodAround(
-          consumer ? *consumer : *computation.root_instruction(), kRenderRadius,
-          xla::RenderedGraphFormat::kDot,
-          /*hlo_render_options=*/{}, render_boundary));
+      RenderNeighborhoodAround(consumer, kRenderRadius,
+                               xla::RenderedGraphFormat::kDot,
+                               /*hlo_render_options=*/{}, render_boundary));
   fusion_progress.RegisterFusionStateChanged(dot_graph, label);
   return Status::OK();
 }
