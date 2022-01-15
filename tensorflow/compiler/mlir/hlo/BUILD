@@ -1191,6 +1191,23 @@ cc_library(
 )
 
 cc_library(
+    name = "group_reduction_dimensions",
+    srcs = ["lib/Dialect/mhlo/transforms/group_reduction_dimensions.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mhlo_pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "broadcast_propagation",
     srcs = ["lib/Dialect/mhlo/transforms/broadcast_propagation.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
@@ -1775,6 +1792,7 @@ cc_library(
         ":chlo_legalize_to_hlo",
         ":copy_removal",
         ":expand_hlo_tuples",
+        ":group_reduction_dimensions",
         ":hlo_legalize_shape_ops_to_standard",
         ":hlo_legalize_to_lhlo",
         ":hlo_legalize_to_memref",

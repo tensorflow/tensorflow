@@ -91,6 +91,10 @@ std::unique_ptr<FunctionPass> createBroadcastPropagationPass();
 std::unique_ptr<FunctionPass> createMergeAssumingOpsPass(
     bool propagate_broadcasts = true);
 
+// Group reduction and parallel dimensions of reduction operations and realize
+// them through equivalent 1D or 2D reductions, if possible.
+std::unique_ptr<FunctionPass> createGroupReductionDimensionsPass();
+
 /// Rank specialization passes:
 ///   - Find compatible operations and group them together in one rank
 ///     specialization cluster.
