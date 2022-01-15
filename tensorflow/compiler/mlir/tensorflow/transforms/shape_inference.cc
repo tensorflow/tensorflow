@@ -781,6 +781,9 @@ class ShapeInference {
   // Infers the output shape of XlaReduceWindowOp based on the input shapes.
   bool InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op);
 
+  // Infers the output shape of XlaSelectAndScatterOp based on the input shapes.
+  bool InferShapeForXlaSelectAndScatterOp(XlaSelectAndScatterOp op);
+
   bool RefineWithInferTypeOpInterface(InferTypeOpInterface infer_ti);
 
   // Returns all the callers of a function.
@@ -1433,6 +1436,59 @@ bool ShapeInference::InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op) {
   return changed;
 }
 
+bool ShapeInference::InferShapeForXlaSelectAndScatterOp(
+    XlaSelectAndScatterOp op) {
+  DCOMMENT_OP(op, "Inferring shape for XlaSelectAndScatterOp");
+
+  auto operand_shape = op.operand().getType().cast<ShapedType>();
+  auto source_shape = op.source().getType().cast<ShapedType>();
+  DenseElementsAttr window_dimensions, window_strides, padding;
+  if (operand_shape.hasRank() && source_shape.hasRank() &&
+      matchPattern(op.window_dimensions(), m_Constant(&window_dimensions)) &&
+      matchPattern(op.window_strides(), m_Constant(&window_strides)) &&
+      matchPattern(op.padding(), m_Constant(&padding))) {
+    llvm::SmallVector<int64_t> window_dimensions_vec, window_strides_vec,
+        base_dilations_vec, window_dilations_vec;
+    llvm::SmallVector<std::pair<int64_t, int64_t>> padding_pairs(
+        padding.getNumElements() / 2);
+
+    for (auto i = 0; i < window_dimensions.size(); ++i) {
+      window_dimensions_vec.push_back(
+          window_dimensions.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < window_strides.size(); ++i) {
+      window_strides_vec.push_back(
+          window_strides.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < padding_pairs.size(); ++i) {
+      padding_pairs[i] = {padding.getValues<IntegerAttr>()[i * 2].getInt(),
+                          padding.getValues<IntegerAttr>()[i * 2 + 1].getInt()};
+    }
+
+    auto window = InferWindowFromDimensions(
+        window_dimensions_vec, window_strides_vec, padding_pairs, {}, {});
+    if (!window) {
+      op->emitOpError("failed to create window");
+    }
+    auto window_result_shape = InferWindowOutputShape(
+        operand_shape, window.getValue(), operand_shape.getElementType());
+
+    if (!window_result_shape) {
+      op->emitOpError("failed to infer window result shape");
+    }
+
+    if (window_result_shape.getValue() != source_shape) {
+      op->emitOpError(
+          "Source shape does not match the shape of window-reduced operand.");
+    }
+  }
+
+  return RefineResultType(op.getOperation(), op.getResult(),
+                          op.operand().getType());
+}
+
 bool ShapeInference::RefineWithInferTypeOpInterface(
     InferTypeOpInterface infer_ti) {
   Operation* op = infer_ti.getOperation();
@@ -1747,6 +1803,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     return InferShapeForXlaReduceWindowOp(xla_reduce_window_op);
   }
 
+  if (auto xla_select_and_scatter_op = dyn_cast<XlaSelectAndScatterOp>(op)) {
+    return InferShapeForXlaSelectAndScatterOp(xla_select_and_scatter_op);
+  }
+
   // Return operand as a constant attribute.
   auto operand_as_constant_fn = [&](Value operand) {
     ValuePort vp(operand);
@@ -2036,6 +2096,7 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
       return failure_or_converged;
     }
   } else if (isa<TF::XlaReduceWindowOp>(op) ||
+             isa<TF::XlaSelectAndScatterOp>(op) ||
              isa<TF::XlaVariadicReduceV2Op>(op) ||
              isa<TF::XlaVariadicSortOp>(op)) {
     auto propagate_shape_to = [&](mlir::SymbolRefAttr func_sym) {
@@ -2050,6 +2111,12 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
 
     if (auto xla_reduce_window_op = dyn_cast<TF::XlaReduceWindowOp>(op)) {
       return propagate_shape_to(xla_reduce_window_op.computation());
+    }
+    if (auto xla_select_and_scatter_op =
+            dyn_cast<TF::XlaSelectAndScatterOp>(op)) {
+      return propagate_shape_to(xla_select_and_scatter_op.select())
+                 .getValue() &&
+             propagate_shape_to(xla_select_and_scatter_op.scatter()).getValue();
     } else if (auto xla_variadic_reduce_v2_op =
                    dyn_cast<TF::XlaVariadicReduceV2Op>(op)) {
       return propagate_shape_to(xla_variadic_reduce_v2_op.reducer());

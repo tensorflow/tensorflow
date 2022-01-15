@@ -3404,6 +3404,75 @@ static LogicalResult Verify(XlaReduceWindowOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// XlaSelectAndScatterOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(XlaSelectAndScatterOp op) {
+  auto input_ty = op.operand().getType().cast<ShapedType>();
+
+  auto check = [&](mlir::Value val, std::string attr_name) -> LogicalResult {
+    ElementsAttr attr;
+    if (input_ty.hasRank() && matchPattern(val, m_Constant(&attr))) {
+      int64_t input_rank = input_ty.getRank();
+      int64_t size = attr.size();
+      if (input_rank != size) {
+        return op.emitOpError() << "expects the size of " << attr_name
+                                << "to be equal to the input "
+                                   "rank ("
+                                << size << " vs. " << input_rank << ")";
+      }
+    }
+    return success();
+  };
+
+  if (check(op.window_dimensions(), "window_dimensions").failed())
+    return failure();
+
+  if (check(op.window_strides(), "window_strides").failed()) return failure();
+
+  ElementsAttr padding;
+  if (matchPattern(op.padding(), m_Constant(&padding))) {
+    const ShapedType &padding_ty = padding.getType();
+    if (padding_ty.getRank() != 2 || padding_ty.getDimSize(1) != 2) {
+      return op.emitOpError()
+             << "expects padding to be a matrix with minor dimension 2, got "
+             << padding.getType().getShape();
+    }
+  }
+
+  auto module = op->getParentOfType<mlir::ModuleOp>();
+  auto select_func = dyn_cast_or_null<mlir::FuncOp>(
+      SymbolTable::lookupSymbolIn(module, op.select()));
+  if (!select_func) {
+    return op.emitOpError() << "has no select function specified";
+  }
+  auto select_func_type = select_func.getType();
+  if (select_func_type.getNumInputs() != 2) {
+    return op.emitOpError()
+           << "expects select function to take 2 parameters, but has "
+           << select_func_type.getNumInputs() << " parameter(s)";
+  }
+  if (select_func_type.getNumResults() != 1 ||
+      select_func_type.getResult(0).isInteger(1)) {
+    return op.emitOpError()
+           << "expects select function to return a boolean result.";
+  }
+  auto scatter_func = dyn_cast_or_null<mlir::FuncOp>(
+      SymbolTable::lookupSymbolIn(module, op.select()));
+  if (!scatter_func) {
+    return op.emitOpError() << "has no scatter function specified";
+  }
+  auto scatter_func_type = scatter_func.getType();
+  if (scatter_func_type.getNumInputs() != 2) {
+    return op.emitOpError()
+           << "expects scatter function to take 2 parameters, but has "
+           << scatter_func_type.getNumInputs() << " parameter(s)";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // XlaVariadicReduceOp
 //===----------------------------------------------------------------------===//
 

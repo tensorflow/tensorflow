@@ -7109,7 +7109,54 @@ class ConvertPrintOp : public OpRewritePattern<TF::PrintOp> {
   }
 };
 
-// Convert tf.Xlasort to mhlo.Sort
+// Converts tf.XlaSelectAndScatter to mhlo.SelectAndScatter
+class ConvertXlaSelectAndScatterOp
+    : public OpRewritePattern<TF::XlaSelectAndScatterOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaSelectAndScatterOp op,
+                                PatternRewriter &rewriter) const override {
+    ElementsAttr window_dimensions, window_strides, padding;
+    if (!(matchPattern(op.window_dimensions(),
+                       m_Constant(&window_dimensions)) &&
+          matchPattern(op.window_strides(), m_Constant(&window_strides)) &&
+          matchPattern(op.padding(), m_Constant(&padding))))
+      return failure();
+
+    Location loc = op.getLoc();
+
+    SmallVector<Type> result_types{op.getResult().getType()};
+    // Create the mhlo.SelectAndScatter op.
+    auto select_and_scatter_op = rewriter.create<mhlo::SelectAndScatterOp>(
+        loc, result_types, op.operand(), op.source(), op.init_value(),
+        hlo::ConvertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(window_strides, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(padding, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>());
+
+    auto insert_call_to = [&](const mlir::SymbolRefAttr &func, Region *region) {
+      auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+          op->getParentOfType<mlir::ModuleOp>(), func));
+      auto func_ty = func_op.getType();
+      BuildBodyWithCall(rewriter, loc, func, func_ty, region);
+    };
+
+    // Insert a call to the select function in the select region of the mhlo op.
+    insert_call_to(op.select(), &select_and_scatter_op.select());
+    // Insert a call to the scatter function in the scatter region of the mhlo
+    // op.
+    insert_call_to(op.scatter(), &select_and_scatter_op.scatter());
+
+    rewriter.replaceOp(op, select_and_scatter_op.getResult());
+
+    return success();
+  }
+};
+
+// Convert tf.XlaSort to mhlo.Sort
 class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -7317,6 +7364,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaReduceScatterOp,
     ConvertXlaReduceWindowOp,
     ConvertXlaRngBitGeneratorOp,
+    ConvertXlaSelectAndScatterOp,
     ConvertXlaSortOp,
     ConvertXlaVariadicReduceV2Op,
     ConvertXlaVariadicSortOp,
