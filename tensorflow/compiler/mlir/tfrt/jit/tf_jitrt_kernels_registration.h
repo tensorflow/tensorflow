@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_kernels_registration.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_KERNELS_REGISTRATION_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_KERNELS_REGISTRATION_H_
+
+#include "tfrt/host_context/kernel_registry.h"  // from @tf_runtime
 
 namespace tensorflow {
 
-namespace kernels {
-TFRT_STATIC_KERNEL_REGISTRATION(RegisterTfJitRuntimeKernels);
-}  // namespace kernels
+void RegisterTfJitRuntimeKernels(::tfrt::KernelRegistry* registry);
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_KERNELS_REGISTRATION_H_

@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_kernels_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -55,8 +56,6 @@ limitations under the License.
 #include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
 
 namespace tensorflow {
-namespace tfrt {
-namespace jit {
 namespace {
 
 using ::llvm::Expected;
@@ -703,13 +702,11 @@ void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
 
 }  // namespace
 
-void RegisterTfCpuRuntimeKernels(KernelRegistry* registry) {
+void RegisterTfJitRuntimeKernels(KernelRegistry* registry) {
   registry->AddKernel("tf_jitrt.fallback.compile", TFRT_KERNEL(Compile));
   registry->AddKernel("tf_jitrt.fallback.execute", TFRT_KERNEL(Execute));
   registry->AddKernel("tf_jitrt.fallback.debug.execute",
                       TFRT_KERNEL(ExecuteDebug));
 }
 
-}  // namespace jit
-}  // namespace tfrt
 }  // namespace tensorflow

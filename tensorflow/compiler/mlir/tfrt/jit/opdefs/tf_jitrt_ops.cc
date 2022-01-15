@@ -39,7 +39,7 @@ namespace tf_jitrt {
 namespace {
 // Operations in the `tf_jitrt` dialect are always safe to inline because they
 // are pure compute operations.
-struct CpuRuntimeInlinerInterface : public DialectInlinerInterface {
+struct JitRuntimeInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
   bool isLegalToInline(Operation*, Operation*, bool) const final {
@@ -66,7 +66,7 @@ struct CpuRuntimeInlinerInterface : public DialectInlinerInterface {
 JitRuntimeDialect::JitRuntimeDialect(mlir::MLIRContext* context)
     : Dialect(/*name*/ "tf_jitrt", context,
               mlir::TypeID::get<JitRuntimeDialect>()) {
-  addInterfaces<CpuRuntimeInlinerInterface>();
+  addInterfaces<JitRuntimeInlinerInterface>();
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tfrt/tf_jitrt_ops.cc.inc"

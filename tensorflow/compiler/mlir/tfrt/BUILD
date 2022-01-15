@@ -146,6 +146,7 @@ tfrt_cc_library(
 tfrt_cc_library(
     name = "tf_jitrt_kernels",
     srcs = ["jit/tf_jitrt_kernels.cc"],
+    hdrs = ["jit/tf_jitrt_kernels_registration.h"],
     alwayslink_static_registration_src = "jit/tf_jitrt_kernels_registration.cc",
     deps = [
         ":tf_jitrt",
