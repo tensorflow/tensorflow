@@ -57,6 +57,78 @@ func @testBitcast(%arg0: tensor<3x4xui16>) -> tensor<3x4x!tf_type.quint16> {
 
 // -----
 
+// CHECK-LABEL: func @testBitcast_v2
+func @testBitcast_v2(%arg0: tensor<3x2xi16>) -> tensor<3xi32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
+func @testBitcast_v3(%arg0: tensor<3x5xi16>) -> tensor<3xi32> {
+  // expected-error @+1 {{input rightmost dimension size is not equal to the divisor. the last dimension of input is expected to be 2}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x5xi16>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
+func @testBitcast_v4(%arg0: tensor<3x2xi16>) -> tensor<3x2xi32> {
+  // expected-error @+1 {{size of input tensor shape shall be greater then size of output tensor shape by one}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<3x2xi32>
+  return %0 : tensor<3x2xi32>
+}
+
+// -----
+
+func @testBitcast_v5(%arg0: tensor<3x2xi16>) -> tensor<2xi32> {
+  // expected-error @+1 {{invalid output shape of tensor}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBitcast_v6
+func @testBitcast_v6(%arg0: tensor<3x2xi32>) -> tensor<3x2x2xi16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2x2xi16>
+  return %0 : tensor<3x2x2xi16>
+}
+
+// -----
+
+func @testBitcast_v7(%arg0: tensor<3x2xi32>) -> tensor<3x2x3xi16> {
+  // expected-error @+1 {{output rightmost dimension size is not equal to the divisor. the last dimension of output is expected to be 2}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2x3xi16>
+  return %0 : tensor<3x2x3xi16>
+}
+
+// -----
+
+func @testBitcast_v8(%arg0: tensor<3x2xi32>) -> tensor<3x2xi16> {
+  // expected-error @+1 {{size of input tensor shape shall be lesser then size of output tensor shape by one}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2xi16>
+  return %0 : tensor<3x2xi16>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBitcast_v9
+func @testBitcast_v9(%arg0: tensor<3x2xi32>) -> tensor<3x2xf32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+func @testBitcast_v10(%arg0: tensor<3x2xi32>) -> tensor<3x4xf32> {
+  // expected-error @+1 {{input tensor shape shall be equal to output tensor shape}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @testReverseV2
 func @testReverseV2(%arg0: tensor<2x4x3xui8>, %arg1: tensor<1xi32>) -> tensor<2x4x3xui8> {
   %0 = "tf.ReverseV2"(%arg0, %arg1) : (tensor<2x4x3xui8>, tensor<1xi32>) -> tensor<2x4x3xui8>

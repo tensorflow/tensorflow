@@ -3032,19 +3032,19 @@ func @bitcast_same_widths(%arg0: tensor<2xf32>) -> tensor<2xi32> {
 // -----
 
 // CHECK-LABEL: func @bitcast_smaller_input_width
-func @bitcast_smaller_input_width(%arg0: tensor<2xi8>) -> tensor<2xi64> {
-  // CHECK:  "tf.Bitcast"(%arg0) : (tensor<2xi8>) -> tensor<2xi64>
-  %0 = "tf.Bitcast"(%arg0) : (tensor<2xi8>) -> tensor<2xi64>
-  return %0 : tensor<2xi64>
+func @bitcast_smaller_input_width(%arg0: tensor<8xi8>) -> tensor<i64> {
+  // CHECK:  "tf.Bitcast"(%arg0) : (tensor<8xi8>) -> tensor<i64>
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xi8>) -> tensor<i64>
+  return %0 : tensor<i64>
 }
 
 // -----
 
 // CHECK-LABEL: func @bitcast_smaller_output_width
-func @bitcast_smaller_output_width(%arg0: tensor<2xf32>) -> tensor<2xf16> {
-  // CHECK:  "tf.Bitcast"(%arg0) : (tensor<2xf32>) -> tensor<2xf16>
-  %0 = "tf.Bitcast"(%arg0) : (tensor<2xf32>) -> tensor<2xf16>
-  return %0 : tensor<2xf16>
+func @bitcast_smaller_output_width(%arg0: tensor<2xf32>) -> tensor<2x2xf16> {
+  // CHECK:  "tf.Bitcast"(%arg0) : (tensor<2xf32>) -> tensor<2x2xf16>
+  %0 = "tf.Bitcast"(%arg0) : (tensor<2xf32>) -> tensor<2x2xf16>
+  return %0 : tensor<2x2xf16>
 }
 
 // -----
