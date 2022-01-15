@@ -19,6 +19,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -611,16 +612,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           continue;
         }
 
-        if (dump_fusion) {
-          TF_RETURN_IF_ERROR(RegisterFusionState(
-              *computation,
-              absl::StrCat("Fused |", operand->name(), "| into |",
-                           fusion_instruction->name(),
-                           "| inside InstructionFusion with may_duplicate=",
-                           may_duplicate_),
-              *fusion_instruction, /*changed=*/true));
-        }
-
+        // Saving name to use after the instruction is removed.
+        std::string producer_name = operand->name();
         fusion_queue->OnFusingInstruction(fusion_instruction, operand,
                                           instruction);
         changed = true;
@@ -632,6 +625,16 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           fusion_queue->RemoveInstruction(operand);
           // Remove from computation.
           TF_RETURN_IF_ERROR(computation_->RemoveInstruction(operand));
+        }
+
+        if (dump_fusion) {
+          TF_RETURN_IF_ERROR(RegisterFusionState(
+              *computation,
+              absl::StrCat("Fused |", producer_name, "| into |",
+                           fusion_instruction->name(),
+                           "| inside InstructionFusion with may_duplicate=",
+                           may_duplicate_),
+              *fusion_instruction, /*changed=*/true));
         }
 
         if (fusion_instruction != instruction) {
