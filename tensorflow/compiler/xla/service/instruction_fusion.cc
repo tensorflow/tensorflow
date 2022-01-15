@@ -565,6 +565,17 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         if (should_fuse) {
           should_fuse = ShouldFuse(instruction, i);
           if (should_fuse && consume_fuel()) {
+            if (dump_fusion) {
+              TF_RETURN_IF_ERROR(RegisterFusionState(
+                  *computation,
+                  absl::StrCat("About to fuse |", operand->name(), "| into |",
+                               instruction->name(),
+                               "| inside InstructionFusion with may_duplicate=",
+                               may_duplicate_),
+                  /*consumer=*/*instruction,
+                  /*producer=*/operand));
+            }
+
             fusion_queue->PreFusion(operand, instruction);
             fusion_instruction = Fuse(operand, instruction);
           }
@@ -580,6 +591,17 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           }
           if (can_fuse_mof) {
             if (consume_fuel()) {
+              if (dump_fusion) {
+                TF_RETURN_IF_ERROR(RegisterFusionState(
+                    *computation,
+                    absl::StrCat(
+                        "About to MOF-fuse |", operand->name(), "| into |",
+                        instruction->name(),
+                        "| inside InstructionFusion with may_duplicate=",
+                        may_duplicate_),
+                    /*consumer=*/*instruction, /*producer=*/operand));
+              }
+
               fusion_queue->PreFusion(operand, instruction);
               fusion_instruction = FuseIntoMultiOutput(operand, instruction);
             }
