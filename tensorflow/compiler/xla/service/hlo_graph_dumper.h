@@ -99,9 +99,13 @@ StatusOr<std::string> RenderAllPathsFromTo(
 //
 // The `consumer` node defines the area which should be rendered: if left null,
 // computation root is used by default.
+//
+// The `producer` remains `nullptr` if it's fused, or is set if the desire is to
+// highlight it.
 Status RegisterFusionState(const HloComputation& computation,
                            absl::string_view label,
-                           const HloInstruction& consumer, bool changed = true);
+                           const HloInstruction& consumer,
+                           const HloInstruction* producer = nullptr);
 
 // Registers a function which implements RenderedGraphFormat::kUrl.
 //

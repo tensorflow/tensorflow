@@ -603,8 +603,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
                   absl::StrCat("Not fusing |", operand->name(), "| into |",
                                instruction->name(), "| as ",
                                should_fuse.Explain()),
-                  *instruction,
-                  /*changed=*/false));
+                  /*consumer=*/*instruction,
+                  /*producer=*/operand));
             }
           }
 
@@ -634,7 +634,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
                            fusion_instruction->name(),
                            "| inside InstructionFusion with may_duplicate=",
                            may_duplicate_),
-              *fusion_instruction, /*changed=*/true));
+              *fusion_instruction));
         }
 
         if (fusion_instruction != instruction) {
