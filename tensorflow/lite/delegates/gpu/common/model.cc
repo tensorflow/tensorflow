@@ -43,7 +43,9 @@ std::vector<Value*> GraphFloat32::values() const {
 }
 
 std::vector<Value*> GraphFloat32::inputs() const {
-  return FilterValues([](const ValueDef& v) { return v.producer == nullptr; });
+  return FilterValues([](const ValueDef& v) {
+    return v.producer == nullptr || v.value->type == ValueType::kGraphInput;
+  });
 }
 
 std::vector<Value*> GraphFloat32::variable_inputs() const {
@@ -52,7 +54,9 @@ std::vector<Value*> GraphFloat32::variable_inputs() const {
 }
 
 std::vector<Value*> GraphFloat32::outputs() const {
-  return FilterValues([](const ValueDef& v) { return v.consumers.empty(); });
+  return FilterValues([](const ValueDef& v) {
+    return v.consumers.empty() || v.value->type == ValueType::kGraphOutput;
+  });
 }
 
 std::vector<Value*> GraphFloat32::FindInputs(NodeId id) const {

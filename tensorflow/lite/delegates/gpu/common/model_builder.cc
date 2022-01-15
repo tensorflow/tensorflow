@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/builtin_ops.h"
@@ -2714,12 +2715,15 @@ TfLiteIntArray* GetOpsToReplace(
 absl::Status PrecreateIOTensors(
     TfLiteContext* context, GraphFloat32* graph, const std::vector<int>& io_ids,
     absl::flat_hash_map<int, int>* quant_conversion_map,
-    absl::flat_hash_map<int, Value*>* tensor_to_value) {
+    absl::flat_hash_map<int, Value*>* tensor_to_value,
+    const ValueType value_type) {
   for (const auto& id : io_ids) {
     const TfLiteTensor& tflite_tensor = context->tensors[id];
     if (tflite::IsConstantTensor(&tflite_tensor)) continue;
+    Value* value;
     RETURN_IF_ERROR(ObjectReader::ReadNonConstantTensor(
-        context, tensor_to_value, quant_conversion_map, graph, id));
+        context, tensor_to_value, quant_conversion_map, graph, id, &value));
+    value->type = value_type;
   }
   return absl::OkStatus();
 }
@@ -2814,9 +2818,11 @@ absl::Status BuildModelEnforceIO(
   std::vector<ValueId> variable_inputs_to_value_id;
 
   RETURN_IF_ERROR(PrecreateIOTensors(context, graph, input_ids,
-                                     quant_conversion_map, &tensor_to_value));
+                                     quant_conversion_map, &tensor_to_value,
+                                     ValueType::kGraphInput));
   RETURN_IF_ERROR(PrecreateIOTensors(context, graph, output_ids,
-                                     quant_conversion_map, &tensor_to_value));
+                                     quant_conversion_map, &tensor_to_value,
+                                     ValueType::kGraphOutput));
   for (int i = 0; i < operations.size(); ++i) {
     TfLiteNode* tflite_node;
     TfLiteRegistration* registration;
@@ -2838,6 +2844,13 @@ absl::Status BuildModelEnforceIO(
     RETURN_IF_ERROR(
         CopyVariableTensorOutputs(tflite_node, registration, graph, reader,
                                   new_value_for_variable_input_tensors));
+  }
+
+  if (output_ids.size() != graph->outputs().size()) {
+    return absl::InternalError(
+        absl::StrFormat("The size(%d) of outputs in original model is not"
+                        " equal to the size(%d) of outputs in graph.",
+                        output_ids.size(), graph->outputs().size()));
   }
 
   // Variable input tensors expect to be unchanged throughout model execution.

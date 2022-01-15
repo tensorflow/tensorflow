@@ -47,11 +47,18 @@ struct QuantizationParams {
   float scale = 0;
 };
 
+enum class ValueType {
+  kUnkown = 0,
+  kGraphInput,
+  kGraphOutput,
+};
+
 // Connects tensor's producer and operation that depends on this tensor.
 struct Value {
   const ValueId id;
   TensorRef<BHWC> tensor;
   absl::optional<QuantizationParams> quant_params;
+  ValueType type = ValueType::kUnkown;
 };
 
 struct Operation {
