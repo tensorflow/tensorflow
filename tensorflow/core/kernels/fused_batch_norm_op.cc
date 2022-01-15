@@ -21,6 +21,9 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
+#else // TENSORFLOW_USE_ROCM
+#include "tensorflow/stream_executor/rocm/rocm_dnn.h"
+#include "rocm/rocm_config.h"
 #endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/conv_2d.h"
@@ -641,7 +644,7 @@ struct FusedBatchNormFreezeGrad<CPUDevice, T, U> {
   }
 };
 
-#if !GOOGLE_CUDA
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 namespace {
 // See implementation under GOOGLE_CUDA #ifdef below.
 // This is a CUDA specific feature, do not enable it for non-CUDA builds
@@ -663,7 +666,7 @@ se::dnn::ActivationMode AsDnnActivationMode(
   }
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // NOTE(ezhulenev): See `BatchnormSpatialPersistentEnabled` documentation in the
 // `cuda_dnn.cc` for details.
 bool BatchnormSpatialPersistentEnabled() {
@@ -680,7 +683,17 @@ bool BatchnormSpatialPersistentEnabled() {
   return false;
 #endif
 }
+
+// NOTE(stevenireeves): See: `UseNhwcLayoutForRocm()` documentation in 
+// `rocm_dnn.h` for detials
+bool UseNhwcLayoutForBatchnormRocm() {
+#if TENSORFLOW_USE_ROCM
+  return se::gpu::UseNhwcLayoutForRocm();  
+#else
+  return false;
 #endif
+}
+#endif // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace
 
@@ -811,7 +824,7 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
     // FusedBatchNormV3 op).
 
 #if GOOGLE_CUDA
-    // Check if cuDNN batch normalization has a fast NHWC implementation:
+    // Check if cuDNN/MIOpen batch normalization has a fast NHWC implementation:
     //   (1) In inference mode it's always fast.
     //   (2) Tensorflow enabled batchnorm spatial persistence, we are called
     //   from
@@ -820,17 +833,19 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
         !is_training ||
         (BatchnormSpatialPersistentEnabled() &&
          DataTypeToEnum<T>::value == DT_HALF && use_reserved_space);
+#elif TENSORFLOW_USE_ROCM
+    // Ensure that NHWC is enabled on ROCm
+    const bool fast_nhwc_batch_norm = 
+        (!is_training || DataTypeToEnum<T>::value == DT_HALF && use_reserved_space) &&
+        UseNhwcLayoutForBatchnormRocm(); 
 #else
-    // fast NHWC implementation is a CUDA only feature
     const bool fast_nhwc_batch_norm = false;
 #endif
-
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
     TensorFormat compute_format =
         fast_nhwc_batch_norm && tensor_format == FORMAT_NHWC ? FORMAT_NHWC
                                                              : FORMAT_NCHW;
-
     VLOG(2) << "FusedBatchNorm:"
             << " batch_size: " << batch_size << " channels: " << channels
             << " height: " << height << " width:" << width
@@ -889,7 +904,6 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
     Tensor x_transformed;
     Tensor y_transformed;
     se::DeviceMemory<T> y_ptr;
-
     if (tensor_format == compute_format) {
       y_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*y);
     } else if (tensor_format == FORMAT_NHWC && compute_format == FORMAT_NCHW) {
@@ -1039,11 +1053,14 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     const bool fast_nhwc_batch_norm = BatchnormSpatialPersistentEnabled() &&
                                       DataTypeToEnum<T>::value == DT_HALF &&
                                       use_reserved_space;
+#elif TENSORFLOW_USE_ROCM
+    // Ensure that NHWC is enabled on ROCm
+    const bool fast_nhwc_batch_norm = DataTypeToEnum<T>::value == DT_HALF &&
+                                      use_reserved_space &&
+                                      UseNhwcLayoutForBatchnormRocm(); 
 #else
-    // fast NHWC implementation is a CUDA only feature
     const bool fast_nhwc_batch_norm = false;
 #endif
-
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
     TensorFormat compute_format =
@@ -1154,7 +1171,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
         workspace_allocator;
     DeviceMemory<uint8>* reserve_space_data_ptr = nullptr;
     DeviceMemory<uint8> reserve_space_data;
-#if CUDNN_VERSION >= 7402
+#if CUDNN_VERSION >= 7402 || TF_ROCM_VERSION >= 50000
     if (use_reserved_space) {
       const Tensor& reserve_space = context->input(5);
       workspace_allocator.reset(
@@ -1168,8 +1185,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
         reserve_space_data_ptr = &reserve_space_data;
       }
     }
-#endif  // CUDNN_VERSION >= 7402
-
+#endif  // CUDNN_VERSION >= 7402 || TF_ROCM_VERSION >= 50000
     bool cudnn_launch_status =
         stream
             ->ThenBatchNormalizationBackward(

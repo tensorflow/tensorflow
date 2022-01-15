@@ -864,6 +864,13 @@ class MIOpenSupport : public dnn::DnnSupport {
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
 };
 
+// A helper function to decide whether to use
+// NHWC in Convolution/Batchnorm. This mode can be faster in
+// in FP16 workloads on gfx908 and beyond. Requires ROCm 5.0+.
+// TODO(stevenireeves): Use autotune to choose between this mode and
+// NCHW when MIOpen has more optimized kernels. 
+bool UseNhwcLayoutForRocm();
+
 }  // namespace gpu
 }  // namespace stream_executor
 
