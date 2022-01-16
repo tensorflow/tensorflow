@@ -2105,3 +2105,49 @@ filegroup(
         ":MhloOpsPyGen",
     ],
 )
+
+td_library(
+    name = "gml_st_ops_td_files",
+    srcs = glob(["include/mlir-hlo/Dialect/gml_st/IR/*.td"]),
+    compatible_with = get_compatible_with_cloud(),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "gml_st_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.td",
+    deps = [":gml_st_ops_td_files"],
+)
+
+cc_library(
+    name = "gml_st",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.cc.inc",
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc",
+        "lib/Dialect/gml_st/IR/gml_st_ops.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st_ops_inc_gen",
+        "@llvm-project//mlir:IR",
+    ],
+)
