@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <ostream>
 #include <set>
@@ -2486,36 +2487,6 @@ bool HloInstruction::IdenticalSlowPath(
   }
   return false;
 }
-
-static uint64_t HashOperand(const HloInstruction* hlo) {
-  return ShapeUtil::Hash(hlo->shape());
-}
-
-uint64_t HloInstruction::Hash(
-    const std::function<uint64_t(const HloInstruction*)>& hash_operand) const {
-  using tensorflow::Hash64Combine;
-
-  uint64_t hash_value = Hash64Combine(0, static_cast<uint64_t>(opcode()));
-  hash_value = Hash64Combine(hash_value, ShapeUtil::Hash(shape()));
-
-  if (!IsCrossModuleAllReduce()) {
-    if (!operands().empty()) {
-      for (size_t i = 0; i < operands().size(); ++i) {
-        hash_value = Hash64Combine(hash_value, hash_operand(operand(i)));
-      }
-    }
-  }
-
-  hash_value = Hash64Combine(hash_value, InnerHash());
-  return hash_value;
-}
-
-uint64_t HloInstruction::Hash() const {
-  // Use HashOperand as an argument to prevent non-termination.
-  return Hash(HashOperand);
-}
-
-uint64_t HloInstruction::InnerHash() const { return 13; }
 
 void HloInstruction::RemoveUser(HloInstruction* user) {
   auto map_it = user_map_.find(user);

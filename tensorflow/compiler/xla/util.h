@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -177,6 +178,12 @@ bool ContainersEqual(const Container1T& c1,
                      std::initializer_list<ElementType> il) {
   absl::Span<const ElementType> c2{il};
   return absl::c_equal(c1, c2);
+}
+
+template <int&... ExplicitArgumentBarrier, typename... Types>
+size_t HashOf(const Types&... values) {
+  auto tuple = std::tie(values...);
+  return absl::Hash<decltype(tuple)>{}(tuple);
 }
 
 // Performs a copy of count values from src to dest, using different strides for

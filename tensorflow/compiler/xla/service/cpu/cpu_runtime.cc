@@ -222,7 +222,7 @@ xla::StatusOr<xla::Shape> DecodeSelfDescribingShapeConstant(
   return std::move(shape);
 }
 
-tensorflow::string ShapeString(const void* shape_ptr, int32_t shape_length) {
+std::string ShapeString(const void* shape_ptr, int32_t shape_length) {
   xla::StatusOr<xla::Shape> shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   if (shape.ok()) {
