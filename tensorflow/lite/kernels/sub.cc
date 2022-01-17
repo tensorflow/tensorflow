@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/sub.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -397,10 +398,18 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_SUB(reference_ops, Sub, int8_t);
     }
   } else if (!data->pot_scale_int16) {
-    if (need_broadcast) {
-      TF_LITE_SUB(reference_ops, BroadcastQuantSubSlow, int16_t);
+    if (kernel_type == kReference) {
+      if (need_broadcast) {
+        TF_LITE_SUB(reference_ops, BroadcastQuantSubSlow, int16_t);
+      } else {
+        TF_LITE_SUB(reference_ops, Sub, int16_t);
+      }
     } else {
-      TF_LITE_SUB(reference_ops, Sub, int16_t);
+      if (need_broadcast) {
+        TF_LITE_SUB(optimized_integer_ops, BroadcastSubDispatch, int16_t);
+      } else {
+        TF_LITE_SUB(optimized_integer_ops, Sub, int16_t);
+      }
     }
   } else if (output->type == kTfLiteUInt8) {
     if (need_broadcast) {

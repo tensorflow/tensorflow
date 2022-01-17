@@ -290,6 +290,7 @@ cc_library(
         "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
+        "optimized/integer_ops/sub.h",
         "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
         "optimized/resize_bilinear.h",
