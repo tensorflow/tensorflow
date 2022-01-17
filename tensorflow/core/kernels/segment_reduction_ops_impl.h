@@ -970,8 +970,6 @@ class SparseSegmentGradOpBase : public OpKernel {
       is_modified[output_idx] = true;
     }
   }
-<<<<<<< HEAD
-=======
 };
 
 }  // namespace functor
@@ -1024,7 +1022,6 @@ class SparseSegmentGradOpBase : public OpKernel {
     functor::SparseSegmentGradFunctor<Device, T, Index, SegmentId>()(
         context, operation_, input_flat, indices_vec, segment_vec, output_flat);
   }
->>>>>>> 1308ecb68f0 (Use `SetDimWithStatus` instead of `set_dim`.)
 
  private:
   const bool is_sqrtn_;
