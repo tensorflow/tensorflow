@@ -108,12 +108,21 @@ class GpuExecutable : public Executable {
   // TODO(hanbinyoon): Once BEF replaces Thunks, hide this method as an
   // implementation detail of GpuExecutable.
   // Analyze the entry function to construct buffer allocation and other output
-  // information.
+  // information. Optionally use buffer_param_offset to indicate the position of
+  // buffer parameters in the entry function - in tfrt_gpu dialect, buffer
+  // arguments start from the third parameter (after tfrt::Chain and GpuStream).
   static Status SetUpMlirAllocation(
       mlir::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
       std::vector<BufferAllocation>* allocations,
       absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
-      Shape* output_shape);
+      Shape* output_shape, int buffer_param_offset = 0);
+
+  // Returns an Executable that is loaded from a BEF. This BEF must have entry
+  // point information recorded by use of the tfrt::gpu::setEntryPoint()
+  // function.
+  static StatusOr<std::unique_ptr<Executable>> LoadFromBef(
+      std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
+      xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version);
 
   static StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
@@ -164,6 +173,15 @@ class GpuExecutable : public Executable {
  private:
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(Params params);
+
+  // Constructor to use when loading a GpuExecutable from a BEF. Omits setting
+  // class members that aren't used in BEF execution mode.
+  GpuExecutable(std::shared_ptr<HloModule> hlo_module, GpuVersion gpu_version,
+                xla::EntryFunctionAttributes entry_func_attrs,
+                absl::string_view module_name, Shape xla_output_shape,
+                std::vector<BufferAllocation> allocations,
+                absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
+                BefExecutable* bef_executable);
 
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for

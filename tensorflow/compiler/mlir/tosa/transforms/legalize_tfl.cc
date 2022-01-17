@@ -23,14 +23,17 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <string>
 #include <unordered_set>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -43,16 +46,6 @@ limitations under the License.
 #define DEBUG_TYPE PASS_NAME
 #define HARDSWISH_EXPLICIT_RESCALING false
 
-// Conditionally avoid converting some TFLite ops to TOSA.
-// By default, all conversions will be invoked.
-//
-// The denylist file lists patterns which are not legalized from TFLite to TOSA.
-llvm::cl::opt<std::string> tfl_tosa_denylist(
-    "tfl-tosa-denylist",
-    llvm::cl::desc("<a list of patterns not legalized from TFLite to TOSA>"),
-    llvm::cl::init("transforms/tfl_tosa_denylist.txt"),
-    llvm::cl::value_desc("pattern name"));
-
 namespace mlir {
 namespace tosa {
 namespace {
@@ -62,11 +55,30 @@ namespace {
 // Performs lowering to TOSA dialect.
 class LegalizeTFL : public TosaLegalizeTFLPassBase<LegalizeTFL> {
  public:
-  explicit LegalizeTFL() {}
+  LegalizeTFL() = default;
+  explicit LegalizeTFL(ArrayRef<std::string> disabled_patterns,
+                       ArrayRef<std::string> enabled_patterns) {
+    this->disabled_patterns_ = disabled_patterns;
+    this->enabled_patterns_ = enabled_patterns;
+  }
   void runOnFunction() override;
+  LogicalResult initialize(MLIRContext* context) override;
+
+ private:
+  FrozenRewritePatternSet frozen_patterns_;
 };
 
 #include "tensorflow/compiler/mlir/tosa/transforms/tfl_legalize_patterns.inc"
+
+// Input from tfl.conv2d takes 64 bits a bias, while tosa.conv2d expects 48
+// bits. Need to do a customized truncate here instead of tablegen to handle
+// attribute with negative value.
+struct ConvertConstantOp : public RewritePattern {
+  explicit ConvertConstantOp(MLIRContext* context)
+      : RewritePattern(arith::ConstantOp::getOperationName(), 1, context) {}
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override;
+};
 
 #define DECL_CONVERT_OP(tfl_op)                                              \
   struct ConvertTFL##tfl_op##Op : public RewritePattern {                    \
@@ -160,18 +172,8 @@ DECL_CONVERT_OP(SparseToDense);
 DECL_CONVERT_OP(OneHot);
 DECL_CONVERT_OP(ArgMax);
 DECL_CONVERT_OP(FakeQuant);
+
 #undef DECL_CONVERT_OP
-
-// Input from tfl.conv2d takes 64 bits a bias, while tosa.conv2d expects 48
-// bits. Need to do a customized truncate here instead of tablegen to handle
-// attribute with negative value.
-
-struct ConvertConstantOp : public RewritePattern {
-  explicit ConvertConstantOp(MLIRContext* context)
-      : RewritePattern(arith::ConstantOp::getOperationName(), 1, context) {}
-  LogicalResult matchAndRewrite(Operation* op,
-                                PatternRewriter& rewriter) const override;
-};
 
 LogicalResult ConvertTFLReluOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
@@ -3210,23 +3212,43 @@ LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
   return success();
 }
 
-void LegalizeTFL::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  populateLegalizeTFLPatterns(&getContext(), patterns);
+LogicalResult LegalizeTFL::initialize(MLIRContext* context) {
+  OwningRewritePatternList patterns(context);
+  mlir::tosa::populateLegalizeTFLPatterns(context, patterns);
+  frozen_patterns_ = FrozenRewritePatternSet(
+      std::move(patterns), this->disabled_patterns_, this->enabled_patterns_);
+  return success();
+}
 
-  auto func = getFunction();
-  if (ApplyPatternsWithShapeResolution(func, std::move(patterns)).failed()) {
+void LegalizeTFL::runOnFunction() {
+  if (ApplyPatternsWithShapeResolution(getFunction(), this->frozen_patterns_)
+          .failed()) {
     signalPassFailure();
   }
 }
+
 }  // namespace
 
 void populateLegalizeTFLPatterns(MLIRContext* ctx,
                                  RewritePatternSet& patterns) {
-  // Add the generated patterns to the list.
-  populateWithGenerated(patterns);
+#define DEF_PATTERN_INSERT(PAT) \
+  patterns.addWithLabel<Convert##PAT##Op>({#PAT}, ctx);
 
-#define DEF_PATTERN_INSERT(PAT) patterns.insert<Convert##PAT##Op>(ctx);
+  DEF_PATTERN_INSERT(TFLAbs);
+  DEF_PATTERN_INSERT(TFLCeil);
+  DEF_PATTERN_INSERT(TFLFloor);
+  DEF_PATTERN_INSERT(TFLExp);
+  DEF_PATTERN_INSERT(TFLLog);
+  DEF_PATTERN_INSERT(TFLRsqrt);
+  DEF_PATTERN_INSERT(TFLLogicalNot);
+  DEF_PATTERN_INSERT(TFLCast);
+
+  DEF_PATTERN_INSERT(QuantStat);
+
+  DEF_PATTERN_INSERT(TFLLogicalAnd);
+  DEF_PATTERN_INSERT(TFLLogicalOr);
+  DEF_PATTERN_INSERT(TFLPow);
+
   DEF_PATTERN_INSERT(TFLRelu);
   DEF_PATTERN_INSERT(TFLRelu6);
   DEF_PATTERN_INSERT(TFLEqual);
@@ -3238,6 +3260,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLMul);
   DEF_PATTERN_INSERT(TFLSquare);
   DEF_PATTERN_INSERT(TFLSquaredDifference);
+  DEF_PATTERN_INSERT(TFLRound);
   DEF_PATTERN_INSERT(TFLDiv);
   DEF_PATTERN_INSERT(TFLMaximum);
   DEF_PATTERN_INSERT(TFLMinimum);
@@ -3277,8 +3300,8 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLTile);
   DEF_PATTERN_INSERT(TFLSlice);
   DEF_PATTERN_INSERT(TFLStridedSlice);
-  DEF_PATTERN_INSERT(TFLZerosLike);
   DEF_PATTERN_INSERT(TFLHardSwish);
+  DEF_PATTERN_INSERT(TFLZerosLike);
   DEF_PATTERN_INSERT(TFLLess);
   DEF_PATTERN_INSERT(TFLLessEqual);
   DEF_PATTERN_INSERT(TFLPad);
@@ -3305,19 +3328,20 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLDequantize);
   DEF_PATTERN_INSERT(TFLConst);
   DEF_PATTERN_INSERT(TFLQConst);
-  DEF_PATTERN_INSERT(Constant);
   DEF_PATTERN_INSERT(TFLGather);
   DEF_PATTERN_INSERT(TFLGatherNd);
   DEF_PATTERN_INSERT(TFLSparseToDense);
+  DEF_PATTERN_INSERT(Constant);
+  DEF_PATTERN_INSERT(TFLOneHot);
   DEF_PATTERN_INSERT(TFLArgMax);
   DEF_PATTERN_INSERT(TFLFakeQuant);
-  DEF_PATTERN_INSERT(TFLOneHot);
-#undef DEF_PATTERN_INSERT
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass() {
-  return std::make_unique<LegalizeTFL>();
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass(
+    ArrayRef<std::string> disabled_patterns,
+    ArrayRef<std::string> enabled_patterns) {
+  return std::make_unique<LegalizeTFL>(disabled_patterns, enabled_patterns);
 }
 
 }  // namespace tosa

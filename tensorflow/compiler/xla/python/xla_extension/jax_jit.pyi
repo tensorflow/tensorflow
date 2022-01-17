@@ -19,6 +19,7 @@ import numpy as np
 from tensorflow.compiler.xla.python import xla_extension
 
 Client = xla_extension.Client
+Device = xla_extension.Device
 
 CompiledFunctionCache = xla_extension.CompiledFunctionCache
 CompiledFunction = xla_extension.CompiledFunction
@@ -53,6 +54,7 @@ def jit(fun: Callable[..., Any],
         static_argnums: Sequence[int],
         static_argnames: Sequence[str] = ...,
         donate_argnums: Sequence[int] = ...,
+        jit_device: Optional[Device] = ...,
         cache: Optional[CompiledFunctionCache] = ...) -> CompiledFunction: ...
 
 def device_put(

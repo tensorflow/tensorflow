@@ -140,6 +140,17 @@ struct TFLQuantizationBase
     return quantization_trait == kDynamicRangeQuantization &&
            dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op);
   }
+
+  static bool IsWeightOnlyOp(Operation* quantized_op, StringSet& ops_blocklist,
+                             bool weight_only_quantization) {
+    // Check whether the quantized_op needs to be quantized in weight-only
+    // manner.
+    const auto op_name = quantized_op->getName().getStringRef().str();
+    const bool is_blocklisted =
+        ops_blocklist.find(op_name) != ops_blocklist.end();
+
+    return is_blocklisted || weight_only_quantization;
+  }
 };
 
 // Full integer quantization rewrite pattern using DQ as the root op.
@@ -251,8 +262,6 @@ void QuantizePass::runOnFunction() {
 
   TFL::populateWithGenerated(patterns);
 
-  // TODO(b/202451048): separate full and weight-only post-training dynamic
-  // range quantization
   if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits) {
     patterns.insert<TFLDynamicRangeQuantization>(ctx, quant_params);
   } else {

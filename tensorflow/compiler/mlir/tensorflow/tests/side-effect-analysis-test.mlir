@@ -1859,36 +1859,3 @@ func @device_ordinal_placeholder_side_effect_free(
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
-
-// -----
-
-// Tests that we don't create a dependency between ops with `TF_MustExecute`
-// trait, and that we do create dependencies between such ops and ops with
-// unknown side effects (in this case `tf_executor.yield`).
-func @must_execute_ops(
-  // expected-remark@above {{ID: 7}}
-  %arg0: tensor<!tf_type.string>,
-  %arg1: tensor<!tf_type.string>) {
-  tf_executor.graph {
-    // expected-remark@above {{ID: 5}}
-    %island = tf_executor.island {
-        // expected-remark@above {{ID: 3}}
-        // expected-remark@above {{Successors: {4}}}
-        "tf._InternalTestMustExecuteTrait_"() : () -> ()
-        // expected-remark@above {{ID: 0}}
-        // expected-remark@above {{Successors: {2}}}
-        "tf._InternalTestMustExecuteTrait_"() : () -> ()
-        // expected-remark@above {{ID: 1}}
-        // expected-remark@above {{Successors: {2}}}
-        tf_executor.yield
-        // expected-remark@above {{ID: 2}}
-        // expected-remark@above {{Predecessors: {0,1}}}
-    }
-    tf_executor.fetch %island : !tf_executor.control
-    // expected-remark@above {{ID: 4}}
-    // expected-remark@above {{Predecessors: {3}}}
-  }
-  return
-  // expected-remark@above {{ID: 6}}
-  // expected-remark@above {{Sinks: {5}}}
-}

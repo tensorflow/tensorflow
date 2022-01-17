@@ -54,6 +54,7 @@ add_mlir_library(ChloPasses
 add_mlir_library(MhloPasses
   broadcast_propagation.cc
   expand_hlo_tuples.cc
+  group_reduction_dimensions.cc
   legalize_einsum_to_dot_general.cc
   legalize_gather_to_torch_index_select.cc
   legalize_trigonometric_to_approximation.cc

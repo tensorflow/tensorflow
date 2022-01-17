@@ -177,6 +177,20 @@ def MergeAssumingOpsPass : FunctionPass<"mhlo-merge-assuming-ops"> {
     "broadcast the operands rather than the result. This will eventually allow "
     "for larger fusions.";
   let constructor = "createMergeAssumingOpsPass()";
+  let options = [
+      Option<"propagate_broadcasts_", "propagate-broadcasts", "bool",
+             /*default=*/"true",
+             "Also propagate broadcasts with a pattern-based rewrite.">,
+  ];
+}
+
+def GroupReductionDimensionsPass
+    : FunctionPass<"group-reduction-dimensions"> {
+  let summary = "Group dimensions of reduction operations";
+  let description = "Group reduction and parallel dimensions of reduction "
+    "operations and realize them through equivalent 1D or 2D reductions, if "
+    "possible.";
+  let constructor = "createGroupReductionDimensionsPass()";
 }
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {

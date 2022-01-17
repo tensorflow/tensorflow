@@ -80,3 +80,9 @@ message DataServiceMetadata {
   // Cardinality of the dataset.
   int64 cardinality = 3;
 }
+
+// Data service config available to the client through GetDataServiceConfig RPC.
+// Next tag: 2
+message DataServiceConfig {
+  DeploymentMode deployment_mode = 1;
+}

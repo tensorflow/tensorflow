@@ -17,6 +17,11 @@ message HeapObject {
   int32 logical_buffer_id = 4;
   double logical_buffer_size_mib = 5;
   double unpadded_shape_mib = 6;
+  string instruction_name = 7;
+  string shape_string = 8;
+  string tf_op_name = 9;
+  string group_name = 10;
+  string op_code = 11;
 }
 
 // Describes the start / exclusive limit HLO program points for a given buffer

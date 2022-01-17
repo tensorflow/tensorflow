@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/ir/ops.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <list>
 #include <memory>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -34,14 +37,17 @@ limitations under the License.
 #include "mlir/IR/FunctionSupport.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/types/dialect.h"
 
 // Generated definitions.
-#include "tensorflow/core/ir/dialect.cpp.inc"
-#include "tensorflow/core/ir/types/dialect.h"
+#include "tensorflow/core/ir/dialect.cc.inc"
 
 namespace mlir {
 namespace tfg {
@@ -90,10 +96,10 @@ void TFGraphDialect::initialize() {
   allowUnknownOperations();
 
   // Caching some often used context-owned informations for fast-access.
-  name_key_ = Identifier::get(getNameAttrKey(), getContext());
-  device_key_ = Identifier::get(getDeviceAttrKey(), getContext());
+  name_key_ = StringAttr::get(getContext(), getNameAttrKey());
+  device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
   assigned_device_key_ =
-      Identifier::get(getAssignedDeviceAttrKey(), getContext());
+      StringAttr::get(getContext(), getAssignedDeviceAttrKey());
   control_ty_ = ControlType::get(getContext());
 }
 
@@ -200,7 +206,7 @@ void TFGraphDialect::printCustomTfOp(Operation *op,
 }
 
 // Print a custom TFG op.
-static void printCustomTfOp(Operation *op, OpAsmPrinter &printer) {
+static void PrintCustomTfOp(Operation *op, OpAsmPrinter &printer) {
   cast<TFGraphDialect>(op->getDialect())->printCustomTfOp(op, printer);
 }
 
@@ -216,7 +222,7 @@ TFGraphDialect::getOperationPrinter(Operation *op) const {
 //   tfg.OpName(%input1, %input2, %input3) [%control_dep1, %control_dep2]
 //           name("<node_name>") device("<device>") { attribute-dict } :
 //           (input types) -> (result_types)
-static ParseResult parseCustomTfOp(OpAsmParser &parser,
+static ParseResult ParseCustomTfOp(OpAsmParser &parser,
                                    OperationState &result) {
   MLIRContext *context = parser.getBuilder().getContext();
   // Parse optional argument list
@@ -288,10 +294,10 @@ static ParseResult parseCustomTfOp(OpAsmParser &parser,
 
 Optional<Dialect::ParseOpHook> TFGraphDialect::getParseOperationHook(
     StringRef opName) const {
-  return ParseOpHook(parseCustomTfOp);
+  return ParseOpHook(ParseCustomTfOp);
 }
 
-static bool verifyGenericTFGOperation(Operation &op) {
+static bool VerifyGenericTFGOperation(Operation &op) {
   TFGraphDialect *dialect = dyn_cast<TFGraphDialect>(op.getDialect());
   if (!dialect) return true;
   ControlType control_ty = dialect->getControlType();
@@ -300,7 +306,7 @@ static bool verifyGenericTFGOperation(Operation &op) {
   // inputs (or results).
   auto check_ctl_at_end = [&](TypeRange types, StringRef input_or_output) {
     int has_control_dep = -1;
-    for (auto indexed_operand : llvm::enumerate(types)) {
+    for (auto &indexed_operand : llvm::enumerate(types)) {
       if (indexed_operand.value() == control_ty) {
         has_control_dep = indexed_operand.index();
         continue;
@@ -324,13 +330,13 @@ static bool verifyGenericTFGOperation(Operation &op) {
 // Graph Operation
 //===----------------------------------------------------------------------===//
 
-static void printGraphOp(OpAsmPrinter &p, GraphOp op) {
+static void PrintGraphOp(OpAsmPrinter &p, GraphOp op) {
   p << " " << op.version();
   p.printOptionalAttrDictWithKeyword(op->getAttrs(), {"version"});
   p.printRegion(op.getBodyRegion());
 }
 
-static ParseResult parseGraphOp(OpAsmParser &parser, OperationState &result) {
+static ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
   VersionAttr version;
   llvm::SMLoc loc = parser.getCurrentLocation();
   if (parser.parseAttribute(version)) {
@@ -347,9 +353,9 @@ static ParseResult parseGraphOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static LogicalResult verifyGraph(GraphOp graph_op) {
+static LogicalResult VerifyGraph(GraphOp graph_op) {
   // Check all ops in the body.
-  if (!all_of(*graph_op.getBody(), verifyGenericTFGOperation)) return failure();
+  if (!all_of(*graph_op.getBody(), VerifyGenericTFGOperation)) return failure();
 
   return success();
 }
@@ -393,7 +399,7 @@ LogicalResult GraphFuncOp::verifyBody() {
                          << getType().getNumInputs() << " args but block has "
                          << getBody()->getNumArguments();
 
-  for (auto arg_types : llvm::enumerate(
+  for (auto &arg_types : llvm::enumerate(
            llvm::zip(getType().getInputs(), getBody()->getArgumentTypes()))) {
     Type signature_arg = std::get<0>(arg_types.value());
     Type block_arg = std::get<1>(arg_types.value());
@@ -415,7 +421,7 @@ LogicalResult GraphFuncOp::verifyBody() {
     return emitOpError() << "expects " << type.getNumResults()
                          << " returned values but tfg.return has "
                          << return_op->getNumOperands() << " operands";
-  for (auto indexed_type : llvm::enumerate(type.getResults())) {
+  for (auto &indexed_type : llvm::enumerate(type.getResults())) {
     Type expected_type = indexed_type.value();
     int res_num = indexed_type.index();
     Type actual_type = return_op->getOperand(res_num).getType();
@@ -425,7 +431,7 @@ LogicalResult GraphFuncOp::verifyBody() {
                          << actual_type;
   }
   Type control_type = getDialect()->getControlType();
-  for (auto indexed_type : llvm::enumerate(llvm::drop_begin(
+  for (auto &indexed_type : llvm::enumerate(llvm::drop_begin(
            return_op->getOperandTypes(), type.getNumResults()))) {
     Type actual_type = indexed_type.value();
     if (actual_type != control_type) {
@@ -438,7 +444,7 @@ LogicalResult GraphFuncOp::verifyBody() {
   }
 
   // Check all ops in the body.
-  if (!all_of(*getBody(), verifyGenericTFGOperation)) return failure();
+  if (!all_of(*getBody(), VerifyGenericTFGOperation)) return failure();
 
   return success();
 }
@@ -465,7 +471,7 @@ LogicalResult GraphFuncOp::canonicalize(GraphFuncOp func_op,
   return failure();
 }
 
-static LogicalResult verifyGraphFunc(GraphFuncOp func_op) {
+static LogicalResult VerifyGraphFunc(GraphFuncOp func_op) {
   if (func_op.getNumArguments() % 2)
     return func_op.emitOpError() << "expects an even number of arguments";
   ArrayAttr args_attrs = func_op.getAllArgAttrs();
@@ -485,7 +491,7 @@ static LogicalResult verifyGraphFunc(GraphFuncOp func_op) {
   return success();
 }
 
-static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
+static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType> entry_args;
   SmallVector<Attribute> arg_attrs;
   SmallVector<Attribute> result_attrs;
@@ -509,7 +515,7 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
   // for the control dependency.
   if (parser.parseLParen()) return failure();
   Type control_ty = ControlType::get(builder.getContext());
-  SmallVector<std::unique_ptr<std::string>> control_operand_names;
+  std::list<std::string> control_operand_names;
 
   // Helper to parse a single argument and its attributes.
   auto parse_argument = [&]() -> ParseResult {
@@ -531,9 +537,8 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
     //   TFGraphOpAsmInterface::getAsmBlockArgumentNames()
     // at the top of this file.
     OpAsmParser::OperandType control_operand = entry_args.back();
-    control_operand_names.emplace_back(
-        std::make_unique<std::string>((control_operand.name + ".ctl").str()));
-    control_operand.name = *control_operand_names.back();
+    control_operand_names.push_back((control_operand.name + ".ctl").str());
+    control_operand.name = control_operand_names.back();
     entry_args.push_back(control_operand);
     arg_types.push_back(control_ty);
     arg_attrs.push_back(DictionaryAttr::get(context));
@@ -598,7 +603,7 @@ static ParseResult parseGraphFunc(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static void printGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
+static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   // Print the operation and the function name.
   p << " ";
   if (op.generic()) p << "generic ";
@@ -702,10 +707,208 @@ void GraphFuncOp::getAsmBlockArgumentNames(Region &region,
   }
 }
 
+//===----------------------------------------------------------------------===//
+// Concrete Ops
+//===----------------------------------------------------------------------===//
+
+// The ODS definitions of TFG ops can be autogenerated TODO(jeffniu) as well as
+// parts of their verifiers. These hand-written verifiers focus on verifying the
+// ops' operand and result types with respect to their functions' types, the
+// logic for which is slightly different between operations.
+
+// Verify that all control operands follow non-control operands, and return the
+// subrange of non-control operands.
+static FailureOr<TypeRange> VerifyOperands(Operation *op) {
+  ControlType control_ty =
+      cast<TFGraphDialect>(op->getDialect())->getControlType();
+  Operation::operand_type_iterator it =
+      llvm::find(op->getOperandTypes(), control_ty);
+  if (!std::all_of(it, op->operand_type_end(),
+                   [&](Type type) { return type == control_ty; })) {
+    return {op->emitOpError(
+        "not all control tokens come after non-control operands")};
+  }
+  return {Operation::operand_type_range(op->operand_type_begin(), it)};
+}
+
+// Verify that the last result of an operation is the only control result, and
+// return a subrange of the non-control results.
+static FailureOr<TypeRange> VerifyResults(Operation *op) {
+  ControlType control_ty =
+      cast<TFGraphDialect>(op->getDialect())->getControlType();
+  Operation::result_type_iterator it =
+      llvm::find(op->getResultTypes(), control_ty);
+  if (it == op->result_type_end())
+    return {op->emitOpError("does not define a control result")};
+  if (it != std::prev(op->result_type_end())) {
+    return {op->emitOpError(
+        "must have a control token result as and only as its last result")};
+  }
+  return {Operation::result_type_range(op->result_type_begin(), it)};
+}
+
+// Verify that the signature of the function matches the operation's operands
+// and results.
+static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
+                                     TypeRange operands, TypeRange results,
+                                     const Twine &func_name) {
+  auto attach_func = [&](InFlightDiagnostic diag) -> LogicalResult {
+    return diag.attachNote(func.getLoc()).appendOp(*func, OpPrintingFlags())
+           << "\nsee referenced function";
+  };
+
+  ArrayRef<Type> arguments = func.getType().getInputs();
+  ArrayRef<Type> returns = func.getType().getResults();
+  if (operands.size() * 2 != arguments.size()) {
+    return attach_func(op->emitOpError(func_name)
+                       << " function expected to have " << operands.size() * 2
+                       << " arguments but got " << arguments.size());
+  }
+  if (results.size() != returns.size()) {
+    return attach_func(op->emitOpError(func_name)
+                       << " function expected to have " << results.size()
+                       << " return values but got " << returns.size());
+  }
+
+  if (func.generic()) return success();
+
+  for (auto &it : llvm::enumerate(operands)) {
+    auto arg_type = getElementTypeOrSelf(arguments[it.index() * 2]);
+    auto op_type = getElementTypeOrSelf(it.value());
+    if (arg_type != op_type) {
+      return attach_func(
+          op->emitOpError(func_name)
+          << " function argument #" << it.index() << " dtype " << arg_type
+          << " does not match corresponding operand dtype: " << op_type);
+    }
+  }
+  for (auto &it : llvm::enumerate(results)) {
+    auto ret_type = getElementTypeOrSelf(returns[it.index()]);
+    auto res_type = getElementTypeOrSelf(it.value());
+    if (ret_type != res_type) {
+      return attach_func(
+          op->emitOpError(func_name)
+          << " function result #" << it.index() << " dtype " << ret_type
+          << " does not match corresponding op result dtype: " << res_type);
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// If-Like Ops
+
+template <typename IfLikeOp>
+static LogicalResult VerifyIfLikeOp(IfLikeOp op,
+                                    SymbolTableCollection &symbol_table) {
+  if (failed(op.verify())) return failure();
+  FailureOr<TypeRange> ins = VerifyOperands(op);
+  if (failed(ins)) return failure();
+  FailureOr<TypeRange> outs = VerifyResults(op);
+  if (failed(outs)) return failure();
+
+  SymbolRefAttr then_name = op.then_branch().getName();
+  SymbolRefAttr else_name = op.else_branch().getName();
+  // The first operand is the condition and is not passed to the functions.
+  TypeRange func_args = llvm::drop_begin(*ins);
+
+  auto then_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
+      op, op.then_branch().getName());
+  if (then_func &&
+      failed(VerifySignature(then_func, op, func_args, *outs, "then")))
+    return failure();
+
+  auto else_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
+      op, op.else_branch().getName());
+  if (else_func &&
+      failed(VerifySignature(else_func, op, func_args, *outs, "else")))
+    return failure();
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Case-Like Ops
+
+template <typename CaseLikeOp>
+static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
+                                      SymbolTableCollection &symbol_table) {
+  if (failed(op.verify())) return failure();
+  FailureOr<TypeRange> ins = VerifyOperands(op);
+  if (failed(ins)) return failure();
+  FailureOr<TypeRange> outs = VerifyResults(op);
+  if (failed(outs)) return failure();
+
+  // The first operand is the branch index and is not passed to the functions.
+  TypeRange func_args = llvm::drop_begin(*ins);
+
+  for (auto &it : llvm::enumerate(op.branches())) {
+    SymbolRefAttr func_name = it.value().template cast<FuncAttr>().getName();
+    auto func =
+        symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(op, func_name);
+    if (func && failed(VerifySignature(func, op, func_args, *outs,
+                                       "branch #" + Twine(it.index()))))
+      return failure();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// While-Like Ops
+
+template <typename WhileLikeOp>
+static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
+                                       SymbolTableCollection &symbol_table) {
+  if (failed(op.verify())) return failure();
+  FailureOr<TypeRange> ins = VerifyOperands(op);
+  if (failed(ins)) return failure();
+  FailureOr<TypeRange> outs = VerifyResults(op);
+  if (failed(outs)) return failure();
+
+  SymbolRefAttr body_name = op.body().getName();
+
+  auto cond_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
+      op, op.cond().getName());
+  auto i1_type = Builder(op.getContext()).getI1Type();
+  if (cond_func &&
+      failed(VerifySignature(cond_func, op, *ins, i1_type, "cond")))
+    return failure();
+
+  auto body_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
+      op, op.body().getName());
+  if (body_func && failed(VerifySignature(body_func, op, *ins, *outs, "body")))
+    return failure();
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ForOp
+
+LogicalResult ForOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
+  if (failed(verify())) return failure();
+  FailureOr<TypeRange> ins = VerifyOperands(*this);
+  if (failed(ins)) return failure();
+  FailureOr<TypeRange> outs = VerifyResults(*this);
+  if (failed(outs)) return failure();
+
+  auto body_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
+      *this, body().getName());
+  // The first three arguments are the for-loop indices, but the current loop
+  // index is passed in.
+  TypeRange func_args = llvm::drop_begin(*ins, /*N=*/2);
+  if (body_func &&
+      failed(VerifySignature(body_func, *this, func_args, *outs, "body")))
+    return failure();
+  return success();
+}
+
 }  // namespace tfg
 }  // namespace mlir
 
-// Ops definition from ODS
+//===----------------------------------------------------------------------===//
+// ODS Op Definitions
+//===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/core/ir/ops.cc.inc"

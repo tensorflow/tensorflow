@@ -51,3 +51,11 @@ func @broadcast_add_ranked_components_r1x2(%arg0: tensor<?xf32>, %arg1: tensor<?
   return %1 : tensor<?x3xf32>
 }
 
+// -----
+// CHECK-LABEL: @broadcast_add_ranked_components_with_zero_r1x2
+func @broadcast_add_ranked_components_with_zero_r1x2(%arg0: tensor<0xf32>, %arg1: tensor<?x1xf32>) -> tensor<?x0xf32> {
+  %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<0xf32>, tensor<?x1xf32>) -> tensor<?x0xf32>
+  // CHECK: "mhlo_test.return_type_components"(%0) {dims0 = [-1, 0], element_type0 = f32}
+  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<?x0xf32>) -> tensor<?x0xf32>
+  return %1 : tensor<?x0xf32>
+}

@@ -182,13 +182,15 @@ func @QDQFollowedByRank(%arg0: tensor<1x2xf32>) -> (tensor<i32>) {
 // CHECK: return %cst : tensor<i32>
 }
 
-func @identity(%arg0: tensor<10xi32>, %arg1: tensor<20xi32>, %arg2: tensor<30xi32>) -> (tensor<10xi32>, tensor<20xi32>, tensor<30xi32>) {
+func @identity(%arg0: tensor<10xi32>, %arg1: tensor<20xi32>, %arg2: tensor<30xi32>) -> (tensor<10xi32>, tensor<20xi32>, tensor<30xi32>, tensor<*xi32>) {
   %0 = "tf.Identity"(%arg0) : (tensor<10xi32>) -> tensor<10xi32>
   %1:2 = "tf.IdentityN"(%arg1,%arg2) : (tensor<20xi32>, tensor<30xi32>) -> (tensor<20xi32>, tensor<30xi32>)
-  return %0, %1#0, %1#1: tensor<10xi32>, tensor<20xi32>, tensor<30xi32>
+  %2 = "tf.Identity"(%arg0) : (tensor<10xi32>) -> tensor<*xi32>
+  return %0, %1#0, %1#1, %2: tensor<10xi32>, tensor<20xi32>, tensor<30xi32>, tensor<*xi32>
 
 // CHECK-LABEL: identity
-// CHECK: return %arg0, %arg1, %arg2
+// CHECK: %0 = "tf.Identity"(%arg0) : (tensor<10xi32>) -> tensor<*xi32>
+// CHECK: return %arg0, %arg1, %arg2, %0
 }
 
 

@@ -98,6 +98,40 @@ static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
   return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
 }
 
+static llvm::Error ReplicaId(const tfrt::gpu::GpuStream& stream,
+                             const tfrt::gpu::GpuBuffer& output,
+                             const tfrt::ExecutionContext& exec_ctx) {
+  auto* replica_partition_ctx =
+      exec_ctx.request_ctx()->GetDataIfExists<ReplicaAndPartitionId>();
+  if (!replica_partition_ctx) {
+    return tfrt::MakeStringError("Failed to get ReplicaAndPartitionId");
+  }
+
+  auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context()->get());
+  if (!current) return current.takeError();
+
+  return tfrt::gpu::wrapper::MemsetD32Async(*current, output.pointer(),
+                                            replica_partition_ctx->replica_id,
+                                            1, stream.get());
+}
+
+static llvm::Error PartitionId(const tfrt::gpu::GpuStream& stream,
+                               const tfrt::gpu::GpuBuffer& output,
+                               const tfrt::ExecutionContext& exec_ctx) {
+  auto* replica_partition_ctx =
+      exec_ctx.request_ctx()->GetDataIfExists<ReplicaAndPartitionId>();
+  if (!replica_partition_ctx) {
+    return tfrt::MakeStringError("Failed to get ReplicaAndPartitionId");
+  }
+
+  auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context()->get());
+  if (!current) return current.takeError();
+
+  return tfrt::gpu::wrapper::MemsetD32Async(*current, output.pointer(),
+                                            replica_partition_ctx->partition_id,
+                                            1, stream.get());
+}
+
 #if XLA_ENABLE_XCCL
 static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
     tfrt::Argument<tfrt::gpu::GpuContext> context,
@@ -242,6 +276,10 @@ static void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
                         TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
 #if BEF_THUNKS
   kernel_reg->AddKernel("xlir.module.load", TFRT_KERNEL(ModuleLoad));
+  kernel_reg->AddKernel("xlir.replica_id",
+                        TFRT_KERNEL_WITH_CHAIN_RESULT(ReplicaId));
+  kernel_reg->AddKernel("xlir.partition_id",
+                        TFRT_KERNEL_WITH_CHAIN_RESULT(PartitionId));
 #if XLA_ENABLE_XCCL
   kernel_reg->AddKernel("xlir.ccl.create", TFRT_KERNEL(CclCreate));
   kernel_reg->AddKernel("xlir.ccl.collective_permute",

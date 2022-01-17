@@ -91,10 +91,10 @@ class TraceMeProducer {
                            ContextType context_type = ContextType::kGeneric,
                            absl::optional<uint64> context_id = absl::nullopt,
                            int level = 2)
-      : trace_me_(name, level) {
+      : context_id_(context_id.has_value() ? context_id.value()
+                                           : TraceMe::NewActivityId()),
+        trace_me_(name, level) {
     trace_me_.AppendMetadata([&] {
-      context_id_ =
-          context_id.has_value() ? *context_id : TraceMe::NewActivityId();
       return TraceMeEncode({{"_pt", context_type}, {"_p", context_id_}});
     });
   }
@@ -102,8 +102,8 @@ class TraceMeProducer {
   uint64 GetContextId() const { return context_id_; }
 
  private:
+  uint64 context_id_;
   TraceMe trace_me_;
-  uint64 context_id_ = 0;
 };
 
 class TraceMeConsumer {

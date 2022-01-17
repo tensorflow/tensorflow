@@ -94,8 +94,8 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
   int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  int supported_versions[] = {75, 72, 70, 62, 61, 60, 53,
-                              52, 50, 37, 35, 32, 30};
+  int supported_versions[] = {86, 80, 75, 72, 70, 62, 61, 60,
+                              53, 52, 50, 37, 35, 32, 30};
   for (int v : supported_versions) {
     if (v <= compute_capability_version) {
       sm_version = v;
@@ -105,7 +105,7 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
 
   // If the current CC isn't supported by LLVM and it is newer then
   // the max supported LLVM version, do not warn about it. The end
-  // user can't do anything about this. PTX compiled for SM75 will
+  // user can't do anything about this. E.g., PTX compiled for SM75 will
   // run on SM80 too.
   if (sm_version != compute_capability_version &&
       compute_capability_version < supported_versions[0]) {
@@ -727,21 +727,16 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   // Locate lld.
   // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
   // ROCm-Device-Libs PR.
-  std::string lld_path_1 = tensorflow::io::JoinPath("/opt/rocm", "hcc/bin");
-  std::string lld_path_2 = tensorflow::io::JoinPath("/opt/rocm", "llvm/bin");
-  auto lld_program =
-      llvm::sys::findProgramByName("ld.lld", {lld_path_1, lld_path_2});
+  std::string lld_path = tensorflow::io::JoinPath("/opt/rocm", "llvm/bin");
+  auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
   if (!lld_program) {
     return xla::InternalError("unable to find ld.lld in PATH: %s",
                               lld_program.getError().message());
   }
   std::vector<llvm::StringRef> lld_args{
-      llvm_ir::AsStringRef("ld.lld"),
-      llvm_ir::AsStringRef("-flavor"),
-      llvm_ir::AsStringRef("gnu"),
-      llvm_ir::AsStringRef("-shared"),
-      llvm_ir::AsStringRef(isabin_path),
-      llvm_ir::AsStringRef("-o"),
+      llvm_ir::AsStringRef("ld.lld"),    llvm_ir::AsStringRef("-flavor"),
+      llvm_ir::AsStringRef("gnu"),       llvm_ir::AsStringRef("-shared"),
+      llvm_ir::AsStringRef(isabin_path), llvm_ir::AsStringRef("-o"),
       llvm_ir::AsStringRef(hsaco_path),
   };
 

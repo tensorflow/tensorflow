@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -185,7 +186,8 @@ class LayoutUtil {
   static Layout MoveDimToMajor(const Layout& layout, int64_t dim);
 
   // Compute a hash for `layout`.
-  static size_t Hash(const Layout& layout);
+  // TODO(majnemer): remove the need for this helper.
+  static size_t Hash(const Layout& layout) { return HashOf(layout); }
 
   // Returns the linearized index of the cell at the given indices. The unit
   // of the offset is in elements of the shape.

@@ -61,7 +61,7 @@ class MarkShapeCalc : public MarkShapeCalculationPassBase<MarkShapeCalc> {
     // pass execution.
     cpu_placement_attr_ = StringAttr::get(context, kCpu);
     output_placement_attr_key_ =
-        Identifier::get(hlo::kOutputPlacementAttr, context);
+        StringAttr::get(context, hlo::kOutputPlacementAttr);
     true_attr_ = BoolAttr::get(context, true);
     return success();
   }
@@ -105,7 +105,7 @@ class MarkShapeCalc : public MarkShapeCalculationPassBase<MarkShapeCalc> {
 
   // Cached context-owned entities for fast pointer-based access.
   StringAttr cpu_placement_attr_;
-  Optional<Identifier> output_placement_attr_key_;
+  Optional<StringAttr> output_placement_attr_key_;
   BoolAttr true_attr_;
 };
 

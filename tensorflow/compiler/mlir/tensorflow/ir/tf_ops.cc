@@ -110,7 +110,7 @@ void MultiDeviceProcessInlinedCallBlocks(
 
   // Duplicate of the logic in MultiDeviceFunctionBodyPlacer::BodyNodeDevice
   // LINT.IfChange
-  auto device_id = Identifier::get("device", call->getContext());
+  auto device_id = StringAttr::get(call->getContext(), "device");
   auto caller_device = call->getAttrOfType<StringAttr>(device_id);
   if (!caller_device) return;
 

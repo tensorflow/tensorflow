@@ -69,6 +69,7 @@ cc_library(
         "custom_call_pattern.cc",
         "gemm_pattern.cc",
         "lmhlo_to_gpu.cc",
+        "replica_and_partition_pattern.cc",
         "triangular_solve_pattern.cc",
     ],
     hdrs = [

@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt %s -tf-cpurt-detensorize-linalg | FileCheck %s
+// RUN: tf-tfrt-opt %s -tf-jitrt-detensorize-linalg | FileCheck %s
 
 #id = affine_map<(d0) -> (d0)>
 #empty = affine_map<(d0) -> ()>

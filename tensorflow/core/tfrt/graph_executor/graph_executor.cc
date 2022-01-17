@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_request_context.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
@@ -110,7 +110,7 @@ StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
       model_metadata, &request_info->runner));
 
   TF_RETURN_IF_ERROR(
-      tensorflow::SetUpTfCpuRtRequestContext(&request_context_builder));
+      tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));
   tfrt::RequestOptions request_options;
   request_options.priority = run_options.priority;
   request_context_builder.set_request_options(request_options);

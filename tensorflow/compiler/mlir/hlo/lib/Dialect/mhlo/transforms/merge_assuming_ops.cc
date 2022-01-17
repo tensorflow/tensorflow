@@ -19,15 +19,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/map_chlo_to_hlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -107,28 +103,31 @@ bool IsMovable(Operation *op) {
          llvm::isa<shape::CstrBroadcastableOp>(op);
 }
 
-LogicalResult MoveIntoAssumingOpMatchAndRewrite(Operation *op,
-                                                PatternRewriter &rewriter) {
-  // Find a preceding `assuming` op with nothing but side effect-free operations
-  // in between.
+LogicalResult MoveUpIntoAssumingOpMatchAndRewrite(Operation *op,
+                                                  PatternRewriter &rewriter) {
+  // Only implemented for single-result ops.
+  if (op->getNumResults() != 1) return failure();
+
+  // Find a preceding `assuming` op.
+  auto the_block = op->getBlock();
   Operation *prev = op->getPrevNode();
-  while (prev != nullptr && !llvm::isa<shape::AssumingOp>(prev) &&
-         IsMovable(prev)) {
+  while (prev != nullptr && !llvm::isa<shape::AssumingOp>(prev))
     prev = prev->getPrevNode();
-  }
   auto assuming_op = llvm::dyn_cast_or_null<shape::AssumingOp>(prev);
   if (!assuming_op) return failure();
+  assert(assuming_op->getBlock() == the_block && op->getBlock() == the_block &&
+         "expect assuming op and root op to be in the same block");
 
   // Make sure that all operands will be available after moving.
   auto is_available = [&](Value v) {
     Operation *def = v.getDefiningOp();
-    return def == nullptr || (def->getBlock() == op->getBlock() &&
-                              !assuming_op->isBeforeInBlock(def));
+    return def == nullptr || def->getBlock() != the_block ||
+           !assuming_op->isBeforeInBlock(def);
   };
   if (!llvm::all_of(op->getOperands(), is_available)) return failure();
 
   Block *body = assuming_op.getBody();
-  auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
+  auto yield_op = llvm::cast<shape::AssumingYieldOp>(body->getTerminator());
 
   // Find the operands to use if the op was within the assuming region. We
   // will later use their copies, as we copy the assuming op and its body.
@@ -170,7 +169,7 @@ LogicalResult MoveIntoAssumingOpMatchAndRewrite(Operation *op,
       });
 
   // Replace the assuming op and the root op with the corresponding result
-  // value.
+  // values.
   ValueRange new_assuming_op_results = new_assuming_op->getResults();
   rewriter.replaceOp(assuming_op, new_assuming_op_results.drop_back());
   rewriter.replaceOp(op, new_assuming_op_results.back());
@@ -181,29 +180,82 @@ LogicalResult MoveIntoAssumingOpMatchAndRewrite(Operation *op,
 /// operations that depend on the assuming op's results. It will eventually
 /// allow to make assuming regions' constraints independent from each other.
 template <typename OpTy>
-struct MoveIntoAssumingOpPattern : public OpRewritePattern<OpTy> {
+struct MoveUpIntoAssumingOpPattern : public OpRewritePattern<OpTy> {
   using OpRewritePattern<OpTy>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    return MoveIntoAssumingOpMatchAndRewrite(op.getOperation(), rewriter);
+    return MoveUpIntoAssumingOpMatchAndRewrite(op.getOperation(), rewriter);
   }
 };
 
-// Move elementwise operations into assuming regions. This will eventually allow
-// for more fusion opportunities.
-struct MoveElementwiseOpsIntoAssumingOpPattern : public RewritePattern {
-  explicit MoveElementwiseOpsIntoAssumingOpPattern(MLIRContext *ctx)
+// Move elementwise operations into a preceding assuming op. This will
+// eventually allow for more fusion opportunities.
+struct MoveElementwiseOpsUpIntoAssumingOpPattern : public RewritePattern {
+  explicit MoveElementwiseOpsUpIntoAssumingOpPattern(MLIRContext *ctx)
       : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    // Apply to all elementwise and broadcasting elementwise operations.
+    // Apply to all elementwise and broadcasting elementwise operations with no
+    // side effects.
     if (!op->hasTrait<mlir::OpTrait::Elementwise>() &&
-        !op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>())
+        !op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>()) {
       return failure();
+    }
+    if (!MemoryEffectOpInterface::hasNoEffect(op)) return failure();
 
-    return MoveIntoAssumingOpMatchAndRewrite(op, rewriter);
+    return MoveUpIntoAssumingOpMatchAndRewrite(op, rewriter);
+  }
+};
+
+// Move operation into an assuming region if all uses are within its body.
+LogicalResult MoveDownIntoAssumingOpMatchAndRewrite(Operation *op,
+                                                    PatternRewriter &rewriter) {
+  auto users = op->getUsers();
+  auto it = users.begin();
+  auto end = users.end();
+  if (it == end) return failure();
+
+  // Find candidate assuming op.
+  auto assuming_op = (it++)->getParentOfType<shape::AssumingOp>();
+  if (!assuming_op || assuming_op->isProperAncestor(op)) return failure();
+
+  // Make sure all uses are within the unique assuming op's body.
+  while (it != end) {
+    auto hopefully_same_assuming_op =
+        (it++)->getParentOfType<shape::AssumingOp>();
+    if (!hopefully_same_assuming_op ||
+        hopefully_same_assuming_op != assuming_op) {
+      return failure();
+    }
+  }
+
+  // Move op into the assuming region.
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointToStart(assuming_op.getBody());
+  Operation *new_op = rewriter.clone(*op);
+  rewriter.replaceOp(op, new_op->getResults());
+  return success();
+}
+
+// Move elementwise operations into succeeding assuming regions. This will
+// eventually allow for more fusion opportunities.
+struct MoveElementwiseOpsDownIntoAssumingOpPattern : public RewritePattern {
+  explicit MoveElementwiseOpsDownIntoAssumingOpPattern(MLIRContext *ctx)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    // Apply to all elementwise and broadcasting elementwise operations with no
+    // side effects.
+    if (!op->hasTrait<mlir::OpTrait::Elementwise>() &&
+        !op->hasTrait<mhlo::OpTrait::BroadcastingElementwise>()) {
+      return failure();
+    }
+    if (!MemoryEffectOpInterface::hasNoEffect(op)) return failure();
+
+    return MoveDownIntoAssumingOpMatchAndRewrite(op, rewriter);
   }
 };
 
@@ -212,7 +264,7 @@ struct MoveElementwiseOpsIntoAssumingOpPattern : public RewritePattern {
 /// will eventually allow to make assuming regions' constraints independent from
 /// each other.
 template <typename OpTy>
-struct MoveOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
+struct MoveUpOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
   using OpRewritePattern<OpTy>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(OpTy op,
@@ -443,6 +495,10 @@ struct EarlyBroadcastInDimOpPattern
 
 struct MergeAssumingOpsPass
     : public MergeAssumingOpsPassBase<MergeAssumingOpsPass> {
+  explicit MergeAssumingOpsPass(bool propagate_broadcasts) {
+    propagate_broadcasts_ = propagate_broadcasts;
+  }
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
   }
@@ -450,7 +506,8 @@ struct MergeAssumingOpsPass
   void runOnFunction() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns);
+    mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns,
+                                           propagate_broadcasts_);
     GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
     if (failed(applyPatternsAndFoldGreedily(getFunction(), std::move(patterns),
@@ -463,22 +520,25 @@ struct MergeAssumingOpsPass
 }  // namespace
 
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
-                                      OwningRewritePatternList *patterns) {
+                                      OwningRewritePatternList *patterns,
+                                      bool propagate_broadcasts) {
   // clang-format off
   patterns->insert<
       EliminateDuplicateCstrBroadcastableOps,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,
-      MoveElementwiseOpsIntoAssumingOpPattern,
-      MoveIntoAssumingOpPattern<shape::AssumingAllOp>,
-      MoveIntoAssumingOpPattern<shape::CstrBroadcastableOp>,
-      MoveIntoAssumingOpPattern<shape::ShapeOfOp>,
-      MoveOutOfAssumingOpPattern<shape::AssumingAllOp>,
-      MoveOutOfAssumingOpPattern<shape::CstrBroadcastableOp>,
-      MoveOutOfAssumingOpPattern<shape::ShapeOfOp>,
-      EarlyBroadcastInDimOpPattern,
+      MoveElementwiseOpsDownIntoAssumingOpPattern,
+      MoveElementwiseOpsUpIntoAssumingOpPattern,
+      MoveUpIntoAssumingOpPattern<shape::AssumingAllOp>,
+      MoveUpIntoAssumingOpPattern<shape::CstrBroadcastableOp>,
+      MoveUpIntoAssumingOpPattern<shape::ShapeOfOp>,
+      MoveUpOutOfAssumingOpPattern<shape::AssumingAllOp>,
+      MoveUpOutOfAssumingOpPattern<shape::CstrBroadcastableOp>,
+      MoveUpOutOfAssumingOpPattern<shape::ShapeOfOp>,
       ShapeReificationPattern>(context);
   // clang-format on
+  if (propagate_broadcasts)
+    patterns->insert<EarlyBroadcastInDimOpPattern>(context);
   mhlo::DynamicBroadcastInDimOp::getCanonicalizationPatterns(*patterns,
                                                              context);
   mhlo::DynamicReshapeOp::getCanonicalizationPatterns(*patterns, context);
@@ -489,8 +549,9 @@ void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
   tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<FunctionPass> createMergeAssumingOpsPass() {
-  return std::make_unique<MergeAssumingOpsPass>();
+std::unique_ptr<FunctionPass> createMergeAssumingOpsPass(
+    bool propagate_broadcasts) {
+  return std::make_unique<MergeAssumingOpsPass>(propagate_broadcasts);
 }
 
 }  // namespace mhlo

@@ -230,7 +230,7 @@ class Layout {
   template <typename H>
   friend H AbslHashValue(H h, const Layout& l) {
     return H::combine(std::move(h), l.format_, l.minor_to_major_, l.tiles_,
-                      l.element_size_in_bits_);
+                      l.element_size_in_bits_, l.memory_space_);
   }
 
  private:

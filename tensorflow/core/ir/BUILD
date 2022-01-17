@@ -18,7 +18,6 @@ td_library(
         "dialect.td",
         "ops.td",
     ],
-    includes = ["include"],
     deps = [
         "@llvm-project//mlir:CallInterfacesTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
@@ -61,7 +60,7 @@ gentbl_cc_library(
                 "-dialect",
                 "tfg",
             ],
-            "dialect.cpp.inc",
+            "dialect.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",

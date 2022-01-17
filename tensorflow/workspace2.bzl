@@ -458,6 +458,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "nsync",
+        patch_file = ["//third_party:nsync.patch"],
         sha256 = "caf32e6b3d478b78cff6c2ba009c3400f8251f646804bcb65465666a9cea93c4",
         strip_prefix = "nsync-1.22.0",
         system_build_file = "//third_party/systemlibs:nsync.BUILD",
@@ -834,11 +835,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pybind11",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.6.0.tar.gz"),
-        sha256 = "90b705137b69ee3b5fc655eaca66d0dc9862ea1759226f7ccd3098425ae69571",
-        strip_prefix = "pybind11-2.6.0",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.9.0.tar.gz"),
+        sha256 = "057fb68dafd972bc13afb855f3b0d8cf0fa1a78ef053e815d9af79be7ff567cb",
+        strip_prefix = "pybind11-2.9.0",
         build_file = "//third_party:pybind11.BUILD",
-        patch_file = ["//third_party:pybind11.patch"],
         system_build_file = "//third_party/systemlibs:pybind11.BUILD",
     )
 

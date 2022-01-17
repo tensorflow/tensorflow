@@ -1032,7 +1032,7 @@ def _validate_dependencies(saveble_view):
         raise ValueError(
             f"Found an untracked dependency. Object {node_path} depends "
             f"on {dep}, but this dependency isn't listed as a child. "
-            "Please track this child by overriding `_checkpoint_dependencies` "
+            "Please track this child by overriding `_trackable_children` "
             "or use `._track_trackable`.")
       deps.append(saveble_view.node_ids[dep])
   try:

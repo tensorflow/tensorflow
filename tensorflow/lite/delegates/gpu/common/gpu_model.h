@@ -104,17 +104,6 @@ struct GpuModel {
   absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
 };
 
-bool IsAssociativeLinkableOp(const Node& node,
-                             const std::vector<Value*>& inputs,
-                             const std::vector<Value*>& outputs);
-
-absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
-                                            const TensorDescriptor& tensor_desc,
-                                            const BHWC& shape,
-                                            DataType data_type);
-
-absl::Status MergeNodes(GpuModel* gpu_model);
-
 absl::Status GraphToGpuModel(const GraphFloat32& graph,
                              const CreateGpuModelInfo& create_info,
                              const GpuInfo& gpu_info, GpuModel* gpu_model);
@@ -123,6 +112,10 @@ flatbuffers::Offset<data::GpuModel> Encode(
     const GpuModel& gpu_model, flatbuffers::FlatBufferBuilder* builder);
 
 absl::Status Decode(const data::GpuModel* fb_gpu_model, GpuModel* gpu_model);
+
+// This transformations MUST be applied to graph for correct work of GpuModel
+// that will be created from graph
+absl::Status RunGraphTransformsForGpuModel(GraphFloat32* graph);
 
 }  // namespace gpu
 }  // namespace tflite

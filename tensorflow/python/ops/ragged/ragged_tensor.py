@@ -2714,7 +2714,7 @@ session.register_session_run_conversion_functions(
 #===============================================================================
 # RaggedTensorType
 #===============================================================================
-class RaggedTensorType(object):
+class RaggedTensorType:
   """Encoding of a static type for a `RaggedTensor`.
 
   Use this type to express/declare that an output must have the type of

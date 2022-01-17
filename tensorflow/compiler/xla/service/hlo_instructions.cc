@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
+#include <algorithm>
 #include <deque>
+#include <functional>
+#include <numeric>
 #include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -1963,10 +1967,6 @@ bool HloFusionInstruction::IdenticalSlowPath(
   return fusion_kind() == other.fusion_kind() &&
          eq_computations(fused_instructions_computation(),
                          other.fused_instructions_computation());
-}
-
-uint64_t HloFusionInstruction::InnerHash() const {
-  return fused_instructions_computation()->root_instruction()->Hash();
 }
 
 std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(

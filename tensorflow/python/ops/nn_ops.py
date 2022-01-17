@@ -285,7 +285,7 @@ def _non_atrous_convolution(
     return op(input, filter)
 
 
-class _NonAtrousConvolution(object):
+class _NonAtrousConvolution:
   """Helper class for _non_atrous_convolution.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -697,7 +697,7 @@ def with_space_to_batch(
   return new_op(input, None)
 
 
-class _WithSpaceToBatch(object):
+class _WithSpaceToBatch:
   """Helper class for with_space_to_batch.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -1308,7 +1308,7 @@ def convolution_internal(
       return op(input, filters)
 
 
-class Convolution(object):
+class Convolution:
   """Helper class for convolution.
 
   Note that this class assumes that shapes of input and filter passed to

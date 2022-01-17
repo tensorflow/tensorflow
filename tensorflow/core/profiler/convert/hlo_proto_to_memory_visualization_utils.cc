@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
@@ -43,15 +44,46 @@ namespace {
 
 using absl::StrFormat;
 using ::xla::BufferAllocationProto;
+using ::xla::HloInstructionProto;
 using ::xla::HloProto;
 using ::xla::LayoutUtil;
 using ::xla::LogicalBufferProto;
-using ::xla::HloInstructionProto;
 using ::xla::Shape;
 using ::xla::ShapeUtil;
 
 double BytesToMiB(int64_t bytes) {
   return static_cast<double>(bytes) / tensorflow::MathUtil::IPow(2, 20);
+}
+
+// Get buffer allocation property.
+std::string GetAllocationGroupName(
+    const BufferAllocationProto* buffer_allocation) {
+  if (buffer_allocation == nullptr) {
+    return "";
+  }
+  if (buffer_allocation->is_entry_computation_parameter()) {
+    return "Parameter";
+  } else if (buffer_allocation->maybe_live_out()) {
+    return "Output";
+  } else if (buffer_allocation->is_thread_local()) {
+    return "Thread-local";
+  } else {
+    return "Temporary";
+  }
+}
+
+// Get the instruction associated with the logical buffer.
+std::string GetInstructionName(const LogicalBufferProto* logical_buffer) {
+  if (logical_buffer == nullptr) {
+    return "";
+  }
+  if (logical_buffer->defined_at().shape_index().empty()) {
+    return logical_buffer->defined_at().instruction_name();
+  } else {
+    return absl::StrCat(
+        logical_buffer->defined_at().instruction_name(), "{",
+        absl::StrJoin(logical_buffer->defined_at().shape_index(), ""), "}");
+  }
 }
 
 HeapObject MakeHeapObjectCommon(std::string label, int logical_buffer_id,
@@ -65,13 +97,22 @@ HeapObject MakeHeapObjectCommon(std::string label, int logical_buffer_id,
   return result;
 }
 
-HeapObject MakeHeapObject(int color, std::string label, int logical_buffer_id,
+HeapObject MakeHeapObject(const std::string& tf_op_name,
+                          const std::string& shape_string,
+                          const std::string& op_code,
+                          std::string instruction_name, std::string group_name,
+                          std::string label, int color, int logical_buffer_id,
                           int64_t logical_buffer_size_bytes,
                           int64_t unpadded_shape_bytes) {
   HeapObject result =
       MakeHeapObjectCommon(std::move(label), logical_buffer_id,
                            logical_buffer_size_bytes, unpadded_shape_bytes);
   result.set_numbered(color);
+  result.set_instruction_name(std::move(instruction_name));
+  result.set_group_name(std::move(group_name));
+  result.set_tf_op_name(tf_op_name);
+  result.set_shape_string(shape_string);
+  result.set_op_code(op_code);
   return result;
 }
 
@@ -215,7 +256,7 @@ void NoteSpecialAllocations(
 
 absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     const HloProto& hlo_proto, int64_t small_buffer_size,
-    int64_t heap_simulator_trace_id) {
+    int64_t heap_simulator_trace_id, int64_t memory_color) {
   // Construct a mapping from name to HLO proto.
   absl::node_hash_map<std::string, const HloInstructionProto*> name_to_hlo;
   for (const auto& computation : hlo_proto.hlo_module().computations()) {
@@ -341,6 +382,10 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
       }
     }
 
+    // Add the final heap size after simulating the entire heap trace.
+    heap_sizes.push_back(BytesToMiB(heap_size_bytes));
+    unpadded_heap_sizes.push_back(BytesToMiB(unpadded_heap_size_bytes));
+
     if (seen_buffer_allocations.size() != 1) {
       return absl::InvalidArgumentError(
           absl::StrCat("All heap simulation should work out of a single buffer "
@@ -362,7 +407,8 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
 
   // Helper lambda that adds the logical buffer as an element in the "max heap"
   // view with constitutent logical buffers.
-  auto add_heap_object = [&](const LogicalBufferProto* logical_buffer) {
+  auto add_heap_object = [&](const LogicalBufferProto* logical_buffer,
+                             const BufferAllocationProto* buffer_allocation) {
     if (logical_buffer->size() <= small_buffer_size) {
       rest += logical_buffer->size();
       return;
@@ -374,13 +420,15 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
         &top_level_shape, logical_buffer->defined_at().shape_index());
     std::string shape_string = ShapeUtil::HumanStringWithLayout(*shape);
     int64 unpadded_shape_bytes = UnpaddedSize(*shape);
-    const std::string& metadata =
-        name_to_hlo.at(instruction_name)->metadata().op_name();
-    std::string label =
-        StrFormat("%s: %s # %s", instruction_name, shape_string, metadata);
-    max_heap.push_back(
-        MakeHeapObject(colorno++, std::move(label), logical_buffer->id(),
-                       logical_buffer->size(), unpadded_shape_bytes));
+    const HloInstructionProto* hlo_instruction =
+        name_to_hlo.at(instruction_name);
+    std::string label = StrFormat("%s: %s # %s", instruction_name, shape_string,
+                                  hlo_instruction->metadata().op_name());
+    max_heap.push_back(MakeHeapObject(
+        hlo_instruction->metadata().op_name(), shape_string,
+        hlo_instruction->opcode(), GetInstructionName(logical_buffer),
+        GetAllocationGroupName(buffer_allocation), std::move(label), colorno++,
+        logical_buffer->id(), logical_buffer->size(), unpadded_shape_bytes));
   };
 
   // Now look for all logical buffers which have not been seen, and assume they
@@ -398,6 +446,9 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     if (buffer_allocation->is_thread_local()) {
       continue;
     }
+    if (logical_buffer->color() != memory_color) {
+      continue;
+    }
     // Clear out the assigned logical buffers when stringifying the buffer
     // allocation, as it can be a long list.
     auto to_string = [](const BufferAllocationProto* p) {
@@ -410,7 +461,7 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
       const auto& logical_buffers =
           buffer_allocation_to_logical_buffers.at(buffer_allocation);
       if (logical_buffers.size() == 1) {
-        add_heap_object(*logical_buffers.begin());
+        add_heap_object(*logical_buffers.begin(), buffer_allocation);
       } else {
         VLOG(1) << "Indefinite lifetime, no heap object shown due to "
                    "multiple logical buffers in buffer allocation: "
@@ -443,7 +494,9 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   // that order to create data points.
   for (int logical_buffer_id : peak_logical_buffers) {
     const auto* logical_buffer = id_to_logical_buffer.at(logical_buffer_id);
-    add_heap_object(logical_buffer);
+    const auto* buffer_allocation =
+        logical_buffer_to_buffer_allocation.at(logical_buffer);
+    add_heap_object(logical_buffer, buffer_allocation);
   }
   if (rest != 0) {
     max_heap.push_back(MakeHeapObject(
@@ -507,11 +560,12 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
 }
 
 // From a list of heap simulator traces, identify the one that has the largest
-// number of HBM (color = 0) memory events.
+// number of memory events with color <memory_color>.
 // If unable to find the heap simulator trace, return -1, and
 // ConvertHloProtoToPreprocessResult will not consider heap_simulator_traces
 // during preprocess.
-int64_t GetHeapSimulatorTraceIdFromEvents(const HloProto& proto) {
+int64_t GetHeapSimulatorTraceIdFromEvents(const HloProto& proto,
+                                          int64_t memory_color) {
   absl::flat_hash_map<int64_t, const xla::LogicalBufferProto*>
       id_to_logical_buffer;
   for (const auto& logical_buffer :
@@ -530,8 +584,7 @@ int64_t GetHeapSimulatorTraceIdFromEvents(const HloProto& proto) {
       if (iter == id_to_logical_buffer.end()) {
         continue;
       }
-      // TODO(tianrun): Add a "memory space color" query parameter.
-      if (iter->second->color() == 0) {
+      if (iter->second->color() == memory_color) {
         event_count++;
       }
     }
@@ -546,8 +599,8 @@ int64_t GetHeapSimulatorTraceIdFromEvents(const HloProto& proto) {
 
 // Tries to get the correct heap simulator trace based on
 // buffer_allocation_index.
-int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(
-    const HloProto& proto) {
+int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(const HloProto& proto,
+                                                         int64_t memory_color) {
   absl::flat_hash_map<int64_t, const xla::BufferAllocationProto*>
       id_to_buffer_allocation;
   for (const auto& buffer_allocation :
@@ -561,13 +614,12 @@ int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(
                                           .buffer_allocation_index();
     const auto iter = id_to_buffer_allocation.find(buffer_allocation_index);
     if (buffer_allocation_index && iter != id_to_buffer_allocation.end()) {
-      // TODO(tianrun): Add a "memory space color" query parameter.
       // Find the heap simulator trace that corresponds to the HLO temporaries
       // buffer allocation, where is_thread_local,
       // is_entry_computation_parameter, is_constant, and maybe_live_out will
       // all be false.
       const auto* buffer_allocation = iter->second;
-      if (buffer_allocation->color() == 0 &&
+      if (buffer_allocation->color() == memory_color &&
           !buffer_allocation->is_thread_local() &&
           !buffer_allocation->is_entry_computation_parameter() &&
           !buffer_allocation->is_constant() &&
@@ -579,12 +631,13 @@ int64_t GetHeapSimulatorTraceIdFromBufferAllocationIndex(
   return -1;
 }
 
-int64_t GetHeapSimulatorTraceId(const HloProto& proto) {
-  int64_t id = GetHeapSimulatorTraceIdFromBufferAllocationIndex(proto);
+int64_t GetHeapSimulatorTraceId(const HloProto& proto, int64_t memory_color) {
+  int64_t id =
+      GetHeapSimulatorTraceIdFromBufferAllocationIndex(proto, memory_color);
   if (id != -1) {
     return id;
   }
-  return GetHeapSimulatorTraceIdFromEvents(proto);
+  return GetHeapSimulatorTraceIdFromEvents(proto, memory_color);
 }
 
 }  // namespace profiler

@@ -628,8 +628,7 @@ T baseline_floor_mod(T lhs, T rhs) {
 }
 
 /// Test the JIT-compiled kernels.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorMod,
     /*test_name=*/Int8, int8_t, int8_t, test::DefaultInput<int8_t>(),

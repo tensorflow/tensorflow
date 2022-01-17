@@ -78,6 +78,12 @@ def TFType_PlaceholderAttr : TFType_Attr<"Placeholder"> {
   );
 }
 
+def TFGraph_TypeOrPlaceholder
+    : Attr<Or<[TypeAttr.predicate, TFType_PlaceholderAttr.predicate]>,
+          "a type or placeholder attribute"> {
+  let returnType = "::mlir::Attribute";
+  let convertFromStorage = "$_self";
+}
 
 //===----------------------------------------------------------------------===//
 // ShapeAttr
@@ -125,6 +131,9 @@ def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
   }];
 }
 
+// An array of TF shapes.
+def TFGraph_ShapesAttr
+    : TypedArrayAttrBase<TFType_ShapeAttrDef, "An array of shapes.">;
 
 //===----------------------------------------------------------------------===//
 // VersionAttr

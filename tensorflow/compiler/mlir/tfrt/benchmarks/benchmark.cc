@@ -28,8 +28,8 @@ limitations under the License.
 namespace tensorflow {
 
 using ::tfrt::HostContext;
-using ::tfrt::cpu::jit::CompilationOptions;
-using ::tfrt::cpu::jit::MemrefType;
+using ::tfrt::jitrt::CompilationOptions;
+using ::tfrt::jitrt::MemrefType;
 
 const bool kStaticDim = false;
 const bool kDynamicDim = true;
@@ -68,13 +68,13 @@ mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
 JitExecutable& CreateJitExecutable(
     const HostContext& host, llvm::StringRef mlir_input,
     llvm::StringRef function_name, bool lower_from_tensorflow,
-    const TfCpuRtPipelineOptions& tf_cpurt_opts) {
+    const TfJitRtPipelineOptions& tf_jitrt_opts) {
   CompilationOptions opts;
   opts.num_worker_threads = host.GetNumWorkerThreads();
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
   if (lower_from_tensorflow) {
     opts.register_pass_pipeline = [&](mlir::OpPassManager& pm) {
-      tensorflow::CreateTfCpuRtPipeline(pm, tf_cpurt_opts);
+      tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
     };
   }
   opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
@@ -86,7 +86,7 @@ JitExecutable& CreateJitExecutable(
 
   std::string key =
       llvm::formatv("{0}/{1}/{2}", mlir_input.data(), opts.num_worker_threads,
-                    hash_value(tf_cpurt_opts));
+                    hash_value(tf_jitrt_opts));
 
   // Compile and cache MLIR function.
   auto it = cache->find(key);

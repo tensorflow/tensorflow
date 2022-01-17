@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/types/optional.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -63,6 +64,9 @@ struct HostComputeMetadataSerializedProto {
 typedef struct XLA_TpuMeshState XLA_TpuMeshState;
 
 typedef struct XLA_TpuEmbeddingEngineState XLA_TpuEmbeddingEngineState;
+
+typedef struct TpuEmbedding_TensorBatchFixedState
+    TpuEmbedding_TensorBatchFixedState;
 
 typedef struct TpuProfiler TpuProfiler;
 
@@ -601,6 +605,42 @@ TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_WriteParameters(
 TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ReadParameters(
     TpuEmbeddingEngineParameters* params, TF_Status* status);
 
+typedef struct TpuEmbeddingEngine_EnqueueTensorBatch_Params {
+  int32_t struct_size;
+  void* priv;
+
+  int32_t local_device_ordinal;
+  TpuEmbedding_TensorBatchFixedState* fixed_state;
+
+  TF_Tensor** sample_indices_tensors;
+  size_t sample_indices_tensors_size;
+  TF_Tensor** embedding_indices_tensors;
+  size_t embedding_indices_tensors_size;
+  TF_Tensor** aggregation_weights_tensors;
+  size_t aggregation_weights_tensors_size;
+  TF_Status* status;
+} TpuEmbeddingEngine_EnqueueTensorBatch_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_EnqueueTensorBatch(
+    TpuEmbeddingEngine_EnqueueTensorBatch_Params* params);
+
+typedef struct TpuEmbedding_TensorBatchFixedState_Create_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t combiners_size;
+  char** combiners;
+
+  // out
+  TF_Status* status;
+} TpuEmbedding_TensorBatchFixedState_Create_Params;
+
+TFTPU_CAPI_EXPORT TpuEmbedding_TensorBatchFixedState*
+TpuEmbeddingTensorBatchFixedState_Create(
+    TpuEmbedding_TensorBatchFixedState_Create_Params* params);
+TFTPU_CAPI_EXPORT void TpuEmbeddingTensorBatchFixedState_Destroy(
+    TpuEmbedding_TensorBatchFixedState* fixed_state);
+
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_XrtCompileAndBuild);
@@ -692,6 +732,9 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_IsInitialized);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_WriteParameters);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ReadParameters);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingTensorBatchFixedState_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingTensorBatchFixedState_Destroy);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_EnqueueTensorBatch);
 };
 
 }  // extern "C"

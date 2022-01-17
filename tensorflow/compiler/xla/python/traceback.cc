@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/traceback.h"
 
 #include <stdexcept>
+#include <string>
+#include <utility>
 
+#include "absl/hash/hash.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pytypes.h"
@@ -129,8 +132,34 @@ void BuildTracebackSubmodule(py::module& m) {
     collection is disabled, returns ``None``.
     )doc");
   traceback.def_property_readonly("frames", &Traceback::Frames);
+  traceback.def("raw_frames", [](const Traceback& tb) -> py::list {
+    py::list out(tb.raw_frames().size());
+    for (size_t i = 0; i < tb.raw_frames().size(); ++i) {
+      const auto& frame = tb.raw_frames()[i];
+      out[i] = py::make_tuple(py::reinterpret_borrow<py::object>(
+                                  reinterpret_cast<PyObject*>(frame.first)),
+                              py::int_(frame.second));
+    }
+    return out;
+  });
   traceback.def("__str__", &Traceback::ToString);
+  traceback.def("__eq__",
+                [](const Traceback& a, const Traceback& b) { return a == b; });
+  traceback.def("__hash__", [](const Traceback& tb) {
+    return absl::Hash<Traceback>()(tb);
+  });
   traceback.def("as_python_traceback", &Traceback::AsPythonTraceback);
+
+  traceback.def_static(
+      "code_addr2line",
+      [](py::handle code, int lasti) {
+        if (!PyCode_Check(code.ptr())) {
+          throw std::runtime_error("code argument must be a code object");
+        }
+        return PyCode_Addr2Line(reinterpret_cast<PyCodeObject*>(code.ptr()),
+                                lasti);
+      },
+      "Python wrapper around the Python C API function PyCode_Addr2Line");
 
   // This function replaces the exception traceback associated with the current
   // Python thread.

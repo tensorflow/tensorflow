@@ -14,6 +14,7 @@ package_group(
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow_serving/...",
+        "//platforms/xla/tests/saved_models/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
     ],
 )
@@ -34,8 +35,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:saved_model",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_kernels_alwayslink",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_request_context",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_request_context",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu_base",

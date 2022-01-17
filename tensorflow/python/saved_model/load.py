@@ -24,6 +24,7 @@ from tensorflow.python.distribute import distribution_strategy_context as ds_con
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager import function_saved_model_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -31,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
@@ -341,65 +341,8 @@ class Loader(object):
     self._restored_concrete_functions.add(concrete_function_name)
     concrete_function = self._concrete_functions[concrete_function_name]
     proto = self._proto.concrete_functions[concrete_function_name]
-    bound_inputs = [
-        self._get_tensor_from_node(nodes[node_id])
-        for node_id in proto.bound_inputs]
-    bound_variables = [
-        nodes[node_id] for node_id in proto.bound_inputs
-        if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
-    ]
-    # TODO(b/205010575): This is only injecting the captured inputs into the
-    # concrete function, note that we did not modify the FuncGraph
-    # itself.
-    captured_inputs_list = []
-    concrete_function._func_graph.variables = bound_variables  # pylint: disable=protected-access
-    if bound_inputs:
-      for bound_input, internal_capture in zip(
-          bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
-        if hasattr(bound_input, "__tf_experimental_restore_capture__"):
-          captured_inputs_list.append(
-              bound_input.__tf_experimental_restore_capture__(
-                  concrete_function, internal_capture))
-        else:
-          captured_inputs_list.append(bound_input)
-          concrete_function.graph.replace_capture(bound_input,
-                                                  internal_capture)
-          if internal_capture.dtype == dtypes.resource:
-            if resource_variable_ops.is_resource_variable(bound_input):
-              try:
-                handle = bound_input.handle
-              except ValueError:
-                # For mirrored variables we'll copy handle data for components
-                # as they get captured.
-                pass
-              else:
-                handle_data_util.copy_handle_data(handle, internal_capture)
-            else:
-              handle_data_util.copy_handle_data(bound_input, internal_capture)
-          # Setting "captures" first means "capture" won't create a new
-          # placeholder for this input.
-          concrete_function.graph.capture(bound_input)
-
-    concrete_function.set_external_captures(captured_inputs_list)
-
-  def _get_tensor_from_node(self, node):
-    """Resolves a node id into a tensor to be captured for a function."""
-    with ops.init_scope():
-      # TODO(b/210144904): Use __tf_tensor__ instead for distributed checks
-      if getattr(node, "is_distributed_variable", False):
-        return node
-      elif getattr(node, "is_distributed_table", False):
-        return node
-      elif resource_variable_ops.is_resource_variable(node):
-        return node.handle
-      elif isinstance(node, tracking.Asset):
-        return node.asset_path
-      elif tensor_util.is_tf_type(node):
-        return node
-      elif isinstance(node, tracking.CapturableResource):
-        # Note: this executes restored functions in the CapturableResource.
-        return node.resource_handle
-      raise ValueError(f"Cannot convert node {node} to tensor.")
+    inputs = [nodes[node_id] for node_id in proto.bound_inputs]
+    function_saved_model_utils.restore_captures(concrete_function, inputs)
 
   def _initialize_loaded_nodes(self):
     nodes = {}

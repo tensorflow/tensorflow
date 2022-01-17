@@ -1191,6 +1191,23 @@ cc_library(
 )
 
 cc_library(
+    name = "group_reduction_dimensions",
+    srcs = ["lib/Dialect/mhlo/transforms/group_reduction_dimensions.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mhlo_pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "broadcast_propagation",
     srcs = ["lib/Dialect/mhlo/transforms/broadcast_propagation.cc"],
     hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
@@ -1775,6 +1792,7 @@ cc_library(
         ":chlo_legalize_to_hlo",
         ":copy_removal",
         ":expand_hlo_tuples",
+        ":group_reduction_dimensions",
         ":hlo_legalize_shape_ops_to_standard",
         ":hlo_legalize_to_lhlo",
         ":hlo_legalize_to_memref",
@@ -2003,7 +2021,7 @@ cc_library(
     hdrs = CAPI_HEADERS,
     deps = [
         ":hlo",
-        "@llvm-project//mlir:CAPIIR",
+        "@llvm-project//mlir:CAPIIRObjects",
     ],
     alwayslink = True,
 )
@@ -2085,5 +2103,51 @@ filegroup(
         "python/mlir/dialects/mhlo.py",
         ":ChloOpsPyGen",
         ":MhloOpsPyGen",
+    ],
+)
+
+td_library(
+    name = "gml_st_ops_td_files",
+    srcs = glob(["include/mlir-hlo/Dialect/gml_st/IR/*.td"]),
+    compatible_with = get_compatible_with_cloud(),
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "gml_st_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.td",
+    deps = [":gml_st_ops_td_files"],
+)
+
+cc_library(
+    name = "gml_st",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.cc.inc",
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc",
+        "lib/Dialect/gml_st/IR/gml_st_ops.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st_ops_inc_gen",
+        "@llvm-project//mlir:IR",
     ],
 )

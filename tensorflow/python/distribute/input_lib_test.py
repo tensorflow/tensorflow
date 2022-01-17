@@ -25,6 +25,7 @@ from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops.options import AutoShardPolicy
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -1094,6 +1095,10 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     """Test with `RaggedTensor`s and `SparseTensor`s."""
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
+
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest("b/213596871")
 
     defun = {
         "lambda": lambda f: f,

@@ -28,7 +28,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 
 
-class RaggedTensorDynamicShape(object):
+class RaggedTensorDynamicShape:
   """A collection of tensors encoding the shape of a potentially ragged tensor.
 
   Each `RaggedTensorDynamicShape` consists of an ordered list of dimension

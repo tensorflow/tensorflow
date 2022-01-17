@@ -19,7 +19,9 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
 /**
  * Package-private class that implements InterpreterApi. This class implements all the
@@ -78,11 +80,12 @@ class InterpreterImpl implements InterpreterApi {
    * behavior.
    *
    * @param modelFile a file of a pre-trained TF Lite model
-   * @param options a set of options for customizing interpreter behavior
+   * @param options a set of options for customizing interpreter behavior. If {@param options} is
+   *     null, a default set of options will be used instead.
    * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
    *     model.
    */
-  public InterpreterImpl(@NonNull File modelFile, Options options) {
+  public InterpreterImpl(@NonNull File modelFile, @Nullable Options options) {
     wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), options);
   }
 
@@ -109,10 +112,13 @@ class InterpreterImpl implements InterpreterApi {
    * memory-maps a model file, or a direct {@code ByteBuffer} of nativeOrder() that contains the
    * bytes content of a model.
    *
+   * @param byteBuffer a {@code ByteBuffer} containing a pre-trained TF Lite model
+   * @param options a set of options for customizing interpreter behavior. If {@param options} is
+   *     null, a default set of options will be used instead.
    * @throws IllegalArgumentException if {@code byteBuffer} is not a {@code MappedByteBuffer} nor a
    *     direct {@code ByteBuffer} of nativeOrder.
    */
-  public InterpreterImpl(@NonNull ByteBuffer byteBuffer, Options options) {
+  public InterpreterImpl(@NonNull ByteBuffer byteBuffer, @Nullable Options options) {
     wrapper = new NativeInterpreterWrapper(byteBuffer, options);
   }
 
@@ -132,73 +138,74 @@ class InterpreterImpl implements InterpreterApi {
   public void runForMultipleInputsOutputs(
       Object @NonNull [] inputs, @NonNull Map<Integer, Object> outputs) {
     checkNotClosed();
-    wrapper.run(inputs, outputs);
+    Objects.requireNonNull(wrapper).run(inputs, outputs);
   }
 
   @Override
   public void allocateTensors() {
     checkNotClosed();
-    wrapper.allocateTensors();
+    Objects.requireNonNull(wrapper).allocateTensors();
   }
 
   @Override
   public void resizeInput(int idx, @NonNull int[] dims) {
     checkNotClosed();
-    wrapper.resizeInput(idx, dims, false);
+    Objects.requireNonNull(wrapper).resizeInput(idx, dims, false);
   }
 
   @Override
   public void resizeInput(int idx, @NonNull int[] dims, boolean strict) {
     checkNotClosed();
-    wrapper.resizeInput(idx, dims, strict);
+    Objects.requireNonNull(wrapper).resizeInput(idx, dims, strict);
   }
 
   @Override
   public int getInputTensorCount() {
     checkNotClosed();
-    return wrapper.getInputTensorCount();
+    return Objects.requireNonNull(wrapper).getInputTensorCount();
   }
 
   @Override
   public int getInputIndex(String opName) {
     checkNotClosed();
-    return wrapper.getInputIndex(opName);
+    return Objects.requireNonNull(wrapper).getInputIndex(opName);
   }
 
   @Override
   public Tensor getInputTensor(int inputIndex) {
     checkNotClosed();
-    return wrapper.getInputTensor(inputIndex);
+    return Objects.requireNonNull(wrapper).getInputTensor(inputIndex);
   }
 
   /** Gets the number of output Tensors. */
   @Override
   public int getOutputTensorCount() {
     checkNotClosed();
-    return wrapper.getOutputTensorCount();
+    return Objects.requireNonNull(wrapper).getOutputTensorCount();
   }
 
   @Override
   public int getOutputIndex(String opName) {
     checkNotClosed();
-    return wrapper.getOutputIndex(opName);
+    return Objects.requireNonNull(wrapper).getOutputIndex(opName);
   }
 
   @Override
   public Tensor getOutputTensor(int outputIndex) {
     checkNotClosed();
-    return wrapper.getOutputTensor(outputIndex);
+    return Objects.requireNonNull(wrapper).getOutputTensor(outputIndex);
   }
 
+  @Nullable
   @Override
   public Long getLastNativeInferenceDurationNanoseconds() {
     checkNotClosed();
-    return wrapper.getLastNativeInferenceDurationNanoseconds();
+    return Objects.requireNonNull(wrapper).getLastNativeInferenceDurationNanoseconds();
   }
 
   int getExecutionPlanLength() {
     checkNotClosed();
-    return wrapper.getExecutionPlanLength();
+    return Objects.requireNonNull(wrapper).getExecutionPlanLength();
   }
 
   @Override
@@ -225,5 +232,5 @@ class InterpreterImpl implements InterpreterApi {
     }
   }
 
-  NativeInterpreterWrapper wrapper;
+  @Nullable NativeInterpreterWrapper wrapper;
 }

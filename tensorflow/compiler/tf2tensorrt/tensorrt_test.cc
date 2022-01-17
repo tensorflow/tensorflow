@@ -29,7 +29,45 @@ limitations under the License.
 #include "third_party/tensorrt/NvInfer.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
 #include "third_party/tensorrt/NvInferRuntimeCommon.h"
+
+#ifdef TF_TRT_USE_EFFICIENT_NMS_PLUGIN
 #include "third_party/tensorrt/plugin/efficientNMSPlugin/efficientNMSPlugin.h"
+namespace tensorflow {
+namespace tensorrt {
+std::unique_ptr<nvinfer1::plugin::EfficientNMSPluginCreator>
+MakeNMSPluginCreator(const std::string& plugin_namespace = "tftrt") {
+  auto pluginCreator =
+      std::make_unique<nvinfer1::plugin::EfficientNMSPluginCreator>();
+  pluginCreator->setPluginNamespace(plugin_namespace.c_str());
+  std::string pluginType = std::string{pluginCreator->getPluginNamespace()} +
+                           "::" + std::string{pluginCreator->getPluginName()} +
+                           " version " +
+                           std::string{pluginCreator->getPluginVersion()};
+  VLOG(0) << "Created plugin type " << pluginType;
+  return pluginCreator;
+}
+
+struct PluginDeleter {
+  void operator()(nvinfer1::IPluginV2* t);
+};
+
+void PluginDeleter::operator()(nvinfer1::IPluginV2* t) { t->destroy(); }
+
+std::unique_ptr<nvinfer1::IPluginV2, PluginDeleter> createPlugin(
+    const std::string& name, nvinfer1::IPluginCreator* pluginCreator,
+    const std::vector<nvinfer1::PluginField>& pluginFields) {
+  if (!pluginCreator) {
+    return nullptr;
+  }
+  nvinfer1::PluginFieldCollection fc;
+  fc.nbFields = pluginFields.size();
+  fc.fields = pluginFields.data();
+  return std::unique_ptr<nvinfer1::IPluginV2, PluginDeleter>{
+      pluginCreator->createPlugin(name.c_str(), &fc)};
+}
+}  // namespace tensorrt
+}  // namespace tensorflow
+#endif
 
 namespace tensorflow {
 namespace tensorrt {
@@ -70,38 +108,6 @@ const char* kInputTensor2 = "input2";
 const char* kOutputTensor1 = "output";
 const char* kOutputTensor2 = "output-nms";
 
-std::unique_ptr<nvinfer1::plugin::EfficientNMSPluginCreator>
-MakeNMSPluginCreator(const std::string& plugin_namespace = "tftrt") {
-  auto pluginCreator =
-      std::make_unique<nvinfer1::plugin::EfficientNMSPluginCreator>();
-  pluginCreator->setPluginNamespace(plugin_namespace.c_str());
-  std::string pluginType = std::string{pluginCreator->getPluginNamespace()} +
-                           "::" + std::string{pluginCreator->getPluginName()} +
-                           " version " +
-                           std::string{pluginCreator->getPluginVersion()};
-  VLOG(0) << "Created plugin type " << pluginType;
-  return pluginCreator;
-}
-
-struct PluginDeleter {
-  void operator()(nvinfer1::IPluginV2* t);
-};
-
-void PluginDeleter::operator()(nvinfer1::IPluginV2* t) { t->destroy(); }
-
-std::unique_ptr<nvinfer1::IPluginV2, PluginDeleter> createPlugin(
-    const std::string& name, nvinfer1::IPluginCreator* pluginCreator,
-    const std::vector<nvinfer1::PluginField>& pluginFields) {
-  if (!pluginCreator) {
-    return nullptr;
-  }
-  nvinfer1::PluginFieldCollection fc;
-  fc.nbFields = pluginFields.size();
-  fc.fields = pluginFields.data();
-  return std::unique_ptr<nvinfer1::IPluginV2, PluginDeleter>{
-      pluginCreator->createPlugin(name.c_str(), &fc)};
-}
-
 // Creates a network to compute x+y.
 TrtUniquePtrType<nvinfer1::IHostMemory> CreateSerializedEngine() {
   Logger& logger = *Logger::GetLogger();
@@ -122,7 +128,11 @@ TrtUniquePtrType<nvinfer1::IHostMemory> CreateSerializedEngine() {
   auto layer = network->addElementWise(*input1, *input2,
                                        nvinfer1::ElementWiseOperation::kSUM);
   EXPECT_NE(layer, nullptr);
+  auto output = layer->getOutput(0);
+  output->setName(kOutputTensor1);
+  network->markOutput(*output);
 
+#ifdef TF_TRT_USE_EFFICIENT_NMS_PLUGIN
   // Add an efficient nms plugin.
   ScopedShapedWeights boxes_weights(nvinfer1::Dims3(1, 10, 4), 0.0f);
   ScopedShapedWeights scores_weights(nvinfer1::Dims3(1, 10, 10), 0.0f);
@@ -133,17 +143,18 @@ TrtUniquePtrType<nvinfer1::IHostMemory> CreateSerializedEngine() {
 
   std::array<nvinfer1::ITensor*, 2> nms_inputs = {boxes->getOutput(0),
                                                   scores->getOutput(0)};
-
   auto plugin_creator = MakeNMSPluginCreator("tftrt");
   auto plugin = createPlugin("nms_plugin_instance", plugin_creator.get(), {});
   auto nms = network->addPluginV2(nms_inputs.data(), 2, *plugin);
-
-  // Mark the output.
-  auto output = layer->getOutput(0);
-  output->setName(kOutputTensor1);
-  network->markOutput(*output);
   nms->getOutput(0)->setName(kOutputTensor2);
   network->markOutput(*nms->getOutput(0));
+#else
+  auto sub_layer = network->addElementWise(
+      *input1, *input2, nvinfer1::ElementWiseOperation::kSUB);
+  EXPECT_NE(sub_layer, nullptr);
+  network->markOutput(*sub_layer->getOutput(0));
+  sub_layer->getOutput(0)->setName(kOutputTensor2);
+#endif
 
   // Build the engine.
   builder->setMaxBatchSize(1);
@@ -224,8 +235,10 @@ void Execute(nvinfer1::IExecutionContext* context, const float* input1,
 
 TEST(TensorrtTest, BasicFunctions) {
   // We must register the plugin creator in order to deserialize the plugin.
+#ifdef TF_TRT_USE_EFFICIENT_NMS_PLUGIN
   auto plugin_creator = MakeNMSPluginCreator("tftrt");
   getPluginRegistry()->registerCreator(*plugin_creator, "tftrt");
+#endif
 
   // Handle the case where the test is run on machine with no gpu available.
   if (CHECK_NOTNULL(GPUMachineManager())->VisibleDeviceCount() <= 0) {
@@ -248,15 +261,24 @@ TEST(TensorrtTest, BasicFunctions) {
   // Execute the network.
   float input1 = 1234;
   float input2 = 567;
+
   std::vector<float> output1(
       GetBindingSizeBytes<float>(*engine, 2, 1) / sizeof(float), 0.0f);
+
   std::vector<float> output2(
       GetBindingSizeBytes<int32>(*engine, 3, 1) / sizeof(int32), 0.0f);
+
   ASSERT_EQ(output1.size(), 1);
   ASSERT_EQ(output2.size(), 1);
+
   Execute(context.get(), &input1, &input2, output1.data(), output2.data());
   EXPECT_EQ(output1[0], input1 + input2);
+
+#ifdef TF_TRT_USE_EFFICIENT_NMS_PLUGIN
   EXPECT_EQ(output2[0], 0);
+#else
+  EXPECT_EQ(output2[0], 667);
+#endif  // TF_TRT_USE_EFFICIENT_NMS_PLUGIN
 }
 
 }  // namespace tensorrt

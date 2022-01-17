@@ -18,7 +18,6 @@ import abc
 import contextlib
 
 import numpy as np
-import six
 
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -49,8 +48,8 @@ __all__ = ["LinearOperator"]
 
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
 @tf_export("linalg.LinearOperator")
-@six.add_metaclass(abc.ABCMeta)
-class LinearOperator(module.Module, composite_tensor.CompositeTensor):
+class LinearOperator(
+    module.Module, composite_tensor.CompositeTensor, metaclass=abc.ABCMeta):
   """Base class defining a [batch of] linear operator[s].
 
   Subclasses of `LinearOperator` provide access to common methods on a

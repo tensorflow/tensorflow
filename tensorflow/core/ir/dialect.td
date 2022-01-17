@@ -69,13 +69,13 @@ def TFGraphDialect : Dialect {
   }];
 
   let extraClassDeclaration = [{
-    Identifier getNameAttrIdentifier() const { return name_key_; }
+    StringAttr getNameAttrIdentifier() const { return name_key_; }
     static constexpr StringRef getNameAttrKey() { return "_mlir_name"; }
 
-    Identifier getDeviceAttrIdentifier() const { return device_key_; }
+    StringAttr getDeviceAttrIdentifier() const { return device_key_; }
     static constexpr StringRef getDeviceAttrKey() { return "_mlir_device"; }
 
-    Identifier getAssignedDeviceAttrIdentifier() const {
+    StringAttr getAssignedDeviceAttrIdentifier() const {
       return assigned_device_key_;
     }
     static constexpr StringRef getAssignedDeviceAttrKey() {
@@ -100,9 +100,9 @@ def TFGraphDialect : Dialect {
 
   private:
     // Cached identifier for efficiency purpose.
-    Identifier name_key_;
-    Identifier device_key_;
-    Identifier assigned_device_key_;
+    StringAttr name_key_;
+    StringAttr device_key_;
+    StringAttr assigned_device_key_;
     ControlType control_ty_;
   }];
 
