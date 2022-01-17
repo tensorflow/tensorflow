@@ -96,16 +96,24 @@ static Type GetBroadcastType(Type x, Type y, Type element_type,
     return UnrankedTensorType::get(element_type);
   }
 
-  llvm::SmallVector<int64_t, 4> out_shape(shape_large.begin(),
-                                          shape_large.end());
+  llvm::SmallVector<int64_t, 4> shape_large_filtered;
+  shape_large_filtered.reserve(shape_small.size());
+  for (const auto& dim : broadcast_dimensions) {
+    shape_large_filtered.push_back(shape_large[dim.getZExtValue()]);
+  }
+  llvm::SmallVector<int64_t, 4> out_shape_filtered;
+  if (!mlir::OpTrait::util::getBroadcastedShape(
+          shape_small, shape_large_filtered, out_shape_filtered)) {
+    // Signal illegal broadcast_dimensions as unranked.
+    return UnrankedTensorType::get(element_type);
+  }
 
   // Update according to the broadcast dimensions.
+  llvm::SmallVector<int64_t, 4> out_shape(shape_large.begin(),
+                                          shape_large.end());
   for (const auto& index_pair : llvm::enumerate(broadcast_dimensions)) {
-    auto old_value = out_shape[index_pair.value().getZExtValue()];
-    auto new_value = shape_small[index_pair.index()];
-    if (old_value != -1 && (new_value == -1 || new_value > old_value)) {
-      out_shape[index_pair.value().getZExtValue()] = new_value;
-    }
+    auto new_value = out_shape_filtered[index_pair.index()];
+    out_shape[index_pair.value().getZExtValue()] = new_value;
   }
 
   return RankedTensorType::get(out_shape, element_type);
