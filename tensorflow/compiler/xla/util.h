@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -177,6 +178,12 @@ bool ContainersEqual(const Container1T& c1,
                      std::initializer_list<ElementType> il) {
   absl::Span<const ElementType> c2{il};
   return absl::c_equal(c1, c2);
+}
+
+template <int&... ExplicitArgumentBarrier, typename... Types>
+size_t HashOf(const Types&... values) {
+  auto tuple = std::tie(values...);
+  return absl::Hash<decltype(tuple)>{}(tuple);
 }
 
 // Performs a copy of count values from src to dest, using different strides for
@@ -399,12 +406,9 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
-inline T LsbMask(int width) {
+constexpr inline T LsbMask(int width) {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
-  CHECK_GE(width, 0) << "Unsupported width " << width;
-  CHECK_LE(width, std::numeric_limits<T>::digits)
-      << "Unsupported width " << width;
   return width == 0
              ? 0
              : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
@@ -412,7 +416,7 @@ inline T LsbMask(int width) {
 
 // Returns the value with every bit except the lower 'width' bits set to zero.
 template <typename T>
-inline T ClearUpperBits(T value, int width) {
+constexpr inline T ClearUpperBits(T value, int width) {
   return value & LsbMask<T>(width);
 }
 

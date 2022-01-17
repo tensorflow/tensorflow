@@ -656,6 +656,14 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     }
 
   @property
+  def _metadata(self):
+    """Helper for generating dataset metadata."""
+    metadata = dataset_metadata_pb2.Metadata()
+    if self._name:
+      metadata.name = _validate_and_encode(self._name)
+    return metadata
+
+  @property
   def _common_args(self):
     """Helper for generating arguments that are common across most dataset ops.
 
@@ -4467,9 +4475,7 @@ class TensorDataset(DatasetSource):
     element = structure.normalize_element(element)
     self._structure = structure.type_spec_from_value(element)
     self._tensors = structure.to_tensor_list(self._structure, element)
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.tensor_dataset(
         self._tensors,
         output_shapes=structure.get_flat_tensor_shapes(self._structure),
@@ -4493,9 +4499,7 @@ class TensorSliceDataset(DatasetSource):
       raise ValueError("Invalid `element`. `element` should not be empty.")
     self._structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(), batched_spec)  # pylint: disable=protected-access
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
 
     batch_dim = tensor_shape.Dimension(
         tensor_shape.dimension_value(self._tensors[0].get_shape()[0]))
@@ -4592,9 +4596,7 @@ class _GeneratorDataset(DatasetSource):
 
     self._output_signature = output_signature
 
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
 
     variant_tensor = gen_dataset_ops.generator_dataset(
         structure.to_tensor_list(self._init_structure, self._init_args) +
@@ -4635,9 +4637,7 @@ class ZipDataset(DatasetV2):
     self._structure = nest.pack_sequence_as(
         self._datasets,
         [ds.element_spec for ds in nest.flatten(self._datasets)])
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.zip_dataset(
         [ds._variant_tensor for ds in nest.flatten(self._datasets)],
         **self._common_args)
@@ -4670,9 +4670,7 @@ class ConcatenateDataset(DatasetV2):
           f"  {dataset_to_concatenate.element_spec}") from e
 
     self._input_datasets = [input_dataset, dataset_to_concatenate]
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     # pylint: disable=protected-access
     variant_tensor = gen_dataset_ops.concatenate_dataset(
         input_dataset._variant_tensor, dataset_to_concatenate._variant_tensor,
@@ -4699,9 +4697,7 @@ class RepeatDataset(UnaryUnchangedStructureDataset):
     else:
       self._count = ops.convert_to_tensor(
           count, dtype=dtypes.int64, name="count")
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.repeat_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         count=self._count,
@@ -4744,9 +4740,7 @@ class RangeDataset(DatasetSource):
       self._output_type = kwargs["output_type"]
     else:
       self._output_type = dtypes.int64
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if "name" in kwargs and kwargs["name"]:
-      self._metadata.name = kwargs["name"].encode("utf-8")
+    self._name = kwargs["name"] if "name" in kwargs else None
 
   def _build_tensor(self, int64_value, name):
     return ops.convert_to_tensor(int64_value, dtype=dtypes.int64, name=name)
@@ -4764,9 +4758,7 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     if tf2.enabled() and (context.executing_eagerly() or ops.inside_function()):
       variant_tensor = gen_dataset_ops.cache_dataset_v2(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -4798,9 +4790,7 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
     if reshuffle_each_iteration is None:
       reshuffle_each_iteration = True
     self._reshuffle_each_iteration = reshuffle_each_iteration
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
 
     if (tf2.enabled() and
         (context.executing_eagerly() or ops.inside_function())):
@@ -4830,9 +4820,7 @@ class TakeDataset(UnaryUnchangedStructureDataset):
     """See `Dataset.take()` for details."""
     self._input_dataset = input_dataset
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.take_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         count=self._count,
@@ -4847,9 +4835,7 @@ class SkipDataset(UnaryUnchangedStructureDataset):
     """See `Dataset.skip()` for details."""
     self._input_dataset = input_dataset
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.skip_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         count=self._count,
@@ -4866,9 +4852,7 @@ class ShardDataset(UnaryUnchangedStructureDataset):
     self._num_shards = ops.convert_to_tensor(
         num_shards, dtype=dtypes.int64, name="num_shards")
     self._index = ops.convert_to_tensor(index, dtype=dtypes.int64, name="index")
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.shard_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         num_shards=self._num_shards,
@@ -4903,9 +4887,7 @@ class BatchDataset(UnaryDataset):
           lambda component_spec: component_spec._batch(None),
           input_dataset.element_spec)
 
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.batch_dataset_v2(
         input_dataset._variant_tensor,
         batch_size=self._batch_size,
@@ -4958,9 +4940,7 @@ class ParallelBatchDataset(UnaryDataset):
           lambda component_spec: component_spec._batch(None),
           input_dataset.element_spec)
 
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.parallel_batch_dataset(
         input_dataset._variant_tensor,
         batch_size=self._batch_size,
@@ -5164,10 +5144,8 @@ class PaddedBatchDataset(UnaryDataset):
         get_legacy_output_types(self._input_dataset), output_shapes,
         get_legacy_output_classes(self._input_dataset))
 
+    self._name = name
     # pylint: disable=protected-access
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
     variant_tensor = gen_dataset_ops.padded_batch_dataset_v2(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         batch_size=self._batch_size,
@@ -5205,9 +5183,7 @@ class MapDataset(UnaryDataset):
         self._transformation_name(),
         dataset=input_dataset,
         use_legacy_function=use_legacy_function)
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.map_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
@@ -5257,9 +5233,7 @@ class ParallelMapDataset(UnaryDataset):
     self._preserve_cardinality = preserve_cardinality
     self._num_parallel_calls = ops.convert_to_tensor(
         num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.parallel_map_dataset_v2(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
@@ -5295,9 +5269,7 @@ class FlatMapDataset(UnaryDataset):
           "The `map_func` argument must return a `Dataset` object. Got "
           f"{_get_type(self._map_func.output_structure)!r}.")
     self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.flat_map_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
@@ -5339,9 +5311,7 @@ class InterleaveDataset(UnaryDataset):
         cycle_length, dtype=dtypes.int64, name="cycle_length")
     self._block_length = ops.convert_to_tensor(
         block_length, dtype=dtypes.int64, name="block_length")
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.interleave_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,  # pylint: disable=protected-access
@@ -5406,9 +5376,7 @@ class ParallelInterleaveDataset(UnaryDataset):
     else:
       deterministic_string = "false"
 
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v4(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,  # pylint: disable=protected-access
@@ -5455,9 +5423,7 @@ class FilterDataset(UnaryUnchangedStructureDataset):
                        f"`tf.bool` scalar tensor, but its return type is "
                        f"{wrapped_func.output_structure}.")
     self._predicate = wrapped_func
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.filter_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         other_arguments=self._predicate.function.captured_inputs,
@@ -5482,9 +5448,7 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
       buffer_size = AUTOTUNE
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     # pylint: disable=protected-access
     # We colocate the prefetch dataset with its input as this collocation only
     # happens automatically in graph mode.
@@ -5525,9 +5489,7 @@ class WindowDataset(UnaryDataset):
                 nest.flatten(get_legacy_output_shapes(input_dataset)),
                 nest.flatten(get_legacy_output_types(input_dataset)))
         ])
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = gen_dataset_ops.window_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         size=self._size,
@@ -5550,9 +5512,7 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     options_pb = dataset_options_pb2.Options()
     options_pb.CopyFrom(options._to_proto())
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     with ops.colocate_with(input_dataset._variant_tensor):
       variant_tensor = gen_dataset_ops.options_dataset(
           input_dataset._variant_tensor, options_pb.SerializeToString(),
@@ -5636,9 +5596,7 @@ class _UnbatchDataset(UnaryDataset):
     self._structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(),  # pylint: disable=protected-access
         get_structure(input_dataset))
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = ged_ops.unbatch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         **self._common_args)
@@ -5663,9 +5621,7 @@ class _GroupByWindowDataset(UnaryDataset):
     self._make_key_func(key_func, input_dataset)
     self._make_reduce_func(reduce_func, input_dataset)
     self._make_window_size_func(window_size_func)
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = ged_ops.group_by_window_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._key_func.function.captured_inputs,
@@ -5740,9 +5696,7 @@ class RandomDataset(DatasetSource):
   def __init__(self, seed=None, name=None):
     """A `Dataset` of pseudorandom values."""
     self._seed, self._seed2 = random_seed.get_seed(seed)
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = ged_ops.random_dataset(
         seed=self._seed, seed2=self._seed2, **self._common_args)
     super(RandomDataset, self).__init__(variant_tensor)
@@ -5983,9 +5937,7 @@ class _TakeWhileDataset(UnaryUnchangedStructureDataset):
                        f"{wrapped_func.output_structure}.")
 
     self._predicate = wrapped_func
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = ged_ops.take_while_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         other_arguments=self._predicate.function.captured_inputs,
@@ -6011,9 +5963,7 @@ class _UniqueDataset(UnaryUnchangedStructureDataset):
         raise TypeError(
             f"`unique()` does not support type {ty}, only `tf.int32`, "
             f"`tf.int64`, and `tf.string` are supported.")
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = ged_ops.unique_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         **self._common_args)
@@ -6063,9 +6013,7 @@ class _SnapshotDataset(UnaryUnchangedStructureDataset):
                       f"`tf.int64` scalar tensor but its return type is "
                       f"{self._shard_func.output_structure}.")
 
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     variant_tensor = ged_ops.snapshot_dataset_v2(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         path,
@@ -6181,9 +6129,7 @@ class _ScanDataset(UnaryDataset):
     self._scan_func = wrapped_func
     self._scan_func.function.add_to_graph(ops.get_default_graph())
 
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = _validate_and_encode(name)
+    self._name = name
     # pylint: disable=protected-access
     if use_default_device is not None:
       variant_tensor = ged_ops.scan_dataset(

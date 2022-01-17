@@ -26,7 +26,7 @@ def _run_regression_test(name, vectorize, data):
             "@absl_py//absl/flags",
             "//third_party/py/mlir:ir",
             "//third_party/py/numpy",
-            "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+            "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
             "//tensorflow/python:client_testlib",
             "//tensorflow/python/platform",
         ],

@@ -22,7 +22,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
+import org.checkerframework.checker.initialization.qual.UnknownInitialization;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
@@ -44,14 +47,14 @@ class NativeInterpreterWrapper implements AutoCloseable {
     this(byteBuffer, /* options= */ null);
   }
 
-  NativeInterpreterWrapper(String modelPath, InterpreterImpl.Options options) {
+  NativeInterpreterWrapper(String modelPath, InterpreterImpl.@Nullable Options options) {
     TensorFlowLite.init();
     long errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     long modelHandle = createModel(modelPath, errorHandle);
     init(errorHandle, modelHandle, options);
   }
 
-  NativeInterpreterWrapper(ByteBuffer buffer, InterpreterImpl.Options options) {
+  NativeInterpreterWrapper(ByteBuffer buffer, InterpreterImpl.@Nullable Options options) {
     TensorFlowLite.init();
     if (buffer == null
         || (!(buffer instanceof MappedByteBuffer)
@@ -62,11 +65,15 @@ class NativeInterpreterWrapper implements AutoCloseable {
     }
     this.modelByteBuffer = buffer;
     long errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
-    long modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
+    long modelHandle = createModelWithBuffer(buffer, errorHandle);
     init(errorHandle, modelHandle, options);
   }
 
-  private void init(long errorHandle, long modelHandle, InterpreterImpl.Options options) {
+  private void init(
+      @UnknownInitialization NativeInterpreterWrapper this,
+      long errorHandle,
+      long modelHandle,
+      InterpreterImpl.@Nullable Options options) {
     if (options == null) {
       options = new InterpreterImpl.Options();
     }
@@ -82,6 +89,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
         createInterpreter(modelHandle, errorHandle, options.getNumThreads(), delegateHandles);
     this.originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
     addDelegates(options);
+    Objects.requireNonNull(delegates);
     delegateHandles.ensureCapacity(delegates.size());
     for (Delegate delegate : delegates) {
       delegateHandles.add(Long.valueOf(delegate.getNativeHandle()));
@@ -367,7 +375,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
    * Gets the last inference duration in nanoseconds. It returns null if there is no previous
    * inference run or the last inference run failed.
    */
-  Long getLastNativeInferenceDurationNanoseconds() {
+  @Nullable Long getLastNativeInferenceDurationNanoseconds() {
     return (inferenceDurationNanoseconds < 0) ? null : inferenceDurationNanoseconds;
   }
 
@@ -490,7 +498,10 @@ class NativeInterpreterWrapper implements AutoCloseable {
   }
 
   // Add all the delegates specified in the options (other than XNNPACK) to this.delegates.
-  private void addDelegates(InterpreterImpl.Options options) {
+  private void addDelegates(
+      @UnknownInitialization NativeInterpreterWrapper this, InterpreterApi.Options options) {
+    Objects.requireNonNull(delegates);
+    Objects.requireNonNull(ownedDelegates);
     // First add the flex delegate if necessary. This ensures the graph is fully resolved before
     // applying other delegates.
     if (originalGraphHasUnresolvedFlexOp) {
@@ -508,11 +519,14 @@ class NativeInterpreterWrapper implements AutoCloseable {
       delegates.add(optionalNnApiDelegate);
     }
     // Finally add the XNNPACK delegate if enabled.
-    maybeAddXnnpackDelegate(options);
+    if (options instanceof InterpreterImpl.Options) {
+      maybeAddXnnpackDelegate((InterpreterImpl.Options) options);
+    }
   }
 
   // Optionally add the XNNPACK delegate.
-  private void maybeAddXnnpackDelegate(InterpreterImpl.Options options) {
+  private void maybeAddXnnpackDelegate(
+      @UnknownInitialization NativeInterpreterWrapper this, InterpreterImpl.Options options) {
     // Simply use "-1" to represent the default mode.
     int applyXNNPACKMode = -1;
     if (options.useXNNPACK != null) {
@@ -525,7 +539,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
       XnnpackDelegate xnnpackDelegate =
           createXNNPACKDelegate(
               interpreterHandle, errorHandle, applyXNNPACKMode, options.getNumThreads());
-      delegates.add(xnnpackDelegate);
+      Objects.requireNonNull(delegates).add(xnnpackDelegate);
     }
   }
 
@@ -541,6 +555,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
     return signatureRunnerMap.get(signatureKey);
   }
 
+  @Nullable
   private static Delegate maybeCreateFlexDelegate(List<Delegate> delegates) {
     try {
       Class<?> clazz = Class.forName("org.tensorflow.lite.flex.FlexDelegate");
@@ -569,11 +584,11 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   private long inferenceDurationNanoseconds = -1;
 
-  private ByteBuffer modelByteBuffer;
+  private @Nullable ByteBuffer modelByteBuffer;
 
   // Lazily constructed maps of input and output names to input and output Tensor indexes.
-  private Map<String, Integer> inputsIndexes;
-  private Map<String, Integer> outputsIndexes;
+  private @Nullable Map<String, Integer> inputsIndexes;
+  private @Nullable Map<String, Integer> outputsIndexes;
   // Lazily constructed maps of tensor index to index in input and output indexes.
   private Map<Integer, Integer> tensorToInputsIndexes;
   private Map<Integer, Integer> tensorToOutputsIndexes;
@@ -582,8 +597,8 @@ class NativeInterpreterWrapper implements AutoCloseable {
   private Map<String, NativeSignatureRunnerWrapper> signatureRunnerMap;
 
   // Lazily constructed and populated arrays of input and output Tensor wrappers.
-  private TensorImpl[] inputTensors;
-  private TensorImpl[] outputTensors;
+  private @Nullable TensorImpl[] inputTensors;
+  private @Nullable TensorImpl[] outputTensors;
 
   // Whether subgraph's tensor memory space is allocated.
   private boolean isMemoryAllocated = false;

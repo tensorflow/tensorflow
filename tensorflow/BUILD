@@ -23,6 +23,10 @@ load(
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# copybara:uncomment_begin
+# load("//tools/build_defs/license:license.bzl", "license")
+# copybara:uncomment_end
+
 # copybara:comment_begin(oss-only)
 load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
@@ -40,7 +44,17 @@ load(
 )
 # copybara:comment_end
 
-package(default_visibility = [":internal"])
+package(
+    # copybara:uncomment default_applicable_licenses = [":license"],
+    default_visibility = [":internal"],
+)
+
+# copybara:uncomment_begin
+# license(
+#     name = "license",
+#     package_name = "tensorflow",
+# )
+# copybara:uncomment_end
 
 licenses(["notice"])
 

@@ -55,6 +55,7 @@ py_test(
     ],
     deps = [
         ":interpreter",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",

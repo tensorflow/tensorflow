@@ -32,7 +32,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_request_context",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_request_context",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",

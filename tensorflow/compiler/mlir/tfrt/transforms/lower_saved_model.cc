@@ -461,9 +461,9 @@ class LowerTFSavedModelPass
     module->removeAttr("tf_saved_model.semantics");
 
     mlir::OpBuilder builder(&getContext());
-    auto resource_id = builder.getIdentifier("tf.resource_name");
-    auto bound_id = builder.getIdentifier("tf_saved_model.bound_input");
-    auto path_id = builder.getIdentifier("tf_saved_model.index_path");
+    auto resource_id = builder.getStringAttr("tf.resource_name");
+    auto bound_id = builder.getStringAttr("tf_saved_model.bound_input");
+    auto path_id = builder.getStringAttr("tf_saved_model.index_path");
 
     module.walk([resource_id, bound_id, path_id,
                  &builder](mlir::Operation *op) mutable {

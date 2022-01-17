@@ -215,7 +215,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 
   // Return an MLIR location for an HLO instruction.
   Location getLocation(const xla::HloInstruction* inst) {
-    return NameLoc::get(builder_.getIdentifier(inst->name()));
+    return NameLoc::get(builder_.getStringAttr(inst->name()));
   }
 
   // This map provides access to MLIR buffers for each HLO buffer allocation.

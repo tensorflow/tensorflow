@@ -32,6 +32,19 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "DropUnregisteredAttributeOutputShapesPass",
+    srcs = ["drop_unregistered_attribute/output_shapes.cc"],
+    hdrs = ["drop_unregistered_attribute/output_shapes.h"],
+    deps = [
+        ":PassIncGen",
+        "//tensorflow/core/ir:Dialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "TopoSortPass",
     srcs = ["toposort/toposort_pass.cc"],
     hdrs = ["toposort/toposort_pass.h"],
@@ -79,6 +92,7 @@ cc_library(
     name = "PassRegistration",
     hdrs = ["pass_registration.h"],
     deps = [
+        ":DropUnregisteredAttributeOutputShapesPass",
         ":GraphToFuncPass",
         ":PassIncGen",
         ":TopoSortPass",

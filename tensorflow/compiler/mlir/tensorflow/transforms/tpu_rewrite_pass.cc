@@ -201,7 +201,7 @@ LogicalResult SetMetadataProtoArgs(
                       op.getNumOperands(), input_shardings.size()));
 
   // Set args metadata in proto.
-  mlir::Identifier replication_attr_name = mlir::StringAttr::get(
+  mlir::StringAttr replication_attr_name = mlir::StringAttr::get(
       op.getContext(), "mhlo.is_same_data_across_replicas");
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();

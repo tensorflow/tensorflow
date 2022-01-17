@@ -72,15 +72,11 @@ class ParallelVariable(
     self._self_parallel_device = parallel_device
     super(ParallelVariable, self).__init__(wrapped_variable)
 
-  # wrapt has its own __repr__ which explains the wrapping, but the variable's
-  # __repr__ already indicates it's a parallel variable.
   def __repr__(self):
-    with self._self_parallel_device:  # Explicit placement for ReadVariableOp
-      return repr(self.__wrapped__)
+    return repr(self.__wrapped__)
 
   def __str__(self):
-    with self._self_parallel_device:
-      return str(self.__wrapped__)
+    return str(self.__wrapped__)
 
   # TODO(allenl): Consider either adding a boolean argument for
   # save-primary-only or looking at synchronization/aggregation properties.

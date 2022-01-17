@@ -51,6 +51,10 @@ struct JitState {
   absl::optional<bool> disable_jit;
   absl::optional<bool> enable_x64;
 
+  // Used to manually set the default device jax should use. May be unset even
+  // in global state, indicating there is no manual override.
+  absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> default_device;
+
   // Extra context that should be included in the JIT cache key. Must be
   // hashable and have an equality defined.
   absl::optional<pybind11::object> extra_jit_context;
@@ -67,6 +71,7 @@ JitState& GetLocalState();
 // fallback to global state.
 bool GetDisableJit();
 bool GetEnableX64();
+absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> GetDefaultDevice();
 absl::optional<pybind11::function> GetPostHook();
 
 // The signature of Python jitted function call, partitioned into:

@@ -57,6 +57,78 @@ func @testBitcast(%arg0: tensor<3x4xui16>) -> tensor<3x4x!tf_type.quint16> {
 
 // -----
 
+// CHECK-LABEL: func @testBitcast_v2
+func @testBitcast_v2(%arg0: tensor<3x2xi16>) -> tensor<3xi32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
+func @testBitcast_v3(%arg0: tensor<3x5xi16>) -> tensor<3xi32> {
+  // expected-error @+1 {{input rightmost dimension size is not equal to the divisor. the last dimension of input is expected to be 2}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x5xi16>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
+func @testBitcast_v4(%arg0: tensor<3x2xi16>) -> tensor<3x2xi32> {
+  // expected-error @+1 {{size of input tensor shape shall be greater then size of output tensor shape by one}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<3x2xi32>
+  return %0 : tensor<3x2xi32>
+}
+
+// -----
+
+func @testBitcast_v5(%arg0: tensor<3x2xi16>) -> tensor<2xi32> {
+  // expected-error @+1 {{invalid output shape of tensor}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBitcast_v6
+func @testBitcast_v6(%arg0: tensor<3x2xi32>) -> tensor<3x2x2xi16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2x2xi16>
+  return %0 : tensor<3x2x2xi16>
+}
+
+// -----
+
+func @testBitcast_v7(%arg0: tensor<3x2xi32>) -> tensor<3x2x3xi16> {
+  // expected-error @+1 {{output rightmost dimension size is not equal to the divisor. the last dimension of output is expected to be 2}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2x3xi16>
+  return %0 : tensor<3x2x3xi16>
+}
+
+// -----
+
+func @testBitcast_v8(%arg0: tensor<3x2xi32>) -> tensor<3x2xi16> {
+  // expected-error @+1 {{size of input tensor shape shall be lesser then size of output tensor shape by one}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2xi16>
+  return %0 : tensor<3x2xi16>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBitcast_v9
+func @testBitcast_v9(%arg0: tensor<3x2xi32>) -> tensor<3x2xf32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+func @testBitcast_v10(%arg0: tensor<3x2xi32>) -> tensor<3x4xf32> {
+  // expected-error @+1 {{input tensor shape shall be equal to output tensor shape}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @testReverseV2
 func @testReverseV2(%arg0: tensor<2x4x3xui8>, %arg1: tensor<1xi32>) -> tensor<2x4x3xui8> {
   %0 = "tf.ReverseV2"(%arg0, %arg1) : (tensor<2x4x3xui8>, tensor<1xi32>) -> tensor<2x4x3xui8>
@@ -4309,6 +4381,77 @@ func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
   // expected-error @+1 {{Number of results should be the same}}
   "tf._XlaHostComputeMlir"(%arg0) {send_key="", recv_key="", host_mlir_module="module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> ()
   return
+}
+
+// -----
+func @testXlaSelectAndScatterAttrs(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // expected-error @+1 {{'tf.XlaSelectAndScatter' op expects the size of window_dimensionsto be equal to the input rank (3 vs. 4)}}
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @add_scatter, select = @ge_select} : (tensor<4x5x1x1xbf16>, tensor<3xi32>, tensor<4xi32>, tensor<4x2xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+// -----
+
+func @testXlaSelectAndScatterPadding(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2x3xi32>} : () -> tensor<4x2x3xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // expected-error @+1 {{'tf.XlaSelectAndScatter' op expects padding to be a matrix with minor dimension 2, got 4, 2, 3}}
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @add_scatter, select = @ge_select} : (tensor<4x5x1x1xbf16>, tensor<4xi32>, tensor<4xi32>, tensor<4x2x3xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+// -----
+
+func @testXlaSelectAndScatterSym(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // expected-error @+1 {{'tf.XlaSelectAndScatter' op has no select function specified}}
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @add_scatter, select = @ge_select} : (tensor<4x5x1x1xbf16>, tensor<4xi32>, tensor<4xi32>, tensor<4x2xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+// -----
+
+func @testXlaReduceWindowAttrs(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_2 = "tf.Const"() {value = dense<3> : tensor<2xi32>} : () -> tensor<2xi32>
+  %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+  // expected-error @+1 {{tf.XlaReduceWindow' op expects the size of base_dilations to be equal to the input rank (2 vs. 1)}}
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @sum_reducer3} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @testXlaReduceWindowPadding(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<1x3xi32>} : () -> tensor<1x3xi32>
+  %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_2 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+  // expected-error @+1 {{'tf.XlaReduceWindow' op expects padding to be a matrix with minor dimension 2, got 1, 3}}
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @sum_reducer3} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x3xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @testXlaReduceWindowSym(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_2 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+  // expected-error @+1 {{'tf.XlaReduceWindow' op has no reduction function specified}}
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @sum_reducer3} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
 }
 
 // -----

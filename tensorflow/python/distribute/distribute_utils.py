@@ -56,7 +56,9 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
   if isinstance(v0, tuple):
     for v in values[1:]:
       assert isinstance(v, tuple)
-      assert len(v) == len(v0)
+      assert len(v) == len(v0), ("Values to regroup had different lengths: "
+                                 f"len(v) == {len(v)}, len(v0) == {len(v0)}, "
+                                 f"v: {v}, v0: {v0}")
     regrouped_tuple = tuple(
         regroup(tuple(v[i] for v in values), wrap_class, always_wrap)
         for i in range(len(v0)))

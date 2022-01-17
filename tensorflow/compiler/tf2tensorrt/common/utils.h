@@ -118,7 +118,7 @@ inline std::ostream& operator<<(std::ostream& os, const nvinfer1::Dims& v) {
   os << absl::StrJoin(std::vector<int>(v.d, v.d + v.nbDims), ",");
   os << "]";
   return os;
-}  // namespace nvinfer1
+}
 
 // Returns true if any two derived nvinfer1::Dims type structs are equivalent.
 inline bool operator==(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs) {

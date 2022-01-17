@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INSTRUCTION_FUSION_H_
 
 #include <functional>
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -30,6 +31,110 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
+
+struct NoFusionPossible;
+
+// Propagating explanation of fusion decisions: if something could not be fused,
+// explain the reason.
+class FusionDecision {
+ public:
+  // Can not be fused: explain why. Implicit conversion due to optional-like
+  // semantics: waiver granted in cl/419938611.
+  FusionDecision(absl::string_view explanation)  // NOLINT
+      : explanation_(explanation) {}
+
+  // Same constructor as string_view, to allow implicit string conversion (can't
+  // implicitly convert both char* to string_view and string_view to
+  // FusionDecision).
+  FusionDecision(const char* explanation)  // NOLINT
+      : explanation_(explanation) {}
+
+  // If condition is `true` means that we CAN fuse. In that case, explanation is
+  // discarded.
+  FusionDecision(bool condition, absl::string_view explanation) {
+    if (!condition) {
+      explanation_ = std::string(explanation);
+    }
+  }
+
+  // Can be fused.
+  FusionDecision() {}
+
+  // A trick to declare and test fusion decision in a single statement (as TF
+  // is still on C++14 and can't use if statement with explicit initializer).
+  //
+  // Cf. NoFusionPossible definition for sample usage.
+  // TODO(b/157309856): Use conditional initializer instead.
+  NoFusionPossible operator!();
+
+  // Returns whether it can be fused.
+  explicit operator bool() const { return CanFuse(); }
+
+  // Whether the fusion decision is positive.
+  bool CanFuse() const { return !explanation_.has_value(); }
+
+  // Connects two decisions with a disjunction. This is different than just
+  // picking one, as we also have to propagate both explanations if only one of
+  // them is false to show why fusion wasn't performed.
+  FusionDecision Or(const FusionDecision& decision) {
+    if (CanFuse() || decision.CanFuse()) {
+      return {};
+    }
+    return {absl::StrCat(explanation_.value_or(""), " ; ", decision.Explain())};
+  }
+
+  // Connects two fusion decision with a conjunction. Unlike disjunction,
+  // propagates only one explanation (as it is enough to show that fusion could
+  // not be done).
+  FusionDecision And(const FusionDecision& decision) {
+    if (CanFuse()) {
+      return decision;
+    }
+    if (decision.CanFuse()) {
+      return *this;
+    }
+    // Both conditions were violated: returning either is valid.
+    return *this;
+  }
+
+  // Appends to explanation, or turns the decision negative.
+  FusionDecision operator<<(absl::string_view explanation) {
+    return {absl::StrCat(explanation_.value_or(""), explanation)};
+  }
+
+  // Appends to explanation, or turns the decision negative.
+  FusionDecision operator<<(int64_t explanation) {
+    return {absl::StrCat(explanation_.value_or(""), explanation)};
+  }
+
+  // Explains why the fusion could not be performed.
+  std::string Explain() const { return *explanation_; }
+
+ private:
+  // Empty IFF fusion is possible (explanation provided for negative cases).
+  absl::optional<std::string> explanation_;
+};
+
+// Helper class: contextually convertible to "no fusion possible" unlike
+// FusionDecision. This is a trick to declare and test fusion decision in a
+// single statement (as we are still on C++14).
+//
+// Sample usage:
+//
+// if (NoFusionPossible fusible = !FusabilityRestriction(producer, consume)) {
+//   return !fusible; // Note that negation converts it back to FusionDecision.
+// }
+struct NoFusionPossible {
+  // Inverts the test value (true <=> not fusible) on wrapped FusionDecision.
+  explicit operator bool() { return !static_cast<bool>(fusion_decision); }
+
+  // Returns wrapped fusion decision.
+  FusionDecision operator!() { return fusion_decision; }
+
+  FusionDecision fusion_decision;
+};
+
+inline NoFusionPossible FusionDecision::operator!() { return {*this}; }
 
 // HLO pass which performs instruction fusion. Instructions are fused
 // "vertically", meaning producing instructions are fused into their consumers
@@ -63,8 +168,8 @@ class InstructionFusion : public HloModulePass {
   // illegal to fuse a slice into a dynamic-update-slice if the slice output is
   // used as the update and if slice and dynamic-update-slice indices cannot be
   // proven to be the same.
-  static bool ShouldFuseInPlaceOp(const HloInstruction* producer,
-                                  const HloInstruction* consumer);
+  static FusionDecision ShouldFuseInPlaceOp(const HloInstruction* producer,
+                                            const HloInstruction* consumer);
 
  protected:
   // Returns a list of computations on which Fusion is performed.
@@ -87,14 +192,15 @@ class InstructionFusion : public HloModulePass {
   // the operand is 'producer' and the instruction is 'consumer')
   //
   // Subtypes can override this with target-specific heuristics.
-  virtual bool ShouldFuse(HloInstruction* consumer, int64_t operand_index);
+  virtual FusionDecision ShouldFuse(HloInstruction* consumer,
+                                    int64_t operand_index);
 
   // Returns whether multi-output fusion can be applied to fuse `producer` into
   // `consumer`. In contrast to "regular" fusion, the `producer` is not
   // duplicated by multi-output fusion.
-  virtual bool ShouldFuseIntoMultiOutput(HloInstruction* consumer,
-                                         int64_t operand_index) {
-    return false;
+  virtual FusionDecision ShouldFuseIntoMultiOutput(HloInstruction* consumer,
+                                                   int64_t operand_index) {
+    return "multi-output fusion not supported by this pass";
   }
 
   // Chooses a fusion kind for `producer` and `consumer`.

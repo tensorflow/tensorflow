@@ -252,6 +252,12 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
       mlir::isa<mlir::lmhlo_gpu::ConvForwardFusedSideInputOp>(op)) {
     return Thunk::Kind::kConvolution;
   }
+  if (mlir::isa<mlir::lmhlo::ReplicaIdOp>(op)) {
+    return Thunk::Kind::kReplicaId;
+  }
+  if (mlir::isa<mlir::lmhlo::PartitionIdOp>(op)) {
+    return Thunk::Kind::kPartitionId;
+  }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
 }
@@ -441,7 +447,7 @@ static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
 
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
     std::function<Status(tfrt::RequestContextBuilder&)> build_request_context,
-    tfrt::ResourceContext* resource_context = nullptr) {
+    tfrt::ResourceContext* resource_context) {
   TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
   tfrt::RequestContextBuilder request_context_builder(
       runtime_and_queue.core_runtime->GetHostContext(), resource_context);
@@ -467,7 +473,8 @@ CreateDefaultExecutionContext(tfrt::ResourceContext* resource_context) {
 #if XLA_ENABLE_XCCL
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
 CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
-                           const NcclCollectiveConfig& xccl_config) {
+                           const NcclCollectiveConfig& xccl_config,
+                           tfrt::ResourceContext* resource_context) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
 
@@ -506,7 +513,8 @@ CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
         request_context_builder.context_data().emplace<XcclContext>(
             std::move(comm));
         return Status::OK();
-      });
+      },
+      resource_context);
 }
 
 static StatusOr<XcclContext::CollectivePermuteSourceTarget>
@@ -557,6 +565,32 @@ CreateKernelExecutionContext(absl::optional<GpuModuleData> gpu_module_data,
           [&](tfrt::RequestContextBuilder& request_context_builder) {
             request_context_builder.context_data().emplace<GpuModuleData>(
                 *gpu_module_data);
+            return Status::OK();
+          },
+          resource_context));
+  return std::move(exec_ctx);
+}
+
+// TODO(hanbinyoon): Consider passing a RequestContextBuilder to different
+// functions that create ExecutionContext based on the thunk type (creating
+// RequestContext and the ExecutionContext in a common code path).
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
+CreateReplicaAndPartitionExecutionContext(
+    const Thunk::ExecuteParams& params,
+    tfrt::ResourceContext* resource_context) {
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
+  TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID current_logical_id,
+                      params.device_assn->LogicalIdForDevice(global_device_id));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<tfrt::ExecutionContext> exec_ctx,
+      CreateExecutionContext(
+          [&](tfrt::RequestContextBuilder& request_context_builder) {
+            request_context_builder.context_data()
+                .emplace<ReplicaAndPartitionId>(
+                    ReplicaAndPartitionId{current_logical_id.replica_id,
+                                          current_logical_id.computation_id});
             return Status::OK();
           },
           resource_context));
@@ -614,8 +648,9 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   std::unique_ptr<tfrt::ExecutionContext> exec_ctx;
 #if XLA_ENABLE_XCCL
   if (xccl_config_.has_value()) {
-    TF_ASSIGN_OR_RETURN(exec_ctx,
-                        CreateXcclExecutionContext(params, *xccl_config_));
+    TF_ASSIGN_OR_RETURN(
+        exec_ctx,
+        CreateXcclExecutionContext(params, *xccl_config_, gpu_context.second));
     if (!id_to_collective_permute_source_target_.empty()) {
       auto& xccl_ctx = exec_ctx->request_ctx()->GetData<XcclContext>();
       TF_ASSIGN_OR_RETURN(
@@ -630,6 +665,9 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
       tensorflow::mutex_lock lock(mutex_);
       TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
                                         gpu_module_data_, gpu_context.second));
+    } else if (kind() == Thunk::kReplicaId || kind() == Thunk::kPartitionId) {
+      TF_ASSIGN_OR_RETURN(exec_ctx, CreateReplicaAndPartitionExecutionContext(
+                                        params, gpu_context.second));
     } else {
       TF_ASSIGN_OR_RETURN(exec_ctx,
                           CreateDefaultExecutionContext(gpu_context.second));

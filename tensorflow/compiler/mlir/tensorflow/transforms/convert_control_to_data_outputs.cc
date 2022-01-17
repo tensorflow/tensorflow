@@ -342,7 +342,7 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
   // Get the dummy constant.
   OpBuilder builder(while_wrapper);
   auto loc = NameLoc::get(
-      builder.getIdentifier("chain_control_outputs@" + while_op.body()));
+      builder.getStringAttr("chain_control_outputs@" + while_op.body()));
   IslandOp const_wrapper = GetDummyConstant(builder, const_type, loc);
 
   // Get new operand and result types.

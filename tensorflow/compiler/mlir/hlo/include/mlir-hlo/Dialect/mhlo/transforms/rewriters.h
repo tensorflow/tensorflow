@@ -122,7 +122,14 @@ void PopulateTrigonometricToApproximationPatterns(
 // and broadcast the operands rather than the result. This will eventually allow
 // for larger fusions.
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
-                                      OwningRewritePatternList *patterns);
+                                      OwningRewritePatternList *patterns,
+                                      bool propagate_broadcasts);
+
+// Populate patterns to group reduction and parallecol dimensions of reduction
+// operations and realize them through equivalent 1D or 2D reductions, if
+// possible.
+void populateGroupReductionDimensionsPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
 
 /// Populate rank specialization clustering and lowering patterns.
 void PopulateRankSpecializationClusterPatterns(

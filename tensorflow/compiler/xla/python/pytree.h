@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -183,6 +184,7 @@ class PyTreeDef {
     // contains the auxiliary data returned by the `to_iterable` function.
     pybind11::object node_data;
 
+    // Custom type registration. Must be null for non-custom types.
     const PyTreeTypeRegistry::Registration* custom = nullptr;
 
     // Number of leaf nodes in the subtree rooted at this node.

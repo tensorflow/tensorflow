@@ -88,7 +88,12 @@ std::unique_ptr<FunctionPass> createBroadcastPropagationPass();
 // fusions.
 // TODO(frgossen): Limit this pass to merging of assuming regions and factor out
 // broadcast propagation into its own pass.
-std::unique_ptr<FunctionPass> createMergeAssumingOpsPass();
+std::unique_ptr<FunctionPass> createMergeAssumingOpsPass(
+    bool propagate_broadcasts = true);
+
+// Group reduction and parallel dimensions of reduction operations and realize
+// them through equivalent 1D or 2D reductions, if possible.
+std::unique_ptr<FunctionPass> createGroupReductionDimensionsPass();
 
 /// Rank specialization passes:
 ///   - Find compatible operations and group them together in one rank

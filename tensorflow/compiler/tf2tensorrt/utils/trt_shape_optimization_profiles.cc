@@ -35,9 +35,9 @@ template <typename TensorShapeType>
 std::vector<nvinfer1::Dims> GetDimVec(std::vector<TensorShapeType> shape_vec) {
   std::vector<nvinfer1::Dims> dimvec(shape_vec.size());
   absl::c_transform(shape_vec, dimvec.begin(), [](TensorShapeType shape) {
-    nvinfer1::Dims dims;
-    TF_CHECK_OK(TensorShapeToTrtDims(shape, false, &dims));
-    return dims;
+    auto adap = DimsAdapter::Create(shape);
+    TF_CHECK_OK(adap.status());
+    return adap->AsTrtDims();
   });
   return dimvec;
 }

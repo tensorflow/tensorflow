@@ -1354,6 +1354,11 @@ tensorflow::Status OperationInterface::Execute(
 
     ExecutionContext exec_ctx{std::move(request_ctx),
                               abort_location_handler_.GetCurrentLocation()};
+
+    // Make BEF executor to use TfThreadPoolWorkQueue to dispatch kernels.
+    exec_ctx.set_work_queue(
+        context_->GetTfrtContext()->GetTfThreadPoolWorkQueue());
+
     // Execute the function.
     function_state_->GetFunc()(exec_ctx, th_args, OpAttrsRef(attrs_),
                                result_ths, chain);
@@ -1489,6 +1494,9 @@ tensorflow::Status OperationInterface::Initialize() {
   FunctionCache::FunctionCacheResult result;
 
   tensorflow::TfrtFunctionCompileOptions compile_options;
+
+  // Use TFRT TPU OpKernel for training.
+  compile_options.tpu_lower_to_fallback = true;
 
   // Use the host device if the user does not place the function to a specific
   // device.

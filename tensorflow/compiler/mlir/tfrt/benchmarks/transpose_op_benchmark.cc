@@ -64,26 +64,26 @@ static llvm::SmallVector<InputTensorSpec> Inputs(ssize_t dim) {
 #define BM(FN) BM_##FN->Arg(0)->Arg(4)->Arg(8);
 
 // Transpose: [0, 2, 1]
-BM(Cpurt(Transpose_0x2x1, Transpose({0, 2, 1}), "compute", Inputs(256)));
-BM(CpurtV(Transpose_0x2x1, Transpose({0, 2, 1}), "compute", Inputs(256)));
+BM(Jitrt(Transpose_0x2x1, Transpose({0, 2, 1}), "compute", Inputs(256)));
+BM(JitrtV(Transpose_0x2x1, Transpose({0, 2, 1}), "compute", Inputs(256)));
 BM(Tfrt(Transpose_0x2x1, Transpose({0, 2, 1}), "compute", Inputs(256)));
 BM(Eigen(Transpose_0x2x1, Shuffle({0, 2, 1}), Inputs(256)));
 
 // Transpose: [2, 0, 1]
-BM(Cpurt(Transpose_2x0x1, Transpose({2, 0, 1}), "compute", Inputs(256)));
-BM(CpurtV(Transpose_2x0x1, Transpose({2, 0, 1}), "compute", Inputs(256)));
+BM(Jitrt(Transpose_2x0x1, Transpose({2, 0, 1}), "compute", Inputs(256)));
+BM(JitrtV(Transpose_2x0x1, Transpose({2, 0, 1}), "compute", Inputs(256)));
 BM(Tfrt(Transpose_2x0x1, Transpose({2, 0, 1}), "compute", Inputs(256)));
 BM(Eigen(Transpose_2x0x1, Shuffle({2, 0, 1}), Inputs(256)));
 
 // Transpose: [2, 1, 0]
-BM(Cpurt(Transpose_2x1x0, Transpose({2, 1, 0}), "compute", Inputs(256)));
-BM(CpurtV(Transpose_2x1x0, Transpose({2, 1, 0}), "compute", Inputs(256)));
+BM(Jitrt(Transpose_2x1x0, Transpose({2, 1, 0}), "compute", Inputs(256)));
+BM(JitrtV(Transpose_2x1x0, Transpose({2, 1, 0}), "compute", Inputs(256)));
 BM(Tfrt(Transpose_2x1x0, Transpose({2, 1, 0}), "compute", Inputs(256)));
 BM(Eigen(Transpose_2x1x0, Shuffle({2, 1, 0}), Inputs(256)));
 
 // Transpose: [1, 2, 0]
-BM(Cpurt(Transpose_1x2x0, Transpose({1, 2, 0}), "compute", Inputs(256)));
-BM(CpurtV(Transpose_1x2x0, Transpose({1, 2, 0}), "compute", Inputs(256)));
+BM(Jitrt(Transpose_1x2x0, Transpose({1, 2, 0}), "compute", Inputs(256)));
+BM(JitrtV(Transpose_1x2x0, Transpose({1, 2, 0}), "compute", Inputs(256)));
 BM(Tfrt(Transpose_1x2x0, Transpose({1, 2, 0}), "compute", Inputs(256)));
 BM(Eigen(Transpose_1x2x0, Shuffle({1, 2, 0}), Inputs(256)));
 

@@ -1686,6 +1686,10 @@ endian orderings will give different results.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr type = TF_DerivedResultTypeAttr<0>;
 
+  let verifier = [{
+    return Verify(*this);
+  }];
+
   let hasCanonicalizer = 1;
 }
 
@@ -19765,6 +19769,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#reducewindow .
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_XlaRemoveDynamicDimensionSizeOp : TF_Op<"XlaRemoveDynamicDimensionSize", [NoSideEffect]> {
@@ -19877,6 +19883,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#selectandscatter
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_XlaSelfAdjointEigOp : TF_Op<"XlaSelfAdjointEig", [NoSideEffect]> {

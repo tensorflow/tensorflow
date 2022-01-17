@@ -721,7 +721,9 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               'num_segments':
                   2
           },
-          expected=[7.0, 2.0]),
+          expected=[7.0, 2.0],
+          rtol=1e-12,
+      ),
       dict(
           op=math_ops.reduce_sum,
           kwargs={

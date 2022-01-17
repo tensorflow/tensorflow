@@ -36,6 +36,11 @@
     to change it back to stdout, or
     `tf.keras.utils.is_interactive_logging_enabled()` to check if interactive
     logging is enabled.
+  * Changed default value for the `verbose` argument of `Model.evaluate()` and
+    `Model.predict()` to `"auto"`, which defaults to `verbose=1` for most cases
+    and defaults to `verbose=2` when used with `ParameterServerStrategy` or with
+    interactive logging disabled.
+
 * `tf.lite`:
 
   * Added TFLite builtin op support for the following TF ops:
@@ -189,6 +194,12 @@ This release contains contributions from many people at Google, as well as:
         the model's training step with [XLA](https://www.tensorflow.org/xla).
         Note that `jit_compile=True` may not necessarily work for all models.
 
+*   TF Core:
+
+    *   Adding a flag `stateful` to `numpy_function`, allowing to give the
+        guarantee to the runtime that the function call is stateless, which
+        allows for more optimizations in the graph.
+
 *   Deterministic Op Functionality
 
     *   Add determinsitic GPU implementations of:
@@ -249,8 +260,7 @@ This release contains contributions from many people at Google, as well as:
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
-
+jonas-eschle, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.7.0
 

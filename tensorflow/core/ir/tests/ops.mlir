@@ -70,3 +70,18 @@ tfg.func generic @gfoo(%arg0 : !tf_type.tensor {tfg.name = "input"},
 // CHECK: return(%AddV2, %AddV2_1) [%ctl] : !tf_type.tensor, !tf_type.tensor
   return(%add, %add_1) [%ctl0] : !tf_type.tensor, !tf_type.tensor
 }
+
+// CHECK-LABEL: tfg.func @many_args
+// CHECK-SAME: %[[A0:.*]]: !tf_type.tensor {tfg.name = "[[A0]]"},
+// CHECK-NEXT: %[[A1:.*]]: !tf_type.tensor {tfg.name = "[[A1]]"},
+// CHECK-NEXT: %[[A2:.*]]: !tf_type.tensor {tfg.name = "[[A2]]"},
+// CHECK-NEXT: %[[A3:.*]]: !tf_type.tensor {tfg.name = "[[A3]]"},
+// CHECK-NEXT: %[[A4:.*]]: !tf_type.tensor {tfg.name = "[[A4]]"})
+tfg.func @many_args(%a0: !tf_type.tensor {tfg.name = "a0"},
+                    %a1: !tf_type.tensor {tfg.name = "a1"},
+                    %a2: !tf_type.tensor {tfg.name = "a2"},
+                    %a3: !tf_type.tensor {tfg.name = "a3"},
+                    %a4: !tf_type.tensor {tfg.name = "a4"})
+    -> (!tf_type.tensor) {
+  return(%a0) : !tf_type.tensor
+}

@@ -74,8 +74,7 @@ class PrepareDynamicRangeQuantizePass
   }
 
  public:
-  // Constructor used by the PassRegistration and enforce int8 quantization.
-  // This is only used by test.
+  // Constructor used by the PassRegistration. This is only used by test.
   explicit PrepareDynamicRangeQuantizePass() {
     quant_specs_.inference_type = enable_float16_quantization
                                       ? tensorflow::DT_HALF
@@ -97,6 +96,12 @@ class PrepareDynamicRangeQuantizePass
   StringRef getDescription() const final {
     return "Prepare TFL dialect for dynamic range quantization";
   }
+
+  // The function might contain stats ops which are redundant for processing
+  // dynamic range quantization. And stats ops may cause conflict while
+  // processing the function for dynamic range quantization. Therefore, this
+  // method preprocess the function to remove all stats ops.
+  void removeAllStatsOp(FuncOp func);
 
   void runOnFunction() override;
 
@@ -197,6 +202,8 @@ class PrepareDynamicRangeQuantizableOp
   // quantization for int8 dynamic range quantization.
   bool quantizeOpAsInt8(PatternRewriter& rewriter, arith::ConstantOp op,
                         std::pair<Operation*, int> quant_op) const {
+    bool is_narrow_range = true;
+    bool is_legacy_float = quant_specs_.legacy_float_scale;
     bool is_signed = quant_specs_.IsSignedInferenceType();
     int bit_width = quant_specs_.GetQuantizationTypeWidth();
 
@@ -232,14 +239,13 @@ class PrepareDynamicRangeQuantizableOp
       quant_type = quant::GetUniformQuantizedPerAxisTypeForWeight(
                        attr, affine_user.GetQuantizationDimIndex(),
                        /*symmetric=*/true, bit_width, is_signed,
-                       /*narrow_range=*/true, quant_specs_.legacy_float_scale)
+                       is_narrow_range, is_legacy_float)
                        .template dyn_cast<quant::QuantizedType>();
     } else {
-      quant_type =
-          quant::GetUniformQuantizedTypeForWeight(
-              attr, op_with_narrow_range && is_signed, bit_width, is_signed,
-              op_with_narrow_range, quant_specs_.legacy_float_scale)
-              .template dyn_cast<quant::QuantizedType>();
+      quant_type = quant::GetUniformQuantizedTypeForWeight(
+                       attr, is_narrow_range && is_signed, bit_width, is_signed,
+                       is_narrow_range, is_legacy_float)
+                       .template dyn_cast<quant::QuantizedType>();
     }
     return insertQDQ(rewriter, op, quant_type, quant_op);
   }
@@ -255,6 +261,17 @@ class PrepareDynamicRangeQuantizableOp
 
     Type expressed_type = op.getResult().getType();
     Type cast_type = quant_type.castFromExpressedType(expressed_type);
+
+    // Insert DQ-op if it does not exist yet. Otherwise, just rewire without
+    // creating a new DQ-op.
+    for (auto connected_op : op->getUsers()) {
+      auto q_op = llvm::dyn_cast_or_null<Q>(connected_op);
+      if (q_op && q_op.getType() == cast_type) {
+        auto dq_op = llvm::cast<DQ>(q_op.getResult().use_begin()->getOwner());
+        quantize_op->setOperand(quantize_operand_num, dq_op);
+        return false;
+      }
+    }
     rewriter.setInsertionPointAfter(op);
     auto q = rewriter.create<Q>(op->getLoc(), cast_type, op.getResult());
     auto dq = rewriter.create<DQ>(op->getLoc(), expressed_type, q);
@@ -377,11 +394,20 @@ class PrepareDynamicRangeQuantizableOp
   QuantizationSpecs quant_specs_;
 };
 
+// Remove all the stats ops which are redundant for dynamic range quantizaiton.
+void PrepareDynamicRangeQuantizePass::removeAllStatsOp(FuncOp func) {
+  func.walk([&](quant::StatisticsOp stats_op) {
+    stats_op.replaceAllUsesWith(stats_op.arg());
+    stats_op.erase();
+  });
+}
+
 void PrepareDynamicRangeQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
 
   ConvertTFLQuantOpsToMlirQuantOps(func);
+  removeAllStatsOp(func);
 
   OwningRewritePatternList patterns(&getContext());
   patterns.insert<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);

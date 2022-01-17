@@ -255,7 +255,7 @@ memref::ReinterpretCastOp createMemRef1DReinterpretCast(OpBuilder& b,
   Value zero = b.create<mlir::arith::ConstantOp>(
       loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 0));
   auto memref_1d_type =
-      MemRefType::get({MemRefType::kDynamicSize}, memref_ty.getElementType(),
+      MemRefType::get({ShapedType::kDynamicSize}, memref_ty.getElementType(),
                       b.getMultiDimIdentityMap(1), memref_ty.getMemorySpace());
   return b.create<memref::ReinterpretCastOp>(
       loc, memref_1d_type, memref, zero, ValueRange{size}, ValueRange{stride});

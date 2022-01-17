@@ -265,7 +265,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
 
     // Type-erased memref type with static rank and dynamic strides.
     SmallVector<int64_t, 2> dynamic_layout(result_rank,
-                                           MemRefType::kDynamicStrideOrOffset);
+                                           ShapedType::kDynamicStrideOrOffset);
     auto type_erased_memref_type = MemRefType::get(
         result_type.getShape(), operand_type.getElementType(),
         makeStridedLinearLayoutMap(dynamic_layout,

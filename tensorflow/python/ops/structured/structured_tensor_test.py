@@ -1659,6 +1659,42 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     spec = structured_tensor.StructuredTensorSpec([None], {})
     self.assertEqual(spec.shape.as_list(), [None])
 
+  def test_ragged_shape_init_vector(self):
+    x = constant_op.constant([1, 2, 3, 4])
+    y = constant_op.constant([[1, 2], [3, 4], [5, 6], [7, 8]])
+    fields = {"x": x, "y": y}
+    nrows = constant_op.constant(4)
+    shape = tensor_shape.TensorShape((4,))
+    row_partitions = ()
+    rs = structured_tensor._ragged_shape_init(fields, shape, nrows,
+                                              row_partitions)
+    self.assertEqual(
+        repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape((4,))))
+
+  def test_ragged_shape_init_scalar(self):
+    x = constant_op.constant([1, 2, 3, 4])
+    y = constant_op.constant([[1, 2], [3, 4], [5, 6], [7, 8]])
+    fields = {"x": x, "y": y}
+    nrows = None
+    shape = tensor_shape.TensorShape(())
+    row_partitions = ()
+
+    rs = structured_tensor._ragged_shape_init(fields, shape, nrows,
+                                              row_partitions)
+    self.assertEqual(
+        repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape(())))
+
+  def test_ragged_shape_init_ragged(self):
+    x = ragged_factory_ops.constant_value([[1, 2, 3], [4]])
+    fields = {"x": x}
+    nrows = constant_op.constant(2, dtype=dtypes.int64)
+    shape = tensor_shape.TensorShape([2, None])
+    row_partitions = tuple(x._nested_row_partitions)
+    rs = structured_tensor._ragged_shape_init(fields, shape, nrows,
+                                              row_partitions)
+    self.assertEqual(
+        repr(rs._to_tensor_shape()), repr(tensor_shape.TensorShape((2, None))))
+
 
 if __name__ == "__main__":
   googletest.main()

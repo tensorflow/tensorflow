@@ -3032,19 +3032,19 @@ func @bitcast_same_widths(%arg0: tensor<2xf32>) -> tensor<2xi32> {
 // -----
 
 // CHECK-LABEL: func @bitcast_smaller_input_width
-func @bitcast_smaller_input_width(%arg0: tensor<2xi8>) -> tensor<2xi64> {
-  // CHECK:  "tf.Bitcast"(%arg0) : (tensor<2xi8>) -> tensor<2xi64>
-  %0 = "tf.Bitcast"(%arg0) : (tensor<2xi8>) -> tensor<2xi64>
-  return %0 : tensor<2xi64>
+func @bitcast_smaller_input_width(%arg0: tensor<8xi8>) -> tensor<i64> {
+  // CHECK:  "tf.Bitcast"(%arg0) : (tensor<8xi8>) -> tensor<i64>
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xi8>) -> tensor<i64>
+  return %0 : tensor<i64>
 }
 
 // -----
 
 // CHECK-LABEL: func @bitcast_smaller_output_width
-func @bitcast_smaller_output_width(%arg0: tensor<2xf32>) -> tensor<2xf16> {
-  // CHECK:  "tf.Bitcast"(%arg0) : (tensor<2xf32>) -> tensor<2xf16>
-  %0 = "tf.Bitcast"(%arg0) : (tensor<2xf32>) -> tensor<2xf16>
-  return %0 : tensor<2xf16>
+func @bitcast_smaller_output_width(%arg0: tensor<2xf32>) -> tensor<2x2xf16> {
+  // CHECK:  "tf.Bitcast"(%arg0) : (tensor<2xf32>) -> tensor<2x2xf16>
+  %0 = "tf.Bitcast"(%arg0) : (tensor<2xf32>) -> tensor<2x2xf16>
+  return %0 : tensor<2x2xf16>
 }
 
 // -----
@@ -6354,6 +6354,33 @@ func @xlaeinsum(%arg0: tensor<2x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<2x4xf3
   return %0: tensor<2x4xf32>
 }
 
+
+//===----------------------------------------------------------------------===//
+// tf.XlaReduceWindow legalization
+//===----------------------------------------------------------------------===//
+// -----
+// CHECK-LABEL: @test_xla_reduce_window
+func @test_xla_reduce_window(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<6xf32> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_2 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[REDUCE:.*]] = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  // CHECK-NEXT: ^{{.*}}(%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
+  // CHECK-NEXT:   %[[SUM:.*]] = call @sum_reducer3(%[[ARG0]], %[[ARG1]]){{.*}}
+  // CHECK-NEXT:   "mhlo.return"(%[[SUM]]) : (tensor<*xf32>) -> ()
+  // CHECK-NEXT: }) {base_dilations = dense<3> : tensor<1xi64>, padding = dense<0> : tensor<1x2xi64>, window_dilations = dense<4> : tensor<1xi64>, window_dimensions = dense<1> : tensor<1xi64>, window_strides = dense<2> : tensor<1xi64>} : (tensor<7xf32>, tensor<f32>) -> tensor<6xf32>
+  // CHECK-NEXT: return %[[REDUCE]]
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @sum_reducer3} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<6xf32>
+  return %0 : tensor<6xf32>
+}
+
+func private @sum_reducer3(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // tf.XlaSort legalization
 //===----------------------------------------------------------------------===//
@@ -6520,4 +6547,36 @@ func @xla_reduce_scatter(%arg0: tensor<128x128xf32>) -> tensor<64x128xf32> {
     //
     %1 = "tf.XlaReduceScatter"(%arg0, %cst_0, %cst) {reduce_op = "Add"} : (tensor<128x128xf32>, tensor<4x2xi32>, tensor<i32>) -> tensor<64x128xf32>
     return %1 : tensor<64x128xf32>
+}
+
+
+//===----------------------------------------------------------------------===//
+// tf.XlaSelectAndScatter legalization
+//===----------------------------------------------------------------------===//
+func @test_xla_select_and_scatter(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // CHECK: %[[SELECT_AND_SCATTER:.*]] = "mhlo.select_and_scatter"(%arg0, %arg1, %arg2) ( {
+  // CHECK-NEXT: ^{{.*}}(%[[ARG0:.*]]: tensor<*xbf16>, %[[ARG1:.*]]: tensor<*xbf16>)
+  // CHECK-NEXT:   %[[RES:.*]] = call @ge_select(%[[ARG0]], %[[ARG1]]){{.*}}
+  // CHECK-NEXT:   "mhlo.return"(%[[RES]]) : (tensor<*xi1>) -> ()
+  // CHECK-NEXT: },  {
+  // CHECK-NEXT: ^{{.*}}(%[[ARG2:.*]]: tensor<*xbf16>, %[[ARG3:.*]]: tensor<*xbf16>)
+  // CHECK-NEXT:   %[[RES:.*]] = call @add_scatter(%[[ARG2]], %[[ARG3]]){{.*}}
+  // CHECK-NEXT:   "mhlo.return"(%[[RES]]) : (tensor<*xbf16>) -> ()
+  // CHECK-NEXT: }) {padding = dense<0> : tensor<4x2xi64>, window_dimensions = dense<[2, 3, 1, 1]> : tensor<4xi64>, window_strides = dense<[2, 2, 1, 1]> : tensor<4xi64>} : (tensor<4x5x1x1xbf16>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  // CHECK-NEXT: return %[[SELECT_AND_SCATTER]]
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @add_scatter, select = @ge_select} : (tensor<4x5x1x1xbf16>, tensor<4xi32>, tensor<4xi32>, tensor<4x2xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+func private @add_scatter(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
+  %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+func private @ge_select(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xi1> {
+  %0 = "tf.GreaterEqual"(%arg0, %arg1) {device = ""} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xi1>
+  return %0 : tensor<*xi1>
 }

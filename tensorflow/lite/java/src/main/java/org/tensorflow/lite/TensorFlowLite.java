@@ -15,13 +15,15 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
+import org.checkerframework.checker.nullness.qual.Nullable;
+
 /** Static utility methods loading the TensorFlowLite runtime. */
 public final class TensorFlowLite {
 
   private static final String LIBNAME = "tensorflowlite_jni";
   private static final String ALTERNATE_LIBNAME = "tensorflowlite_jni_stable";
 
-  private static final Throwable LOAD_LIBRARY_EXCEPTION;
+  private static final @Nullable Throwable LOAD_LIBRARY_EXCEPTION;
   private static volatile boolean isInit = false;
 
   static {
@@ -84,11 +86,15 @@ public final class TensorFlowLite {
     } catch (UnsatisfiedLinkError e) {
       // Prefer logging the original library loading exception if native methods are unavailable.
       Throwable exceptionToLog = LOAD_LIBRARY_EXCEPTION != null ? LOAD_LIBRARY_EXCEPTION : e;
-      throw new UnsatisfiedLinkError(
-          "Failed to load native TensorFlow Lite methods. Check "
-              + "that the correct native libraries are present, and, if using "
-              + "a custom native library, have been properly loaded via System.loadLibrary():\n  "
-              + exceptionToLog);
+      UnsatisfiedLinkError exceptionToThrow =
+          new UnsatisfiedLinkError(
+              "Failed to load native TensorFlow Lite methods. Check that the correct native"
+                  + " libraries are present, and, if using a custom native library, have been"
+                  + " properly loaded via System.loadLibrary():\n"
+                  + "  "
+                  + exceptionToLog);
+      exceptionToThrow.initCause(e);
+      throw exceptionToThrow;
     }
   }
 

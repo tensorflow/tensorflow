@@ -15,6 +15,7 @@ limitations under the License.
 
 package org.tensorflow.lite.nnapi;
 
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.tensorflow.lite.Delegate;
 import org.tensorflow.lite.TensorFlowLite;
 
@@ -135,12 +136,12 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
     }
 
     private int executionPreference = EXECUTION_PREFERENCE_UNDEFINED;
-    private String acceleratorName = null;
-    private String cacheDir = null;
-    private String modelToken = null;
-    private Integer maxDelegatedPartitions = null;
-    private Boolean useNnapiCpu = null;
-    private Boolean allowFp16 = null;
+    private @Nullable String acceleratorName = null;
+    private @Nullable String cacheDir = null;
+    private @Nullable String modelToken = null;
+    private @Nullable Integer maxDelegatedPartitions = null;
+    private @Nullable Boolean useNnapiCpu = null;
+    private @Nullable Boolean allowFp16 = null;
     private long nnApiSupportLibraryHandle = 0;
   }
 
@@ -219,13 +220,13 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
   //
   private static native long createDelegate(
       int preference,
-      String deviceName,
-      String cacheDir,
-      String modelToken,
+      @Nullable String deviceName,
+      @Nullable String cacheDir,
+      @Nullable String modelToken,
       int maxDelegatedPartitions,
-      boolean overrideDisallowCpu,
-      boolean disallowCpuValue,
-      boolean allowFp16,
+      @Nullable Boolean overrideDisallowCpu,
+      @Nullable Boolean disallowCpuValue,
+      @Nullable Boolean allowFp16,
       long nnApiSupportLibraryHandle);
 
   private static native void deleteDelegate(long delegateHandle);

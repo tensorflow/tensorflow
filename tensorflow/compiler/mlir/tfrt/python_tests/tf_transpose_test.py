@@ -12,20 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Tensorflow -> CPURT compilation."""
+"""Tests for Tensorflow -> jitrt compilation."""
 
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
 specializations = [
-    tf_cpurt.Specialization.ENABLED,
-    tf_cpurt.Specialization.DISABLED,
-    tf_cpurt.Specialization.ALWAYS,
+    tf_jitrt.Specialization.ENABLED,
+    tf_jitrt.Specialization.DISABLED,
+    tf_jitrt.Specialization.ALWAYS,
 ]
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 class TfTransposeTest(test.TestCase):
@@ -41,14 +41,14 @@ class TfTransposeTest(test.TestCase):
           return %1 : tensor<?x?xf32>
         }"""
 
-      compiled = cpurt.compile(mlir_function, 'test', specialize)
+      compiled = jitrt.compile(mlir_function, 'test', specialize)
 
       d0 = np.random.randint(1, 10)
       d1 = np.random.randint(1, 10)
 
       arg0 = np.random.uniform(0, 10.0, size=(d0, d1)).astype(np.float32)
 
-      [res] = cpurt.execute(compiled, [arg0])
+      [res] = jitrt.execute(compiled, [arg0])
       np.testing.assert_allclose(res, np.transpose(arg0), atol=0.0)
 
   def test_transpose_3d(self):
@@ -66,7 +66,7 @@ class TfTransposeTest(test.TestCase):
           return %3 : tensor<?x?x?xf32>
         }"""
 
-      compiled = cpurt.compile(mlir_function, 'test', specialize)
+      compiled = jitrt.compile(mlir_function, 'test', specialize)
 
       d0 = np.random.randint(1, 10)
       d1 = np.random.randint(1, 10)
@@ -74,7 +74,7 @@ class TfTransposeTest(test.TestCase):
 
       arg0 = np.random.uniform(0, 10.0, size=(d0, d1, d2)).astype(np.float32)
 
-      [res] = cpurt.execute(compiled, [arg0])
+      [res] = jitrt.execute(compiled, [arg0])
       ref = np.transpose(np.transpose(arg0, (0, 2, 1)), (2, 1, 0))
       np.testing.assert_allclose(res, ref, atol=0.0)
 
@@ -83,21 +83,21 @@ class TfTransposeTest(test.TestCase):
   def test_transpose_value_specialization_i32(self):
     mlir_function = """
       func @compute(%arg0: tensor<*xf32>,
-                    %arg1: tensor<?xi32> {cpurt.constraint = "value"})
+                    %arg1: tensor<?xi32> {jitrt.constraint = "value"})
           -> tensor<*xf32> {
         %0 = "tf.Transpose"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<?xi32>) -> tensor<*xf32>
         return %0 : tensor<*xf32>
       }"""
-    compiled = cpurt.compile(mlir_function, 'compute')
+    compiled = jitrt.compile(mlir_function, 'compute')
     tensor = np.random.uniform(0, 10.0, size=(3, 3)).astype(np.float32)
     perm0 = np.array([1, 0]).astype(np.int32)
     perm1 = np.array([0, 1]).astype(np.int32)
 
     # Test that the same compiled module with two different value-specialized
     # arguments is handled correctly, i.e. it is specialized twice.
-    [res0] = cpurt.execute(compiled, [tensor, perm0])
-    [res1] = cpurt.execute(compiled, [tensor, perm1])
+    [res0] = jitrt.execute(compiled, [tensor, perm0])
+    [res1] = jitrt.execute(compiled, [tensor, perm1])
     np.testing.assert_allclose(res0, np.transpose(tensor, perm0), atol=0.0)
     np.testing.assert_allclose(res1, np.transpose(tensor, perm1), atol=0.0)
 
@@ -105,8 +105,8 @@ class TfTransposeTest(test.TestCase):
   def test_transpose_value_specialization_i64(self):
     mlir_function = """
       func @compute(%arg0: tensor<*xf32>,
-                    %arg1: tensor<?xi64> {cpurt.constraint = "value"},
-                    %arg2: tensor<?xi64> {cpurt.constraint = "value"})
+                    %arg1: tensor<?xi64> {jitrt.constraint = "value"},
+                    %arg2: tensor<?xi64> {jitrt.constraint = "value"})
           -> tensor<*xf32> {
         %0 = "tf.Transpose"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<?xi64>) -> tensor<*xf32>
@@ -114,12 +114,12 @@ class TfTransposeTest(test.TestCase):
              : (tensor<*xf32>, tensor<?xi64>) -> tensor<*xf32>
         return %1 : tensor<*xf32>
       }"""
-    compiled = cpurt.compile(mlir_function, 'compute')
+    compiled = jitrt.compile(mlir_function, 'compute')
     tensor = np.random.uniform(0, 10.0, size=(3, 3)).astype(np.float32)
     perm0 = np.array([1, 0]).astype(np.int64)
     perm1 = np.array([0, 1]).astype(np.int64)
 
-    [res] = cpurt.execute(compiled, [tensor, perm0, perm1])
+    [res] = jitrt.execute(compiled, [tensor, perm0, perm1])
     np.testing.assert_allclose(
         res, np.transpose(np.transpose(tensor, perm0), perm1), atol=0.0)
 
@@ -134,7 +134,7 @@ class TfTransposeTest(test.TestCase):
         return %0 : tensor<*xf32>
       }"""
     try:
-      cpurt.compile(mlir_function, 'compute')
+      jitrt.compile(mlir_function, 'compute')
     except Exception:  # pylint: disable=broad-except
       return
     raise RuntimeError('Compilation should have failed')

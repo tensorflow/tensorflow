@@ -241,7 +241,7 @@ static bool HasAnyTfSavedModelArgAttr(FuncOp func) {
 static LogicalResult VerifySavedModelModule(
     ModuleOp module, TensorFlowSavedModelDialect *dialect) {
   auto exported_names_ident =
-      Identifier::get("tf_saved_model.exported_names", dialect->getContext());
+      StringAttr::get(dialect->getContext(), "tf_saved_model.exported_names");
   // Check that there are no duplicated exported_names.
   DenseMap<StringRef, Operation *> exported_name_to_op;
   for (auto &op : module) {

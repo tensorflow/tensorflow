@@ -667,7 +667,7 @@ Status Exporter::Convert(mlir::ModuleOp module,
                          std::unique_ptr<Graph>* graph,
                          FunctionLibraryDefinition* flib_def,
                          absl::flat_hash_set<Node*>* control_ret_nodes) {
-  mlir::Identifier entry_func_id =
+  mlir::StringAttr entry_func_id =
       mlir::StringAttr::get(module.getContext(), "main");
   absl::optional<FuncOp> entry_func;
   FunctionDefLibrary flib;

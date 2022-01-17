@@ -39,7 +39,7 @@ FuncOp createMaxUnpoolingFunc(
     const SmallVector<mlir::Type, NOutput>& output_types) {
   auto func_type = builder->getFunctionType(input_types, output_types);
   auto func =
-      FuncOp::create(mlir::NameLoc::get(builder->getIdentifier("fused_func")),
+      FuncOp::create(mlir::NameLoc::get(builder->getStringAttr("fused_func")),
                      "fused_func", func_type, {});
 
   func.addEntryBlock();

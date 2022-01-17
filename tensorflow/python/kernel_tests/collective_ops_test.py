@@ -1369,15 +1369,15 @@ class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
   @combinations.generate(device_combination)
   def testAllToAllV3DifferentUserRankWithTensorInput(self, device,
                                                      communication):
-    group_size = 3
+
+    group_size = 2
     group_key = 106
 
     dev0 = '/device:%s:0' % device
     dev1 = '/device:%s:1' % device
-    dev2 = '/device:%s:2' % device
 
     @def_function.function
-    def run_all_to_all_3devices():
+    def run_all_to_all_2devices():
       collectives = []
       with ops.device(dev0):
         group_handle0 = _collective_ops.initialize_communicator(
@@ -1387,8 +1387,7 @@ class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
             communication_hint=communication)
         collectives.append(
             _collective_ops.all_to_all_v3(group_handle0,
-                                          constant_op.constant([1.0, 2.0,
-                                                                3.0])))
+                                          constant_op.constant([1.0, 2.0])))
       with ops.device(dev1):
         group_handle1 = _collective_ops.initialize_communicator(
             group_key=group_key,
@@ -1397,31 +1396,22 @@ class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
             communication_hint=communication)
         collectives.append(
             _collective_ops.all_to_all_v3(group_handle1,
-                                          constant_op.constant([4.0, 5.0,
-                                                                6.0])))
-      with ops.device(dev2):
-        group_handle2 = _collective_ops.initialize_communicator(
-            group_key=group_key,
-            rank=2,
-            group_size=group_size,
-            communication_hint=communication)
-        collectives.append(
-            _collective_ops.all_to_all_v3(group_handle2,
-                                          constant_op.constant([7.0, 8.0,
-                                                                9.0])))
+                                          constant_op.constant([3.0, 4.0])))
 
       return collectives
 
-    result = run_all_to_all_3devices()
-    self.assertAllClose(result[0], [4.0, 1.0, 7.0], rtol=1e-5, atol=1e-5)
-    self.assertAllClose(result[1], [5.0, 2.0, 8.0], rtol=1e-5, atol=1e-5)
-    self.assertAllClose(result[2], [6.0, 3.0, 9.0], rtol=1e-5, atol=1e-5)
+    result = run_all_to_all_2devices()
+    # FIXME(b/214407359): This is correct.
+    # result[0] is rank 1 and shall have 4, 2.
+    self.assertAllClose(result[1], [4.0, 2.0], rtol=1e-5, atol=1e-5)
+    self.assertAllClose(result[0], [3.0, 1.0], rtol=1e-5, atol=1e-5)
 
 
 def _setup_context():
   context._reset_context()
   test_util.set_logical_devices_to_at_least('CPU', 4)
   context.ensure_initialized()
+  context.set_log_device_placement(True)
 
 
 if __name__ == '__main__':

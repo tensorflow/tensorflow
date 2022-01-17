@@ -841,11 +841,13 @@ cc_library(
         ":is_bef_executable_enabled": [
             ":xlir_kernels",
             "@llvm-project//llvm:Support",
+            "//tensorflow/compiler/mlir:name_utils",
             "//tensorflow/core/tfrt/runtime:work_queue_interface",
             "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:befexecutor",
+            "@tf_runtime//:beftomlir",
             "@tf_runtime//:bef",
             "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
@@ -1867,6 +1869,28 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "gpu_aot_compilation_test",
+    srcs = [
+        "gpu_aot_compilation_test.cc",
+    ],
+    tags = [
+        "gpu",
+        "manual",  # Requires --//tensorflow/compiler/xla/service/gpu:enable_bef_executable=true
+        "no_oss",
+        "no_rocm",
+        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false
+        "notap",
+        # positives in msan.
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":nvptx_compiler_impl",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ],
+)
+
 cc_library(
     name = "amdgpu_compiler",
     srcs = if_rocm_is_configured([
@@ -2182,6 +2206,7 @@ cc_library(
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:instruction_fusion",
     ],
 )
 
@@ -2206,11 +2231,16 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:dnn_proto_cc",
     ],
 )
 
@@ -2225,11 +2255,20 @@ tf_cc_test(
         "requires-gpu-sm70",
     ],
     deps = [
+        ":backend_configs_cc",
         ":cublas_cudnn",
         ":cudnn_fused_conv_rewriter",
+        ":gpu_conv_rewriter",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
+        "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",

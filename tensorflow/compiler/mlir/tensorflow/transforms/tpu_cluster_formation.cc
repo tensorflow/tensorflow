@@ -100,7 +100,7 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
       return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
 
     // Remove `name` attribute.
-    attrs.erase(Identifier::get(kNameAttr, metadata_op.getContext()));
+    attrs.erase(StringAttr::get(metadata_op.getContext(), kNameAttr));
 
     auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
                                         std::move(attrs));

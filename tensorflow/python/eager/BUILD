@@ -635,6 +635,24 @@ py_library(
 )
 
 py_library(
+    name = "function_spec",
+    srcs = ["function_spec.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_decorator",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "function",
     srcs = ["function.py"],
     srcs_version = "PY3",
@@ -645,6 +663,8 @@ py_library(
         ":execute",
         ":forwardprop_util",
         ":function_cache",
+        ":function_saved_model_utils",
+        ":function_spec",
         ":graph_only_ops",
         ":tape",
         "//tensorflow/python:dtypes",
@@ -660,6 +680,13 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
+)
+
+py_library(
+    name = "function_saved_model_utils",
+    srcs = ["function_saved_model_utils.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
 )
 
 pybind_extension(
@@ -923,6 +950,7 @@ py_library(
     deps = [
         ":context",
         ":function",
+        ":function_spec",
         ":lift_to_graph",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",

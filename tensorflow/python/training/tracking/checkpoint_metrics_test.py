@@ -40,6 +40,9 @@ class CheckpointMetricTests(test.TestCase):
   def _get_time_saved(self, api_label):
     return metrics.GetTrainingTimeSaved(api_label=api_label)
 
+  def _get_checkpoint_size(self, api_label, filesize):
+    return metrics.GetCheckpointSize(api_label=api_label, filesize=filesize)
+
   def test_metrics_v2(self):
     api_label = util._CHECKPOINT_V2
     prefix = os.path.join(self.get_temp_dir(), 'ckpt')
@@ -48,14 +51,17 @@ class CheckpointMetricTests(test.TestCase):
       ckpt = util.Checkpoint(v=variables_lib.Variable(1.))
       self.assertEqual(self._get_time_saved(api_label), 0.0)
       self.assertEqual(self._get_write_histogram_proto(api_label).num, 0.0)
-      for _ in range(3):
+
+      for i in range(3):
         time_saved = self._get_time_saved(api_label)
         ckpt_path = ckpt.write(file_prefix=prefix)
+        filesize = util._get_checkpoint_size(ckpt_path)
+        self.assertEqual(self._get_checkpoint_size(api_label, filesize), i + 1)
         self.assertGreater(self._get_time_saved(api_label), time_saved)
 
     self.assertEqual(self._get_write_histogram_proto(api_label).num, 3.0)
-
     self.assertEqual(self._get_read_histogram_proto(api_label).num, 0.0)
+
     time_saved = self._get_time_saved(api_label)
     with context.eager_mode():
       ckpt.restore(ckpt_path)
@@ -75,9 +81,12 @@ class CheckpointMetricTests(test.TestCase):
       ckpt.v = v
       self.assertEqual(self._get_time_saved(api_label), 0.0)
       self.assertEqual(self._get_write_histogram_proto(api_label).num, 0.0)
-      for _ in range(3):
+
+      for i in range(3):
         time_saved = self._get_time_saved(api_label)
         ckpt_path = ckpt.write(file_prefix=prefix)
+        filesize = util._get_checkpoint_size(ckpt_path)
+        self.assertEqual(self._get_checkpoint_size(api_label, filesize), i + 1)
         self.assertGreaterEqual(self._get_time_saved(api_label), time_saved)
 
     self.assertEqual(self._get_write_histogram_proto(api_label).num, 3.0)

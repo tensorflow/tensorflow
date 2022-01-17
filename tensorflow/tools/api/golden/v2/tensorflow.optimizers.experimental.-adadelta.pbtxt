@@ -45,7 +45,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'learning_rate\', \'rho\', \'epsilon\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.95\', \'1e-07\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'100\', \'False\', \'Adadelta\'], "
+    argspec: "args=[\'self\', \'learning_rate\', \'rho\', \'epsilon\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.95\', \'1e-07\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'None\', \'False\', \'Adadelta\'], "
   }
   member_method {
     name: "add_variable"

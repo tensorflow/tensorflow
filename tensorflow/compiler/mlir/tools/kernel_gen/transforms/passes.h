@@ -51,7 +51,8 @@ std::unique_ptr<FunctionPass> CreateBufferReusePass();
 std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
     llvm::ArrayRef<int64_t> tile_sizes = {},
     llvm::ArrayRef<int64_t> unroll_factors = {}, int64_t max_supported_rank = 5,
-    bool enable_ftz = false, bool cpu_codegen = false);
+    bool enable_ftz = false, bool index_64bit = false, bool cpu_codegen = false,
+    bool jit_i64_indexed_for_large_tensors = false);
 
 // Pass for applying LLVM legalization patterns.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(

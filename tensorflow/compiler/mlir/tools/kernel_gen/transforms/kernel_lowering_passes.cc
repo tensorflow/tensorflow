@@ -57,9 +57,6 @@ class GpuKernelToNVVMPass
     RewritePatternSet patterns(&getContext());
     mlir::LowerToLLVMOptions llvm_opts(m.getContext(), DataLayout(m));
 
-    // TODO(b/213038246): Remove this override once the DLTI spec is fixed.
-    llvm_opts.overrideIndexBitwidth(32);
-
     LLVMTypeConverter converter(m.getContext(), llvm_opts);
     arith::populateArithmeticToLLVMConversionPatterns(converter, patterns);
     populateMathToLLVMConversionPatterns(converter, patterns);

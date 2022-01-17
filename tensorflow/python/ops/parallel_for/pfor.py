@@ -21,7 +21,6 @@ import sys
 import traceback
 
 import numpy as np
-import six
 
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.core.framework import full_type_pb2
@@ -205,7 +204,7 @@ def _is_stateful_pfor_op(op):
 
 
 # pylint: disable=protected-access
-class WhileOp(object):
+class WhileOp:
   """Object for storing state for converting the outputs of a while_loop."""
 
   def __init__(self, exit_node, pfor_ops, fallback_to_while_loop, pfor_config):
@@ -780,7 +779,7 @@ class ConversionNotImplementedError(Exception):
   pass
 
 
-class _PforInput(object):
+class _PforInput:
   """Input object passed to registered pfor converters."""
 
   __slots__ = ["pfor", "_op", "_inputs"]
@@ -917,7 +916,7 @@ class _PforInput(object):
 _pfor_converter_registry = {}
 
 
-class RegisterPFor(object):
+class RegisterPFor:
   """Utility to register converters for pfor.
 
   Usage:
@@ -1109,7 +1108,7 @@ def _fallback_converter(pfor_input, warn=True):
   return tuple([wrap(ta.concat(), True) for ta in ta_list])
 
 
-class PForConfig(object):
+class PForConfig:
   """A configuration object used to communicate with loop body function."""
 
   def __init__(self):
@@ -1235,7 +1234,7 @@ class PForConfig(object):
     return self._reduce_map.get(t.op)
 
 
-class PFor(object):
+class PFor:
   """Implementation of rewrite of parallel-for loops.
 
   This class takes a DAG or a set of DAGs representing the body of a
@@ -1622,7 +1621,7 @@ class PFor(object):
                   and not has_vectorized_variant_inputs):
                 new_outputs = _fallback_converter(pfor_inputs)
               else:
-                six.reraise(ValueError, ValueError(str(e)), sys.exc_info()[2])
+                raise ValueError(str(e)).with_traceback(sys.exc_info()[2])
           except Exception as e:  # pylint: disable=broad-except
             logging.error(
                 f"Got error while pfor was converting op {y_op} with inputs "
@@ -1634,7 +1633,7 @@ class PFor(object):
                   "%s\ncreated at:\n  %s", original_op,
                   "  ".join(traceback.format_list(original_op.traceback)))
               original_op = original_op._original_op
-            six.reraise(e.__class__, e, sys.exc_info()[2])
+            raise
 
           if isinstance(new_outputs, WrappedTensor):
             new_outputs = [new_outputs]
@@ -4579,7 +4578,7 @@ def _convert_if(pfor_input):
     return [wrap(t, True) for t in outputs]
 
 
-class WhileV2(object):
+class WhileV2:
   """Object for vectorizing V2 while_loop op."""
 
   def __init__(self, pfor_input):

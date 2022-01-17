@@ -107,10 +107,7 @@ message DebugOptions {
   bool xla_hlo_graph_sharding_color = 92;
 
   reserved 93;  // Was xla_hlo_tfgraph_device_scopes
-
-  // If true, the GPU backend is free to use cudnn for HLO batch normalization
-  // ops.
-  bool xla_gpu_use_cudnn_batchnorm = 94;
+  reserved 94;  // Was xla_gpu_use_cudnn_batchnorm
 
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;

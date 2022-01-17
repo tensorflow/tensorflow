@@ -16,7 +16,7 @@ cc_library(
     hdrs = ["benchmark.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:logging",
@@ -30,7 +30,7 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
-        "@tf_runtime//backends/cpu:cpurt",
+        "@tf_runtime//backends/jitrt",
     ],
 )
 
@@ -42,7 +42,7 @@ cc_library(
     deps = [
         ":benchmark",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
@@ -63,7 +63,7 @@ cc_library(
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
-        "@tf_runtime//backends/cpu:cpurt",
+        "@tf_runtime//backends/jitrt",
     ],
 )
 

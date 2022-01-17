@@ -2,6 +2,11 @@
 // RUN:   --mhlo-merge-assuming-ops --canonicalize --cse %s | \
 // RUN: FileCheck %s
 
+// RUN: mlir-hlo-opt --split-input-file --allow-unregistered-dialect \
+// RUN:   --mhlo-merge-assuming-ops="propagate-broadcasts=false" \
+// RUN:   --canonicalize --cse %s | \
+// RUN: FileCheck --check-prefix=CHECK-NOPROP %s
+
 // Shape computations shall be reified.
 // CHECK-LABEL: @shape_of_unary
 // CHECK-SAME: (%[[ARG:.*]]: tensor<?x32xi16>)
@@ -45,6 +50,13 @@ func @bcast_unary(%arg : tensor<?x32xi16>, %out_dims : tensor<3xindex>)
       (tensor<?x32xf16>, tensor<3xindex>) -> tensor<?x?x32xf16>
   return %1 : tensor<?x?x32xf16>
 }
+
+// CHECK-NOPROP-LABEL: @bcast_unary
+// CHECK-NOPROP-SAME: (%[[ARG:.*]]: tensor<?x32xi16>, %[[OUT_DIMS:.*]]: tensor<3xindex>)
+
+// CHECK-NOPROP: %[[TMP:.*]] = "mhlo.convert"(%[[ARG]])
+// CHECK-NOPROP: %[[RES:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[TMP]], %[[OUT_DIMS]])
+// return %[[RES]]
 
 // -----
 
@@ -160,18 +172,19 @@ func @move_cstr_broadcastable_into_assuming(%arg0 : !shape.witness,
 // -----
 
 // CHECK-LABEL: @not_move_shape_of_into_assuming
+// CHECK-SAME: (%[[W:.*]]: !shape.witness, %[[ARG0:.*]]: tensor<?x32xf32>, %[[ARG1:.*]]: tensor<?x32xf32>)
 func @not_move_shape_of_into_assuming(%arg0 : !shape.witness,
     %arg1 : tensor<?x32xf32>, %arg2 : tensor<?x32xf32>) -> tensor<2xindex> {
-  // CHECK:      shape.assuming
-  // CHECK-SAME: {
-  // CHECK-NOT:    shape_of
-  // CHECK:      }
-  // CHECK:     "some.other.op"
-  // CHECK:     shape_of
+  // CHECK: %[[S:.*]] = shape.shape_of %[[ARG1]]
+  // CHECK: %[[ASS_RES:.*]] = shape.assuming %[[W]]
+  // CHECK:   shape.assuming_yield %[[ARG0]]
+  // CHECK: }
+  // CHECK: "some.other.op"(%[[ASS_RES]])
+  // CHECK: return %[[S]]
   %0:2 = shape.assuming %arg0 -> (tensor<?x32xf32>, tensor<?x32xf32>) {
     shape.assuming_yield %arg1, %arg2 : tensor<?x32xf32>, tensor<?x32xf32>
   }
-  "some.other.op"() : () -> ()
+  "some.other.op"(%0#0) : (tensor<?x32xf32>) -> ()
   %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<2xindex>
   return %2 : tensor<2xindex>
 }
@@ -473,4 +486,22 @@ func @bcast_select_scalar_pred(%pred : tensor<i1>, %arg0 : tensor<?x?xf32>,
       { broadcast_dimensions = dense<[0, 1]> : tensor<2xi64> }
       : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   return %1 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @move_down_into_assuming
+// CHECK-SAME:  (%[[ARG:.*]]: tensor<?x32xi16>, %[[W:.*]]: !shape.witness)
+func @move_down_into_assuming(%arg0: tensor<?x32xi16>, %w: !shape.witness) -> tensor<?x32xf16> {
+  // CHECK: %[[RES:.*]] = shape.assuming %[[W]]
+  // CHECK:   %[[INNER_RES:.*]] = "mhlo.convert"(%[[ARG]])
+  // CHECK:   shape.assuming_yield %[[INNER_RES]]
+  // CHECK: }
+  // CHECK: return %[[RES]]
+  %0 = "mhlo.convert"(%arg0) : (tensor<?x32xi16>) -> tensor<?x32xf16>
+  "some.possibly_side_effecting_op"() : () -> ()
+  %4 = shape.assuming %w -> (tensor<?x32xf16>) {
+    shape.assuming_yield %0 : tensor<?x32xf16>
+  }
+  return %4 : tensor<?x32xf16>
 }

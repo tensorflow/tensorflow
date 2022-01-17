@@ -1899,14 +1899,19 @@ class TPUEmbedding(object):
           if (self._feature_to_config_dict[feature].max_sequence_length > 0 and
               enqueue_data.sample_indices is not None and
               enqueue_data.sample_indices.shape[1] == 2):
-            # Pad the sample indices as if the enqueued sparse tensor is rank 3.
+            # Pad the sample indices as if the enqueued sparse tensor is rank 2.
             sample_indices = array_ops.pad(
                 enqueue_data.sample_indices, paddings=[[0, 0], [0, 1]])
             kwargs['sample_indices_or_row_lengths'].append(sample_indices)
           else:
-            kwargs['sample_indices_or_row_lengths'].append(
-                enqueue_data.sample_indices if enqueue_data
-                .sample_indices is not None else int_zeros)
+            # If the sample_indices is rank 1 or not present, treat it as dense
+            # tensor.
+            if (enqueue_data.sample_indices is None or
+                enqueue_data.sample_indices.shape[1] == 1):
+              kwargs['sample_indices_or_row_lengths'].append(int_zeros)
+            else:
+              kwargs['sample_indices_or_row_lengths'].append(
+                  enqueue_data.sample_indices)
 
         kwargs['aggregation_weights'].append(
             enqueue_data.aggregation_weights if enqueue_data

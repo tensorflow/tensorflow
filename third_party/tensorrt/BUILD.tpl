@@ -15,12 +15,6 @@ config_setting(
     define_values = {"TF_TENSORRT_STATIC":"1"},
 )
 
-# Use the tensorrt plugin open source.
-config_setting(
-    name = "use_efficient_nms_plugin",
-    define_values = {"use_efficient_nms_plugin": "1"},
-)
-
 cc_library(
     name = "tensorrt_headers",
     hdrs = [

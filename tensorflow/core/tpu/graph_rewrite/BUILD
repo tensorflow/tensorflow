@@ -96,6 +96,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/jit:encapsulate_util",
+        "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/xla:status_macros",

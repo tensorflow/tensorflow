@@ -688,17 +688,18 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
       const int64_t result_dim_size = result_dim_sizes[dim];
 
       if (dim == axis) {
-        if (RankedTensorType::isDynamic(operand_dim_size) ||
-            RankedTensorType::isDynamic(result_dim_size))
+        if (ShapedType::isDynamic(operand_dim_size) ||
+            ShapedType::isDynamic(result_dim_size)) {
           result_dim_sizes[axis] = kDynamicSize;
-        else
+        } else {
           result_dim_sizes[axis] += operand_dim_size;
+        }
         continue;
       }
 
-      if (RankedTensorType::isDynamic(operand_dim_size)) continue;
+      if (ShapedType::isDynamic(operand_dim_size)) continue;
 
-      if (RankedTensorType::isDynamic(result_dim_size)) {
+      if (ShapedType::isDynamic(result_dim_size)) {
         result_dim_sizes[dim] = operand_dim_size;
         result_dim_sizes_loc[dim] = operand.index();
         continue;
@@ -715,8 +716,8 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
   }
 
   const int64_t output_concated_dim_size = output_type.getDimSize(axis);
-  if (!RankedTensorType::isDynamic(output_concated_dim_size) &&
-      !RankedTensorType::isDynamic(result_dim_sizes[axis]) &&
+  if (!ShapedType::isDynamic(output_concated_dim_size) &&
+      !ShapedType::isDynamic(result_dim_sizes[axis]) &&
       result_dim_sizes[axis] != output_concated_dim_size)
     return op->emitOpError()
            << "dimension size of dimension #" << axis << " of output "

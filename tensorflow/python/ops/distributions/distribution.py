@@ -19,7 +19,6 @@ import contextlib
 import types
 
 import numpy as np
-import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -65,8 +64,7 @@ _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
 ]
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _BaseDistribution(object):
+class _BaseDistribution(metaclass=abc.ABCMeta):
   """Abstract base class needed for resolving subclass hierarchy."""
   pass
 
@@ -209,7 +207,7 @@ class _DistributionMeta(abc.ABCMeta):
 
 
 @tf_export(v1=["distributions.ReparameterizationType"])
-class ReparameterizationType(object):
+class ReparameterizationType:
   """Instances of this class represent how sampling is reparameterized.
 
   Two static instances exist in the distributions library, signifying
@@ -271,9 +269,8 @@ tf_export(v1=["distributions.NOT_REPARAMETERIZED"]).export_constant(
     __name__, "NOT_REPARAMETERIZED")
 
 
-@six.add_metaclass(_DistributionMeta)
 @tf_export(v1=["distributions.Distribution"])
-class Distribution(_BaseDistribution):
+class Distribution(_BaseDistribution, metaclass=_DistributionMeta):
   """A generic probability distribution base class.
 
   `Distribution` is a base class for constructing and organizing properties
