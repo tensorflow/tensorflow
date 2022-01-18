@@ -2005,10 +2005,10 @@ void RegisterGraphToURLRenderer(
       std::move(renderer));
 }
 
-Status RegisterFusionState(const HloComputation& computation,
-                           absl::string_view label,
-                           const HloInstruction& consumer,
-                           const HloInstruction* producer) {
+void RegisterFusionState(const HloComputation& computation,
+                         absl::string_view label,
+                         const HloInstruction& consumer,
+                         const HloInstruction* producer) {
   tensorflow::mutex_lock lock(fusion_visualizer_state_mu);
   FusionVisualizerProgress& fusion_progress =
       fusion_visualizer_states[FusionVisualizerStateKey(computation)];
@@ -2034,7 +2034,6 @@ Status RegisterFusionState(const HloComputation& computation,
   }
 
   fusion_progress.AddState(dot_txt, label, producer_to_highlight);
-  return Status::OK();
 }
 
 StatusOr<std::string> RenderGraph(

@@ -267,7 +267,7 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
             ->config()
             .debug_options()
             .xla_dump_fusion_visualization()) {
-      TF_RETURN_IF_ERROR(RegisterFusionState(*computation_, label, consumer));
+      RegisterFusionState(*computation_, label, consumer);
     }
     return Status::OK();
   };
