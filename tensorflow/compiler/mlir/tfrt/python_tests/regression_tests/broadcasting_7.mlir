@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?x?xf32>, %V__1: tensor<?xf32>) -> tensor<?x?xf32> {
+builtin.func @test(%V__0: tensor<?x?xf32> { python_test_attrs.static_type = tensor<10x3xf32> }, %V__1: tensor<?xf32> { python_test_attrs.static_type = tensor<3xf32> }) -> tensor<?x?xf32> {
   %0 = "tf.Reciprocal"(%V__0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %1 = "tf.Round"(%0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %2 = "tf.Acos"(%1) : (tensor<?x?xf32>) -> tensor<?x?xf32>

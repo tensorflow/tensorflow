@@ -51,7 +51,7 @@ class CompileAndRunTest(test.TestCase):
     if ir.IntegerType.isinstance(mlir_type):
       mlir_type = ir.IntegerType(mlir_type)
       if mlir_type.width == 1:
-        return np.bool
+        return bool
       if mlir_type.width == 8:
         if mlir_type.is_unsigned:
           return np.uint8
@@ -88,8 +88,8 @@ class CompileAndRunTest(test.TestCase):
         module = ir.Module.parse(mlir_function)
         func = module.body.operations[0]
         function_name = ir.StringAttr(func.attributes['sym_name']).value
-        if _ARG_ATTRIBUTES_NAME in func.attributes:
-          arg_attrs = ir.ArrayAttr(func.attributes[_ARG_ATTRIBUTES_NAME])
+        self.assertIn(_ARG_ATTRIBUTES_NAME, func.attributes)
+        arg_attrs = ir.ArrayAttr(func.attributes[_ARG_ATTRIBUTES_NAME])
       logging.info(f'processing {filename}')
       start = time.perf_counter()
       compiled = jitrt.compile(
@@ -99,8 +99,6 @@ class CompileAndRunTest(test.TestCase):
           vectorize=FLAGS.vectorize)
       end = time.perf_counter()
       logging.info(f'compiled {filename} in {end-start:0.4f} seconds')
-      if not arg_attrs:
-        return
       np.random.seed(FLAGS.input_data_seed)
       args = []
       for arg_attr in arg_attrs:
@@ -119,10 +117,7 @@ class CompileAndRunTest(test.TestCase):
           arg = np.random.uniform(
               -10000.0, 10000.0, size=shaped_type.shape).astype(np_element_type)
           args.append(arg)
-      if len(args) != len(arg_attrs):
-        logging.error(
-            'expected valid python_test_attrs attributes for each argument')
-        return
+      self.assertEqual(len(args), len(arg_attrs))
       start = time.perf_counter()
       jitrt.execute(compiled, args)
       end = time.perf_counter()
