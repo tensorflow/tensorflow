@@ -247,16 +247,18 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 #if GOOGLE_CUDA && CUDA_VERSION >= 11000
   GpuGemmConfig config = GetGpuGemmConfig(instr);
   const Shape& output_shape = config.output_shape;
-  std::unordered_set<PrimitiveType> enabled_types = {F16, F32, F64, C64, C128};
+  absl::flat_hash_set<PrimitiveType> enabled_types = {F16, F32, F64, C64, C128};
 
   if (config.use_cublaslt &&
-      enabled_types.find(output_shape.element_type()) != enabled_types.end()) {
+      enabled_types.contains(output_shape.element_type())) {
     se::blas::MatrixDescriptor lhs_matrix, rhs_matrix, output_matrix;
     std::tie(lhs_matrix, rhs_matrix, output_matrix) =
         PopulateInputOutputMatrices(config, lhs_buffer, rhs_buffer,
                                     output_buffer);
 
-    DCHECK(output_matrix.transpose == se::blas::Transpose::kNoTranspose);
+    if (output_matrix.transpose != se::blas::Transpose::kNoTranspose) {
+      return InternalError("GEMM output matrix must not be transposed.");
+    }
     tensorflow::DataType dtype;
     se::blas::DataType blas_dtype;
     switch (output_shape.element_type()) {

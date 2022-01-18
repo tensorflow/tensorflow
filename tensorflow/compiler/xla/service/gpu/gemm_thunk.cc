@@ -439,9 +439,9 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
 
   // The BlasLtMatmul routines are only supported from CUDA 11.0 onward.
 #if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11000
-  std::unordered_set<PrimitiveType> enabled_types = {F16, F32, F64, C64, C128};
+  absl::flat_hash_set<PrimitiveType> enabled_types = {F16, F32, F64, C64, C128};
   if (gemm_config.use_cublaslt &&
-      enabled_types.find(output_shape.element_type()) != enabled_types.end()) {
+      enabled_types.contains(output_shape.element_type())) {
     bool has_activation_relu =
         static_cast<se::dnn::ActivationMode>(
             backend_config.activation_mode()) == se::dnn::ActivationMode::kRelu;

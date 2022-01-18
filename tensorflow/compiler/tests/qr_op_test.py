@@ -57,10 +57,10 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
     x *= phases
     self.assertTrue(np.all(self.AdjustedNorm(x - y) < 30.0))
 
-  def CheckApproximation(self, a, q, r, p):
+  def CheckApproximation(self, a, q, r):
     # Tests that a ~= q*r.
     precision = self.AdjustedNorm(a - np.matmul(q, r))
-    self.assertTrue(np.all(precision < p))
+    self.assertTrue(np.all(precision < 11.0))
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
@@ -81,7 +81,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
       x_np += rng() * dtype(1j)
     return x_np
 
-  def _test(self, x_np, full_matrices, full_rank=True, precision = 10.0):
+  def _test(self, x_np, full_matrices, full_rank=True):
     dtype = x_np.dtype
     shape = x_np.shape
     with self.session() as sess:
@@ -107,7 +107,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
       if full_rank:
         # Q is unique up to sign/phase if the matrix is full-rank.
         self.CompareOrthogonal(np_q, q_tf_val, min(shape[-2:]))
-      self.CheckApproximation(x_np, q_tf_val, r_tf_val, precision)
+      self.CheckApproximation(x_np, q_tf_val, r_tf_val)
       self.CheckUnitary(q_tf_val)
 
   SIZES = [1, 2, 5, 10, 32, 100, 300, 603]
@@ -120,8 +120,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
       # Only tests the (3, 2) case for small numbers of rows/columns.
       for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
         x_np = self._random_matrix(dtype, batch_dims + (rows, cols))
-        prec = 11.0
-        self._test(x_np, full_matrices, True, prec)
+        self._test(x_np, full_matrices, True)
 
   def testLarge2000x2000(self):
     x_np = self._random_matrix(np.float32, (2000, 2000))
