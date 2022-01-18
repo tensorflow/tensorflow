@@ -113,6 +113,40 @@ TEST(SavedModelTest, BasicV2) {
   EXPECT_EQ(output.flat<int32_t>()(0), 6);
 }
 
+TEST(SavedModelTest, VariableOnTpu) {
+  // A ReadVariableOp on 'TPU' would behave exactly the same as a ReadVariableOp
+  // on 'CPU'. This is to be compatible with TF1 runtime.
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/variable_on_tpu");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.graph_execution_options.compile_options.enable_native_ops = false;
+
+  tensorflow::Status status;
+  auto saved_model =
+      SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                     /*tags=*/{"serve"}, &status);
+  TF_CHECK_OK(status);
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.emplace_back(tensorflow::DT_INT32,
+                      /*shape=*/tensorflow::TensorShape{1, 3});
+  auto flat = inputs.back().flat<int32_t>();
+  flat(0) = 1;
+  flat(1) = 1;
+  flat(2) = 1;
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model->Run({}, "serving_default", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+  auto& output = outputs[0];
+
+  ASSERT_EQ(output.NumElements(), 1);
+  EXPECT_EQ(output.flat<int32_t>()(0), 6);
+}
+
 std::vector<tensorflow::Tensor> CreateExpectedOutputs(
     const FunctionMetadata& function_metadata,
     const std::vector<std::pair<std::string, tensorflow::Tensor>>&
