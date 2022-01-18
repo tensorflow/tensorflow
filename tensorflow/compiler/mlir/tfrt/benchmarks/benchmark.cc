@@ -77,7 +77,8 @@ JitExecutable& CreateJitExecutable(
       tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
     };
   }
-  opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
+  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+      mlir::bufferization::BufferizeTypeConverter());
 
   // Cache all jit executables, otherwise different benchmark runs will produce
   // different .so files and the same compiled function will have different

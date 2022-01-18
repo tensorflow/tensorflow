@@ -90,7 +90,8 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
     tensorflow::CreateTfJitRtPipeline(pm, opts);
   };
   opts.specialization = specialization;
-  opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
+  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+      mlir::bufferization::BufferizeTypeConverter());
 
   // Instantiate new JitExecutable from the MLIR source.
   llvm::Expected<JitExecutable> jit_executable =

@@ -371,8 +371,12 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // All entry memrefs must have alignment compatible with Tensorflow.
     opts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
     opts.num_worker_threads = workers->NumThreads();
-    opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
     opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
+
+    // When lowering Tensorflow functions to JitRt we convert all input and
+    // result tensors to memrefs, and add a kernel context input.
+    opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+        mlir::bufferization::BufferizeTypeConverter());
 
     // TODO(b/202247905): Default binary compilation can be prohibitively
     // expensive because of the exponential complexity in the broadcast
