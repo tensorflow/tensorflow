@@ -3421,6 +3421,7 @@ inline bool AveragePool16(const PoolParams& params,
       }
     }
   }
+  return true;
 }
 
 inline bool AveragePool32(const PoolParams& params,
