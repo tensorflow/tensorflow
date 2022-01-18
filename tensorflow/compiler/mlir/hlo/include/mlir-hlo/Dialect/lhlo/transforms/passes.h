@@ -59,17 +59,6 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 // Legalizes tensor load ops that are inserted during mhlo to lmhlo conversion.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToTensorOpPass();
 
-// fuse lmhlo ops to kLoop/kInput fusion patterns
-std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
-    int max_num_arguments_per_kernel = 64);
-
-// inline lmhlo.Fusion
-std::unique_ptr<OperationPass<FuncOp>> createLhloFusionInlinerPass();
-
-// Lowers the roots of lmhlo.fusion to parallel loops
-std::unique_ptr<OperationPass<FuncOp>>
-createLhloLegalizeRootsToParallelLoopsPass();
-
 // Input inline fusion pass for fusion codegen
 std::unique_ptr<FunctionPass> createInputInlineFusionPass();
 

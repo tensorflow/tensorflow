@@ -63,9 +63,6 @@ createLegalizeHloShapeOpsToStandardPass();
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
 
-// Place shape calculating subgraph on cpu.
-std::unique_ptr<OperationPass<ModuleOp>> createMarkShapeCalcOpPass();
-
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();

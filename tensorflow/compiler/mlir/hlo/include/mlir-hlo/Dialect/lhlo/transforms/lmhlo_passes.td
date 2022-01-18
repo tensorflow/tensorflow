@@ -48,37 +48,3 @@ def LegalizeToTensorOpPass : FunctionPass<"lhlo-legalize-to-tensor-op"> {
   let summary = "Legalize bufferization.to_tensor ops inserted during mhlo to lmhlo conversion.";
   let constructor = "createLegalizeToTensorOpPass()";
 }
-
-def LhloFusionPass : FunctionPass<"lhlo-fusion"> {
-  let summary = "Fuse lmhlo ops to kLoop/kInput fusion patterns.";
-  let constructor = "createLhloFusionPass()";
-  let options = [
-    Option<"max_num_arguments_per_kernel_", "max-num-arguments-per-kernel", "int",
-           /*default=*/"64", "Maximum allowed number of arguments per fused kernel.">,
-  ];
-}
-
-def LhloFusionInlinerPass : FunctionPass<"lhlo-fusion-inliner"> {
-  let summary = "Inline the contents of its body to the parent region "
-    "after its body has been lowered";
-  let constructor = "createLhloFusionInlinerPass()";
-}
-
-def LhloLegalizeRootsToParallelLoopsPass : FunctionPass<"lhlo-legalize-roots-to-parallel-loops"> {
-  let summary = "Legalize the roots of lmhlo.fusion to parallel loops.";
-  let constructor = "createLhloLegalizeRootsToParallelLoopsPass()";
-  let dependentDialects = [
-    "scf::SCFDialect",
-    "memref::MemRefDialect"
-  ];
-}
-
-def InputInlineFusionPass : FunctionPass<"input-inline-fusion"> {
-  let summary = "Fuse the rest of the lmhlo nodes into the parallel loops after the roots "
-    "has been expanded into loops in LhloLegalizeRootsToParallelLoops";
-  let constructor = "createInputInlineFusionPass()";
-  let dependentDialects = [
-    "scf::SCFDialect",
-    "memref::MemRefDialect"
-  ];
-}

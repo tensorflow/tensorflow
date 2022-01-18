@@ -77,16 +77,10 @@ def LegalizeToStandardPass : FunctionPass<"mhlo-legalize-to-std"> {
   let constructor = "createLegalizeToStdPass()";
 }
 
-def MarkShapeCalculationPass : Pass<"mhlo-mark-shape-calc", "ModuleOp"> {
-  let summary = "Identify and mark with an attribute operations performing shape calculation";
-  let constructor = "createMarkShapeCalcOpPass()";
-}
-
 def LowerComplexPass : FunctionPass<"mhlo-test-lower-complex"> {
   let summary = "Lower complex operations into non-complex operations.";
   let constructor = "createLowerComplexPass()";
 }
-
 
 def LegalizeGeneralDotPass : FunctionPass<"mhlo-test-lower-general-dot"> {
   let summary = "Tests lowering general dot to a non-batched dot when possible.";
