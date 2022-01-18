@@ -83,12 +83,13 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
     // annotate dynamic shaped types with static type information.
     mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
   };
-  opts.register_pass_pipeline = [=](mlir::OpPassManager& pm) {
+  opts.register_compilation_pipeline = [=](mlir::OpPassManager& pm) {
     tensorflow::TfJitRtPipelineOptions opts;
     opts.vectorize = vectorize;
     opts.legalize_i1_tensors = legalize_i1_tensors;
     tensorflow::CreateTfJitRtPipeline(pm, opts);
   };
+  opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
   opts.specialization = specialization;
   opts.calling_convention = CompilationOptions::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
