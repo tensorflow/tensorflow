@@ -2686,7 +2686,7 @@ class ReduceLROnPlateau(Callback):
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
-    logs['lr'] = backend.get_value(self.model.optimizer.lr)
+    logs['lr'] = backend.get_value(self.model.optimizer.learning_rate)
     current = logs.get(self.monitor)
     if current is None:
       logging.warning('Learning rate reduction is conditioned on metric `%s` '
@@ -2704,11 +2704,11 @@ class ReduceLROnPlateau(Callback):
       elif not self.in_cooldown():
         self.wait += 1
         if self.wait >= self.patience:
-          old_lr = backend.get_value(self.model.optimizer.lr)
+          old_lr = backend.get_value(self.model.optimizer.learning_rate)
           if old_lr > np.float32(self.min_lr):
             new_lr = old_lr * self.factor
             new_lr = max(new_lr, self.min_lr)
-            backend.set_value(self.model.optimizer.lr, new_lr)
+            backend.set_value(self.model.optimizer.learning_rate, new_lr)
             if self.verbose > 0:
               print('\nEpoch %05d: ReduceLROnPlateau reducing learning '
                     'rate to %s.' % (epoch + 1, new_lr))
