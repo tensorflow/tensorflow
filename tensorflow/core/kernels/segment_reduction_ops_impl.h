@@ -970,58 +970,6 @@ class SparseSegmentGradOpBase : public OpKernel {
       is_modified[output_idx] = true;
     }
   }
-};
-
-}  // namespace functor
-
-// Implements the common logic for the gradients of SparseSegmentReduction
-// kernels.
-//
-// The template parameters are:
-// * Device: An Eigen device object, on which the kernel will execute.
-// * T: The value type.
-// * Index: The element type of the indices tensor (int32 or int64).
-// * SegmentId: The element type of the segment_ids tensor (int32 or int64).
-template <typename Device, class T, typename Index, typename SegmentId>
-class SparseSegmentGradOpBase : public OpKernel {
- public:
-  explicit SparseSegmentGradOpBase(OpKernelConstruction* context,
-                                   SparseSegmentReductionOperation operation)
-      : OpKernel(context), operation_(operation) {}
-
-  void Compute(OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
-    const Tensor& indices = context->input(1);
-    const Tensor& segment_ids = context->input(2);
-    const Tensor& output_dim0 = context->input(3);
-
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(indices.shape()),
-                errors::InvalidArgument("indices should be a vector."));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
-                errors::InvalidArgument("segment_ids should be a vector."));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(output_dim0.shape()),
-                errors::InvalidArgument("output_dim0 should be a scalar."));
-
-    const int64_t N = indices.NumElements();
-    OP_REQUIRES(context, N == segment_ids.NumElements(),
-                errors::InvalidArgument(
-                    "segment_ids and indices should have same size."));
-    const SegmentId M = internal::SubtleMustCopy(output_dim0.scalar<int32>()());
-
-    auto input_flat = input.flat_outer_dims<T>();
-    const auto indices_vec = indices.vec<Index>();
-    const auto segment_vec = segment_ids.vec<SegmentId>();
-
-    TensorShape output_shape = input.shape();
-    OP_REQUIRES_OK(context, output_shape.SetDimWithStatus(0, M));
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    if (M == 0 || N == 0) return;
-
-    auto output_flat = output->flat_outer_dims<T>();
-    functor::SparseSegmentGradFunctor<Device, T, Index, SegmentId>()(
-        context, operation_, input_flat, indices_vec, segment_vec, output_flat);
-  }
 
  private:
   const bool is_sqrtn_;
