@@ -1729,6 +1729,13 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
                                             op->getResults());
   }
 
+  // The shape inference function for `ReduceDatasetOp` should always be
+  // executed regardless of whether the result type can be refined.
+  if (auto reduce_dataset_op = dyn_cast<ReduceDatasetOp>(op)) {
+    // TODO(jpienaar): The output type of these ops need to be refined.
+    return InferShapeForReduceDataset(reduce_dataset_op, max_iterations);
+  }
+
   // If no result for this op needs shape inference, we have a fast-path return.
   // But if the type is a resource/variant, we do not skip it because we might
   // not have the handle shapes.
@@ -1778,11 +1785,6 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   if (auto map_dataset_op = dyn_cast<MapDatasetOp>(op)) {
     // TODO(jpienaar): The output type of these ops need to be refined.
     return InferShapeForMapDataset(map_dataset_op, max_iterations);
-  }
-
-  if (auto reduce_dataset_op = dyn_cast<ReduceDatasetOp>(op)) {
-    // TODO(jpienaar): The output type of these ops need to be refined.
-    return InferShapeForReduceDataset(reduce_dataset_op, max_iterations);
   }
 
   if (auto takewhile_dataset_op = dyn_cast<TakeWhileDatasetOp>(op)) {
