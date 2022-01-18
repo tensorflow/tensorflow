@@ -1384,8 +1384,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 1, 2, 3, 1, 2, 3]
 
-    Note: If this dataset is a function of global state (e.g. a random number
-    generator), then different repetitions may produce different elements.
+    Note: If the input dataset depends on global state (e.g. a random number
+    generator) or its output is non-deterministic (e.g. because of upstream
+    `shuffle`), then different repetitions may produce different elements.
 
     Args:
       count: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
@@ -4233,8 +4234,8 @@ class UnaryUnchangedStructureDataset(UnaryDataset):
 class _VariantDataset(DatasetV2):
   """A Dataset wrapper around a `tf.variant`-typed function argument."""
 
-  def __init__(self, dataset_variant, structure):
-    self._structure = structure
+  def __init__(self, dataset_variant, element_spec):
+    self._element_spec = element_spec
     super(_VariantDataset, self).__init__(dataset_variant)
 
   def _inputs(self):
@@ -4242,7 +4243,7 @@ class _VariantDataset(DatasetV2):
 
   @property
   def element_spec(self):
-    return self._structure
+    return self._element_spec
 
 
 class _NestedVariant(composite_tensor.CompositeTensor):
@@ -5563,16 +5564,16 @@ def normalize_to_dense(dataset):
 class _RestructuredDataset(UnaryDataset):
   """An internal helper for changing the element spec of a dataset."""
 
-  def __init__(self, dataset, structure):
+  def __init__(self, dataset, element_spec):
     self._input_dataset = dataset
-    self._structure = structure
+    self._element_spec = element_spec
 
     variant_tensor = self._input_dataset._variant_tensor  # pylint: disable=protected-access
     super(_RestructuredDataset, self).__init__(dataset, variant_tensor)
 
   @property
   def element_spec(self):
-    return self._structure
+    return self._element_spec
 
 
 class _UnbatchDataset(UnaryDataset):
