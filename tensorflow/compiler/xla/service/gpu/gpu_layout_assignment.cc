@@ -30,6 +30,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
+#include "tensorflow/core/util/env_var.h"
+
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
@@ -94,8 +100,9 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
-  // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
+  // If we're not Volta/MI100/MI200 or not fp16, or not conv2D, the decision is easy: Use
   // NCHW.
+#if GOOGLE_CUDA
   if (input_ty != F16 ||
       !stream_executor->GetDeviceDescription()
            .cuda_compute_capability()
@@ -103,9 +110,24 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       instr->shape().tuple_shapes(0).dimensions_size() != 4) {
     return kAllNCHW;
   }
+#elif TENSORFLOW_USE_ROCM
+  auto amd_gcn = stream_executor->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
+  bool is_enabled = false;
+  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+      "TF_USE_ROCM_NHWC",
+      /*default_val=*/false, &is_enabled));
+  if (input_ty != F16 ||
+        (amd_gcn.find("gfx908") == std::string::npos &&
+         amd_gcn.find("gfx90a") == std::string::npos) ||
+      instr->shape().tuple_shapes(0).dimensions_size() != 4 ||
+      !is_enabled) {
+    return kAllNCHW;
+  }
+#endif
 
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
 
+#if GOOGLE_CUDA
   // Empirically we've found with Volta and cudnn <= 7.3 that backward-input
   // convs with stride are significantly faster with NCHW layouts.
   //
@@ -128,8 +150,9 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       }
     }
   }
+#endif
 
-  // For other Volta f16 convolutions, use NHWC.
+  // For other Volta/MI100(200) f16 convolutions, use NHWC.
   return kAllNHWC;
 }
 
