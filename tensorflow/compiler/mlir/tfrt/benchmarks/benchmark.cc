@@ -73,11 +73,10 @@ JitExecutable& CreateJitExecutable(
   opts.num_worker_threads = host.GetNumWorkerThreads();
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
   if (lower_from_tensorflow) {
-    opts.register_compilation_pipeline = [&](mlir::OpPassManager& pm) {
+    opts.register_pass_pipeline = [&](mlir::OpPassManager& pm) {
       tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
     };
   }
-  opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
   opts.calling_convention = CompilationOptions::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 

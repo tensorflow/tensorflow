@@ -214,12 +214,6 @@ void CreateDefaultTfJitRtPipeline(OpPassManager& pm) {
   CreateTfJitRtPipeline(pm, options);
 }
 
-void CreateJitRtSpecializationPipeline(mlir::OpPassManager& pm) {
-  pm.addPass(std::make_unique<AddTensorflowProducerVersion>());
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addPass(mlir::createCanonicalizerPass());
-}
-
 static mlir::PassPipelineRegistration<TfJitRtPipelineOptions> tf_jitrt_pipeline(
     "tf-jitrt-pipeline",
     "Convert Tensorflow dialect to TFRT's JitRt compatible dialects",
