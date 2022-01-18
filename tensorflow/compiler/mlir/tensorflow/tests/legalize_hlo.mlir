@@ -1772,6 +1772,44 @@ func @convert_depthwise_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x1
   return %0 : tensor<1x8x8x16xf32>
 }
 
+// CHECK-LABEL:   func @convert_conv2d_to_resize(
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x56x624x16xf32>,
+// CHECK-SAME:                         %[[VAL_1:.*]]: tensor<1x257x16x1xf32>) -> tensor<1x56x904x16xf32> {
+// CHECK-DAG:       %[[SIZE:.*]] = "tf.Const"() {value = dense<[56, 904]> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK:           %[[VAL_2:.*]] = "tf.ResizeBilinear"(%[[VAL_0]], %[[SIZE]]) {align_corners = true, half_pixel_centers = false} : (tensor<1x56x624x16xf32>, tensor<2xi32>) -> tensor<1x56x904x16xf32>
+// CHECK:           return %[[VAL_2]] : tensor<1x56x904x16xf32>
+// CHECK:         }
+func @convert_conv2d_to_resize(%arg0: tensor<1x56x624x16xf32>, %arg1: tensor<1x257x16x1xf32>) -> tensor<1x56x904x16xf32> {
+	%0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
+    feature_group_count = 16 : i64,
+    lhs_dilation = dense<[1, 129]> : tensor<2xi64>,
+    padding = dense<[[0, 0], [128, 128]]> : tensor<2x2xi64>,
+    precision_config = ["DEFAULT", "DEFAULT"],
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<[1, 89]> : tensor<2xi64>} : (tensor<1x56x624x16xf32>, tensor<1x257x16x1xf32>) -> tensor<1x56x904x16xf32>
+  return %0 : tensor<1x56x904x16xf32>
+}
+
+// CHECK-LABEL:   func @convert_conv2d_resize_perferred(
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x56x1248x16xf32>,
+// CHECK-SAME:                         %[[VAL_1:.*]]: tensor<3x1x16x1xf32>) -> tensor<1x111x1248x16xf32> {
+// CHECK-DAG:       %[[SIZE:.*]] = "tf.Const"() {value = dense<[111, 1248]> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK:           %[[VAL_2:.*]] = "tf.ResizeBilinear"(%[[VAL_0]], %[[SIZE]]) {align_corners = true, half_pixel_centers = false} : (tensor<1x56x1248x16xf32>, tensor<2xi32>) -> tensor<1x111x1248x16xf32>
+// CHECK:           return %[[VAL_2]] : tensor<1x111x1248x16xf32>
+// CHECK:         }
+func @convert_conv2d_resize_perferred(%arg0: tensor<1x56x1248x16xf32>, %arg1: tensor<3x1x16x1xf32>) -> tensor<1x111x1248x16xf32> {
+	%0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>,
+    feature_group_count = 16 : i64,
+    lhs_dilation = dense<[2, 1]> : tensor<2xi64>,
+    padding = dense<[[1, 1], [0, 0]]> : tensor<2x2xi64>,
+    precision_config = ["DEFAULT", "DEFAULT"],
+    rhs_dilation = dense<[1, 1]> : tensor<2xi64>,
+    window_strides = dense<[1, 1]> : tensor<2xi64>} : (tensor<1x56x1248x16xf32>, tensor<3x1x16x1xf32>) -> tensor<1x111x1248x16xf32>
+  return %0 : tensor<1x111x1248x16xf32>
+}
+
 // CHECK-LABEL:   func @convert_conv2d_back_prop_input(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<8x4x4x32xf32>,
 // CHECK-SAME:                         %[[VAL_1:.*]]: tensor<3x3x64x32xf32>) -> tensor<8x8x8x64xf32> {
