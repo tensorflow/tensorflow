@@ -45,8 +45,13 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
       "get next split",
       /*deadline_micros=*/Env::Default()->NowMicros() +
           (timeout_ms_ * EnvTime::kMillisToMicros)));
-  VLOG(1) << "Requested split: " << split->DebugString()
-          << "; with job_id=" << job_id_ << ", repetition=" << repetition_;
+  if (*end_of_splits) {
+    VLOG(1) << "Reached end of splits for job_id=" << job_id_
+            << ", repetition=" << repetition_;
+  } else {
+    VLOG(1) << "Requested split: " << split->DebugString()
+            << "; with job_id=" << job_id_ << ", repetition=" << repetition_;
+  }
   return Status::OK();
 }
 
