@@ -66,28 +66,6 @@ void TFTypeDialect::initialize() {
            >();
 }
 
-// Entry point for Attribute parsing, TableGen generated code will handle the
-// dispatch to the individual classes.
-Attribute TFTypeDialect::parseAttribute(DialectAsmParser &parser,
-                                        Type type) const {
-  StringRef attr_tag;
-  if (failed(parser.parseKeyword(&attr_tag))) return Attribute();
-  {
-    Attribute attr;
-    auto parse_result = generatedAttributeParser(parser, attr_tag, type, attr);
-    if (parse_result.hasValue()) return attr;
-  }
-  parser.emitError(parser.getNameLoc(), "unknown tf_type attribute");
-  return Attribute();
-}
-
-// Entry point for Attribute printing, TableGen generated code will handle the
-// dispatch to the individual classes.
-void TFTypeDialect::printAttribute(Attribute attr,
-                                   DialectAsmPrinter &os) const {
-  (void)generatedAttributePrinter(attr, os);
-}
-
 namespace {
 template <typename TypeWithSubtype>
 Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser) {
