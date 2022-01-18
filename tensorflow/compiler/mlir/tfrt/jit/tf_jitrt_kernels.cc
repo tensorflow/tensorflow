@@ -386,15 +386,18 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Register a custom pipeline for lowering from Tensorflow dialect.
     if (tf_jitrt_opts) {
-      opts.register_pass_pipeline = [tf_jitrt_opts](OpPassManager& pm) {
+      opts.register_compilation_pipeline = [tf_jitrt_opts](OpPassManager& pm) {
         TfJitRtPipelineOptions opts;
         opts.vectorize = tf_jitrt_opts->vectorize;
         opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
         return CreateTfJitRtPipeline(pm, opts);
       };
     } else {
-      opts.register_pass_pipeline = CreateDefaultTfJitRtPipeline;
+      opts.register_compilation_pipeline = CreateDefaultTfJitRtPipeline;
     }
+
+    // Register a custom pipeline to propagate specialization information.
+    opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
 
     auto entrypoint = kernel.nested_symbols()[0];
     auto module = kernel.serialized_operation();
