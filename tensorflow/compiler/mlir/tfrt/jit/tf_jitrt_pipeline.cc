@@ -137,6 +137,10 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // to resolve broadcasts that can be converted to linalg generic operations.
   pm.addNestedPass<FuncOp>(CreateSymbolicShapeOptimizationPass());
 
+  // Group reduction and parallel dimensions of reduction operations and realize
+  // them through equivalent 1D or 2D reductions, if possible.
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
+
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addNestedPass<FuncOp>(

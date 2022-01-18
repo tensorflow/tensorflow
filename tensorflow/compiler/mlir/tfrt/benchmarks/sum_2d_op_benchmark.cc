@@ -57,47 +57,46 @@ llvm::SmallVector<InputTensorSpec> Inputs(ssize_t rows, ssize_t cols) {
   BM(Tfrt(NAME, Sum2D(DYNAMIC_ROW, DYNAMIC_COL, ROWS, COLS), "main",   \
           Inputs(ROWS, COLS)))
 
-// TODO(b/207822945): Enable after reduction grouper pass is implemented.
 #define BM_DYNAMIC_ALL(ROWS, COLS)                                          \
   BM_SUITE(Sum2DDynamicAll_##ROWS##_##COLS, kDynamicDim, kDynamicDim, ROWS, \
            COLS)
 BM_DYNAMIC_ALL(2, 80);
-// BM_DYNAMIC_ALL(8, 6);
-// BM_DYNAMIC_ALL(80, 1);
-// BM_DYNAMIC_ALL(80, 60);
-// BM_DYNAMIC_ALL(81, 61);
-// BM_DYNAMIC_ALL(800, 600);
-// BM_DYNAMIC_ALL(802, 602);
+BM_DYNAMIC_ALL(8, 6);
+BM_DYNAMIC_ALL(80, 1);
+BM_DYNAMIC_ALL(80, 60);
+BM_DYNAMIC_ALL(81, 61);
+BM_DYNAMIC_ALL(800, 600);
+BM_DYNAMIC_ALL(802, 602);
 
 #define BM_STATIC_ROW(ROWS, COLS) \
   BM_SUITE(Sum2DStaticRow##ROWS##_##COLS, kStaticDim, kDynamicDim, ROWS, COLS)
-// BM_STATIC_ROW(2, 80);
-// BM_STATIC_ROW(8, 6);
-// BM_STATIC_ROW(80, 1);
-// BM_STATIC_ROW(80, 60);
-// BM_STATIC_ROW(81, 61);
-// BM_STATIC_ROW(800, 600);
-// BM_STATIC_ROW(802, 602);
+BM_STATIC_ROW(2, 80);
+BM_STATIC_ROW(8, 6);
+BM_STATIC_ROW(80, 1);
+BM_STATIC_ROW(80, 60);
+BM_STATIC_ROW(81, 61);
+BM_STATIC_ROW(800, 600);
+BM_STATIC_ROW(802, 602);
 
 #define BM_STATIC_COL(ROWS, COLS) \
   BM_SUITE(Sum2DStaticCol_##ROWS##_##COLS, kDynamicDim, kStaticDim, ROWS, COLS)
-// BM_STATIC_COL(2, 80);
-// BM_STATIC_COL(8, 6);
-// BM_STATIC_COL(80, 1);
-// BM_STATIC_COL(80, 60);
-// BM_STATIC_COL(81, 61);
-// BM_STATIC_COL(800, 600);
-// BM_STATIC_COL(802, 602);
+BM_STATIC_COL(2, 80);
+BM_STATIC_COL(8, 6);
+BM_STATIC_COL(80, 1);
+BM_STATIC_COL(80, 60);
+BM_STATIC_COL(81, 61);
+BM_STATIC_COL(800, 600);
+BM_STATIC_COL(802, 602);
 
 #define BM_STATIC_ALL(ROWS, COLS) \
   BM_SUITE(Sum2DStaticAll_##ROWS##_##COLS, kStaticDim, kStaticDim, ROWS, COLS)
-// BM_STATIC_ALL(2, 80);
-// BM_STATIC_ALL(8, 6);
-// BM_STATIC_ALL(80, 1);
-// BM_STATIC_ALL(80, 60);
-// BM_STATIC_ALL(81, 61);
-// BM_STATIC_ALL(800, 600);
-// BM_STATIC_ALL(802, 602);
+BM_STATIC_ALL(2, 80);
+BM_STATIC_ALL(8, 6);
+BM_STATIC_ALL(80, 1);
+BM_STATIC_ALL(80, 60);
+BM_STATIC_ALL(81, 61);
+BM_STATIC_ALL(800, 600);
+BM_STATIC_ALL(802, 602);
 
 }  // namespace
 }  // namespace tensorflow
