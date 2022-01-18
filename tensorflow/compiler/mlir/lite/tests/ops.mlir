@@ -2939,3 +2939,21 @@ func @testMultinomialInt32(%arg0: tensor<2xf32>, %arg1: tensor<1xi32>) -> tensor
   %0 = "tfl.multinomial"(%arg0, %arg1) {seed = 0 : i64, seed2 = 0: i64} : (tensor<2xf32>, tensor<1xi32>) -> tensor<10xi32>
   return %0 :  tensor<10xi32>
 }
+
+// -----
+
+// CHECK-LABEL: testGelu
+func @testGelu(%arg0: tensor<1x2x3x4x5xf32>) -> tensor<1x2x3x4x5xf32> {
+  // CHECK: "tfl.gelu"(%arg0)
+  %0 = "tfl.gelu"(%arg0) {approximate = false}: (tensor<1x2x3x4x5xf32>) -> tensor<1x2x3x4x5xf32>
+  return %0 : tensor<1x2x3x4x5xf32>
+}
+
+// -----
+
+// test invalid GELU input
+func @testGeluWithWrongInputType(%arg0: tensor<?xf32>) -> tensor<?xi32> {
+  // expected-error @+1 {{'tfl.gelu' op failed to verify that input and output must have same element type}}
+  %0 = "tfl.gelu"(%arg0) {approximate = false}: (tensor<?xf32>) -> tensor<?xi32>
+  return %0#0 : tensor<?xi32>
+}
