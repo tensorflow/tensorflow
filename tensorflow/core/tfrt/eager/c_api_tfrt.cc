@@ -1495,9 +1495,6 @@ tensorflow::Status OperationInterface::Initialize() {
 
   tensorflow::TfrtFunctionCompileOptions compile_options;
 
-  // Use TFRT TPU OpKernel for training.
-  compile_options.tpu_lower_to_fallback = true;
-
   // Use the host device if the user does not place the function to a specific
   // device.
   compile_options.default_device =

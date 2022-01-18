@@ -46,9 +46,12 @@ tfrt::HostContext* GetStaticHostContext() {
 }  // namespace
 
 /*static*/ ::tfrt::HostContext* GlobalHostContext::host_ctx_ = nullptr;
+/*static*/ bool GlobalHostContext::use_tpurt_kernels_ = false;
 
-/*static*/ void GlobalHostContext::Set(::tfrt::HostContext* host_ctx) {
+/*static*/ void GlobalHostContext::Set(::tfrt::HostContext* host_ctx,
+                                       bool use_tpurt_kernels) {
   host_ctx_ = host_ctx;
+  use_tpurt_kernels_ = use_tpurt_kernels;
 }
 
 /*static*/ ::tfrt::HostContext* GlobalHostContext::Get() {
@@ -58,6 +61,10 @@ tfrt::HostContext* GetStaticHostContext() {
   // Otherwise we assume it is running TFRT TF OpKernels, and currently it is
   // implicitly created.
   return GetStaticHostContext();
+}
+
+/*static*/ bool GlobalHostContext::UseTpurtKernels() {
+  return use_tpurt_kernels_;
 }
 
 }  // namespace tfrt_global
