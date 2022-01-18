@@ -35,6 +35,9 @@ namespace tensorrt {
 namespace convert {
 
 namespace {
+
+#if !IS_TRT_VERSION_GE(8, 2, 0, 0)
+
 // Finds the indices of elements in [begin, end) in array
 // [array_begin, array_end), and appends the indices to permute. This is used to
 // construct the permutation sequence for the operand with input labels
@@ -733,6 +736,101 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
   std::unique_ptr<EinsumDescriptor> descriptor_a{nullptr};
   std::unique_ptr<EinsumDescriptor> descriptor_b{nullptr};
 };
+#else
+
+class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
+ public:
+  explicit ConvertEinsum(OpConverterParams* params)
+      : OpConverterBase<ConvertEinsum>(params) {}
+
+  static constexpr std::array<DataType, 3> AllowedDataTypes() {
+    return {DataType::DT_FLOAT, DataType::DT_HALF};
+  }
+
+  Status ValidateInputs() {
+    VLOG(2) << "Validating in child class";
+    TRT_ENSURE(params_->inputs.size() <= 2);
+    return Status::OK();
+  }
+  static constexpr bool HasFixNumberOfInputs() { return false; }
+
+  static constexpr std::array<InputArgSpec, 2> InputSpec() {
+    return {InputArgSpec::Create("input_a", TrtInputArg::kBoth),
+            InputArgSpec::Create("input_b", TrtInputArg::kBoth)};
+  }
+
+  Status Validate() {
+    VLOG(2) << "Running validation using the new einsum "
+               "converter";
+    const auto& inputs = params_->inputs;
+    const auto& node_def = params_->node_def;
+    if (params_->use_implicit_batch) {
+      return errors::Unimplemented(
+          "Einsum converter requires dynamic shape mode");
+    }
+
+    StatusOr<std::string> eq = GetAttrValue<std::string>("equation");
+    TRT_ENSURE_OK(eq);
+
+    OperandLabels input_labels;
+    Labels output_labels;
+    std::vector<EinsumHelper::DimensionType> label_types;
+    OperandLabelCounts input_label_counts;
+    LabelCounts output_label_counts;
+    absl::InlinedVector<bool, 2> input_has_ellipsis;
+    bool output_has_ellipsis;
+    VLOG(2) << "Parsing equation " << *eq;
+    TF_RETURN_IF_ERROR(EinsumHelper::ParseEquation(
+        *eq, &input_labels, &output_labels, &label_types, &input_label_counts,
+        &output_label_counts, &input_has_ellipsis, &output_has_ellipsis));
+
+    if (input_has_ellipsis[0] || (inputs.size() > 1 && input_has_ellipsis[1]) ||
+        output_has_ellipsis) {
+      VLOG(2) << "Ellipsis not yet supported";
+      return errors::Unimplemented("No conversion for einsum equation.");
+    }
+
+    // todo handle case sensitive EQ
+    equation = *eq;
+    return Status::OK();
+  }
+
+  Status Convert() {
+    auto builder = TRTNetworkBuilder::Create(params_->converter->network(),
+                                             params_->weight_store);
+    TRT_ENSURE_OK(builder);
+
+    std::vector<nvinfer1::ITensor*> trt_input;
+    for (const TRT_TensorOrWeights& input_arg : params_->inputs) {
+      ITensorProxyPtr ptr = nullptr;
+      if (input_arg.is_tensor()) {
+        ptr = input_arg.tensor();
+      } else {
+        StatusOr<nvinfer1::IConstantLayer*> const_layer =
+            builder->WeightsToConstant(input_arg.weights().GetTrtWeights(),
+                                       input_arg.GetTrtDims());
+        TRT_ENSURE_PTR_OK(const_layer);
+        ptr = (*const_layer)->getOutput(0);
+      }
+      VLOG(2) << "Adding Einsum input " << ptr->trt_tensor();
+      trt_input.push_back(ptr->trt_tensor());
+    }
+
+    VLOG(2) << "Adding TRT 8.2 Einsum layer";
+    nvinfer1::IEinsumLayer* layer = params_->converter->network()->addEinsum(
+        trt_input.data(), trt_input.size(), equation.c_str());
+    TRT_ENSURE(layer);
+    VLOG(2) << "Einsum layer added";
+    ITensorProxyPtr output = layer->getOutput(0);
+    this->AddOutput(output);
+    return Status::OK();
+  }
+
+ private:
+  std::string equation;
+};
+
+#endif
 
 }  // namespace
 
