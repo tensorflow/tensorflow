@@ -18,10 +18,13 @@
 import numbers
 import numpy as np
 
+from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -32,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.framework.constant_op import constant
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 # go/tf-wildcard-import
@@ -41,10 +45,14 @@ from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint:
 from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
+
+math_ops = lazy_loader.LazyLoader(
+    "math_ops", globals(), "tensorflow.python.ops.math_ops")
 
 # Used for slicing to specify a new 1 size dimension
 newaxis = None
@@ -6616,9 +6624,11 @@ def fingerprint(data, method="farmhash64", name=None):
 
 def convert_to_int_tensor(tensor, name, dtype=dtypes.int32):
   """Converts the given value to an integer Tensor."""
-  tensor = ops.convert_to_tensor(tensor, name=name, preferred_dtype=dtype)
+  tensor = ops.convert_to_tensor(
+      tensor, name=name, preferred_dtype=dtype or dtypes.int32)
   if tensor.dtype.is_integer:
-    tensor = gen_math_ops.cast(tensor, dtype)
+    if dtype is not None:
+      tensor = gen_math_ops.cast(tensor, dtype)
   else:
     raise TypeError(f"Argument `tensor` (name: {name}) must be of type integer."
                     f" Received `tensor` = {tensor} of dtype: {tensor.dtype}")
@@ -6710,12 +6720,17 @@ def repeat_with_axis(data, repeats, axis, name=None):
 
   with ops.name_scope(name, "Repeat", [data, repeats]):
     data = ops.convert_to_tensor(data, name="data")
-    repeats = convert_to_int_tensor(repeats, name="repeats")
+    # Note: We pass dtype=None so that the existing type is maintained instead
+    # of force-casting to int32.
+    if forward_compat.forward_compatible(2022, 3, 30):
+      repeats = convert_to_int_tensor(repeats, name="repeats", dtype=None)
+    else:
+      repeats = convert_to_int_tensor(repeats, name="repeats")
     repeats.shape.with_rank_at_most(1)
 
     # If `data` is a scalar, then upgrade it to a vector.
     data = _with_nonzero_rank(data)
-    data_shape = shape(data)
+    data_shape = shape(data, out_type=repeats.dtype)
 
     # If `axis` is negative, then convert it to a positive value.
     axis = get_positive_axis(axis, data.shape.rank, ndims_name="rank(data)")
@@ -6737,52 +6752,79 @@ def repeat_with_axis(data, repeats, axis, name=None):
       data.shape.dims[axis].assert_is_compatible_with(repeats.shape[0])
 
     repeats = broadcast_to(repeats, [data_shape[axis]])
-    repeats_original = repeats
 
-    # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.
-    if repeats.shape.ndims != axis + 1:
-      repeats_shape = shape(repeats)
-      repeats_ndims = rank(repeats)
-      broadcast_shape = concat(
-          [data_shape[:axis + 1 - repeats_ndims], repeats_shape], axis=0)
-      repeats = broadcast_to(repeats, broadcast_shape)
-      repeats.set_shape([None] * (axis + 1))
+    # The implementation on the else branch has better performance. However, it
+    # does not work on the XLA path since it relies on the range op with a
+    # shape that is not a compile-time constant.
+    if (control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
+        config.get_optimizer_jit() or
+        pywrap_tf_session.TF_GetXlaAutoJitEnabled() or
+        not forward_compat.forward_compatible(2022, 3, 30)):
+      repeats_original = repeats
 
-    # Create a "sequence mask" based on `repeats`, where slices across `axis`
-    # contain one `True` value for each repetition.  E.g., if
-    # `repeats = [3, 1, 2]`, then `mask = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]`.
-    max_repeat = gen_math_ops.maximum(
-        0, gen_math_ops._max(repeats, _all_dimensions(repeats)))
-    mask = sequence_mask(repeats, max_repeat)
+      # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.
+      if repeats.shape.ndims != axis + 1:
+        repeats_shape = shape(repeats)
+        repeats_ndims = rank(repeats)
+        broadcast_shape = concat(
+            [data_shape[:axis + 1 - repeats_ndims], repeats_shape], axis=0)
+        repeats = broadcast_to(repeats, broadcast_shape)
+        repeats.set_shape([None] * (axis + 1))
 
-    # Add a new dimension around each value that needs to be repeated, and
-    # then tile that new dimension to match the maximum number of repetitions.
-    expanded = expand_dims(data, axis + 1)
-    tiled = tile_one_dimension(expanded, axis + 1, max_repeat)
+      # Create a "sequence mask" based on `repeats`, where slices across `axis`
+      # contain one `True` value for each repetition.  E.g., if
+      # `repeats = [3, 1, 2]`, then `mask = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]`.
+      max_repeat = gen_math_ops._max(repeats, _all_dimensions(repeats))
+      max_repeat = gen_math_ops.maximum(
+          ops.convert_to_tensor(0, name="zero", dtype=max_repeat.dtype),
+          max_repeat)
 
-    # Use `boolean_mask` to discard the extra repeated values.  This also
-    # flattens all dimensions up through `axis`.
-    masked = boolean_mask(tiled, mask)
+      mask = sequence_mask(repeats, max_repeat)
 
-    # Reshape the output tensor to add the outer dimensions back.
-    if axis == 0:
-      result = masked
+      # Add a new dimension around each value that needs to be repeated, and
+      # then tile that new dimension to match the maximum number of repetitions.
+      expanded = expand_dims(data, axis + 1)
+      tiled = tile_one_dimension(expanded, axis + 1, max_repeat)
+
+      # Use `boolean_mask` to discard the extra repeated values.  This also
+      # flattens all dimensions up through `axis`.
+      masked = boolean_mask(tiled, mask)
+
+      # Reshape the output tensor to add the outer dimensions back.
+      if axis == 0:
+        result = masked
+      else:
+        repeated_dim_size = gen_math_ops._sum(
+            repeats_original,
+            axis=gen_math_ops._range(0, rank(repeats_original), 1))
+        result_shape = concat(
+            [data_shape[:axis], [repeated_dim_size], data_shape[axis + 1:]],
+            axis=0)
+        result = reshape(masked, result_shape)
+
+      # Preserve shape information.
+      if data.shape.ndims is not None:
+        new_axis_size = 0 if repeats.shape[0] == 0 else None
+        result.set_shape(data.shape[:axis].concatenate(
+            [new_axis_size]).concatenate(data.shape[axis + 1:]))
+
+      return result
+
     else:
-      repeated_dim_size = gen_math_ops._sum(
-          repeats_original,
-          axis=gen_math_ops._range(0, rank(repeats_original), 1))
-      result_shape = concat(
-          [data_shape[:axis], [repeated_dim_size], data_shape[axis + 1:]],
-          axis=0)
-      result = reshape(masked, result_shape)
-
-    # Preserve shape information.
-    if data.shape.ndims is not None:
-      new_axis_size = 0 if repeats.shape[0] == 0 else None
-      result.set_shape(data.shape[:axis].concatenate(
-          [new_axis_size]).concatenate(data.shape[axis + 1:]))
-
-    return result
+      # Non-XLA path implementation
+      # E.g., repeats = [3, 4, 0, 2, 1].
+      # E.g., repeats_scan = [3, 7, 7, 9, 10].
+      repeats_scan = math_ops.cumsum(repeats)
+      # This concat just prepends 0 to handle the case when repeats is empty.
+      # E.g., output_size = [0, 3, 7, 7, 9, 10][-1] = 10.
+      output_size = concat([zeros(1, dtype=repeats_scan.dtype), repeats_scan],
+                           axis=0)[-1]
+      # E.g., output_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].
+      output_indices = math_ops.range(output_size, dtype=repeats.dtype)
+      # E.g., gather_indices = [0, 0, 0, 1, 1, 1, 1, 3, 3, 4].
+      gather_indices = searchsorted(
+          repeats_scan, output_indices, side="right", out_type=repeats.dtype)
+      return gather(data, gather_indices, axis=axis)
 
 
 def tile_one_dimension(data, axis, multiple):

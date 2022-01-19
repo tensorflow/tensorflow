@@ -2198,6 +2198,7 @@ class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (np.ones([0, 4]), 0, 1),
       (np.ones([1, 2]), [2], None),
   )
+  @test_util.with_forward_compatibility_horizons(None, [2052, 2, 7])
   def testRepeat(self, array, repeats, axis):
     array = np.array(array)
 
@@ -2212,6 +2213,66 @@ class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v_np = np.repeat(array, repeats, axis)
     self.assertAllEqual(v_tf, v_np)
     self.assertAllEqual(v_tf_fn, v_np)
+
+
+class RepeatBenchmark(test_lib.Benchmark):
+  """Benchmark the repeat implementation."""
+
+  def run_and_time(self, op, iters=100, warmup_iters=10):
+    self.evaluate(variables.global_variables_initializer())
+    for _ in range(warmup_iters):
+      _ = self.evaluate(op)
+    t0 = time.time()
+    for _ in range(iters):
+      self.evaluate(op)
+    t1 = time.time()
+    self.report_benchmark(iters=iters, wall_time=(t1 - t0) / float(iters))
+
+  def make_variable(self, shape, dtype=dtypes.float32):
+    items = 1
+    for dim in shape:
+      items *= dim
+    var = variables.Variable(
+        array_ops.reshape(math_ops.linspace(1., float(items), items), shape),
+        dtype=dtype)
+    return var
+
+  def run_benchmark(self, shape, max_repeats, axis=None):
+    with session.Session():
+      var = self.make_variable(shape)
+      if axis is None:
+        axis_size = 1
+        for dim in shape:
+          axis_size *= dim
+      else:
+        axis_size = shape[axis]
+      repeats = constant_op.constant(
+          np.random.randint(max_repeats, size=[axis_size]), dtype=dtypes.int64)
+      repeat_op = array_ops.repeat(var, repeats, axis=axis)
+      # Return a scalar to reduce the device-to-host memcopy overhead.
+      repeat_op = repeat_op[(0,) * len(shape)]
+      self.run_and_time(repeat_op)
+
+  def benchmark_repeat_few_1d(self):
+    self.run_benchmark(shape=[1024 * 1024], max_repeats=8, axis=0)
+
+  def benchmark_repeat_many_1d(self):
+    self.run_benchmark(shape=[8 * 1024], max_repeats=1024, axis=0)
+
+  def benchmark_repeat_few_2d_axis0(self):
+    self.run_benchmark(shape=[8, 128 * 1024], max_repeats=8, axis=0)
+
+  def benchmark_repeat_many_2d_axis0(self):
+    self.run_benchmark(shape=[8, 1024], max_repeats=1024, axis=0)
+
+  def benchmark_repeat_many_2d_axis0_big(self):
+    self.run_benchmark(shape=[1024, 32], max_repeats=1024, axis=0)
+
+  def benchmark_repeat_few_2d_axis1(self):
+    self.run_benchmark(shape=[8, 128 * 1024], max_repeats=8, axis=1)
+
+  def benchmark_repeat_many_2d_axis1(self):
+    self.run_benchmark(shape=[8, 1024], max_repeats=1024, axis=1)
 
 
 @test_util.run_all_in_graph_and_eager_modes

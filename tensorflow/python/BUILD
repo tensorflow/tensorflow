@@ -986,8 +986,11 @@ py_library(
     visibility = visibility,
     deps = [
         ":array_ops_gen",
+        ":control_flow_util",
         ":math_ops_gen",
+        "//tensorflow/python/compat",
         "//tensorflow/python/framework:common_shapes",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
