@@ -273,7 +273,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.assertEqual(
             {
                 "add": "AddV2",
-                "add/ReadVariableOp": "Const",
+                "v1": "Const",
                 "add_1": "AddV2",
                 "add_2": "AddV2",
                 "input1": "Placeholder",
@@ -804,7 +804,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     node_name_to_op = {node.name: node.op for node in output_graph_def.node}
     self.assertEqual(
         {
-            "add/ReadVariableOp": "Const",
+            "v1": "Const",
             "input1": "Placeholder",
             "input2": "Placeholder",
             "add": "AddV2",
