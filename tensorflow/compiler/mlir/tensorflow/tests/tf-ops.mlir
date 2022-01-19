@@ -4424,7 +4424,7 @@ func @testXlaReduceWindowAttrs(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tens
   %cst_2 = "tf.Const"() {value = dense<3> : tensor<2xi32>} : () -> tensor<2xi32>
   %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
   // expected-error @+1 {{tf.XlaReduceWindow' op expects the size of base_dilations to be equal to the input rank (2 vs. 1)}}
-  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @sum_reducer3} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<?xf32>
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @no_reducer} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
@@ -4437,7 +4437,7 @@ func @testXlaReduceWindowPadding(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> te
   %cst_2 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
   %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
   // expected-error @+1 {{'tf.XlaReduceWindow' op expects padding to be a matrix with minor dimension 2, got 1, 3}}
-  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @sum_reducer3} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x3xi32>) -> tensor<?xf32>
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @no_reducer} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x3xi32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
@@ -4450,8 +4450,26 @@ func @testXlaReduceWindowSym(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor
   %cst_2 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
   %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
   // expected-error @+1 {{'tf.XlaReduceWindow' op has no reduction function specified}}
-  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @sum_reducer3} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<?xf32>
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @no_reducer} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @testXlaReduceWindowSymNumArgs(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_2 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+  // expected-error @+1 {{'tf.XlaReduceWindow' op expects reduction function to take 2 parameters, but has 3 parameter(s)}}
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @unexpected_reducer} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+func private @unexpected_reducer(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }
 
 // -----
