@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/graph_rewrite/configure_tpu_embedding_rewrite_pass.h"
 
-#include <unordered_map>
+#include <string>
 
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -227,17 +227,15 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
             const std::string& embedding_attr_string = GetNodeAttrString(
                 AttrSlice(configuration_node_def), kEmbeddingConfigurationAttr);
             if (embedding_attr_string.empty()) {
-              return errors::InvalidArgument("embedding_config is empty.");
+              return errors::InvalidArgument("TPU embedding_config is empty.");
             } else {
               // Auto populate the feature descriptor so that we can make use
               // of these fields later.
-              // TODO (b/201806244): remove this logic after the change to the
-              // initialization to the config proto.
               std::string updated_embedding_attr_string;
               tpu::TPUEmbeddingConfiguration tpu_embedding_config;
               tpu_embedding_config.ParseFromString(embedding_attr_string);
-              TF_RETURN_IF_ERROR(
-                  PopulateEmbeddingFeatureDescriptor(tpu_embedding_config));
+              TF_RETURN_IF_ERROR(PopulateMissingFieldsInTPUEmbeddingConfig(
+                  &tpu_embedding_config));
               tpu_embedding_config.SerializeToString(
                   &updated_embedding_attr_string);
 
