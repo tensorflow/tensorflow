@@ -1,5 +1,4 @@
 # Description: CUB library which is a set of primitives for GPU programming.
-load("@local_cuda//:defs.bzl", "if_local_cuda")
 
 package(
     default_visibility = ["//visibility:public"],
