@@ -1,3 +1,5 @@
+load("//tools/build_defs/proto/cpp:cc_grpc_library.bzl", "cc_grpc_library")
+
 # copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
@@ -61,6 +63,15 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+cc_grpc_library(
+    name = "profiler_service_cc_grpc_proto",
+    testonly = 0,
+    srcs = [":profiler_service_proto"],
+    compatible_with = ["//buildenv/target:gce"],
+    visibility = ["//visibility:public"],
+    deps = [":profiler_service_proto_cc"],
+)
+
 tf_proto_library(
     name = "profiler_analysis_proto",
     srcs = ["profiler_analysis.proto"],
@@ -71,6 +82,15 @@ tf_proto_library(
     protodeps = [":profiler_service_proto"],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
+)
+
+cc_grpc_library(
+    name = "profiler_analysis_cc_grpc_proto",
+    testonly = 0,
+    srcs = [":profiler_analysis_proto"],
+    compatible_with = ["//buildenv/target:gce"],
+    visibility = ["//visibility:public"],
+    deps = [":profiler_analysis_proto_cc"],
 )
 
 tf_proto_library(
