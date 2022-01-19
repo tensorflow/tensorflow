@@ -513,6 +513,9 @@ struct ConvertedDimensionNumbers {
   DimensionVector transformed_from_dimensions;
   DimensionVector untransformed_from_dimensions;
   DimensionVector to_dimensions;
+  DimensionVector split_from_dimensions;
+  DimensionVector split_from_sizes;
+  DimensionVector split_to_dimensions;
 };
 
 // Convert and unsorted list of dimensions from one shapes dimension sizes to
