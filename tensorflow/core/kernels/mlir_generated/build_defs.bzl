@@ -4,7 +4,6 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "rocm_gpu_architectures",
-    "rocm_version_number",
 )
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
@@ -280,11 +279,6 @@ def _gen_kernel_library(
         all_kernels += all_jit_kernels
 
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
-        amdhsa_obj = []
-        if rocm_gpu_architectures():
-            if int(rocm_version_number()) < 40100:
-                amdhsa_obj = ["--amdhsa-code-object-version=3"]
-                extra_args = extra_args + ["--amdhsa-code-object-version=3"]
         for (type, output_type, jit) in all_kernels:
             # Disable unrolling for integer types while LLVM does not vectorize these.
             # See b/182343395 for context.
@@ -298,7 +292,6 @@ def _gen_kernel_library(
                 platform = platform,
                 type = type,
             )
-
             _gen_kernel_bin_rule(
                 name = "{op}_{platform}_{type}_{output_type}_kernel_generator".format(
                     op = op,
@@ -335,7 +328,7 @@ def _gen_kernel_library(
                 "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
                 "--tile_sizes=%s" % tile_size,
                 "--enable_ftz=%s" % (type == "f32"),
-            ] + amdhsa_obj
+            ]
             if filtered_unroll_factors:
                 test_args.append("--unroll_factors=%s" % filtered_unroll_factors)
             native.sh_test(
