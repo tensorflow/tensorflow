@@ -1549,7 +1549,6 @@ tf_xla_py_test(
     size = "small",
     srcs = ["cast_ops_test.py"],
     disabled_backends = ["cpu_ondemand"],
-    enable_mlir_bridge = False,  # TODO(b/200894060): Re-enable on MLIR bridge.
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip

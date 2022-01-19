@@ -74,7 +74,7 @@ func @testBitcast_v3(%arg0: tensor<3x5xi16>) -> tensor<3xi32> {
 // -----
 
 func @testBitcast_v4(%arg0: tensor<3x2xi16>) -> tensor<3x2xi32> {
-  // expected-error @+1 {{size of input tensor shape shall be greater then size of output tensor shape by one}}
+  // expected-error @+1 {{rank of input tensor is 2. rank of output tensor is expected to be 1, instead of 2.}}
   %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<3x2xi32>
   return %0 : tensor<3x2xi32>
 }
@@ -82,7 +82,7 @@ func @testBitcast_v4(%arg0: tensor<3x2xi16>) -> tensor<3x2xi32> {
 // -----
 
 func @testBitcast_v5(%arg0: tensor<3x2xi16>) -> tensor<2xi32> {
-  // expected-error @+1 {{invalid output shape of tensor}}
+  // expected-error @+1 {{the 0th dim of output tensor is 2. It is not equal to the one in input tensor, which is 3}}
   %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<2xi32>
   return %0 : tensor<2xi32>
 }
@@ -106,7 +106,7 @@ func @testBitcast_v7(%arg0: tensor<3x2xi32>) -> tensor<3x2x3xi16> {
 // -----
 
 func @testBitcast_v8(%arg0: tensor<3x2xi32>) -> tensor<3x2xi16> {
-  // expected-error @+1 {{size of input tensor shape shall be lesser then size of output tensor shape by one}}
+  // expected-error @+1 {{rank of input tensor is 2. rank of output tensor is expected to be 3, instead of 2.}}
   %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2xi16>
   return %0 : tensor<3x2xi16>
 }
@@ -122,9 +122,17 @@ func @testBitcast_v9(%arg0: tensor<3x2xi32>) -> tensor<3x2xf32> {
 // -----
 
 func @testBitcast_v10(%arg0: tensor<3x2xi32>) -> tensor<3x4xf32> {
-  // expected-error @+1 {{input tensor shape shall be equal to output tensor shape}}
+  // expected-error @+1 {{output tensor shape shall be equal to input tensor shape}}
   %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x4xf32>
   return %0 : tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBitcast_v11
+func @testBitcast_v11(%arg0: tensor<10x10x2xf16>) -> tensor<*xf32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<10x10x2xf16>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
 }
 
 // -----
