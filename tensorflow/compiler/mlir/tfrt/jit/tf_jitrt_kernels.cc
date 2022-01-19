@@ -521,7 +521,6 @@ static void ExecuteImpl(Executable& executable,
          {"specialization", !executable.specialization().hasValue()
                                 ? "default"
                                 : std::to_string(*executable.specialization())},
-         {"num_worker_threads", executable.num_worker_threads()},
          {"time_to_compile_ms", executable.time_to_compile().count()}});
   });
 
