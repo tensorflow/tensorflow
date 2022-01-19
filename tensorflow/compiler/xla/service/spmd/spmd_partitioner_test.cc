@@ -7977,10 +7977,10 @@ ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
     sharding={devices=[1,1,1,2]0,1}
-  %rhs = f32[5,1,1,1024] parameter(1)
-  %rhs.copy = f32[5,1,1,1024] copy(%rhs),
+  %rhs = f32[5,1,1,2048] parameter(1)
+  %rhs.copy = f32[5,1,1,2048] copy(%rhs),
     sharding={devices=[1,1,1,2]0,1}
-  ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs.copy),
+  ROOT %conv = f32[16,801,1,2048] convolution(%lhs.copy, %rhs.copy),
     dim_labels=b01f_01io->b01f,feature_group_count=1024,
     window={size=5x1 pad=2_2x0_0},
     sharding={devices=[1,1,1,2]0,1}
@@ -7997,9 +7997,9 @@ ENTRY entry {
   const auto rhs = AllOf(
       op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(), op::Constant(),
                                 op::Constant(), op::Reshape())),
-      op::Shape("f32[5,1,1,512]"));
-  EXPECT_THAT(root,
-              AllOf(op::Convolution(lhs, rhs), op::Shape("f32[16,801,1,512]")));
+      op::Shape("f32[5,1,1,1024]"));
+  EXPECT_THAT(
+      root, AllOf(op::Convolution(lhs, rhs), op::Shape("f32[16,801,1,1024]")));
 }
 
 TEST_F(SpmdPartitioningTest, PartitionConvWithFeatureGroupCount2) {
