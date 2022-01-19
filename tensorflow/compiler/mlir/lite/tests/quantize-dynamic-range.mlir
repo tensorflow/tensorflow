@@ -178,6 +178,25 @@ func @QuantizeTransposeConvWeightOnly(%arg0: tensor<32x4x4x128xf32>, %arg1: tens
 // PerTensorWeightOnly: return %[[tconv:.*]]
 }
 
+// CHECK-LABEL: QuantizeGatherWeightOnly
+// PerTensor-LABEL: QuantizeGatherWeightOnly
+func @QuantizeGatherWeightOnly(%arg0: tensor<3xi32>) -> tensor<3x3x3x3xf32> {
+  %w = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
+  %emb = "tfl.gather"(%w, %arg0) {axis = 0 : i32, batch_dims = 0 : i32} : (tensor<64x3x3x3xf32>, tensor<3xi32>) -> tensor<3x3x3x3xf32>
+  %emb_s = "quant.stats"(%emb) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<3x3x3x3xf32>) -> tensor<3x3x3x3xf32>
+  return %emb_s : tensor<3x3x3x3xf32>
+
+// CHECK: %[[q_w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// CHECK: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w]]) : (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<64x3x3x3xf32>
+// CHECK: %[[emb:.*]] = "tfl.gather"(%[[dq_w]], %arg0)
+// CHECK: return %[[emb:.*]]
+
+// PerTensor: %[[q_w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// PerTensor: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w]]) : (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<64x3x3x3xf32>
+// PerTensor: %[[emb:.*]] = "tfl.gather"(%[[dq_w]], %arg0)
+// PerTensor: return %[[emb:.*]]
+}
+
 // CHECK-LABEL: NotQuantizeConv3D
 // PerTensor-LABEL: NotQuantizeConv3D
 // PerChannelWeightOnly-LABEL: NotQuantizeConv3D

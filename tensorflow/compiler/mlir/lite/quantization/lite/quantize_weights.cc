@@ -139,7 +139,6 @@ TfLiteStatus QuantizeWeights(
   Builder mlir_builder(&context);
 
   tensorflow::AddDynamicRangeQuantizationPasses(quant_specs, pm);
-  pm.addPass(TFL::CreateOptimizeOpOrderPass());
 
   if (failed(pm.run(module.get()))) {
     absl::string_view err = statusHandler.ConsumeStatus().error_message();
