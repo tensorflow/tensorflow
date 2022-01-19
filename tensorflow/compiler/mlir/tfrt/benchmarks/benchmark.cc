@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 
+#include <string>
+
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -22,6 +24,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/platform/logging.h"
+#include "tfrt/jitrt/jitrt_pipeline.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 
@@ -29,6 +32,7 @@ namespace tensorflow {
 
 using ::tfrt::HostContext;
 using ::tfrt::jitrt::CompilationOptions;
+using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::MemrefType;
 
 const bool kStaticDim = false;
@@ -69,14 +73,19 @@ JitExecutable& CreateJitExecutable(
     const HostContext& host, llvm::StringRef mlir_input,
     llvm::StringRef function_name, bool lower_from_tensorflow,
     const TfJitRtPipelineOptions& tf_jitrt_opts) {
+  // Options for the default JitRt compilation pipeline (lowering to LLVM).
+  CompilationPipelineOptions copts;
+  copts.alignment = EIGEN_MAX_ALIGN_BYTES;
+  copts.num_worker_threads = host.GetNumWorkerThreads();
+
   CompilationOptions opts;
-  opts.num_worker_threads = host.GetNumWorkerThreads();
   opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
-  if (lower_from_tensorflow) {
-    opts.register_compilation_pipeline = [&](mlir::OpPassManager& pm) {
-      tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
-    };
-  }
+  opts.register_compilation_pipeline =
+      [&, copts, lower_from_tensorflow](mlir::PassManager& pm) {
+        if (lower_from_tensorflow)
+          tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
+        tfrt::jitrt::RegisterDefaultJitRtCompilationPipeline(pm, copts);
+      };
   opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
   opts.calling_convention = CompilationOptions::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
@@ -87,7 +96,7 @@ JitExecutable& CreateJitExecutable(
   static auto* cache = new llvm::StringMap<std::unique_ptr<JitExecutable>>();
 
   std::string key =
-      llvm::formatv("{0}/{1}/{2}", mlir_input.data(), opts.num_worker_threads,
+      llvm::formatv("{0}/{1}/{2}", mlir_input.data(), copts.num_worker_threads,
                     hash_value(tf_jitrt_opts));
 
   // Compile and cache MLIR function.

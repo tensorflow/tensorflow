@@ -38,6 +38,7 @@ limitations under the License.
 #include "tfrt/jitrt/async_runtime.h"  // from @tf_runtime
 #include "tfrt/jitrt/async_runtime_api.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
+#include "tfrt/jitrt/jitrt_pipeline.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
@@ -90,12 +91,14 @@ using ::tfrt::StringAttribute;
 using ::tfrt::TaskFunction;
 
 using ::tfrt::jitrt::CompilationOptions;
+using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::EmitErrors;
 using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::JitExecutableCache;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::OperandConstraint;
+using ::tfrt::jitrt::RegisterDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::ReturnAsyncStridedMemref;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConverter;
@@ -367,37 +370,38 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                             {"src", serialized_operation}});
     });
 
+    // Options for the default JitRt compilation pipeline (lowering to LLVM).
+    CompilationPipelineOptions copts;
+    copts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
+    copts.num_worker_threads = workers->NumThreads();
+
+    // Options for the JitRt JitExecutable compilation.
     CompilationOptions opts;
-    // All entry memrefs must have alignment compatible with Tensorflow.
-    opts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
-    opts.num_worker_threads = workers->NumThreads();
+    opts.specialization = CompilationOptions::Specialization::kAlways;
     opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
+
+    // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
+    opts.register_compilation_pipeline = [=](mlir::PassManager& pm) {
+      TfJitRtPipelineOptions opts;
+      if (tf_jitrt_opts) {
+        opts.vectorize = tf_jitrt_opts->vectorize;
+        opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
+      }
+
+      // Lower from Tensorflow to Linalg on buffers.
+      CreateTfJitRtPipeline(pm, opts);
+
+      // Use default JitRt compilation pipeline to lower to LLVM.
+      RegisterDefaultJitRtCompilationPipeline(pm, copts);
+    };
+
+    // Register a custom pipeline to propagate specialization information.
+    opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
     opts.calling_convention = CompilationOptions::DefaultCallingConvention(
         mlir::bufferization::BufferizeTypeConverter());
-
-    // TODO(b/202247905): Default binary compilation can be prohibitively
-    // expensive because of the exponential complexity in the broadcast
-    // propagation pass. Specialized binaries have most (often all)
-    // broadcasts removed, and typically are much cheaper to compile.
-    opts.specialization = CompilationOptions::Specialization::kAlways;
-
-    // Register a custom pipeline for lowering from Tensorflow dialect.
-    if (tf_jitrt_opts) {
-      opts.register_compilation_pipeline = [tf_jitrt_opts](OpPassManager& pm) {
-        TfJitRtPipelineOptions opts;
-        opts.vectorize = tf_jitrt_opts->vectorize;
-        opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
-        return CreateTfJitRtPipeline(pm, opts);
-      };
-    } else {
-      opts.register_compilation_pipeline = CreateDefaultTfJitRtPipeline;
-    }
-
-    // Register a custom pipeline to propagate specialization information.
-    opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
 
     auto entrypoint = kernel.nested_symbols()[0];
     auto module = kernel.serialized_operation();

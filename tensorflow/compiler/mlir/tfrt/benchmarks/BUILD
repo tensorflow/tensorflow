@@ -31,6 +31,7 @@ cc_library(
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
         "@tf_runtime//backends/jitrt",
+        "@tf_runtime//backends/jitrt:jitrt_pipeline",
     ],
 )
 
