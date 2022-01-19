@@ -1388,6 +1388,18 @@ func @main(%arg: tensor<3x4xf32>) -> tensor<3x4x1xf32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>) {
+// CHECK: %[[ARG0:.*]] = f32[4,4] parameter(0)
+// CHECK: %[[ARG1:.*]] = f32[3,4] parameter(1)
+// CHECK: %[[ARGS:.*]] = (f32[4,4], f32[3,4]) tuple(f32[4,4] %[[ARG0]], f32[3,4] %[[ARG1]])
+// CHECK: %[[RESULT:.*]] = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %[[ARGS]])
+  %0, %1 = "mhlo.optimization_barrier"(%arg0, %arg1) : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
+  return %0, %1 : tensor<4x4xf32>, tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> tensor<3x4xf32> {
 // CHECK: %[[ARG0:.*]] = f32[4,4] parameter(0)
 // CHECK: %[[ARG1:.*]] = f32[3,4] parameter(1)

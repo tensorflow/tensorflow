@@ -1225,3 +1225,14 @@ add {
   // CHECK: "mhlo.reduce_precision"(%[[ARG0]]) {exponent_bits = 8 : i32, mantissa_bits = 10 : i32} : (tensor<3x4xf32>) -> tensor<3x4xf32>
   ROOT %reduce_precision = f32[3,4] reduce-precision(f32[3,4] %Arg_0.1), exponent_bits=8, mantissa_bits=10
 }
+
+
+// CHECK-LABEL: func private @optimization_barrier
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<4x4xf32>, %[[ARG1:.*]]: tensor<3x4xf32>)
+%optimization_barrier (Arg_0.1: f32[4,4], Arg_1.2: f32[3,4]) -> (f32[4,4], f32[3,4]) {
+  %Arg_0.1 = f32[4,4] parameter(0)
+  %Arg_1.2 = f32[3,4] parameter(1)
+  %args = (f32[4,4], f32[3,4]) tuple(f32[4,4] %Arg_0.1, f32[3,4] %Arg_1.2)
+  // CHECK: "mhlo.optimization_barrier"(%[[ARG0]], %[[ARG1]]) : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
+  ROOT %opt-barrier = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %args)
+}

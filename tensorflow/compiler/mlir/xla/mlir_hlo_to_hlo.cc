@@ -1430,6 +1430,28 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(OptimizationBarrierOp op, OpLoweringContext ctx) {
+  // In case MHLO's OptimizationBarrierOp has multiple operands,
+  // create xla::Tuple, using those operands, to be used as
+  // sole operand of xla::OptimizationBarrier.
+  llvm::SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op, op.getOperands(), ctx, operands))) return failure();
+  if (operands.empty()) return success();
+
+  auto& value_map = *ctx.values;
+  if (operands.size() == 1) {
+    value_map[op.getResult(0)] = xla::OptimizationBarrier(operands[0]);
+  } else {
+    auto result = xla::OptimizationBarrier(Tuple(ctx.builder, operands));
+
+    for (const auto& it : llvm::enumerate(op.getResults())) {
+      value_map[it.value()] = xla::GetTupleElement(result, it.index());
+    }
+  }
+
+  return success();
+}
+
 LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   if (!op.fusion_kind()) {
     op.emitOpError() << "requires fusion kind for HLO translation";

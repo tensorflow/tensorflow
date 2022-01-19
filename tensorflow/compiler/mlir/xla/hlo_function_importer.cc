@@ -1219,6 +1219,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return {func_builder->create<mlir::mhlo::CompareOp>(
           loc, operands[0], zero, func_builder->getStringAttr("NE"))};
     }
+    case HloOpcode::kOptimizationBarrier: {
+      llvm::SmallVector<Value> flattened_operands;
+      llvm::SmallVector<Type> flattened_operand_types;
+      FlattenTupleType(operands[0].getType(), flattened_operand_types);
+      FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
+
+      auto op = func_builder->create<mlir::mhlo::OptimizationBarrierOp>(
+          loc, flattened_operand_types, flattened_operands);
+
+      return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                      operands[0].getType());
+    }
 
 #define NO_ATTRIBUTE_CASE(hlo_op_code, mlir_op)                               \
   case HloOpcode::hlo_op_code: {                                              \
