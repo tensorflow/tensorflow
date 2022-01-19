@@ -13,15 +13,12 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
-    "if_cuda_or_rocm",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
     "if_rocm_is_configured",
 )
 load(
@@ -189,7 +186,8 @@ cc_library(
 
 tf_cc_test(
     name = "custom_call_test",
-    srcs = if_cuda_or_rocm(["custom_call_test.cc"]),
+    srcs = if_gpu_is_configured(["custom_call_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -466,21 +464,6 @@ cc_library(
     ],
 )
 
-# use alias since nested select statements not possible
-cc_library(
-    name = "empty",
-)
-
-alias(
-    name = "virtual_nccl",
-    actual = if_cuda("@local_config_nccl//:nccl", ":empty"),
-)
-
-alias(
-    name = "virtual_rccl",
-    actual = if_rocm("@local_config_rocm//rocm:rccl", ":empty"),
-)
-
 tf_cuda_library(
     name = "nccl_collective_thunks",
     srcs = [
@@ -499,10 +482,10 @@ tf_cuda_library(
     ],
     # Override tf_cuda_library()'s internal default value of ["//buildenv/target:gce"].
     compatible_with = [],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_nccl(["-DGOOGLE_XCCL=1"]),
     deps = [
         ":buffer_allocations",
         ":ir_emission_utils",
+        ":nccl_utils",
         ":thunk",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -527,36 +510,35 @@ tf_cuda_library(
         "//tensorflow/compiler/mlir/xla:attribute_exporter",
         "//tensorflow/stream_executor/gpu:gpu_activation_header",
         "@llvm-project//mlir:IR",
-    ] + if_cuda([
+    ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ]) + if_rocm([
+    ]) + if_rocm_is_configured([
         "//tensorflow/stream_executor/rocm:rocm_activation",
         "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
-    ]) + if_nccl([
-        ":virtual_nccl",
-        ":virtual_nccl_utils",
-        ":virtual_rccl",
     ]),
 )
 
-# First level of nested select. NCCL requires both if_cuda and if_nccl.
-filegroup(
-    name = "nccl_utils_srcs",
-    srcs = if_nccl(["nccl_utils.cc"]),
-)
+# Empty library to implement nested dependency conditions.
+cc_library(name = "empty")
 
-# First level of nested select. NCCL requires both if_cuda and if_nccl.
-filegroup(
-    name = "nccl_utils_hdrs",
-    srcs = if_nccl(["nccl_utils.h"]),
-)
-
-tf_cuda_library(
+# If NCCL/RCCL is supported, this target '#defines XLA_ENABLE_XCCL' and
+# provides a header which #includes NCCL/RCCL.
+alias(
     name = "nccl_utils",
-    srcs = if_cuda_or_rocm([":nccl_utils_srcs"]),
-    hdrs = if_cuda_or_rocm([":nccl_utils_hdrs"]),
-    deps = if_cuda_or_rocm([
+    actual = if_nccl(":_nccl_utils", ":empty"),
+)
+
+# Do not depend on this target, but rather depend on :nccl_utils.
+tf_cuda_library(
+    name = "_nccl_utils",
+    srcs = ["nccl_utils.cc"],
+    hdrs = ["nccl_utils.h"],
+    # Override tf_cuda_library()'s internal default value of ["//buildenv/target:gce"].
+    compatible_with = [],
+    defines = if_gpu_is_configured(["XLA_ENABLE_XCCL"]),
+    tags = ["manual"],  # Only builds with if_nccl().
+    deps = [
         ":gpu_executable_run_options",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:str_format",
@@ -568,9 +550,10 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/core:lib",
-    ]) + if_nccl([
-        ":virtual_nccl",
-        ":virtual_rccl",
+    ] + if_cuda_is_configured([
+        "@local_config_nccl//:nccl",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rccl",
     ]) + select({
         ":is_bef_thunk_enabled": [
             "@tf_runtime//:hostcontext",
@@ -578,11 +561,6 @@ tf_cuda_library(
         ],
         "//conditions:default": [],
     }),
-)
-
-alias(
-    name = "virtual_nccl_utils",
-    actual = if_cuda_or_rocm(":nccl_utils", ":empty"),
 )
 
 bool_flag(
@@ -648,31 +626,24 @@ cc_library(
 cc_library(
     name = "xlir_kernels",
     srcs = ["xlir_kernels.cc"],
-    local_defines = if_cuda_is_configured([
-        "GOOGLE_CUDA=1",
-    ]) + if_nccl([
-        "GOOGLE_XCCL=1",
-    ]) + select({
+    local_defines = select({
         ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
         "//conditions:default": [],
     }),
     tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [
+        ":nccl_utils",
         ":xlir_opdefs",
-        "@llvm-project//llvm:Support",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//backends/gpu:gpu_kernels_detail",
-        "@tf_runtime//backends/gpu:gpu_wrapper",
         "@tf_runtime//backends/gpu:gpu_types",
-    ] + if_nccl([
-        ":virtual_nccl",
-        ":virtual_nccl_utils",
-        ":virtual_rccl",
-    ]),
+        "@tf_runtime//backends/gpu:gpu_wrapper",
+    ],
     alwayslink = True,  # Contains TFRT kernel registration
 )
 
@@ -722,11 +693,7 @@ cc_library(
     ] + if_gpu_is_configured([
         "cholesky_thunk.h",
     ]),
-    local_defines = if_cuda_is_configured([
-        "GOOGLE_CUDA=1",
-    ]) + if_nccl([
-        "GOOGLE_XCCL=1",
-    ]) + select({
+    local_defines = select({
         ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
         ":is_bef_executable_enabled": ["BEF_EXECUTABLE=1"],
         "//conditions:default": [],

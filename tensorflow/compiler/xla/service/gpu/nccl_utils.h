@@ -19,16 +19,18 @@ limitations under the License.
 #include <memory>
 
 #include "absl/synchronization/mutex.h"
-#if GOOGLE_CUDA
-#include "third_party/nccl/nccl.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/rccl/rccl.h"
-#endif
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+
+// Common place for all collective thunks to include nccl/rccl headers.
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/rccl/rccl.h"
+#else
+#include "third_party/nccl/nccl.h"
+#endif
 
 #if BEF_THUNKS
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
