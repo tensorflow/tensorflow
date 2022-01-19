@@ -15,10 +15,12 @@
 """Polymorphic Type Dispatch."""
 
 import collections
-import functools
 from typing import Optional, List
 
 from tensorflow.python.types import trace
+
+# The maximum number of dispatch lookups to cache.
+_MAX_DISPATCH_CACHE = 1024
 
 
 class TypeDispatchTable:
@@ -43,10 +45,13 @@ class TypeDispatchTable:
     # Holds all inserted types as keys. (Using OrderedDict for determinism)
     self._targets = collections.OrderedDict()
 
+    # LRU Cache for dispatch results to avoid expensive lookups.
+    self._dispatch_cache = collections.OrderedDict()
+
   def add_target(self, target: trace.TraceType) -> None:
     """Adds a new target type."""
     self._targets[target] = None
-    self.dispatch.cache_clear()
+    self._dispatch_cache.clear()
 
   def all_targets(self) -> List[trace.TraceType]:
     """Returns all targets in the table."""
@@ -56,17 +61,27 @@ class TypeDispatchTable:
     """Deletes a target in the table if it exists."""
     if target in self._targets:
       del self._targets[target]
-      self.dispatch.cache_clear()
+      self._dispatch_cache.clear()
+
+  def clear(self) -> None:
+    """Deletes all targets in the table."""
+    self._targets.clear()
+    self._dispatch_cache.clear()
 
   def contains(self, target: trace.TraceType) -> bool:
     """Returns True if the exact target exists in the table."""
     return target in self._targets
 
-  @functools.lru_cache(maxsize=None)
   def dispatch(self, target: trace.TraceType) -> Optional[trace.TraceType]:
     """Returns the most specific target if it exists in the table."""
     if target in self._targets:
       return target
+
+    if target in self._dispatch_cache:
+      # Move to the front of LRU cache.
+      result = self._dispatch_cache.pop(target)
+      self._dispatch_cache[target] = result
+      return result
 
     most_specific = None
     for other in self._targets:
@@ -75,4 +90,12 @@ class TypeDispatchTable:
             other, most_specific):
           most_specific = other
 
+    if most_specific is not None:
+      # LRU Cache removes oldest item
+      if len(self._dispatch_cache) > _MAX_DISPATCH_CACHE:
+        self._dispatch_cache.popitem(last=False)
+
+      self._dispatch_cache[target] = most_specific
+
     return most_specific
+

@@ -18,6 +18,7 @@ import collections
 from typing import Optional, Sequence, Tuple
 
 from tensorflow.core.function import trace_type
+from tensorflow.core.function.polymorphism import type_dispatch
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -107,7 +108,7 @@ class FunctionCache:
   """A container for managing concrete functions."""
 
   __slots__ = [
-      "_missed", "_primary", "_dispatch_cache", "arg_relaxed_specs",
+      "_missed", "_primary", "_dispatch_table", "arg_relaxed_specs",
       "arg_relaxed", "_garbage_collectors"
   ]
 
@@ -120,7 +121,7 @@ class FunctionCache:
     # Maps a FunctionCacheKey K to a FunctionCacheKey V such that it is safe
     # to dispatch K to the concrete function of V that exists in _primary.
     # Used to lookup posible concrete functions when K is not in _primary.
-    self._dispatch_cache = collections.OrderedDict()
+    self._dispatch_table = type_dispatch.TypeDispatchTable()
 
     # TODO(b/202430155): Incorporate relaxation logic inside FunctionCache.
     # A cache key lookup, mapping a cache key generated without shape info to a
@@ -135,7 +136,6 @@ class FunctionCache:
 
     self._garbage_collectors = [
         _FunctionGarbageCollector(self._primary),
-        _FunctionGarbageCollector(self._dispatch_cache),
         _FunctionGarbageCollector(self.arg_relaxed),
         _FunctionGarbageCollector(self.arg_relaxed_specs)
     ]
@@ -148,31 +148,19 @@ class FunctionCache:
     if not use_function_subtyping:
       return self._primary.get(key, None)
 
-    if key in self._primary:
-      return self._primary[key]
-
-    if key in self._dispatch_cache:
-      return self._primary[self._dispatch_cache[key]]
-
-    for known_key in self._primary:
-      if known_key.is_subtype_of(key):
-        self._dispatch_cache[key] = known_key
-        return self._primary[known_key]
+    dispatch_key = self._dispatch_table.dispatch(key)
+    if dispatch_key is not None:
+      return self._primary[dispatch_key]
 
     return None
 
-  # NOTE: We can optimize deletion to O(1) by maintaining a reverse dict of
-  # self._dispatch_cache.
   def delete(self, key: FunctionCacheKey):
     """Deletes a concrete function given the key it was added with."""
     if key not in self._primary:
       return False
 
     del self._primary[key]
-
-    for dispatched_key in self._dispatch_cache:
-      if self._dispatch_cache[dispatched_key] == key:
-        del self._dispatch_cache[dispatched_key]
+    self._dispatch_table.delete(key)
 
     return True
 
@@ -187,13 +175,14 @@ class FunctionCache:
       concrete: The concrete function to be added to the cache.
     """
     self._primary[key] = concrete
+    self._dispatch_table.add_target(key)
     deletion_observer.add_listener(
         lambda: self.delete(key) if DELETE_WITH_WEAKREF else None)
 
   def clear(self):
     """Removes all concrete functions from the cache."""
     self._primary.clear()
-    self._dispatch_cache.clear()
+    self._dispatch_table.clear()
     self.arg_relaxed_specs.clear()
     self.arg_relaxed.clear()
 
