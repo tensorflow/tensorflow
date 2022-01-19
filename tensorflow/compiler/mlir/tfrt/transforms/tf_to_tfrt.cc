@@ -114,18 +114,21 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
       mlir::MLIRContext *context, CoreRTConverter *corert_converter,
       tfrt_compiler::FallbackConverter *fallback_converter,
       const tfrt_compiler::CostAnalysis *cost_analysis,
-      bool tpu_lower_to_fallback)
+      bool tpu_lower_to_fallback, bool target_tpurt)
       : mlir::ConversionPattern(mlir::Pattern::MatchAnyOpTypeTag(),
                                 kFallbackBenefit, context),
         corert_converter_(*corert_converter),
         fallback_converter_(*fallback_converter),
         cost_analysis_(*cost_analysis),
-        tpu_lower_to_fallback_(tpu_lower_to_fallback) {}
+        tpu_lower_to_fallback_(tpu_lower_to_fallback),
+        target_tpurt_(target_tpurt) {}
 
   LogicalResult matchAndRewrite(
       mlir::Operation *op, ArrayRef<mlir::Value> operands,
       mlir::ConversionPatternRewriter &rewriter) const override {
     if (!UseFallback(op)) return failure();
+
+    if (target_tpurt_ && IsTpuCompileAndExecuteOps(op)) return failure();
 
     corert_converter_.MaterializeDerivedAttributes(op);
 
@@ -199,14 +202,21 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     // conversion.
     // TODO(b/173017701): have a centralized place to hold the information
     // whether a TF op should be lowered to FallbackExecute op.
-    return !llvm::isa<
-        mlir::TF::_TfrtSetResourceOp, mlir::TF::_TfrtGetResourceOp,
-        mlir::TF::_TPUCompileMlirOp, mlir::TF::TPUCompileSucceededAssertOp,
-        mlir::TF::TPUExecuteOp, mlir::TF::TPUCompileMlirAndExecuteOp,
-        // Specifically handle control flow ops.
-        mlir::TF::CaseOp, mlir::TF::IfOp, mlir::TF::WhileOp,
-        mlir::TF::StatefulPartitionedCallOp, mlir::TF::PartitionedCallOp,
-        mlir::TF::LegacyCallOp>(op);
+    return !llvm::isa<mlir::TF::_TfrtSetResourceOp,
+                      mlir::TF::_TfrtGetResourceOp,
+                      // Do not use fallback on the TPU fused
+                      // compile_and_execute kernel.
+                      mlir::TF::TPUCompileMlirAndExecuteOp,
+                      // Specifically handle control flow ops.
+                      mlir::TF::CaseOp, mlir::TF::IfOp, mlir::TF::WhileOp,
+                      mlir::TF::StatefulPartitionedCallOp,
+                      mlir::TF::PartitionedCallOp, mlir::TF::LegacyCallOp>(op);
+  }
+
+  bool IsTpuCompileAndExecuteOps(mlir::Operation *op) const {
+    return llvm::isa<mlir::TF::_TPUCompileMlirOp,
+                     mlir::TF::TPUCompileSucceededAssertOp,
+                     mlir::TF::TPUExecuteOp>(op);
   }
 
   mlir::LogicalResult ConvertToFallbackExecuteOp(
@@ -226,6 +236,7 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
   tfrt_compiler::FallbackConverter &fallback_converter_;
   const tfrt_compiler::CostAnalysis &cost_analysis_;
   bool tpu_lower_to_fallback_;
+  bool target_tpurt_;
 };
 
 mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
@@ -1486,11 +1497,11 @@ void PopulateTFToTFRTConversionPatterns(
     const tfrt_compiler::TensorArraySideEffectAnalysis
         *tensor_array_side_effect_analysis,
     bool enable_native_ops, bool func_use_fallback_tensor,
-    bool tpu_lower_to_fallback) {
+    bool tpu_lower_to_fallback, bool target_tpurt) {
   // By default, we lower all TF ops to fallback ops.
   patterns->insert<FallbackExecuteOpConversion>(
       context, corert_converter, fallback_converter, cost_analysis,
-      tpu_lower_to_fallback);
+      tpu_lower_to_fallback, target_tpurt);
   patterns->insert<FallbackConstOpConversion, FallbackSetResourceOp,
                    FallbackGetResourceOp>(context, corert_converter);
 
@@ -1644,7 +1655,8 @@ class TfToTfrtConversionPass
     PopulateTFToTFRTConversionPatterns(
         &context, &patterns, &corert_converter, &fallback_converter,
         &symbol_table, &cost_analysis, &tensor_array_side_effect_analysis,
-        enable_native_ops_, func_use_fallback_tensor_, tpu_lower_to_fallback_);
+        enable_native_ops_, func_use_fallback_tensor_, tpu_lower_to_fallback_,
+        target_tpurt_);
 
     return mlir::applyPartialConversion(func, target, std::move(patterns));
   }
@@ -1835,8 +1847,9 @@ class TfToTfrtConversionPass
 
   Option<bool> tpu_lower_to_fallback_{
       *this, "tpu-lower-to-fallback",
-      llvm::cl::desc("If true, lower an TF op that's placed on TPU device "
-                     "to be executed by tfrt_fallback.execute."),
+      llvm::cl::desc("If true, lower a TF op that's placed on TPU device "
+                     "to be executed by tfrt_fallback.execute. Note that this "
+                     "applies to ops other than TPU compile and execute ops."),
       llvm::cl::init(true)};
 
   // TODO(b/194081364): remove this option once we unify servo TPU serving
