@@ -608,23 +608,20 @@ Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormInference directly.  It "
       "should be lowered before IR emission to HLO-soup using "
-      "BatchNormRewriter or to a cudnn CustomCall using "
-      "CudnnBatchNormRewriter.");
+      "BatchNormRewriter.");
 }
 
 Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormTraining directly.  It "
       "should be lowered before IR emission to HLO-soup using "
-      "BatchNormRewriter or to a cudnn CustomCall using "
-      "CudnnBatchNormRewriter.");
+      "BatchNormRewriter.");
 }
 
 Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormGrad directly.  It should "
-      "be lowered before IR emission to HLO-soup (using BatchNormRewriter) or "
-      "to a cudnn CustomCall using CudnnBatchNormRewriter.");
+      "be lowered before IR emission to HLO-soup using BatchNormRewriter.");
 }
 
 StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElement(

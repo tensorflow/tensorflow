@@ -654,7 +654,6 @@ cc_library(
         "conditional_thunk.cc",
         "convolution_thunk.cc",
         "copy_thunk.cc",
-        "cudnn_batchnorm_thunk.cc",
         "fft_thunk.cc",
         "for_thunk.cc",
         "gpu_executable.cc",
@@ -675,7 +674,6 @@ cc_library(
         "conditional_thunk.h",
         "convolution_thunk.h",
         "copy_thunk.h",
-        "cudnn_batchnorm_thunk.h",
         "custom_call_thunk.h",
         "fft_thunk.h",
         "for_thunk.h",
@@ -702,7 +700,6 @@ cc_library(
         ":backend_configs_cc",
         ":buffer_allocations",
         ":cusolver_context",
-        ":cudnn_batchnorm_runner",
         ":custom_call_thunk",
         ":gemm_thunk",
         ":gpu_constants",
@@ -1032,28 +1029,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_batchnorm_runner",
-    srcs = ["cudnn_batchnorm_runner.cc"],
-    hdrs = ["cudnn_batchnorm_runner.h"],
-    deps = [
-        ":backend_configs_cc",
-        ":ir_emission_utils",
-        ":stream_executor_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
     name = "gpu_conv_rewriter",
     srcs = ["gpu_conv_rewriter.cc"],
     hdrs = ["gpu_conv_rewriter.h"],
@@ -1210,22 +1185,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "gpu_copy_insertion",
-    srcs = ["gpu_copy_insertion.cc"],
-    hdrs = ["gpu_copy_insertion.h"],
-    deps = [
-        ":cublas_cudnn",
-        "//tensorflow/compiler/xla/service:call_graph",
-        "//tensorflow/compiler/xla/service:copy_insertion",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -1588,7 +1547,6 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
-        ":cudnn_batchnorm_rewriter",
         ":fusion_bitcast_lift",
         ":fusion_merger",
         ":gemm_broadcast_folding_rewriter",
@@ -1596,7 +1554,6 @@ cc_library(
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
         ":gpu_conv_rewriter",
-        ":gpu_copy_insertion",
         ":gpu_device_info",
         ":gpu_executable",
         ":gpu_hlo_schedule",
@@ -1667,6 +1624,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:conditional_canonicalizer",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convolution_4d_expander",
+        "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:dot_merger",
         "//tensorflow/compiler/xla/service:dump",
@@ -1934,19 +1892,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
-    ],
-)
-
-cc_library(
-    name = "cudnn_batchnorm_rewriter",
-    srcs = ["cudnn_batchnorm_rewriter.cc"],
-    hdrs = ["cudnn_batchnorm_rewriter.h"],
-    deps = [
-        ":cublas_cudnn",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_pass",
     ],
 )
 

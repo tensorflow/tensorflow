@@ -70,7 +70,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
@@ -1223,38 +1222,6 @@ struct NamedValue {
   absl::string_view name;
 };
 
-// Verifies that the given batch norm is well formed for thunk emission. This
-// requires that all statistics operands (mean, stddev etc) are F32 types and
-// all the non-statistics operands need to match in shape, element type, and
-// layout (which maps to them having the same memref type).
-Status VerifyBatchNormForThunkEmission(
-    mlir::ArrayRef<NamedValue> statistics_operands,
-    mlir::ArrayRef<NamedValue> other_operands) {
-  for (const NamedValue& v : statistics_operands) {
-    // Note: MLIR verification will ensure that the operands of the batchnorm
-    // LHLO are valid memref types.
-    if (!v.value.getType().cast<mlir::MemRefType>().getElementType().isF32()) {
-      return Unimplemented("Operand %s of batch norm should have F32 type",
-                           v.name);
-    }
-  }
-  if (other_operands.empty()) {
-    return Status::OK();
-  }
-
-  mlir::Type first_type = other_operands.front().value.getType();
-  absl::string_view first_name = other_operands.front().name;
-
-  for (const NamedValue& v : other_operands.drop_front(1)) {
-    if (v.value.getType() != first_type) {
-      return Unimplemented("%s and %s for batch norm should have same types",
-                           v.name, first_name);
-    }
-  }
-
-  return Status::OK();
-}
-
 // Determine if we enable the row optimized codegen.  When we have a
 // fusion with only point-wise operations, scalar broadcasting and row
 // broadcasting, we can trigger a kernel that vectorize the row loads.
@@ -1329,141 +1296,6 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
                         num_big_inputs);
 }
 }  // namespace
-
-Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
-  auto get_batch_norm_config = [](auto op, mlir::Value output) {
-    CudnnBatchNormConfig config;
-    config.output_shape = GetShape(output);
-    config.output_type = config.output_shape.element_type();
-    config.epsilon = op.epsilon().convertToFloat();
-    config.feature_index = op.feature_index();
-    return config;
-  };
-
-  // The statistics operands for batch norm operations need to be FP32 type.
-  // And the rest of the operands need match in shape, layout, and element type
-  // to match.
-  if (auto bn_train =
-          mlir::dyn_cast<mlir::lmhlo_gpu::BatchNormTrainingOp>(op)) {
-    TF_RETURN_IF_ERROR(VerifyBatchNormForThunkEmission(
-        /*statistics_operands=*/
-        {{bn_train.scale(), "scale"},
-         {bn_train.offset(), "offset"},
-         {bn_train.batch_mean(), "batch_mean"},
-         {bn_train.batch_stddev(), "batch_stddev"}},
-        /*other_operands=*/
-        {{bn_train.operand(), "operand"}, {bn_train.output(), "output"}}));
-    TF_ASSIGN_OR_RETURN(auto operand, GetAllocationSlice(bn_train.operand()));
-    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSlice(bn_train.scale()));
-    TF_ASSIGN_OR_RETURN(auto offset, GetAllocationSlice(bn_train.offset()));
-
-    // BatchNormTraining returns a tuple of three elements: data, calculated
-    // mean, and calculated 1/sqrt(variance + epsilon).
-    TF_ASSIGN_OR_RETURN(auto output_data,
-                        GetAllocationSlice(bn_train.output()));
-    TF_ASSIGN_OR_RETURN(auto output_mean,
-                        GetAllocationSlice(bn_train.batch_mean()));
-    TF_ASSIGN_OR_RETURN(auto output_inv_stddev,
-                        GetAllocationSlice(bn_train.batch_stddev()));
-
-    AddThunkToThunkSequence(
-        absl::make_unique<CudnnBatchNormForwardTrainingThunk>(
-            GetThunkInfo(op),
-            /*config=*/get_batch_norm_config(bn_train, bn_train.output()),
-            /*operand=*/operand,
-            /*scale=*/scale,
-            /*offset=*/offset,
-            /*output_data=*/output_data,
-            /*output_mean=*/output_mean,
-            /*output_inv_stddev=*/output_inv_stddev));
-    return Status::OK();
-  }
-
-  if (auto bn_grad = mlir::dyn_cast<mlir::lmhlo_gpu::BatchNormGradOp>(op)) {
-    TF_RETURN_IF_ERROR(VerifyBatchNormForThunkEmission(
-        /*statistics_operands=*/
-        {{bn_grad.scale(), "scale"},
-         {bn_grad.mean(), "mean"},
-         {bn_grad.stddev(), "stddev"},
-         {bn_grad.grad_scale(), "grad_scale"},
-         {bn_grad.grad_offset(), "grad_offset"}},
-        /*other_operands=*/
-        {{bn_grad.operand(), "operand"},
-         {bn_grad.grad_output(), "grad_output"},
-         {bn_grad.grad_operand(), "grad_operand"}}));
-
-    TF_ASSIGN_OR_RETURN(auto operand, GetAllocationSlice(bn_grad.operand()));
-    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSlice(bn_grad.scale()));
-    TF_ASSIGN_OR_RETURN(auto mean, GetAllocationSlice(bn_grad.mean()));
-    TF_ASSIGN_OR_RETURN(auto inv_stddev, GetAllocationSlice(bn_grad.stddev()));
-    TF_ASSIGN_OR_RETURN(auto grad_output,
-                        GetAllocationSlice(bn_grad.grad_output()));
-
-    // BatchNormGrad returns a tuple of three elements: grad_data, grad_scale,
-    // grad_offset.
-    TF_ASSIGN_OR_RETURN(auto output_grad_data,
-                        GetAllocationSlice(bn_grad.grad_operand()));
-    TF_ASSIGN_OR_RETURN(auto output_grad_scale,
-                        GetAllocationSlice(bn_grad.grad_scale()));
-    TF_ASSIGN_OR_RETURN(auto output_grad_offset,
-                        GetAllocationSlice(bn_grad.grad_offset()));
-
-    CudnnBatchNormConfig config;
-    config.output_shape = GetShape(bn_grad.grad_output());
-    config.output_type = config.output_shape.element_type();
-    config.epsilon = bn_grad.epsilon().convertToFloat();
-    config.feature_index = bn_grad.feature_index();
-
-    AddThunkToThunkSequence(absl::make_unique<CudnnBatchNormBackwardThunk>(
-        GetThunkInfo(op),
-        /*config=*/get_batch_norm_config(bn_grad, bn_grad.grad_output()),
-        /*operand=*/operand,
-        /*scale=*/scale,
-        /*mean=*/mean,
-        /*inv_stddev=*/inv_stddev,
-        /*grad_output=*/grad_output,
-        /*output_grad_data=*/output_grad_data,
-        /*output_grad_scale=*/output_grad_scale,
-        /*output_grad_offset=*/output_grad_offset));
-    return Status::OK();
-  }
-
-  if (auto bn_inference =
-          mlir::dyn_cast<mlir::lmhlo_gpu::BatchNormInferenceOp>(op)) {
-    TF_RETURN_IF_ERROR(
-        VerifyBatchNormForThunkEmission(/*statistics_operands=*/
-                                        {{bn_inference.scale(), "scale"},
-                                         {bn_inference.offset(), "offset"},
-                                         {bn_inference.mean(), "mean"},
-                                         {bn_inference.stddev(), "stddev"}},
-                                        /*other_operands=*/
-                                        {{bn_inference.operand(), "operand"},
-                                         {bn_inference.output(), "output"}}));
-
-    TF_ASSIGN_OR_RETURN(auto operand,
-                        GetAllocationSlice(bn_inference.operand()));
-    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSlice(bn_inference.scale()));
-    TF_ASSIGN_OR_RETURN(auto offset, GetAllocationSlice(bn_inference.offset()));
-    TF_ASSIGN_OR_RETURN(auto mean, GetAllocationSlice(bn_inference.mean()));
-    TF_ASSIGN_OR_RETURN(auto variance,
-                        GetAllocationSlice(bn_inference.stddev()));
-    TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(bn_inference.output()));
-
-    AddThunkToThunkSequence(absl::make_unique<
-                            CudnnBatchNormForwardInferenceThunk>(
-        GetThunkInfo(op),
-        /*config=*/get_batch_norm_config(bn_inference, bn_inference.output()),
-        /*operand=*/operand,
-        /*scale=*/scale,
-        /*offset=*/offset,
-        /*mean=*/mean,
-        /*variance=*/variance,
-        /*output=*/output));
-    return Status::OK();
-  }
-
-  return Unimplemented("Unsupported batch norm operation");
-}
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
@@ -5657,12 +5489,6 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
                 mlir::lmhlo_gpu::ConvBackwardFilterOp,
                 mlir::lmhlo_gpu::ConvBackwardInputOp>(op)) {
     return EmitConvolutionThunk(op);
-  }
-
-  if (mlir::isa<mlir::lmhlo_gpu::BatchNormTrainingOp,
-                mlir::lmhlo_gpu::BatchNormInferenceOp,
-                mlir::lmhlo_gpu::BatchNormGradOp>(op)) {
-    return EmitBatchNormThunk(op);
   }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
