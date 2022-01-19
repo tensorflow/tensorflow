@@ -3,6 +3,9 @@
 // RUN: mlir-hlo-opt %s  -mlir-print-debuginfo -mlir-print-local-scope \
 // RUN: | mlir-hlo-opt -mlir-print-debuginfo -mlir-print-local-scope \
 // RUN: | FileCheck %s
+// RUN: mlir-hlo-opt %s  -mlir-print-debuginfo \
+// RUN: | mlir-hlo-opt -mlir-print-debuginfo -mlir-print-local-scope \
+// RUN: | FileCheck %s
 
 // The lit-tests below tests the printing and parsing of the "pretty-printed"
 // version of mhlo.reduce op.
