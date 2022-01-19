@@ -182,6 +182,8 @@
 *   TensorFlow-oneDNN no longer supports
    [explicit use of oneDNN blocked tensor format](https://github.com/tensorflow/tensorflow/pull/53288), 
     e.g., setting the environment variable `TF_ENABLE_MKL_NATIVE_FORMAT` will not have any effect.
+    
+*   TensorFlow has been validated on Windows Subsystem for Linux 2 (aka WSL 2) for both GPUs and CPUs.  
 
 # Thanks to our Contributors
 
