@@ -20,7 +20,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.checker.nullness.qual.Nullable;
 
 /**
  * Interface to TensorFlow Lite model interpreter, excluding experimental methods.
@@ -367,7 +366,6 @@ public interface InterpreterApi extends AutoCloseable {
    *
    * @throws IllegalArgumentException if the model is not initialized by the interpreter.
    */
-  @Nullable
   public Long getLastNativeInferenceDurationNanoseconds();
 
   /** Release resources associated with the {@code InterpreterApi} instance. */

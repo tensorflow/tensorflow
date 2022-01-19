@@ -15,8 +15,6 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
-import org.checkerframework.checker.nullness.qual.Nullable;
-
 /** Static utility methods loading the TensorFlowLite runtime. */
 public final class TensorFlowLite {
 
@@ -34,7 +32,7 @@ public final class TensorFlowLite {
         }
       };
 
-  private static final @Nullable Throwable LOAD_LIBRARY_EXCEPTION;
+  private static final Throwable LOAD_LIBRARY_EXCEPTION;
   private static volatile boolean isInit = false;
 
   static {
