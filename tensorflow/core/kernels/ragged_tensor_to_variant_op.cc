@@ -222,8 +222,7 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
         TensorShape zeros_shape = dense_values_shape;
         zeros_shape.set_dim(0, piece_size);
         Tensor zero(value_dtype, zeros_shape);
-        zero.flat<VALUE_TYPE>() =
-            zero.flat<VALUE_TYPE>().constant(VALUE_TYPE());
+        zero.flat<VALUE_TYPE>().setZero();
         values.push_back(zero);
       }
     }
@@ -238,6 +237,8 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
       std::vector<std::unique_ptr<ConstPiece>> pieces;
       pieces.reserve(values.size());
       for (const Tensor& t : values) {
+        // ConcatCPU expects non-empty tensors.
+        if (t.NumElements() == 0) continue;
         pieces.emplace_back(
             new ConstPiece(t.shaped<VALUE_TYPE, 2>({1, t.NumElements()})));
       }

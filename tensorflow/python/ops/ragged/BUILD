@@ -534,6 +534,7 @@ py_test(
     name = "ragged_tensor_test",
     srcs = ["ragged_tensor_test.py"],
     python_version = "PY3",
+    shard_count = 8,
     srcs_version = "PY3",
     tags = [
         "no_windows",
