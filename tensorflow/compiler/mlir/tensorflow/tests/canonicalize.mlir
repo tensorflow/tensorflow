@@ -1186,7 +1186,7 @@ func @foldIfRegionMismatchedTypes(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>, %a
 func @eliminatePassThroughIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<!tf_type.resource>) -> (tensor<f32>) {
   // CHECK: %[[PRED:.*]] = "tf._SomeOp"() : () -> tensor<i1>
   %pred = "tf._SomeOp"() : () -> tensor<i1>
-  // CHECK: %[[IF_OUTPUT:.*]] = "tf.IfRegion"(%[[PRED]]) ( {
+  // CHECK: %[[IF_OUTPUT:.*]] = "tf.IfRegion"(%[[PRED]]) ({
   // CHECK:   %[[MUL:.*]] = "tf.Mul"(%[[ARG0]], %[[ARG1]])
   // CHECK:   "tf.Yield"(%[[MUL]]) : (tensor<f32>)
   // CHECK:  },  {
@@ -1213,7 +1213,7 @@ func @eliminatePassThroughIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2
 func @eliminatePassThroughCaseRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<!tf_type.resource>) -> (tensor<f32>) {
   // CHECK: %[[INDEX:.*]] = "tf._SomeOp"() : () -> tensor<i32>
   %index = "tf._SomeOp"() : () -> tensor<i32>
-  // CHECK: %[[CASE_OUTPUT:.*]] = "tf.CaseRegion"(%[[INDEX]]) ( {
+  // CHECK: %[[CASE_OUTPUT:.*]] = "tf.CaseRegion"(%[[INDEX]]) ({
   // CHECK:   %[[MUL:.*]] = "tf.Mul"(%[[ARG0]], %[[ARG1]])
   // CHECK:   "tf.Yield"(%[[MUL]]) : (tensor<f32>)
   // CHECK:  },  {
@@ -1821,7 +1821,7 @@ func @while_with_id_passthrough(%arg0: tensor<7xf32> {tf._user_specified_name = 
   %3 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
   %4 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %5 = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  %6:4 = "tf.WhileRegion"(%0, %1, %arg0, %2) ( {
+  %6:4 = "tf.WhileRegion"(%0, %1, %arg0, %2) ({
     ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):  // no predecessors
       %8 = "tf.Less"(%arg1, %arg2) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
       %9 = "tf.LogicalAnd"(%8, %3) {device = ""} : (tensor<i1>, tensor<i1>) -> tensor<i1>

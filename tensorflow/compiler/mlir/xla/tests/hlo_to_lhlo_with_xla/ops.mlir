@@ -704,7 +704,7 @@ func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi32>, 
 // CHECK-SAME: %[[ARG2:.*]]: memref<4xi8>
 // CHECK: %[[VIEW0:.*]] = memref.view %[[ARG0]]{{.*}} : memref<4xi8> to memref<f32>
 // CHECK: %[[VIEW1:.*]] = memref.view %[[ARG1]]{{.*}} : memref<4xi8> to memref<f32>
-// CHECK: "lmhlo.fusion"() ( {
+// CHECK: "lmhlo.fusion"() ({
 // CHECK:   %[[VAR0:.*]] = bufferization.to_tensor %[[VIEW0]] : memref<f32>
 // CHECK:   %[[VAR1:.*]] = bufferization.to_tensor %[[VIEW1]] : memref<f32>
 // CHECK:   %[[VAR2:.*]] = mhlo.add %[[VAR0]], %[[VAR1]] : tensor<f32>
@@ -712,7 +712,7 @@ func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi32>, 
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: }) : () -> ()
 func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
-  %result = "mhlo.fusion"(%arg0, %arg1) ( {
+  %result = "mhlo.fusion"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
       %result = "mhlo.add"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>
       "mhlo.return"(%result) : (tensor<f32>) -> ()
@@ -724,7 +724,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // -----
 
 // CHECK-LABEL: func @main
-// CHECK: "lmhlo.fusion"() ( {
+// CHECK: "lmhlo.fusion"() ({
 // CHECK:   %[[VAL0:.*]] = bufferization.to_tensor %{{.*}} : memref<f32>
 // CHECK:   %[[VAL1:.*]] = bufferization.to_tensor %{{.*}} : memref<f32>
 // CHECK:   %[[VAL2:.*]] = bufferization.to_tensor %{{.*}} : memref<f32>
@@ -734,7 +734,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: }) : () -> ()
 func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>> {
-  %result = "mhlo.fusion"(%arg0, %arg1) ( {
+  %result = "mhlo.fusion"(%arg0, %arg1) ({
     ^bb0(%arg2: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg3: tuple<tensor<f32>>):
       %0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tuple<tensor<f32>>, tensor<f32>>) -> tuple<tensor<f32>>
       %1 = "mhlo.get_tuple_element"(%0) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>
@@ -759,7 +759,7 @@ func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tensor<f3
 // CHECK:     "mhlo.return"(%[[VAL7:.*]]) : (tuple<tensor<f32>, tensor<i32>>) -> ()
 // CHECK:   })
 func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f32>, %arg3 : tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>) {
-  %result0, %result1 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ( {
+  %result0, %result1 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
     ^bb0(%fa: tensor<f32>, %ia : tensor<i32>, %fb: tensor<f32>, %ib: tensor<i32>):   // no predecessors
       %fmax = "mhlo.maximum"(%fa, %fb) {} : (tensor<f32>, tensor<f32>) -> tensor<f32>
       %imax = "mhlo.maximum"(%ia, %ib) {} : (tensor<i32>, tensor<i32>) -> tensor<i32>

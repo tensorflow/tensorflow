@@ -1105,6 +1105,7 @@ cc_library(
         ":lhlo_elemental_utils",
         ":map_lmhlo_to_scalar_op",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineAnalysis",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",

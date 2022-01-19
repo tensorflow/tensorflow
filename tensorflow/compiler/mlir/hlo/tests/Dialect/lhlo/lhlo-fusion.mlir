@@ -4,7 +4,7 @@
 // CHECK-SAME: (%[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<?x?xf32>, %[[ARG2:.*]]: memref<?x?xf32>, %[[ARG3:.*]]: memref<?x?xf32>) -> memref<?x?xf32>
 func @simple_kloop_fusion(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>,
                           %arg2: memref<?x?xf32>, %arg3: memref<?x?xf32>) -> memref<?x?xf32> {
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK: "lmhlo.abs"(%[[ARG0]], %[[ARG1]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: "lmhlo.add"(%[[ARG1]], %[[ARG2]], %[[ARG3]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: }) : () -> ()
@@ -20,7 +20,7 @@ func @simple_kloop_fusion(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>,
 // CHECK-SAME: (%[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<?x?xf32>, %[[ARG2:.*]]: memref<?x?xf32>, %[[ARG3:.*]]: memref<?x?xf32>) -> (memref<?x?xf32>, memref<?x?xf32>)
 func @simple_multi_output_kloop_fusion(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>,
                           %arg2: memref<?x?xf32>, %arg3: memref<?x?xf32>) -> (memref<?x?xf32>, memref<?x?xf32>) {
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK: "lmhlo.abs"(%[[ARG0]], %[[ARG1]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: "lmhlo.add"(%[[ARG1]], %[[ARG2]], %[[ARG3]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: }) : () -> ()
@@ -37,7 +37,7 @@ func @simple_multi_output_kloop_fusion(%arg0: memref<?x?xf32>, %arg1: memref<?x?
 func @simple_multi_output_kloop_fusion_with_reorder(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>,
                           %arg2: memref<?x?xf32>, %arg3: memref<?x?xf32>,
                           %arg4: memref<2xindex>, %arg5:  memref<?x?xf32>) -> (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) {
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK: "lmhlo.abs"(%[[ARG0]], %[[ARG1]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: "lmhlo.add"(%[[ARG1]], %[[ARG2]], %[[ARG3]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: }) : () -> ()
@@ -56,7 +56,7 @@ func @simple_multi_output_kloop_fusion_with_reorder(%arg0: memref<?x?xf32>, %arg
 func @same_num_elements_multi_output_kloop_fusion(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>,
                           %arg2: memref<2xi64>, %arg3: memref<?x?x?xf32>,
                           %arg4: memref<?x?x?xf32>, %arg5:  memref<?x?x?xf32>) -> (memref<?x?xf32>, memref<?x?x?xf32>) {
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK: "lmhlo.abs"(%[[ARG0]], %[[ARG1]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: "lmhlo.dynamic_reshape"(%[[ARG1]], %[[ARG2]], %[[ARG3]])
   // CHECK: "lmhlo.add"(%[[ARG3]], %[[ARG4]], %[[ARG5]]) : (memref<?x?x?xf32>, memref<?x?x?xf32>, memref<?x?x?xf32>) -> ()
@@ -88,7 +88,7 @@ func @kloop_fusion_with_dealloc(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>) 
   // CHECK: %[[TMP9:.*]] = memref.alloc
   // CHECK: %[[TMP13:.*]] = memref.alloc
   // CHECK: %[[TMP16:.*]] = memref.alloc
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK: "lmhlo.add"(%[[ARG0]], %[[ARG1]], %[[TMP3]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: "lmhlo.multiply"(%[[ARG0]], %[[ARG1]], %[[TMP5]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: "lmhlo.abs"(%[[TMP3]], %[[TMP9]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
@@ -134,13 +134,13 @@ func @kloop_fusion_with_dealloc(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>) 
 // CHECK-LABEL: @simple_kinput
 // CHECK-SAME: %[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<?x?xf32>, %[[ARG2:.*]]: memref<?xf32>, %[[ARG3:.*]]: memref<f32>
 func @simple_kinput(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?xf32>, %init: memref<f32>) -> memref<?xf32> {
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK: "lmhlo.abs"(%[[ARG0]], %[[ARG1]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
-  // CHECK: "lmhlo.reduce"(%[[ARG1]], %[[ARG3]], %[[ARG2]]) ( {
+  // CHECK: "lmhlo.reduce"(%[[ARG1]], %[[ARG3]], %[[ARG2]]) ({
   // CHECK: }) : () -> ()
   // CHECK: return %[[ARG2]] : memref<?xf32>
   "lmhlo.abs"(%arg0, %arg1) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
-  "lmhlo.reduce"(%arg1, %init, %arg2) ( {
+  "lmhlo.reduce"(%arg1, %init, %arg2) ({
   ^bb0(%targ1: memref<f32>, %targ2: memref<f32>, %tresult: memref<f32>):
     "lmhlo.add"(%targ1, %targ2, %tresult) : (memref<f32>, memref<f32>, memref<f32>) -> ()
     "lmhlo.terminator"() : () -> ()
@@ -153,13 +153,13 @@ func @simple_kinput(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memre
 // CHECK-LABEL: @multi_output_kinput
 // CHECK-SAME: %[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<?x?xf32>, %[[ARG2:.*]]: memref<?xf32>, %[[ARG3:.*]]: memref<f32>
 func @multi_output_kinput(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?xf32>, %init: memref<f32>) -> (memref<?x?xf32>, memref<?xf32>) {
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK: "lmhlo.abs"(%[[ARG0]], %[[ARG1]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
-  // CHECK: "lmhlo.reduce"(%[[ARG1]], %[[ARG3]], %[[ARG2]]) ( {
+  // CHECK: "lmhlo.reduce"(%[[ARG1]], %[[ARG3]], %[[ARG2]]) ({
   // CHECK: }) : () -> ()
   // CHECK: return %[[ARG1]], %[[ARG2]] : memref<?x?xf32>, memref<?xf32>
   "lmhlo.abs"(%arg0, %arg1) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
-  "lmhlo.reduce"(%arg1, %init, %arg2) ( {
+  "lmhlo.reduce"(%arg1, %init, %arg2) ({
   ^bb0(%targ1: memref<f32>, %targ2: memref<f32>, %tresult: memref<f32>):
     "lmhlo.add"(%targ1, %targ2, %tresult) : (memref<f32>, memref<f32>, memref<f32>) -> ()
     "lmhlo.terminator"() : () -> ()
@@ -172,21 +172,21 @@ func @multi_output_kinput(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2:
 // CHECK-LABEL: @row_red_and_row_red_kinput
 // CHECK-SAME: %[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<?x?xf32>, %[[ARG2:.*]]: memref<?x?xf32>, %[[ARG3:.*]]: memref<?xf32>, %[[ARG4:.*]]: memref<?xf32>, %[[ARG5:.*]]: memref<?x?xf32>, %[[ARG6:.*]]: memref<f32>
 func @row_red_and_row_red_kinput(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>, %arg3: memref<?xf32>, %arg4: memref<?xf32>, %arg5: memref<?x?xf32>, %init: memref<f32>) -> (memref<?xf32>, memref<?xf32>) {
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK: "lmhlo.add"(%[[ARG0]], %[[ARG1]], %[[ARG2]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: "lmhlo.abs"(%[[ARG2]], %[[ARG5]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
-  // CHECK: "lmhlo.reduce"(%[[ARG5]], %[[ARG6]], %[[ARG3]]) ( {
-  // CHECK: "lmhlo.reduce"(%[[ARG2]], %[[ARG6]], %[[ARG4]]) ( {
+  // CHECK: "lmhlo.reduce"(%[[ARG5]], %[[ARG6]], %[[ARG3]]) ({
+  // CHECK: "lmhlo.reduce"(%[[ARG2]], %[[ARG6]], %[[ARG4]]) ({
   // CHECK: }) : () -> ()
   // CHECK: return %[[ARG3]], %[[ARG4]] : memref<?xf32>, memref<?xf32>
   "lmhlo.add"(%arg0, %arg1, %arg2) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   "lmhlo.abs"(%arg2, %arg5) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
-  "lmhlo.reduce"(%arg5, %init, %arg3) ( {
+  "lmhlo.reduce"(%arg5, %init, %arg3) ({
   ^bb0(%targ1: memref<f32>, %targ2: memref<f32>, %tresult: memref<f32>):
     "lmhlo.add"(%targ1, %targ2, %tresult) : (memref<f32>, memref<f32>, memref<f32>) -> ()
     "lmhlo.terminator"() : () -> ()
   } ) {dimensions = dense<[1]> : tensor<1xi64>} : (memref<?x?xf32>, memref<f32>, memref<?xf32>) -> ()
-  "lmhlo.reduce"(%arg2, %init, %arg4) ( {
+  "lmhlo.reduce"(%arg2, %init, %arg4) ({
   ^bb0(%targ1: memref<f32>, %targ2: memref<f32>, %tresult: memref<f32>):
     "lmhlo.add"(%targ1, %targ2, %tresult) : (memref<f32>, memref<f32>, memref<f32>) -> ()
     "lmhlo.terminator"() : () -> ()
@@ -199,21 +199,21 @@ func @row_red_and_row_red_kinput(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>,
 // CHECK-LABEL: @row_red_and_col_red_kinput
 // CHECK-SAME: %[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<?x?xf32>, %[[ARG2:.*]]: memref<?x?xf32>, %[[ARG3:.*]]: memref<?xf32>, %[[ARG4:.*]]: memref<?xf32>, %[[ARG5:.*]]: memref<?x?xf32>, %[[ARG6:.*]]: memref<f32>
 func @row_red_and_col_red_kinput(%arg0: memref<?x?xf32>, %arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>, %arg3: memref<?xf32>, %arg4: memref<?xf32>, %arg5: memref<?x?xf32>, %init: memref<f32>) -> (memref<?xf32>, memref<?xf32>) {
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK: "lmhlo.add"(%[[ARG0]], %[[ARG1]], %[[ARG2]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: "lmhlo.abs"(%[[ARG2]], %[[ARG5]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
-  // CHECK: "lmhlo.reduce"(%[[ARG5]], %[[ARG6]], %[[ARG3]]) ( {
-  // CHECK: "lmhlo.reduce"(%[[ARG2]], %[[ARG6]], %[[ARG4]]) ( {
+  // CHECK: "lmhlo.reduce"(%[[ARG5]], %[[ARG6]], %[[ARG3]]) ({
+  // CHECK: "lmhlo.reduce"(%[[ARG2]], %[[ARG6]], %[[ARG4]]) ({
   // CHECK: }) : () -> ()
   // CHECK: return %[[ARG3]], %[[ARG4]] : memref<?xf32>, memref<?xf32>
   "lmhlo.add"(%arg0, %arg1, %arg2) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   "lmhlo.abs"(%arg2, %arg5) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
-  "lmhlo.reduce"(%arg5, %init, %arg3) ( {
+  "lmhlo.reduce"(%arg5, %init, %arg3) ({
   ^bb0(%targ1: memref<f32>, %targ2: memref<f32>, %tresult: memref<f32>):
     "lmhlo.add"(%targ1, %targ2, %tresult) : (memref<f32>, memref<f32>, memref<f32>) -> ()
     "lmhlo.terminator"() : () -> ()
   } ) {dimensions = dense<[1]> : tensor<1xi64>} : (memref<?x?xf32>, memref<f32>, memref<?xf32>) -> ()
-  "lmhlo.reduce"(%arg2, %init, %arg4) ( {
+  "lmhlo.reduce"(%arg2, %init, %arg4) ({
   ^bb0(%targ1: memref<f32>, %targ2: memref<f32>, %tresult: memref<f32>):
     "lmhlo.add"(%targ1, %targ2, %tresult) : (memref<f32>, memref<f32>, memref<f32>) -> ()
     "lmhlo.terminator"() : () -> ()
@@ -231,11 +231,11 @@ func @reduce_should_not_have_consumer_in_the_fusion(%arg0: memref<?x?xf32>, %arg
   // CHECK: %[[TMP7:.*]] = memref.alloc
   // CHECK: %[[TMP8:.*]] = memref.alloc
   // CHECK: %[[TMP9:.*]] = memref.alloc
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK: "lmhlo.add"(%[[ARG0]], %[[ARG1]], %[[TMP4]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: "lmhlo.subtract"(%[[ARG0]], %[[TMP4]], %[[TMP7]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   // CHECK: "lmhlo.constant"(%[[TMP8]]) {value = dense<0.000000e+00> : tensor<f32>} : (memref<f32>) -> ()
-  // CHECK: "lmhlo.reduce"(%[[TMP7]], %[[TMP8]], %[[TMP9]]) ( {
+  // CHECK: "lmhlo.reduce"(%[[TMP7]], %[[TMP8]], %[[TMP9]]) ({
   // CHECK: }) : () -> ()
   // CHECK: memref.dealloc %[[TMP4]] : memref<?x?xf32>
   // CHECK: memref.dealloc %[[TMP8]] : memref<f32>
@@ -259,7 +259,7 @@ func @reduce_should_not_have_consumer_in_the_fusion(%arg0: memref<?x?xf32>, %arg
   %8 = memref.alloc() : memref<f32>
   "lmhlo.constant"(%8) {value = dense<0.000000e+00> : tensor<f32>} : (memref<f32>) -> ()
   %9 = memref.alloc(%5) : memref<?xf32>
-  "lmhlo.reduce"(%7, %8, %9) ( {
+  "lmhlo.reduce"(%7, %8, %9) ({
   ^bb0(%arg2: memref<f32>, %arg3: memref<f32>, %arg4: memref<f32>):  // no predecessors
     "lmhlo.add"(%arg2, %arg3, %arg4) : (memref<f32>, memref<f32>, memref<f32>) -> ()
     "lmhlo.terminator"() : () -> ()

@@ -12,12 +12,12 @@
 // CHECK:   f32[] get-tuple-element((f32[], f32[]) %[[FUSION1]]), index=1
 // CHECK: }
 func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) {
-  %result = "mhlo.fusion"(%arg0, %arg1) ( {
+  %result = "mhlo.fusion"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
       %result = "mhlo.add"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>
       "mhlo.return"(%result) : (tensor<f32>) -> ()
     }) { fusion_kind = "kLoop" } : (tensor<f32>, tensor<f32>) -> tensor<f32>
-  %result0, %result1 = "mhlo.fusion"(%arg0, %arg1) ( {
+  %result0, %result1 = "mhlo.fusion"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
       %elem0 = "mhlo.add"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>
       %elem1 = "mhlo.subtract"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>

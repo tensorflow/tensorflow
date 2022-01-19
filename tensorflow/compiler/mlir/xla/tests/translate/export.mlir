@@ -730,7 +730,7 @@ func @main() -> tensor<1x10xf32> {
 
 // CHECK:  HloModule
 func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-  %0 = "mhlo.map"(%arg0, %arg1) ( {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):       // no predecessors
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -823,7 +823,7 @@ func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
 
 // CHECK:  HloModule
 func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f32>, %arg3 : tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>) {
-  %result0, %result1 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ( {
+  %result0, %result1 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
     ^bb0(%fa: tensor<f32>, %ia : tensor<i32>, %fb: tensor<f32>, %ib: tensor<i32>):   // no predecessors
       %fmax = "mhlo.maximum"(%fa, %fb) {} : (tensor<f32>, tensor<f32>) -> tensor<f32>
       %imax = "mhlo.maximum"(%ia, %ib) {} : (tensor<i32>, tensor<i32>) -> tensor<i32>
@@ -850,7 +850,7 @@ func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f3
 // CHECK:  HloModule
 func @main(%arg0: tensor<2x17x31x7xi32>) -> tensor<2x3x5x7xi32> {
   %0 = mhlo.constant dense<-2147483648> : tensor<i32>
-  %1 = "mhlo.reduce_window"(%arg0, %0) ( {
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):	// no predecessors
     %2 = mhlo.maximum %arg1, %arg2 : tensor<i32>
     "mhlo.return"(%2) : (tensor<i32>) -> ()
@@ -978,7 +978,7 @@ func @main(%arg0: tensor<i1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) ->
 // CHECK:  HloModule
 func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) -> tensor<10x24x24x64xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ( {
+  %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):	// no predecessors
     %2 = "mhlo.compare"(%arg3, %arg4) {compare_type = "TOTALORDER", comparison_direction = "GE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%2) : (tensor<i1>) -> ()
@@ -1178,7 +1178,7 @@ func @main(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
 
 // CHECK:  HloModule
 func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
-  %0:2 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1197,7 +1197,7 @@ func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 
 // CHECK:  HloModule
 func @main(%input0: tensor<16x16xf32>) {
-  %0 = "mhlo.sort"(%input0) ( {
+  %0 = "mhlo.sort"(%input0) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()

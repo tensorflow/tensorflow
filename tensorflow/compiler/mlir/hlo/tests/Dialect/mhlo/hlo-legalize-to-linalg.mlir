@@ -2175,7 +2175,7 @@ func @reduce_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<i32>) -> tensor<?xi32
 func @variadic_reduce(%arg0: tensor<9x2xi32>, %arg1: tensor<9x2xi32>) -> (tensor<2xi32>, tensor<2xi32>) {
   %cst0 = mhlo.constant dense<-2147483648> : tensor<i32>
   %cst1 = mhlo.constant dense<0> : tensor<i32>
-  %res0, %res1 = "mhlo.reduce"(%arg0, %arg1, %cst0, %cst1) ( {
+  %res0, %res1 = "mhlo.reduce"(%arg0, %arg1, %cst0, %cst1) ({
   ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg15: tensor<i32>, %arg16: tensor<i32>):  // no predecessors
     %669 = "mhlo.compare"(%arg2, %arg15) {comparison_direction = "GE"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     %670 = "mhlo.select"(%669, %arg2, %arg15) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
@@ -2217,7 +2217,7 @@ func @variadic_reduce(%arg0: tensor<9x2xi32>, %arg1: tensor<9x2xi32>) -> (tensor
 func @variadic_diff_type_reduce(%arg0: tensor<128x10xf32>, %arg1: tensor<128x10xi32>) -> (tensor<128xf32>, tensor<128xi32>) {
   %cst0 = mhlo.constant dense<1.0> : tensor<f32>
   %cst1 = mhlo.constant dense<1> : tensor<i32>
-  %res0, %res1 = "mhlo.reduce"(%arg0, %arg1, %cst0, %cst1) ( {
+  %res0, %res1 = "mhlo.reduce"(%arg0, %arg1, %cst0, %cst1) ({
   ^bb0(%arg7: tensor<f32>, %arg8: tensor<i32>, %arg9: tensor<f32>, %arg10: tensor<i32>):  // no predecessors
     %0 = "mhlo.compare"(%arg7, %arg9) {comparison_direction = "GE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     %1 = "mhlo.select"(%0, %arg7, %arg9) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -2786,7 +2786,7 @@ func @reduce_window_min_nhwc(%arg0: tensor<1x17x17x64xf32>,
 
 func @reduce_window_max_nhwc(%arg0: tensor<1x17x17x64xf32>,
                              %arg1: tensor<f32>) -> tensor<1x8x8x64xf32>{
-  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>):
     %1 = mhlo.maximum %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -2811,7 +2811,7 @@ func @reduce_window_max_nhwc(%arg0: tensor<1x17x17x64xf32>,
 
 func @reduce_window_sum_nhwc(%arg0: tensor<1x17x17x64xf32>,
                              %arg1: tensor<f32>) -> tensor<1x8x8x64xf32>{
-  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -2836,7 +2836,7 @@ func @reduce_window_sum_nhwc(%arg0: tensor<1x17x17x64xf32>,
 
 func @reduce_window_max_nhwc_with_cst(%arg0: tensor<1x17x17x64xf32>) -> tensor<1x8x8x64xf32> {
   %0 = arith.constant dense<0xFF800000> : tensor<f32>
-  %1 = "mhlo.reduce_window"(%arg0, %0) ( {
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2 : tensor<f32>):
     %2 = mhlo.maximum %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
@@ -2862,7 +2862,7 @@ func @reduce_window_max_nhwc_with_cst(%arg0: tensor<1x17x17x64xf32>) -> tensor<1
 
 func @reduce_window_sum_max_nhwc(%arg0: tensor<1x17x17x64xf32>,
                              %arg1: tensor<f32>) -> (tensor<1x8x8x64xf32>, tensor<1x8x8x64xf32>) {
-  %0:2 = "mhlo.reduce_window"(%arg0, %arg0, %arg1, %arg1) ( {
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg0, %arg1, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>, %arg4: tensor<f32>, %arg5 : tensor<f32>):
     %1 = mhlo.add %arg2, %arg4 : tensor<f32>
     %2 = mhlo.maximum %arg3, %arg5 : tensor<f32>
@@ -2899,7 +2899,7 @@ func @reduce_window_sum_max_nhwc(%arg0: tensor<1x17x17x64xf32>,
 
 func @dynamic_reduce_window_sum_nhwc(%arg0: tensor<?x?x?x?xf32>,
                                       %arg1: tensor<f32>) -> tensor<?x?x?x?xf32>{
-  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -2944,7 +2944,7 @@ func @dynamic_reduce_window_sum_nhwc(%arg0: tensor<?x?x?x?xf32>,
 
 func @reduce_window_min_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
                               %arg1: tensor<f32>) -> tensor<1x8x8x8x64xf32>{
-  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>):
     %1 = mhlo.minimum %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -2969,7 +2969,7 @@ func @reduce_window_min_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
 
 func @reduce_window_max_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
                               %arg1: tensor<f32>) -> tensor<1x8x8x8x64xf32>{
-  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>):
     %1 = mhlo.maximum %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -2994,7 +2994,7 @@ func @reduce_window_max_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
 
 func @reduce_window_sum_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
                               %arg1: tensor<f32>) -> tensor<1x8x8x8x64xf32>{
-  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3 : tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -3046,7 +3046,7 @@ func @reduce_window_sum_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
 // CHECK: return %[[REDUCE]]
 
 func @reduce_window_generic(%arg0: tensor<4x6xf32>, %arg1: tensor<f32>) -> tensor<4x7xf32> {
-  %0 = "mhlo.reduce_window"(%arg0, %arg1) ( {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -3842,7 +3842,7 @@ func @unsigned_compare(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor
 
 func @scatter_update_scalar(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
                             %arg2: tensor<1xi32>) -> tensor<3xi32> {
-  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ( {
+  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
   ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):  // no predecessors
     "mhlo.return"(%arg4) : (tensor<i32>) -> ()
   }) {
@@ -3882,7 +3882,7 @@ func @scatter_update_scalar(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
 
 func @scatter_update_slice(%arg0: tensor<6x3xi32>, %arg1: tensor<2x1xi32>,
                            %arg2: tensor<2x3xi32>) -> tensor<6x3xi32> {
-  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ( {
+  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
   ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):  // no predecessors
     "mhlo.return"(%arg4) : (tensor<i32>) -> ()
   }) {

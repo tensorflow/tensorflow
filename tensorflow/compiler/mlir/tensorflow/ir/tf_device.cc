@@ -409,6 +409,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   // lengths.
   p->printOptionalAttrDict(op->getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
                                kOperandSegmentSizesAttr});
+  *p << ' ';
   p->printRegion(op.body(), /*printEntryBlockArgs=*/false);
 }
 

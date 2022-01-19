@@ -858,7 +858,7 @@ func @dynamic_reshape_of_dynamic_reshape(%arg0: tensor<?xf16>, %shape: tensor<?x
 // CHECK-LABEL: do_not_dce_while_with_outfeed
 func @do_not_dce_while_with_outfeed(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while
-  %0 = "mhlo.while"(%arg0) ( {
+  %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<i64>):
     %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
@@ -876,7 +876,7 @@ func @do_not_dce_while_with_outfeed(%arg0: tensor<i64>) -> tensor<i64> {
 // CHECK-LABEL: dce_while_without_side_effect
 func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK-NOT: mhlo.while
-  %0 = "mhlo.while"(%arg0) ( {
+  %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<i64>):
     %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
@@ -1608,7 +1608,7 @@ func @fold_if_true(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32> {
   // CHECK-NOT: mhlo.if
   // CHECK: return %[[ARG0]]
   %true = mhlo.constant dense<true> : tensor<i1>
-  %0 = "mhlo.if"(%true) ( {
+  %0 = "mhlo.if"(%true) ({
       "mhlo.return"(%arg0) : (tensor<f32>) -> ()
   },  {
       "mhlo.return"(%arg1) : (tensor<f32>) -> ()
@@ -1624,7 +1624,7 @@ func @fold_if_false(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32> {
   // CHECK-NOT: mhlo.if
   // CHECK: return %[[ARG1]]
   %false = mhlo.constant dense<false> : tensor<i1>
-  %0 = "mhlo.if"(%false) ( {
+  %0 = "mhlo.if"(%false) ({
       "mhlo.return"(%arg0) : (tensor<f32>) -> ()
   },  {
       "mhlo.return"(%arg1) : (tensor<f32>) -> ()
@@ -1641,7 +1641,7 @@ func @fold_case(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -
   // CHECK-NOT: mhlo.case
   // CHECK: return %[[ARG1]]
   %c1 = mhlo.constant dense<1> : tensor<i32>
-  %0 = "mhlo.case"(%c1) ( {
+  %0 = "mhlo.case"(%c1) ({
       "mhlo.return"(%arg0) : (tensor<f32>) -> ()
     },  {
       "mhlo.return"(%arg1) : (tensor<f32>) -> ()
@@ -1660,7 +1660,7 @@ func @fold_case_negative_index(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 :
   // CHECK-NOT: mhlo.case
   // CHECK: return %[[ARG2]]
   %m1000 = mhlo.constant dense<-1000> : tensor<i32>
-  %0 = "mhlo.case"(%m1000) ( {
+  %0 = "mhlo.case"(%m1000) ({
       "mhlo.return"(%arg0) : (tensor<f32>) -> ()
     },  {
       "mhlo.return"(%arg1) : (tensor<f32>) -> ()
@@ -1679,7 +1679,7 @@ func @fold_case_oob_index(%arg0 : tensor<f32>, %arg1 : tensor<f32>, %arg2 : tens
   // CHECK-NOT: mhlo.case
   // CHECK: return %[[ARG2]]
   %c1000 = mhlo.constant dense<1000> : tensor<i32>
-  %0 = "mhlo.case"(%c1000) ( {
+  %0 = "mhlo.case"(%c1000) ({
       "mhlo.return"(%arg0) : (tensor<f32>) -> ()
     },  {
       "mhlo.return"(%arg1) : (tensor<f32>) -> ()
@@ -1694,7 +1694,7 @@ func @tensor_flow_scatter_v1_update() -> tensor<3x3xi32> {
   %0 = arith.constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
   %1 = arith.constant dense<[0, 2]> : tensor<2xi32>
   %2 = arith.constant dense<[[10, 20, 30], [70, 80, 90]]> : tensor<2x3xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
@@ -1717,7 +1717,7 @@ func @tensor_flow_scatter_v2_update() -> tensor<3x3xi32> {
   %0 = arith.constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
   %1 = arith.constant dense<[0, 2]> : tensor<2xi32>
   %2 = arith.constant dense<[[10, 30], [40, 60], [70, 90]]> : tensor<3x2xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
@@ -1740,7 +1740,7 @@ func @tensor_flow_scatter_add() -> tensor<3x3xi32> {
   %0 = arith.constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
   %1 = arith.constant dense<[0, 2]> : tensor<2xi32>
   %2 = arith.constant dense<[[10, 20, 30], [70, 80, 90]]> : tensor<2x3xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
       "mhlo.return"(%4) : (tensor<i32>) -> ()
@@ -1764,7 +1764,7 @@ func @tensor_flow_scatter_repeated() -> tensor<3x3xi32> {
   %0 = arith.constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
   %1 = arith.constant dense<[1, 1]> : tensor<2xi32>
   %2 = arith.constant dense<[[10, 20, 30], [70, 80, 90]]> : tensor<2x3xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
       "mhlo.return"(%4) : (tensor<i32>) -> ()
@@ -1788,7 +1788,7 @@ func @tensor_flow_scatter_multiple_batch() -> tensor<3x3xi32> {
   %0 = arith.constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
   %1 = arith.constant dense<[[0, 2], [2, 1]]> : tensor<2x2xi32>
   %2 = arith.constant dense<[[[10, 30], [40, 60], [70, 90]], [[5, 5], [5, 5], [5, 5]]]> : tensor<2x3x2xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
       "mhlo.return"(%4) : (tensor<i32>) -> ()
@@ -1812,7 +1812,7 @@ func @tensor_flow_scatter_nd() -> tensor<3x3x2xi32> {
   %0 = arith.constant dense<[[[-1, 1], [-2, 2], [-3, 3]], [[-4, 4], [-5, 5], [-6, 6]], [[-7, 7], [-8, 8], [-9, 9]]]> : tensor<3x3x2xi32>
   %1 = arith.constant dense<[[0, 0], [1, 0]]> : tensor<2x2xi32>
   %2 = arith.constant dense<[[-10, 10], [-40, 40]]> : tensor<2x2xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
@@ -1837,7 +1837,7 @@ func @tensor_flow_scatter_nd_index_vector() -> tensor<3x3x2xi32> {
   %0 = arith.constant dense<[[[-1, 1], [-2, 2], [-3, 3]], [[-4, 4], [-5, 5], [-6, 6]], [[-7, 7], [-8, 8], [-9, 9]]]> : tensor<3x3x2xi32>
   %1 = arith.constant dense<[[0, 0], [1, 0]]> : tensor<2x2xi32>
   %2 = arith.constant dense<[[-10, 10], [-20, 20]]> : tensor<2x2xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
@@ -1862,7 +1862,7 @@ func @scatter_batch_dus() -> tensor<3x3xi32> {
   %0 = arith.constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
   %1 = arith.constant dense<[[2, 1], [1, 1]]> : tensor<2x2xi32>
   %2 = arith.constant dense<[[[10]], [[20]]]> : tensor<2x1x1xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
@@ -1884,7 +1884,7 @@ func @scatter_no_update_window_dim() -> tensor<3xi32> {
   %0 = arith.constant dense<[0, 1, 2]> : tensor<3xi32>
   %1 = arith.constant dense<[[[0], [1]], [[2], [1]]]> : tensor<2x2x1xi32>
   %2 = arith.constant dense<[[10, 20], [30, 40]]> : tensor<2x2xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       %4 = "mhlo.add"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
       "mhlo.return"(%4) : (tensor<i32>) -> ()
@@ -1905,7 +1905,7 @@ func @scatter_negative_index() -> tensor<3x3xi32> {
   %0 = arith.constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
   %1 = arith.constant dense<[0, -1]> : tensor<2xi32>
   %2 = arith.constant dense<[[10, 20, 30], [70, 80, 90]]> : tensor<2x3xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
@@ -1927,7 +1927,7 @@ func @scatter_out_of_bound() -> tensor<3x3xi32> {
   %0 = arith.constant dense<[[1, 2, 3], [4, 5, 6], [7, 8, 9]]> : tensor<3x3xi32>
   %1 = arith.constant dense<[1, 5]> : tensor<2xi32>
   %2 = arith.constant dense<[[10, 20, 30], [70, 80, 90]]> : tensor<2x3xi32>
-  %3 = "mhlo.scatter"(%0, %1, %2) ( {
+  %3 = "mhlo.scatter"(%0, %1, %2) ({
     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) {indices_are_sorted = false,
@@ -2063,7 +2063,7 @@ func @reshape_of_same_shape_op_result(%arg: tensor<?xf32>,
 
 // CHECK-LABEL: @map_op_fold
 func @map_op_fold(%arg: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = "mhlo.map"(%arg, %arg1) ( {
+  %0 = "mhlo.map"(%arg, %arg1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>):  // no predecessors
     "mhlo.return"(%b) : (tensor<f32>) -> ()
   }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
@@ -2072,7 +2072,7 @@ func @map_op_fold(%arg: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK: return %arg1 : tensor<?xf32>
 
 func @sort_drop_second_arg(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<3xi32> {
-  %0:2 = "mhlo.sort"(%arg0, %arg1) ( {
+  %0:2 = "mhlo.sort"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<i32>):  // no predecessors
     %1 = "mhlo.compare"(%arg2, %arg3) {
       comparison_direction = "GT"
@@ -2095,7 +2095,7 @@ func @sort_drop_second_arg(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor
 // CHECK:         return %[[RES]] : tensor<3xi32>
 
 func @sort_no_dim_provided(%arg0: tensor<3x5xi32>) -> tensor<3x5xi32> {
-  %0 = "mhlo.sort"(%arg0) ( {
+  %0 = "mhlo.sort"(%arg0) ({
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):  // no predecessors
     %1 = "mhlo.compare"(%arg1, %arg2) {
       comparison_direction = "GT"

@@ -331,8 +331,9 @@ static bool VerifyGenericTFGOperation(Operation &op) {
 //===----------------------------------------------------------------------===//
 
 static void PrintGraphOp(OpAsmPrinter &p, GraphOp op) {
-  p << " " << op.version();
+  p << ' ' << op.version();
   p.printOptionalAttrDictWithKeyword(op->getAttrs(), {"version"});
+  p << ' ';
   p.printRegion(op.getBodyRegion());
 }
 
@@ -661,6 +662,7 @@ static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
         p, op, fnType.getNumInputs(), fnType.getNumResults(), {"generic"});
   }
   // Print body.
+  p << ' ';
   p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
 }
 

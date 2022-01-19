@@ -2368,7 +2368,7 @@ func @testInvalidWhileRegionConditionOutputType(%arg : tensor<i32>) -> (tensor<i
 // and result shapes.
 // CHECK-LABEL: func @testShapeInvariantWhileRegion
 func @testShapeInvariantWhileRegion(%arg0: tensor<1x2x3xf32>) -> tensor<1x8x3xf32> {
-  %0 = "tf.WhileRegion"(%arg0) ( {
+  %0 = "tf.WhileRegion"(%arg0) ({
   ^cond(%carg0: tensor<1x?x3xf32>):
     %1 = "tf.SomeCondOp"(%carg0) : (tensor<1x?x3xf32>) -> tensor<i1>
     "tf.Yield"(%1) : (tensor<i1>) -> ()
@@ -4090,7 +4090,7 @@ func @testCaseRegionNoRegions(%arg0: tensor<i32>) {
 
 func @testCaseRegionBadBranchIndicesShape(%arg0: tensor<8xi32>) {
   // expected-error @+1 {{expects 'branch_index' to be a scalar, but got 'tensor<8xi32>'}}
-  "tf.CaseRegion"(%arg0) ( {
+  "tf.CaseRegion"(%arg0) ({
     "tf.Yield"() : () -> ()
   }) {is_stateless = false} : (tensor<8xi32>) -> ()
   return
@@ -4100,7 +4100,7 @@ func @testCaseRegionBadBranchIndicesShape(%arg0: tensor<8xi32>) {
 
 func @testCaseRegionMismatchedNumResults(%arg0: tensor<i32>) {
   // expected-error @+1 {{'tf.CaseRegion' op branch #0 results (size = 0) should have the same number of values as results (size = 1)}}
-  %1 = "tf.CaseRegion"(%arg0) ( {
+  %1 = "tf.CaseRegion"(%arg0) ({
     "tf.Yield"() : () -> ()
   }) {is_stateless = false} : (tensor<i32>) -> tensor<i1>
   return
@@ -4110,7 +4110,7 @@ func @testCaseRegionMismatchedNumResults(%arg0: tensor<i32>) {
 
 func @testCaseRegionMismatchedResultTypes(%arg0: tensor<i32>, %arg1: tensor<f32>) {
   // expected-error @+1 {{'tf.CaseRegion' op branch #0 result type tensor<f32> is incompatible with result type tensor<i1> at index 0}}
-  %1 = "tf.CaseRegion"(%arg0) ( {
+  %1 = "tf.CaseRegion"(%arg0) ({
     "tf.Yield"(%arg1) : (tensor<f32>) -> ()
   }) {is_stateless = false} : (tensor<i32>) -> tensor<i1>
   return

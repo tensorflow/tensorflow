@@ -3020,6 +3020,7 @@ void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
         p << ") ";
       }
     }
+    p << ' ';
     p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
   }
 }
@@ -5540,9 +5541,9 @@ void printWhileOp(WhileOp op, OpAsmPrinter& p) {
   }
   p.printOptionalAttrDictWithKeyword(op->getAttrs());
   p.printNewline();
-  p << " cond";
+  p << " cond ";
   p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
-  p << " do";
+  p << " do ";
   p.printRegion(op->getRegion(1), /*printEntryBlockArgs=*/false);
 }
 

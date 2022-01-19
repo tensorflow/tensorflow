@@ -11,7 +11,7 @@ func @while(%arg0: tensor<i64>) -> tensor<i64> {
   //CHECK:   [[VAL4:%.+]] = mhlo.add [[VAL3]], [[VAL3]]
   //CHECK:   br ^bb1([[VAL4]] : tensor<i64>)
   //CHECK: ^bb3([[VAL5:%.+]]: tensor<i64>):
-  %0 = "mhlo.while"(%arg0) ( {
+  %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<i64>):
     %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT", name = "compare.2"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
@@ -42,7 +42,7 @@ func @while_multi_operands(%arg0: tensor<3xi32>) -> tuple<tensor<i32>, tensor<3x
   // CHECK-NEXT: return %[[VAL11]]
   %0 = mhlo.constant dense<false> : tensor<i1>
   %1 = mhlo.constant dense<0> : tensor<i32>
-  %2:2 = "mhlo.while"(%1, %arg0) ( {
+  %2:2 = "mhlo.while"(%1, %arg0) ({
   ^bb0(%arg1: tensor<i32> , %arg2: tensor<3xi32> ):  // no predecessors
     %4 = mhlo.constant dense<false> : tensor<i1>
     %5 = mhlo.constant dense<8> : tensor<i32>
@@ -72,7 +72,7 @@ func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
 
   // CHECK:   [[VAL1:%.+]] = tensor.extract [[VAL0]][] : tensor<i1>
   // CHECK:   cond_br [[VAL1]], ^bb1, ^bb2
-  %1 = "mhlo.if"(%0) ( {
+  %1 = "mhlo.if"(%0) ({
 
     // CHECK:   [[VAL3:%.+]] = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
     // CHECK:   br ^bb3([[VAL3]] : tensor<f32>)
@@ -108,7 +108,7 @@ func @case2(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>) -
   // CHECK: ^bb3(%[[RESULT:.*]]: tensor<4xf32>):
   // CHECK-NOT: mhlo.case
   // CHECK:   return %[[RESULT]]
-  %1 = "mhlo.case"(%arg0) ( {
+  %1 = "mhlo.case"(%arg0) ({
       %2 = "mhlo.log"(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%2) : (tensor<4xf32>) -> ()
   }, {
@@ -133,7 +133,7 @@ func @case3(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>, %
   // CHECK:   %[[C1:.*]] = arith.constant 1 : i32
   // CHECK:   %[[PRED1:.*]] = arith.cmpi eq, %{{.*}}, %c1_i32 : i32
   // CHECK:   cond_br %[[PRED1]], ^bb3, ^bb4
-  %1 = "mhlo.case"(%arg0) ( {
+  %1 = "mhlo.case"(%arg0) ({
       %2 = "mhlo.log"(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%2) : (tensor<4xf32>) -> ()
   }, {
@@ -154,7 +154,7 @@ func @case0(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>) -> tensor<4xf32> {
   // CHECK:   br ^bb2(%[[BR0_RESULT]] : tensor<4xf32>)
   // CHECK: ^bb2(%[[RESULT:.*]]: tensor<4xf32>):
   // CHECK:   return %[[RESULT]]
-  %1 = "mhlo.case"(%arg0) ( {
+  %1 = "mhlo.case"(%arg0) ({
       %2 = "mhlo.log"(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%2) : (tensor<4xf32>) -> ()
   }) : (tensor<i32>) -> tensor<4xf32>

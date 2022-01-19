@@ -120,7 +120,7 @@ void CollectChainResources(
 //
 // For example,
 // ```
-// %merged_control = "tf_executor.island"(%control_a, %control_b) ( {
+// %merged_control = "tf_executor.island"(%control_a, %control_b) ({
 //   "tf.NoOp"() : () -> ()
 //   "tf_executor.yield"() : () -> ()
 // }) : (!tf_executor.control, !tf_executor.control) -> (!tf_executor.control)

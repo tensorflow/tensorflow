@@ -588,7 +588,7 @@ add {
 %test_map {
   param0 = f32[4]{0} parameter(0)
   param1 = f32[4]{0} parameter(1)
-// CHECK:  "mhlo.map"([[ARG_0]], [[ARG_1]]) ( {
+// CHECK:  "mhlo.map"([[ARG_0]], [[ARG_1]]) ({
 // CHECK:    ^bb0([[ARG_2:%.*]]: tensor<f32>, [[ARG_3:%.*]]: tensor<f32>):
 // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG_2]], [[ARG_3]]
 // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
@@ -818,7 +818,7 @@ add {
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<4x8xf32>)
 %test_reduce_scatter {
   input = f32[4,8] parameter(0)
-  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ( {
+  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ({
   // CHECK-NEXT:   ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>):  // no predecessors
   // CHECK-NEXT:     [[ADD:%.*]] = mhlo.add [[BARG0]], [[BARG1]] : tensor<f32>
   // CHECK-NEXT:     "mhlo.return"([[ADD]])
@@ -833,7 +833,7 @@ add {
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<4x8xf32>)
 %test_reduce_scatter_with_channel {
   input = f32[4,8] parameter(0)
-  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ( {
+  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ({
   // CHECK-NEXT:   ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>):  // no predecessors
   // CHECK-NEXT:     [[ADD:%.*]] = mhlo.add [[BARG0]], [[BARG1]] : tensor<f32>
   // CHECK-NEXT:     "mhlo.return"([[ADD]])
@@ -852,7 +852,7 @@ add {
   %Arg_0.1 = f32[2,17,31,7] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
 
-  // CHECK: "mhlo.reduce_window"([[ARG0]], [[ARG1]]) ( {
+  // CHECK: "mhlo.reduce_window"([[ARG0]], [[ARG1]]) ({
   // CHECK:   mhlo.add {{.*}} : tensor<f32>
   // CHECK: }) {
   // CHECK-SAME:   base_dilations = dense<1> : tensor<4xi64>
@@ -888,7 +888,7 @@ add {
   %constant.3 = pred[] constant(false)
   %constant.4 = f32[] constant(-inf)
   %constant.5 = f32[] constant(0)
-  // CHECK: [[REDUCE_WINDOW:%.*]]:2 = "mhlo.reduce_window"([[ARG1]], [[ARG0]], [[CONST_INF]], [[CONST_ZERO]]) ( {
+  // CHECK: [[REDUCE_WINDOW:%.*]]:2 = "mhlo.reduce_window"([[ARG1]], [[ARG0]], [[CONST_INF]], [[CONST_ZERO]]) ({
   // CHECK: ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>, [[BARG2:%.*]]: tensor<f32>, [[BARG3:%.*]]: tensor<f32>)
   // CHECK:   [[COMPARE:%.*]] = "mhlo.compare"([[BARG0]], [[BARG2]]) {comparison_direction = "GE"}
   // CHECK:   [[SELECT_0:%.*]] = "mhlo.select"([[COMPARE]], [[BARG0]], [[BARG2]])
@@ -962,7 +962,7 @@ add {
 
 // CHECK-LABEL:  func private @test_scatter
 // CHECK-SAME:   [[ARG_0:%.*]]: tensor<200x100x300xf32>, [[ARG_1:%.*]]: tensor<10x2xi64>, [[ARG_2:%.*]]: tensor<10x300xf32>) -> tensor<200x100x300xf32>
-// CHECK:  "mhlo.scatter"([[ARG_0]], [[ARG_1]], [[ARG_2]]) ( {
+// CHECK:  "mhlo.scatter"([[ARG_0]], [[ARG_1]], [[ARG_2]]) ({
 // CHECK:    ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
 // CHECK:      [[ADD:%.*]] = mhlo.add [[LHS]], [[RHS]]
 // CHECK:      "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
@@ -1008,7 +1008,7 @@ add {
   ROOT %select-and-scatter = f32[4,5] select-and-scatter(f32[4,5] %input, f32[2,2] %source, f32[] %init_value), window={size=2x3 stride=2x3 pad=0_0x0_1}, select=%ge_select, scatter=%add_gather
 }
 
-// CHECK:  [[RESULT:%.*]] = "mhlo.select_and_scatter"([[INPUT]], [[SOURCE]], [[INIT_VAL]]) ( {
+// CHECK:  [[RESULT:%.*]] = "mhlo.select_and_scatter"([[INPUT]], [[SOURCE]], [[INIT_VAL]]) ({
 // CHECK:  ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
 // CHECK:    [[CMP:%.*]] = "mhlo.compare"([[LHS]], [[RHS]])
 // CHECK:    "mhlo.return"([[CMP]]) : (tensor<i1>) -> ()
@@ -1054,7 +1054,7 @@ add {
 }
 // CHECK-LABEL:  func private @test_sort
 // CHECK-SAME:  [[ARG:%.*]]: tensor<1024xf32>) -> tensor<1024xf32>
-// CHECK:  "mhlo.sort"([[ARG]]) ( {
+// CHECK:  "mhlo.sort"([[ARG]]) ({
 // CHECK:    ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
 // CHECK:      [[CMP:%.*]] = "mhlo.compare"([[ARG0]], [[ARG1]]) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 // CHECK:      "mhlo.return"([[CMP]]) : (tensor<i1>) -> ()

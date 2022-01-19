@@ -24,7 +24,7 @@ func @while_shape_invariant_outside_cluster(%arg0: tensor<4xf32>) -> (tensor<*xf
   %0 = "tf.While"(%arg0) {cond = @while_cond, body = @while_body, is_stateless = false, shape_invariant} : (tensor<4xf32>) -> (tensor<*xf32>)
 
   // IN-CLUSTER: shape_invariant
-  %1 = "tf.WhileRegion"(%arg0) ( {
+  %1 = "tf.WhileRegion"(%arg0) ({
   ^cond(%carg0: tensor<*xf32>):
     %2 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     "tf.Yield"(%2) : (tensor<i1>) -> ()
@@ -45,10 +45,10 @@ func @while_shape_invariant_outside_cluster(%arg0: tensor<4xf32>) -> (tensor<*xf
 // IN-CLUSTER-LABEL: while_shape_invariant_within_cluster
 // IN-CLUSTER-NOT: shape_invariant
 func @while_shape_invariant_within_cluster(%arg0: tensor<4xf32>) {
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.While"(%arg0) {cond = @while_cond, body = @while_body, is_stateless = false, shape_invariant} : (tensor<4xf32>) -> (tensor<*xf32>)
 
-    %1 = "tf.WhileRegion"(%arg0) ( {
+    %1 = "tf.WhileRegion"(%arg0) ({
     ^cond(%carg0: tensor<*xf32>):
       %2 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
       "tf.Yield"(%2) : (tensor<i1>) -> ()

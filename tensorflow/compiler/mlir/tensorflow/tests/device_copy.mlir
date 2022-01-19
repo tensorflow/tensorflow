@@ -68,7 +68,7 @@ func @keep_identity_n_test(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> (t
 // CHECK: func @while_loop_test(%[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<i32>, %arg2: tensor<*xf32>)
 func @while_loop_test(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<*xf32>) {
   // CHECK-NEXT: tf.WhileRegion
-  %0:2 = "tf.WhileRegion"(%arg0, %arg2) ( {
+  %0:2 = "tf.WhileRegion"(%arg0, %arg2) ({
   // CHECK-NEXT: bb0(%[[ARG_3:.*]]: tensor<i32>, %[[ARG_4:.*]]: tensor<*xf32>)
   ^bb0(%arg3: tensor<i32>, %arg4: tensor<*xf32>):
     // CHECK-NEXT: %[[RESULT_1:.*]] = "tf.Identity"(%[[ARG_3]])

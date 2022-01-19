@@ -20,8 +20,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/lhlo_elemental_utils.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
-#include "mlir/Analysis/LoopAnalysis.h"
-#include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
+#include "mlir/Dialect/Affine/Analysis/Utils.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -79,7 +79,7 @@ constexpr unsigned c_MAX_ITERATION = 4096;
 // with the same op. This obtains the similar result as GeneratedValueCache.
 //
 // IR after LhloLegalizeRootsToParallelLoops:
-//    "lmhlo.fusion"() ( {
+//    "lmhlo.fusion"() ({
 //       lmhlo.aaa(%0, %1, %2)
 //       lmhlo.bbb(%2, %3, %4)
 //       scf.parallel (...) {
@@ -90,7 +90,7 @@ constexpr unsigned c_MAX_ITERATION = 4096;
 //    })
 //
 // IR after one round of InputInlineFusionPattern:
-//    "lmhlo.fusion"() ( {
+//    "lmhlo.fusion"() ({
 //       lmhlo.aaa(%0, %1, %2)
 //       scf.parallel (...) {
 //          memref.load %2[...]
@@ -100,7 +100,7 @@ constexpr unsigned c_MAX_ITERATION = 4096;
 //    })
 //
 // Final IR after this pass:
-//    "lmhlo.fusion"() ( {
+//    "lmhlo.fusion"() ({
 //       scf.parallel (...) {
 //          memref.load ...
 //          ...

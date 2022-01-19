@@ -317,7 +317,7 @@ func @main() -> tensor<f32> {
   %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.EmptyTensorList
   %tl = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<f32>>>
-  %while_op:2 = "tf.WhileRegion"(%tl, %size) ( {
+  %while_op:2 = "tf.WhileRegion"(%tl, %size) ({
   // CHECK: ^bb0(%[[CARG0:.*]]: tensor<10xf32>, %[[CARG1:.*]]: tensor<i32>, %[[CARG2:.*]]: tensor<1xi32>):
   ^bb0(%arg0: tensor<!tf_type.variant<tensor<f32>>>, %arg1: tensor<i32>):  // no predecessors
     // CHECK:   %[[PRED:.*]] = "tf._SomeOp"()

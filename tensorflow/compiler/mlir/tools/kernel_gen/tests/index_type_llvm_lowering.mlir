@@ -2,7 +2,7 @@
 
 gpu.module @test_module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>} {
   gpu.func @test_kernel() kernel {
-    %0 = "gpu.block_id"() {dimension = "x"} : () -> index
+    %0 = gpu.block_id x
     gpu.return
   }
 }

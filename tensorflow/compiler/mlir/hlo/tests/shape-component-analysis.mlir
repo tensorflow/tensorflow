@@ -84,7 +84,7 @@ func @dynamic_reshape(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<
 
 // CHECK-LABEL: Testing : reduce
 func @reduce(%arg0: tensor<?x?x?xf32>, %arg1: tensor<f32>) -> tensor<2xindex> {
-  %0 = "mhlo.reduce"(%arg0, %arg1) ( {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>):  // no predecessors
     %26 = mhlo.add %a, %b : tensor<f32>
     "mhlo.return"(%26) : (tensor<f32>) -> ()
@@ -211,7 +211,7 @@ func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %0 = mhlo.constant dense<-1> : tensor<1xi64>
   %1 = "mhlo.convert"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %2 = mhlo.constant dense<0xFF800000> : tensor<f32>
-  %3 = "mhlo.reduce"(%1, %2) ( {
+  %3 = "mhlo.reduce"(%1, %2) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):  // no predecessors
     %26 = mhlo.maximum %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%26) : (tensor<f32>) -> ()
@@ -258,7 +258,7 @@ func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %13 = "mhlo.exponential"(%12) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %14 = "mhlo.convert"(%13) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %15 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  %16 = "mhlo.reduce"(%14, %15) ( {
+  %16 = "mhlo.reduce"(%14, %15) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):  // no predecessors
     %26 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%26) : (tensor<f32>) -> ()

@@ -15,7 +15,7 @@ func private @invalid_type() -> !mhlo.foobar
 
 // CHECK-LABEL: func @reduce_scatter
 func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
-  %0 = "mhlo.reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ({
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -29,7 +29,7 @@ func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x5xf32> {
   // expected-error@+1 {{operand scatter dimension has size 16, expected to be a multiple of result scatter dimension size 5}}
-  %0 = "mhlo.reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ({
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -43,7 +43,7 @@ func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x5xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x0xf32>) -> tensor<4x4xf32> {
   // expected-error@+1 {{operand scatter dimension cannot be zero}}
-  %0 = "mhlo.reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ({
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -57,7 +57,7 @@ func @invalid_reduce_scatter(%data: tensor<4x0xf32>) -> tensor<4x4xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x0xf32> {
   // expected-error@+1 {{result scatter dimension cannot be zero}}
-  %0 = "mhlo.reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ({
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -71,7 +71,7 @@ func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x0xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4xf32> {
   // expected-error@+1 {{operand and result should have same rank}}
-  %0 = "mhlo.reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ({
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -85,7 +85,7 @@ func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
   // expected-error@+1 {{scatter dim should be less than operand/result rank}}
-  %0 = "mhlo.reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ({
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -99,7 +99,7 @@ func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
 
 func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<3x4xf32> {
   // expected-error@+1 {{non scatter dimensions should be same for operand (4) and result (3)}}
-  %0 = "mhlo.reduce_scatter"(%data) ( {
+  %0 = "mhlo.reduce_scatter"(%data) ({
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -396,7 +396,7 @@ func @case_nested_different_return_types(%index : tensor<i32>, %branch_operand :
 
 func @case_mismatch_num_results(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
   // expected-error@+1 {{branch 1 returned types ('tensor<f32>', 'tensor<f32>') do not match op result types ('tensor<f32>')}}
-  %0 = "mhlo.case"(%index) ( {
+  %0 = "mhlo.case"(%index) ({
       %1 = "mhlo.negate"(%operand_1) : (tensor<f32>) -> tensor<f32>
       "mhlo.return"(%1) : (tensor<f32>) -> ()
     },  {
@@ -414,7 +414,7 @@ func @case_mismatch_num_results(%index: tensor<i32>, %operand_1: tensor<f32>, %o
 
 func @case_mismatch_return_type(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
   // expected-error@+1 {{branch 1 returned types ('tensor<i32>') do not match op result types ('tensor<f32>')}}
-  %0 = "mhlo.case"(%index) ( {
+  %0 = "mhlo.case"(%index) ({
       %1 = "mhlo.negate"(%operand_1) : (tensor<f32>) -> tensor<f32>
       "mhlo.return"(%1) : (tensor<f32>) -> ()
     },  {
@@ -642,7 +642,7 @@ func @iota_invalid_iota_dimension() -> tensor<4xi32> {
 
 func @map_mismatched_args(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // expected-error@+1 {{expects number of operands to match the arity of map computation, but got: 2 and 1}}
-  %0 = "mhlo.map"(%arg0, %arg1) ( {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg: tensor<f32>):
     %1 = mhlo.add %arg, %arg {name = "add"} : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -654,7 +654,7 @@ func @map_mismatched_args(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<
 
 func @map_non_scalar_computation_operand(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
   // expected-error@+1 {{computation arguments must be 0-rank tensor, but got: arg #1 of type 'tensor<5xf32>'}}
-  %0 = "mhlo.map"(%arg0, %arg1) ( {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<5xf32>):
     %1 = mhlo.constant dense<2.0> : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -666,7 +666,7 @@ func @map_non_scalar_computation_operand(%arg0: tensor<4x5xf32>, %arg1: tensor<4
 
 func @map_mismatch_operand_and_computation_args(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
   // expected-error@+1 {{element type of operands and computation arguments must match, but got: 'f32' and 'i32'}}
-  %0 = "mhlo.map"(%arg0, %arg1) ( {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
     %1 = mhlo.constant dense<2.0> : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -678,7 +678,7 @@ func @map_mismatch_operand_and_computation_args(%arg0: tensor<4x5xf32>, %arg1: t
 
 func @map_invalid_number_of_computation_output(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
   // expected-error@+1 {{computation must return single output, but got: 0}}
-  %0 = "mhlo.map"(%arg0, %arg1) ( {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.constant dense<2.0> : tensor<f32>
     "mhlo.return"() : () -> ()
@@ -690,7 +690,7 @@ func @map_invalid_number_of_computation_output(%arg0: tensor<4x5xf32>, %arg1: te
 
 func @main_non_scalar_computation_output(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
   // expected-error@+1 {{computation must return 0-rank tensor, but got: 'tensor<5xf32>'}}
-  %0 = "mhlo.map"(%arg0, %arg1) ( {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.constant dense<2.0> : tensor<5xf32>
     "mhlo.return"(%1) : (tensor<5xf32>) -> ()
@@ -702,7 +702,7 @@ func @main_non_scalar_computation_output(%arg0: tensor<4x5xf32>, %arg1: tensor<4
 
 func @mismatch_computation_output_type(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
   // expected-error@+1 {{element type of result and computation output must match, but got: 'f32' and 'i32'}}
-  %0 = "mhlo.map"(%arg0, %arg1) ( {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.constant dense<2> : tensor<i32>
     "mhlo.return"(%1) : (tensor<i32>) -> ()
@@ -714,7 +714,7 @@ func @mismatch_computation_output_type(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5
 
 func @map_invalid_dimension_numbers(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
   // expected-error@+1 {{requires monotonically increasing dimension numbers, but got: dense<[1, 0]> : tensor<2xi64>}}
-  %0 = "mhlo.map"(%arg0, %arg1) ( {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -726,7 +726,7 @@ func @map_invalid_dimension_numbers(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf3
 
 func @map_mismatch_arguments_and_dimensions(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
   // expected-error@+1 {{applied to a subset of dimensions currently not supported: operand dimensions = 2, requested map dimensions size = 3}}
-  %0 = "mhlo.map"(%arg0, %arg1) ( {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -738,7 +738,7 @@ func @map_mismatch_arguments_and_dimensions(%arg0: tensor<4x5xf32>, %arg1: tenso
 
 // CHECK-LABEL: func @map_unranked
 func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.map"(%arg0, %arg1) ( {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
@@ -1249,7 +1249,7 @@ func @constant_invalid() -> () {
 
 func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // CHECK: mhlo.sort
-  %0:2 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1261,7 +1261,7 @@ func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 
 func @sort_no_operands() {
   // expected-error @+1 {{expected named operation to have atleast 1 result}}
-  %0:0 = "mhlo.sort"() ( {
+  %0:0 = "mhlo.sort"() ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<i32>, %arg4: tensor<i32>):
     %7 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1272,7 +1272,7 @@ func @sort_no_operands() {
 // -----
 
 func @sort_unknown_rank(%input0: tensor<*xf32>, %input1: tensor<16x16xi32>) {
-  %0:2 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1284,7 +1284,7 @@ func @sort_unknown_rank(%input0: tensor<*xf32>, %input1: tensor<16x16xi32>) {
 
 func @sort_unknown_rank(%input0: tensor<*xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{comparator block argument #0 should be of type 'tensor<f32>' but got 'tensor<i32>'}}
-  %0:2 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1296,7 +1296,7 @@ func @sort_unknown_rank(%input0: tensor<*xf32>, %input1: tensor<16x16xi32>) {
 
 func @sort_different_dims(%input0: tensor<16x8xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{op requires the same shape for all operands and results}}
-  %0:2 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1308,7 +1308,7 @@ func @sort_different_dims(%input0: tensor<16x8xf32>, %input1: tensor<16x16xi32>)
 
 func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{dimension attribute value must be in range [-2, 2), but found 10}}
-  %0:2 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1320,7 +1320,7 @@ func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi3
 
 func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{dimension attribute value must be in range [-2, 2), but found -3}}
-  %0:2 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1332,7 +1332,7 @@ func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi3
 
 func @sort_wrong_block_arg_count(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{op comparator block should have 4 arguments}}
-  %0:2 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1344,7 +1344,7 @@ func @sort_wrong_block_arg_count(%input0: tensor<16x16xf32>, %input1: tensor<16x
 
 func @sort_wrong_block_arg_type(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{op comparator block argument #3 should be of type 'tensor<i32>' but got 'tensor<f32>'}}
-  %0:2 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<f32>):
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -2320,7 +2320,7 @@ func @lt_loop(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg
   %cst_0 = arith.constant dense<1> : tensor<i32>
   %cst_1 = arith.constant dense<0> : tensor<i32>
   %cst_2 = arith.constant dense<1000> : tensor<i32>
-  %1:3 = "mhlo.while"(%cst_1, %cst, %cst_2) ( {
+  %1:3 = "mhlo.while"(%cst_1, %cst, %cst_2) ({
   ^bb0(%arg9: tensor<i32>, %arg10: tensor<i32>, %arg11: tensor<i32>):  // no predecessors
     %4 = "mhlo.compare"(%arg9, %arg11) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%4) : (tensor<i1>) -> ()
@@ -2339,7 +2339,7 @@ func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
-  %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ( {
+  %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
     %2 = arith.constant dense<0> : tensor<i32>
     %3 = "mhlo.slice"(%arg2) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
@@ -2361,7 +2361,7 @@ func @while_with_invalid_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
   // expected-error @+1 {{'mhlo.while' op requires the same type for operand and result at index 2}}
-  %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ( {
+  %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
     %2 = arith.constant dense<0> : tensor<i32>
     %3 = "mhlo.slice"(%arg2) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
@@ -2385,7 +2385,7 @@ func @while_with_invalid_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %0 = "mhlo.tuple"(%arg0, %cst_2) : (tensor<3xf32>, tensor<1xf32>) -> tuple<tensor<3xf32>, tensor<1xf32>>
   %1 = "mhlo.tuple"(%cst_1, %0) : (tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>) -> tuple<tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>>
   // expected-error @+1 {{'mhlo.while' op requires the same type for operand and result at index 1}}
-  %2:2 = "mhlo.while"(%cst_0, %1) ( {
+  %2:2 = "mhlo.while"(%cst_0, %1) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>):  // no predecessors
     %t0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tensor<2xi32>
     %3 = arith.constant dense<0> : tensor<i32>

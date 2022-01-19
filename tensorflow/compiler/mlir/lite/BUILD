@@ -581,6 +581,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/numeric:bits",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineAnalysis",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",

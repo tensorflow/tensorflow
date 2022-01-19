@@ -167,7 +167,7 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
 //
 // Example:
 //
-//  "lmhlo.reduce"(%buffer, %init_buf, %result) ( {
+//  "lmhlo.reduce"(%buffer, %init_buf, %result) ({
 //    ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
 //      <LHLO ops>
 //    } ) {dimensions = dense<[1]> : tensor<1xi64>}
@@ -330,7 +330,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 // func @reduce_window(%arg: memref<112x112xf32>,
 //              %init: memref<f32>,
 //              %result: memref<56x56xf32>) {
-//   "lmhlo.reduce_window"(%arg, %init, %result) ( {
+//   "lmhlo.reduce_window"(%arg, %init, %result) ({
 //     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
 //       "lmhlo.maximum"(%lhs, %rhs, %res)
 //         : (memref<f32>, memref<f32>, memref<f32>) -> ()

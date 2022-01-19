@@ -28,7 +28,7 @@ func @fusion_after_codegen(%arg0: memref<?xf32>, %arg1: memref<?xf32>, %arg2: me
   // CHECK:    memref.store %[[TMP13]], %[[TMP14]][%[[ARG5]]] : memref<?xf32>
   // CHECK:    scf.yield
   // CHECK:  }
-  "lmhlo.fusion"() ( {
+  "lmhlo.fusion"() ({
     %0 = memref.dim %arg4, %c0 : memref<?x?x?xf32>
     %1 = memref.dim %arg4, %c1 : memref<?x?x?xf32>
     %2 = arith.muli %0, %1 : index

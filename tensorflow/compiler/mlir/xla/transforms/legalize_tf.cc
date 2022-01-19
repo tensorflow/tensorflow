@@ -1822,7 +1822,7 @@ class ConvertLeakyReluGradOp : public OpRewritePattern<TF::LeakyReluGradOp> {
 //   %4 = mhlo.constant dense<0.000000e+00> : tensor<f32>
 //   %5 = "mhlo.broadcast"(%4)
 //   %6 = "mhlo.select"(%3, %input, %5)
-//   %7 = "mhlo.reduce"(%6, %4) ( {
+//   %7 = "mhlo.reduce"(%6, %4) ({
 //   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
 //     %9 = mhlo.add %arg1, %arg2 : tensor<f32>
 //     "mhlo.return"(%9) : (tensor<f32>) -> ()
@@ -5477,7 +5477,7 @@ class ConvertOutfeedEnqueueTupleOp
 // We will get:
 //
 // %1 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<16x16xi32>
-// %2 = "mhlo.sort"(%input, %1) ( {
+// %2 = "mhlo.sort"(%input, %1) ({
 // ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>,
 //      %arg3: tensor<i32>, %arg4: tensor<i32>):
 //   %7 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = "GT"}: ...

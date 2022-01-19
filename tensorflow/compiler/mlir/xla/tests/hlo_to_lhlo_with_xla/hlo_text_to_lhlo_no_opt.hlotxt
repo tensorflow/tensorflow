@@ -569,7 +569,7 @@ max {
 
 // CHECK: func @main
 // CHECK: "lmhlo.fusion"()
-// CHECK: "mhlo.reduce_window"(%{{.*}}, %{{.*}}) ( {
+// CHECK: "mhlo.reduce_window"(%{{.*}}, %{{.*}}) ({
 // CHECK:   ^bb0(%[[ARG6:.*]]: tensor<f32>, %[[ARG7:.*]]: tensor<f32>):
 // CHECK:   %[[RET:.*]] = mhlo.maximum %[[ARG6]], %[[ARG7]] : tensor<f32>
 // CHECK:   "mhlo.return"(%[[RET]]) : (tensor<f32>) -> ()
@@ -811,7 +811,7 @@ ENTRY main {
 
 // -----
 // CHECK: func @main
-// CHECK: "lmhlo.while"(%{{.*}}) ( {
+// CHECK: "lmhlo.while"(%{{.*}}) ({
 HloModule WhileConstantCondition
 
 %body {
