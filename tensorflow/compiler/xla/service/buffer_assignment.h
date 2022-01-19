@@ -591,6 +591,8 @@ class BufferAssignment {
 class BufferAssigner {
  public:
   using Colorer = std::function<Status(HloAliasAnalysis*, const HloOrdering&)>;
+  using MustNotLiveOut =
+      std::function<bool(const HloInstruction*, const ShapeIndex&)>;
 
   static Colorer DefaultColorer() {
     return [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
@@ -621,14 +623,14 @@ class BufferAssigner {
       LogicalBuffer::AlignmentFunction color_alignment,
       bool allocate_buffers_for_constants = false,
       Colorer colorer = DefaultColorer(),
-      const absl::flat_hash_set<HloOpcode>& must_not_live_out = {},
+      absl::optional<MustNotLiveOut> must_not_live_out = absl::nullopt,
       HloDataflowAnalysis::CanShareBuffer can_share_buffer = nullptr,
       std::unique_ptr<memory_space_assignment::PresetAssignments>
           preset_assignments = {});
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
-                 const absl::flat_hash_set<HloOpcode>& must_not_live_out,
+                 absl::optional<MustNotLiveOut> must_not_live_out,
                  std::unique_ptr<memory_space_assignment::PresetAssignments>
                      preset_assignments)
       : allocate_buffers_for_constants_(allocate_buffers_for_constants),
@@ -709,8 +711,9 @@ class BufferAssigner {
   // Functor used to assign colors to newly allocated logical buffers.
   Colorer colorer_;
 
-  // A set of hlo opcodes that can't live out of a computation.
-  absl::flat_hash_set<HloOpcode> must_not_live_out_;
+  // An optional function that returns true if the given instruction can't live
+  // out of a computation.
+  absl::optional<MustNotLiveOut> must_not_live_out_;
 
   // Description of any buffer offsets that are already set by an earlier pass.
   std::unique_ptr<memory_space_assignment::PresetAssignments>
