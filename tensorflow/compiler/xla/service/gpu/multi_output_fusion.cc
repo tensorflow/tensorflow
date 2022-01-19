@@ -213,10 +213,9 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
                       [](const HloInstruction* a, const HloInstruction* b) {
                         return FusionPriority(a) > FusionPriority(b);
                       });
-  for (auto i = siblings.begin(); i != siblings.end();) {
+  for (auto i = siblings.begin(); i != siblings.end(); ++i) {
     VLOG(3) << "Considering " << (*i)->name();
     if ((*i)->opcode() != HloOpcode::kFusion || !IsSiblingFusionCandidate(*i)) {
-      ++i;
       continue;
     }
     for (auto j = i + 1; j != siblings.end();) {
@@ -250,7 +249,6 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
       siblings.erase(j);
       RecomputeReachability();
     }
-    ++i;
   }
   return changed;
 }
