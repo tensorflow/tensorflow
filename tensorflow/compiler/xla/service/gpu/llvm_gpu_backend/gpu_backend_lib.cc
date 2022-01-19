@@ -730,7 +730,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   std::string lld_path = tensorflow::io::JoinPath("/opt/rocm", "llvm/bin");
   auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
   if (!lld_program) {
-    return xla::InternalError("unable to find ld.lld in PATH: %s",
+    return xla::InternalError("unable to find ld.lld in %s: %s", lld_path,
                               lld_program.getError().message());
   }
   std::vector<llvm::StringRef> lld_args{
