@@ -99,6 +99,7 @@ using ::tfrt::jitrt::JitExecutableCache;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::OperandConstraint;
 using ::tfrt::jitrt::RegisterDefaultJitRtCompilationPipeline;
+using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnAsyncStridedMemref;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConverter;
@@ -378,7 +379,12 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // Options for the JitRt JitExecutable compilation.
     CompilationOptions opts;
     opts.specialization = CompilationOptions::Specialization::kAlways;
-    opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
+
+    // Register dialects and interfaces required for the compilation pipeline.
+    opts.register_dialects = [](mlir::DialectRegistry& registry) {
+      mlir::RegisterAllTensorFlowDialects(registry);
+      RegisterDefaultJitRtDialects(registry);
+    };
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
     opts.register_compilation_pipeline = [=](mlir::PassManager& pm) {

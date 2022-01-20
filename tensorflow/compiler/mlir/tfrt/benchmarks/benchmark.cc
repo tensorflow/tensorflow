@@ -79,7 +79,10 @@ JitExecutable& CreateJitExecutable(
   copts.num_worker_threads = host.GetNumWorkerThreads();
 
   CompilationOptions opts;
-  opts.register_dialects = mlir::RegisterAllTensorFlowDialects;
+  opts.register_dialects = [](mlir::DialectRegistry& registry) {
+    mlir::RegisterAllTensorFlowDialects(registry);
+    tfrt::jitrt::RegisterDefaultJitRtDialects(registry);
+  };
   opts.register_compilation_pipeline =
       [&, copts, lower_from_tensorflow](mlir::PassManager& pm) {
         if (lower_from_tensorflow)
