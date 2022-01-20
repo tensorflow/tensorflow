@@ -155,10 +155,10 @@ class DataServiceDispatcherImpl {
                     GetVersionResponse* response);
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
                               GetOrRegisterDatasetResponse* response);
-  Status GetElementSpec(const GetElementSpecRequest* request,
-                        GetElementSpecResponse* response);
   Status GetDataServiceMetadata(const GetDataServiceMetadataRequest* request,
                                 GetDataServiceMetadataResponse* response);
+  Status GetDataServiceConfig(const GetDataServiceConfigRequest* request,
+                              GetDataServiceConfigResponse* response);
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
   Status ReleaseJobClient(const ReleaseJobClientRequest* request,
@@ -188,9 +188,6 @@ class DataServiceDispatcherImpl {
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
                          const DataServiceMetadata& metadata,
                          int64_t& dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Sets the element spec of the dataset for the specified `dataset_id`.
-  Status SetElementSpec(int64_t dataset_id, const std::string& element_spec)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
   // stored in `out_stub`.

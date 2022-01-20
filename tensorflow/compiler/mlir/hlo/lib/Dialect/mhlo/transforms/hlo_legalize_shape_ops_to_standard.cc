@@ -51,7 +51,7 @@ struct ComputeReshapeShapeConversion
       mhlo::ComputeReshapeShapeOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    auto ctx = op->getContext();
+    auto* ctx = op->getContext();
     Value neg_one = rewriter.create<arith::ConstantIndexOp>(loc, -1);
     auto index_type = rewriter.getIndexType();
     auto num_elements = adaptor.getOperands()[0];
@@ -117,7 +117,7 @@ struct CstrReshapableConversion
       mhlo::CstrReshapableOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    auto ctx = op->getContext();
+    auto* ctx = op->getContext();
     Value neg_one = rewriter.create<arith::ConstantIndexOp>(loc, -1);
     Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
@@ -136,7 +136,7 @@ struct CstrReshapableConversion
         loc, new_shape, llvm::makeArrayRef({one, zero, zero}));
     {
       PatternRewriter::InsertionGuard g(rewriter);
-      auto body = reduction.getBody();
+      auto* body = reduction.getBody();
       rewriter.setInsertionPointToEnd(body);
       Value extent = body->getArgument(1);
       Value is_dynamic = rewriter.create<arith::CmpIOp>(
@@ -171,22 +171,20 @@ struct CstrReshapableConversion
     // Must have no invalid dimensions.
     Value no_invalid = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, reduction->getResult(2), zero);
-    // If the old shape has size zero, the new shape must have size zero too.
-    // This can be a zero factor or a -1.
+    // If there is no dynamic dimension then the number of elements must match.
     Value has_one_dynamic = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, reduction->getResult(1), one);
-    Value equal_if_empty = rewriter.create<arith::OrIOp>(
+    Value equal_if_not_dynamic = rewriter.create<arith::OrIOp>(
         loc, has_one_dynamic,
-        rewriter.create<arith::CmpIOp>(
-            loc, arith::CmpIPredicate::eq, is_zero_elements,
-            rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq,
-                                           num_elements, zero)));
+        rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq,
+                                       num_elements, reduction->getResult(0)));
 
     Value all_passing = rewriter.create<arith::AndIOp>(
         loc, is_divisible,
         rewriter.create<arith::AndIOp>(
             loc, acceptably_dynamic,
-            rewriter.create<arith::AndIOp>(loc, no_invalid, equal_if_empty)));
+            rewriter.create<arith::AndIOp>(loc, no_invalid,
+                                           equal_if_not_dynamic)));
 
     rewriter.replaceOpWithNewOp<shape::CstrRequireOp>(
         op, all_passing, "Required valid reshape shape input");
@@ -203,7 +201,7 @@ struct HloLegalizeShapeOpsToStandardPass
                     tensor::TensorDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext& ctx = getContext();
     OwningRewritePatternList patterns(&ctx);
     ConversionTarget target(ctx);
@@ -212,7 +210,7 @@ struct HloLegalizeShapeOpsToStandardPass
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 
-    auto func = getFunction();
+    auto func = getOperation();
     mhlo::RemoveSignTypeConverter type_converter;
     mhlo::populateHLOShapeOpsToStandardConversionPattern(&ctx, type_converter,
                                                          &patterns);

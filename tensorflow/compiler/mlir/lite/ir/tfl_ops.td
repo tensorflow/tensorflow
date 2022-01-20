@@ -751,7 +751,7 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I8, UI8, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[I1, F32, I32, I8, UI8, QI8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$dim
   );
 
@@ -783,7 +783,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I8, UI8, QI8, QUI8]>:$input,
+    ins TFL_TensorOf<[I1, F32, I32, I8, UI8, QI8, QUI8]>:$input,
     TFL_I32OrI64Tensor:$dim
   );
 
@@ -3793,6 +3793,26 @@ value of `input` in the unique output `output`. In other words:
     }], [{
       TypeAttr::get(getResult(1).getType().cast<TensorType>().getElementType())
     }]>;
+
+  let hasOptions = 1;
+}
+
+def TFL_GeluOp: TFL_Op<"gelu", [
+    NoSideEffect,
+    SameOperandsAndResultShape,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = "GELU activation function.";
+  let description = [{
+    Computes GELU activation function element-wise.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32]>:$input,
+    DefaultValuedAttr<BoolAttr, "false">:$approximate
+  );
+
+  let results = (outs TFL_TensorOf<[F32]>:$output);
 
   let hasOptions = 1;
 }

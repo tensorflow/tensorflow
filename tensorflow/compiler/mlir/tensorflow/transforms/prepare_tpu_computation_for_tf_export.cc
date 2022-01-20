@@ -143,7 +143,7 @@ void UpdateArgAttributes(mlir::FuncOp func) {
             updated_arg, llvm::SmallPtrSet<Operation*, 1>({updated_arg}));
       }
 
-      func.removeArgAttr(i, builder.getIdentifier(kShardingAttr));
+      func.removeArgAttr(i, builder.getStringAttr(kShardingAttr));
     }
   }
 }

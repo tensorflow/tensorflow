@@ -419,7 +419,7 @@ def _bucketize(input, boundaries, name=None):
 # pylint: enable=redefined-builtin
 
 
-class DivideDelegateWithName(object):
+class DivideDelegateWithName:
   """Use Python2/Python3 division delegation to implement divide for tensors."""
 
   def __init__(self, x, name):

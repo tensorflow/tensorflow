@@ -40,7 +40,7 @@ class TRT_ShapedWeights {
   //
   // NOTE: this does not copy the underlying buffer but only increase its
   // reference count.
-  TRT_ShapedWeights(const TRT_ShapedWeights& rhs);
+  TRT_ShapedWeights(const TRT_ShapedWeights& rhs) = default;
 
   nvinfer1::Weights GetTrtWeights() const;
 
@@ -68,17 +68,17 @@ class TRT_ShapedWeights {
     switch (type_) {
       case nvinfer1::DataType::kFLOAT: {
         float* ptr = tensor_.flat<float>().data();
-        std::fill(ptr, ptr + count(), value);
+        std::fill(ptr, ptr + volume_, value);
         break;
       }
       case nvinfer1::DataType::kHALF: {
         Eigen::half* ptr = tensor_.flat<Eigen::half>().data();
-        std::fill(ptr, ptr + count(), Eigen::half(value));
+        std::fill(ptr, ptr + volume_, Eigen::half(value));
         break;
       }
       case nvinfer1::DataType::kINT32: {
         int32* ptr = tensor_.flat<int32>().data();
-        std::fill(ptr, ptr + count(), value);
+        std::fill(ptr, ptr + volume_, value);
         break;
       }
       default:
@@ -88,15 +88,13 @@ class TRT_ShapedWeights {
     return Status::OK();
   }
 
-  Status SetShape(nvinfer1::Dims dims);
+  Status SetShape(DimsAdapter dims);
+  void SetShapeUnsafe(DimsAdapter dims) { shape_ = std::move(dims); }
 
   // Returns total number of elements. Returning 0 means either some dim is 0
   // or the number of dims is 0. Note that a TF scalar constant is marked as
   // Dims{0, {1}}, and has a count() == 1.
-  int64_t count() const { return count(shape_); }
-
-  // Returns the total number of elements in a weight with shape dims.
-  static int64_t count(nvinfer1::Dims dims);
+  int64_t count() const { return volume_; }
 
   size_t size_bytes() const;
 
@@ -104,7 +102,7 @@ class TRT_ShapedWeights {
 
   template <typename T>
   absl::Span<const T> GetSpan() const {
-    return absl::Span<const T>(tensor_.flat<T>().data(), count());
+    return absl::Span<const T>(tensor_.flat<T>().data(), volume_);
   }
 
   template <typename T>
@@ -115,16 +113,18 @@ class TRT_ShapedWeights {
 
   nvinfer1::DataType TrtDType() const { return type_; }
 
-  // TODO(aaroey): make these private.
-  // Scalar weights are supported, a scalar constant tensor is represented via
-  // TRT_ShapedWeights::shape_ = {0, {1}}.
-  nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
+  const DimsAdapter& Shape() const { return shape_; }
+  DimsAdapter& Shape() { return shape_; }
 
  private:
-  // This constructor is only used by TrtWeightStore, which creates the
+  // The shape of the weights. Defaults to the empty shape.
+  DimsAdapter shape_;
+
+  // This creation method is only used by TrtWeightStore, which creates the
   // underlying buffer.
-  TRT_ShapedWeights(nvinfer1::DataType type, nvinfer1::Dims dims,
-                    Tensor tensor);
+  static StatusOr<TRT_ShapedWeights> CreateWithTensor(nvinfer1::DataType type,
+                                                      DimsAdapter dims,
+                                                      Tensor tensor);
 
   nvinfer1::DataType type_;
 
@@ -133,6 +133,8 @@ class TRT_ShapedWeights {
   // this reason, tensor_ should never be reassigned to a different value that
   // is not already present in the TrtWeightStore.
   Tensor tensor_;
+  // Contains the volume of the weight's shape.
+  int64_t volume_;
 
   friend class TrtWeightStore;
 };
@@ -147,13 +149,13 @@ class TRT_ShapedWeights {
 class TrtWeightStore {
  public:
   // Gets a TRT_ShapedWeights with 'type' and 'dims'.
-  TRT_ShapedWeights GetTempWeights(nvinfer1::DataType trt_type,
-                                   const nvinfer1::Dims& dims);
+  StatusOr<TRT_ShapedWeights> GetTempWeights(nvinfer1::DataType trt_type,
+                                             const DimsAdapter& dims);
 
   // Gets a TRT_ShapedWeights with the same data type and dimensions as
   // 'weights'.
-  TRT_ShapedWeights GetTempWeights(const TRT_ShapedWeights& weights) {
-    return GetTempWeights(weights.TrtDType(), weights.shape_);
+  StatusOr<TRT_ShapedWeights> GetTempWeights(const TRT_ShapedWeights& weights) {
+    return GetTempWeights(weights.TrtDType(), weights.Shape());
   }
 
  private:

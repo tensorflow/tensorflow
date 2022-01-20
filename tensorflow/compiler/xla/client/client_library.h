@@ -27,6 +27,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -133,10 +134,10 @@ class ClientLibrary {
   };
 
   tensorflow::mutex service_mutex_;  // Guards the singleton creation state.
-  std::unordered_map<se::Platform::Id, std::unique_ptr<LocalInstance>>
+  absl::flat_hash_map<se::Platform::Id, std::unique_ptr<LocalInstance>>
       local_instances_ TF_GUARDED_BY(service_mutex_);
 
-  std::unordered_map<se::Platform::Id, std::unique_ptr<CompileOnlyInstance>>
+  absl::flat_hash_map<se::Platform::Id, std::unique_ptr<CompileOnlyInstance>>
       compile_only_instances_ TF_GUARDED_BY(service_mutex_);
 
   ClientLibrary(const ClientLibrary&) = delete;

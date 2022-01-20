@@ -763,13 +763,21 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
     }
 
+    case BuiltinOperator_ARG_MAX:
+    case BuiltinOperator_ARG_MIN:
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_SUM:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_TOPK_V2:
-    case BuiltinOperator_ARG_MAX:
-    case BuiltinOperator_ARG_MIN:
     case BuiltinOperator_GREATER:
     case BuiltinOperator_GREATER_EQUAL:
     case BuiltinOperator_LESS:

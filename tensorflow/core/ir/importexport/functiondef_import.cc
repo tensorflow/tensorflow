@@ -160,8 +160,8 @@ Status ImportNodes(ValueMapManager value_manager,
   Type control_ty = ControlType::get(context);
   TFGraphDialect* tfgDialect =
       cast<TFGraphDialect>(context->getLoadedDialect("tfg"));
-  Identifier device_attr = tfgDialect->getDeviceAttrIdentifier();
-  Identifier name_attr = tfgDialect->getNameAttrIdentifier();
+  StringAttr device_attr = tfgDialect->getDeviceAttrIdentifier();
+  StringAttr name_attr = tfgDialect->getNameAttrIdentifier();
   // Process every node and create a matching MLIR operation
   for (const NodeDef& node : nodes) {
     DVLOG(0) << "Processing node " << node.name() << "\n";
@@ -364,8 +364,9 @@ Status ImportGenericFunction(
     args_attrs.push_back(NamedAttrList{}.getDictionary(context));
     arg_num++;
   }
-  attrs.push_back(builder.getNamedAttr(function_like_impl::getArgDictAttrName(),
-                                       builder.getArrayAttr(args_attrs)));
+  attrs.push_back(
+      builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
+                           builder.getArrayAttr(args_attrs)));
 
   // Process the results attributes now.
   int res_num = 0;
@@ -383,7 +384,7 @@ Status ImportGenericFunction(
     ++res_num;
   }
   attrs.push_back(
-      builder.getNamedAttr(function_like_impl::getResultDictAttrName(),
+      builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
                            builder.getArrayAttr(res_attrs)));
 
   values_map.clear();

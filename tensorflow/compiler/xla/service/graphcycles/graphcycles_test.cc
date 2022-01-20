@@ -19,9 +19,9 @@ limitations under the License.
 
 #include <optional>
 #include <random>
-#include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -38,7 +38,7 @@ typedef std::vector<Edge> Edges;
 
 // Return whether "to" is reachable from "from".
 static bool IsReachable(Edges *edges, int from, int to,
-                        std::unordered_set<int> *seen) {
+                        absl::flat_hash_set<int> *seen) {
   seen->insert(from);  // we are investigating "from"; don't do it again
   if (from == to) return true;
   for (int i = 0; i != edges->size(); i++) {
@@ -93,7 +93,7 @@ static void PrintTransitiveClosure(Nodes *nodes, Edges *edges,
     for (int j = 0; j != nodes->size(); j++) {
       int a = (*nodes)[i];
       int b = (*nodes)[j];
-      std::unordered_set<int> seen;
+      absl::flat_hash_set<int> seen;
       if (IsReachable(edges, a, b, &seen)) {
         LOG(INFO) << a << " " << b;
       }
@@ -119,7 +119,7 @@ static void PrintGCTransitiveClosure(Nodes *nodes,
 
 static void CheckTransitiveClosure(Nodes *nodes, Edges *edges,
                                    tensorflow::GraphCycles *gc) {
-  std::unordered_set<int> seen;
+  absl::flat_hash_set<int> seen;
   for (int i = 0; i != nodes->size(); i++) {
     for (int j = 0; j != nodes->size(); j++) {
       seen.clear();
@@ -270,7 +270,7 @@ TEST(GraphCycles, RandomizedTest) {
               new_edge.to = nodes[to];
               edges.push_back(new_edge);
             } else {
-              std::unordered_set<int> seen;
+              absl::flat_hash_set<int> seen;
               ASSERT_TRUE(IsReachable(&edges, nodes[to], nodes[from], &seen))
                   << "Edge " << nodes[to] << "->" << nodes[from];
             }
@@ -299,7 +299,7 @@ TEST(GraphCycles, RandomizedTest) {
           int32_t path[2 * kMaxNodes];
           int path_len = graph_cycles.FindPath(nodes[from], nodes[to],
                                                2 * kMaxNodes, path);
-          std::unordered_set<int> seen;
+          absl::flat_hash_set<int> seen;
           bool reachable = IsReachable(&edges, nodes[from], nodes[to], &seen);
           bool gc_reachable = graph_cycles.IsReachable(nodes[from], nodes[to]);
           ASSERT_EQ(gc_reachable,

@@ -15,7 +15,7 @@ func @splat_constants() -> tensor<1x64x224x224xf32> {
 func @while_with_implicit_arg_capture(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while
   // CHECK-SAME: (%[[ARG1:.*]] = %arg0, %[[ARG2:.*]] = %arg0)
-  %0 = "mhlo.while"(%arg0) ( {
+  %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<i64>):
     // CHECK: mhlo.compare
     // CHECK-SAME: %[[ARG2]], %[[ARG1]]
@@ -43,7 +43,7 @@ func @while_with_implicit_capture(%arg0 :  tensor<i1>, %arg1 : tensor<5xi32>) ->
   // CHECK: %[[IOTA:.*]] = "mhlo.iota
   %2 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
   // CHECK: mhlo.while{{.*}} %[[IOTA]])
-  %3:2 = "mhlo.while"(%arg0, %arg1) ( {
+  %3:2 = "mhlo.while"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<i1>, %arg3 : tensor<5xi32>):  // no predecessors
     "mhlo.return"(%arg2) : (tensor<i1>) -> ()
   },  {
@@ -61,7 +61,7 @@ func @while_with_implicit_capture(%arg0 :  tensor<i1>, %arg1 : tensor<5xi32>) ->
 func @while_with_multiple_capture(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while
   // CHECK-SAME: (%[[ARG1:.*]] = %arg0, %[[ARG2:.*]] = %arg0)
-  %0 = "mhlo.while"(%arg0) ( {
+  %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<i64>):
     // CHECK: mhlo.compare
     // CHECK-SAME: %[[ARG2]], %[[ARG1]]
@@ -76,4 +76,15 @@ func @while_with_multiple_capture(%arg0: tensor<i64>) -> tensor<i64> {
     "mhlo.return"(%2) : (tensor<i64>) -> ()
   }) : (tensor<i64>) -> tensor<i64>
   return %0 : tensor<i64>
+}
+
+// -----
+
+// CHECK-LABEL: @broadcast_in_dim_dimension_unsorted
+func @broadcast_in_dim_dimension_unsorted(%arg0: tensor<1x2xi32>) -> tensor<1x2x3xi32> {
+// Unfuse the transpose from the broadcastInDim before export.
+// CHECK: %[[TRANSPOSE:.*]] = "mhlo.transpose"(%arg0){{.*}}permutation = dense<[1, 0]>{{.*}} -> tensor<2x1xi32>
+// CHECK: mhlo.broadcast_in_dim"(%[[TRANSPOSE]]){{.*}}broadcast_dimensions = dense<[1, 2]>
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[2, 1]> : tensor<2xi64>} : (tensor<1x2xi32>) -> tensor<1x2x3xi32>
+  return %0 : tensor<1x2x3xi32>
 }

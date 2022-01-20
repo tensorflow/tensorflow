@@ -47,7 +47,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -111,7 +110,7 @@ void MultiDeviceProcessInlinedCallBlocks(
 
   // Duplicate of the logic in MultiDeviceFunctionBodyPlacer::BodyNodeDevice
   // LINT.IfChange
-  auto device_id = Identifier::get("device", call->getContext());
+  auto device_id = StringAttr::get(call->getContext(), "device");
   auto caller_device = call->getAttrOfType<StringAttr>(device_id);
   if (!caller_device) return;
 

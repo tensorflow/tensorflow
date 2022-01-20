@@ -179,6 +179,16 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgInt) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
 }
 
+TEST_P(ArgMinMaxOpTest, GetMaxArgBool) {
+  ArgMaxOpModel model({1, 1, 1, 4}, TensorType_BOOL, 3, AxisType(),
+                      ConstantAxis(), OutputType());
+  model.PopulateTensor<bool>(model.input(), {true, false, false, false});
+  model.Invoke();
+
+  ValidateOutput(model, {0});
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
+}
+
 TEST_P(ArgMinMaxOpTest, GetMaxArgMulDimensions) {
   ArgMaxOpModel model({1, 1, 2, 4}, TensorType_INT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
@@ -239,6 +249,16 @@ TEST_P(ArgMinMaxOpTest, GetMinArgInt) {
   model.Invoke();
 
   ValidateOutput(model, {0});
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
+}
+
+TEST_P(ArgMinMaxOpTest, GetMinArgBool) {
+  ArgMinOpModel model({1, 1, 1, 4}, TensorType_BOOL, 3, AxisType(),
+                      ConstantAxis(), OutputType());
+  model.PopulateTensor<bool>(model.input(), {true, false, true, true});
+  model.Invoke();
+
+  ValidateOutput(model, {1});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
 }
 

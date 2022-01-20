@@ -66,6 +66,7 @@ distribute_py_test(
     shard_count = 50,
     tags = [
         "multi_gpu",
+        "no_oss",  # TODO(b/214432000): Very flaky under Docker
         "no_pip",
         "noasan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
         "notpu",

@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -280,6 +283,16 @@ static absl::optional<std::string> DumpToFileInDirOrStdoutImpl(
   return DumpToFileInDirImpl(filename, contents, opts);
 }
 
+// Returns whether the computation is trivial enough not to warrant dumping.
+// Currently skips instructions where the root instruction has only parameters
+// as operands.
+static bool IsTrivial(const HloComputation& computation) {
+  const HloInstruction* root = computation.root_instruction();
+  return absl::c_all_of(root->operands(), [&](const HloInstruction* op) {
+    return op->opcode() == HloOpcode::kParameter;
+  });
+}
+
 // Returns full file paths of all dumps of the module.
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
@@ -339,6 +352,7 @@ static std::vector<std::string> DumpHloModuleImpl(
                             render_graph(RenderedGraphFormat::kHtml), opts));
   }
 
+
   if (opts.dump_fusion_visualization) {
     for (const HloComputation* computation :
          module.MakeNonfusionComputations()) {
@@ -347,13 +361,21 @@ static std::vector<std::string> DumpHloModuleImpl(
           /*label=*/absl::StrCat(filename, "_", computation->name()),
           module.config().debug_options(),
           RenderedGraphFormat::kFusionVisualization, profile);
+
+      if (IsTrivial(*computation)) {
+        VLOG(1) << "Skipping computation " << computation->name()
+                << " as trivial";
+        continue;
+      }
+      if (!rendered_graph.ok()) {
+        VLOG(1) << "Skipping fusion visualization"
+                << " for computation " << computation->name()
+                << " due to: " << rendered_graph.status().ToString();
+        continue;
+      }
       file_paths.push_back(DumpToFileInDirImpl(
-          StrFormat("%s_%s_fusion_visualization.html", filename,
-                    computation->name()),
-          rendered_graph.ok() ? *rendered_graph
-                              : StrFormat("Error rendering graph: %s",
-                                          rendered_graph.status().ToString()),
-          opts));
+          FilenameFor(module, computation->name(), "_fusion.html"),
+          *rendered_graph, opts));
     }
   }
 
@@ -495,10 +517,17 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
       GetDumpFilePath(FilenameFor(module, file_prefix, "mlir"), opts);
   if (!file_path) return;
 
-  // TODO(csigg): Change tag to file_prefix once BEF handles fused locs.
-  llvm::StringRef tag = "";
-  if (failed(mlir::generateLocationsFromIR(*file_path, tag, op, llvm::None)))
-    LOG(ERROR) << "Failed to dump op to " << *file_path;
+  std::string error;
+  std::unique_ptr<llvm::ToolOutputFile> outputFile =
+      mlir::openOutputFile(llvm::SmallString<32>(*file_path), &error);
+  if (!outputFile) {
+    LOG(ERROR) << "Error: " << error << std::endl
+               << "Failed to open file: " << *file_path;
+    return;
+  }
+
+  op->print(outputFile->os(), mlir::OpPrintingFlags().useLocalScope());
+  outputFile->keep();
 }
 
 void DumpExecutionOptions(const ExecutionOptions& execution_options,

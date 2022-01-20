@@ -44,7 +44,9 @@ TfLiteXNNPackDelegateOptionsDefault();
 
 // Creates a new delegate instance that need to be destroyed with
 // `TfLiteXNNPackDelegateDelete` when delegate is no longer used by TFLite.
-// When `options` is set to `nullptr`, the following default values are used:
+// When `options` is set to `nullptr`, default values are used (see
+// implementation of TfLiteXNNPackDelegateOptionsDefault in the .cc file for
+// details).
 TFL_CAPI_EXPORT TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options);
 

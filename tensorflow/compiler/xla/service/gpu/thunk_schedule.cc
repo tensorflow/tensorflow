@@ -83,7 +83,7 @@ ThunkSchedule::ThunkSchedule(std::unique_ptr<ThunkSequence> thunks)
     : thunks_(std::move(thunks)) {}
 
 void ThunkSchedule::RemoveRedundantDependencyEdges() {
-  std::unordered_map<const Thunk*, int> thunk_to_total_order;
+  absl::flat_hash_map<const Thunk*, int> thunk_to_total_order;
   for (int i = 0; i < thunks_->size(); ++i) {
     InsertOrDie(&thunk_to_total_order, thunks_->at(i).get(), i);
   }

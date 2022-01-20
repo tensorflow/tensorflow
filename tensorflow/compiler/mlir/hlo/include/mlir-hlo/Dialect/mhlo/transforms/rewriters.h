@@ -73,9 +73,8 @@ void populateHLOToLHLOConversionPattern(
 void populateHLOToMemrefConversionPattern(
     bufferization::BufferizeTypeConverter *converter,
     RemoveSignTypeConverter *sign_converter, OwningRewritePatternList *patterns,
-    std::function<bool(Operation *)> enforce_identity_map = [](Operation *) {
-      return true;
-    });
+    const std::function<bool(Operation *)> &enforce_identity_map =
+        [](Operation *) { return true; });
 
 // Collection of rewrite patterns for lowering of shape operations from the HLO
 // dialect to the standard dialect.
@@ -119,11 +118,17 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
 void PopulateTrigonometricToApproximationPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
-// Populate patterns to move dynamic broadcasts up over element-wise operations
-// and broadcast the operands rather than the result. This will eventually allow
-// for larger fusions.
+// Populate patterns to prepare moving dynamic broadcasts up over element-wise
+// operations and broadcast the operands rather than the result. This will
+// eventually allow for larger fusions.
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
                                       OwningRewritePatternList *patterns);
+
+// Populate patterns to group reduction and parallecol dimensions of reduction
+// operations and realize them through equivalent 1D or 2D reductions, if
+// possible.
+void populateGroupReductionDimensionsPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
 
 /// Populate rank specialization clustering and lowering patterns.
 void PopulateRankSpecializationClusterPatterns(

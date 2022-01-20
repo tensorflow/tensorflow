@@ -128,7 +128,7 @@ constexpr std::array<TrtTestMode, 3> ValidTrtModes = {
 
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
-  return lhs.shape_ == rhs.shape_ && lhs.TrtDType() == rhs.TrtDType() &&
+  return lhs.Shape() == rhs.Shape() && lhs.TrtDType() == rhs.TrtDType() &&
          lhs.GetPointer<int8>() == rhs.GetPointer<int8>();
 }
 
@@ -136,7 +136,7 @@ template <typename T>
 void ValidateWeights(const TRT_ShapedWeights& weights,
                      const std::vector<int>& expected_dims,
                      const std::vector<T>& expected_value) {
-  EXPECT_THAT(weights.shape_, DimsAreArray(expected_dims));
+  EXPECT_EQ(weights.Shape(), DimsAdapter(expected_dims));
   ASSERT_EQ(expected_value.size(), weights.count()) << weights.DebugString();
   const T* actual_values = weights.GetPointer<T>();
   for (int i = 0; i < expected_value.size(); ++i) {
@@ -200,7 +200,8 @@ TEST(TRT_ShapedWeights_Test, Basic) {
   {
     TrtWeightStore store;
     TRT_ShapedWeights weights =
-        store.GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims({2, 5}));
+        store.GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims({2, 5}))
+            .ValueOrDie();
     TRT_ShapedWeights copy(weights);
     for (auto ptr : {&weights, &copy}) {
       nvinfer1::Weights trt_weights = ptr->GetTrtWeights();
@@ -725,15 +726,17 @@ void TestPrepareTensorForShape(
     input = TRT_TensorOrWeights(converter->network()->addInput(
         "", nvinfer1::DataType::kFLOAT, CreateDims(input_dims)));
   } else {
-    input = TRT_TensorOrWeights(weight_store->GetTempWeights(
-        nvinfer1::DataType::kFLOAT, CreateDims(input_dims)));
+    input = TRT_TensorOrWeights(
+        weight_store
+            ->GetTempWeights(nvinfer1::DataType::kFLOAT, CreateDims(input_dims))
+            .ValueOrDie());
   }
   ITensorProxyPtr output_tensor = nullptr;
 
   NodeDef dummy_node_def = MakeNodeDef("dummy_op", "DummyOp", {});
   for (bool validation_only : {false, true}) {
     const Status status =
-        PrepareTensorForShape(converter, input, CreateDims(reshape_dims),
+        PrepareTensorForShape(converter, input, DimsAdapter(reshape_dims),
                               validation_only, &output_tensor, dummy_node_def);
     if (expected_code == error::OK) {
       TF_EXPECT_OK(status);
@@ -839,10 +842,9 @@ void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
   nvinfer1::DataType trt_type;
   TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &trt_type));
   TRT_ShapedWeights weights =
-      weight_store->GetTempWeights(trt_type, CreateDims({2, 3}));
+      weight_store->GetTempWeights(trt_type, CreateDims({2, 3})).ValueOrDie();
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
-  memcpy(weights.GetPointer<int8>(), values.data(), weights.size_bytes());
-
+  absl::c_copy(values, weights.GetPointer<T>());
   float out_min = 0.0f;
   float out_max = 0.0f;
   TF_EXPECT_OK(test->GetWeightRange(weights, &out_min, &out_max));
@@ -909,11 +911,11 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
     auto create_tensor_or_weights = [](const std::vector<int>& shape,
                                        bool is_tensor, int batch_size = -1) {
       if (is_tensor) {
-        return TRT_TensorOrWeights{nvinfer1::DataType::kFLOAT,
-                                   CreateDims(shape), batch_size};
+        return TRT_TensorOrWeights(nvinfer1::DataType::kFLOAT,
+                                   CreateDims(shape), batch_size);
       }
       TRT_ShapedWeights weights;
-      weights.shape_ = CreateDims(shape);
+      weights.Shape() = CreateDims(shape);
       return TRT_TensorOrWeights(weights);
     };
 
@@ -1001,7 +1003,8 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
 TEST_F(ConverterTest, CreateConstantLayer) {
   for (auto dtype : {nvinfer1::DataType::kFLOAT, nvinfer1::DataType::kINT32}) {
     TRT_ShapedWeights weights =
-        weight_store_->GetTempWeights(dtype, CreateDims({2, 3, 5}));
+        weight_store_->GetTempWeights(dtype, CreateDims({2, 3, 5}))
+            .ValueOrDie();
     ITensorProxyPtr tensor =
         converter_->CreateConstantLayer(weights, CreateDims({3, 10}));
     ASSERT_NE(nullptr, tensor->trt_tensor());
@@ -1309,19 +1312,19 @@ class OpConverterTest : public ::testing::Test {
     node_inputs_[name] = input.output;
 
     // Add a real ITensor for conversion conditionally.
-    nvinfer1::Dims trt_dims;
-    Status status = TensorShapeToTrtDims(
-        attrs.shape_, converter_->use_implicit_batch(), &trt_dims);
-    if (converter_->use_implicit_batch() && !status.ok()) {
-      ASSERT_EQ(add_input_status, status);
+
+    auto dims_adap =
+        DimsAdapter::Create(attrs.shape_, converter_->use_implicit_batch());
+    if (converter_->use_implicit_batch() && !dims_adap.ok()) {
+      ASSERT_EQ(add_input_status, dims_adap.status());
       return;
     } else {
-      TF_EXPECT_OK(status);
+      TF_EXPECT_OK(dims_adap.status());
     }
-    if (!converter_->use_implicit_batch() || HasStaticShape(trt_dims)) {
+    if (!converter_->use_implicit_batch() || dims_adap->IsStatic()) {
       int batch_size = dims.size() > 0 ? dims[0] : 0;
-      Status status =
-          converter_->AddInputTensor(name, trt_type, trt_dims, batch_size);
+      Status status = converter_->AddInputTensor(
+          name, trt_type, dims_adap->AsTrtDims(), batch_size);
       ASSERT_EQ(add_input_status, status);
     }
   }
@@ -1335,11 +1338,11 @@ class OpConverterTest : public ::testing::Test {
   void AddTestTensor(
       const string& name, const std::vector<int32>& dims, int batch_size = 1,
       nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
-    std::vector<int32> dims_with_batch(dims.size() + 1);
-    dims_with_batch[0] = batch_size;
-    std::copy(dims.begin(), dims.end(), dims_with_batch.begin() + 1);
-    AddTestTensorWithTFDims(name, dims_with_batch, trt_dtype);
-    if (HasStaticShape(dims)) {
+    DimsAdapter adap(dims);
+    std::vector<int32_t> dims_vec;
+    TF_CHECK_OK(adap.Prepend(batch_size).Vector(&dims_vec));
+    AddTestTensorWithTFDims(name, dims_vec, trt_dtype);
+    if (adap.IsStatic()) {
       ASSERT_EQ(batch_size, converter_->batch_size_);
     }
   }
@@ -1357,13 +1360,15 @@ class OpConverterTest : public ::testing::Test {
     // Add weights for conversion.
     nvinfer1::DataType dtype;
     TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &dtype));
-    const nvinfer1::Dims trt_dims = CreateDims(dims);
-    const int64_t num_elements = TRT_ShapedWeights::count(trt_dims);
+    const DimsAdapter dims_adap(dims);
+    const int64_t num_elements = dims_adap.Volume();
     QCHECK_EQ(num_elements, values.size())
         << num_elements << " vs " << values.size();
     TRT_ShapedWeights weights(dtype);
     if (num_elements) {
-      weights = converter_->weight_store_.GetTempWeights(dtype, trt_dims);
+      weights =
+          converter_->weight_store_.GetTempWeights(dtype, dims_adap.AsTrtDims())
+              .ConsumeValueOrDie();
       QCHECK_EQ(weights.size_bytes(), sizeof(T) * values.size())
           << weights.size_bytes() << " vs " << sizeof(T) * values.size();
       memcpy(weights.GetPointer<int8>(), values.data(), weights.size_bytes());
@@ -2159,8 +2164,8 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
           : Status::OK();
   Status add_scalar_tensor_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
-          ? errors::Internal(
-                "Scalars cannot be represented in implicit batch mode")
+          ? errors::InvalidArgument(
+                "removing first dim requires explicit batch dimension")
           : Status::OK();
   Status reshape_to_scalar_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
@@ -2856,7 +2861,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertBiasAdd) {
         dims_array[1] = 2;
         dims_array[trt_input_rank] = 3;
       }
-      const int num_input = TrtTensorDimsNumElements(CreateDims(dims_array));
+      const int64_t num_input = DimsAdapter(dims_array).Volume();
       ASSERT_EQ(trt_input_rank > 1 ? 6 : (data_format == "NHWC" ? 3 : 2),
                 num_input);
       std::vector<float> input_data(num_input, 0);
@@ -7099,12 +7104,12 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
       // Output would be TF scalar, should fail.
       Reset();
       NodeDef node_def = get_unpack_nodedef(tf_type_, /*num=*/1, /*axis=*/0);
-      AddTestTensor("value", {}, tf_type_, {}, {},
-                    trt_mode_ == TrtTestMode::kImplicitBatch
-                        ? errors::Internal("Scalars cannot be represented in "
-                                           "implicit batch mode")
-                        : Status::OK());
-
+      AddTestTensor(
+          "value", {}, tf_type_, {}, {},
+          trt_mode_ == TrtTestMode::kImplicitBatch
+              ? errors::InvalidArgument(
+                    "removing first dim requires explicit batch dimension")
+              : Status::OK());
       if (trt_mode_ == TrtTestMode::kImplicitBatch) {
         RunValidationAndConversion(
             node_def, error::INTERNAL,

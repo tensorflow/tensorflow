@@ -73,6 +73,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor
@@ -579,7 +580,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     """
     self._lock = threading.RLock()
     self._python_function = python_function
-    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
         python_function,
         input_signature,
         jit_compile=jit_compile,
@@ -839,7 +840,7 @@ class Function(core.GenericFunction, trackable.Trackable):
           "Functions cannot be decorated after they have been traced.")
 
     self._python_function = decorator(self._python_function)
-    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
         self._python_function, self.input_signature)
 
   # TODO: Remove this private method after updating all its uses
@@ -1348,8 +1349,8 @@ def function(func=None,
 
   ## Features
 
-  `func` may use data-dependent control flow, including `if`, `for`, `while`
-  `break`, `continue` and `return` statements:
+  `func` may use data-dependent Python control flow statements, including `if`,
+  `for`, `while` `break`, `continue` and `return`:
 
   >>> @tf.function
   ... def f(x):
@@ -1599,8 +1600,9 @@ def function(func=None,
       inferred input signature.  If input_signature is specified, every input to
       `func` must be a `Tensor`, and `func` cannot accept `**kwargs`.
     autograph: Whether autograph should be applied on `func` before tracing a
-      graph. Data-dependent control flow requires `autograph=True`. For more
-      information, see the [tf.function and AutoGraph guide](
+      graph. Data-dependent Python control flow statements require
+      `autograph=True`. For more information, see the
+      [tf.function and AutoGraph guide](
       https://www.tensorflow.org/guide/function#autograph_transformations).
     jit_compile: If `True`, compiles the function using
       [XLA](https://tensorflow.org/xla). XLA performs compiler optimizations,

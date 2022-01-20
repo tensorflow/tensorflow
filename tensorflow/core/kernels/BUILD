@@ -583,6 +583,7 @@ tf_cuda_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
@@ -4957,7 +4958,14 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_slice_op",
     prefix = "sparse_slice_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_device_array",
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
 )
 
 tf_kernel_library(

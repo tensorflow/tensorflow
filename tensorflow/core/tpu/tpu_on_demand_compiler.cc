@@ -58,7 +58,7 @@ class TpuCompiler : public Compiler {
     XLA_HloModule hlo_module;
     auto cleanup = absl::MakeCleanup([&hlo_module]() {
       stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
-      ApiConverter::Free(&hlo_module.module_config);
+      ApiConverter::Destroy(&hlo_module.module_config);
     });
     hlo_module.module_config = ApiConverter::ToC(module->config());
     hlo_module.proto = stream_executor::tpu::SerializeProto(module->ToProto());
@@ -86,7 +86,7 @@ class TpuCompiler : public Compiler {
     XLA_HloModule hlo_module;
     auto cleanup = absl::MakeCleanup([&hlo_module]() {
       stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
-      ApiConverter::Free(&hlo_module.module_config);
+      ApiConverter::Destroy(&hlo_module.module_config);
     });
     SE_Executable* result;
     hlo_module.module_config = ApiConverter::ToC(module->config());
@@ -121,7 +121,7 @@ class TpuCompiler : public Compiler {
     auto cleanup_config =
         absl::MakeCleanup([&se_module_group, module_group_size]() {
           for (auto i = 0; i < module_group_size; ++i) {
-            ApiConverter::Free(&se_module_group.module_config[i]);
+            ApiConverter::Destroy(&se_module_group.module_config[i]);
           }
           delete[] se_module_group.module_config;
         });
@@ -166,8 +166,8 @@ class TpuCompiler : public Compiler {
       // than the input module.
       XLA_HloModule c_module =
           ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executables[i]);
-      auto cleanup_c_module =
-          absl::MakeCleanup([&c_module]() { ApiConverter::Free(&c_module); });
+      auto cleanup_c_module = absl::MakeCleanup(
+          [&c_module]() { ApiConverter::Destroy(&c_module); });
       TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                           ApiConverter::FromC(c_module));
       std::shared_ptr<HloModule> module_shared(module.release());
@@ -197,7 +197,7 @@ class TpuCompiler : public Compiler {
       ApiConverter::ToC(shape, &c_shape);
       int64_t bytes =
           ExecutorApiFn()->TpuCompiler_ShapeSizeFn(compiler_, &c_shape);
-      ApiConverter::Free(&c_shape);
+      ApiConverter::Destroy(&c_shape);
       return bytes;
     };
   }

@@ -174,29 +174,29 @@ class _SaveableView(object):
   different objects if invoked more than once.
 
   Changes to the graph, for example adding objects, must happen in
-  `checkpoint_view` (an `_AugmentedGraphView`) before the `_SaveableView` is
-  constructed. Changes after the `_SaveableView` has been constructed will be
+  `augmented_graph_view` (an `_AugmentedGraphView`) before the `_SaveableView`
+  is constructed. Changes after the `_SaveableView` has been constructed will be
   ignored.
   """
 
-  def __init__(self, checkpoint_view, options, wrapped_functions=None):
+  def __init__(self, augmented_graph_view, options, wrapped_functions=None):
     """Initializes a SaveableView.
 
     Args:
-      checkpoint_view: A GraphView object.
+      augmented_graph_view: A GraphView object.
       options: A SaveOptions instance.
       wrapped_functions: Dictionary that maps concrete functions to functions
         that do not capture cached variable values.
     """
 
-    self.checkpoint_view = checkpoint_view
+    self.augmented_graph_view = augmented_graph_view
     self._options = options
     # Maps functions -> wrapped functions that capture variables
     self._wrapped_functions = wrapped_functions or {}
 
     (self._trackable_objects, self.node_paths, self.node_ids,
      self._slot_variables, self.object_names) = (
-         self.checkpoint_view.objects_ids_and_slot_variables_and_paths())
+         self.augmented_graph_view.objects_ids_and_slot_variables_and_paths())
 
     self._initialize_save_and_restore_functions()
     self._initialize_nodes_and_concrete_functions()
@@ -318,11 +318,11 @@ class _SaveableView(object):
           (def_function.Function, defun.ConcreteFunction, _CapturedConstant,
            _CapturedTensor)):
         continue
-      for child in self.checkpoint_view.list_children(node):
+      for child in self.augmented_graph_view.list_children(node):
         child_proto = object_proto.children.add()
         child_proto.node_id = self.node_ids[child.ref]
         child_proto.local_name = child.name
-      for name, ref in self.checkpoint_view.list_dependencies(node):
+      for name, ref in self.augmented_graph_view.list_dependencies(node):
         child_proto = object_proto.dependencies.add()
         child_proto.node_id = self.node_ids[ref]
         child_proto.local_name = name
@@ -929,7 +929,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   call_with_mapped_captures = functools.partial(
       _call_function_with_mapped_captures, resource_map=resource_map)
   named_saveable_objects, registered_savers = (
-      saveable_view.checkpoint_view.frozen_saveables_and_savers(
+      saveable_view.augmented_graph_view.frozen_saveables_and_savers(
           object_map=object_map, to_graph=exported_graph,
           call_with_mapped_captures=call_with_mapped_captures))
   saver = functional_saver.MultiDeviceSaver(named_saveable_objects,
@@ -1025,14 +1025,14 @@ def _validate_dependencies(saveble_view):
         (def_function.Function, defun.ConcreteFunction, _CapturedConstant,
          _CapturedTensor)):
       continue  # These are not `Trackable` and therefore have no dependencies.
-    for _, dep in saveble_view.checkpoint_view.list_dependencies(node):
+    for _, dep in saveble_view.augmented_graph_view.list_dependencies(node):
       if dep not in saveble_view.node_ids:
         node_path = trackable_utils.pretty_print_node_path(
             saveble_view.node_paths[node])
         raise ValueError(
             f"Found an untracked dependency. Object {node_path} depends "
             f"on {dep}, but this dependency isn't listed as a child. "
-            "Please track this child by overriding `_checkpoint_dependencies` "
+            "Please track this child by overriding `_trackable_children` "
             "or use `._track_trackable`.")
       deps.append(saveble_view.node_ids[dep])
   try:
@@ -1472,21 +1472,21 @@ def _build_meta_graph_impl(obj,
         f"with type {type(obj)}.")
   meta_graph_def = meta_graph_def or meta_graph_pb2.MetaGraphDef()
 
-  checkpoint_graph_view = _AugmentedGraphView(obj)
+  augmented_graph_view = _AugmentedGraphView(obj)
   if signatures is None:
     signatures = signature_serialization.find_function_to_export(
-        checkpoint_graph_view)
+        augmented_graph_view)
 
   signatures, wrapped_functions = (
       signature_serialization.canonicalize_signatures(signatures))
-  signature_serialization.validate_saveable_view(checkpoint_graph_view)
+  signature_serialization.validate_augmented_graph_view(augmented_graph_view)
   signature_map = signature_serialization.create_signature_map(signatures)
-  checkpoint_graph_view.set_signature(signature_map)
+  augmented_graph_view.set_signature(signature_map)
 
   # Use _SaveableView to provide a frozen listing of properties and functions.
-  saveable_view = _SaveableView(checkpoint_graph_view, options,
+  saveable_view = _SaveableView(augmented_graph_view, options,
                                 wrapped_functions)
-  object_saver = util.TrackableSaver(checkpoint_graph_view)
+  object_saver = util.TrackableSaver(augmented_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
       meta_graph_def, saveable_view, signatures,
       options.namespace_whitelist, options.experimental_custom_gradients)

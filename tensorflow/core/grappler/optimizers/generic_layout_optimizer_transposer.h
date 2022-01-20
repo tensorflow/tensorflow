@@ -85,6 +85,8 @@ struct TransposeContext {
   absl::flat_hash_map<char, int> dst_dim_indices;
   std::vector<int> src_to_dst;
   std::vector<int> dst_to_src;
+
+  string enforced_layout;
 };
 
 class Transposer {

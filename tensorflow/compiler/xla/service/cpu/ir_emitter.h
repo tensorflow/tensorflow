@@ -21,7 +21,6 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -86,9 +85,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // emit_code_for_msan: whether emitted code should be compatible with msan.
   IrEmitter(mlir::MLIRContext* mlir_context, const HloModule& hlo_module,
             const BufferAssignment& assignment, llvm::Module* llvm_module,
-            std::unordered_map<const HloInstruction*, int64_t>
+            absl::flat_hash_map<const HloInstruction*, int64_t>
                 instruction_to_profile_idx,
-            std::unordered_map<const HloComputation*, int64_t>
+            absl::flat_hash_map<const HloComputation*, int64_t>
                 computation_to_profile_idx,
             absl::flat_hash_map<const HloComputation*, bool>
                 computation_transitively_contains_custom_call,
@@ -214,7 +213,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   template <typename T>
   llvm::Value* GetProfileCounterCommon(
       const T& hlo,
-      const std::unordered_map<const T*, int64_t>& profile_index_map);
+      const absl::flat_hash_map<const T*, int64_t>& profile_index_map);
 
   // Gets the IR Value emitted previously for the given hlo.
   //
@@ -484,11 +483,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       computation_parameter_allocations_;
 
   // Maps HLO instructions to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, int64_t>
+  const absl::flat_hash_map<const HloInstruction*, int64_t>
       instruction_to_profile_idx_;
 
   // Maps HLO computations to their index into the profile counter array.
-  const std::unordered_map<const HloComputation*, int64_t>
+  const absl::flat_hash_map<const HloComputation*, int64_t>
       computation_to_profile_idx_;
 
   // Maps HLO computations to whether they contain a custom-call instruction
@@ -564,7 +563,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
     // Maps HLOs to the value the cycle counter contained right before the HLO
     // began to execute.
-    std::unordered_map<const HloInstruction*, llvm::Value*> cycle_starts_;
+    absl::flat_hash_map<const HloInstruction*, llvm::Value*> cycle_starts_;
   };
 
   ProfilingState profiling_state_;
@@ -581,7 +580,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
    private:
     bool enabled_;
     // Maps from HLO to the activity id returned by xprof::TraceMe.
-    std::unordered_map<const HloInstruction*, llvm::Value*> activity_ids_;
+    absl::flat_hash_map<const HloInstruction*, llvm::Value*> activity_ids_;
   };
   TracingState tracing_state_;
 

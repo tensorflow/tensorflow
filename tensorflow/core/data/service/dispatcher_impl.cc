@@ -484,9 +484,6 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   int64_t id;
   TF_RETURN_IF_ERROR(
       RegisterDataset(fingerprint, dataset_def, request->metadata(), id));
-  if (!request->metadata().element_spec().empty()) {
-    TF_RETURN_IF_ERROR(SetElementSpec(id, request->metadata().element_spec()));
-  }
 
   response->set_dataset_id(id);
   VLOG(3) << "Registered new dataset with id " << id;
@@ -508,32 +505,6 @@ Status DataServiceDispatcherImpl::RegisterDataset(
   return Apply(update);
 }
 
-Status DataServiceDispatcherImpl::SetElementSpec(
-    int64_t dataset_id, const std::string& element_spec)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  Update update;
-  SetElementSpecUpdate* set_element_spec = update.mutable_set_element_spec();
-  set_element_spec->set_dataset_id(dataset_id);
-  set_element_spec->set_element_spec(element_spec);
-  TF_RETURN_IF_ERROR(Apply(update));
-  return Status::OK();
-}
-
-Status DataServiceDispatcherImpl::GetElementSpec(
-    const GetElementSpecRequest* request, GetElementSpecResponse* response) {
-  TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
-  VLOG(4) << "Read the element spec.";
-  int64_t dataset_id = request->dataset_id();
-
-  std::string element_spec;
-  TF_RETURN_IF_ERROR(state_.GetElementSpec(dataset_id, element_spec));
-  VLOG(3) << "Get the `element_spec` for registered dataset with dataset id: "
-          << dataset_id << ".";
-  *response->mutable_element_spec() = element_spec;
-  return Status::OK();
-}
-
 Status DataServiceDispatcherImpl::GetDataServiceMetadata(
     const GetDataServiceMetadataRequest* request,
     GetDataServiceMetadataResponse* response) {
@@ -546,6 +517,14 @@ Status DataServiceDispatcherImpl::GetDataServiceMetadata(
   VLOG(3) << "Get the data service metadata for dataset id: " << dataset_id
           << ".";
   *response->mutable_metadata() = dataset->metadata;
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetDataServiceConfig(
+    const GetDataServiceConfigRequest* request,
+    GetDataServiceConfigResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  response->mutable_config()->set_deployment_mode(config_.deployment_mode());
   return Status::OK();
 }
 

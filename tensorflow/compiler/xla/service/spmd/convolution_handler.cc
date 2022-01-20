@@ -149,7 +149,7 @@ StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
       lhs.base_shape().dimensions(dnums.input_feature_dimension());
   const int64_t kernel_output_feature_size =
       rhs.base_shape().dimensions(dnums.kernel_output_feature_dimension());
-  if (input_feature_size != kernel_output_feature_size ||
+  if (kernel_output_feature_size % original_hlo->feature_group_count() != 0 ||
       input_feature_size % original_hlo->feature_group_count() != 0) {
     return nullptr;
   }

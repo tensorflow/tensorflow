@@ -36,7 +36,7 @@ namespace benchmark {
 class BenchmarkTfLiteModel : public BenchmarkModel {
  public:
   struct InputLayerInfo {
-    InputLayerInfo() : has_value_range(false) {}
+    InputLayerInfo() : has_value_range(false), low(0), high(0) {}
 
     std::string name;
     std::vector<int> shape;

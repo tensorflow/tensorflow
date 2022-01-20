@@ -159,7 +159,7 @@ func @Int64SliceBeginSize(%arg0: tensor<4x128x32xf32>) -> tensor<1x128x32xf32> {
 // condition or body. The tensor<f32> result of the loop can be either %arg1
 // (if the body never executes, or 22.0 if the body executes at least once).
 func @WhileCanonicalizeBug(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
-  %0:2 = "tfl.while"(%arg0, %arg1) ( {
+  %0:2 = "tfl.while"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<i32>, %arg3: tensor<f32>):
     %limit = arith.constant dense<100> : tensor<i32>
     %test = "tfl.less"(%arg0, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
@@ -188,7 +188,7 @@ func @WhileCanonicalizeBug(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32
 // assert failure ( op->use_empty() && "expected 'op' to have no uses")
 // CHECK-LABEL: WhileCanonicalizeBug1
 func @WhileCanonicalizeBug1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
-  %0:2 = "tfl.while"(%arg0, %arg1) ( {
+  %0:2 = "tfl.while"(%arg0, %arg1) ({
   ^bb0(%carg0: tensor<f32>, %carg1: tensor<f32>):
     %limit = arith.constant dense<100> : tensor<i32>
     %test = "tfl.less"(%limit, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
@@ -213,7 +213,7 @@ func @WhileWithNonReadOnlyVariableResources(%arg0: tensor<i32>) -> tensor<!tf_ty
   %2 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %3 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %4 = "tf.StackV2"(%3) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
-  %5:5 = "tfl.while"(%2, %3, %2, %4, %0) ( {
+  %5:5 = "tfl.while"(%2, %3, %2, %4, %0) ({
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf_type.resource>, %arg5: tensor<f32>):  // no predecessors
     %9 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %10 = "tf.Less"(%arg3, %9) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>

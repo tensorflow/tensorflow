@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
+#include <algorithm>
 #include <deque>
+#include <functional>
+#include <numeric>
 #include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
@@ -1564,7 +1569,7 @@ bool HloFusionInstruction::IsElementwiseImpl(
   // A loop-fusion is elementwise on an operand if all operations (computed
   // using BFS) between the operand and the fused root are elementwise.
   std::deque<HloInstruction*> worklist;
-  std::unordered_set<const HloInstruction*> visited;
+  absl::flat_hash_set<const HloInstruction*> visited;
   worklist.push_back(fused_parameter(operand_idx.value()));
   visited.insert(fused_parameter(operand_idx.value()));
   while (!worklist.empty()) {
@@ -1962,10 +1967,6 @@ bool HloFusionInstruction::IdenticalSlowPath(
   return fusion_kind() == other.fusion_kind() &&
          eq_computations(fused_instructions_computation(),
                          other.fused_instructions_computation());
-}
-
-uint64_t HloFusionInstruction::InnerHash() const {
-  return fused_instructions_computation()->root_instruction()->Hash();
 }
 
 std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(

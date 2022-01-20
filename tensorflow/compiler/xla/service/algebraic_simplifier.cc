@@ -2195,8 +2195,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   rhs = rhs_reshape;
 
   // Rhs reshape "unsquishes" the single rhs contracting dim into multiple dims.
-  rhs_contracting_dims.Resize(lhs_contracting_dims.size(),
-                              rhs_contracting_dims[0]);
+  rhs_contracting_dims.Resize(lhs_contracting_dims.size(), 0);
   absl::c_iota(rhs_contracting_dims, rhs_contracting_dims[0]);
 
   // Invert transpose. First compute the shape.
@@ -4720,16 +4719,14 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                                      HloInstruction::CreateTuple({new_reduce}));
   }
 
-  if (options_.is_layout_sensitive()) {
-    return Status::OK();
-  }
-
   // If the reduction results in the same number of elements, then the only
   // possible side effect would be a reshape. Since the init_value is an
   // identity of the reduction function, we can therefore replace the reduce
   // with a simple reshape, ignoring the reduction function completely.
   if (ShapeUtil::ElementsIn(reduce_result_shape) ==
-      ShapeUtil::ElementsIn(arg->shape())) {
+          ShapeUtil::ElementsIn(arg->shape()) &&
+      (!options_.is_layout_sensitive() ||
+       options_.ReshapeIsBitcast(arg->shape(), reduce_result_shape))) {
     if (multi_output_reduce) {
       std::vector<HloInstruction*> reshaped_args;
       int64_t inputs = reduce->input_count();
@@ -4744,6 +4741,10 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       return ReplaceWithNewInstruction(
           reduce, HloInstruction::CreateReshape(reduce_result_shape, arg));
     }
+  }
+
+  if (options_.is_layout_sensitive()) {
+    return Status::OK();
   }
 
   // TODO(b/131122694): Most of those optimizations below can be done for

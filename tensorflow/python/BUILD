@@ -986,8 +986,11 @@ py_library(
     visibility = visibility,
     deps = [
         ":array_ops_gen",
+        ":control_flow_util",
         ":math_ops_gen",
+        "//tensorflow/python/compat",
         "//tensorflow/python/framework:common_shapes",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -996,7 +999,6 @@ py_library(
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -1086,7 +1088,6 @@ py_library(
         ":nn_ops_gen",
         ":numerics",
         "//tensorflow/python/framework:for_generated_wrappers",
-        "@six_archive//:six",
     ],
 )
 
@@ -1251,7 +1252,6 @@ py_library(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_should_use",
-        "@six_archive//:six",
     ],
 )
 
@@ -1476,7 +1476,6 @@ py_library(
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:tensor_util",
-        "@six_archive//:six",
     ],
 )
 
@@ -1599,7 +1598,6 @@ py_library(
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -1855,7 +1853,6 @@ py_library(
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/saved_model:registration",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -2568,7 +2565,6 @@ py_library(
         "//tensorflow/python/framework:smart_cond",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -2642,7 +2638,6 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 

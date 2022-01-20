@@ -66,7 +66,7 @@ struct ReshapeToExpandShape final
     if (!isExpandShape(shapeComponentAnalysis, op)) return failure();
     auto output_shape = shapeComponentAnalysis.GetValueInfo(op.output_shape());
     SmallVector<ReassociationExprs> reassociations(output_shape->size());
-    auto it = reassociations.begin();
+    auto *it = reassociations.begin();
     int64_t runningIndex = 0;
     for (const auto &dim : *output_shape) {
       it->push_back(rewriter.getAffineDimExpr(runningIndex++));
@@ -193,7 +193,7 @@ struct RemoveRedundantCstrReshapable final
     //     factor, i.e. if the symbolic factors based on the dynamic shape are
     //     not a subset of the factors based on the number of elements.
     int64_t concreteProductDynShape = 1;
-    for (auto dim : *dynShapeDims) {
+    for (const auto &dim : *dynShapeDims) {
       SmallVector<Symbol> partialSymbolicFactorsDynShape;
       if (!IsSimpleProduct(
               dim,
@@ -204,7 +204,7 @@ struct RemoveRedundantCstrReshapable final
         return failure();
       }
       for (const Symbol &symDynShape : partialSymbolicFactorsDynShape) {
-        auto it = llvm::find(remainingSymbolicFactorsNumElems, symDynShape);
+        auto *it = llvm::find(remainingSymbolicFactorsNumElems, symDynShape);
         if (it == remainingSymbolicFactorsNumElems.end()) return failure();
         remainingSymbolicFactorsNumElems.erase(it);
       }
@@ -285,7 +285,7 @@ struct TurnDynamicReshapeIntoCollapseShape final
         // Eliminate the common symbolic factors. Fail if we cannot consume a
         // symbolic factor of the operand shape.
         for (const Symbol &symArgShapeDim : symbolicFactorsArgShapeDim) {
-          auto it =
+          auto *it =
               llvm::find(remainingSymbolicFactorsShapeDim, symArgShapeDim);
           if (it == remainingSymbolicFactorsShapeDim.end()) return failure();
           remainingSymbolicFactorsShapeDim.erase(it);
@@ -317,13 +317,13 @@ class ReshapeSimplifierPass final
     registry.insert<linalg::LinalgDialect>();
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
 };
 }  // end namespace
 
-void ReshapeSimplifierPass::runOnFunction() {
+void ReshapeSimplifierPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   mlir::RewritePatternSet patterns(ctx);
 
@@ -336,13 +336,13 @@ void ReshapeSimplifierPass::runOnFunction() {
   // clang-format on
   shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
 
-  if (failed(mlir::applyPatternsAndFoldGreedily(getFunction(),
+  if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
                                                 std::move(patterns)))) {
     signalPassFailure();
   }
 }
 
-std::unique_ptr<FunctionPass> createReshapeSimplifierPass() {
+std::unique_ptr<OperationPass<FuncOp>> createReshapeSimplifierPass() {
   return std::make_unique<ReshapeSimplifierPass>();
 }
 

@@ -1354,6 +1354,11 @@ tensorflow::Status OperationInterface::Execute(
 
     ExecutionContext exec_ctx{std::move(request_ctx),
                               abort_location_handler_.GetCurrentLocation()};
+
+    // Make BEF executor to use TfThreadPoolWorkQueue to dispatch kernels.
+    exec_ctx.set_work_queue(
+        context_->GetTfrtContext()->GetTfThreadPoolWorkQueue());
+
     // Execute the function.
     function_state_->GetFunc()(exec_ctx, th_args, OpAttrsRef(attrs_),
                                result_ths, chain);

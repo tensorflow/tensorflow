@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/types/span.h"

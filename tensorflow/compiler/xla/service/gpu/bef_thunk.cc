@@ -149,8 +149,7 @@ class BefThunk : public Thunk {
   // use during execution. The resource contexts cache the loaded modules.
   tensorflow::mutex mutex_;
   absl::optional<GpuModuleData> gpu_module_data_ TF_GUARDED_BY(mutex_);
-  absl::flat_hash_map<CUcontext, std::unique_ptr<tfrt::ResourceContext>>
-      resource_contexts_ TF_GUARDED_BY(mutex_);
+  tfrt::gpu::GpuContextCache gpu_context_cache_ TF_GUARDED_BY(mutex_);
 };
 
 }  // namespace
@@ -252,6 +251,12 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
       mlir::isa<mlir::lmhlo_gpu::ConvForwardFusedOp>(op) ||
       mlir::isa<mlir::lmhlo_gpu::ConvForwardFusedSideInputOp>(op)) {
     return Thunk::Kind::kConvolution;
+  }
+  if (mlir::isa<mlir::lmhlo::ReplicaIdOp>(op)) {
+    return Thunk::Kind::kReplicaId;
+  }
+  if (mlir::isa<mlir::lmhlo::PartitionIdOp>(op)) {
+    return Thunk::Kind::kPartitionId;
   }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
@@ -421,18 +426,6 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
                    std::move(bef_result.first), std::move(bef_result.second)));
 }
 
-// Wrap the GPU stream specified in 'params' (initialized by the StreamExecutor)
-// to be passed to BEF functions as AsyncValueRef<GpuStream>.
-static auto CreateGpuStream(const Thunk::ExecuteParams& params) {
-  auto se_gpu_executor = static_cast<stream_executor::gpu::GpuExecutor*>(
-      params.stream->parent()->implementation());
-  auto se_gpu_stream = static_cast<stream_executor::gpu::GpuStream*>(
-      params.stream->implementation());
-  return tfrt::gpu::BorrowedGpuStream(
-      tfrt::gpu::wrapper::Context(se_gpu_executor->gpu_context()->context()),
-      tfrt::gpu::wrapper::Stream(se_gpu_stream->gpu_stream()));
-}
-
 // Wrap the GPU buffer specified in 'slice' to be passed to BEF functions as
 // AsyncValueRef<GpuBuffer>.
 static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
@@ -454,7 +447,7 @@ static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
 
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
     std::function<Status(tfrt::RequestContextBuilder&)> build_request_context,
-    tfrt::ResourceContext* resource_context = nullptr) {
+    tfrt::ResourceContext* resource_context) {
   TF_ASSIGN_OR_RETURN(auto runtime_and_queue, GetCoreRuntimeAndWorkQueue());
   tfrt::RequestContextBuilder request_context_builder(
       runtime_and_queue.core_runtime->GetHostContext(), resource_context);
@@ -469,8 +462,7 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
 }
 
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
-CreateDefaultExecutionContext(
-    tfrt::ResourceContext* resource_context = nullptr) {
+CreateDefaultExecutionContext(tfrt::ResourceContext* resource_context) {
   return CreateExecutionContext(
       [](tfrt::RequestContextBuilder& request_context_builder) {
         return Status::OK();
@@ -481,7 +473,8 @@ CreateDefaultExecutionContext(
 #if XLA_ENABLE_XCCL
 static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
 CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
-                           const NcclCollectiveConfig& xccl_config) {
+                           const NcclCollectiveConfig& xccl_config,
+                           tfrt::ResourceContext* resource_context) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
 
@@ -520,7 +513,8 @@ CreateXcclExecutionContext(const Thunk::ExecuteParams& params,
         request_context_builder.context_data().emplace<XcclContext>(
             std::move(comm));
         return Status::OK();
-      });
+      },
+      resource_context);
 }
 
 static StatusOr<XcclContext::CollectivePermuteSourceTarget>
@@ -577,6 +571,32 @@ CreateKernelExecutionContext(absl::optional<GpuModuleData> gpu_module_data,
   return std::move(exec_ctx);
 }
 
+// TODO(hanbinyoon): Consider passing a RequestContextBuilder to different
+// functions that create ExecutionContext based on the thunk type (creating
+// RequestContext and the ExecutionContext in a common code path).
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>>
+CreateReplicaAndPartitionExecutionContext(
+    const Thunk::ExecuteParams& params,
+    tfrt::ResourceContext* resource_context) {
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
+  TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID current_logical_id,
+                      params.device_assn->LogicalIdForDevice(global_device_id));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<tfrt::ExecutionContext> exec_ctx,
+      CreateExecutionContext(
+          [&](tfrt::RequestContextBuilder& request_context_builder) {
+            request_context_builder.context_data()
+                .emplace<ReplicaAndPartitionId>(
+                    ReplicaAndPartitionId{current_logical_id.replica_id,
+                                          current_logical_id.computation_id});
+            return Status::OK();
+          },
+          resource_context));
+  return std::move(exec_ctx);
+}
+
 Status BefThunk::Initialize(const GpuExecutable& executable,
                             se::StreamExecutor* executor) {
   // Save the module data for kernel thunk to use during execution.
@@ -608,14 +628,29 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
                                         "' function.");
   }
 
-  tfrt::gpu::BorrowedGpuStream stream = CreateGpuStream(params);
+  // Look up or create a cached GpuContext and ResourceContext from CUcontext.
+  // The ResourceContext holds the results of `tfrt.once @...(%context)`.
+  auto gpu_context = [&] {
+    auto context = static_cast<stream_executor::gpu::GpuExecutor*>(
+                       params.stream->parent()->implementation())
+                       ->gpu_context()
+                       ->context();
+    tensorflow::mutex_lock lock(mutex_);
+    return gpu_context_cache_.GetOrCreate(context);
+  }();
+  auto stream = static_cast<stream_executor::gpu::GpuStream*>(
+                    params.stream->implementation())
+                    ->gpu_stream();
+  auto borrowed_stream =
+      tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream);
 
   // Create execution context.
   std::unique_ptr<tfrt::ExecutionContext> exec_ctx;
 #if XLA_ENABLE_XCCL
   if (xccl_config_.has_value()) {
-    TF_ASSIGN_OR_RETURN(exec_ctx,
-                        CreateXcclExecutionContext(params, *xccl_config_));
+    TF_ASSIGN_OR_RETURN(
+        exec_ctx,
+        CreateXcclExecutionContext(params, *xccl_config_, gpu_context.second));
     if (!id_to_collective_permute_source_target_.empty()) {
       auto& xccl_ctx = exec_ctx->request_ctx()->GetData<XcclContext>();
       TF_ASSIGN_OR_RETURN(
@@ -626,24 +661,16 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 #endif  // XLA_ENABLE_XCCL
   if (!exec_ctx) {
-    if (kind() == Thunk::kKernel || kind() == Thunk::kConvolution) {
+    if (kind() == Thunk::kKernel) {
       tensorflow::mutex_lock lock(mutex_);
-      using AsyncStreamRef = tfrt::AsyncValueRef<tfrt::gpu::GpuStream>;
-      CUcontext context = static_cast<AsyncStreamRef>(stream)->context()->get();
-      auto it = resource_contexts_.find(context);
-      if (it == resource_contexts_.end()) {
-        it = resource_contexts_.emplace_hint(it, context,
-                                             new tfrt::ResourceContext());
-      }
-      if (kind() == Thunk::kKernel) {
-        TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
-                                          gpu_module_data_, it->second.get()));
-      } else {  // kind() == Thunk::kConvolution
-        TF_ASSIGN_OR_RETURN(exec_ctx,
-                            CreateDefaultExecutionContext(it->second.get()));
-      }
+      TF_ASSIGN_OR_RETURN(exec_ctx, CreateKernelExecutionContext(
+                                        gpu_module_data_, gpu_context.second));
+    } else if (kind() == Thunk::kReplicaId || kind() == Thunk::kPartitionId) {
+      TF_ASSIGN_OR_RETURN(exec_ctx, CreateReplicaAndPartitionExecutionContext(
+                                        params, gpu_context.second));
     } else {
-      TF_ASSIGN_OR_RETURN(exec_ctx, CreateDefaultExecutionContext());
+      TF_ASSIGN_OR_RETURN(exec_ctx,
+                          CreateDefaultExecutionContext(gpu_context.second));
     }
   }
 
@@ -652,8 +679,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
-  args.push_back(static_cast<tfrt::AsyncValueRef<tfrt::gpu::GpuStream>>(stream)
-                     .GetAsyncValue());
+  args.push_back(borrowed_stream.get());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
   for (auto& buffer : buffers_) {
     buffers.push_back(CreateGpuBuffer(params, buffer));

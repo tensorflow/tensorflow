@@ -8,36 +8,36 @@ package(
 )
 
 py_library(
-    name = "tf_cpurt",
+    name = "tf_jitrt",
     testonly = 1,
-    srcs = ["tf_cpurt.py"],
+    srcs = ["tf_jitrt.py"],
     visibility = ["//tensorflow/compiler/mlir/tfrt:__subpackages__"],
     deps = [
-        ":_tf_cpurt_executor",
+        ":_tf_jitrt_executor",
         "//third_party/py/numpy",
     ],
 )
 
 py_strict_test(
-    name = "tf_cpurt_test",
-    srcs = ["tf_cpurt_test.py"],
+    name = "tf_jitrt_test",
+    srcs = ["tf_jitrt_test.py"],
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        ":tf_cpurt",
+        ":tf_jitrt",
         # copybara:uncomment "//testing/pybase",
         "//third_party/py/numpy",
     ],
 )
 
 pybind_extension(
-    name = "_tf_cpurt_executor",
-    srcs = ["tf_cpurt_executor.cc"],
-    hdrs = ["tf_cpurt_executor.h"],
-    module_name = "_tf_cpurt_executor",
+    name = "_tf_jitrt_executor",
+    srcs = ["tf_jitrt_executor.cc"],
+    hdrs = ["tf_jitrt_executor.h"],
+    module_name = "_tf_jitrt_executor",
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_pipeline",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
         "//tensorflow/compiler/mlir/tfrt/python_tests:python_test_attrs_registration",
         "//tensorflow/core/platform:dynamic_annotations",
         "//third_party/eigen3",
@@ -49,6 +49,7 @@ pybind_extension(
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
-        "@tf_runtime//backends/cpu:cpurt",
+        "@tf_runtime//backends/jitrt",
+        "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )

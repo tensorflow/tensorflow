@@ -42,7 +42,7 @@ class XlirDialect : public mlir::Dialect {
   explicit XlirDialect(mlir::MLIRContext* context);
 };
 
-// GPU module data container to be stored in TFRT's resource context and picked
+// GPU module data container to be stored in TFRT's request context and picked
 // up by xlir.module.load.
 struct GpuModuleData {
   llvm::StringRef blob;
@@ -52,6 +52,13 @@ struct GpuModuleData {
     llvm::ArrayRef<uint8_t> content;
   };
   std::vector<ConstantInfo> constants;
+};
+
+// Replica/partition ID container to be stored in TFRT's request context and
+// picked up by xlir.replica_id, xlir.partition_id.
+struct ReplicaAndPartitionId {
+  int32_t replica_id;
+  int32_t partition_id;
 };
 
 }  // namespace gpu

@@ -28,11 +28,13 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -133,8 +135,7 @@ class HloPrintOptions {
   // Options to produce a fingerprint of an HLO.
   static HloPrintOptions Fingerprint() {
     return HloPrintOptions()
-        .set_print_subcomputation_mode(
-            PrintSubcomputationMode::kNonSequentialBodies)
+        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_print_infeed_outfeed_config(false)
@@ -1284,15 +1285,27 @@ class HloInstruction {
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO instructions,
   // with respect to HloInstruction::Identical() method.
-  //
-  // Uses hash_operand function to compute hash values of its operands.
-  // At the very top level, hash_operand should be non-recursive to prevent
-  // non-termination.
-  uint64_t Hash(
-      const std::function<uint64_t(const HloInstruction*)>& hash_operand) const;
+  // TODO(majnemer): Make the comment here more crisp & accurate.
+  // TODO(jlebar): Remove this and just call HashOf(*this) everywhere?
+  uint64_t Hash() const { return HashOf(*this); }
 
-  // Calls the above method with non-recursive hash_operand function.
-  uint64_t Hash() const;
+  template <typename H>
+  friend H AbslHashValue(H h, const HloInstruction& hlo) {
+    h = H::combine(std::move(h), hlo.opcode(), hlo.shape());
+
+    if (!hlo.IsCrossModuleAllReduce()) {
+      for (size_t i = 0; i < hlo.operands().size(); ++i) {
+        h = H::combine(std::move(h), hlo.operand(i)->shape());
+      }
+    }
+
+    if (hlo.opcode() == HloOpcode::kFusion) {
+      h = H::combine(std::move(h), *hlo.fused_expression_root(),
+                     hlo.fusion_kind(), hlo.fused_instruction_count(),
+                     hlo.fused_parameters().size());
+    }
+    return h;
+  }
 
   // Returns whether the instruction has a constant operand.
   bool HasConstantOperand() const;
@@ -2008,6 +2021,7 @@ class HloInstruction {
 
   // Delegates to HloCustomCallInstruction::custom_call_target.
   const std::string& custom_call_target() const;
+  void set_custom_call_target(absl::string_view target);
 
   // Delegates to HloPadInstruction::padding_config.
   const PaddingConfig& padding_config() const;
@@ -2175,10 +2189,6 @@ class HloInstruction {
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const;
-
-  // Generates a hash value specific to a particular type of an instruction.
-  // This function typically considers the inner root instruction.
-  virtual uint64_t InnerHash() const;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(

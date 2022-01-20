@@ -493,7 +493,7 @@ InputTensorData BenchmarkTfLiteModel::CreateRandomTensorData(
     const TfLiteTensor& t, const InputLayerInfo* layer_info) {
   float low_range = 0;
   float high_range = 0;
-  if (layer_info) {
+  if (layer_info && layer_info->has_value_range) {
     low_range = layer_info->low;
     high_range = layer_info->high;
   } else {

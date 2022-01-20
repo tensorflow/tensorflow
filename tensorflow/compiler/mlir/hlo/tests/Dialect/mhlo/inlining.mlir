@@ -9,7 +9,7 @@
 // CHECK-LABEL: func @callee
 
 func @caller(%arg0: tensor<f32>, %pred: tensor<i1>) -> tensor<f32> {
-  %0 = "mhlo.while"(%arg0) ( {
+  %0 = "mhlo.while"(%arg0) ({
   ^entry(%unused: tensor<f32>):
     "mhlo.return"(%pred) : (tensor<i1>) -> ()
   }, {

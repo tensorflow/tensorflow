@@ -19,9 +19,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 
+#include <functional>
 #include <initializer_list>
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
@@ -782,7 +784,9 @@ class ShapeUtil {
   }
 
   // Compute a hash for `shape`.
-  static size_t Hash(const Shape& shape);
+  // TODO(majnemer): remove this once all callers are migrated to use ABSL
+  // machinery.
+  static size_t Hash(const Shape& shape) { return HashOf(shape); }
 
   // About 0-2-1 transpose:
   //

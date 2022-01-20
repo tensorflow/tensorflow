@@ -54,31 +54,38 @@ static optional<int64_t> GetGTEOperandIndex(const HloInstruction* instr,
   VLOG(2) << "GetGTEOperandIndex(" << instr->ToString() << ", "
           << gte_operand->ToString() << ")";
 
-  // Among the operands of `instr`, find one that is a get-tuple-element op or
-  // the one that is copy fed by a get-tuple-element.
-  auto gte_it =
-      absl::c_find_if(instr->operands(), [](const HloInstruction* instr) {
-        return (instr->opcode() == HloOpcode::kGetTupleElement) ||
-               (instr->opcode() == HloOpcode::kCopy &&
-                instr->operand(0)->opcode() == HloOpcode::kGetTupleElement);
-      });
-  if (gte_it == instr->operands().end()) {
-    VLOG(2) << "instr does not have a gte operand.";
-    return nullopt;
-  }
-
   // All operands of `instr` must be either constants or of the form
   //   get-tuple-element(gte_operand, tuple_idx)
-  // for the same value tuple_idx.
-  int64_t tuple_idx = (*gte_it)->tuple_index();
+  // for the same value tuple_idx. We also support the case where GTE feeds a
+  // copy that is then used.
+  optional<int64_t> tuple_idx;
   for (const HloInstruction* operand : instr->operands()) {
-    if (!Match(operand, m::Constant()) &&
-        !Match(operand,
-               m::GetTupleElement(m::Op().Is(gte_operand), tuple_idx))) {
-      VLOG(2)
-          << "instr uses something other than a constant or gte(gte_operand, "
-          << tuple_idx << "): " << operand->ToString();
+    if (Match(operand, m::Constant())) {
+      continue;
+    }
+    auto possibly_gte_operand = operand;
+
+    if (operand->opcode() == HloOpcode::kCopy) {
+      possibly_gte_operand = operand->operand(0);
+    }
+
+    if (possibly_gte_operand->opcode() != HloOpcode::kGetTupleElement) {
       return nullopt;
+    }
+
+    if (!Match(possibly_gte_operand,
+               m::GetTupleElement(m::Op().Is(gte_operand)))) {
+      return nullopt;
+    }
+
+    int64_t operand_tuple_idx = possibly_gte_operand->tuple_index();
+    // This is the first GTE we are seeing. Set tuple_idx.
+    if (!tuple_idx.has_value()) {
+      tuple_idx = operand_tuple_idx;
+    } else {
+      if (operand_tuple_idx != tuple_idx) {
+        return nullopt;
+      }
     }
   }
   return tuple_idx;

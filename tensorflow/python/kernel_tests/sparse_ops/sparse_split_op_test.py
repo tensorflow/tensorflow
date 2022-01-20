@@ -279,6 +279,15 @@ class SparseSplitOpTest(test.TestCase):
     self.assertAllEqual(sparse_splits1[1].values, [])
     self.assertAllEqual(sparse_splits1[1].dense_shape, [4, 3])
 
+  def testInvalidArgumentError(self):
+    # Test case for GitHub issue 53660.
+    axis = [1, 2]
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 r'axis should be a scalar'):
+      self.evaluate(
+          sparse_ops.sparse_split(
+              sp_input=self._SparseTensor_4x6(), num_split=3, axis=axis))
+
 
 if __name__ == '__main__':
   test.main()

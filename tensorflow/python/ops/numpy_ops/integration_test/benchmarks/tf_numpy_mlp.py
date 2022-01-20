@@ -22,7 +22,7 @@ INPUT_SIZE = 10
 HIDDEN_UNITS = 10
 
 
-class MLP(object):
+class MLP:
   """MLP model.
 
   T = Relu(Add(MatMul(A, B), C))

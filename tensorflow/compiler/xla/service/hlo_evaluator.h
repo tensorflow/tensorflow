@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
@@ -122,7 +123,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // {A = x, C = y}, this evaluates op(x, B, y).
   StatusOr<Literal> EvaluateWithSubstitutions(
       const HloInstruction* instruction,
-      const std::unordered_map<const HloInstruction*, const Literal*>&
+      const absl::flat_hash_map<const HloInstruction*, const Literal*>&
           substitutions);
 
   StatusOr<Literal> EvaluateElementwiseBinaryOp(HloOpcode opcode,

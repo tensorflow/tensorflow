@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"

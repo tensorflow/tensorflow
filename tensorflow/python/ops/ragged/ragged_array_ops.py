@@ -1038,3 +1038,85 @@ def split(value: ragged_tensor.Ragged,
       slices[-1] = slice(splits[i], splits[i + 1])
       splited_rts.append(value[tuple(slices)])
     return splited_rts
+
+
+def ragged_reshape(
+    x: ragged_tensor.RaggedOrDense, shape: ragged_shape.RaggedShape
+) -> ragged_tensor.RaggedOrDense:
+  """Reshapes a tensor or ragged tensor to a RaggedShape."""
+  if isinstance(x, ragged_tensor.RaggedTensor):
+    x = x.flat_values
+  flat_values = array_ops.reshape(x, shape.inner_shape)
+  return ragged_tensor.RaggedTensor._from_nested_row_partitions(  # pylint: disable=protected-access
+      flat_values, shape.row_partitions)
+
+
+def broadcast_to(
+    rt_input: ragged_tensor.RaggedOrDense, shape: ragged_shape.RaggedShape
+) -> ragged_tensor.RaggedOrDense:
+  """Broadcasts a potentially ragged tensor to a ragged shape.
+
+  Tiles `rt_input` as necessary to match the given shape.
+
+  Behavior is undefined if `rt_input` is not broadcast-compatible with `shape`.
+
+  Args:
+    rt_input: The potentially ragged tensor to broadcast.
+    shape: A `RaggedShape`
+
+  Returns:
+    A potentially ragged tensor whose values are taken from
+    `rt_input`, and whose shape matches `shape`.
+  """
+  return ragged_shape.broadcast_to(rt_input, shape)
+
+
+# TODO(martinz): decide if default should be the underlying row_splits_dtype.
+# tf.shape <- not allowed yet (RaggedShape isnt' public)
+def get_ragged_shape(x: ragged_tensor.RaggedTensor,
+                     out_type=dtypes.int32) -> ragged_shape.RaggedShape:
+  """Returns a RaggedShape for a ragged tensor."""
+  return ragged_shape.RaggedShape.from_tensor(x, dtype=out_type)
+
+
+def broadcast_dynamic_shape(
+    shape_x: ragged_shape.RaggedShape,
+    shape_y: ragged_shape.RaggedShape) -> ragged_shape.RaggedShape:
+  """Returns the shape formed by broadcasting two shapes to be compatible.
+
+  1. If shape_x and shape_y both have row_partitions, then fail if their dtypes
+     don't match.
+  2. If neither has row_partitions and they have different dtypes,
+     go with int64.
+  3. If one has row_partitions, go with that dtype.
+
+  Args:
+    shape_x: A `RaggedShape`
+    shape_y: A `RaggedShape`
+
+  Returns:
+    A `RaggedShape`.
+  Raises:
+    ValueError: If `shape_x` and `shape_y` are not broadcast-compatible.
+  """
+  return ragged_shape.broadcast_dynamic_shape(shape_x, shape_y)
+
+
+def ones(shape: ragged_shape.RaggedShape,
+         dtype=dtypes.float32,
+         name=None) -> ragged_tensor.RaggedOrDense:
+  """Returns ones shaped like x."""
+  flat_values = array_ops.ones(shape.inner_shape, dtype=dtype, name=name)
+  return ragged_tensor.RaggedTensor._from_nested_row_partitions(  # pylint: disable=protected-access
+      flat_values, shape.row_partitions)
+
+
+def zeros(shape: ragged_shape.RaggedShape,
+          dtype=dtypes.float32,
+          name=None) -> ragged_tensor.RaggedOrDense:
+  """Returns ones shaped like x."""
+  flat_values = array_ops.zeros(shape.inner_shape, dtype=dtype, name=name)
+  return ragged_tensor.RaggedTensor._from_nested_row_partitions(  # pylint: disable=protected-access
+      flat_values, shape.row_partitions)
+
+# TODO(martinz): consider implementing a variant of tf.fill

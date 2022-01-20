@@ -28,7 +28,7 @@
 // CHECK-DAG:       %[[CST_0:.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
 // CHECK-DAG:       %[[CST_1:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
 // CHECK-DAG:       %[[CST_2:.*]] = arith.constant dense<0> : tensor<i32>
-// CHECK-DAG:       %[[VAL_0:.*]] = "tfl.while"(%[[CST_2]]) ( {
+// CHECK-DAG:       %[[VAL_0:.*]] = "tfl.while"(%[[CST_2]]) ({
 // CHECK-DAG:       ^bb0(%[[A2_COND:.*]]: tensor<i32>):  // no predecessors
 // CHECK-DAG:         %[[CST_3:.*]] = arith.constant dense<3> : tensor<i32>
 // CHECK-DAG:         %[[VAL_1:.*]] = tfl.less(%[[A2_COND]], %[[CST_3]]) : (tensor<i32>, tensor<i32>) -> tensor<i1>

@@ -61,44 +61,42 @@ func @simple_independent_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f3
   return
 }
 
-// Test when the two resource op chains have an op which writes to both the
-// resources. ResourceApplyAdagrad access both the resources.
+// Tests two resources accessed by one common op (ResourceApplyAdagrad). In such
+// a case we expect one common data chain for both resources.
 
 // CHECK-LABEL: func @intersecting_chains_while_body
-// CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>, %[[CHAIN_0:.*]]: tensor<i32>, %[[CHAIN_1:.*]]: tensor<i32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>) {
+// CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>, %[[CHAIN:.*]]: tensor<i32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, tensor<i32>) {
 func @intersecting_chains_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
-  // CHECK: %[[GRAPH_OUT:.*]]:6 = tf_executor.graph {
+  // CHECK: %[[GRAPH_OUT:.*]]:5 = tf_executor.graph {
   %graph:4 = tf_executor.graph {
-    // CHECK: %{{.*}}, %[[CONTROL_CHAIN_0_SRC:.*]] = tf_executor.island wraps "tf.Identity"(%[[CHAIN_0]]) : (tensor<i32>) -> tensor<i32>
-    // CHECK: %{{.*}}, %[[CONTROL_CHAIN_1_SRC:.*]] = tf_executor.island wraps "tf.Identity"(%[[CHAIN_1]]) : (tensor<i32>) -> tensor<i32>
-    // CHECK: %[[CONTROL_ASSIGN_VAR_RES_0_0:.*]] = tf_executor.island(%[[CONTROL_CHAIN_0_SRC]]) wraps "tf.AssignVariableOp"(%[[RES_0]], %[[ARG_2]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    // CHECK: %{{.*}}, %[[CONTROL_CHAIN_SRC:.*]] = tf_executor.island wraps "tf.Identity"(%[[CHAIN]]) : (tensor<i32>) -> tensor<i32>
+    // CHECK: %[[CONTROL_ASSIGN_VAR_RES_0_0:.*]] = tf_executor.island(%[[CONTROL_CHAIN_SRC]]) wraps "tf.AssignVariableOp"(%[[RES_0]], %[[ARG_2]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %assign_control_0 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
-    // CHECK: %[[CONTROL_ASSIGN_VAR_RES_1_0:.*]] = tf_executor.island(%[[CONTROL_CHAIN_1_SRC]]) wraps "tf.AssignVariableOp"(%[[RES_1]], %[[ARG_3]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    // CHECK: %[[CONTROL_ASSIGN_VAR_RES_1_0:.*]] = tf_executor.island(%[[CONTROL_CHAIN_SRC]]) wraps "tf.AssignVariableOp"(%[[RES_1]], %[[ARG_3]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %assign_control_1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
-    // CHECK: %[[CONTROL_ADA_GRAD:.*]] = tf_executor.island(%[[CONTROL_ASSIGN_VAR_RES_0_0]], %[[CONTROL_ASSIGN_VAR_RES_1_0]], %[[CONTROL_CHAIN_0_SRC]], %[[CONTROL_CHAIN_1_SRC]]) wraps "tf.ResourceApplyAdagrad"(%[[RES_0]], %[[RES_1]], %[[ARG_2]], %[[ARG_3]])
+    // CHECK: %[[CONTROL_ADA_GRAD:.*]] = tf_executor.island(%[[CONTROL_ASSIGN_VAR_RES_0_0]], %[[CONTROL_ASSIGN_VAR_RES_1_0]], %[[CONTROL_CHAIN_SRC]]) wraps "tf.ResourceApplyAdagrad"(%[[RES_0]], %[[RES_1]], %[[ARG_2]], %[[ARG_3]])
     %apply_grad_control = tf_executor.island(%assign_control_0, %assign_control_1) wraps "tf.ResourceApplyAdagrad"(%arg0, %arg1, %arg2, %arg3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>) -> ()
     // CHECK: %[[LOCAL_BARRIER:.*]] = tf_executor.island(%[[CONTROL_ASSIGN_VAR_RES_0_0]], %[[CONTROL_ASSIGN_VAR_RES_1_0]], %[[CONTROL_ADA_GRAD]]) wraps "tf.NoOp"() : () -> ()
     %local_barrier = tf_executor.island(%assign_control_0, %assign_control_1, %apply_grad_control) wraps "tf.NoOp"() : () -> ()
-    // CHECK: %[[CONTROL_ASSIGN_VAR_RES_0_1:.*]] = tf_executor.island(%[[LOCAL_BARRIER]], %[[CONTROL_CHAIN_0_SRC]]) wraps "tf.AssignVariableOp"(%[[RES_0]], %[[ARG_3]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    // CHECK: %[[CONTROL_ASSIGN_VAR_RES_0_1:.*]] = tf_executor.island(%[[LOCAL_BARRIER]], %[[CONTROL_CHAIN_SRC]]) wraps "tf.AssignVariableOp"(%[[RES_0]], %[[ARG_3]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %assign_control_2 = tf_executor.island(%local_barrier) wraps "tf.AssignVariableOp"(%arg0, %arg3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
-    // CHECK: %[[CONTROL_ASSIGN_VAR_RES_1_1:.*]] = tf_executor.island(%[[LOCAL_BARRIER]], %[[CONTROL_CHAIN_1_SRC]]) wraps "tf.AssignVariableOp"(%[[RES_1]], %[[ARG_2]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    // CHECK: %[[CONTROL_ASSIGN_VAR_RES_1_1:.*]] = tf_executor.island(%[[LOCAL_BARRIER]], %[[CONTROL_CHAIN_SRC]]) wraps "tf.AssignVariableOp"(%[[RES_1]], %[[ARG_2]]) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %assign_control_3 = tf_executor.island(%local_barrier) wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     // CHECK: %[[ADD:.*]], %{{.*}} = tf_executor.island wraps "tf.Add"(%[[ARG_2]], %[[ARG_3]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %add, %add_control = tf_executor.island wraps "tf.Add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // CHECK: %[[MUL:.*]], %{{.*}} = tf_executor.island wraps "tf.Mul"(%[[ARG_2]], %[[ARG_3]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %mul, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    // CHECK: %[[CHAIN_0_SINK:.*]], %{{.*}} = tf_executor.island(%[[CONTROL_ASSIGN_VAR_RES_0_0]], %[[CONTROL_ADA_GRAD]], %[[CONTROL_ASSIGN_VAR_RES_0_1]]) wraps "tf.Identity"(%[[CHAIN_0]]) : (tensor<i32>) -> tensor<i32>
-    // CHECK: %[[CHAIN_1_SINK:.*]], %{{.*}} = tf_executor.island(%[[CONTROL_ASSIGN_VAR_RES_1_0]], %[[CONTROL_ADA_GRAD]], %[[CONTROL_ASSIGN_VAR_RES_1_1]]) wraps "tf.Identity"(%[[CHAIN_1]]) : (tensor<i32>) -> tensor<i32>
+    // CHECK: %[[CHAIN_SINK:.*]], %{{.*}} = tf_executor.island(%[[CONTROL_ASSIGN_VAR_RES_0_0]], %[[CONTROL_ADA_GRAD]], %[[CONTROL_ASSIGN_VAR_RES_0_1]], %[[CONTROL_ASSIGN_VAR_RES_1_0]], %[[CONTROL_ASSIGN_VAR_RES_1_1]]) wraps "tf.Identity"(%[[CHAIN]]) : (tensor<i32>) -> tensor<i32>
     %control_barrier = tf_executor.island(%assign_control_2, %assign_control_3, %add_control, %mul_control) wraps "tf.NoOp"() : () -> ()
-   // CHECK: tf_executor.fetch %[[RES_0]], %[[RES_1]], %[[ADD]], %[[MUL]], %[[CHAIN_0_SINK]], %[[CHAIN_1_SINK]] : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>
+   // CHECK: tf_executor.fetch %[[RES_0]], %[[RES_1]], %[[ADD]], %[[MUL]], %[[CHAIN_SINK]] : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, tensor<i32>
    tf_executor.fetch %arg0, %arg1, %add, %mul, %control_barrier : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, !tf_executor.control
   }
-  // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2, %[[GRAPH_OUT]]#3, %[[GRAPH_OUT]]#4, %[[GRAPH_OUT]]#5
+  // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2, %[[GRAPH_OUT]]#3, %[[GRAPH_OUT]]#4
   return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: func @intersecting_chains_while_cond
-// CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>, %[[CHAIN_0:.*]]: tensor<i32>, %[[CHAIN_1:.*]]: tensor<i32>) -> tensor<i32>
+// CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>, %[[CHAIN:.*]]: tensor<i32>) -> tensor<i32>
 func @intersecting_chains_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<i32>) {
   %graph = tf_executor.graph {
     %island, %ctrl = tf_executor.island {
@@ -116,7 +114,7 @@ func @intersecting_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
   // CHECK: tf_executor.graph {
   tf_executor.graph {
     // CHECK: %[[CHAIN_CONSTANT:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-    // CHECK: %[[WHILE_OUT:.*]]:6, %[[WHILE_CONTROL:.*]] = tf_executor.island wraps "tf.While"(%[[ARG_0]], %[[ARG_1]], %[[ARG_2]], %[[ARG_2]], %[[CHAIN_CONSTANT]], %[[CHAIN_CONSTANT]])
+    // CHECK: %[[WHILE_OUT:.*]]:5, %[[WHILE_CONTROL:.*]] = tf_executor.island wraps "tf.While"(%[[ARG_0]], %[[ARG_1]], %[[ARG_2]], %[[ARG_2]], %[[CHAIN_CONSTANT]])
     %while_out:4, %while_control = tf_executor.island wraps "tf.While"(%arg0, %arg1, %arg2, %arg2) {body = @intersecting_chains_while_body, cond = @intersecting_chains_while_cond, is_stateless = false} : (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>)
     // CHECK: tf_executor.fetch
     tf_executor.fetch

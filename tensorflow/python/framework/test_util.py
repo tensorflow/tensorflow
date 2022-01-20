@@ -1130,6 +1130,7 @@ def enable_eager_op_as_function(fn):
   return wrapper
 
 
+@tf_export("test.with_eager_op_as_function")
 def with_eager_op_as_function(cls=None, only_as_function=False):
   """Adds methods that call original methods with eager_op_as_function enabled.
 
@@ -2438,14 +2439,13 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     stream.flush()
     fd = stream.fileno()
-    tmp_file_path = tempfile.mktemp(dir=self.get_temp_dir())
-    tmp_file = open(tmp_file_path, "w")
+    tmp_file, tmp_file_path = tempfile.mkstemp(dir=self.get_temp_dir())
     orig_fd = os.dup(fd)
-    os.dup2(tmp_file.fileno(), fd)
+    os.dup2(tmp_file, fd)
     try:
       yield CapturedWrites(tmp_file_path)
     finally:
-      tmp_file.close()
+      os.close(tmp_file)
       os.dup2(orig_fd, fd)
 
   def _AssertProtoEquals(self, a, b, msg=None):

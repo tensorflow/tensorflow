@@ -4,7 +4,7 @@
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @outside_compilation_model_parallelism_fail() -> tensor<2xi32> {
     // expected-error@+1 {{outside compilation is not supported with model parallelism}}
-    %0 = "tf_device.cluster"() ( {
+    %0 = "tf_device.cluster"() ({
       %1 = "tf.A"() : () -> tensor<2xi32>
       %2 = "tf.B"(%1) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>) -> tensor<2xi32>
       tf_device.return %2 : tensor<2xi32>
@@ -24,7 +24,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // CHECK-LABEL: func @no_outside_compilation
   // CHECK-NOT: "tf_device.launch"
   func @no_outside_compilation() -> tensor<?xi32> {
-    %0 = "tf_device.cluster"() ( {
+    %0 = "tf_device.cluster"() ({
       %1 = "tf.A"() : () -> tensor<?xi32>
       %2 = "tf.B"(%1) : (tensor<?xi32>) -> tensor<?xi32>
       tf_device.return %2 : tensor<?xi32>
@@ -44,7 +44,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT: tf_device.return
     // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
     // CHECK: device_assignment =  [], num_cores_per_replica = 1 : i64, topology =  ""
-    "tf_device.cluster"() ( {
+    "tf_device.cluster"() ({
       "tf.A"() : () -> ()
       "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> ()
       "tf.C"() : () -> ()
@@ -69,7 +69,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK: device_assignment =  [], num_cores_per_replica = 1 : i64, topology =  ""
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
-      "tf_device.cluster"() ( {
+      "tf_device.cluster"() ({
         "tf.B"() : () -> ()
         "tf.C"(%ri_0) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>) -> ()
         "tf.D"() : () -> ()
@@ -93,7 +93,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            tf_device.return %[[B_OUTPUT]]
     // CHECK:          "tf.C"(%[[LAUNCH_OUTPUT]])
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
-      %2 = "tf_device.cluster"() ( {
+      %2 = "tf_device.cluster"() ({
         %3 = "tf.A"() : () -> (tensor<?xi32>)
         %4 = "tf.B"(%3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>) -> tensor<?xi32>
         %5 = "tf.C"(%4) : (tensor<?xi32>) -> tensor<?xi32>
@@ -125,7 +125,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:            tf_device.return %[[E_OUTPUT]]
     // CHECK:          "tf.F"(%[[LAUNCH_OUTPUT3]])
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
-      %2 = "tf_device.cluster"() ( {
+      %2 = "tf_device.cluster"() ({
         %3 = "tf.A"() : () -> (tensor<?xi32>)
         %4 = "tf.B"(%3) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>) -> tensor<?xi32>
         %5 = "tf.C"(%4) : (tensor<?xi32>) -> tensor<?xi32>
@@ -138,5 +138,50 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }
 
     return %1 : tensor<?xi32>
+  }
+
+  // Tests the launch wrap of an outside compiled op that's called from a tf_device.cluster.
+
+  func @called_outside_compilation() -> () {
+    "tf_device.cluster"() ({
+      "tf.PartitionedCall"() {f = @called_outside_compilation_callee} : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
+    return
+  }
+  // CHECK-LABEL: func @called_outside_compilation_callee
+  func @called_outside_compilation_callee() -> () {
+    // CHECK:      "tf.A"
+    // CHECK:      "tf_device.launch"
+    // CHECK-NEXT:   "tf.B"
+    // CHECK-NOT:    _xla_outside_compilation
+    // CHECK-NEXT: tf_device.return
+    // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    "tf.A"() : () -> ()
+    "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> ()
+    "tf.C"() : () -> ()
+    return
+  }
+
+  // Test that the same outside compiled function cannot be called from two
+  // different TPU clusters.
+
+  func @called_outside_compilation_bad() -> () {
+    "tf_device.cluster"() ({
+      "tf.PartitionedCall"() {f = @called_outside_compilation_bad_callee} : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
+    "tf_device.cluster"() ({
+      "tf.PartitionedCall"() {f = @called_outside_compilation_bad_callee} : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
+    return
+  }
+  // expected-error@+1 {{The same function is reachable from multiple TPU Clusters.}}
+  func @called_outside_compilation_bad_callee() -> () {
+    "tf.A"() : () -> ()
+    "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> ()
+    "tf.C"() : () -> ()
+    return
   }
 }

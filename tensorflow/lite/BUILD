@@ -101,11 +101,10 @@ exports_files(
 
 cc_library(
     name = "version",
+    srcs = ["//tensorflow/core/public:version.h"],
     hdrs = ["version.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    # Note that we only use the header defines from :version_lib.
-    deps = ["//tensorflow/core:version_lib"],
 )
 
 # TODO(b/128420794): Migrate clients to use :version directly.

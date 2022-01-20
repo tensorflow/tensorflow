@@ -47,19 +47,22 @@ namespace full_type {
 // input.
 // The n arg allows multiple outputs, e.g. (T -> Product[T, T]).
 // TODO(mdan): Drop defaults for readability if more non-(0, 1) cases appear.
+// TODO(mdan): Rename to just Replicate.
 ForwardTypeInferenceFn ReplicateInput(int i = 0, int n = 1);
 
 // Helper for a type inference function which has the same type as a variadic
 // number of inputs, e.g. (T, T -> Product[T]), (T, T, T -> Product[T]), etc.
-// Assumes all inputs are of identical type.
-ForwardTypeInferenceFn ReplicateIdenticalInputs();
+// Infers the meet of the input types, in the sense of type meets (see
+// https://en.wikipedia.org/wiki/Join_and_meet). This implementation is
+// simplified to require the two inputs are a subtype of another.
+ForwardTypeInferenceFn Merge();
 
 // Helper for the type inference counterpart of Unary, that is (U ->
 // PRODUCT[<t>[U]]), where <t> is parameterized by this factory, and U is the
-// type of the input specified by container_idx.
+// type of the input specified by element_idx.
 // Note: when we migrate to a more formal type definition of an op, these two
 // functions will naturally merge.
-ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int container_idx);
+ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx);
 
 // Helper for ops with semantics of adding an element to a container (<t>[T]),
 // that is (<t>[U], V -> PRODUCT[<t>[Union[U, V]]]), where <t> is parameterized

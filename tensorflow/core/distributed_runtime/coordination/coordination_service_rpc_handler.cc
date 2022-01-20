@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
@@ -82,21 +81,12 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
     done(errors::Internal("Coordination service is not enabled."));
     return;
   }
-  std::vector<DeviceAttributes> devices;
-  for (const DeviceAttributes& da : request->local_device_attributes()) {
-    devices.emplace_back(da);
-  }
   service->WaitForAllTasks(
-      request->job(), request->task(), std::move(devices),
+      request->job(), request->task(), request->local_device_info(),
       [response, service, done = std::move(done)](Status s) {
         if (s.ok()) {
-          std::vector<DeviceAttributes> cluster_devices =
+          *response->mutable_cluster_device_info() =
               service->ListClusterDevices();
-          response->mutable_cluster_device_attributes()->Reserve(
-              cluster_devices.size());
-          for (auto& d : cluster_devices) {
-            response->add_cluster_device_attributes()->Swap(&d);
-          }
         }
         done(s);
       });

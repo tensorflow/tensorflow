@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/APFloat.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
+#include "mlir/Dialect/Traits.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -75,16 +76,13 @@ static Type GetBroadcastType(Type x, Type y, Type element_type,
   auto shape_x = x_ranked.getShape();
   auto shape_y = y_ranked.getShape();
 
-  if (shape_x.size() == shape_y.size()) {
-    llvm::SmallVector<int64_t, 4> out_shape(shape_x.size());
-    for (int i = 0, e = shape_x.size(); i < e; i++) {
-      auto x_val = shape_x[i];
-      auto y_val = shape_y[i];
-      if (x_val == -1 || y_val == -1) {
-        out_shape[i] = -1;
-      } else {
-        out_shape[i] = std::max(x_val, y_val);
-      }
+  // If no broadcast dimensions, assume "numpy" broadcasting.
+  if (shape_x.size() == shape_y.size() || !broadcast_dimensions_attr) {
+    llvm::SmallVector<int64_t, 4> out_shape;
+    if (!mlir::OpTrait::util::getBroadcastedShape(shape_x, shape_y,
+                                                  out_shape)) {
+      // Signal illegal broadcast_dimensions as unranked.
+      return UnrankedTensorType::get(element_type);
     }
     return RankedTensorType::get(out_shape, element_type);
   }
@@ -92,33 +90,30 @@ static Type GetBroadcastType(Type x, Type y, Type element_type,
   auto shape_large = shape_x.size() > shape_y.size() ? shape_x : shape_y;
   auto shape_small = shape_x.size() <= shape_y.size() ? shape_x : shape_y;
 
-  llvm::SmallVector<int64_t, 4> broadcast_dimensions;
-  if (broadcast_dimensions_attr) {
-    // Explicit broadcast dimensions.
-    for (const APInt& int_value :
-         broadcast_dimensions_attr.getValues<APInt>()) {
-      broadcast_dimensions.push_back(int_value.getSExtValue());
-    }
-    if (broadcast_dimensions.size() != shape_small.size()) {
-      // Signal illegal broadcast_dimensions as unranked.
-      return UnrankedTensorType::get(element_type);
-    }
-  } else {
-    // If no broadcast dimensions, assume "numpy" broadcasting.
-    broadcast_dimensions = llvm::to_vector<4>(llvm::seq<int64_t>(
-        shape_large.size() - shape_small.size(), shape_large.size()));
+  auto broadcast_dimensions = broadcast_dimensions_attr.getValues<APInt>();
+  if (broadcast_dimensions.size() != shape_small.size()) {
+    // Signal illegal broadcast_dimensions as unranked.
+    return UnrankedTensorType::get(element_type);
   }
 
-  llvm::SmallVector<int64_t, 4> out_shape(shape_large.begin(),
-                                          shape_large.end());
+  llvm::SmallVector<int64_t, 4> shape_large_filtered;
+  shape_large_filtered.reserve(shape_small.size());
+  for (const auto& dim : broadcast_dimensions) {
+    shape_large_filtered.push_back(shape_large[dim.getZExtValue()]);
+  }
+  llvm::SmallVector<int64_t, 4> out_shape_filtered;
+  if (!mlir::OpTrait::util::getBroadcastedShape(
+          shape_small, shape_large_filtered, out_shape_filtered)) {
+    // Signal illegal broadcast_dimensions as unranked.
+    return UnrankedTensorType::get(element_type);
+  }
 
   // Update according to the broadcast dimensions.
-  for (auto index_pair : llvm::enumerate(broadcast_dimensions)) {
-    auto old_value = out_shape[index_pair.value()];
-    auto new_value = shape_small[index_pair.index()];
-    if (old_value != -1 && (new_value == -1 || new_value > old_value)) {
-      out_shape[index_pair.value()] = new_value;
-    }
+  llvm::SmallVector<int64_t, 4> out_shape(shape_large.begin(),
+                                          shape_large.end());
+  for (const auto& index_pair : llvm::enumerate(broadcast_dimensions)) {
+    auto new_value = out_shape_filtered[index_pair.index()];
+    out_shape[index_pair.value().getZExtValue()] = new_value;
   }
 
   return RankedTensorType::get(out_shape, element_type);

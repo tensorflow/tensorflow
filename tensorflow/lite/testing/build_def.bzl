@@ -63,6 +63,7 @@ def generated_test_models():
         "gather",
         "gather_nd",
         "gather_with_constant",
+        "gelu",
         "global_batch_norm",
         "greater",
         "greater_equal",

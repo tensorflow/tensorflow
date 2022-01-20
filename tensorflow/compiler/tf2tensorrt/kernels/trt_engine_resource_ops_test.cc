@@ -280,7 +280,7 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   ExecutionContext context = ExecutionContext::Create(engine.get());
 
   std::vector<TensorShape> engine_input_shape(1);
-  TF_ASSERT_OK(TrtDimsToTensorShape(param_.dims, &(engine_input_shape[0])));
+  TF_ASSERT_OK(DimsAdapter(param_.dims).TensorShape(&(engine_input_shape[0])));
   if (param_.n_inputs > 1) {
     engine_input_shape.push_back(TensorShape({1, 1}));
   }

@@ -40,7 +40,7 @@ namespace tensorflow {
 // {1, Numelements} and reshape the result matrix to have shape
 // {1, N * NumElements} before passing it to this functor.
 
-// Assumes all inputs are nonempty
+// Assumes all inputs are nonempty.
 template <typename T>
 void ConcatCPU(
     DeviceBase* d,

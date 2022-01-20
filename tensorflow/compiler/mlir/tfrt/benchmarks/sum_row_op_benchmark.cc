@@ -51,7 +51,7 @@ llvm::SmallVector<InputTensorSpec> Inputs(ssize_t rows, ssize_t cols) {
 #define BM(FN) BM_##FN->Arg(0);
 
 #define BM_SUITE(NAME, DYNAMIC_ROW, DYNAMIC_COL, ROWS, COLS)            \
-  BM(CpurtV(NAME, SumRow(DYNAMIC_ROW, DYNAMIC_COL, ROWS, COLS), "main", \
+  BM(JitrtV(NAME, SumRow(DYNAMIC_ROW, DYNAMIC_COL, ROWS, COLS), "main", \
             Inputs(ROWS, COLS)));                                       \
   BM(Eigen(NAME, EigenSumRow(), Inputs(ROWS, COLS)));                   \
   BM(Tfrt(NAME, SumRow(DYNAMIC_ROW, DYNAMIC_COL, ROWS, COLS), "main",   \

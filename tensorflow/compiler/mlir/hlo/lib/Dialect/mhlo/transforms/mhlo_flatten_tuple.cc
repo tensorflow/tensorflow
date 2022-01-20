@@ -216,16 +216,16 @@ void ApplyFlatteningTuplePatterns(T target, MLIRContext *context) {
 
 class FlattenTuplePass : public FlattenTuplePassBase<FlattenTuplePass> {
  public:
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext *ctx = &getContext();
-    ApplyFlatteningTuplePatterns(getFunction(), ctx);
+    ApplyFlatteningTuplePatterns(getOperation(), ctx);
   }
 };
 }  // end namespace
 
 static PassRegistration<FlattenTuplePass> pass;
 
-std::unique_ptr<FunctionPass> createFlattenTuplePass() {
+std::unique_ptr<OperationPass<FuncOp>> createFlattenTuplePass() {
   return std::make_unique<FlattenTuplePass>();
 }
 

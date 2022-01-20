@@ -65,7 +65,7 @@ Value InsertDynamicAlloc(Location loc, Value result, Value shape_operand,
 
   // Extract the required element out of the vector.
   SmallVector<Value, 4> dynamic_operands;
-  for (auto shape_element : llvm::enumerate(result_type.getShape())) {
+  for (const auto& shape_element : llvm::enumerate(result_type.getShape())) {
     if (shape_element.value() != ShapedType::kDynamicSize) continue;
     Value index =
         rewriter->create<arith::ConstantIndexOp>(loc, shape_element.index());
@@ -102,7 +102,7 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
                              ConversionPatternRewriter& rewriter) {
   size_t num_operands = results.size();
   SmallVector<Value, 2> tensor_operands;
-  for (auto result : llvm::enumerate(op->getResults())) {
+  for (const auto& result : llvm::enumerate(op->getResults())) {
     RankedTensorType resultType =
         result.value().getType().dyn_cast<RankedTensorType>();
     if (!resultType) return failure();
@@ -286,7 +286,7 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
     auto return_op = cast<mhlo::ReturnOp>(entry_block.getTerminator());
     if (auto tuple_ty =
             return_op.results().front().getType().dyn_cast<TupleType>()) {
-      auto tuple_op = return_op.getODSOperands(0).front().getDefiningOp();
+      auto* tuple_op = return_op.getODSOperands(0).front().getDefiningOp();
       return_op.getOperation()->dropAllReferences();
       rewriter.eraseOp(tuple_op);
       return_op.getOperation()->setOperands(tuple_op->getOperands());
@@ -369,7 +369,7 @@ struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
 //              %arg1: memref<2x2xf32>,
 //              %arg2: memref<2x2xf32>,
 //              %arg3: memref<2x2xf32>) {
-//   "lmhlo.fusion"() ( {
+//   "lmhlo.fusion"() ({
 //     %0 = alloc() : memref<2x2xf32>
 //     "lmhlo.add"(%arg1, %arg2, %0) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -448,7 +448,8 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
     });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateFuncOpTypeConversionPattern(patterns, converter);
+    populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
+                                                             converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);

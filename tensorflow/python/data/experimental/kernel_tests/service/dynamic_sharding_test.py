@@ -358,9 +358,11 @@ class DynamicShardingFilesTest(data_service_test_base.TestBase,
         for file in range(0, 5)
         for record in range(0, 5)
     ]
-    result = self.getIteratorOutput(
-        self.getNext(dataset, requires_initialization=True))
-    self.assertCountEqual(result, expected)
+    self.assertDatasetProduces(
+        dataset,
+        expected,
+        requires_initialization=True,
+        assert_items_equal=True)
 
 
 if __name__ == "__main__":

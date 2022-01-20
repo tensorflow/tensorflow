@@ -910,7 +910,7 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
 ENTRY main {
   param = s32[5] parameter(0)
   const = s32[] constant(3)
-  param_padded = s32[5] set-dimension-size(param, const), dimensions={0}
+  param_padded = s32[<=5] set-dimension-size(param, const), dimensions={0}
   init = s32[] constant(0)
   ROOT reduce = s32[] reduce(param_padded, init),
       dimensions={0},
@@ -1285,6 +1285,60 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, ReshapeComplicated) {
+  // [2, <=4, 4]
+  //       |
+  //    Reshape
+  //       |
+  // [<=16, 2]
+  //
+  // Reshape that is not a composition of splitting one input dim to multiple
+  // output dims or combining multiple input dimensions to one output dimension.
+  //
+  const std::string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[2, 4, 4] parameter(0)
+  two = s32[] constant(2)
+  param_padded_dynamic = s32[2, <=4, 4] set-dimension-size(param, two),
+    dimensions={1}
+  reshaped = s32[<=16, 2] reshape(param_padded_dynamic), inferred_dimension=0
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(reshaped, init),
+      dimensions={0, 1},
+      to_apply=update_s32
+}
+)";
+
+  // First and last dims are dynamic. Padded data are expressed as -1.
+  Literal operand = LiteralUtil::CreateR3<int32_t>(
+      {{{1, 2, 3, 4}, {5, 6, 7, 8}, {-1, -1, -1, -1}, {-1, -1, -1, -1}},
+       {{9, 10, 11, 12},
+        {13, 14, 15, 16},
+        {-1, -1, -1, -1},
+        {-1, -1, -1, -1}}});
+  auto module = GetHloModule(hlo_text);
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // Reshaping (with correct reshape rewriting) produces:
+  // [[[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16]],
+  //  [[-1, -1], [-1, -1], ...]]
+  //
+  //  Dynamic padder auto pads -1 with 0.
+  //
+  // Reducing it produces 1 + 2 + 3 + ... + 16 = 136
+
+  Literal expected = LiteralUtil::CreateR0<int32_t>(136);
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, WhileLoopStack) {
   // Push into a dynamic sized stack with iteration number:
   // init:
@@ -1478,7 +1532,7 @@ ENTRY main {
   auto module = GetHloModule(hlo_text);
 
   Literal result = PadAndExecute(std::move(module), {&operand}, false);
-
+  VLOG(1) << " result: " << result.ToString();
   result.SetDynamicSize(1, 2);
   result.SetDynamicSize(2, 2);
   // Padded operand is:
@@ -1494,7 +1548,42 @@ ENTRY main {
   // [P, P, P]]
   Literal expected =
       LiteralUtil::CreateR3<int32_t>({{{0, 1}, {3, 4}}, {{0, 1}, {3, 4}}});
+  EXPECT_EQ(result, expected);
+}
 
+XLA_TEST_F(ExecutionTest, DynamicReshapeComplicated) {
+  const std::string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+ENTRY main {
+  param = s32[3, 4, 4] parameter(0)
+  two = s32[] constant(2)
+  param_dynamic = s32[<=3, 4, 4] set-dimension-size(param, two), dimensions={0}
+  three = s32[] constant(3)
+  param_dynamic1 = s32[<=3, <=4, 4] set-dimension-size(param_dynamic, three), dimensions={1}
+  param_dynamic2 = s32[<=3, <=4, <=4] set-dimension-size(param_dynamic1, three), dimensions={2}
+  six = s32[] constant(6)
+
+  // Static reshape is from [3, 4, 4] to [6, 8].
+  // Dynamic reshape is from [2, 3, 3] to [3, 6].
+  ROOT reshaped = s32[<=6, <=8] dynamic-reshape(param_dynamic2, three, six)
+}
+)";
+  Literal operand = LiteralUtil::CreateR3<int32_t>(
+      {{{0, 1, 2, -1}, {3, 4, 5, -1}, {6, 7, 8, -1}, {-1, -1, -1, -1}},
+       {{9, 8, 7, -1}, {6, 5, 4, -1}, {3, 2, 1, -1}, {-1, -1, -1, -1}},
+       {{-1, -1, -1, -1},
+        {-1, -1, -1, -1},
+        {-1, -1, -1, -1},
+        {-1, -1, -1, -1}}});
+
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand}, false);
+  result.SetDynamicSize(0, 3);
+  result.SetDynamicSize(1, 6);
+  Literal expected = LiteralUtil::CreateR2<int32_t>(
+      {{0, 1, 2, 3, 4, 5}, {6, 7, 8, 9, 8, 7}, {6, 5, 4, 3, 2, 1}});
   EXPECT_EQ(result, expected);
 }
 

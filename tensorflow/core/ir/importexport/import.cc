@@ -41,7 +41,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -438,7 +437,7 @@ Location GraphImporter::GetLocation(const Node& node) {
     std::string debug_info_key = (name + "@" + function_name).str();
     std::string name_for_name_loc =
         function_name.empty() ? name.str() : (name + "@" + function_name).str();
-    auto name_loc_id = Identifier::get(name_for_name_loc, context_);
+    auto name_loc_id = StringAttr::get(context_, name_for_name_loc);
 
     llvm::SmallVector<Location, 4> locations;
     // Prefer stack traces if available, fallback to debug info if not, and then
@@ -448,7 +447,7 @@ Location GraphImporter::GetLocation(const Node& node) {
       absl::Span<const StackFrame> frames = stack_trace->ToFrames();
       locations.reserve(frames.size());
       for (const StackFrame& frame : llvm::reverse(frames)) {
-        auto file_name = Identifier::get(frame.file_name, context_);
+        auto file_name = StringAttr::get(context_, frame.file_name);
         // Use col 1 as there is no column info in StackTrace.
         auto file_line_loc =
             FileLineColLoc::get(file_name, frame.line_number, 1);
@@ -464,7 +463,7 @@ Location GraphImporter::GetLocation(const Node& node) {
         locations.reserve(trace.file_line_cols_size());
         for (const auto& location : trace.file_line_cols()) {
           const auto& file = debug_info_.files(location.file_index());
-          auto file_name = Identifier::get(file, context_);
+          auto file_name = StringAttr::get(context_, file);
           auto file_line_loc =
               FileLineColLoc::get(file_name, location.line(), location.col());
           locations.push_back(file_line_loc);
@@ -820,7 +819,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
       arg_attrs.push_back(builder.getDictionaryAttr({}));
     }
     attrs.push_back(
-        builder.getNamedAttr(function_like_impl::getArgDictAttrName(),
+        builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
                              builder.getArrayAttr(arg_attrs)));
   }
 
@@ -870,7 +869,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
       res_attrs.push_back(output_attrs.getDictionary(context));
     }
     attrs.push_back(
-        builder.getNamedAttr(function_like_impl::getResultDictAttrName(),
+        builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
                              builder.getArrayAttr(res_attrs)));
     DenseMap<StringRef, Node*> control_ret_nodes;
     for (Node* node : fbody->control_ret_nodes)

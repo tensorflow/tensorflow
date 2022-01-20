@@ -56,7 +56,7 @@ func @all_reduce(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
   // CHECK: [[CHAIN3:%[0-9]+]] = tfrt_gpu.ccl.execute %arg1, [[HANDLE]],
   // CHECK-SAME: [[CHAIN2]]
 
-  "lmhlo.all_reduce"(%operand0, %operand1, %result0, %result1) ( {
+  "lmhlo.all_reduce"(%operand0, %operand1, %result0, %result1) ({
       ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
           %0 = mhlo.add %lhs, %rhs : tensor<f32>
           "mhlo.return"(%0) : (tensor<f32>) -> ()
@@ -93,7 +93,7 @@ func @reduce_scatter(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %re
   // CHECK: [[CHAIN3:%[0-9]+]] = tfrt_gpu.ccl.execute %arg1, [[HANDLE]],
   // CHECK-SAME: [[CHAIN2]]
 
-  "lmhlo.reduce_scatter"(%operand0, %operand1, %result0, %result1) ( {
+  "lmhlo.reduce_scatter"(%operand0, %operand1, %result0, %result1) ({
       ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
           %0 = mhlo.add %lhs, %rhs : tensor<f32>
           "mhlo.return"(%0) : (tensor<f32>) -> ()

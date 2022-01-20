@@ -126,18 +126,17 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):
-    """Create a graph containing two segment."""
+    """Create a graph containing two segments."""
     n = inp
     for i in range(2):
-      c = constant_op.constant(1.0, name="c%d" % i)
+      c = constant_op.constant(float(i), name="c%d" % i)
       n = math_ops.add(n, c, name="add%d" % i)
       n = math_ops.mul(n, n, name="mul%d" % i)
-    edge = self.trt_incompatible_op(n, name="incompatible")
-    with ops.control_dependencies([edge]):
-      c = constant_op.constant(1.0, name="c2")
-      n = math_ops.add(n, c, name="add2")
+    n = self.trt_incompatible_op(n, name="incompatible")
+    c = constant_op.constant(2.0, name="c2")
+    n = math_ops.add(n, c, name="add2")
     n = math_ops.mul(n, n, name="mul2")
-    c = constant_op.constant(1.0, name="c3")
+    c = constant_op.constant(3.0, name="c3")
     n = math_ops.add(n, c, name="add3")
     n = math_ops.mul(n, n, name="mul3")
     return array_ops.squeeze(n, name="output_0")
@@ -170,21 +169,18 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
     """Create a graph containing multiple segment."""
     n = inp
     c = constant_op.constant(1.0, name="c")
-    # Adds control dependency from the constant op to a trt incompatible op,
-    # and adds control dependency from the trt incompatible op to all other
+    # Adds data dependency from the constant op to a trt incompatible op,
+    # and adds data dependency from the trt incompatible op to the other
     # ops, to make sure the constant op cannot be contracted with any trt
     # segment that depends on it.
-    with ops.control_dependencies([c]):
-      d = self.trt_incompatible_op(n, name="incompatible")
-    with ops.control_dependencies([d]):
-      n = math_ops.add(n, c, name="add")
-      n = math_ops.mul(n, n, name="mul")
-      n = math_ops.add(n, n, name="add1")
+    n = self.trt_incompatible_binary_op(n, c, name="incompatible")
+    n = math_ops.add(n, c, name="add")
+    n = math_ops.mul(n, n, name="mul")
+    n = math_ops.add(n, n, name="add1")
     n = self.trt_incompatible_op(n, name="incompatible1")
-    with ops.control_dependencies([d]):
-      n = math_ops.add(n, c, name="add2")
-      n = math_ops.mul(n, n, name="mul1")
-      n = math_ops.add(n, n, name="add3")
+    n = math_ops.add(n, c, name="add2")
+    n = math_ops.mul(n, n, name="mul1")
+    n = math_ops.add(n, n, name="add3")
     return array_ops.squeeze(n, name="output_0")
 
   def GetParams(self):
@@ -197,6 +193,18 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
     return {
         "TRTEngineOp_0": ["add", "add1", "mul"],
         "TRTEngineOp_1": ["add2", "add3", "mul1"]
+    }
+
+  def ExpectedConnections(self, run_params):
+    """Returns the expected edges."""
+    return {
+        "input_0": set(),
+        "c": set(),
+        "incompatible": {"input_0", "c"},
+        "TRTEngineOp_0": {"incompatible"},
+        "incompatible1": {"TRTEngineOp_0"},
+        "TRTEngineOp_1": {"incompatible1"},
+        "output_0": {"TRTEngineOp_1"},
     }
 
 
@@ -256,25 +264,23 @@ class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
 class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
 
   def GraphFn(self, inp):
-    """Create a graph containing multiple segment."""
+    """Create a graph containing multiple segments."""
     c1 = constant_op.constant(1.0, name="c1")
-    c2 = constant_op.constant(1.0, name="c2")
-    d1 = constant_op.constant(1.0, name="d1")
-    d2 = self.trt_incompatible_op(inp, name="d2")
-    with ops.control_dependencies([d1, d2]):
+    c2 = constant_op.constant(2.0, name="c2")
+    d1 = self.trt_incompatible_op(inp, name="d1")
+    d2 = self.trt_incompatible_binary_op(inp, inp, name="d2")
+    with ops.control_dependencies([d1]):
       add = math_ops.add(inp, c1, name="add")
-    with ops.control_dependencies([d1, d2]):
-      mul = math_ops.mul(add, add, name="mul")
-    with ops.control_dependencies([d1, d2]):
-      add1 = math_ops.add(mul, mul, name="add1")
+    mul = math_ops.mul(add, add, name="mul")
+    add1 = math_ops.add(mul, mul, name="add1")
     edge = self.trt_incompatible_op(add1, name="incompatible")
-    with ops.control_dependencies([d1, d2, add, mul]):
+    with ops.control_dependencies([d1, d2, add1]):
       add2 = math_ops.add(edge, c2, name="add2")
-    with ops.control_dependencies([d1, d2, add1, mul]):
-      mul1 = math_ops.mul(add2, add2, name="mul1")
-    with ops.control_dependencies([d1, d2, add, add1]):
-      add3 = math_ops.add(mul1, mul1, name="add3")
-    return array_ops.squeeze(add3, name="output_0")
+    mul1 = math_ops.mul(add2, add2, name="mul1")
+    add3 = math_ops.add(mul1, mul1, name="add3")
+    inc1 = self.trt_incompatible_binary_op(d1, add3, name="incompatible1")
+    inc2 = self.trt_incompatible_binary_op(d2, inc1, name="incompatible2")
+    return array_ops.squeeze(inc2, name="output_0")
 
   def GetParams(self):
     shapes = [[2, 32, 32, 3]]
@@ -288,6 +294,19 @@ class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
         "TRTEngineOp_1": ["c2", "add2", "add3", "mul1"]
     }
 
+  def ExpectedConnections(self, run_params):
+    """Returns the expected edges."""
+    return {
+        "input_0": set(),
+        "d1": {"input_0"},
+        "d2": {"input_0"},
+        "TRTEngineOp_0": {"input_0", "^d1"},
+        "incompatible": {"TRTEngineOp_0"},
+        "TRTEngineOp_1": {"incompatible", "^d2"},
+        "incompatible1": {"TRTEngineOp_1", "d1"},
+        "incompatible2": {"incompatible1", "d2"},
+        "output_0": {"incompatible2"},
+    }
 
 if __name__ == "__main__":
   test.main()

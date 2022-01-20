@@ -10,7 +10,7 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
                          %src: memref<56x56xf32>,
                          %init: memref<f32>,
                          %result: memref<112x112xf32>) {
-  "lmhlo.select_and_scatter"(%arg, %src, %init, %result) ( {
+  "lmhlo.select_and_scatter"(%arg, %src, %init, %result) ({
     // select
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %pred: memref<i1>):
       "lmhlo.compare"(%lhs, %rhs, %pred) {comparison_direction = "GE"} :

@@ -830,6 +830,7 @@ cc_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineAnalysis",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -980,7 +981,6 @@ cc_library(
         "transforms/tf_saved_model_passes.h",
     ],
     deps = [
-        ":lift_variables_lib",
         ":resource_value_typed_analyzer",
         ":tensorflow",
         ":tensorflow_ops",
@@ -990,6 +990,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -1036,7 +1037,7 @@ gentbl_cc_library(
         ),
         (
             ["-gen-pass-doc"],
-            "g3doc/includes/tf_passes.md",
+            "g3doc/_includes/tf_passes.md",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
@@ -1251,6 +1252,7 @@ cc_library(
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
         ":tfe_legalize_tfg",
+        ":tpu_cluster_util",
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",
@@ -1265,6 +1267,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/tf2xla:side_effect_util",
+        "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:sharding_builder",
@@ -1282,6 +1285,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineAnalysis",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
@@ -1572,6 +1576,18 @@ cc_library(
     hdrs = ["utils/location_utils.h"],
     deps = [
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tpu_cluster_util",
+    srcs = ["utils/tpu_cluster_util.cc"],
+    hdrs = ["utils/tpu_cluster_util.h"],
+    deps = [
+        ":device_util",
+        ":tpu_rewrite_device_util",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:Support",
     ],
 )
 

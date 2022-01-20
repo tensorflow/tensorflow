@@ -406,6 +406,48 @@ class OpTest : public ::testing::Test {
   // Choose arguments for the tf.{Xla}Einsum ops.
   EinsumArguments ChooseEinsumArguments();
 
+  struct GatherArguments {
+    int64_t batch_dims;
+    DataType axis_type;
+    DataType indices_type;
+    DataType params_type;
+    std::vector<int64_t> params_shape;
+    Tensor indices;
+    Tensor axis;
+  };
+  // Choose arguments for the tf.Gather{V2} ops.
+  GatherArguments ChooseGatherArguments(bool axis_0);
+
+  struct PadArguments {
+    DataType input_type;
+    DataType paddings_type;
+    std::vector<int64_t> input_shape;
+    Tensor paddings;
+    Tensor constant_values;
+  };
+  // Choose arguments for the tf.Pad{V2} ops.
+  PadArguments ChoosePadArguments();
+
+  struct ScatterArguments {
+    DataType type;
+    DataType indices_type;
+    Tensor indices;
+    Tensor updates;
+    std::vector<int64_t> shape;
+  };
+  // Choose arguments for ScatterNd and TensorScatterUpdate.
+  ScatterArguments ChooseScatterArguments();
+
+  struct SliceArguments {
+    DataType type;
+    DataType indices_type;
+    std::vector<int64_t> shape;
+    Tensor indices;
+    std::vector<int64_t> size;
+  };
+  // Choose arguments for the tf.{XlaDynamicUpdate}Slice ops.
+  SliceArguments ChooseSliceArguments(bool neg_one_size);
+
   struct XlaDotArguments {
     std::vector<int64_t> lhs_dims;
     std::vector<int64_t> rhs_dims;
@@ -962,6 +1004,20 @@ Tensor OpTest::RandomReductionIndices(int rank) {
   return test::AsTensor<int32>(indices);
 }
 
+// Helper that converts 'values' to an int32 or int64 Tensor.
+static Tensor AsIntTensor(DataType dtype, const std::vector<int64_t>& values) {
+  switch (dtype) {
+    case DT_INT32: {
+      std::vector<int32> values32(values.begin(), values.end());
+      return test::AsTensor<int32>(values32);
+    }
+    case DT_INT64:
+      return test::AsTensor<int64_t>(values);
+    default:
+      LOG(FATAL);
+  }
+}
+
 OpTest::BatchMatMulArguments OpTest::ChooseBatchMatMulArguments(
     bool broadcastable_batch) {
   BatchMatMulArguments a;
@@ -1063,6 +1119,111 @@ OpTest::EinsumArguments OpTest::ChooseEinsumArguments() {
   }
 
   a.type = Choose<DataType>(kAllXlaTypes);
+  return a;
+}
+
+OpTest::GatherArguments OpTest::ChooseGatherArguments(bool axis_0) {
+  GatherArguments a;
+
+  a.axis_type = DT_INT32;
+  a.indices_type = DT_INT32;
+  a.params_type = Choose<DataType>(kAllXlaTypes);
+
+  // Choose parameters such that
+  // 0 <= batch_dims <= axis < params.rank <= kDefaultMaxRank
+  a.batch_dims = 0;
+  int64_t axis;
+  if (axis_0) {
+    axis = 0;
+  } else {
+    std::uniform_int_distribution<int64_t> axis_distribution(
+        a.batch_dims, kDefaultMaxRank - 1);
+    axis = axis_distribution(generator());
+  }
+  a.axis = test::AsScalar<int32>((int32)axis);
+  a.params_shape = RandomDims(axis + 1, kDefaultMaxRank, 1, 16);
+  std::vector<int64_t> indices_shape = RandomDims(0, 3, 0, 16);
+  a.indices = RandomBoundedTensor<int32>(DT_INT32, 0, a.params_shape[axis] - 1,
+                                         false, indices_shape);
+
+  return a;
+}
+
+OpTest::PadArguments OpTest::ChoosePadArguments() {
+  PadArguments a;
+
+  a.input_type = Choose<DataType>(kAllXlaTypes);
+  a.input_shape = RandomDims();
+  int input_rank = a.input_shape.size();
+
+  a.paddings_type = Choose<DataType>({DT_INT32, DT_INT64});
+  std::vector<int64_t> paddings_vec;
+  for (int i = 0; i < input_rank; ++i) {
+    std::uniform_int_distribution<int> pad_distribution(0, a.input_shape[i]);
+    int pad_size = pad_distribution(generator());
+    std::uniform_int_distribution<int> lower_distribution(0, pad_size);
+    int low_pad_size = lower_distribution(generator());
+    paddings_vec.push_back(low_pad_size);
+    paddings_vec.push_back(pad_size - low_pad_size);
+    a.input_shape[i] -= pad_size;
+  }
+  CHECK(
+      a.paddings.CopyFrom(AsIntTensor(a.paddings_type, paddings_vec),
+                          TensorShape({static_cast<int64_t>(input_rank), 2})));
+
+  a.constant_values = RandomTensor(a.input_type, false, {});
+
+  return a;
+}
+
+OpTest::ScatterArguments OpTest::ChooseScatterArguments() {
+  ScatterArguments a;
+
+  a.type = Choose<DataType>(kAllXlaTypes);
+  a.indices_type = DT_INT32;
+  a.shape = RandomDims(1, kDefaultMaxRank, 1);
+  int rank = a.shape.size();
+  std::uniform_int_distribution<int32> index_len_dist(1, rank);
+  int index_len = index_len_dist(generator());
+  std::vector<int64_t> indices_first = RandomDims(1, kDefaultMaxRank - 1, 1);
+  std::vector<int64_t> indices_shape(indices_first);
+  indices_shape.push_back(index_len);
+  std::vector<int64_t> updates_shape(indices_first);
+  for (int i = 0; i < rank - index_len; ++i) {
+    updates_shape.push_back(a.shape[index_len + i]);
+  }
+  Tensor indices_lo(a.indices_type, TensorShape(indices_shape));
+  test::FillFn<int32>(&indices_lo, [](int i) -> int32 { return 0; });
+  Tensor indices_hi(a.indices_type, TensorShape(indices_shape));
+  test::FillFn<int32>(&indices_hi, [index_len, &a](int i) -> int32 {
+    int idx_dim = i % index_len;
+    return a.shape[idx_dim] - 1;
+  });
+  a.indices = RandomBoundedTensor(a.indices_type, indices_lo, indices_hi);
+  a.updates = RandomTensor(a.type, false, updates_shape);
+
+  return a;
+}
+
+OpTest::SliceArguments OpTest::ChooseSliceArguments(bool neg_one_size) {
+  SliceArguments a;
+
+  a.type = Choose<DataType>(kAllXlaTypes);
+  a.indices_type = DT_INT32;
+  a.shape = RandomDims();
+  int rank = a.shape.size();
+
+  std::vector<int32> indices(rank);
+  a.size.resize(rank);
+  for (int i = 0; i < rank; ++i) {
+    indices[i] =
+        std::uniform_int_distribution<int32>(0, a.shape[i])(generator());
+    int64_t low = neg_one_size ? -1 : 0;
+    a.size[i] = std::uniform_int_distribution<int64_t>(
+        low, a.shape[i] - indices[i])(generator());
+  }
+  a.indices = test::AsTensor<int32>(indices);
+
   return a;
 }
 
@@ -1396,20 +1557,6 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
   TF_EXPECT_OK(s);
 
   return kOk;
-}
-
-// Helper that converts 'values' to an int32 or int64 Tensor.
-Tensor AsIntTensor(DataType dtype, const std::vector<int64_t>& values) {
-  switch (dtype) {
-    case DT_INT32: {
-      std::vector<int32> values32(values.begin(), values.end());
-      return test::AsTensor<int32>(values32);
-    }
-    case DT_INT64:
-      return test::AsTensor<int64_t>(values);
-    default:
-      LOG(FATAL);
-  }
 }
 
 TEST_F(OpTest, _EagerConst) {
@@ -2590,6 +2737,20 @@ TEST_F(OpTest, EluGrad) {
   });
 }
 
+TEST_F(OpTest, ScatterNd) {
+  Repeatedly([this]() {
+    auto a = ChooseScatterArguments();
+    auto shape = test::AsTensor<int32>(
+        std::vector<int32>(a.shape.begin(), a.shape.end()));
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ScatterNd")
+                                             .Input(a.indices)
+                                             .Input(a.updates)
+                                             .Input(shape)
+                                             .Attr("T", a.type)
+                                             .Attr("Tindices", a.indices_type));
+  });
+}
+
 TEST_F(OpTest, Selu) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
@@ -2706,16 +2867,28 @@ TEST_F(OpTest, FloorMod) {
 
 TEST_F(OpTest, Gather) {
   Repeatedly([this]() {
-    auto params_type = Choose<DataType>(kAllXlaTypes);
-    std::vector<int64_t> params_shape = RandomDims();
-    auto indices_type = Choose<DataType>({DT_INT32, DT_INT64});
-    Tensor indices = RandomTensor(indices_type);
+    GatherArguments a = ChooseGatherArguments(true);
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Gather")
-            .RandomInput(params_type, params_shape)
-            .Input(indices)
-            .Attr("Tparams", params_type)
-            .Attr("Tindices", indices_type));
+            .RandomInput(a.params_type, a.params_shape)
+            .Input(a.indices)
+            .Attr("Tparams", a.params_type)
+            .Attr("Tindices", a.indices_type));
+  });
+}
+
+TEST_F(OpTest, GatherV2) {
+  Repeatedly([this]() {
+    GatherArguments a = ChooseGatherArguments(false);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("GatherV2")
+            .RandomInput(a.params_type, a.params_shape)
+            .Input(a.indices)
+            .Input(a.axis)
+            .Attr("batch_dims", a.batch_dims)
+            .Attr("Taxis", a.axis_type)
+            .Attr("Tindices", a.indices_type)
+            .Attr("Tparams", a.params_type));
   });
 }
 
@@ -3419,31 +3592,28 @@ TEST_F(OpTest, Pack) {
 }
 
 TEST_F(OpTest, Pad) {
+  GTEST_SKIP() << "b/201095155";
   Repeatedly([this]() {
-    auto type = Choose<DataType>(kAllXlaTypes);
-    std::vector<int64_t> t_dims = RandomDims();
+    auto a = ChoosePadArguments();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Pad")
+            .RandomInput(a.input_type, a.input_shape)
+            .Input(a.paddings)
+            .Attr("T", a.input_type)
+            .Attr("Tpaddings", a.paddings_type));
+  });
+}
 
-    DataType tpaddings = Choose<DataType>({DT_INT32, DT_INT64});
-    std::vector<int64_t> paddings_vec;
-    auto dims_size = t_dims.size();
-    paddings_vec.reserve(dims_size * 2);
-    for (int i = 0; i < dims_size; ++i) {
-      std::uniform_int_distribution<int> pad_distribution(0, t_dims[i]);
-      int pad_size = pad_distribution(generator());
-      std::uniform_int_distribution<int> lower_distribution(0, pad_size);
-      int low_pad_size = lower_distribution(generator());
-      paddings_vec.push_back(low_pad_size);
-      paddings_vec.push_back(pad_size - low_pad_size);
-      t_dims[i] -= pad_size;
-    }
-    Tensor paddings;
-    CHECK(paddings.CopyFrom(AsIntTensor(tpaddings, paddings_vec),
-                            TensorShape({static_cast<int64_t>(dims_size), 2})));
-    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Pad")
-                                             .RandomInput(type, t_dims)
-                                             .Input(paddings)
-                                             .Attr("T", type)
-                                             .Attr("Tpaddings", tpaddings));
+TEST_F(OpTest, PadV2) {
+  Repeatedly([this]() {
+    auto a = ChoosePadArguments();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("PadV2")
+            .RandomInput(a.input_type, a.input_shape)
+            .Input(a.paddings)
+            .Input(a.constant_values)
+            .Attr("T", a.input_type)
+            .Attr("Tpaddings", a.paddings_type));
   });
 }
 
@@ -3939,23 +4109,15 @@ TEST_F(OpTest, Size) {
 
 TEST_F(OpTest, Slice) {
   Repeatedly([this]() {
-    auto type = Choose<DataType>(kAllXlaTypes);
-    std::vector<int64_t> data_dims = RandomDims();
-
-    std::vector<int32> begin(data_dims.size()), size(data_dims.size());
-    for (int i = 0; i < data_dims.size(); ++i) {
-      begin[i] =
-          std::uniform_int_distribution<int32>(0, data_dims[i])(generator());
-      size[i] = std::uniform_int_distribution<int32>(
-          -1, data_dims[i] - begin[i])(generator());
-    }
-    return ExpectTfAndXlaOutputsAreClose(
-        OpTestBuilder("Slice")
-            .RandomInput(type, data_dims)
-            .Input(test::AsTensor<int32>(begin))
-            .Input(test::AsTensor<int32>(size))
-            .Attr("T", type)
-            .Attr("Index", DT_INT32));
+    SliceArguments a = ChooseSliceArguments(true);
+    std::vector<int32> size;
+    size.insert(size.end(), a.size.begin(), a.size.end());
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Slice")
+                                             .RandomInput(a.type, a.shape)
+                                             .Input(a.indices)
+                                             .Input(test::AsTensor<int32>(size))
+                                             .Attr("T", a.type)
+                                             .Attr("Index", a.indices_type));
   });
 }
 
@@ -4424,6 +4586,20 @@ TEST_F(OpTest, TanhGrad) {
   });
 }
 
+TEST_F(OpTest, TensorScatterUpdate) {
+  GTEST_SKIP() << "b/201095155";
+  GTEST_SKIP() << "b/197140886";
+  Repeatedly([this]() {  // NOLINT: due to GTEST_SKIP
+    auto a = ChooseScatterArguments();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("TensorScatterUpdate")
+                                             .RandomInput(a.type, a.shape)
+                                             .Input(a.indices)
+                                             .Input(a.updates)
+                                             .Attr("T", a.type)
+                                             .Attr("Tindices", a.indices_type));
+  });
+}
+
 TEST_F(OpTest, Tile) {
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
@@ -4542,6 +4718,18 @@ TEST_F(OpTest, XlaDotV2) {
             .Attr("LhsT", a.dtype)
             .Attr("RhsT", a.dtype)
             .Attr("preferred_element_type", a.dtype));
+  });
+}
+
+TEST_F(OpTest, XlaDynamicUpdateSlice) {
+  Repeatedly([this]() {
+    SliceArguments a = ChooseSliceArguments(false);
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("XlaDynamicUpdateSlice")
+                                             .RandomInput(a.type, a.shape)
+                                             .RandomInput(a.type, a.size)
+                                             .Input(a.indices)
+                                             .Attr("T", a.type)
+                                             .Attr("Tindices", a.indices_type));
   });
 }
 

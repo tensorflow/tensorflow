@@ -42,12 +42,6 @@ StatusOr<GlobalDeviceId> Thunk::ExecuteParams::GetGlobalDeviceId() const {
       return "kConvolution";
     case Thunk::kCopy:
       return "kCopy";
-    case Thunk::kCudnnBatchNormBackward:
-      return "kCudnnBatchNormBackward";
-    case Thunk::kCudnnBatchNormForwardInference:
-      return "kCudnnBatchNormForwardInference";
-    case Thunk::kCudnnBatchNormForwardTraining:
-      return "kCudnnBatchNormForwardTraining";
     case Thunk::kCustomCall:
       return "kCustomCall";
     case Thunk::kNcclAllGather:

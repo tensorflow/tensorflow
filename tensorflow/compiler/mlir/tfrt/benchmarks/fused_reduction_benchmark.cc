@@ -79,7 +79,7 @@ llvm::SmallVector<InputTensorSpec> Inputs(ssize_t dim) {
 #define BM(FN) BM_##FN->Arg(0);
 
 #define BM_SUITE(NAME, DYNAMIC, SIZE)                                      \
-  BM(CpurtV(NAME, FusedReduction1D(DYNAMIC, SIZE), "main", Inputs(SIZE))); \
+  BM(JitrtV(NAME, FusedReduction1D(DYNAMIC, SIZE), "main", Inputs(SIZE))); \
   BM(Eigen(NAME, EigenFusedReduction1D(), Inputs(SIZE)));                  \
   BM(Tfrt(NAME, FusedReduction1D(DYNAMIC, SIZE), "main", Inputs(SIZE)))
 

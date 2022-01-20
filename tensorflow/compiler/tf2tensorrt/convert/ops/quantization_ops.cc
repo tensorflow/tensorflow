@@ -95,7 +95,7 @@ StatusOr<nvinfer1::ITensor*> ExlicitQDQInputToTensor(
   TRT_ShapedWeights trt_weights = input.weights();
   StatusOr<nvinfer1::IConstantLayer*> weights_const =
       builder->WeightsToConstant(trt_weights.GetTrtWeights(),
-                                 trt_weights.shape_);
+                                 trt_weights.Shape());
   TRT_ENSURE_PTR_OK(weights_const);
   params->converter->SetLayerName(*weights_const, params->node_def, "const");
   nvinfer1::ITensor* qdq_input = (*weights_const)->getOutput(0);

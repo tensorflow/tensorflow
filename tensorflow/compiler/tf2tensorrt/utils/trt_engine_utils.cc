@@ -60,24 +60,19 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
                           const nvinfer1::IExecutionContext* execution_context,
                           int binding_index, bool use_implicit_batch,
                           int batch_size, TensorShape& shape) {
-  nvinfer1::Dims dims;
-  if (use_implicit_batch) {
-    dims = cuda_engine->getBindingDimensions(binding_index);
-  } else {
-    // Get dims from context instead of engine in explicit batch mode because
-    // the engine might have dynamic shapes.
-    dims = execution_context->getBindingDimensions(binding_index);
+  nvinfer1::Dims dims =
+      use_implicit_batch
+          ? cuda_engine->getBindingDimensions(binding_index)
+          : execution_context->getBindingDimensions(binding_index);
+  if (!use_implicit_batch) {
     if (dims.nbDims == -1) {
-      // Invalid dimensions. There can be multiple reasons for this. If we have
-      // incompatible input shapes (network invalid for the current profile)
-      // that can trigger this error.
       return errors::Internal(
           "Binding index out of range. This can happen if profile is not set, "
           "or the network is invalid for the current profile.");
     }
   }
-  TF_RETURN_IF_ERROR(TrtDimsToTensorShape(
-      dims, &shape,
+  TF_RETURN_IF_ERROR(DimsAdapter(dims).TensorShape(
+      &shape,
       use_implicit_batch ? absl::optional<int>(batch_size) : absl::nullopt));
   return Status::OK();
 }
@@ -126,10 +121,11 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
 
       if (cuda_engine->isExecutionBinding(binding_index)) {
         nvinfer1::Dims trt_dims;
-        TF_RETURN_IF_ERROR(TensorShapeToTrtDims(input_shape, false, &trt_dims));
+        auto adap = DimsAdapter::Create(input_shape);
+        TRT_ENSURE_OK(adap);
         VLOG(2) << "Setting binding dimensions for idx " << binding_index;
-        bool ret =
-            execution_context->setBindingDimensions(binding_index, trt_dims);
+        bool ret = execution_context->setBindingDimensions(binding_index,
+                                                           adap->AsTrtDims());
         if (!ret) {
           VLOG(2) << "Error setting engine input " << binding_index << " "
                   << DebugString(trt_dims);

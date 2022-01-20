@@ -1120,6 +1120,11 @@ TfLiteStatus Subgraph::RemoveUnusedInputs() {
       }
     }
   }
+  // Count references to SubGraph output tensors.
+  for (auto iter = outputs_.begin(); iter != outputs_.end(); iter++) {
+    if (*iter == kTfLiteOptionalTensor) continue;
+    refcounts[*iter]++;
+  }
 
   // Mark unused inputs as kTfLiteOptionalTensor.
   for (auto iter = inputs_.begin(); iter != inputs_.end(); iter++) {

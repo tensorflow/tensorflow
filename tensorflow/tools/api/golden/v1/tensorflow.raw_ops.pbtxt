@@ -113,6 +113,10 @@ tf_module {
     argspec: "args=[\'devices\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "AnonymousMultiDeviceIteratorV3"
+    argspec: "args=[\'devices\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "AnonymousMutableDenseHashTable"
     argspec: "args=[\'empty_key\', \'deleted_key\', \'value_dtype\', \'value_shape\', \'initial_num_buckets\', \'max_load_factor\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'131072\', \'0.8\', \'None\'], "
   }

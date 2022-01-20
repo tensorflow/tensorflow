@@ -488,7 +488,7 @@ class InfeedQueue(object):
       set; or if a dequeue op has already been generated.
     """
     self.freeze()
-    if self._generated_dequeue_op:
+    if self._generated_dequeue_op and not ops.inside_function():
       raise ValueError("Can't generate two dequeue Ops from the same queue")
     self._generated_dequeue_op = True
     full_name = "%s/dequeue" % self._name
@@ -610,7 +610,7 @@ class InfeedQueue(object):
     """
     self.set_configuration_from_sharded_input_tensors(sharded_inputs)
     self.freeze()
-    if self._generated_enqueue_ops:
+    if self._generated_enqueue_ops and not ops.inside_function():
       raise ValueError("Can't generate two enqueue Ops from the same queue")
     self._generated_enqueue_ops = True
     if tpu_ordinal_function is None:
@@ -710,7 +710,7 @@ class InfeedQueue(object):
         tpu_ordinal_function = _ordinal_function_from_map
     self.set_configuration_from_input_tensors(inputs)
     self.freeze()
-    if self._generated_enqueue_ops:
+    if self._generated_enqueue_ops and not ops.inside_function():
       raise ValueError("Can't generate two enqueue Ops from the same queue")
     self._generated_enqueue_ops = True
     split_name_prefix = "%s/split" % self._name
@@ -796,7 +796,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
       set; or if a dequeue op has already been generated.
     """
     self.freeze()
-    if self._generated_dequeue_op:
+    if self._generated_dequeue_op and not ops.inside_function():
       raise ValueError("Can't generate two dequeue Ops from the same queue")
     self._generated_dequeue_op = True
     full_name = "%s/dequeue" % self._name

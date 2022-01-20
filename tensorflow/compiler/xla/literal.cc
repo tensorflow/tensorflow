@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/hash/hash.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -1158,7 +1159,6 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
 }
 
 size_t LiteralBase::Hash(int64_t byte_limit) const {
-  using tensorflow::Hash64;
   using tensorflow::Hash64Combine;
 
   size_t hash_value = ShapeUtil::Hash(shape());
@@ -1170,9 +1170,10 @@ size_t LiteralBase::Hash(int64_t byte_limit) const {
         }
 
         CHECK(LayoutUtil::IsDense(subshape.layout()));
-        hash_value = Hash64Combine(
-            hash_value, Hash64(static_cast<const char*>(untyped_data(index)),
-                               std::min(byte_limit, size_bytes(index))));
+        auto data =
+            absl::MakeConstSpan(static_cast<const char*>(untyped_data(index)),
+                                std::min(byte_limit, size_bytes(index)));
+        hash_value = Hash64Combine(hash_value, xla::HashOf(data));
       });
 
   return hash_value;

@@ -48,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -1644,10 +1643,10 @@ static LogicalResult inferConvReturnTypes(
   const Value filter = op.filter();
   const TensorType input_ty = input.getType().template cast<TensorType>();
   const TensorType filter_ty = filter.getType().template cast<TensorType>();
-  const StringRef paddings = op.padding().getValue();
+  const StringRef paddings = op.padding();
 
   ArrayRef<Attribute> strides = op.strides().getValue();
-  StringRef data_format = op.data_format().getValue();
+  StringRef data_format = op.data_format();
   ArrayRef<Attribute> dilations = op.dilations().getValue();
 
   tensorflow::TensorFormat format;
@@ -2338,7 +2337,21 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
   ShapedType type = input().getType().dyn_cast<ShapedType>();
   if (!type || !type.hasRank()) return {};
   // If shape attribute equals input operand's type's shape, fold it to input.
-  if (type.getShape() == shape()) return input();
+  llvm::Optional<llvm::ArrayRef<int64_t>> shape_constraint = shape();
+  if (type.getShape() == shape_constraint) return input();
+
+  // If input operand's type's shape always satisfies the shape attribute, fold
+  // it to input.
+  if (shape_constraint.hasValue() &&
+      shape_constraint->size() == type.getShape().size()) {
+    for (int i = 0; i < shape_constraint->size(); ++i) {
+      if (!ShapedType::isDynamic(shape_constraint.getValue()[i]) &&
+          type.getDimSize(i) != shape_constraint.getValue()[i]) {
+        return {};
+      }
+    }
+    return input();
+  }
   // Else retain to enable failing dynamically.
   return {};
 }
@@ -3144,6 +3157,119 @@ void HashTableOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<HashTableAndInitializeTableToV2>(context);
   results.insert<HashTableAndLookupTableSizeToV2>(context);
   results.insert<HashTableAndLookupTableFindToV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BitcastOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(BitcastOp op) {
+  auto input_type = op.input().getType().cast<ShapedType>();
+  auto output_type = op.output().getType().cast<ShapedType>();
+  auto input_element_type = input_type.getElementType();
+  auto output_element_type = output_type.getElementType();
+
+  // We only handle float and int element type in the verifier currently
+  // TODO(hanxiongwang): we can plan to handle more element type checks besides
+  // int and float in the verifier
+  if (input_type.hasStaticShape() && output_type.hasStaticShape() &&
+      input_element_type.isIntOrFloat() && output_element_type.isIntOrFloat()) {
+    const auto input_element_type_bitwidth =
+        input_element_type.getIntOrFloatBitWidth();
+    const auto output_element_type_bitwidth =
+        output_element_type.getIntOrFloatBitWidth();
+
+    auto is_output_shape_valid_with_small_input_element_type_bitwidth = [&]() {
+      if (output_element_type_bitwidth % input_element_type_bitwidth != 0) {
+        op.emitOpError() << "output element bitwidth is not multiple "
+                         << "of input element bitwidth";
+        return failure();
+      }
+      if (input_type.getShape().size() != output_type.getShape().size() + 1) {
+        op.emitOpError() << "rank of input tensor is "
+                         << input_type.getShape().size()
+                         << ". rank of output tensor is expected to be "
+                         << input_type.getShape().size() - 1 << ", instead of "
+                         << output_type.getShape().size() << ".";
+        return failure();
+      }
+      const auto rightmost_dim_size_divisor =
+          output_element_type_bitwidth / input_element_type_bitwidth;
+      if (input_type.getShape().empty() ||
+          input_type.getShape().back() != rightmost_dim_size_divisor) {
+        op.emitOpError()
+            << "input rightmost dimension size is not equal to the divisor. "
+            << "the last dimension of input is expected to be "
+            << rightmost_dim_size_divisor;
+        return failure();
+      }
+      for (auto idx = 0; idx < output_type.getShape().size(); idx++) {
+        if (input_type.getShape()[idx] != output_type.getShape()[idx]) {
+          op.emitOpError()
+              << "the " << idx << "th dim of output tensor is "
+              << output_type.getShape()[idx]
+              << ". It is not equal to the one in input tensor, which is "
+              << input_type.getShape()[idx];
+          return failure();
+        }
+      }
+      return success();
+    };
+
+    auto is_output_shape_valid_with_small_output_element_type_bitwidth = [&]() {
+      if (input_element_type_bitwidth % output_element_type_bitwidth != 0) {
+        op.emitOpError() << "input element bitwidth is not multiple "
+                         << "of output element bitwidth";
+        return failure();
+      }
+      if (input_type.getShape().size() + 1 != output_type.getShape().size()) {
+        op.emitOpError() << "rank of input tensor is "
+                         << input_type.getShape().size()
+                         << ". rank of output tensor is expected to be "
+                         << input_type.getShape().size() + 1 << ", instead of "
+                         << output_type.getShape().size() << ".";
+        return failure();
+      }
+      const auto rightmost_dim_size_divisor =
+          input_element_type_bitwidth / output_element_type_bitwidth;
+      if (output_type.getShape().back() != rightmost_dim_size_divisor) {
+        op.emitOpError()
+            << "output rightmost dimension size is not equal to the divisor. "
+            << "the last dimension of output is expected to be "
+            << rightmost_dim_size_divisor;
+        return failure();
+      }
+      for (auto idx = 0; idx < input_type.getShape().size(); idx++) {
+        if (input_type.getShape()[idx] != output_type.getShape()[idx]) {
+          op.emitOpError()
+              << "the " << idx << "th dim of output tensor is "
+              << output_type.getShape()[idx]
+              << ". It is not equal to the one in input tensor, which is "
+              << input_type.getShape()[idx];
+          return failure();
+        }
+      }
+      return success();
+    };
+
+    auto is_output_shape_valid_with_equal_bitwidth = [&]() {
+      if (input_type.getShape().equals(output_type.getShape())) {
+        return success();
+      }
+      op.emitOpError()
+          << "output tensor shape shall be equal to input tensor shape";
+      return failure();
+    };
+
+    if (input_element_type_bitwidth < output_element_type_bitwidth) {
+      return is_output_shape_valid_with_small_input_element_type_bitwidth();
+    } else if (input_element_type_bitwidth > output_element_type_bitwidth) {
+      return is_output_shape_valid_with_small_output_element_type_bitwidth();
+    } else {
+      return is_output_shape_valid_with_equal_bitwidth();
+    }
+  }
+  return success();
 }
 
 }  // namespace TF

@@ -94,8 +94,8 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
   int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  int supported_versions[] = {75, 72, 70, 62, 61, 60, 53,
-                              52, 50, 37, 35, 32, 30};
+  int supported_versions[] = {86, 80, 75, 72, 70, 62, 61, 60,
+                              53, 52, 50, 37, 35, 32, 30};
   for (int v : supported_versions) {
     if (v <= compute_capability_version) {
       sm_version = v;
@@ -105,7 +105,7 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
 
   // If the current CC isn't supported by LLVM and it is newer then
   // the max supported LLVM version, do not warn about it. The end
-  // user can't do anything about this. PTX compiled for SM75 will
+  // user can't do anything about this. E.g., PTX compiled for SM75 will
   // run on SM80 too.
   if (sm_version != compute_capability_version &&
       compute_capability_version < supported_versions[0]) {
@@ -571,23 +571,11 @@ namespace {
 std::vector<std::string> GetROCDLPaths(std::string amdgpu_version,
                                        const std::string& rocdl_dir_path) {
   // AMDGPU version-neutral bitcodes.
-#if TF_ROCM_VERSION >= 30900
   static std::vector<std::string>* rocdl_filenames =
       new std::vector<std::string>(
-          {"hc.bc", "opencl.bc", "ocml.bc", "ockl.bc",
-           "oclc_finite_only_off.bc", "oclc_daz_opt_off.bc",
-           "oclc_correctly_rounded_sqrt_on.bc", "oclc_unsafe_math_off.bc",
-           "oclc_wavefrontsize64_on.bc"});
-#else
-  static std::vector<std::string>* rocdl_filenames =
-      new std::vector<std::string>({"hc.amdgcn.bc", "opencl.amdgcn.bc",
-                                    "ocml.amdgcn.bc", "ockl.amdgcn.bc",
-                                    "oclc_finite_only_off.amdgcn.bc",
-                                    "oclc_daz_opt_off.amdgcn.bc",
-                                    "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
-                                    "oclc_unsafe_math_off.amdgcn.bc",
-                                    "oclc_wavefrontsize64_on.amdgcn.bc"});
-#endif
+          {"opencl.bc", "ocml.bc", "ockl.bc", "oclc_finite_only_off.bc",
+           "oclc_daz_opt_off.bc", "oclc_correctly_rounded_sqrt_on.bc",
+           "oclc_unsafe_math_off.bc", "oclc_wavefrontsize64_on.bc"});
 
   // Construct full path to ROCDL bitcode libraries.
   std::vector<std::string> result;
@@ -603,11 +591,7 @@ std::vector<std::string> GetROCDLPaths(std::string amdgpu_version,
   }
   result.push_back(tensorflow::io::JoinPath(
       rocdl_dir_path,
-#if TF_ROCM_VERSION >= 30900
       absl::StrCat("oclc_isa_version_", amdgpu_version, ".bc")));
-#else
-      absl::StrCat("oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
-#endif
   return result;
 }
 
@@ -743,20 +727,16 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   // Locate lld.
   // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
   // ROCm-Device-Libs PR.
-  std::string lld_path_2 = tensorflow::io::JoinPath("/opt/rocm", "llvm/bin");
-  auto lld_program =
-      llvm::sys::findProgramByName("ld.lld", {lld_path_1, lld_path_2});
+  std::string lld_path = tensorflow::io::JoinPath("/opt/rocm", "llvm/bin");
+  auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
   if (!lld_program) {
     return xla::InternalError("unable to find ld.lld in PATH: %s",
                               lld_program.getError().message());
   }
   std::vector<llvm::StringRef> lld_args{
-      llvm_ir::AsStringRef("ld.lld"),
-      llvm_ir::AsStringRef("-flavor"),
-      llvm_ir::AsStringRef("gnu"),
-      llvm_ir::AsStringRef("-shared"),
-      llvm_ir::AsStringRef(isabin_path),
-      llvm_ir::AsStringRef("-o"),
+      llvm_ir::AsStringRef("ld.lld"),    llvm_ir::AsStringRef("-flavor"),
+      llvm_ir::AsStringRef("gnu"),       llvm_ir::AsStringRef("-shared"),
+      llvm_ir::AsStringRef(isabin_path), llvm_ir::AsStringRef("-o"),
       llvm_ir::AsStringRef(hsaco_path),
   };
 
@@ -846,14 +826,6 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
   std::string feature_str;
 
   std::string gfx = gcn_arch_name;
-#if TF_ROCM_VERSION < 30900
-  // For ROCm versions older than 3.9, hardcode it to "+code-object-v3"
-  // This is simply to preserve how things were...nohing else
-  feature_str = "+code-object-v3";
-#elif TF_ROCM_VERSION < 40000
-  // For ROCM versions 3.9 and 3.10, hardcode it to empty string
-  feature_str = "";
-#else
   // For ROCm versions 4.0 and greater, we need to specify the correct
   // feature str, based on the underlying GPU HW to get max performance.
   std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
@@ -869,7 +841,6 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
     }
   }
   feature_str = absl::StrJoin(mapped_tokens, ",");
-#endif
 
   return std::make_pair(gfx, feature_str);
 }
@@ -896,13 +867,6 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUAsmPrinter();
-
-#if TF_ROCM_VERSION < 40100
-  // Use code-object-v3 for ROCm versions 4.0.1 and lower, since the
-  // HIP runtime for those ROCm versions expects the v3 HSACO objects
-  // Default is now v4 for newer LLVM versions (starting around 210326)
-  FeedLLVMWithFlags({"--amdhsa-code-object-version=3"});
-#endif
 
 #endif
 

@@ -827,15 +827,13 @@ def HLO_IfOp: HLO_Op<"if", [
   }];
 
   let arguments = (ins
-    HLO_PredTensor:$pred,
-    HLO_TensorOrTuple:$true_arg,
-    HLO_TensorOrTuple:$false_arg
+    HLO_PredTensor:$pred
   );
 
   let regions = (region SizedRegion<1>:$true_branch,
                         SizedRegion<1>:$false_branch);
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs Variadic<HLO_TensorOrToken>);
 
   // TODO(b/129422361): ConditionalOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -866,13 +864,12 @@ def HLO_CaseOp: HLO_Op<"case", [
   }];
 
   let arguments = (ins
-    I32Tensor:$index,
-    Variadic<HLO_TensorOrTuple>:$branch_operands
+    I32Tensor:$index
   );
 
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 
-  let results = (outs Variadic<HLO_TensorOrTuple>);
+  let results = (outs Variadic<HLO_TensorOrToken>);
 
   let hasCustomHLOConverter = 1;
 
@@ -913,6 +910,7 @@ def HLO_WhileOp: HLO_Op<"while", [
   }];
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+  let hasCanonicalizer = 1;
   let verifier = [{ return mhlo::verify(*this); }];
   let printer = [{ return ::mlir::mhlo::printWhileOp(*this, p); }];
   let parser = [{ return ::mlir::mhlo::parseWhileOp(parser, result); }];
@@ -1297,6 +1295,7 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let results = (outs HLO_StaticShapeTensor);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
   // Only handles a static subset of the legacy format.
   let hasCustomHLOConverter = 1;
 }
@@ -1566,6 +1565,7 @@ def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]> {
     HLO_PrecisionConfigAttr:$precision_config
   );
   let results = (outs HLO_Tensor);
+  let verifier = [{ return Verify(*this); }];
   // Dot op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;
@@ -1954,7 +1954,8 @@ def HLO_TraceOp: HLO_Op<"trace", []> {
 }
 
 def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+      [NoSideEffect, SameOperandsAndResultElementType,
+       InferTensorTypeWithReify]> {
   let summary = "Transpose operator";
   let description = [{
     Permutes the dimensions of `operand` according to the given `permutation`.
@@ -1968,6 +1969,13 @@ def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
     I64ElementsAttr:$permutation
   );
   let results = (outs HLO_Tensor);
+
+  let extraClassDeclaration = [{
+    // Method from  InferTypeOpInterface interface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 
   let hasFolder = 1;
   let hasCanonicalizer = 1;
@@ -2095,6 +2103,26 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 
   // TODO(hinsu): Canonicalize to lower this client side HLO op to server
   // side HLO ops.
+}
+
+def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
+      [NoSideEffect, HLO_PairwiseSameOperandAndResultType]> {
+  let summary = [{
+    The `hlo.optimization_barrier` op blocks optimizations.
+  }];
+  let description = [{
+    Blocks any optimization pass from moving computations across the barrier.
+
+    Ensures that all inputs are evaluated before any operators that depend on the barrier's outputs.
+    See
+    https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier
+  }];
+
+  let arguments = (ins Variadic<HLO_TensorOrToken>:$arg);
+
+  let results = (outs Variadic<HLO_TensorOrToken>);
+
+  let hasCustomHLOConverter = 1;
 }
 
 //===----------------------------------------------------------------------===//

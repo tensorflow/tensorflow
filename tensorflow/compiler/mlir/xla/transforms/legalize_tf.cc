@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
+#include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/util/padding.h"
@@ -1821,7 +1822,7 @@ class ConvertLeakyReluGradOp : public OpRewritePattern<TF::LeakyReluGradOp> {
 //   %4 = mhlo.constant dense<0.000000e+00> : tensor<f32>
 //   %5 = "mhlo.broadcast"(%4)
 //   %6 = "mhlo.select"(%3, %input, %5)
-//   %7 = "mhlo.reduce"(%6, %4) ( {
+//   %7 = "mhlo.reduce"(%6, %4) ({
 //   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
 //     %9 = mhlo.add %arg1, %arg2 : tensor<f32>
 //     "mhlo.return"(%9) : (tensor<f32>) -> ()
@@ -3400,7 +3401,7 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
     int64_t input_dim_size = input_type.getDimSize(dim_index);
     // If we are splitting along the dynamic dimension then we cannot compute
     // the static dimension length.
-    if (TensorType::isDynamic(input_dim_size)) return failure();
+    if (ShapedType::isDynamic(input_dim_size)) return failure();
 
     int64_t num_splits = op.getNumResults();
     int64_t slice_size = input_dim_size / num_splits;
@@ -3464,7 +3465,7 @@ class ConvertSplitOpDynamic : public OpRewritePattern<TF::SplitOp> {
     // slice along the split dimension. We are splitting along the dynamic
     // dimension, or using static pattern transform
     int64_t c_input_dim_size = input_type.getDimSize(dim_index);
-    if (!TensorType::isDynamic(c_input_dim_size)) return failure();
+    if (!ShapedType::isDynamic(c_input_dim_size)) return failure();
 
     Value input_dim_size =
         rewriter.create<tensor::DimOp>(loc, input, dim_index);
@@ -3600,7 +3601,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     if (dim_index < 0) dim_index += input_rank;
 
     int64_t input_dim_size = input_type.getDimSize(dim_index);
-    if (TensorType::isDynamic(input_dim_size)) return failure();
+    if (ShapedType::isDynamic(input_dim_size)) return failure();
 
     assert(((dynamic_dim_index && total_dim_size <= input_dim_size) ||
             (!dynamic_dim_index && total_dim_size == input_dim_size)) &&
@@ -4246,16 +4247,13 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       }
       // HLO ops are only defined on tensors, so we cast the divisor from
       // index -> i64 -> tensor<1xi64> -> tensor<i64> -> tensor<reduction type>
-      auto divisor_casted = rewriter.create<arith::IndexCastOp>(
+      Value divisor_casted = rewriter.create<arith::IndexCastOp>(
           loc, rewriter.getI64Type(), divisor_count);
-      auto divisor_tensor = rewriter.create<tensor::FromElementsOp>(
-          loc, ValueRange{divisor_casted});
-      auto divisor_reshaped = rewriter.create<mhlo::ReshapeOp>(
+      Value divisor_tensor = rewriter.create<tensor::FromElementsOp>(
           loc, RankedTensorType::get({}, rewriter.getI64Type()),
-          divisor_tensor);
-      auto divisor = rewriter.create<ConvertOp>(
-          loc, RankedTensorType::get({}, reduce_element_type),
-          divisor_reshaped);
+          divisor_casted);
+      Value divisor = rewriter.create<ConvertOp>(
+          loc, RankedTensorType::get({}, reduce_element_type), divisor_tensor);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
       result = rewriter.create<chlo::BroadcastDivOp>(loc, result, divisor,
                                                      broadcast_dims);
@@ -4270,7 +4268,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // that this is a restricted form of shape manipulation that is just adding
     // unit dims.
     if (op.keep_dims()) {
-      for (auto dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
+      for (auto &dim_is_reduced : llvm::enumerate(reduced_dimensions_bitmap)) {
         if (dim_is_reduced.value()) {
           auto index_attr = GetI32ElementsAttr(
               {static_cast<int>(dim_is_reduced.index())}, &rewriter);
@@ -5479,7 +5477,7 @@ class ConvertOutfeedEnqueueTupleOp
 // We will get:
 //
 // %1 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<16x16xi32>
-// %2 = "mhlo.sort"(%input, %1) ( {
+// %2 = "mhlo.sort"(%input, %1) ({
 // ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>,
 //      %arg3: tensor<i32>, %arg4: tensor<i32>):
 //   %7 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = "GT"}: ...
@@ -6249,6 +6247,52 @@ class ConvertXlaReduceScatterOp
     }
 
     rewriter.replaceOp(op, {result});
+    return success();
+  }
+};
+
+// Converts tf.XlaReduceWindow to mhlo.ReduceWindow
+class ConvertXlaReduceWindowOp
+    : public OpRewritePattern<TF::XlaReduceWindowOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaReduceWindowOp op,
+                                PatternRewriter &rewriter) const override {
+    DenseElementsAttr window_dimensions, window_strides, base_dilations,
+        window_dilations, padding;
+    if (!(matchPattern(op.window_dimensions(),
+                       m_Constant(&window_dimensions)) &&
+          matchPattern(op.window_strides(), m_Constant(&window_strides)) &&
+          matchPattern(op.base_dilations(), m_Constant(&base_dilations)) &&
+          matchPattern(op.window_dilations(), m_Constant(&window_dilations)) &&
+          matchPattern(op.padding(), m_Constant(&padding))))
+      return failure();
+
+    Location loc = op.getLoc();
+
+    SmallVector<Type> result_types{op.getResult().getType()};
+    // Create the mhlo.SelectAndScatter op.
+    auto reduce_window_op = rewriter.create<mhlo::ReduceWindowOp>(
+        loc, result_types, op.input(), op.init_value(),
+        hlo::ConvertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(window_strides, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(base_dilations, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(window_dilations, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(padding, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>());
+    // Insert a call to the reducer in the region of the mhlo op.
+    mlir::SymbolRefAttr func = op.computation();
+    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+        op->getParentOfType<mlir::ModuleOp>(), func));
+    auto func_ty = func_op.getType();
+    BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_window_op.body());
+
+    rewriter.replaceOp(op, reduce_window_op.getResults());
+
     return success();
   }
 };
@@ -7065,7 +7109,54 @@ class ConvertPrintOp : public OpRewritePattern<TF::PrintOp> {
   }
 };
 
-// Convert tf.Xlasort to mhlo.Sort
+// Converts tf.XlaSelectAndScatter to mhlo.SelectAndScatter
+class ConvertXlaSelectAndScatterOp
+    : public OpRewritePattern<TF::XlaSelectAndScatterOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaSelectAndScatterOp op,
+                                PatternRewriter &rewriter) const override {
+    ElementsAttr window_dimensions, window_strides, padding;
+    if (!(matchPattern(op.window_dimensions(),
+                       m_Constant(&window_dimensions)) &&
+          matchPattern(op.window_strides(), m_Constant(&window_strides)) &&
+          matchPattern(op.padding(), m_Constant(&padding))))
+      return failure();
+
+    Location loc = op.getLoc();
+
+    SmallVector<Type> result_types{op.getResult().getType()};
+    // Create the mhlo.SelectAndScatter op.
+    auto select_and_scatter_op = rewriter.create<mhlo::SelectAndScatterOp>(
+        loc, result_types, op.operand(), op.source(), op.init_value(),
+        hlo::ConvertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(window_strides, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>(),
+        hlo::ConvertElementsAttr(padding, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>());
+
+    auto insert_call_to = [&](const mlir::SymbolRefAttr &func, Region *region) {
+      auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+          op->getParentOfType<mlir::ModuleOp>(), func));
+      auto func_ty = func_op.getType();
+      BuildBodyWithCall(rewriter, loc, func, func_ty, region);
+    };
+
+    // Insert a call to the select function in the select region of the mhlo op.
+    insert_call_to(op.select(), &select_and_scatter_op.select());
+    // Insert a call to the scatter function in the scatter region of the mhlo
+    // op.
+    insert_call_to(op.scatter(), &select_and_scatter_op.scatter());
+
+    rewriter.replaceOp(op, select_and_scatter_op.getResult());
+
+    return success();
+  }
+};
+
+// Convert tf.XlaSort to mhlo.Sort
 class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -7078,6 +7169,57 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
         CreateSortOp(&rewriter, op.getLoc(), {op.input()}, {element_type},
                      /*dimension=*/-1, /*is_stable=*/false, /*direction=*/"LT");
     rewriter.replaceOp(op, sort_op.getResult(0));
+    return success();
+  }
+};
+
+inline llvm::Optional<xla::RandomAlgorithm> TensorFlowRngAlgToXla(
+    tensorflow::Algorithm alg) {
+  if (alg == tensorflow::RNG_ALG_PHILOX) {
+    return xla::RandomAlgorithm::RNG_PHILOX;
+  } else if (alg == tensorflow::RNG_ALG_THREEFRY) {
+    return xla::RandomAlgorithm::RNG_THREE_FRY;
+  } else if (alg == tensorflow::RNG_ALG_AUTO_SELECT) {
+    return xla::RandomAlgorithm::RNG_DEFAULT;
+  }
+  return llvm::None;
+}
+
+// Converts tf.XlaRngBitGenerator op to mhlo.RngBitGenerator op.
+class ConvertXlaRngBitGeneratorOp
+    : public OpRewritePattern<TF::XlaRngBitGeneratorOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaRngBitGeneratorOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    DenseElementsAttr algorithm;
+    if (!(matchPattern(op.algorithm(), m_Constant(&algorithm))) ||
+        algorithm.getType().getRank()) {
+      return op.emitOpError() << "algorithm must be a constant scalar";
+    }
+    auto alg = static_cast<tensorflow::Algorithm>(
+        algorithm.getValues<IntegerAttr>()[0].getInt());
+    auto xla_alg = TensorFlowRngAlgToXla(alg);
+    if (!xla_alg) {
+      return op.emitOpError() << "unknown algorithm";
+    }
+
+    auto rng_bit_generator_op = rewriter.create<mhlo::RngBitGeneratorOp>(
+        loc,
+        mlir::TupleType::get(
+            rewriter.getContext(),
+            {op.getResult(0).getType(), op.getResult(1).getType()}),
+        rewriter.getI32IntegerAttr(xla_alg.getValue()), op.initial_state());
+
+    SmallVector<Value, 2> new_results = {
+        rewriter.create<mhlo::GetTupleElementOp>(
+            loc, rng_bit_generator_op.getResult(), 0),
+        rewriter.create<mhlo::GetTupleElementOp>(
+            loc, rng_bit_generator_op.getResult(), 1)};
+    rewriter.replaceOp(op, new_results);
+
     return success();
   }
 };
@@ -7220,6 +7362,9 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertXlaShardingOp,
     ConvertXlaDynamicUpdateSliceOp,
     ConvertXlaReduceScatterOp,
+    ConvertXlaReduceWindowOp,
+    ConvertXlaRngBitGeneratorOp,
+    ConvertXlaSelectAndScatterOp,
     ConvertXlaSortOp,
     ConvertXlaVariadicReduceV2Op,
     ConvertXlaVariadicSortOp,

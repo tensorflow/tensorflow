@@ -3962,189 +3962,6 @@ PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
                         forward_pass_name_scope);
 }
 
-namespace {
-std::string GetStringPyObjectRepr(PyObject* object) {
-  tensorflow::Safe_PyObjectPtr repr(PyObject_Repr(object));
-  if (repr != nullptr) {
-    tensorflow::Safe_PyObjectPtr unicode(PyUnicode_AsASCIIString(repr.get()));
-    if (unicode != nullptr) {
-      return std::string(PyBytes_AsString(unicode.get()));
-    }
-  }
-  PyErr_Clear();
-  return "<object __repr__ could not be created.>";
-}
-
-bool SupportsProtocol(PyObject* object) {
-  return PyObject_HasAttrString(object, "__tf_tracing_type__");
-}
-
-tensorflow::StatusOr<PyObject*> GetProtocolTraceType(PyObject* object,
-                                                     PyObject* context) {
-  tensorflow::Safe_PyObjectPtr protocol(
-      PyObject_GetAttrString(object, "__tf_tracing_type__"));
-  DCHECK(protocol != nullptr);
-
-  tensorflow::Safe_PyObjectPtr call_args(Py_BuildValue("(O)", context));
-  tensorflow::Safe_PyObjectPtr tracetype(
-      PyObject_CallObject(protocol.get(), call_args.get()));
-
-  if (tracetype.get() == nullptr) {
-    PyErr_Clear();
-    return tensorflow::errors::Unknown(
-        "Call to '__tf_tracing_type__' failed to return a TraceType: ",
-        GetStringPyObjectRepr(object));
-  }
-  Py_INCREF(tracetype.get());
-  return tracetype.get();
-}
-
-tensorflow::StatusOr<PyObject*> EncodeTraceType(PyObject* object,
-                                                PyObject* context);
-
-tensorflow::StatusOr<PyObject*> MakeOrderedCollectionType(PyObject* type,
-                                                          PyObject* sequence,
-                                                          PyObject* context) {
-  tensorflow::Safe_PyObjectPtr py_sequence(
-      PySequence_Fast(sequence, "Unable to create sequence from object."));
-
-  int size = PySequence_Fast_GET_SIZE(py_sequence.get());
-  PyObject** py_sequence_array = PySequence_Fast_ITEMS(py_sequence.get());
-  tensorflow::Safe_PyObjectPtr tuple(PyTuple_New(size));
-  for (int i = 0; i < size; ++i) {
-    auto trace_type = EncodeTraceType(py_sequence_array[i], context);
-    if (!trace_type.ok()) {
-      return trace_type.status();
-    }
-    PyTuple_SET_ITEM(tuple.get(), i, trace_type.ValueOrDie());
-  }
-
-  return PyObject_CallObject(type, tuple.get());
-}
-
-tensorflow::StatusOr<PyObject*> MakeDictType(PyObject* mapping,
-                                             PyObject* context) {
-  tensorflow::Safe_PyObjectPtr keys(tensorflow::swig::MappingKeys(mapping));
-  int size = PyList_Size(keys.get());
-
-  tensorflow::Safe_PyObjectPtr dict(PyDict_New());
-  for (int i = 0; i < size; i++) {
-    PyObject* key = PyList_GET_ITEM(keys.get(), i);
-    tensorflow::Safe_PyObjectPtr value(PyObject_GetItem(mapping, key));
-    auto value_trace = EncodeTraceType(value.get(), context);
-    if (!value_trace.ok()) {
-      return value_trace.status();
-    }
-    PyDict_SetItem(dict.get(), key, value_trace.ValueOrDie());
-    Py_DECREF(value_trace.ValueOrDie());
-  }
-
-  tensorflow::Safe_PyObjectPtr call_args(Py_BuildValue("(O)", dict.get()));
-  return PyObject_CallObject(
-      tensorflow::swig::GetRegisteredPyObject("DictType"), call_args.get());
-}
-
-tensorflow::StatusOr<PyObject*> MakeAttrsType(PyObject* object,
-                                              PyObject* context) {
-  tensorflow::Safe_PyObjectPtr attributes_sequence(
-      PySequence_Fast(PyObject_GetAttrString(object, "__attrs_attrs__"),
-                      "Unable to create sequence from object."));
-
-  int size = PySequence_Fast_GET_SIZE(attributes_sequence.get());
-  PyObject** py_sequence_array =
-      PySequence_Fast_ITEMS(attributes_sequence.get());
-  tensorflow::Safe_PyObjectPtr components_tuple(PyTuple_New(size));
-  for (int i = 0; i < size; ++i) {
-    tensorflow::Safe_PyObjectPtr name(
-        PyObject_GetAttrString(py_sequence_array[i], "name"));
-    tensorflow::Safe_PyObjectPtr attr_arg(PyObject_GetAttr(object, name.get()));
-    auto trace_type = EncodeTraceType(attr_arg.get(), context);
-    if (!trace_type.ok()) {
-      return trace_type.status();
-    }
-    PyTuple_SET_ITEM(components_tuple.get(), i, trace_type.ValueOrDie());
-  }
-
-  tensorflow::Safe_PyObjectPtr object_type(PyObject_Type(object));
-  tensorflow::Safe_PyObjectPtr call_args(
-      Py_BuildValue("(OO)", object_type.get(), components_tuple.get()));
-  return PyObject_CallObject(
-      tensorflow::swig::GetRegisteredPyObject("AttrsType"), call_args.get());
-}
-
-tensorflow::StatusOr<PyObject*> EncodeGenericObject(PyObject* object,
-                                                    PyObject* context) {
-  std::string type_name = "WeakrefType";
-
-  tensorflow::Safe_PyObjectPtr deletion_observer(
-      PyObject_GetAttrString(context, "deletion_observer"));
-  tensorflow::Safe_PyObjectPtr ref(
-      PyWeakref_NewRef(object, deletion_observer.get()));
-
-  if (ref == nullptr) {
-    // Happens if the type can not be weakly referenceed (such as int).
-    // https://docs.python.org/3/library/weakref.html
-    PyErr_Clear();
-    Py_INCREF(object);
-    ref = tensorflow::make_safe(object);
-    type_name = "GenericType";
-  }
-
-  PyObject* type_class = tensorflow::swig::GetRegisteredPyObject(type_name);
-
-  tensorflow::Safe_PyObjectPtr call_args(Py_BuildValue("(O)", ref.get()));
-  PyObject* tracetype = PyObject_CallObject(type_class, call_args.get());
-  if (PyErr_Occurred()) {
-    return tensorflow::errors::InvalidArgument(
-        "Python object could not be represented through the generic tracing "
-        "type. ",
-        GetStringPyObjectRepr(object),
-        "\nConsider implementing Tracing Protocol for this class.");
-  }
-  return tracetype;
-}
-
-tensorflow::StatusOr<PyObject*> EncodeTraceType(PyObject* object,
-                                                PyObject* context) {
-  if (SupportsProtocol(object)) {
-    return GetProtocolTraceType(object, context);
-  }
-
-  if (PyList_Check(object)) {
-    return MakeOrderedCollectionType(
-        tensorflow::swig::GetRegisteredPyObject("ListType"), object, context);
-  }
-
-  if (tensorflow::swig::IsTuple(object)) {
-    return MakeOrderedCollectionType(
-        tensorflow::swig::GetRegisteredPyObject("TupleType"), object, context);
-  }
-
-  if (tensorflow::swig::IsMapping(object)) {
-    return MakeDictType(object, context);
-  }
-
-  if (tensorflow::swig::IsAttrs(object)) {
-    return MakeAttrsType(object, context);
-  }
-
-  return EncodeGenericObject(object, context);
-}
-
-}  // namespace
-
-// Lowered implementation of generating TraceType of a set of arguments through
-// the Tracing Protocol.
-PyObject* TFE_Py_EncodeArg(PyObject* arg, PyObject* signature_context) {
-  tensorflow::StatusOr<PyObject*> trace_type =
-      EncodeTraceType(arg, signature_context);
-  if (trace_type.ok()) {
-    return *trace_type;
-  }
-  MaybeRaiseExceptionFromStatus(trace_type.status(), nullptr);
-  return nullptr;
-}
-
 // A method prints incoming messages directly to Python's
 // stdout using Python's C API. This is necessary in Jupyter notebooks
 // and colabs where messages to the C stdout don't go to the notebook
@@ -4182,27 +3999,42 @@ void TFE_Py_EnableInteractivePythonLogging() {
 }
 
 namespace {
-// weak reference to Python Context object currently active
-PyObject* weak_eager_context = nullptr;
+// TODO(mdan): Clean this. Maybe by decoupling context lifetime from Python GC?
+// Weak reference to the Python Context (see tensorflow/python/eager/context.py)
+// object currently active. This object is opaque and wrapped inside a Python
+// Capsule. However, the EagerContext object it holds is tracked by the
+// global_c_eager_context object.
+PyObject* global_py_eager_context = nullptr;
+
+// This object tracks the EagerContext owned by global_py_eager_context. Since
+// the vast majority of the Python API is dependent on that
+// global_py_eager_context (including memory management), the Py object owns the
+// C object, so this pointer is non-owning.
+TFE_Context* global_c_eager_context = nullptr;
 }  // namespace
 
+void TFE_Py_SetCEagerContext(TFE_Context* ctx) { global_c_eager_context = ctx; }
+
+TFE_Context* GetCEagerContext() { return global_c_eager_context; }
+
 PyObject* TFE_Py_SetEagerContext(PyObject* py_context) {
-  Py_XDECREF(weak_eager_context);
-  weak_eager_context = PyWeakref_NewRef(py_context, nullptr);
-  if (weak_eager_context == nullptr) {
+  Py_XDECREF(global_py_eager_context);
+  global_py_eager_context = PyWeakref_NewRef(py_context, nullptr);
+  if (global_py_eager_context == nullptr) {
     return nullptr;
   }
   Py_RETURN_NONE;
 }
 
 PyObject* GetPyEagerContext() {
-  if (weak_eager_context == nullptr) {
+  if (global_py_eager_context == nullptr) {
     PyErr_SetString(PyExc_RuntimeError, "Python eager context is not set");
     return nullptr;
   }
-  PyObject* py_context = PyWeakref_GET_OBJECT(weak_eager_context);
+  PyObject* py_context = PyWeakref_GET_OBJECT(global_py_eager_context);
   if (py_context == Py_None) {
-    PyErr_SetString(PyExc_RuntimeError, "Eager context has been destroyed");
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Python eager context has been destroyed");
     return nullptr;
   }
   Py_INCREF(py_context);

@@ -15,8 +15,37 @@
 
 # Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* `tf.keras`:
+
+  * Added `tf.keras.optimizers.experimental.Optimizer`. The reworked
+    optimizer gives more control over different phases of optimizer calls,
+    and is easier to customize. We provide Adam, SGD, Adadelta, AdaGrad and
+    RMSprop optimizers based on `tf.keras.optimizers.experimental.Optimizer`.
+    Generally the new optimizers work in the same way as the old ones,
+    but support new constructor arguments. In the future,
+    the symbols `tf.keras.optimizers.Optimizer`/`Adam`/etc will point
+    to the new optimizers, and the previous generation of optimizers will
+    be moved to `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
+  * Added L2 unit normalization layer `tf.keras.layers.UnitNormalization`.
+  * Added APIs for switching between interactive logging and absl logging.
+    By default, Keras always writes the logs to stdout. However, this is not
+    optimal in a non-interactive environment, where you don't have
+    access to stdout, but can only view the logs. You can use
+    `tf.keras.utils.disable_interactive_logging()` to write the logs to absl
+    logging. You can also use `tf.keras.utils.enable_interactive_logging()`
+    to change it back to stdout, or
+    `tf.keras.utils.is_interactive_logging_enabled()` to check if interactive
+    logging is enabled.
+  * Changed default value for the `verbose` argument of `Model.evaluate()` and
+    `Model.predict()` to `"auto"`, which defaults to `verbose=1` for most cases
+    and defaults to `verbose=2` when used with `ParameterServerStrategy` or with
+    interactive logging disabled.
+
+* `tf.lite`:
+
+  * Added TFLite builtin op support for the following TF ops:
+    * `tf.math.argmin`/`tf.math.argmax` for input data type `tf.bool` on CPU.
+    * `tf.nn.gelu` op for output data type `tf.float32` on CPU.
 
 # Bug Fixes and Other Changes
 
@@ -92,7 +121,6 @@ This release contains contributions from many people at Google, as well as:
 
     *   The "Bug Fixes and Other Changes" section lists more determinism-related
         changes.
-
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
@@ -168,6 +196,12 @@ This release contains contributions from many people at Google, as well as:
         the model's training step with [XLA](https://www.tensorflow.org/xla).
         Note that `jit_compile=True` may not necessarily work for all models.
 
+*   TF Core:
+
+    *   Adding a flag `stateful` to `numpy_function`, allowing to give the
+        guarantee to the runtime that the function call is stateless, which
+        allows for more optimizations in the graph.
+
 *   Deterministic Op Functionality
 
     *   Add determinsitic GPU implementations of:
@@ -228,8 +262,7 @@ This release contains contributions from many people at Google, as well as:
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
-
+jonas-eschle, <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.7.0
 

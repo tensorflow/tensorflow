@@ -1050,6 +1050,13 @@ cc_library(
         "full_type_inference_util.h",
         "full_type_util.h",
     ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+        # Necessary for calling REGISTER_OP with SetTypeConstructor
+        # http://yaqs/4779722181477138432
+        "//intelligence/brella/sql/tensorflow:__pkg__",
+    ],
     deps = [
         ":attr_value_proto_cc",
         ":full_type_proto_cc",

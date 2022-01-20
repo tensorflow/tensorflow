@@ -1147,6 +1147,16 @@ REGISTER_OP("AnonymousMultiDeviceIterator")
       return Status::OK();
     });
 
+REGISTER_OP("AnonymousMultiDeviceIteratorV3")
+    .Output("handle: resource")
+    .Attr("devices: list(string) >= 1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("MultiDeviceIterator")
     .Output("handle: resource")
     .Attr("devices: list(string) >= 1")

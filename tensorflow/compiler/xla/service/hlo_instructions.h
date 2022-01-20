@@ -18,6 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -440,6 +444,7 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
   // group[1] = (0,2), (0,3), (1,2), (1,3)
   // where each pair is (replica_id, partition_id).
   bool use_global_device_ids() const { return use_global_device_ids_; }
+  void set_use_global_device_ids(bool value) { use_global_device_ids_ = value; }
 
  protected:
   std::vector<std::string> ExtraAttributesToStringImpl(
@@ -1096,7 +1101,6 @@ class HloFusionInstruction : public HloInstruction {
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
-  uint64_t InnerHash() const override;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
@@ -1561,6 +1565,9 @@ class HloCustomCallInstruction : public HloInstruction {
   // TODO(jpienaar): Remove this accessor in the follow up.
   const std::string& opaque() const { return raw_backend_config_string(); }
   const std::string& custom_call_target() const { return custom_call_target_; }
+  void set_custom_call_target(absl::string_view target) {
+    custom_call_target_ = std::string(target);
+  }
   void set_feature_group_count(int64_t feature_group_count) {
     feature_group_count_ = feature_group_count;
   }

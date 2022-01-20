@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
@@ -32,7 +33,15 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
+// Stores information about how to quantize a user-specified custom operation.
+struct CustomOpInfo {
+  std::vector<std::int32_t> quantizable_input_indices;
+  bool is_weight_only;
+};
+
 using ::tflite::optimize::ReducedPrecisionSupport;
+using StringSet = absl::flat_hash_set<std::string>;
+using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -169,6 +178,19 @@ struct QuantizationSpecs {
 
   // Whether to use fake quant attributes to calculate quantization parameters.
   bool use_fake_quant_num_bits = false;
+
+  // Names of ops to block from quantization. Used in QuantizePass.
+  // For dynamic range quantization, ops in blocklist are quantized in weight-
+  // only manner.
+  StringSet ops_blocklist;
+
+  // Names of locations to block from quantization. Used in QuantizePass.
+  StringSet nodes_blocklist;
+
+  // TODO(b/214186439): Support custom op quantization for MLIR dynamic range
+  // quantization
+  // Map from custom op code to custom op quantization information.
+  CustomOpMap custom_map;
 };
 
 // Parses the command line flag strings to the quantization specification for

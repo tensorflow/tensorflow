@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -379,7 +380,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
   EXPECT_EQ(visited.size(), 5);
   // All values in visited should be unique.
   EXPECT_EQ(
-      std::unordered_set<const HloComputation*>(visited.begin(), visited.end())
+      absl::flat_hash_set<const HloComputation*>(visited.begin(), visited.end())
           .size(),
       5);
 

@@ -33,6 +33,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition as row_partition_lib
 from tensorflow.python.ops.ragged.row_partition import RowPartition
@@ -476,8 +477,8 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       return StructuredTensor.from_fields(
           new_fields,
           shape=self.shape,
-          row_partitions=self._row_partitions,
-          nrows=self._nrows,
+          row_partitions=self.row_partitions,
+          nrows=self.nrows(),
           validate=validate)
 
     except ValueError as e:
@@ -849,8 +850,8 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     # If rank>0, then re-group each value from dict-of-list to list-of-dict.
     if len(self._shape) > 0:  # pylint: disable=g-explicit-length-test
       if not result:  # special-case for StructuredTensors w/ no fields.
-        return _empty_dict_pylist_from_row_partitions(self._row_partitions,
-                                                      self._nrows)
+        return _empty_dict_pylist_from_row_partitions(self.row_partitions,
+                                                      self.nrows())
       return _pyval_field_major_to_node_major(
           list(result.keys()), list(result.values()), self._shape.rank)
     else:
@@ -1724,3 +1725,35 @@ def _merge_dims_generic(source, outer, inner):
     return source.merge_dims(outer, inner)
   else:
     return ragged_tensor.merge_dims(source, outer, inner)
+
+
+# pylint:disable=protected-access
+def _ragged_shape_init(fields, shape, nrows, row_partitions):
+  """Produce a RaggedShape for StructuredTensor."""
+  assert isinstance(fields, dict), fields
+  assert isinstance(shape, tensor_shape.TensorShape), shape
+  assert nrows is None or isinstance(nrows, ops.Tensor), nrows
+  assert isinstance(row_partitions, tuple), row_partitions
+
+  rank = shape.rank
+  if rank is None:
+    raise TypeError("StructuredTensor's shape must have known rank.")
+
+  # TODO(martinz): figure out whether to validate.
+  dtype = _find_shape_dtype(fields, nrows, row_partitions)
+  if rank == 0:
+    return ragged_shape.RaggedShape._from_inner_shape(
+        array_ops.zeros((0,), dtype=dtype))
+
+  if rank == 1:
+    alt_value = shape[0]
+    if isinstance(alt_value, tensor_shape.Dimension):
+      alt_value = alt_value.value
+    if alt_value is not None:
+      nrows = alt_value
+    return ragged_shape.RaggedShape._from_inner_shape([nrows], dtype=dtype)
+
+  return ragged_shape.RaggedShape.from_row_partitions(row_partitions,
+                                                      dtype=dtype)
+
+

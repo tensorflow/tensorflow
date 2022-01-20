@@ -771,6 +771,20 @@ func @matrix_diag_v2(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
 // CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
 }
 
+func @matrix_diag_v2_f32_padding(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  %0 = arith.constant dense<[0]> : tensor<1xi32>
+  %1 = arith.constant dense<[-1]> : tensor<1xi32>
+  %2 = arith.constant dense<[-1]> : tensor<1xi32>
+  %3 = arith.constant dense<[0.0, 0.0]> : tensor<2xf32>
+  %4 = "tf.MatrixDiagV2"(%arg0, %0, %1, %2, %3) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xf32>) -> tensor<8x16x16xf32>
+  return %4 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:   func @matrix_diag_v2_f32_padding(
+// CHECK-SAME:                         [[VAL_5:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+// CHECK:           [[VAL_6:%.*]] = "tfl.matrix_diag"([[VAL_5]]) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
+// CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
+}
+
 func @matrix_diag_v3_no_match(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
   // this should have been 0.
   %0 = arith.constant dense<[1]> : tensor<1xi32>

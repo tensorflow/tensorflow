@@ -145,8 +145,25 @@ struct PjRtCrossHostRecvBuffer {
   // The buffer that will hold the result of the transfer.
   std::unique_ptr<PjRtBuffer> buffer;
 };
+// Function that the client should call at the receiver if it needs to cancel a
+// cross-host send, for example because the buffer that the remote host wanted
+// to send is not available. The serialized descriptor should match one of the
+// descriptors returned in a PjRtCrossHostRecvBuffer. on_canceled will be called
+// once cancellation is complete and indicates whether cancellation was
+// successful or not.
+//
+// For each serialized_descriptor provided in a PjRtCrossHostRecvBuffer,
+// *either* the sending host must successfully complete a CopyToRemoteDevice
+// for that descriptor, *or* the receiving host must cancel. If there is a
+// duplicate (e.g., both send and cancel) then the system will be left in an
+// undefined state. If there is no send or cancellation then the system will
+// hang indefinitely.
+using PjRtCrossHostSendCancelNotifier =
+    std::function<void(absl::string_view serialized_descriptor, Status reason,
+                       std::function<void(Status)> on_canceled)>;
 using PjRtCrossHostRecvNotifier =
-    std::function<void(StatusOr<std::vector<PjRtCrossHostRecvBuffer>>&&)>;
+    std::function<void(StatusOr<std::pair<std::vector<PjRtCrossHostRecvBuffer>,
+                                          PjRtCrossHostSendCancelNotifier>>&&)>;
 
 struct MultiSliceOptions {
   // Number of connected slices to compile for.
@@ -664,10 +681,21 @@ class PjRtBuffer {
   // of the corresponding shape. serialized_descriptor is the string returned by
   // the callback along with the corresponding destination buffer.
   //
+  // When the send either completes or fails, on_done will be called. If
+  // status is Ok then it is guaranteed that sends_were_enqueued==true.
+  // Otherwise, if sends_were_enqueued==false then the sender should contact
+  // the receiver out of band to request cancellation of the transfer. If
+  // !status.ok() and sends_were_enqueued==true then it is not possible to
+  // determine whether the transfer succeeded and the system is in an
+  // undefined state. This undefined state almost certainly indicates an
+  // unrecoverable hardware error.
+  //
   // See note on semantics of cross-device copies in the class definition
   // comment for PjRtClient.
-  virtual Status CopyToRemoteDevice(
-      absl::string_view serialized_descriptor) = 0;
+  using RemoteSendCallback =
+      std::function<void(Status status, bool sends_were_enqueued)>;
+  virtual void CopyToRemoteDevice(absl::string_view serialized_descriptor,
+                                  RemoteSendCallback on_done) = 0;
   struct ScatterDetails {
     // The dimensions of the corresponding buffer that the scatter slices
     // across. These dimensions must be the major dimensions in the on-device
@@ -685,8 +713,9 @@ class PjRtBuffer {
     // The start and end indices of the slices.
     std::vector<std::pair<int64_t, int64_t>> slices;
   };
-  virtual Status CopyToRemoteDeviceScattered(
-      absl::Span<const std::string> serialized_descriptors,
+  virtual void CopyToRemoteDeviceScattered(
+      absl::Span<const std::pair<std::string, RemoteSendCallback>>
+          serialized_descriptors_and_callbacks,
       const ScatterDetails& scatter_details) = 0;
 
   // Blocks the host until the buffer's value has been computed and is ready for

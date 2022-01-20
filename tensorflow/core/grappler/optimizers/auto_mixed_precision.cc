@@ -1013,8 +1013,9 @@ class AutoMixedPrecisionImpl {
       case AutoMixedPrecisionMode::CPU:
         // Note: this is not a typo here. AutoMixedPrecisionListsCuda is used
         // intentionally to make CPU and GPU have the same fp16 ops.
-        return std::make_unique<AutoMixedPrecisionListsCuda>(cuda_version_,
-                                                             cudnn_version_);
+        return std::make_unique<AutoMixedPrecisionListsCuda>(
+            /*cuda_version=*/10000,   // Hardcode cuda and cudnn version so
+            /*cudnn_version=*/8000);  // CPU emulates the same ops on GPU.
     }
   }
   Status PrintDebugLogs(bool preop, size_t timestamp);
@@ -1081,6 +1082,7 @@ class AutoMixedPrecisionImpl {
   NodeTypeAttrMap node_type_map_;
   GraphTypeTopologyView graph_type_view_;
   bool force_all_fp16_;
+  bool treat_infer_as_deny_;
   AutoMixedPrecisionMode mode_;
   gtl::FlatSet<string> f16_allowlist_;
   gtl::FlatSet<string> f16_denylist_;
@@ -1324,11 +1326,22 @@ Status AutoMixedPrecisionImpl::Optimize() {
         "UNSAFE_FORCE_ALL when MKL is used");
   }
 
+  treat_infer_as_deny_ = optimization_level == "TREAT_INFER_AS_DENY";
+  VLOG(2) << "Optimization Level: " << optimization_level;
+
   std::unique_ptr<AutoMixedPrecisionLists> mp_lists =
       get_mixed_precision_lists();
   f16_allowlist_ = mp_lists->AllowList();
   f16_denylist_ = mp_lists->DenyList();
-  f16_inferlist_ = mp_lists->InferList();
+
+  if (treat_infer_as_deny_) {
+    for (const auto& op : mp_lists->InferList()) {
+      f16_denylist_.insert(op);
+    }
+  } else {
+    f16_inferlist_ = mp_lists->InferList();
+  }
+
   f16_clearlist_ = mp_lists->ClearList();
   TF_RETURN_IF_ERROR(ValidateLists(f16_allowlist_, f16_denylist_,
                                    f16_inferlist_, f16_clearlist_));

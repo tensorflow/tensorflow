@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?x?xf32>, %V__1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+builtin.func @test(%V__0: tensor<?x?xf32> { python_test_attrs.static_type = tensor<1x1xf32> }, %V__1: tensor<?x?xf32> { python_test_attrs.static_type = tensor<1x1xf32> }) -> tensor<?x?xf32> {
   %0 = "tf.Asin"(%V__0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %1 = "tf.ClipByValue"(%0, %V__0, %V__0) : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   %2 = "tf.Atan2"(%1, %V__0) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
