@@ -1368,7 +1368,7 @@ DotOperationType GetDotOperationType(mhlo::DotOp dot_op) {
       shape_matches(lhs_shape[1], rhs_shape[0])) {
     return DotOperationType::kMatrixVector;
   }
-  if (rhs_shape.size() == 2 && rhs_shape.size() == 2 &&
+  if (lhs_shape.size() == 2 && rhs_shape.size() == 2 &&
       shape_matches(lhs_shape[1], rhs_shape[0])) {
     return DotOperationType::kMatrixMatrix;
   }

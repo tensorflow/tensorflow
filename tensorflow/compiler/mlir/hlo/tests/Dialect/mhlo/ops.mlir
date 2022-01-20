@@ -569,9 +569,9 @@ func @clamp_invalid_clamp_shape(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>) -> t
 // -----
 
 // CHECK-LABEL: func @dot_vector
-func @dot_vector(%arg0: tensor<1x2xi32>, %arg1: tensor<2x1xi32>) -> tensor<i32> {
-  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<1x2xi32>, tensor<2x1xi32>) -> tensor<i32>
-  return %0: tensor<i32>
+func @dot_vector(%arg0: tensor<1x2xi32>, %arg1: tensor<2x1xi32>) -> tensor<1x1xi32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<1x2xi32>, tensor<2x1xi32>) -> tensor<1x1xi32>
+  return %0: tensor<1x1xi32>
 }
 
 // -----
@@ -596,6 +596,44 @@ func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -
   // expected-error@+1 {{'precision_config' failed to satisfy constraint}}
   %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["FOO", "HIGHEST"]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0: tensor<2x2xi32>
+}
+
+// -----
+
+func @dot_illegal_input_type(%arg0: tensor<3xf32>, %arg1: tensor<?x3xf32>) -> tensor<?xf32> {
+  // expected-error@+1 {{Unexpected result type: has 'tensor<?xf32>' but inferred 'tensor<3xf32>' from operands 'tensor<3xf32>' and 'tensor<?x3xf32>}}
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<3xf32>, tensor<?x3xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @dot_illegal_result_type(%arg0: tensor<?x3xf32>, %arg1: tensor<3xf32>) -> tensor<3x?xf32> {
+  // expected-error@+1 {{Unexpected result type}}
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?x3xf32>, tensor<3xf32>) -> tensor<3x?xf32>
+  return %0 : tensor<3x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @dot_legal_unranked_rank_type
+func @dot_legal_unranked_rank_type(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<2x2xf32> {
+  // unrank legal test
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  // vector dot vector
+  %1 = tensor.cast %arg0 : tensor<*xf32> to tensor<3xf32>
+  %2 = tensor.cast %arg0 : tensor<*xf32> to tensor<3xf32>
+  %3 = "mhlo.dot"(%1, %2) : (tensor<3xf32>, tensor<3xf32>) -> tensor<f32>
+  // matrix dot vector
+  %4 = tensor.cast %arg0 : tensor<*xf32> to tensor<2x3xf32>
+  %5 = tensor.cast %arg1 : tensor<*xf32> to tensor<3xf32>
+  %6 = "mhlo.dot"(%4, %5) : (tensor<2x3xf32>, tensor<3xf32>) -> tensor<2xf32>
+  // matrix dot matrix
+  %7 = tensor.cast %arg0 : tensor<*xf32> to tensor<2x3xf32>
+  %8 = tensor.cast %arg1 : tensor<*xf32> to tensor<3x2xf32>
+  %9 = "mhlo.dot"(%7, %8) : (tensor<2x3xf32>, tensor<3x2xf32>) -> tensor<2x2xf32>
+
+  return %9 : tensor<2x2xf32>
 }
 
 // -----
