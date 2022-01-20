@@ -22,4 +22,3 @@ source tensorflow/tools/ci_build/release/common.sh
 for f in $(ls py_test_dir/tensorflow-*cp3*-cp3*-win_amd64.whl); do
   copy_to_new_project_name "${f}" tensorflow_gpu /c/Python310/python
 done
-
