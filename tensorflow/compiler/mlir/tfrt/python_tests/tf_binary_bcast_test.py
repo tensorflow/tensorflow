@@ -231,7 +231,7 @@ class TfBinaryBcastTest(test.TestCase):
       }"""
 
     with self.assertRaisesRegex(Exception,
-                                'Cannot sink operand type: tensor<f32>'):
+                                'cannot sink operand type: tensor<f32>'):
       jitrt.compile(mlir_function, 'compute')
 
 
