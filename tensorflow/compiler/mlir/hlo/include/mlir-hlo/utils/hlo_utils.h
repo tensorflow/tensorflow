@@ -24,23 +24,6 @@ limitations under the License.
 
 namespace mlir {
 namespace hlo {
-// Attrs for OP type
-// TODO(disc): create and move to placement_utils.h
-constexpr llvm::StringRef kDiscShapeCalcAttr = "disc.shape_op";
-
-// Attrs for placement
-constexpr llvm::StringRef kDiscPlaceAssignment = "disc.device";
-constexpr llvm::StringRef kCpu = "cpu";
-constexpr llvm::StringRef kGpu = "gpu";
-enum class PlacementType {
-  kCpu,
-  kGpu,
-};
-
-// Function arguments and results placement attributes.
-constexpr StringRef kInputPlacementAttr = "hlo.input_placements";
-constexpr StringRef kOutputPlacementAttr = "hlo.output_placements";
-
 // Computes the broadcast dimensions attr for an elementwise binary operator
 // between two ranked tensors.
 // If `allow_empty` is true, then null can be returned to mean that the

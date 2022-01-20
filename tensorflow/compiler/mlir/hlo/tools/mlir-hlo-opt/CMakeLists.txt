@@ -23,7 +23,6 @@ set(LIBS
         LmhloDialect
         LmhloGPUDialect
         MhloRegisterDialects
-        AllDiscRalPasses
         LmhloPasses
         AllMhloPasses
         MLIRBufferTransforms
@@ -32,7 +31,6 @@ set(LIBS
         )
 add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cpp
   DEPENDS
-        MLIRDiscRalPassIncGen
         MLIRLmhloPassIncGen
         MLIRMhloPassIncGen
         LMHLOTransformsPassIncGen
