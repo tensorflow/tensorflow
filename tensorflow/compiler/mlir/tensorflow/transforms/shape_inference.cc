@@ -1646,6 +1646,7 @@ bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
   if (op->hasTrait<OpTrait::SameOperandsAndResultShape>())
     return RefineShapeForPassThroughOps(op);
   if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);
+  if (isa<tensor::CastOp>(op)) return InferShapeForCast(op);
   return false;
 }
 
@@ -1754,10 +1755,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // needed.
   if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);
 
-  // tf.Cast and tensor::Cast are only inferred if they have at least one user
-  // in the TF dialect or feeding into the function return. This is necessary to
-  // avoid inserting casts which cannot be refined.
-  if (isa<CastOp, tensor::CastOp>(op)) return InferShapeForCast(op);
+  // tf.Cast is only inferred if it has at least one user in the TF dialect or
+  // feeding into the function return. This is necessary to avoid inserting
+  // casts which cannot be refined.
+  if (isa<CastOp>(op)) return InferShapeForCast(op);
 
   // Handle IfOp here by inferring the shape from the else/then function
   // results. Since `output_shapes` is a derived attribute, avoid going down the
