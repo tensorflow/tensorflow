@@ -383,6 +383,7 @@ def tf_copts(
         if_libtpu(["-DLIBTPU_ON_GCE"], []) +
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
+        if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
         # Compile in oneDNN based ops when building for x86 platforms
         if_mkl(["-DINTEL_MKL"]) +
         # Enable additional ops (e.g., ops with non-NHWC data layout) and
