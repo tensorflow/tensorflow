@@ -41,7 +41,7 @@ namespace {
 struct LegalizeControlFlowPass
     : public LegalizeControlFlowPassBase<LegalizeControlFlowPass> {
   // Perform the lowering to MLIR control flow.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Replaces terminators for the newly created blocks from a targe region.
@@ -312,8 +312,8 @@ void LowerCaseOp(mlir::mhlo::CaseOp case_op) {
   case_op->erase();
 }
 
-void LegalizeControlFlowPass::runOnFunction() {
-  auto func = getFunction();
+void LegalizeControlFlowPass::runOnOperation() {
+  auto func = getOperation();
   llvm::SmallVector<IfOp, 4> if_ops;
   func.walk([&](IfOp op) { if_ops.push_back(op); });
   for (auto& op : if_ops) {

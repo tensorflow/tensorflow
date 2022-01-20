@@ -114,8 +114,8 @@ struct HloCanonicalizeReductionPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tensor::TensorDialect>();
   }
-  void runOnFunction() override {
-    getFunction().walk([&](ReduceOp op) {
+  void runOnOperation() override {
+    getOperation().walk([&](ReduceOp op) {
       SmallVector<int64_t, 4> dims_to_reduce;
       DenseSet<int64_t> dims_to_reduce_set;
       for (auto dim : op.dimensions().getValues<APInt>()) {
@@ -248,7 +248,7 @@ struct HloCanonicalizeReductionPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createHloCanonicalizeReductionPass() {
+std::unique_ptr<OperationPass<FuncOp>> createHloCanonicalizeReductionPass() {
   return std::make_unique<HloCanonicalizeReductionPass>();
 }
 

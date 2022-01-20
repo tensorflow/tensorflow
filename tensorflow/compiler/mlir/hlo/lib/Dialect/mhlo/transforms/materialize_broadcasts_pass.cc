@@ -31,7 +31,7 @@ namespace {
 
 struct TestMaterializeBroadcastsPass
     : public TestMaterializeBroadcastsPassBase<TestMaterializeBroadcastsPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     ConversionTarget conversionTarget(getContext());
     OwningRewritePatternList conversionPatterns(&getContext());
 
@@ -44,7 +44,7 @@ struct TestMaterializeBroadcastsPass
     SetupMaterializeBroadcastsLegality(&getContext(), &conversionTarget);
     PopulateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);
 
-    if (failed(applyPartialConversion(getFunction(), conversionTarget,
+    if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {
       return signalPassFailure();
     }

@@ -554,8 +554,8 @@ struct LhloLegalizeToAffinePass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, math::MathDialect>();
   }
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
     OwningRewritePatternList patterns(&getContext());
     populateLHLOToAffineConversionPattern(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(func, std::move(patterns));

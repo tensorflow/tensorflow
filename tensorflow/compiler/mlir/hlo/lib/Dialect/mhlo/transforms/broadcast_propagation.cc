@@ -299,15 +299,15 @@ struct BroadcastPropagationPass
     registry.insert<mhlo::MhloDialect>();
   }
 
-  void runOnFunction() override {
-    getFunction().walk(
+  void runOnOperation() override {
+    getOperation().walk(
         [&](DynamicBroadcastInDimOp bcast) { PropagateBroadcast(bcast); });
   }
 };
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createBroadcastPropagationPass() {
+std::unique_ptr<OperationPass<FuncOp>> createBroadcastPropagationPass() {
   return std::make_unique<BroadcastPropagationPass>();
 }
 

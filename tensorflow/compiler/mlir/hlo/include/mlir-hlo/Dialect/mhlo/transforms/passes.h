@@ -23,7 +23,6 @@ limitations under the License.
 namespace mlir {
 
 class FuncOp;
-class FunctionPass;
 class ModuleOp;
 class Operation;
 template <typename T>
@@ -42,11 +41,11 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
 /// Lowers from the CHLO dialect to the HLO dialect.
-std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
+std::unique_ptr<OperationPass<FuncOp>> createChloLegalizeToHloPass(
     bool legalize_broadcasts = true, bool expand_compositions = true);
 
 // canonicalize reduction ops to be suitable for codegen.
-std::unique_ptr<FunctionPass> createHloCanonicalizeReductionPass();
+std::unique_ptr<OperationPass<FuncOp>> createHloCanonicalizeReductionPass();
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
@@ -54,7 +53,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
 
 /// Lowers from HLO dialect to Memref dialect allocating/deallocating temporary
 /// buffers if necessary.
-std::unique_ptr<FunctionPass> createLegalizeToMemrefPass();
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToMemrefPass();
 
 // Lowers shape operations from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>>
@@ -78,31 +77,32 @@ createLegalizeTrigonometricToApproximationPass();
 // Move dynamic broadcasts up over element-wise operations and broadcast the
 // operands rather than the result. This will eventually allow for larger
 // fusions.
-std::unique_ptr<FunctionPass> createBroadcastPropagationPass();
+std::unique_ptr<OperationPass<FuncOp>> createBroadcastPropagationPass();
 
 // Prepare moving dynamic broadcasts up over element-wise operations and
 // broadcast the operands rather than the result. This will eventually allow for
 // larger fusions.
-std::unique_ptr<FunctionPass> createMergeAssumingOpsPass();
+std::unique_ptr<OperationPass<FuncOp>> createMergeAssumingOpsPass();
 
 // Group reduction and parallel dimensions of reduction operations and realize
 // them through equivalent 1D or 2D reductions, if possible.
-std::unique_ptr<FunctionPass> createGroupReductionDimensionsPass();
+std::unique_ptr<OperationPass<FuncOp>> createGroupReductionDimensionsPass();
 
 /// Rank specialization passes:
 ///   - Find compatible operations and group them together in one rank
 ///     specialization cluster.
 ///   - Lower rank specialization clusters to SCF and ranked operations.
-std::unique_ptr<FunctionPass> createRankSpecializationClusterPass();
-std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass(
+std::unique_ptr<OperationPass<FuncOp>> createRankSpecializationClusterPass();
+std::unique_ptr<OperationPass<FuncOp>> createRankSpecializationToSCFPass(
     int64_t max_target_rank = 5);
 
-std::unique_ptr<FunctionPass> createOptimizeMhloPass();
-std::unique_ptr<FunctionPass> createLowerComplexPass();
+std::unique_ptr<OperationPass<FuncOp>> createOptimizeMhloPass();
+std::unique_ptr<OperationPass<FuncOp>> createLowerComplexPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
-std::unique_ptr<FunctionPass> createLegalizeEinsumToDotGeneralPass();
-std::unique_ptr<FunctionPass> createLegalizeGatherToTorchIndexSelectPass();
-std::unique_ptr<FunctionPass> createFlattenTuplePass();
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeEinsumToDotGeneralPass();
+std::unique_ptr<OperationPass<FuncOp>>
+createLegalizeGatherToTorchIndexSelectPass();
+std::unique_ptr<OperationPass<FuncOp>> createFlattenTuplePass();
 
 // Creates a pass for expanding mhlo.tuple ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(

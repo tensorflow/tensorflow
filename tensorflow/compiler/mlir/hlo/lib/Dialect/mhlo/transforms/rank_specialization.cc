@@ -278,12 +278,12 @@ struct RankSpecializationClusterPass
     registry.insert<mhlo::MhloDialect, chlo::HloClientDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
     mhlo::PopulateRankSpecializationClusterPatterns(ctx, &patterns);
-    if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
       return signalPassFailure();
     }
   }
@@ -916,13 +916,13 @@ struct RankSpecializationToSCFPass
                     shape::ShapeDialect, scf::SCFDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
     PopulateRankSpecializationToSCFPatterns(ctx, &patterns,
                                             this->max_target_rank_);
-    if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
       return signalPassFailure();
     }
   }
@@ -946,11 +946,11 @@ void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
   shape::AnyOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<FunctionPass> createRankSpecializationClusterPass() {
+std::unique_ptr<OperationPass<FuncOp>> createRankSpecializationClusterPass() {
   return std::make_unique<RankSpecializationClusterPass>();
 }
 
-std::unique_ptr<FunctionPass> createRankSpecializationToSCFPass(
+std::unique_ptr<OperationPass<FuncOp>> createRankSpecializationToSCFPass(
     int64_t max_target_rank) {
   return std::make_unique<RankSpecializationToSCFPass>(max_target_rank);
 }

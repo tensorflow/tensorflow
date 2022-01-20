@@ -2677,7 +2677,7 @@ struct HloLegalizeToLinalgPass
                     memref::MemRefDialect, shape::ShapeDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext& ctx = getContext();
     OwningRewritePatternList patterns(&ctx);
     ConversionTarget target(ctx);
@@ -2689,7 +2689,7 @@ struct HloLegalizeToLinalgPass
     target.addLegalOp<UnrealizedConversionCastOp>();
 
     mhlo::RemoveSignTypeConverter type_converter;
-    auto func = getFunction();
+    auto func = getOperation();
     mhlo::populateHLOToLinalgConversionPattern(&ctx, type_converter, &patterns);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();

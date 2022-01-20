@@ -428,23 +428,23 @@ struct BufferPackingPass : public BufferPackingBase<BufferPackingPass> {
     this->window_size_ = windowSize;
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     if (window_size_ == 0) {
       SortedPackingStrategy<AllocInfoMemSizeCompare> strategy(
           window_size_, AllocInfoMemSizeCompare());
-      BufferPacking packing(getFunction(), strategy);
+      BufferPacking packing(getOperation(), strategy);
     } else {
       SortedPackingStrategy<AllocInfoWinIdComparator> strategy(
           window_size_, AllocInfoWinIdComparator());
-      BufferPacking packing(getFunction(), strategy);
+      BufferPacking packing(getOperation(), strategy);
     }
   }
 };
 
 /// Pass to find all allocations and to compute memory usage.
 struct MemoryCountPass : MemoryCountBase<MemoryCountPass> {
-  void runOnFunction() override {
-    Operation *op = getFunction();
+  void runOnOperation() override {
+    Operation *op = getOperation();
     std::vector<Value> allocs;
     op->walk([&](MemoryEffectOpInterface opInterface) {
       // Try to find a single allocation result.
@@ -474,11 +474,12 @@ struct MemoryCountPass : MemoryCountBase<MemoryCountPass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createBufferPackingPass(unsigned window_size) {
+std::unique_ptr<OperationPass<FuncOp>> createBufferPackingPass(
+    unsigned window_size) {
   return std::make_unique<BufferPackingPass>(window_size);
 }
 
-std::unique_ptr<FunctionPass> createMemoryCountPass() {
+std::unique_ptr<OperationPass<FuncOp>> createMemoryCountPass() {
   return std::make_unique<MemoryCountPass>();
 }
 

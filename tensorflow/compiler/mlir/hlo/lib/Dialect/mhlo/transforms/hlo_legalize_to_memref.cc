@@ -312,7 +312,7 @@ struct HloLegalizeToMemrefPass
   }
 
  public:
-  void runOnFunction() override {
+  void runOnOperation() override {
     auto& context = getContext();
     OwningRewritePatternList patterns(&context);
     ConversionTarget target(context);
@@ -329,7 +329,7 @@ struct HloLegalizeToMemrefPass
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect>();
 
-    auto func = getFunction();
+    auto func = getOperation();
     if (failed(applyPartialConversion(func, target, std::move(patterns))))
       signalPassFailure();
   }
@@ -349,7 +349,7 @@ void populateHLOToMemrefConversionPattern(
       *converter, sign_converter, context);
 }
 
-std::unique_ptr<FunctionPass> createLegalizeToMemrefPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToMemrefPass() {
   return std::make_unique<HloLegalizeToMemrefPass>();
 }
 

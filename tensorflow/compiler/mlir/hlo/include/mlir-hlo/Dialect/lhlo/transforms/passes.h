@@ -23,7 +23,6 @@ limitations under the License.
 namespace mlir {
 
 class FuncOp;
-class FunctionPass;
 class ModuleOp;
 class Operation;
 template <typename T>
@@ -39,7 +38,7 @@ namespace lmhlo {
 std::unique_ptr<OperationPass<FuncOp>> createLhloLegalizeToAffinePass();
 
 // Lowers from LHLO dialect to GPU dialect.
-std::unique_ptr<FunctionPass> createLegalizeToGpuPass();
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass();
 
 // Fuses linalg ops obtained after LHLO lowering. To enable fusion,
 // operations are first tiled.
@@ -50,7 +49,7 @@ std::unique_ptr<FunctionPass> createLegalizeToGpuPass();
 // 'tile_sizes' provides the tile sizes to use for tiling. If the linalg
 // operation has more dimensions than tile sizes provided, 1 is used as
 // default.
-std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
+std::unique_ptr<OperationPass<FuncOp>> createLhloFuseLinalgPass(
     bool use_parallel_loops = false, llvm::ArrayRef<unsigned> tile_sizes = {});
 
 // Lowers from LHLO dialect to parallel loops.
@@ -60,7 +59,7 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToTensorOpPass();
 
 // Input inline fusion pass for fusion codegen
-std::unique_ptr<FunctionPass> createInputInlineFusionPass();
+std::unique_ptr<OperationPass<FuncOp>> createInputInlineFusionPass();
 
 }  // namespace lmhlo
 
