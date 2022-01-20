@@ -4142,6 +4142,10 @@ def TF_EnqueueTPUEmbeddingBatchOp : TF_Op<"EnqueueTPUEmbeddingBatch", [DeclareOp
 An op that enqueues a list of input batch tensors to TPUEmbedding.
   }];
 
+  let description = [{
+An op that enqueues a list of input batch tensors to TPUEmbedding.
+  }];
+
   let arguments = (ins
     Arg<Variadic<TF_StrTensor>, [{A list of 1D tensors, one for each embedding table, containing the
 batch inputs encoded as dist_belief.SparseFeatures protos. If the weight
@@ -14211,24 +14215,31 @@ that `segment_ids[j] == i`.
 
 If the max is empty for a given segment ID `i`, `output[i] = 0`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_max(c, tf.constant([0, 0, 1]))
-# ==> [[4, 3, 3, 4],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_max(c, tf.constant([0, 0, 1])).numpy()
+array([[4, 3, 3, 4],
+       [5, 6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
-first dimension.  Values should be sorted and can be repeated.}]>:$segment_ids
+first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids
   );
 
   let results = (outs
@@ -14255,24 +14266,32 @@ values summed.
 
 If the mean is empty for a given segment ID `i`, `output[i] = 0`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as a smaller following index when computing the numerator
+of the mean.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1.0,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_mean(c, tf.constant([0, 0, 1]))
-# ==> [[2.5, 2.5, 2.5, 2.5],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1.0,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_mean(c, tf.constant([0, 0, 1])).numpy()
+array([[2.5, 2.5, 2.5, 2.5],
+       [5., 6., 7., 8.]], dtype=float32)
   }];
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
-first dimension.  Values should be sorted and can be repeated.}]>:$segment_ids
+first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids
   );
 
   let results = (outs
@@ -14298,24 +14317,31 @@ that `segment_ids[j] == i`.
 
 If the min is empty for a given segment ID `i`, `output[i] = 0`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_min(c, tf.constant([0, 0, 1]))
-# ==> [[1, 2, 2, 1],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_min(c, tf.constant([0, 0, 1])).numpy()
+array([[1, 2, 2, 1],
+       [5, 6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
-first dimension.  Values should be sorted and can be repeated.}]>:$segment_ids
+first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids
   );
 
   let results = (outs
@@ -14341,24 +14367,31 @@ that `segment_ids[j] == i`.
 
 If the product is empty for a given segment ID `i`, `output[i] = 1`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_prod(c, tf.constant([0, 0, 1]))
-# ==> [[4, 6, 6, 4],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_prod(c, tf.constant([0, 0, 1])).numpy()
+array([[4, 6, 6, 4],
+       [5, 6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
-first dimension.  Values should be sorted and can be repeated.}]>:$segment_ids
+first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids
   );
 
   let results = (outs
@@ -14384,24 +14417,31 @@ that `segment_ids[j] == i`.
 
 If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentSum.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.math.segment_sum(c, tf.constant([0, 0, 1]))
-# ==> [[5, 5, 5, 5],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_sum(c, tf.constant([0, 0, 1])).numpy()
+array([[5, 5, 5, 5],
+       [5, 6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
-first dimension.  Values should be sorted and can be repeated.}]>:$segment_ids
+first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids
   );
 
   let results = (outs
@@ -17545,7 +17585,7 @@ is taken.}]>:$count,
   );
 }
 
-def TF_TakeWhileDatasetOp : TF_Op<"TakeWhileDataset", []> {
+def TF_TakeWhileDatasetOp : TF_Op<"TakeWhileDataset", [NoSideEffect]> {
   let summary = [{
 Creates a dataset that stops iteration when predicate` is false.
   }];
@@ -18281,7 +18321,22 @@ On GPU, if an out of bound index is found, the index is ignored.
 }
 
 def TF_TensorScatterMaxOp : TF_Op<"TensorScatterMax", [NoSideEffect]> {
-  let summary = "";
+  let summary = [{
+Apply a sparse update to a tensor taking the element-wise maximum.
+  }];
+
+  let description = [{
+Returns a new tensor copied from `tensor` whose values are element-wise maximum between
+tensor and updates according to the indices.
+
+>>> tensor = [0, 0, 0, 0, 0, 0, 0, 0] 
+>>> indices = [[1], [4], [5]]
+>>> updates = [1, -1, 1]
+>>> tf.tensor_scatter_nd_max(tensor, indices, updates).numpy()
+array([0, 1, 0, 0, 0, 1, 0, 0], dtype=int32)
+
+Refer to `tf.tensor_scatter_nd_update` for more details.
+  }];
 
   let arguments = (ins
     Arg<TF_Tensor, [{Tensor to update.}]>:$tensor,
@@ -18929,23 +18984,32 @@ possible value for the specific numeric type,
 If the given segment ID `i` is negative, then the corresponding value is
 dropped, and will not be included in the result.
 
+Caution: On CPU, values in `segment_ids` are always validated to be less than
+`num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+result in safe but unspecified behavior, which may include ignoring
+out-of-bound indices or outputting a tensor with a 0 stored in the first
+dimension of its shape if `num_segments` is 0.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentMax.png" alt>
 </div>
 
 For example:
 
-``` python
-c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-tf.unsorted_segment_max(c, tf.constant([0, 1, 0]), num_segments=2)
-# ==> [[ 4,  3, 3, 4],
-#       [5,  6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+>>> tf.math.unsorted_segment_max(c, tf.constant([0, 1, 0]), num_segments=2).numpy()
+array([[4, 3, 3, 4],
+       [5,  6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$data,
-    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be in range on CPU, never validated
+on GPU.}]>:$segment_ids,
     TF_I32OrI64Tensor:$num_segments
   );
 
@@ -18982,20 +19046,29 @@ possible value for the specific numeric type,
 
 For example:
 
-``` python
-c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
-# ==> [[ 1,  2, 2, 1],
-#       [5,  6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+>>> tf.math.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2).numpy()
+array([[1, 2, 2, 1],
+       [5, 6, 7, 8]], dtype=int32)
 
 If the given segment ID `i` is negative, then the corresponding value is
 dropped, and will not be included in the result.
+
+Caution: On CPU, values in `segment_ids` are always validated to be less than
+`num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+result in safe but unspecified behavior, which may include ignoring
+out-of-bound indices or outputting a tensor with a 0 stored in the first
+dimension of its shape if `num_segments` is 0.
   }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$data,
-    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be in range on CPU, never validated
+on GPU.}]>:$segment_ids,
     TF_I32OrI64Tensor:$num_segments
   );
 
@@ -19029,22 +19102,30 @@ entries belonging to a segment such that:
 
 For example:
 
-``` python
-c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-tf.unsorted_segment_prod(c, tf.constant([0, 1, 0]), num_segments=2)
-# ==> [[ 4,  6, 6, 4],
-#       [5,  6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+>>> tf.math.unsorted_segment_prod(c, tf.constant([0, 1, 0]), num_segments=2).numpy()
+array([[4, 6, 6, 4],
+       [5, 6, 7, 8]], dtype=int32)
 
 If there is no entry for a given segment ID `i`, it outputs 1.
 
 If the given segment ID `i` is negative, then the corresponding value is
 dropped, and will not be included in the result.
+Caution: On CPU, values in `segment_ids` are always validated to be less than
+`num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+result in safe but unspecified behavior, which may include ignoring
+out-of-bound indices or outputting a tensor with a 0 stored in the first
+dimension of its shape if `num_segments` is 0.
   }];
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
-    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be in range on CPU, never validated
+on GPU.}]>:$segment_ids,
     TF_I32OrI64Tensor:$num_segments
   );
 
@@ -19081,21 +19162,30 @@ added to the sum of the segment.
 
 `num_segments` should equal the number of distinct segment IDs.
 
+Caution: On CPU, values in `segment_ids` are always validated to be less than
+`num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+result in safe but unspecified behavior, which may include ignoring
+out-of-bound indices or outputting a tensor with a 0 stored in the first
+dimension of its shape if `num_segments` is 0.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
 </div>
 
-``` python
-c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
-# ==> [[ 5, 5, 5, 5],
-#       [5, 6, 7, 8]]
-```
+>>> c = [[1,2,3,4], [5,6,7,8], [4,3,2,1]]
+>>> tf.math.unsorted_segment_sum(c, [0, 1, 0], num_segments=2).numpy()
+array([[5, 5, 5, 5],
+       [5, 6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
-    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be in range on CPU, never validated
+on GPU.}]>:$segment_ids,
     TF_I32OrI64Tensor:$num_segments
   );
 
