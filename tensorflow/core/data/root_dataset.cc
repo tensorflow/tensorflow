@@ -48,7 +48,8 @@ inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
 }  // namespace
 
 // static
-Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
+Status RootDataset::FromOptions(const DatasetBase* input,
+                                DatasetBase** output) {
   const Options& options = input->options();
   Params params;
   if (ShouldConfigureMaxIntraOpParallelism(options)) {
@@ -308,7 +309,7 @@ Status RootDataset::AsGraphDefInternal(SerializationContext* ctx,
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
+Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
                        DatasetBase** output) {
   const Options& options = input->options();
   absl::flat_hash_set<tstring> optimizations_enabled;
@@ -355,7 +356,7 @@ Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
   return Status::OK();
 }
 #else   // !IS_MOBILE_PLATFORM
-Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
+Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
                        DatasetBase** output) {
   return RootDataset::FromOptions(input, output);
 }
