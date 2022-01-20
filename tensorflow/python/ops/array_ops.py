@@ -5150,7 +5150,7 @@ def gather(params,
          [3, 4],
          [5, 6]], dtype=int32)
 
-  This is is equivalent to:
+  This is equivalent to:
 
   >>> def manually_batched_gather(params, indices, axis):
   ...   batch_dims=1
