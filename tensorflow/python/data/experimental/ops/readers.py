@@ -508,8 +508,8 @@ def make_csv_dataset_v2(
             "probing columns.")
       elif compression_type_value != "":
         raise ValueError(
-            f"Received unknown `compression_type` {compression_type}. Expected: "
-            "GZIP, ZLIB or "" (empty string).")
+            f"Received unknown `compression_type` {compression_type}. "
+            "Expected: GZIP, ZLIB or "" (empty string).")
   if column_names is None:
     if not header:
       raise ValueError("Expected `column_names` or `header` arguments. Neither "
