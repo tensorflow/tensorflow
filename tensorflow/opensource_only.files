@@ -286,4 +286,3 @@ third_party/tflite_ovic_testdata.BUILD
 third_party/tflite_smartreply.BUILD
 third_party/typing_extensions.BUILD
 third_party/wrapt.BUILD
-third_party/zlib.BUILD
