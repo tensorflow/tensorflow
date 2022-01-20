@@ -153,7 +153,7 @@ void StripQuantTypes::runOnFunction() {
 
   RewritePatternSet patterns(&getContext());
   patterns.insert<GenericTypeConvert>(ctx, converter);
-  populateFunctionLikeTypeConversionPattern<FuncOp>(patterns, converter);
+  populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
 
   if (failed(applyFullConversion(func, target, std::move(patterns)))) {
     signalPassFailure();

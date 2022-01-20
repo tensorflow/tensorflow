@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -1043,7 +1044,8 @@ bool ShapeInference::InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
   DCOMMENT_OP(op, "Inferring shape for with N = " << N << " and M = " << M);
 
   // Initialize with function input types.
-  SmallVector<Type> input_types(f.getArgumentTypes());
+  auto input_types = llvm::to_vector<1>(
+      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
   DatasetInput input_elements =
       GetDatasetInput(op->getOperand(0).getDefiningOp());
@@ -1147,7 +1149,8 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   }
 
   // Initialize with function input types.
-  SmallVector<Type> input_types(f.getArgumentTypes());
+  auto input_types = llvm::to_vector<1>(
+      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
   // Track if changed to skip enqueueing.
   bool changed = false;

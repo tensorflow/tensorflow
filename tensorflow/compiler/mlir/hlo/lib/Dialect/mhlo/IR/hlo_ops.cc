@@ -57,6 +57,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
@@ -6387,7 +6388,7 @@ static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
                                               unsigned arg_index,
                                               Operation* op) {
   // The attribute can only be applied to function-like operations.
-  if (!op->hasTrait<mlir::OpTrait::FunctionLike>())
+  if (!isa<mlir::FunctionOpInterface>(op))
     return op->emitOpError() << "attribute " << attr_name
                              << " can only be used on function-like operations";
 
@@ -6403,7 +6404,8 @@ static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
   // Verify that the result index is not out of range. Since the attribute is a
   // function argument attribute, the argument index is always correct when this
   // verifier is called.
-  auto ftype = mlir::function_like_impl::getFunctionType(op);
+  FunctionOpInterface funcOp = cast<FunctionOpInterface>(op);
+  FunctionType ftype = funcOp.getType().cast<FunctionType>();
   if (alias_attr.getResultIndex() >= ftype.getNumResults())
     return op->emitOpError() << "attribute " << attr_name
                              << " result index is out of range, must be <"
@@ -6476,7 +6478,7 @@ LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,
 LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
                                                     NamedAttribute attr) {
   if (auto alias_attr = attr.getValue().dyn_cast<ArgResultAliasAttr>()) {
-    if (!op->hasTrait<mlir::OpTrait::FunctionLike>())
+    if (!isa<mlir::FunctionOpInterface>(op))
       return op->emitOpError()
              << "attribute " << attr.getName()
              << " can only be used on function-like operations";

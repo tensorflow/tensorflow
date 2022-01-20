@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionSupport.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -583,10 +583,10 @@ static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
   assert(arg_attrs.size() == arg_types.size());
   assert(result_attrs.size() == result_types.size());
   result.attributes.append(
-      builder.getNamedAttr(function_like_impl::getArgDictAttrName(),
+      builder.getNamedAttr(FunctionOpInterface::getArgDictAttrName(),
                            builder.getArrayAttr(arg_attrs)));
   result.attributes.append(
-      builder.getNamedAttr(function_like_impl::getResultDictAttrName(),
+      builder.getNamedAttr(FunctionOpInterface::getResultDictAttrName(),
                            builder.getArrayAttr(result_attrs)));
 
   // Parse the function body.
@@ -658,7 +658,7 @@ static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   // Print attributes.
   if (!op->getAttrs().empty()) {
     p.printNewline();
-    function_like_impl::printFunctionAttributes(
+    function_interface_impl::printFunctionAttributes(
         p, op, fnType.getNumInputs(), fnType.getNumResults(), {"generic"});
   }
   // Print body.

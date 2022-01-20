@@ -819,7 +819,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
       arg_attrs.push_back(builder.getDictionaryAttr({}));
     }
     attrs.push_back(
-        builder.getNamedAttr(function_like_impl::getArgDictAttrName(),
+        builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
                              builder.getArrayAttr(arg_attrs)));
   }
 
@@ -869,7 +869,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
       res_attrs.push_back(output_attrs.getDictionary(context));
     }
     attrs.push_back(
-        builder.getNamedAttr(function_like_impl::getResultDictAttrName(),
+        builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
                              builder.getArrayAttr(res_attrs)));
     DenseMap<StringRef, Node*> control_ret_nodes;
     for (Node* node : fbody->control_ret_nodes)

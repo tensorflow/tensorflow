@@ -448,7 +448,8 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
     });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateFunctionLikeTypeConversionPattern<FuncOp>(patterns, converter);
+    populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
+                                                             converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);

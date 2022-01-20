@@ -193,8 +193,9 @@ void AppendFunctionArguments(FuncOp func, int num_resources,
     func.getRegion().addArgument(chaining_data_type);
   }
 
-  FunctionType ftype = FunctionType::get(
-      func.getContext(), func.getArgumentTypes(), func.getType().getResults());
+  FunctionType ftype =
+      FunctionType::get(func.getContext(), func.getBody().getArgumentTypes(),
+                        func.getType().getResults());
   func.setType(ftype);
 }
 
