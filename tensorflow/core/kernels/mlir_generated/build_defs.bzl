@@ -293,6 +293,7 @@ def _gen_kernel_library(
       output_partial_jit_types: The output types for which a partial jit kernel should 
                                 be generated.
     """
+
     enable_cpu = bool(platform == "cpu")
     if not output_types:
         output_types =  
