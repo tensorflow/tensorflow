@@ -1603,6 +1603,24 @@ func @dot_matvec(%arg0: tensor<?x3xf32>,
 
 // -----
 
+func @dot_vecmat(%arg0: tensor<3xf32>,
+                 %arg1: tensor<3x?xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<3xf32>,
+                                   tensor<3x?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+// CHECK-LABEL: func @dot_vecmat(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<3xf32>, %[[ARG1:.*]]: tensor<3x?xf32>)
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D1]]]
+// CHECK: linalg.fill(%{{.*}}, %[[INIT]])
+// CHECK: linalg.vecmat
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<3xf32>, tensor<3x?xf32>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<?xf32>)
+
+// -----
+
 func @dot_dot(%arg0: tensor<?xf32>,
               %arg1: tensor<?xf32>) -> tensor<f32> {
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<f32>
