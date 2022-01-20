@@ -5259,7 +5259,7 @@ gather_v2.__doc__ = gather.__doc__
 @dispatch.add_dispatch_support
 @deprecation.deprecated(
     "2017-10-25", "`tf.batch_gather` is deprecated, please use `tf.gather` "
-    "with `batch_dims=-1` instead.")  # pylint: disable=missing-docstring
+    "with `batch_dims=tf.rank(indices) - 1` instead.")  # pylint: disable=missing-docstring
 def batch_gather(params, indices, name=None):
   """Gather slices from params according to indices with leading batch dims."""
   with ops.name_scope(name, "BatchGather", [params, indices]):
