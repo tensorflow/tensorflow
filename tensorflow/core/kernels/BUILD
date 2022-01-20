@@ -583,6 +583,7 @@ tf_cuda_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
