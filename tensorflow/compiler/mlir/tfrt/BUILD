@@ -174,7 +174,7 @@ tfrt_cc_library(
         "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:async_runtime",
         "@tf_runtime//backends/jitrt:async_runtime_api",
-        "@tf_runtime//backends/jitrt:jitrt_pipeline",
+        "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )
 
