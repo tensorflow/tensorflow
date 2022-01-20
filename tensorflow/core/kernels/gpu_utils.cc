@@ -318,62 +318,6 @@ BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
         std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedConvSignature>>>
         runners);
 
-int64_t GetWorkspaceLimit(const string& envvar_in_mb,
-                          int64_t default_value_in_bytes) {
-  const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
-  if (workspace_limit_in_mb_str != nullptr &&
-      strcmp(workspace_limit_in_mb_str, "") != 0) {
-    int64_t scratch_limit_in_mb = -1;
-    if (strings::safe_strto64(workspace_limit_in_mb_str,
-                              &scratch_limit_in_mb)) {
-      return scratch_limit_in_mb * (1 << 20);
-    } else {
-      LOG(WARNING) << "Invalid value for env-var " << envvar_in_mb << ": "
-                   << workspace_limit_in_mb_str;
-    }
-  }
-  return default_value_in_bytes;
-}
-
-GpuScratchAllocator::GpuScratchAllocator(int64_t memory_limit,
-                                         OpKernelContext* context)
-    : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-
-se::port::StatusOr<se::DeviceMemory<uint8>> GpuScratchAllocator::AllocateBytes(
-    int64_t byte_size) {
-  Tensor temporary_memory;
-  if (byte_size < 0) {
-    return se::port::Status{se::port::error::INVALID_ARGUMENT,
-                            "Requested negative byte size!"};
-  }
-  if (byte_size > memory_limit_) {
-    return se::port::Status{
-        se::port::error::UNAVAILABLE,
-        absl::StrCat("Requested memory size (", byte_size,
-                     ") exceeds the max memory limit (", memory_limit_, ").")};
-  }
-  AllocationAttributes allocation_attr;
-  allocation_attr.retry_on_failure = false;
-  Status allocation_status(context_->allocate_temp(
-      DT_UINT8, TensorShape({byte_size}), &temporary_memory,
-      AllocatorAttributes(), allocation_attr));
-  if (!allocation_status.ok()) {
-    return se::port::Status{
-        se::port::error::UNAVAILABLE,
-        absl::StrCat("Failed to allocate the requested memory size (",
-                     byte_size, ").")};
-  }
-  // Hold the reference of the allocated tensors until the end of the
-  // allocator.
-  // NOTE: We expect tensors to be deallocated when this allocator goes out of
-  // scope when allocated_tensors is destructed.
-  allocated_tensors_.push_back(temporary_memory);
-  total_byte_size_ += byte_size;
-  return se::port::StatusOr<se::DeviceMemory<uint8>>(
-      AsDeviceMemory(temporary_memory.flat<uint8>().data(),
-                     temporary_memory.flat<uint8>().size()));
-}
-
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -885,7 +885,6 @@ cc_library(
     name = "gemm_thunk",
     srcs = ["gemm_thunk.cc"],
     hdrs = ["gemm_thunk.h"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -914,7 +913,6 @@ cc_library(
     name = "gemm_algorithm_picker",
     srcs = ["gemm_algorithm_picker.cc"],
     hdrs = ["gemm_algorithm_picker.h"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":buffer_comparator",

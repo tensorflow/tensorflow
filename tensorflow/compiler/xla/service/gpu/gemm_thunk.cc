@@ -28,9 +28,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -196,7 +193,6 @@ static Status DoGemm(int64_t batch_size, const se::blas::MatrixDescriptor &lhs,
                               /*leading dim of output=*/output_matrix.num_rows);
 }
 
-#if GOOGLE_CUDA && CUDA_VERSION >= 11000
 template <typename Input>
 static Status DoGemmLt(
     int64_t batch_size, se::blas::MatrixDescriptor lhs_matrix,
@@ -207,8 +203,8 @@ static Status DoGemmLt(
     se::blas::ProfileResult *output_profile_result) {
   CHECK(output_matrix.transpose == se::blas::Transpose::kNoTranspose);
   tensorflow::DataType dtype = tensorflow::DataTypeToEnum<Input>::value;
+  se::blas::DataType blas_dtype = se::blas::ToDataType<Input>::value;
 
-  bool allow_tf32 = tensorflow::tensor_float_32_execution_enabled();
   int device_id = stream->parent()->device_ordinal();
 
   bool trans_x = lhs_matrix.transpose == se::blas::Transpose::kTranspose;
@@ -222,40 +218,15 @@ static Status DoGemmLt(
           << " adj_x " << false << " adj_y " << false << " m " << m << " n "
           << n << " k " << k << " batch_size " << batch_size << " broadcast "
           << broadcast << " broadcast " << broadcast << " dtype " << dtype
-          << " allow_tf32 " << allow_tf32 << " device_id " << device_id;
+          << " device_id " << device_id;
   se::BatchMatmulParameters matmul_parameters(
       trans_x, trans_y, false, false, m, n, k, batch_size, broadcast, broadcast,
-      dtype, dtype, allow_tf32, device_id);
-  const se::blas::PlanAndAlgorithms *plan_and_algorithms =
-      se::BatchMatmulPlanMapSingleton::GetInstance()->Find(matmul_parameters);
+      dtype, dtype, device_id);
 
-  // If autotuner is disabled, BatchMatmulPlanMapSingleton is not populated.
-  if (!plan_and_algorithms) {
-    se::blas::DataType blas_dtype = se::blas::ToDataType<Input>::value;
-    se::blas::BlasLtMatmulPlanParams plan_params =
-        se::CreatePlanParams(batch_size, blas_dtype, dtype, lhs_matrix,
-                             rhs_matrix, output_matrix)
-            .ConsumeValueOrDie();
-
-    std::unique_ptr<se::blas::IBlasLtMatmulPlan> plan =
-        stream->parent()
-            ->CreateBlasLtMatmulPlan(plan_params)
-            .ConsumeValueOrDie();
-
-    // When autotuner is disabled, the max_autotune_algorithm_count is 1 and
-    // only algo 0 is the default algorithm config.
-    static const int64_t max_scratch_size = se::GetBlasWorkspaceLimit(
-        "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
-    std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>> algorithms =
-        stream->parent()
-            ->GetBlasLtMatmulAlgorithms(plan.get(), max_scratch_size,
-                                        /* max_autotune_algorithm_count */ 1)
-            .ConsumeValueOrDie();
-
-    plan_and_algorithms =
-        se::BatchMatmulPlanMapSingleton::GetInstance()->Insert(
-            matmul_parameters, {std::move(plan), std::move(algorithms)});
-  }
+  TF_ASSIGN_OR_RETURN(
+      const se::blas::PlanAndAlgorithms *plan_and_algorithms,
+      GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, blas_dtype,
+                           dtype, lhs_matrix, rhs_matrix, output_matrix));
 
   const std::unique_ptr<se::blas::IBlasLtMatmulPlan> &plan =
       plan_and_algorithms->plan;
@@ -282,7 +253,7 @@ static Status DoGemmLt(
               << algorithm_config.algorithm() << " for " << trans_x << " "
               << trans_y << " " << m << " " << n << " " << k << " "
               << batch_size << " " << broadcast << " " << broadcast << " "
-              << dtype << " " << allow_tf32 << " " << device_id;
+              << dtype << " " << device_id;
       se::AutoTuneBatchMatmul::GetInstance()->Insert(matmul_parameters,
                                                      algorithm_config);
     }
@@ -301,7 +272,6 @@ static Status DoGemmLt(
   }
   return InternalError("BlasLtMatmul failed.");
 }
-#endif
 
 MatrixDescs PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
                                         se::DeviceMemoryBase lhs_buffer,
@@ -438,13 +408,9 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   double beta = backend_config.beta();
 
   // The BlasLtMatmul routines are only supported from CUDA 11.0 onward.
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11000
   absl::flat_hash_set<PrimitiveType> enabled_types = {F16, F32, F64, C64, C128};
-  if (gemm_config.use_cublaslt &&
+  if (gemm_config.use_cublaslt && stream->parent()->SupportsBlasPlans() &&
       enabled_types.contains(output_shape.element_type())) {
-    bool has_activation_relu =
-        static_cast<se::dnn::ActivationMode>(
-            backend_config.activation_mode()) == se::dnn::ActivationMode::kRelu;
     se::blas::IBlasLtMatmulAlgorithm *best_algorithm = nullptr;
     if (algorithm_being_profiled) {
       best_algorithm = algorithm_being_profiled;
@@ -485,7 +451,6 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
                                     /*output_profile_result=*/profile_result);
     }
   } else {
-#endif
     auto best_algorithm = [&]() -> absl::optional<se::blas::AlgorithmType> {
       if (algorithm) {
         return *algorithm;
@@ -558,9 +523,7 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
         return InternalError("%%s", absl::StrCat("Unexpected GEMM datatype: ",
                                                  output_shape.ToString()));
     }
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11000
   }
-#endif  // not GOOGLE_CUDA or CUDA_VERSION < 11000
 }
 
 }  // namespace gpu

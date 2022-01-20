@@ -422,41 +422,11 @@ StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
         std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
         runners);
 
-// Get a workspace limit from the environment variable, which is in MB.
-// Return the workspace memory limit in bytes. If no value is set, return the
-// default value.
-int64_t GetWorkspaceLimit(const string& envvar_in_mb,
-                          int64_t default_value_in_bytes);
-
 // Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
 int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
                              int64_t default_value_in_bytes);
-
-// A class to provide scratch-space allocator for Stream-Executor callbacks in
-// CUDA libraries (CUDNN etc.).
-// TensorFlow is responsible for releasing the temporary buffers after
-// the kernel finishes.
-class GpuScratchAllocator : public se::ScratchAllocator {
- public:
-  virtual ~GpuScratchAllocator() {}
-
-  GpuScratchAllocator(int64_t memory_limit, OpKernelContext* context);
-
-  int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
-
-  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      int64_t byte_size) override;
-
-  int64_t TotalByteSize() { return total_byte_size_; }
-
- private:
-  int64_t memory_limit_;
-  int64_t total_byte_size_;
-  OpKernelContext* context_;
-  std::vector<Tensor> allocated_tensors_;
-};
 
 }  // namespace tensorflow
 

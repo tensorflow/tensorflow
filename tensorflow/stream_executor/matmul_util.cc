@@ -12,14 +12,28 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/matmul_util.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#endif  // GOOGLE_CUDA
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace stream_executor {
 
-#if GOOGLE_CUDA && CUDA_VERSION >= 11000
-port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithm(
+int64_t GetWorkspaceLimit(const string& envvar_in_mb,
+                          int64_t default_value_in_bytes) {
+  const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
+  if (workspace_limit_in_mb_str != nullptr &&
+      strcmp(workspace_limit_in_mb_str, "") != 0) {
+    int64_t scratch_limit_in_mb = -1;
+    if (tensorflow::strings::safe_strto64(workspace_limit_in_mb_str,
+                                          &scratch_limit_in_mb)) {
+      return scratch_limit_in_mb * (1 << 20);
+    } else {
+      LOG(WARNING) << "Invalid value for env-var " << envvar_in_mb << ": "
+                   << workspace_limit_in_mb_str;
+    }
+  }
+  return default_value_in_bytes;
+}
+
+port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
     blas::DataType blas_dtype, tensorflow::DataType dtype,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
@@ -48,9 +62,7 @@ port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithm(
   }
   return plan_and_algorithms;
 }
-#endif  // GOOGLE_CUDA && CUDA_VERSION >= 11000
 
-#if GOOGLE_CUDA && CUDA_VERSION >= 11000
 port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
     int64_t batch_size, blas::DataType blas_dtype, tensorflow::DataType dtype,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
@@ -107,6 +119,44 @@ port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
   }
   return plan_params;
 }
-#endif  // GOOGLE_CUDA && CUDA_VERSION >= 11000
+
+GpuScratchAllocator::GpuScratchAllocator(int64_t memory_limit,
+                                         tensorflow::OpKernelContext* context)
+    : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
+
+port::StatusOr<DeviceMemory<uint8>> GpuScratchAllocator::AllocateBytes(
+    int64_t byte_size) {
+  tensorflow::Tensor temporary_memory;
+  if (byte_size < 0) {
+    return port::Status{port::error::INVALID_ARGUMENT,
+                        "Requested negative byte size!"};
+  }
+  if (byte_size > memory_limit_) {
+    return port::Status{
+        port::error::UNAVAILABLE,
+        absl::StrCat("Requested memory size (", byte_size,
+                     ") exceeds the max memory limit (", memory_limit_, ").")};
+  }
+  tensorflow::AllocationAttributes allocation_attr;
+  allocation_attr.retry_on_failure = false;
+  tensorflow::Status allocation_status(context_->allocate_temp(
+      tensorflow::DT_UINT8, tensorflow::TensorShape({byte_size}),
+      &temporary_memory, tensorflow::AllocatorAttributes(), allocation_attr));
+  if (!allocation_status.ok()) {
+    return port::Status{
+        port::error::UNAVAILABLE,
+        absl::StrCat("Failed to allocate the requested memory size (",
+                     byte_size, ").")};
+  }
+  // Hold the reference of the allocated tensors until the end of the
+  // allocator.
+  // NOTE: We expect tensors to be deallocated when this allocator goes out of
+  // scope when allocated_tensors is destructed.
+  allocated_tensors_.push_back(temporary_memory);
+  total_byte_size_ += byte_size;
+  return port::StatusOr<DeviceMemory<uint8>>(
+      tensorflow::AsDeviceMemory(temporary_memory.flat<uint8>().data(),
+                                 temporary_memory.flat<uint8>().size()));
+}
 
 }  // namespace stream_executor

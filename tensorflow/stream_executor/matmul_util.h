@@ -14,14 +14,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/kernels/gpu_utils.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/matmul_autotune.h"
 #include "tensorflow/stream_executor/blas.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#endif  // GOOGLE_CUDA
 
 namespace stream_executor {
 template <typename T>
@@ -31,11 +29,41 @@ DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
   return typed;
 }
 
-using BlasScratchAllocator = tensorflow::GpuScratchAllocator;
+// A class to provide scratch-space allocator for Stream-Executor callbacks in
+// CUDA libraries (CUDNN etc.).
+// TensorFlow is responsible for releasing the temporary buffers after
+// the kernel finishes.
+class GpuScratchAllocator : public ScratchAllocator {
+ public:
+  virtual ~GpuScratchAllocator() {}
+
+  GpuScratchAllocator(int64_t memory_limit,
+                      tensorflow::OpKernelContext* context);
+
+  int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
+
+  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
+
+  int64_t TotalByteSize() { return total_byte_size_; }
+
+ private:
+  int64_t memory_limit_;
+  int64_t total_byte_size_;
+  tensorflow::OpKernelContext* context_;
+  std::vector<tensorflow::Tensor> allocated_tensors_;
+};
+
+// Get a workspace limit from the environment variable, which is in MB.
+// Return the workspace memory limit in bytes. If no value is set, return the
+// default value.
+int64_t GetWorkspaceLimit(const string& envvar_in_mb,
+                          int64_t default_value_in_bytes);
+
+using BlasScratchAllocator = GpuScratchAllocator;
 
 static inline int64_t GetBlasWorkspaceLimit(const string& envvar_in_mb,
                                             int64_t default_value_in_bytes) {
-  return tensorflow::GetWorkspaceLimit(envvar_in_mb, default_value_in_bytes);
+  return GetWorkspaceLimit(envvar_in_mb, default_value_in_bytes);
 }
 
 // Encapsulates information which defines a unique
@@ -46,8 +74,7 @@ class BatchMatmulParameters {
                         uint64 m, uint64 n, uint64 k, uint64 batch_count,
                         bool broadcast_a, bool broadcast_b,
                         tensorflow::DataType dtype_ab,
-                        tensorflow::DataType dtype_cd, bool allow_tf32,
-                        int device_id)
+                        tensorflow::DataType dtype_cd, int device_id)
       : trans_a_(trans_a),
         trans_b_(trans_b),
         adj_a_(adj_a),
@@ -60,22 +87,23 @@ class BatchMatmulParameters {
         broadcast_b_(broadcast_b),
         dtype_ab_(dtype_ab),
         dtype_cd_(dtype_cd),
-        allow_tf32_(allow_tf32),
         device_id_(device_id) {
-    hash_code_ = trans_a;
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, trans_b);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, adj_a);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, adj_b);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, m);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, n);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, k);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, batch_count);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, broadcast_a);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, broadcast_b);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, dtype_ab);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, dtype_cd);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, allow_tf32);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, device_id);
+    allow_tf32_ = tensorflow::tensor_float_32_execution_enabled();
+
+    hash_code_ = trans_a_;
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, trans_b_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, adj_a_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, adj_b_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, m_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, n_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, k_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, batch_count_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, broadcast_a_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, broadcast_b_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, dtype_ab_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, dtype_cd_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, allow_tf32_);
+    hash_code_ = tensorflow::Hash64Combine(hash_code_, device_id_);
   }
   bool operator==(const BatchMatmulParameters& other) const {
     return this->get_data_as_tuple() == other.get_data_as_tuple();
@@ -218,20 +246,16 @@ struct CoefficientType<Eigen::half> {
   typedef float type;
 };
 
-#if GOOGLE_CUDA && CUDA_VERSION >= 11000
-port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithm(
+port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
     blas::DataType blas_dtype, tensorflow::DataType dtype,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
     blas::MatrixDescriptor output_matrix);
-#endif  // GOOGLE_CUDA && CUDA_VERSION >= 11000
 
-#if GOOGLE_CUDA && CUDA_VERSION >= 11000
 port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
     int64_t batch_size, blas::DataType blas_dtype, tensorflow::DataType dtype,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
     blas::MatrixDescriptor output_matrix);
-#endif  // GOOGLE_CUDA && CUDA_VERSION >= 11000
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_MATMUL_UTIL_H_
 

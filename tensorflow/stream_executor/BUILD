@@ -116,8 +116,7 @@ cc_library(
     name = "matmul_util",
     srcs = ["matmul_util.cc"],
     hdrs = ["matmul_util.h"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
-    deps = MATH_DEPS + if_cuda_or_rocm(["//tensorflow/core/kernels:gpu_utils"]),
+    deps = ["//tensorflow/core/kernels:gpu_utils"] + MATH_DEPS,
 )
 
 cc_library(

@@ -244,12 +244,11 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
                       get_initialized_buffer(instr));
 
   int64_t batch_size = gemm_config.batch_size();
-#if GOOGLE_CUDA && CUDA_VERSION >= 11000
   GpuGemmConfig config = GetGpuGemmConfig(instr);
   const Shape& output_shape = config.output_shape;
   absl::flat_hash_set<PrimitiveType> enabled_types = {F16, F32, F64, C64, C128};
 
-  if (config.use_cublaslt &&
+  if (config.use_cublaslt && stream->parent()->SupportsBlasPlans() &&
       enabled_types.contains(output_shape.element_type())) {
     se::blas::MatrixDescriptor lhs_matrix, rhs_matrix, output_matrix;
     std::tie(lhs_matrix, rhs_matrix, output_matrix) =
@@ -284,7 +283,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
         break;
     }
 
-    bool allow_tf32 = tensorflow::tensor_float_32_execution_enabled();
     int device_id = stream->parent()->device_ordinal();
     bool trans_x = lhs_matrix.transpose == se::blas::Transpose::kTranspose;
     bool trans_y = rhs_matrix.transpose == se::blas::Transpose::kTranspose;
@@ -299,15 +297,15 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
             << " adj_x " << false << " adj_y " << false << " m " << m << " n "
             << n << " k " << k << " batch_size " << batch_size << " broadcast "
             << broadcast << " broadcast " << broadcast << " dtype " << dtype
-            << " allow_tf32 " << allow_tf32 << " device_id " << device_id;
+            << " device_id " << device_id;
 
     se::BatchMatmulParameters matmul_parameters(
         trans_x, trans_y, false, false, m, n, k, batch_size,
         /*broadcast_a*/ broadcast, /*broadcast_b*/ broadcast, dtype, dtype,
-        allow_tf32, device_id);
+        device_id);
 
     TF_ASSIGN_OR_RETURN(const se::blas::PlanAndAlgorithms* plan_and_algorithms,
-                        se::GetPlanAndAlgorithm(
+                        se::GetPlanAndAlgorithms(
                             stream, matmul_parameters, batch_size, blas_dtype,
                             dtype, lhs_matrix, rhs_matrix, output_matrix));
 
@@ -384,14 +382,12 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
       VLOG(4) << "Inserting algorithm id " << algorithm_config.algorithm()
               << " for " << trans_x << " " << trans_y << " " << m << " " << n
               << " " << k << " " << batch_size << " " << broadcast << " "
-              << broadcast << " " << dtype << " " << allow_tf32 << " "
-              << device_id;
+              << broadcast << " " << dtype << " " << device_id;
       se::AutoTuneBatchMatmul::GetInstance()->Insert(matmul_parameters,
                                                      algorithm_config);
     }
     return {se::blas::kNoAlgorithm};
   } else {
-#endif
     GemmCacheKey key =
         std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
                         instr->shape(), gemm_config.SerializeAsString());
@@ -423,9 +419,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 
     CHECK(autotune_cache.emplace(key, result).second);
     return result;
-#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11000
   }
-#endif  // not GOOGLE_CUDA or CUDA_VERSION < 11000
 }
 
 static StatusOr<bool> RunOnInstruction(HloInstruction* instr,

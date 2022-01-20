@@ -132,15 +132,12 @@ class CUDABlas : public blas::BlasSupport {
                                    const T &beta, DeviceMemory<T> *y, int incy,
                                    blas::ProfileResult *output_profile_result);
 
-#if CUDA_VERSION >= 11000
   template <typename T>
   port::StatusOr<blas::PlanAndAlgorithms*> GetBlasLtPlanAndAlgorithms(
       int64_t batch_size, blas::MatrixDescriptor lhs_matrix,
       blas::MatrixDescriptor rhs_matirx, blas::MatrixDescriptor output_matrix,
       Stream* stream);
-#endif
 
-#if CUDA_VERSION >= 11000
   // Helper function for implementing DoBlasLtMatmul.
   bool DoBlasLtMatmulInternal(Stream *stream, bool err_on_failure,
                               const blas::IBlasLtMatmulPlan *plan,
@@ -158,7 +155,6 @@ class CUDABlas : public blas::BlasSupport {
                                     size_t max_workspace_size,
                                     int max_algorithm_count,
                                     bool for_remainder_batch = false);
-#endif
 
   // Guards the cuBLAS handle for this device.
   absl::Mutex mu_;
@@ -170,10 +166,8 @@ class CUDABlas : public blas::BlasSupport {
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ TF_GUARDED_BY(mu_);
 
-#if CUDA_VERSION >= 11000
   // cuBLASLt library handle on the device.
   cublasLtHandle_t blasLt_ TF_GUARDED_BY(mu_);
-#endif
 
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
 };

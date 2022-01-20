@@ -255,6 +255,10 @@ int StreamExecutor::PlatformDeviceCount() const {
   return implementation_->PlatformDeviceCount();
 }
 
+bool StreamExecutor::SupportsBlasPlans() const {
+  return implementation_->SupportsBlasPlans();
+}
+
 bool StreamExecutor::SupportsBlas() const {
   return implementation_->SupportsBlas();
 }
