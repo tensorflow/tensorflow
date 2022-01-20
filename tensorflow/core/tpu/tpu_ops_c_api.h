@@ -641,6 +641,22 @@ TpuEmbeddingTensorBatchFixedState_Create(
 TFTPU_CAPI_EXPORT void TpuEmbeddingTensorBatchFixedState_Destroy(
     TpuEmbedding_TensorBatchFixedState* fixed_state);
 
+typedef struct TpuEmbeddingEngine_RecvActivationsComputation_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t config_string_size;
+  XLA_Shape* deduplication_data_shape;
+  const XLA_TpuMeshState* tpu_mesh_state;
+
+  // out
+  TpuSerializedProto* xla_computation;
+  TF_Status* status;
+} TpuEmbeddingEngine_RecvActivationsComputation_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_RecvActivationsComputation(
+    TpuEmbeddingEngine_RecvActivationsComputation_Params* params);
+
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_XrtCompileAndBuild);
@@ -735,6 +751,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingTensorBatchFixedState_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingTensorBatchFixedState_Destroy);
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_EnqueueTensorBatch);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_RecvActivationsComputation);
 };
 
 }  // extern "C"
