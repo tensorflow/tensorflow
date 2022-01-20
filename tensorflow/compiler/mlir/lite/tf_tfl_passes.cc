@@ -174,6 +174,8 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
   // during which resources dont get frozen in the python layer.
   pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
+
+  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 }
 
 // This is the later part of the conversion in isolation. This enables a caller
@@ -191,8 +193,6 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
       toco_flags.tf_quantization_mode().empty()) {
     pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
   }
-
-  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
