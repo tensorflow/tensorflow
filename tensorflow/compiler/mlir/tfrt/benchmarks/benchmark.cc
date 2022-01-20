@@ -83,13 +83,13 @@ JitExecutable& CreateJitExecutable(
     mlir::RegisterAllTensorFlowDialects(registry);
     tfrt::jitrt::RegisterDefaultJitRtDialects(registry);
   };
-  opts.register_compilation_pipeline =
+  opts.create_compilation_pipeline =
       [&, copts, lower_from_tensorflow](mlir::PassManager& pm) {
         if (lower_from_tensorflow)
           tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
-        tfrt::jitrt::RegisterDefaultJitRtCompilationPipeline(pm, copts);
+        tfrt::jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
       };
-  opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
+  opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
   opts.calling_convention = CompilationOptions::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 

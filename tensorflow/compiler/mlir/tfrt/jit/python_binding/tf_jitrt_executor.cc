@@ -55,10 +55,10 @@ using ::tfrt::StrCat;
 
 using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
+using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::RegisterDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConverter;
@@ -91,14 +91,14 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
     // annotate dynamic shaped types with static type information.
     mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
   };
-  opts.register_compilation_pipeline = [=](mlir::PassManager& pm) {
+  opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
     tensorflow::TfJitRtPipelineOptions opts;
     opts.vectorize = vectorize;
     opts.legalize_i1_tensors = legalize_i1_tensors;
     tensorflow::CreateTfJitRtPipeline(pm, opts);
-    RegisterDefaultJitRtCompilationPipeline(pm, copts);
+    CreateDefaultJitRtCompilationPipeline(pm, copts);
   };
-  opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
+  opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
   opts.specialization = specialization;
   opts.calling_convention = CompilationOptions::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());

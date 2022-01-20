@@ -92,13 +92,13 @@ using ::tfrt::TaskFunction;
 
 using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
+using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::EmitErrors;
 using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::JitExecutableCache;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::OperandConstraint;
-using ::tfrt::jitrt::RegisterDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnAsyncStridedMemref;
 using ::tfrt::jitrt::ReturnStridedMemref;
@@ -387,7 +387,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     };
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-    opts.register_compilation_pipeline = [=](mlir::PassManager& pm) {
+    opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
       TfJitRtPipelineOptions opts;
       if (tf_jitrt_opts) {
         opts.vectorize = tf_jitrt_opts->vectorize;
@@ -398,11 +398,11 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
       CreateTfJitRtPipeline(pm, opts);
 
       // Use default JitRt compilation pipeline to lower to LLVM.
-      RegisterDefaultJitRtCompilationPipeline(pm, copts);
+      CreateDefaultJitRtCompilationPipeline(pm, copts);
     };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
+    opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
