@@ -489,10 +489,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "feature_index",
           builder_->getI64IntegerAttr(instruction->feature_index())));
       if (instruction->opcode() == HloOpcode::kBatchNormGrad) {
-        return func_builder
-            ->create<mlir::mhlo::BatchNormGradOp>(loc, result_type, operands,
-                                                  attributes)
-            .getOperation();
+        // Flatten the return type if they are tuple-typed.
+        llvm::SmallVector<Type> flattened_ret_types;
+        FlattenTupleType(result_type, flattened_ret_types);
+
+        auto op = func_builder
+                      ->create<mlir::mhlo::BatchNormGradOp>(
+                          loc, flattened_ret_types, operands, attributes)
+                      .getOperation();
+
+        return CreateTupleFromOpResults(func_builder, loc, op, result_type);
       } else if (instruction->opcode() == HloOpcode::kBatchNormInference) {
         return func_builder
             ->create<mlir::mhlo::BatchNormInferenceOp>(loc, result_type,
@@ -500,10 +506,17 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             .getOperation();
       } else {
         assert(instruction->opcode() == HloOpcode::kBatchNormTraining);
-        return func_builder
-            ->create<mlir::mhlo::BatchNormTrainingOp>(loc, result_type,
-                                                      operands, attributes)
-            .getOperation();
+
+        // Flatten the return type if they are tuple-typed.
+        llvm::SmallVector<Type> flattened_ret_types;
+        FlattenTupleType(result_type, flattened_ret_types);
+
+        auto op = func_builder
+                      ->create<mlir::mhlo::BatchNormTrainingOp>(
+                          loc, flattened_ret_types, operands, attributes)
+                      .getOperation();
+
+        return CreateTupleFromOpResults(func_builder, loc, op, result_type);
       }
 
     case HloOpcode::kDot: {
@@ -984,10 +997,17 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kRngBitGenerator: {
       auto rng_op = Cast<HloRngBitGeneratorInstruction>(instruction);
+
+      // Flatten the return type if they are tuple-typed.
+      llvm::SmallVector<Type> flattened_ret_types;
+      FlattenTupleType(result_type, flattened_ret_types);
+
       auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
-          loc, result_type,
+          loc, flattened_ret_types,
           func_builder->getI32IntegerAttr(rng_op->algorithm()), operands[0]);
-      return op.getOperation();
+
+      return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                      result_type);
     }
     case HloOpcode::kWhile: {
       llvm::SmallVector<Value> flattened_operands;
@@ -1303,13 +1323,24 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 #undef NO_ATTRIBUTE_CASE
 
     case HloOpcode::kFusion: {
+      // Flatten the tuple-typed operands.
+      llvm::SmallVector<Value> flattened_operands;
+      for (auto& operand : operands)
+        FlattenTupleValue(func_builder, loc, operand, flattened_operands);
+
+      // Flatten the return type if they are tuple-typed.
+      llvm::SmallVector<Type> flattened_ret_types;
+      FlattenTupleType(result_type, flattened_ret_types);
+
       auto fusion = func_builder->create<mlir::mhlo::FusionOp>(
-          loc, result_type, operands,
+          loc, flattened_ret_types, flattened_operands,
           builder_->getStringAttr(xla::ToString(instruction->fusion_kind())));
-      TF_RETURN_IF_ERROR(
-          ImportAsRegion(*instruction->fused_instructions_computation(),
-                         &fusion.fused_computation()));
-      return fusion.getOperation();
+      TF_RETURN_IF_ERROR(ImportAsRegion(
+          *instruction->fused_instructions_computation(),
+          &fusion.fused_computation(), /*flatten_region_arg_tuple=*/true));
+
+      return CreateTupleFromOpResults(func_builder, loc, fusion.getOperation(),
+                                      result_type);
     }
     case HloOpcode::kBitcast: {
       auto bitcast = func_builder->create<mlir::mhlo::BitcastOp>(

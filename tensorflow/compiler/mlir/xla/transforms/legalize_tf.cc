@@ -2303,21 +2303,18 @@ class ConvertFusedBatchNormGradBase
       // Infers the output type with the converted `act`.
       Type feature_type = RankedTensorType::get(
           {GetDimSize(act_type, feature_dim)}, kernel_type);
-      Type result_type = TupleType::get(
-          rewriter.getContext(), {act.getType(), feature_type, feature_type});
 
+      SmallVector<Type, 3> operand_types = {act.getType(), feature_type,
+                                            feature_type};
       auto training_op = rewriter.create<BatchNormGradOp>(
-          loc, result_type, act, scale, mean, var, grad, op.epsilon(),
+          loc, operand_types, act, scale, mean, var, grad, op.epsilon(),
           feature_dim);
 
-      x_backprop =
-          rewriter.create<GetTupleElementOp>(loc, training_op.getResult(), 0);
+      x_backprop = training_op.getResult(0);
 
-      scale_backprop =
-          rewriter.create<GetTupleElementOp>(loc, training_op.getResult(), 1);
+      scale_backprop = training_op.getResult(1);
 
-      offset_backprop =
-          rewriter.create<GetTupleElementOp>(loc, training_op.getResult(), 2);
+      offset_backprop = training_op.getResult(2);
     } else {  // inference
       SmallVector<int64_t, 4> non_feature_dims;
       for (int64_t i = 0; i < act_type.getRank(); ++i) {
@@ -2443,20 +2440,14 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
       // batch_mean, and batch_var.
       SmallVector<Type, 3> operand_types = {bn_train_input_type_tensor,
                                             mean_var_type, mean_var_type};
-      Type result_type = TupleType::get(rewriter.getContext(), operand_types);
-
       auto bn_train_op = rewriter.create<mhlo::BatchNormTrainingOp>(
-          op.getLoc(), result_type, bn_train_input, op.scale(), op.offset(),
+          op.getLoc(), operand_types, bn_train_input, op.scale(), op.offset(),
           op.epsilon(), feature_dim.getInt());
       // HLO op outputs a tuple of tensors. Extract those results.
-      auto bn_train_op_result = bn_train_op.getResult();
-      Value y_out = rewriter.create<mhlo::GetTupleElementOp>(
-          op.getLoc(), bn_train_op_result, 0);
-      Value batch_mean = rewriter.create<mhlo::GetTupleElementOp>(
-          op.getLoc(), bn_train_op_result, 1);
+      Value y_out = bn_train_op.getResult(0);
+      Value batch_mean = bn_train_op.getResult(1);
       Value reserve_space_1 = batch_mean;
-      Value batch_variance = rewriter.create<mhlo::GetTupleElementOp>(
-          op.getLoc(), bn_train_op_result, 2);
+      Value batch_variance = bn_train_op.getResult(2);
 
       // Apply Bessel's correction on the variance.
       int total_input_size = bn_train_input_type_tensor.getNumElements();
@@ -7207,18 +7198,10 @@ class ConvertXlaRngBitGeneratorOp
     }
 
     auto rng_bit_generator_op = rewriter.create<mhlo::RngBitGeneratorOp>(
-        loc,
-        mlir::TupleType::get(
-            rewriter.getContext(),
-            {op.getResult(0).getType(), op.getResult(1).getType()}),
+        loc, op.getResultTypes(),
         rewriter.getI32IntegerAttr(xla_alg.getValue()), op.initial_state());
 
-    SmallVector<Value, 2> new_results = {
-        rewriter.create<mhlo::GetTupleElementOp>(
-            loc, rng_bit_generator_op.getResult(), 0),
-        rewriter.create<mhlo::GetTupleElementOp>(
-            loc, rng_bit_generator_op.getResult(), 1)};
-    rewriter.replaceOp(op, new_results);
+    rewriter.replaceOp(op, rng_bit_generator_op.getResults());
 
     return success();
   }

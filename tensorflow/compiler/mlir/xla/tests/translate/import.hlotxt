@@ -127,10 +127,26 @@ add {
   %variance = f32[2] parameter(3)
   %grad_output = f32[2,2,2,2] parameter(4)
 
-  // CHECK:  "mhlo.batch_norm_grad"
+  // CHECK:  %[[OUT:.+]]:3 = "mhlo.batch_norm_grad"
   // CHECK-SAME:  epsilon = 1.000000e-03 : f32
   // CHECK-SAME:  feature_index = 1 : i64
+  // CHECK:  %[[TUPLE:.+]] = "mhlo.tuple"
+  // CHECK:  return %[[TUPLE]]
   ROOT %batch-norm-grad = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-grad(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %mean, f32[2] %variance, f32[2,2,2,2] %grad_output), epsilon=0.001, feature_index=1
+}
+
+// CHECK-LABEL:  func private @test_batch_norm_train
+%test_batch_norm_train (input: f32[2,2,2,2], scale: f32[2], offset: f32[2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
+  %input = f32[2,2,2,2] parameter(0)
+  %scale = f32[2] parameter(1)
+  %offset = f32[2] parameter(2)
+
+  // CHECK:  %[[OUT:.+]]:3 = "mhlo.batch_norm_training"
+  // CHECK-SAME:  epsilon = 1.000000e-03 : f32
+  // CHECK-SAME:  feature_index = 1 : i64
+  // CHECK:  %[[TUPLE:.+]] = "mhlo.tuple"
+  // CHECK:  return %[[TUPLE]]
+  ROOT %batch-norm-train = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-training(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %offset), epsilon=0.001, feature_index=1
 }
 
 // CHECK-LABEL:  func private @call(%arg0: tensor<i64>) -> tensor<i64>
@@ -1206,7 +1222,9 @@ add {
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3xui64>)
 %rngbitgen (Arg_0.1: u64[3]) -> (u64[3], u32[2,2]) {
   %Arg_0.1 = u64[3] parameter(0)
-  // CHECK: "mhlo.rng_bit_generator"(%[[ARG0]]) {rng_algorithm = 2 : i32, xla_shape = {{.*}}} : (tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
+  // CHECK: %[[RNG:.+]]:2 = "mhlo.rng_bit_generator"(%[[ARG0]]) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
+  // CHECK: %[[TUPLE:.+]] = "mhlo.tuple"(%[[RNG]]#0, %[[RNG]]#1) {xla_shape = "(u64[3]{0}, u32[2,2]{1,0})"} : (tensor<3xui64>, tensor<2x2xui32>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>  
+  // CHECK: return %[[TUPLE]]
   ROOT %rng-bit-generator.2 = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_philox
 }
 
