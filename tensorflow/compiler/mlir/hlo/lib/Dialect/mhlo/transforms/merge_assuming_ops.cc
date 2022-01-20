@@ -432,13 +432,13 @@ struct MergeAssumingOpsPass
     registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
     mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
-    if (failed(applyPatternsAndFoldGreedily(getFunction(), std::move(patterns),
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config))) {
       return signalPassFailure();
     }
@@ -474,7 +474,7 @@ void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
   tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<FunctionPass> createMergeAssumingOpsPass() {
+std::unique_ptr<OperationPass<FuncOp>> createMergeAssumingOpsPass() {
   return std::make_unique<MergeAssumingOpsPass>();
 }
 

@@ -160,10 +160,10 @@ struct LegalizeTrigonometricToApproximationPass
     : public LegalizeTanhToApproximationPassBase<
           LegalizeTrigonometricToApproximationPass> {
   /// Perform the lowering of standard dialect operations to approximations.
-  void runOnFunction() override {
+  void runOnOperation() override {
     OwningRewritePatternList patterns(&getContext());
     PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 

@@ -114,8 +114,8 @@ struct HloCanonicalizeReductionPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tensor::TensorDialect>();
   }
-  void runOnFunction() override {
-    getFunction().walk([&](ReduceOp op) {
+  void runOnOperation() override {
+    getOperation().walk([&](ReduceOp op) {
       SmallVector<int64_t, 4> dims_to_reduce;
       DenseSet<int64_t> dims_to_reduce_set;
       for (auto dim : op.dimensions().getValues<APInt>()) {
@@ -124,11 +124,13 @@ struct HloCanonicalizeReductionPass
       }
 
       // empty reduction is just a no-op, thus no need to do codegen.
-      if (dims_to_reduce.empty()) return;
+      if (dims_to_reduce.empty())
+        return;
 
       // suppose reduce input is a ranked tensor
       auto ty = op.getOperand(0).getType().dyn_cast<RankedTensorType>();
-      if (!ty) return signalPassFailure();
+      if (!ty)
+        return signalPassFailure();
       int rank = ty.getRank();
       int ndims_to_reduce = dims_to_reduce.size();
       auto elem_ty = ty.getElementType();
@@ -148,7 +150,8 @@ struct HloCanonicalizeReductionPass
 
       SmallVector<int64_t, 4> dims_to_keep;
       for (int i = 0; i < rank; ++i) {
-        if (!dims_to_reduce_set.count(i)) dims_to_keep.push_back(i);
+        if (!dims_to_reduce_set.count(i))
+          dims_to_keep.push_back(i);
       }
 
       OpBuilder b(op);
@@ -248,7 +251,7 @@ struct HloCanonicalizeReductionPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createHloCanonicalizeReductionPass() {
+std::unique_ptr<OperationPass<FuncOp>> createHloCanonicalizeReductionPass() {
   return std::make_unique<HloCanonicalizeReductionPass>();
 }
 

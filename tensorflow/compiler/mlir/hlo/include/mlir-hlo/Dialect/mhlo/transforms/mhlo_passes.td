@@ -15,7 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def ChloLegalizeToHloPass : FunctionPass<"chlo-legalize-to-hlo"> {
+def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "FuncOp"> {
   let summary = "Legalize CHLO to HLO.";
   let constructor = "createChloLegalizeToHloPass()";
   let options = [
@@ -26,7 +26,7 @@ def ChloLegalizeToHloPass : FunctionPass<"chlo-legalize-to-hlo"> {
   ];
 }
 
-def HloCanonicalizeReductionPass : FunctionPass<"hlo-canonicalize-reduction"> {
+def HloCanonicalizeReductionPass : Pass<"hlo-canonicalize-reduction", "FuncOp"> {
   let summary = "canonicalize reduction ops to be suitable for codegen.";
   let constructor = "createHloCanonicalizeReductionPass()";
 }
@@ -36,77 +36,77 @@ def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let constructor = "createLegalizeToLhloPass()";
 }
 
-def HloLegalizeToMemrefPass : FunctionPass<"hlo-legalize-to-memref"> {
+def HloLegalizeToMemrefPass :Pass<"hlo-legalize-to-memref", "FuncOp"> {
   let summary = "Legalize from HLO dialect to memref dialect.";
   let constructor = "createLegalizeToMemrefPass()";
 }
 
-def LegalizeControlFlowPass : FunctionPass<"mhlo-legalize-control-flow"> {
+def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "FuncOp"> {
   let summary = "Legalize from MHLO control flow to CFG control flow.";
   let constructor = "createLegalizeControlFlowPass()";
 }
 
-def LegalizeEinsumToDotGeneralPass : FunctionPass<"mhlo-legalize-einsum-to-dot-general"> {
+def LegalizeEinsumToDotGeneralPass : Pass<"mhlo-legalize-einsum-to-dot-general", "FuncOp"> {
   let summary = "Legalizes einsum ops to dot_general ops.";
   let constructor = "createLegalizeEinsumToDotGeneralPass()";
 }
 
-def LegalizeGatherToTorchIndexSelectPass : FunctionPass<"mhlo-legalize-gather-to-torch-index-select"> {
+def LegalizeGatherToTorchIndexSelectPass : Pass<"mhlo-legalize-gather-to-torch-index-select", "FuncOp"> {
   let summary = "Legalizes gathers to a torch index select.";
   let constructor = "createLegalizeGatherToTorchIndexSelectPass()";
 }
 
 
-def LegalizeTanhToApproximationPass : FunctionPass<"mhlo-legalize-trigonometric-to-approximation"> {
+def LegalizeTanhToApproximationPass : Pass<"mhlo-legalize-trigonometric-to-approximation", "FuncOp"> {
   let summary = "Legalize trigonometric operations from standard dialect to an approximation.";
   let constructor = "createLegalizeTrigonometricToApproximationPass()";
 }
 
-def HloLegalizeShapeOpsToStandardPass : FunctionPass<"hlo-legalize-shapeops-to-standard"> {
+def HloLegalizeShapeOpsToStandardPass : Pass<"hlo-legalize-shapeops-to-standard", "FuncOp"> {
   let summary = "Legalize shape operations from HLO dialect to standard dialect.";
   let constructor = "createLegalizeHloShapeOpsToStandardPass()";
 }
 
-def HloLegalizeToLinalgPass : FunctionPass<"hlo-legalize-to-linalg"> {
+def HloLegalizeToLinalgPass : Pass<"hlo-legalize-to-linalg", "FuncOp"> {
   let summary = "Legalize from HLO dialect to Linalg dialect.";
   let constructor = "createLegalizeHloToLinalgPass()";
 }
 
-def LegalizeToStandardPass : FunctionPass<"mhlo-legalize-to-std"> {
+def LegalizeToStandardPass : Pass<"mhlo-legalize-to-std", "FuncOp"> {
   let summary = "Legalize from MHLO dialect to standard dialect.";
   let constructor = "createLegalizeToStdPass()";
 }
 
-def LowerComplexPass : FunctionPass<"mhlo-test-lower-complex"> {
+def LowerComplexPass : Pass<"mhlo-test-lower-complex", "FuncOp"> {
   let summary = "Lower complex operations into non-complex operations.";
   let constructor = "createLowerComplexPass()";
 }
 
-def LegalizeGeneralDotPass : FunctionPass<"mhlo-test-lower-general-dot"> {
+def LegalizeGeneralDotPass : Pass<"mhlo-test-lower-general-dot", "FuncOp"> {
   let summary = "Tests lowering general dot to a non-batched dot when possible.";
   let constructor = "createLegalizeGeneralDotPass()";
 }
 
 
-def TestMaterializeBroadcastsPass : FunctionPass<"mhlo-test-materialize-broadcasts"> {
+def TestMaterializeBroadcastsPass : Pass<"mhlo-test-materialize-broadcasts", "FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestMaterializeBroadcastsPass()";
 }
 
 
-def MhloFusionPass : FunctionPass<"mhlo-fusion"> {
+def MhloFusionPass : Pass<"mhlo-fusion", "FuncOp"> {
   let summary = "Fuse mhlo ops to kLoop/kInput fusion patterns.";
   let constructor = "createMhloFusionPass()";
 }
 
 
-def OptimizeMhloPass : FunctionPass<"mhlo-test-optimize"> {
+def OptimizeMhloPass : Pass<"mhlo-test-optimize", "FuncOp"> {
   let summary = "Run optional HLO optimizations.";
   let constructor = "createOptimizeMhloPass()";
 }
 
 
-def SinkConstantsToControlFlowPass : FunctionPass<"mhlo-sink-constants-to-control-flow"> {
+def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow", "FuncOp"> {
   let summary = "Sink constants implicitly captured in control flow regions. This "
     "is necessary to export to XLA.";
   let constructor = "createSinkConstantsToControlFlowPass()";
@@ -152,19 +152,19 @@ def SinkConstantsToControlFlowPass : FunctionPass<"mhlo-sink-constants-to-contro
 }
 
 
-def TestInferShapedTypeMethodsPass : FunctionPass<"mhlo-test-infer-shaped-type-methods"> {
+def TestInferShapedTypeMethodsPass : Pass<"mhlo-test-infer-shaped-type-methods", "FuncOp"> {
   let summary = "Uses test ops to invoke InferShapedTypeOpInterface methods.";
   let constructor = "createTestInferShapedTypeMethodsPass()";
 }
 
-def BroadcastPropagationPass : FunctionPass<"mhlo-broadcast-propagation"> {
+def BroadcastPropagationPass : Pass<"mhlo-broadcast-propagation", "FuncOp"> {
   let summary = "Move dynamic broadcasts up over element-wise operations and "
     "broadcast the operands rather than the result. This will eventually allow "
     "for larger fusions.";
   let constructor = "createBroadcastPropagationPass()";
 }
 
-def MergeAssumingOpsPass : FunctionPass<"mhlo-merge-assuming-ops"> {
+def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "FuncOp"> {
   let summary = "Prepare moving dynamic broadcasts up over element-wise "
     "operations and broadcast the operands rather than the result. This will "
     "eventually allow for larger fusions.";
@@ -172,7 +172,7 @@ def MergeAssumingOpsPass : FunctionPass<"mhlo-merge-assuming-ops"> {
 }
 
 def GroupReductionDimensionsPass
-    : FunctionPass<"group-reduction-dimensions"> {
+    : Pass<"group-reduction-dimensions", "FuncOp"> {
   let summary = "Group dimensions of reduction operations";
   let description = "Group reduction and parallel dimensions of reduction "
     "operations and realize them through equivalent 1D or 2D reductions, if "
@@ -196,7 +196,7 @@ def ExpandHloTuplesPass : Pass<"expand-hlo-tuples", "ModuleOp"> {
   let dependentDialects = ["mhlo::MhloDialect"];
 }
 
-def FlattenTuplePass : FunctionPass<"mhlo-flatten-tuple"> {
+def FlattenTuplePass : Pass<"mhlo-flatten-tuple", "FuncOp"> {
   let summary = "Flatten tuples in operands and results of operators that "
     "support both tuple and variadic type.";
   let constructor = "createFlattenTuplePass()";
@@ -205,12 +205,12 @@ def FlattenTuplePass : FunctionPass<"mhlo-flatten-tuple"> {
 /// Rank specialization passes.
 
 def RankSpecializationClusterPass
-    : FunctionPass<"mhlo-rank-specialization-cluster"> {
+    : Pass<"mhlo-rank-specialization-cluster", "FuncOp"> {
   let constructor = "createRankSpecializationClusterPass()";
 }
 
 def RankSpecializationToSCFPass
-    : FunctionPass<"mhlo-rank-specialization-to-scf"> {
+    : Pass<"mhlo-rank-specialization-to-scf", "FuncOp"> {
   let constructor = "createRankSpecializationToSCFPass()";
   let options = [
     Option<"max_target_rank_", "max-target-rank", "int", /*default=*/"8",

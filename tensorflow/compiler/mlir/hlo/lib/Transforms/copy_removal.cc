@@ -212,8 +212,8 @@ class CopyRemoval : BufferPlacementTransformationBase {
 };
 
 struct CopyRemovalPass : public CopyRemovalBase<CopyRemovalPass> {
-  void runOnFunction() override {
-    Operation *funcOp = getFunction();
+  void runOnOperation() override {
+    Operation *funcOp = getOperation();
     CopyRemoval removal(funcOp);
     removal.removeCopy();
   }
@@ -221,7 +221,7 @@ struct CopyRemovalPass : public CopyRemovalBase<CopyRemovalPass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createCopyRemovalPass() {
+std::unique_ptr<OperationPass<FuncOp>> createCopyRemovalPass() {
   return std::make_unique<CopyRemovalPass>();
 }
 

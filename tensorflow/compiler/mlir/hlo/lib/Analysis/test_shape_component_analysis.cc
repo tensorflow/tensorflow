@@ -31,13 +31,14 @@ struct TestShapeComponentAnalysisPass
     registry.insert<mlir::mhlo::MhloDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     ShapeComponentAnalysis shape_component;
-    llvm::outs() << "Testing : " << getFunction().getName() << '\n';
+    llvm::outs() << "Testing : " << getOperation().getName() << '\n';
     // Analyze anything that looks like a shape tensor.
-    getFunction().walk([&](Operation* op) {
+    getOperation().walk([&](Operation *op) {
       // Skip ops with more than one result.
-      if (op->getNumResults() != 1) return;
+      if (op->getNumResults() != 1)
+        return;
       Value result = op->getResults().front();
 
       // Dump shape info if any.
@@ -63,7 +64,7 @@ struct TestShapeComponentAnalysisPass
 
 }  // end anonymous namespace
 
-std::unique_ptr<FunctionPass> createTestShapeComponentAnalysisPass() {
+std::unique_ptr<OperationPass<FuncOp>> createTestShapeComponentAnalysisPass() {
   return std::make_unique<TestShapeComponentAnalysisPass>();
 }
 

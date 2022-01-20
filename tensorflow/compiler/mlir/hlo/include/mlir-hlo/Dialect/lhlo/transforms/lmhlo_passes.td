@@ -15,7 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LhloFuseLinalgPass : FunctionPass<"lhlo-fuse-linalg"> {
+def LhloFuseLinalgPass : Pass<"lhlo-fuse-linalg", "FuncOp"> {
   let summary = "Greedily fuse linalg ops obtained after LHLO lowering.";
   let constructor = "createLhloFuseLinalgPass()";
   let options = [
@@ -27,24 +27,24 @@ def LhloFuseLinalgPass : FunctionPass<"lhlo-fuse-linalg"> {
   ];
 }
 
-def LhloLegalizeToAffinePass : FunctionPass<"lhlo-legalize-to-affine"> {
+def LhloLegalizeToAffinePass : Pass<"lhlo-legalize-to-affine", "FuncOp"> {
   let summary = "Legalize from LHLO dialect to affine dialect.";
   let constructor = "createLhloLegalizeToAffinePass()";
 }
 
 
-def LhloLegalizeToGpuPass : FunctionPass<"lhlo-legalize-to-gpu"> {
+def LhloLegalizeToGpuPass : Pass<"lhlo-legalize-to-gpu", "FuncOp"> {
   let summary = "Legalize from LHLO dialect to GPU dialect.";
   let constructor = "createLegalizeToGpuPass()";
 }
 
 
-def LhloLegalizeToParallelLoopsPass : FunctionPass<"lhlo-legalize-to-parallel-loops"> {
+def LhloLegalizeToParallelLoopsPass : Pass<"lhlo-legalize-to-parallel-loops", "FuncOp"> {
   let summary = "Legalize from LHLO dialect to parallel loops.";
   let constructor = "createLegalizeLhloToParallelLoopsPass()";
 }
 
-def LegalizeToTensorOpPass : FunctionPass<"lhlo-legalize-to-tensor-op"> {
+def LegalizeToTensorOpPass : Pass<"lhlo-legalize-to-tensor-op", "FuncOp"> {
   let summary = "Legalize bufferization.to_tensor ops inserted during mhlo to lmhlo conversion.";
   let constructor = "createLegalizeToTensorOpPass()";
 }

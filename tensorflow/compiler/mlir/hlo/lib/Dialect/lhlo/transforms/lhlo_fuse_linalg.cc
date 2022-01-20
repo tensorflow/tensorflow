@@ -52,8 +52,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
     use_parallel_loops_.setValue(use_parallel_loops);
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
 
     // TODO(pifon): Remove assumption that the function has a single block.
     if (!llvm::hasSingleElement(func)) {
@@ -207,8 +207,9 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
-    bool use_parallel_loops, ArrayRef<unsigned> tile_sizes) {
+std::unique_ptr<OperationPass<FuncOp>>
+createLhloFuseLinalgPass(bool use_parallel_loops,
+                         ArrayRef<unsigned> tile_sizes) {
   return std::make_unique<LhloFuseLinalgPass>(use_parallel_loops, tile_sizes);
 }
 

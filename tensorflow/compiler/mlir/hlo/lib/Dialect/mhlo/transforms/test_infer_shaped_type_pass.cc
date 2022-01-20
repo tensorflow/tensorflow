@@ -89,17 +89,17 @@ struct TestInferShapedTypeMethodsPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect>();
   }
-  void runOnFunction() override {
+  void runOnOperation() override {
     OwningRewritePatternList patterns(&getContext());
     patterns.insert<ReifyReturnTypeShapesPattern>(&getContext());
     patterns.insert<InferReturnTypeComponentsPattern>(&getContext());
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createTestInferShapedTypeMethodsPass() {
+std::unique_ptr<OperationPass<FuncOp>> createTestInferShapedTypeMethodsPass() {
   return std::make_unique<TestInferShapedTypeMethodsPass>();
 }
 

@@ -713,8 +713,8 @@ struct LhloLegalizeToParallelLoopsPass
                     memref::MemRefDialect, scf::SCFDialect>();
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
 
     OwningRewritePatternList patterns(&getContext());
     // clang-format off
