@@ -18,6 +18,7 @@ limitations under the License.
 #define TFG_OPS
 
 include "tensorflow/core/ir/dialect.td"
+include "tensorflow/core/ir/interfaces.td"
 include "tensorflow/core/ir/types/attributes.td"
 include "tensorflow/core/ir/types/types.td"
 
@@ -74,7 +75,8 @@ def TFGraph_GraphOp : TFGraph_Op<"graph",
 
 def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
     RegionKindInterface, HasOnlyGraphRegion, SingleBlock, CallableOpInterface,
-    FunctionOpInterface, IsolatedFromAbove, Symbol, OpAsmOpInterface]> {
+    FunctionOpInterface, IsolatedFromAbove, Symbol, OpAsmOpInterface,
+    DeclareOpInterfaceMethods<ControlArgumentInterface>]> {
   let summary = "Define a function as modeled by FunctionDef.";
   let description = [{
     This operation is modeling a function definition, corresponding to the
@@ -243,12 +245,15 @@ def TFGraph_CastOp : TFGraph_Op<"Cast", [NoSideEffect]> {
   let arguments = (ins
     // Op operands.
     TFGraph_Tensor:$x,
+    Variadic<ControlType>:$ctls,
     // Required attributes.
     TFGraph_TypeOrPlaceholder:$SrcT,
     TFGraph_TypeOrPlaceholder:$DstT,
     DefaultValuedAttr<BoolAttr, "false">:$Truncate
   );
   let results = (outs AnyType:$y, ControlType:$ctl);
+
+  let hasFolder = 1;
 }
 
 // Base class for TFGraph concrete ops.

@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/types/dialect.h"
+#include "tensorflow/core/ir/utility.h"
 
 // Generated definitions.
 #include "tensorflow/core/ir/dialect.cc.inc"
@@ -681,6 +682,18 @@ GraphFuncOp GraphFuncOp::getCalledFunction(Operation *op,
   return symbol_table.lookup<GraphFuncOp>(op->getName().stripDialect());
 }
 
+BlockArgument GraphFuncOp::getDataValueOf(BlockArgument ctl) {
+  return ctl.getOwner()->getArgument(ctl.getArgNumber() - 1);
+}
+
+BlockArgument GraphFuncOp::getControlTokenOf(BlockArgument data) {
+  return data.getOwner()->getArgument(data.getArgNumber() + 1);
+}
+
+BlockArgument GraphFuncOp::getDataValue(Region &region, unsigned idx) {
+  return region.getArgument(idx * 2);
+}
+
 // This is naming block arguments for GraphFuncOp, we rely on the arg attributes
 // for computing the names.
 void GraphFuncOp::getAsmBlockArgumentNames(Region &region,
@@ -794,6 +807,19 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
           << " does not match corresponding op result dtype: " << res_type);
     }
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CastOp
+
+LogicalResult CastOp::fold(ArrayRef<Attribute> operands,
+                           SmallVectorImpl<OpFoldResult> &results) {
+  // If the op has control operands, we can't fold.
+  if (!ctls().empty()) return failure();
+  if (getElementTypeOrSelf(x()) != getElementTypeOrSelf(y())) return failure();
+  results.push_back(x());
+  results.push_back(LookupControlDependency(x()));
   return success();
 }
 
