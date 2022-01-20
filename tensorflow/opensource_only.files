@@ -72,6 +72,7 @@ tensorflow/tools/ci_build/release/ubuntu_16/tpu_py37_full/nonpip.sh:
 tensorflow/tools/ci_build/release/windows/cpu_py37_full/release_pip_rename.sh:
 tensorflow/tools/ci_build/release/windows/cpu_py38_full/release_pip_rename.sh:
 tensorflow/tools/ci_build/release/windows/cpu_py39_full/release_pip_rename.sh:
+tensorflow/tools/ci_build/release/windows/gpu_py310_full/release_pip_rename.sh:
 tensorflow/tools/ci_build/release/windows/gpu_py36_full/release_pip_rename.sh:
 tensorflow/tools/ci_build/release/windows/gpu_py37_full/release_pip_rename.sh:
 tensorflow/tools/ci_build/release/windows/gpu_py38_full/release_pip_rename.sh:
