@@ -33,10 +33,10 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"   // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"           // from @llvm-project
+#include "mlir/IR/Matchers.h"               // from @llvm-project
+#include "mlir/IR/PatternMatch.h"           // from @llvm-project
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
 namespace mlir {
@@ -2406,24 +2406,32 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
       int32_t quantized_0 = input_qtype.getZeroPoint();
       int32_t quantized_6 = std::llround((6.0f / input_qtype.getScale()) +
                                          input_qtype.getZeroPoint());
+      int32_t quantized_max = input_qtype.getStorageTypeMax();
+
+      int32_t clamp_max = std::min(quantized_6, quantized_max);
 
       auto clamp_op = CreateOpAndInfer<tosa::ClampOp>(
           rewriter, op->getLoc(), input_type, input_value,
           rewriter.getI64IntegerAttr(quantized_0),
-          rewriter.getI64IntegerAttr(quantized_6), rewriter.getF32FloatAttr(0),
+          rewriter.getI64IntegerAttr(clamp_max), rewriter.getF32FloatAttr(0),
           rewriter.getF32FloatAttr(0));
 
       return clamp_op.getResult();
     } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
+      int32_t quantized_max = input_qtype.getStorageTypeMax();
+      int32_t quantized_min = input_qtype.getStorageTypeMin();
       int32_t quantized_n1 = std::llround((-1.0f / input_qtype.getScale()) +
                                           input_qtype.getZeroPoint());
       int32_t quantized_1 = std::llround((1.0f / input_qtype.getScale()) +
                                          input_qtype.getZeroPoint());
 
+      int32_t clamp_min = std::max(quantized_n1, quantized_min);
+      int32_t clamp_max = std::min(quantized_1, quantized_max);
+
       auto clamp_op = CreateOpAndInfer<tosa::ClampOp>(
           rewriter, op->getLoc(), input_type, input_value,
-          rewriter.getI64IntegerAttr(quantized_n1),
-          rewriter.getI64IntegerAttr(quantized_1), rewriter.getF32FloatAttr(0),
+          rewriter.getI64IntegerAttr(clamp_min),
+          rewriter.getI64IntegerAttr(clamp_max), rewriter.getF32FloatAttr(0),
           rewriter.getF32FloatAttr(0));
 
       return clamp_op.getResult();
