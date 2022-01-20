@@ -150,6 +150,7 @@ inside device cluster. This would allow shape inference pass to further
 refine operand/result shapes of these ops. This is only safe to do when
 compiling to XLA.
 ### `-tf-einsum`: Transform Einsum to other TF Ops for the supported variants
+### `-tf-executor-break-up-islands`: Transform from TF control dialect to TF executor dialect.
 ### `-tf-executor-convert-control-to-data-outputs`: Chain control outputs of while loop body
 This pass converts the control outputs of a while loop body function to data
 outputs. Thus, inter iteration control dependencies are transformed to
@@ -412,7 +413,6 @@ and will then replace the island with the wrapped call:
     return %0 : tensor<i32>
   }
 ```
-### `-tf-functional-control-flow-to-cfg`: Transform from TF control dialect to TF executor dialect.
 ### `-tf-functional-control-flow-to-cfg`: Transform functional control flow Ops to MLIR Control Form Graph (CFG) form
 ### `-tf-functional-control-flow-to-regions`: Transforms functional control flow operations to their region-based counterparts
 This pass transforms functional control flow operations in the TensorFlow
