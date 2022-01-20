@@ -180,7 +180,10 @@ cc_library(
     testonly = 1,
     srcs = ["reduction_benchmark.cc"],
     hdrs = ["reduction_benchmark.h"],
-    deps = [":benchmark"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+    ],
 )
 
 tf_cc_binary(
