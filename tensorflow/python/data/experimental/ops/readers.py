@@ -344,6 +344,7 @@ def make_csv_dataset_v2(
     num_rows_for_inference=100,
     compression_type=None,
     ignore_errors=False,
+    encoding="utf-8",
 ):
   """Reads CSV files into a dataset.
 
@@ -372,7 +373,7 @@ def make_csv_dataset_v2(
   ```
   # No label column specified
   dataset = tf.data.experimental.make_csv_dataset(filename, batch_size=2)
-  iterator = ds.as_numpy_iterator()
+  iterator = dataset.as_numpy_iterator()
   print(dict(next(iterator)))
   # prints a dictionary of batched features:
   # OrderedDict([('Feature_A', array([1, 4], dtype=int32)),
@@ -383,7 +384,7 @@ def make_csv_dataset_v2(
   # Set Feature_B as label column
   dataset = tf.data.experimental.make_csv_dataset(
       filename, batch_size=2, label_name="Feature_B")
-  iterator = ds.as_numpy_iterator()
+  iterator = dataset.as_numpy_iterator()
   print(next(iterator))
   # prints (features, labels) tuple:
   # (OrderedDict([('Feature_A', array([1, 2], dtype=int32))]),
@@ -463,6 +464,7 @@ def make_csv_dataset_v2(
       such as malformed data or empty lines, and moves on to the next valid
       CSV record. Otherwise, the dataset raises an error and stops processing
       when encountering any invalid records. Defaults to `False`.
+    encoding: Encoding to use when reading. Defaults to `UTF-8`.
 
   Returns:
     A dataset, where each element is a (features, labels) tuple that corresponds
@@ -489,7 +491,8 @@ def make_csv_dataset_v2(
   # Clean arguments; figure out column names and defaults
   if column_names is None or column_defaults is None:
     # Find out which io function to open the file
-    file_io_fn = lambda filename: file_io.FileIO(filename, "r")
+    file_io_fn = lambda filename: file_io.FileIO(filename, "r",
+                                                 encoding=encoding)
     if compression_type is not None:
       compression_type_value = tensor_util.constant_value(compression_type)
       if compression_type_value is None:
@@ -497,7 +500,8 @@ def make_csv_dataset_v2(
             f"Received unknown `compression_type` {compression_type}. "
             "Expected: GZIP, ZLIB or "" (empty string).")
       if compression_type_value == "GZIP":
-        file_io_fn = lambda filename: gzip.open(filename, "rt")
+        file_io_fn = lambda filename: gzip.open(filename, "rt",
+                                                encoding=encoding)
       elif compression_type_value == "ZLIB":
         raise ValueError(
             f"`compression_type` {compression_type} is not supported for "
@@ -643,13 +647,14 @@ def make_csv_dataset_v1(
     num_rows_for_inference=100,
     compression_type=None,
     ignore_errors=False,
+    encoding="utf-8",
 ):  # pylint: disable=missing-docstring
   return dataset_ops.DatasetV1Adapter(make_csv_dataset_v2(
       file_pattern, batch_size, column_names, column_defaults, label_name,
       select_columns, field_delim, use_quote_delim, na_value, header,
       num_epochs, shuffle, shuffle_buffer_size, shuffle_seed,
       prefetch_buffer_size, num_parallel_reads, sloppy, num_rows_for_inference,
-      compression_type, ignore_errors))
+      compression_type, ignore_errors, encoding))
 make_csv_dataset_v1.__doc__ = make_csv_dataset_v2.__doc__
 
 

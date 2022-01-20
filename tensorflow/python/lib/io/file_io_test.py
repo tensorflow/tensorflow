@@ -681,6 +681,17 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
         expected.append("gs")
     self.assertCountEqual(expected, actual)
 
+  def testReadWriteWithEncoding(self):
+    with open("text.txt", mode="w", encoding="cp932") as f:
+        f.write("今日はいい天気")
+    with file_io.FileIO("text.txt", mode="r", encoding="cp932") as f:
+        assert f.read() == "今日はいい天気"
+
+    with file_io.FileIO("text.txt", mode="w", encoding="cp932") as f:
+        f.write("今日はいい天気")
+    with open("text.txt", mode="r", encoding="cp932") as f:
+        assert f.read() == "今日はいい天気"
+
 
 if __name__ == "__main__":
   test.main()
