@@ -889,21 +889,20 @@ class OpRunner<port::Status(Args...)> {
   virtual port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
 
   // Launch the operation, with the signature determined by `Sig`.
-  virtual port::Status operator()(Args... args) const = 0;
+  virtual port::Status operator()(Stream*, ProfileResult*, DeviceMemoryBase,
+                                  Args... args) const = 0;
 };
 
-using ConvSignature = port::Status(Stream*, DeviceMemoryBase /* input_data */,
+using ConvSignature = port::Status(DeviceMemoryBase /* input_data */,
                                    DeviceMemoryBase /* filter_data */,
-                                   DeviceMemoryBase /* output_data */,
-                                   DeviceMemoryBase /* scratch_memory */,
-                                   ProfileResult*);
+                                   DeviceMemoryBase /* output_data */);
 using ConvRunner = OpRunner<ConvSignature>;
 
-using FusedConvSignature = port::Status(
-    Stream*, DeviceMemoryBase /* input_data */,
-    DeviceMemoryBase /* filter_data */, DeviceMemoryBase /* side_input_data */,
-    DeviceMemoryBase /* bias_data */, DeviceMemoryBase /* output_data */,
-    DeviceMemoryBase /* scratch_memory */, ProfileResult*);
+using FusedConvSignature = port::Status(DeviceMemoryBase /* input_data */,
+                                        DeviceMemoryBase /* filter_data */,
+                                        DeviceMemoryBase /* side_input_data */,
+                                        DeviceMemoryBase /* bias_data */,
+                                        DeviceMemoryBase /* output_data */);
 using FusedConvRunner = OpRunner<FusedConvSignature>;
 
 // Describes the configuration for the algorithms that will used.
