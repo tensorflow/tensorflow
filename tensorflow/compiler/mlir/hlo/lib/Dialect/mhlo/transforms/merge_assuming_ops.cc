@@ -14,6 +14,7 @@ limitations under the License.
 
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -425,80 +426,8 @@ struct EliminateDuplicateCstrBroadcastableOps
   }
 };
 
-struct EarlyBroadcastInDimOpPattern
-    : public OpRewritePattern<DynamicBroadcastInDimOp> {
-  using OpRewritePattern<DynamicBroadcastInDimOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(DynamicBroadcastInDimOp bcast_op,
-                                PatternRewriter &rewriter) const override {
-    // Dynamic broadcasting only works on ranked tensors.
-    auto result_ty = bcast_op.getType().dyn_cast<RankedTensorType>();
-    if (!result_ty) return failure();
-
-    // Find producer op.
-    Operation *producer_op = bcast_op.operand().getDefiningOp();
-    if (!producer_op) return failure();
-    auto producer_result_ty =
-        producer_op->getResultTypes().front().dyn_cast<RankedTensorType>();
-    if (!producer_result_ty) return failure();
-
-    // Only apply to broadcasting elementwise producers.
-    bool is_broadcasting_elementwise =
-        (producer_op->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>() &&
-         producer_op->hasTrait<mlir::OpTrait::Elementwise>()) ||
-        producer_op->hasTrait<mlir::mhlo::OpTrait::BroadcastingElementwise>();
-    if (!is_broadcasting_elementwise) return failure();
-
-    // Materialize broadcast on operands.
-    SmallVector<Value, 2> bcasted_operands;
-    Location loc = bcast_op.getLoc();
-    ArrayRef<int64_t> ty_shape = bcast_op.getType().getShape();
-    for (Value producer_operand : producer_op->getOperands()) {
-      // The broadcast only works on ranked operations.
-      auto producer_operand_ty =
-          producer_operand.getType().dyn_cast<RankedTensorType>();
-      if (!producer_operand_ty) {
-        return bcast_op.emitError()
-               << "Can only move up broadcasts over ranked tensor operands.";
-      }
-
-      // Materialize dynamic broadcast. The operand shape is either the same as
-      // the result shape and we can reuse the broadcast dimensions, or it is a
-      // scalar and we can create empty broadcast dimensions.
-      assert((producer_operand_ty.getRank() == 0 ||
-              producer_operand_ty.getRank() == producer_result_ty.getRank()) &&
-             "expect scalar or same shape");
-      auto bcast_dims = producer_operand_ty.getRank() == 0
-                            ? rewriter.getI64TensorAttr({})
-                            : bcast_op.broadcast_dimensions();
-      auto bcasted_operand_ty =
-          RankedTensorType::get(ty_shape, producer_operand_ty.getElementType());
-      bcasted_operands.push_back(rewriter.create<DynamicBroadcastInDimOp>(
-          loc, bcasted_operand_ty, producer_operand,
-          bcast_op.output_dimensions(), bcast_dims));
-    }
-
-    // Create a copy of the producer op with the new broadcasted operands.
-    OperationState new_producer_op_state(
-        loc, producer_op->getName().getStringRef(), bcasted_operands, result_ty,
-        producer_op->getAttrs());
-    Operation *new_producer_op =
-        rewriter.createOperation(new_producer_op_state);
-
-    // The original result of the broadcast now falls directly out of the new
-    // producer op. Use it instead.
-    rewriter.replaceOp(bcast_op, new_producer_op->getResults());
-
-    return success();
-  }
-};
-
 struct MergeAssumingOpsPass
     : public MergeAssumingOpsPassBase<MergeAssumingOpsPass> {
-  explicit MergeAssumingOpsPass(bool propagate_broadcasts) {
-    propagate_broadcasts_ = propagate_broadcasts;
-  }
-
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
   }
@@ -506,8 +435,7 @@ struct MergeAssumingOpsPass
   void runOnFunction() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns,
-                                           propagate_broadcasts_);
+    mhlo::PopulateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
     if (failed(applyPatternsAndFoldGreedily(getFunction(), std::move(patterns),
@@ -520,8 +448,7 @@ struct MergeAssumingOpsPass
 }  // namespace
 
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
-                                      OwningRewritePatternList *patterns,
-                                      bool propagate_broadcasts) {
+                                      OwningRewritePatternList *patterns) {
   // clang-format off
   patterns->insert<
       EliminateDuplicateCstrBroadcastableOps,
@@ -537,8 +464,6 @@ void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
       MoveUpOutOfAssumingOpPattern<shape::ShapeOfOp>,
       ShapeReificationPattern>(context);
   // clang-format on
-  if (propagate_broadcasts)
-    patterns->insert<EarlyBroadcastInDimOpPattern>(context);
   mhlo::DynamicBroadcastInDimOp::getCanonicalizationPatterns(*patterns,
                                                              context);
   mhlo::DynamicReshapeOp::getCanonicalizationPatterns(*patterns, context);
@@ -549,9 +474,8 @@ void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
   tensor::CastOp::getCanonicalizationPatterns(*patterns, context);
 }
 
-std::unique_ptr<FunctionPass> createMergeAssumingOpsPass(
-    bool propagate_broadcasts) {
-  return std::make_unique<MergeAssumingOpsPass>(propagate_broadcasts);
+std::unique_ptr<FunctionPass> createMergeAssumingOpsPass() {
+  return std::make_unique<MergeAssumingOpsPass>();
 }
 
 }  // namespace mhlo

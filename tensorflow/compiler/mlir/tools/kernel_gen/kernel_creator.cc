@@ -246,8 +246,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateShapeSimplification());
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::mhlo::createMergeAssumingOpsPass(/*propagate_broadcasts=*/false));
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
