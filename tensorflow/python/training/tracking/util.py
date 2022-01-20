@@ -767,8 +767,9 @@ class CheckpointLoadStatus(_LoadStatus):
   def __init__(self, checkpoint, feed_dict, graph_view):
     self._checkpoint = checkpoint
     self._feed_dict = feed_dict
-    self._graph_view = graph_view
-    # Keep a reference to the root, since graph_view might only have a weakref.
+    self._object_graph_view = graph_view
+    # Keep a reference to the root, since object_graph_view might only have a
+    # weakref.
     self._root = graph_view.root
 
   def assert_consumed(self):
@@ -837,7 +838,7 @@ class CheckpointLoadStatus(_LoadStatus):
           trackable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
         raise AssertionError(
             f"Object {node} not assigned a value from checkpoint.")
-    for trackable_object in self._graph_view.list_objects():
+    for trackable_object in self._object_graph_view.list_objects():
       # Remove data structures that do not contain any variables from
       # restoration checks.
       if (isinstance(trackable_object,
@@ -865,7 +866,7 @@ class CheckpointLoadStatus(_LoadStatus):
 
   def assert_nontrivial_match(self):
     """Raises an exception if only the root object matched."""
-    for trackable_object in self._graph_view.list_objects():
+    for trackable_object in self._object_graph_view.list_objects():
       self._checkpoint.all_python_objects.add(trackable_object)
     if len(self._checkpoint.object_by_proto_id) <= 1:
       unused_python_objects = (
@@ -882,7 +883,7 @@ class CheckpointLoadStatus(_LoadStatus):
       else:
         raise AssertionError(
             "Nothing to load. No dependencies have been added to "
-            f"{self._graph_view.root} yet.")
+            f"{self._object_graph_view.root} yet.")
     return self
 
   def run_restore_ops(self, session=None):
@@ -912,7 +913,7 @@ class CheckpointLoadStatus(_LoadStatus):
       return  # Initialization and restoration ops are run eagerly
     if session is None:
       session = get_session()
-    all_objects = self._graph_view.list_objects()
+    all_objects = self._object_graph_view.list_objects()
     already_initialized_objects = object_identity.ObjectIdentitySet(
         self._checkpoint.object_by_proto_id.values())
     initializers_for_non_restored_variables = [
@@ -940,11 +941,11 @@ class InitializationOnlyStatus(_LoadStatus):
   otherwise.
   """
 
-  def __init__(self, graph_view, restore_uid):
+  def __init__(self, object_graph_view, restore_uid):
     self._restore_uid = restore_uid
-    self._graph_view = graph_view
+    self._object_graph_view = object_graph_view
     # Keep a reference to the root, since graph_view might only have a weakref.
-    self._root = graph_view.root
+    self._root = object_graph_view.root
 
   def assert_consumed(self):
     """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
@@ -992,7 +993,7 @@ class InitializationOnlyStatus(_LoadStatus):
       return  # run eagerly
     if session is None:
       session = get_session()
-    trackable_objects = self._graph_view.list_objects()
+    trackable_objects = self._object_graph_view.list_objects()
     initializers = [
         c.initializer for c in trackable_objects
         if hasattr(c, "initializer") and c.initializer is not None
@@ -1017,12 +1018,12 @@ class NameBasedSaverStatus(_LoadStatus):
   # interferes with isinstance checks.
   @deprecation.deprecated(
       date=None, instructions=_DEPRECATED_RESTORE_INSTRUCTIONS)
-  def __init__(self, checkpoint, graph_view):
+  def __init__(self, checkpoint, object_graph_view):
     self._checkpoint = checkpoint
-    self._graph_view = graph_view
+    self._object_graph_view = object_graph_view
     self._optionally_restored = []
     # Keep a reference to the root, since graph_view might only have a weakref.
-    self._root = graph_view.root
+    self._root = object_graph_view.root
 
   def add_to_optionally_restored(self, var):
     """Add a variable to the list of optionally restored variables.
@@ -1051,7 +1052,7 @@ class NameBasedSaverStatus(_LoadStatus):
       raise AssertionError(
           "Some objects had attributes which were not restored: "
           f"{unused_attribute_strings}")
-    for trackable in self._graph_view.list_objects():
+    for trackable in self._object_graph_view.list_objects():
       # pylint: disable=protected-access
       trackable._maybe_initialize_trackable()
       if trackable._update_uid < self._checkpoint.restore_uid:
@@ -1077,7 +1078,7 @@ class NameBasedSaverStatus(_LoadStatus):
 
   def _gather_saveable_objects(self):
     """Walk the object graph, using global names for SaveableObjects."""
-    objects = self._graph_view.list_objects()
+    objects = self._object_graph_view.list_objects()
     saveable_objects = []
     for trackable in objects:
       # pylint: disable=protected-access
@@ -1150,8 +1151,8 @@ class TrackableSaver(object):
     """Configure saving.
 
     Args:
-      graph_view: A `GraphView` object containing a description of the object
-        graph to save.
+      graph_view: An `ObjectGraphView` object containing a description of the
+        object graph to save.
     """
     # The file prefix placeholder is created lazily when graph building (and not
     # at all when executing eagerly) to avoid creating ops in the constructor
@@ -1376,7 +1377,7 @@ class TrackableSaver(object):
           # pylint: enable=protected-access
       return NameBasedSaverStatus(
           restore_coordinator,
-          graph_view=self._graph_view)
+          object_graph_view=self._graph_view)
 
     if graph_building:
       if self._file_prefix_placeholder is None:
