@@ -51,7 +51,7 @@ pip3 install --upgrade pip
 
 # Install last working version of setuptools. This must happen before we install
 # absl-py, which uses install_requires notation introduced in setuptools 20.5.
-pip3 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools
 
 pip3 install --upgrade virtualenv
 
