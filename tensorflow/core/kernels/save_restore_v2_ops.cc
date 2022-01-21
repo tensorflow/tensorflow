@@ -162,21 +162,15 @@ class SaveV2 : public OpKernel {
 
     ResourceMgr* resource_manager = context->resource_manager();
     if (resource_manager != nullptr) {
+      // Trigger callbacks if CheckpointCallbackManager exists.
       checkpoint::CheckpointCallbackManager* checkpoint_callback_manager;
-      OP_REQUIRES_OK(
-          context,
-          resource_manager
-              ->LookupOrCreate<checkpoint::CheckpointCallbackManager>(
-                  resource_manager->default_container(),
-                  std::string(
-                      checkpoint::kCheckpointCallbackManagerResourceName),
-                  &checkpoint_callback_manager,
-                  [](checkpoint::CheckpointCallbackManager** out) {
-                    *out = new checkpoint::CheckpointCallbackManager();
-                    return Status::OK();
-                  }));
-      checkpoint_callback_manager->Save(prefix_string);
-      checkpoint_callback_manager->Unref();
+      Status status = resource_manager->Lookup(
+          context->resource_manager()->default_container(),
+          std::string(checkpoint::kCheckpointCallbackManagerResourceName),
+          &checkpoint_callback_manager);
+      if (status.ok()) {
+        checkpoint_callback_manager->Save(prefix_string);
+      }
     }
   }
 };
@@ -229,21 +223,15 @@ class RestoreV2 : public OpKernel {
 
     ResourceMgr* resource_manager = context->resource_manager();
     if (resource_manager != nullptr) {
+      // Trigger callbacks if CheckpointCallbackManager exists.
       checkpoint::CheckpointCallbackManager* checkpoint_callback_manager;
-      OP_REQUIRES_OK(
-          context,
-          resource_manager
-              ->LookupOrCreate<checkpoint::CheckpointCallbackManager>(
-                  resource_manager->default_container(),
-                  std::string(
-                      checkpoint::kCheckpointCallbackManagerResourceName),
-                  &checkpoint_callback_manager,
-                  [](checkpoint::CheckpointCallbackManager** out) {
-                    *out = new checkpoint::CheckpointCallbackManager();
-                    return Status::OK();
-                  }));
-      checkpoint_callback_manager->Restore(prefix_string);
-      checkpoint_callback_manager->Unref();
+      Status status = resource_manager->Lookup(
+          context->resource_manager()->default_container(),
+          std::string(checkpoint::kCheckpointCallbackManagerResourceName),
+          &checkpoint_callback_manager);
+      if (status.ok()) {
+        checkpoint_callback_manager->Restore(prefix_string);
+      }
     }
   }
 
