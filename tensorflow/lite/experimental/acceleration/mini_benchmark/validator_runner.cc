@@ -143,12 +143,13 @@ MinibenchmarkStatus ValidatorRunner::Init() {
     // This could happen only if the NNAPI Support Library pointer set into
     // our TfLiteSettings comes from an invalid NNAPI SL library or there
     // is some error in the NNAPI loading code.
-    if (!nnapi_sl_->ANeuralNetworks_getRuntimeFeatureLevel) {
+    if (!nnapi_sl_->getFL5()->ANeuralNetworks_getRuntimeFeatureLevel) {
       return kMiniBenchmarkCannotLoadSupportLibrary;
     }
-    int status = dladdr(reinterpret_cast<void*>(
-                            nnapi_sl_->ANeuralNetworks_getRuntimeFeatureLevel),
-                        &dl_info);
+    int status =
+        dladdr(reinterpret_cast<void*>(
+                   nnapi_sl_->getFL5()->ANeuralNetworks_getRuntimeFeatureLevel),
+               &dl_info);
     if (status == 0 || !dl_info.dli_fname) {
       return kMiniBenchmarkCannotLoadSupportLibrary;
     }
