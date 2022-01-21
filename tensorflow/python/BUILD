@@ -1268,6 +1268,7 @@ py_library(
     name = "control_flow_util_v2",
     srcs = ["ops/control_flow_util_v2.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//waymo/ml:__subpackages__"],
     deps = [
         ":control_flow_util",
         ":control_flow_v2_func_graphs",
