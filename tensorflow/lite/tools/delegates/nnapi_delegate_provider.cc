@@ -35,8 +35,7 @@ class NnApiSupportLibraryDelegate : public StatefulNnApiDelegate {
   // The constructed object takes ownership of the nnapi_sl.
   NnApiSupportLibraryDelegate(const NnApiSupportLibrary* nnapi_sl,
                               Options options)
-      : StatefulNnApiDelegate(nnapi_sl->getFL5(), options),
-        nnapi_sl_(nnapi_sl) {}
+      : StatefulNnApiDelegate(nnapi_sl, options), nnapi_sl_(nnapi_sl) {}
 
  private:
   std::unique_ptr<const NnApiSupportLibrary> nnapi_sl_;
