@@ -619,7 +619,7 @@ static Status ExecuteBef(const std::string& module_name,
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
-  args.push_back(gpu_stream.get());
+  args.push_back(gpu_stream.get().value());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
   for (size_t i = 0; i < num_allocations; i++) {
     auto input = buffer_allocations.GetDeviceAddress(i);

@@ -673,7 +673,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
-  args.push_back(gpu_stream.get());
+  args.push_back(gpu_stream.get().value());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
   for (auto& buffer : buffers_) {
     buffers.push_back(CreateGpuBuffer(params, buffer));
