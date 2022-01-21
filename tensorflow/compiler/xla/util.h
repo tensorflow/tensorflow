@@ -23,6 +23,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -185,6 +186,16 @@ size_t HashOf(const Types&... values) {
   auto tuple = std::tie(values...);
   return absl::Hash<decltype(tuple)>{}(tuple);
 }
+
+#if defined(__cpp_lib_to_underlying) && __cpp_lib_to_underlying >= 202102L
+using to_underlying = std::to_underlying;
+#else
+// Helper function which implements C++23's std::to_underlying.
+template <typename T>
+constexpr absl::underlying_type_t<T> to_underlying(T value) noexcept {
+  return static_cast<absl::underlying_type_t<T>>(value);
+}
+#endif
 
 // Performs a copy of count values from src to dest, using different strides for
 // source and destination. The source starting index is src_base, while the
