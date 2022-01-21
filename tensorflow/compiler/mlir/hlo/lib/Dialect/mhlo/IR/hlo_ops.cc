@@ -879,7 +879,7 @@ OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
   if (!type) return {};
 
   int32_t dim = dimension();
-  if (ShapedType::isDynamic(dim)) return {};
+  if (type.isDynamicDim(dim)) return {};
   // The result type is always is a 0-d i32 tensor.
   return DenseIntElementsAttr::get<int32_t>(
       getResult().getType().cast<RankedTensorType>(), type.getDimSize(dim));

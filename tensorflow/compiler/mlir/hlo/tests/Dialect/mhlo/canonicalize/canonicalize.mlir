@@ -1269,6 +1269,13 @@ func @fold_get_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<i32> {
   // CHECK-NEXT: return %[[C]]
 }
 
+// CHECK-LABEL: func @fold_get_dimension_size_fail
+func @fold_get_dimension_size_fail(%I: tensor<1x128x?xf32>) -> tensor<i32> {
+  // CHECK: "mhlo.get_dimension_size"
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 2 : i64} : (tensor<1x128x?xf32>) -> tensor<i32>
+  return %size : tensor<i32>
+}
+
 // CHECK-LABEL: func @fold_set_dimension_size
 // CHECK-SAME: (%[[I:.*]]: tensor<1x128x512xf32>)
 func @fold_set_dimension_size(%I: tensor<1x128x512xf32>) -> tensor<1x128x512xf32> {
