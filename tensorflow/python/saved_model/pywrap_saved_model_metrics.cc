@@ -163,24 +163,26 @@ void DefineMetricsModule(py::module main_module) {
       "CalculateFileSize",
       [](const char* filename) {
         Env* env = Env::Default();
-        uint64 filesize;
-        env->GetFileSize(filename, &filesize);
+        uint64 filesize = 0;
+        if (!env->GetFileSize(filename, &filesize).ok()) {
+          return (int64_t)-1;
+        }
         // Convert to MB.
-        int filesize_mb = filesize / 1000;
+        int64_t filesize_mb = filesize / 1000;
         // Round to the nearest 100 MB.
         // Smaller multiple.
-        int a = (filesize_mb / 100) * 100;
+        int64_t a = (filesize_mb / 100) * 100;
         // Larger multiple.
-        int b = a + 100;
+        int64_t b = a + 100;
         // Return closest of two.
         return (filesize_mb - a > b - filesize_mb) ? b : a;
       },
       py::doc("Calculate filesize (MB) for `filename`, rounding to the nearest "
-              "100MB."));
+              "100MB. Returns -1 if `filename` is invalid."));
 
   m.def(
       "RecordCheckpointSize",
-      [](const char* api_label, uint64 filesize) {
+      [](const char* api_label, int64_t filesize) {
         metrics::CheckpointSize(api_label, filesize).IncrementBy(1);
       },
       py::kw_only(), py::arg("api_label"), py::arg("filesize"),
