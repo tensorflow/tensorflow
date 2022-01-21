@@ -63,8 +63,6 @@ using ::llvm::Expected;
 using ::llvm::None;
 using ::llvm::Optional;
 
-using ::mlir::OpPassManager;
-
 using ::tfrt::ArrayRef;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValuePtr;
@@ -103,14 +101,13 @@ using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnAsyncStridedMemref;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConverter;
-
-using ::tensorflow::Env;
-using ::tensorflow::thread::ThreadPool;
+using ::tfrt::jitrt::SpecializationListener;
 
 using ::tensorflow::profiler::TraceMe;
 using ::tensorflow::profiler::TraceMeEncode;
 using ::tensorflow::tfd::KernelFallbackCompatRequestState;
 using ::tensorflow::tfrt_stub::FallbackTensor;
+using ::tensorflow::thread::ThreadPool;
 
 // -------------------------------------------------------------------------- //
 // Dedicated thread pool for running compilation tasks.
@@ -485,7 +482,7 @@ static void ConvertTensorOperandsToMemrefDesc(
     ConvertTensorToMemrefDesc(operands[i].tensor(), &(*memrefs)[i]);
 }
 
-struct DebugListener : public JitExecutable::Listener {
+struct DebugListener : public SpecializationListener {
   void notifyModuleSpecialized(
       ArrayRef<mlir::Type> operands,
       ArrayRef<mlir::DictionaryAttr> attrs) const override {
