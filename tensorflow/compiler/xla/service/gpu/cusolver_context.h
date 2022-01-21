@@ -49,22 +49,67 @@ class GpuSolverContext {
   GpuSolverContext& operator=(const GpuSolverContext&) = delete;
   GpuSolverContext& operator=(GpuSolverContext&&);
 
+  bool SupportsPotrfBatched() const {
+#if defined(TENSORFLOW_USE_ROCM)
+    return false;
+#else
+    return true;
+#endif
+  }
+
   // Computes the Cholesky factorization A = L * L^T for a single matrix.
   // Returns Status::OK() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
-  template <typename T, typename = std::enable_if_t<
-                            std::is_same<T, float>::value ||
-                            std::is_same<T, double>::value ||
-                            std::is_same<T, std::complex<float>>::value ||
-                            std::is_same<T, std::complex<double>>::value>>
-  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<T> dev_A,
-               int lda, se::DeviceMemory<int> dev_lapack_info,
-               se::DeviceMemory<T> workspace) = delete;
+  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<float> a,
+               int lda, se::DeviceMemory<int> lapack_info,
+               se::DeviceMemoryBase workspace);
+  Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<double> a,
+               int lda, se::DeviceMemory<int> lapack_info,
+               se::DeviceMemoryBase workspace);
+  Status Potrf(se::blas::UpperLower uplo, int n,
+               se::DeviceMemory<std::complex<float>> a, int lda,
+               se::DeviceMemory<int> lapack_info,
+               se::DeviceMemoryBase workspace);
+  Status Potrf(se::blas::UpperLower uplo, int n,
+               se::DeviceMemory<std::complex<double>> a, int lda,
+               se::DeviceMemory<int> lapack_info,
+               se::DeviceMemoryBase workspace);
 
-  // Returns the size of the `workspace` required by Potrf, in number of
-  // elements of `type`.
+  // Computes the Cholesky factorization of multiple matrices.  See
+  // https://docs.nvidia.com/cuda/cusolver/index.html#cuSolverDN-lt-t-gt-batchpotrf
+  //
+  // `as` is a list of pointers to the batch_size individual n x n matricies
+  // that make up the input array.
+  Status PotrfBatched(se::blas::UpperLower uplo, int n,
+                      se::DeviceMemory<float*> as, int lda,
+                      se::DeviceMemory<int> lapack_info, int batch_size);
+  Status PotrfBatched(se::blas::UpperLower uplo, int n,
+                      se::DeviceMemory<double*> as, int lda,
+                      se::DeviceMemory<int> lapack_info, int batch_size);
+  Status PotrfBatched(se::blas::UpperLower uplo, int n,
+                      se::DeviceMemory<std::complex<float>*> as, int lda,
+                      se::DeviceMemory<int> lapack_info, int batch_size);
+  Status PotrfBatched(se::blas::UpperLower uplo, int n,
+                      se::DeviceMemory<std::complex<double>*> as, int lda,
+                      se::DeviceMemory<int> lapack_info, int batch_size);
+
+  // Returns the max size of the `workspace` required by Potrf and PotrfBatched,
+  // in number of elements of `type`.
+  //
+  // (cusolver's PotrfBatched doesn't require a workspace per se -- it uses the
+  // input array as scratch.  But we do need to materialize the `as` input, and
+  // we do this in the workspace.)
+  //
+  // This is a bit of a hack; we could instead split it up into two functions.
+  // But at the moment, it's an implementation detail of CholeskyThunk whether
+  // it calls Potrf or PotrfBatched, so we need to allocate enough scratch space
+  // for either.
+  //
+  // In practice, this does not result in a notable increase in scratch space
+  // needed, because both cases require a relatively small amount of scratch.
   StatusOr<int64_t> PotrfBufferSize(PrimitiveType type,
-                                    se::blas::UpperLower uplo, int n, int lda);
+                                    se::blas::UpperLower uplo, int n, int lda,
+                                    int batch_size);
 
  private:
   GpuSolverContext(se::Stream* stream, gpusolverHandle_t handle);
@@ -74,17 +119,6 @@ class GpuSolverContext {
   se::Stream* stream_ = nullptr;
   gpusolverHandle_t handle_ = nullptr;
 };
-
-#define CALL_LAPACK_TYPES(m) \
-  m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
-#define POTRF_INSTANCE(T, type_prefix)                                  \
-  template <>                                                           \
-  Status GpuSolverContext::Potrf<T>(                                    \
-      se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda, \
-      se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace);
-CALL_LAPACK_TYPES(POTRF_INSTANCE);
-#undef POTRF_INSTANCE
-#undef CALL_LAPACK_TYPES
 
 }  // namespace gpu
 }  // namespace xla

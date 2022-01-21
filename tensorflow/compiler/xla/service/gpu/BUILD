@@ -309,6 +309,7 @@ cc_library(
         ":backend_configs_cc",
         ":buffer_allocations",
         ":elemental_ir_emitter",
+        ":gpu_asm_opts_util",
         ":gpu_constants",
         ":gpu_conv_runner",
         ":gpu_executable",
@@ -702,6 +703,7 @@ cc_library(
         ":cusolver_context",
         ":custom_call_thunk",
         ":gemm_thunk",
+        ":gpu_asm_opts_util",
         ":gpu_constants",
         ":gpu_conv_runner",
         ":gpu_executable_run_options",
@@ -713,6 +715,7 @@ cc_library(
         ":stream_assignment",
         ":stream_executor_util",
         ":thunk",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
         "@llvm-project//mlir:IR",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
@@ -745,6 +748,8 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
@@ -1070,6 +1075,7 @@ cc_library(
     srcs = if_gpu_is_configured(["cusolver_context.cc"]),
     hdrs = ["cusolver_context.h"],
     deps = [
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -1103,6 +1109,7 @@ cc_library(
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "@com_google_absl//absl/algorithm:container",
     ]),
 )
 

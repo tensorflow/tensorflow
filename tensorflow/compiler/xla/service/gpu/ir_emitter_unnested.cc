@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
@@ -1341,8 +1342,9 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   CholeskyOptions options;
   options.set_lower(cholesky_op.is_lower());
   thunks.push_back(absl::make_unique<CholeskyThunk>(
-      GetThunkInfo(op), options, a_buffer, workspace_buffer, info_buffer,
-      shape.element_type(), batch_size, n));
+      GetThunkInfo(op), options,
+      PtxOptsFromDebugOptions(hlo_module_config_.debug_options()), a_buffer,
+      workspace_buffer, info_buffer, shape.element_type(), batch_size, n));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {
