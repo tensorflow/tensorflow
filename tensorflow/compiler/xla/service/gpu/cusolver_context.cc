@@ -354,7 +354,7 @@ StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
       se::DeviceMemory<T>(workspace).ElementCount(),                 \
       ToDevicePointer(lapack_info)))
 #else
-#define CALL_POTRF                                                   \
+#define CALL_POTRF(T, suffix_lower, suffix_upper)                    \
   ConvertStatus(tensorflow::wrap::rocsolver_##suffix_lower##potrf(   \
       handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda, \
       ToDevicePointer(lapack_info)))
