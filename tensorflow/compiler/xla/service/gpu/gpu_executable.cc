@@ -53,7 +53,6 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
@@ -600,7 +599,7 @@ static Status ExecuteBef(const std::string& module_name,
   auto gpu_context = [&] {
     tensorflow::mutex_lock lock(bef_executable->mutex);
     return bef_executable->gpu_ctx_cache.GetOrCreate(
-        stream->parent()->gpu_context()->context());
+        se::gpu::GpuDriver::GetContextHandle(stream->parent()->gpu_context()));
   }();
   auto gpu_stream =
       tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream->gpu_stream());

@@ -37,16 +37,6 @@ limitations under the License.
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #endif  // BEF_THUNKS
 
-#if TENSORFLOW_USE_ROCM
-// Local hipify of cuda symbols
-#define cudaError_t hipError_t
-#define cudaStream_t hipStream_t
-#define cudaGetErrorString hipGetErrorString
-#define cudaGetDevice hipGetDevice
-#define cudaSetDevice hipSetDevice
-#define cudaSuccess hipSuccess
-#endif
-
 namespace xla {
 namespace gpu {
 
@@ -58,8 +48,6 @@ bool IsGlobalNcclConfig();
 bool IsNcclLaunchModeParallel();
 
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
-                const char* expr);
-Status ToStatus(cudaError_t s, const char* file, int64_t line,
                 const char* expr);
 
 // Macros to return or warn on CUDA/NCCL errors.  (The same macro works for both

@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
@@ -630,19 +629,14 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Look up or create a cached GpuContext and ResourceContext from CUcontext.
   // The ResourceContext holds the results of `tfrt.once @...(%context)`.
+  se::gpu::GpuStream* stream = se::gpu::AsGpuStream(params.stream);
   auto gpu_context = [&] {
-    auto context = static_cast<stream_executor::gpu::GpuExecutor*>(
-                       params.stream->parent()->implementation())
-                       ->gpu_context()
-                       ->context();
     tensorflow::mutex_lock lock(mutex_);
-    return gpu_context_cache_.GetOrCreate(context);
+    return gpu_context_cache_.GetOrCreate(
+        se::gpu::GpuDriver::GetContextHandle(stream->parent()->gpu_context()));
   }();
-  auto stream = static_cast<stream_executor::gpu::GpuStream*>(
-                    params.stream->implementation())
-                    ->gpu_stream();
-  auto borrowed_stream =
-      tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream);
+  auto gpu_stream =
+      tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream->gpu_stream());
 
   // Create execution context.
   std::unique_ptr<tfrt::ExecutionContext> exec_ctx;
@@ -679,7 +673,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
-  args.push_back(borrowed_stream.get());
+  args.push_back(gpu_stream.get());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
   for (auto& buffer : buffers_) {
     buffers.push_back(CreateGpuBuffer(params, buffer));

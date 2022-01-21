@@ -488,36 +488,31 @@ tf_cuda_library(
         ":ir_emission_utils",
         ":nccl_utils",
         ":thunk",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
-        "//tensorflow/compiler/mlir/xla:hlo_utils",
-        "//tensorflow/compiler/mlir/xla:type_to_shape",
-        "//tensorflow/compiler/mlir/xla:attribute_exporter",
         "//tensorflow/stream_executor/gpu:gpu_activation_header",
+        "//tensorflow/stream_executor/gpu:gpu_stream",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
         "@llvm-project//mlir:IR",
-    ] + if_cuda_is_configured([
-        "//tensorflow/stream_executor/cuda:cuda_activation",
-        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ]) + if_rocm_is_configured([
-        "//tensorflow/stream_executor/rocm:rocm_activation",
-        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
-    ]),
+    ],
 )
 
 # Empty library to implement nested dependency conditions.
@@ -533,8 +528,8 @@ alias(
 # Do not depend on this target, but rather depend on :nccl_utils.
 tf_cuda_library(
     name = "_nccl_utils",
-    srcs = ["nccl_utils.cc"],
-    hdrs = ["nccl_utils.h"],
+    srcs = if_gpu_is_configured(["nccl_utils.cc"]),
+    hdrs = if_gpu_is_configured(["nccl_utils.h"]),
     # Override tf_cuda_library()'s internal default value of ["//buildenv/target:gce"].
     compatible_with = [],
     defines = if_gpu_is_configured(["XLA_ENABLE_XCCL"]),
@@ -789,8 +784,6 @@ cc_library(
             "//tensorflow/compiler/mlir/xla:attribute_exporter",
             "//tensorflow/compiler/xla/service:collective_ops_utils",
             "//tensorflow/core/tfrt/runtime:work_queue_interface",
-            "//tensorflow/stream_executor/cuda:cublas_plugin",
-            "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:basic_kernels_opdefs",
@@ -811,7 +804,6 @@ cc_library(
             "@llvm-project//llvm:Support",
             "//tensorflow/compiler/mlir:name_utils",
             "//tensorflow/core/tfrt/runtime:work_queue_interface",
-            "//tensorflow/stream_executor/cuda:cuda_driver",
             "//tensorflow/stream_executor/gpu:gpu_executor_header",
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:befexecutor",
@@ -835,19 +827,17 @@ cc_library(
 # cuda_stubs would duplicate symbols from stream_executor's stubs.
 cc_library(
     name = "cuda_runtime_for_xlir",
-    deps = select({
-        ":is_bef_thunk_enabled": [
-            "@local_config_nccl//:nccl",
-            "//tensorflow/stream_executor/cuda:cublas_lt_stub",
-            "//tensorflow/stream_executor/cuda:cublas_stub",
-            "//tensorflow/stream_executor/cuda:cuda_stub",
-            "//tensorflow/stream_executor/cuda:cudart_stub",
-            "//tensorflow/stream_executor/cuda:cudnn_stub",
-            "//tensorflow/stream_executor/cuda:cufft_stub",
-            "//tensorflow/stream_executor/cuda:cusolver_stub",
-        ],
-        "//conditions:default": [],
-    }),
+    tags = ["manual"],  # Build NCCL only if --config=experimental_tfrt_gpu.
+    deps = [
+        "//tensorflow/stream_executor/cuda:cublas_lt_stub",
+        "//tensorflow/stream_executor/cuda:cublas_stub",
+        "//tensorflow/stream_executor/cuda:cuda_stub",
+        "//tensorflow/stream_executor/cuda:cudart_stub",
+        "//tensorflow/stream_executor/cuda:cudnn_stub",
+        "//tensorflow/stream_executor/cuda:cufft_stub",
+        "//tensorflow/stream_executor/cuda:cusolver_stub",
+        "@local_config_nccl//:nccl",
+    ],
 )
 
 cc_library(
