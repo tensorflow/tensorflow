@@ -2330,18 +2330,6 @@ struct TorchIndexSelectOpConversion
             .cast<ShapedType>();
     int rank = static_cast<int>(result_type.getRank());
 
-    SmallVector<AffineMap, 2> indexing_maps;
-    SmallVector<AffineExpr, 4> exprs;
-    for (int i = 0; i < batch; ++i) {
-      exprs.push_back(rewriter.getAffineDimExpr(i));
-    }
-    for (int i = 0, e = num_indices - batch; i < e; ++i) {
-      exprs.push_back(rewriter.getAffineDimExpr(axis + i));
-    }
-    indexing_maps.emplace_back(
-        AffineMap::get(rank, /*symbolCount=*/0, exprs, rewriter.getContext()));
-    indexing_maps.emplace_back(rewriter.getMultiDimIdentityMap(rank));
-
     // The output shape is
     //   `params[:axis] + indices[batch_dims:] + params[axis + 1:]`
     SmallVector<Value, 4> dyn_sizes;
@@ -2360,16 +2348,57 @@ struct TorchIndexSelectOpConversion
             rewriter.create<tensor::DimOp>(loc, adaptor.input(), idx));
       }
     }
+
+    // Generate dummy tensor to preserve slice shape information.
+    SmallVector<int64_t> slice_shape;
+    SmallVector<Value, 4> dyn_slice_sizes;
+    SmallVector<AffineExpr, 4> slice_exprs;
+    auto result_shape = result_type.getShape();
+    for (int i = 0; i < axis; ++i) {
+      slice_exprs.push_back(rewriter.getAffineDimExpr(i));
+      slice_shape.push_back(result_shape[i]);
+      if (!result_type.isDynamicDim(i)) continue;
+      dyn_slice_sizes.push_back(
+          rewriter.create<tensor::DimOp>(loc, adaptor.input(), i));
+    }
+    for (int i = axis + num_indices - batch; i < rank; ++i) {
+      slice_exprs.push_back(rewriter.getAffineDimExpr(i));
+      slice_shape.push_back(result_shape[i]);
+      if (!result_type.isDynamicDim(i)) continue;
+      int idx = i - (axis + num_indices - batch) + axis + 1;
+      dyn_slice_sizes.push_back(
+          rewriter.create<tensor::DimOp>(loc, adaptor.input(), idx));
+    }
+
+    // Setup AffineMap for input tensor.
+    SmallVector<AffineExpr, 4> exprs;
+    for (int i = 0; i < batch; ++i) {
+      exprs.push_back(rewriter.getAffineDimExpr(i));
+    }
+    for (int i = 0, e = num_indices - batch; i < e; ++i) {
+      exprs.push_back(rewriter.getAffineDimExpr(axis + i));
+    }
+
+    SmallVector<AffineMap, 2> indexing_maps;
+    indexing_maps.emplace_back(
+        AffineMap::get(rank, /*symbolCount=*/0, exprs, rewriter.getContext()));
+    indexing_maps.emplace_back(AffineMap::get(
+        rank, /*symbolCount=*/0, slice_exprs, rewriter.getContext()));
+    indexing_maps.emplace_back(rewriter.getMultiDimIdentityMap(rank));
+
+    Value slice_op = rewriter.create<linalg::InitTensorOp>(
+        loc, dyn_slice_sizes, slice_shape, result_type.getElementType());
+
     Value init_op = rewriter.create<linalg::InitTensorOp>(
         loc, dyn_sizes, result_type.getShape(), result_type.getElementType());
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensors=*/ArrayRef<Type>{result_type},
-        /*inputs=*/adaptor.index(),
+        /*inputs=*/ValueRange{adaptor.index(), slice_op},
         /*outputs=*/init_op, indexing_maps, GetNParallelLoopsAttrs(rank),
         /*bodyBuild=*/nullptr, PruneAttributeList(op));
 
     SmallVector<Type, 4> body_arg_types;
-    SmallVector<Value, 2> linalg_op_args = {adaptor.index()};
+    SmallVector<Value, 2> linalg_op_args = {adaptor.index(), slice_op};
     // Add a block to the region.
     auto* region = &linalg_op.region();
     auto* block = rewriter.createBlock(region, region->end());
