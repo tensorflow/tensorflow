@@ -737,6 +737,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:intrusive_ptr",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",

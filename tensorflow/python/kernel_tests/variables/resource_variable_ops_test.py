@@ -268,8 +268,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with context.eager_mode():
       handle = _eager_safe_var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
-      self.assertIn("<Resource Tensor>", str(handle))
-      self.assertIn("<Resource Tensor>", repr(handle))
+      self.assertIn("<ResourceHandle", str(handle))
+      self.assertIn("<ResourceHandle", repr(handle))
 
   @test_util.run_in_graph_and_eager_modes
   def testDtypeSurvivesIdentity(self):
