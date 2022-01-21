@@ -191,7 +191,7 @@ tf_kernel_library(
         "//third_party/eigen3",
     ])
     + if_mlir_generated_experimental_kernels_enabled([
-        ":gpu_tanh_kernels_experimental",
+        ":gpu_atanh_kernels_experimental",
     ],
     [
         ":gpu_atanh_kernels",
@@ -801,7 +801,7 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
-    name = "gpu_tanh_kernels_experimental",
+    name = "gpu_atanh_kernels_experimental",
     op = "atanh",
     tile_size = "256",
     types = [
