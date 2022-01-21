@@ -519,3 +519,26 @@ func @log(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
   "lmhlo.copy"(%0, %arg1) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }
+
+// CHECK-LABEL: func @pad
+// CHECK-SAME: (%[[INPUT:.*]]: memref<1x2x3xf16>, %[[PAD_VAL_INPUT:.*]]: memref<f16>, %[[OUTPUT:.*]]: memref<2x4x5xf16>)
+func @pad(%arg0: memref<1x2x3xf16>, %arg1: memref<f16>, %arg2: memref<2x4x5xf16>) {
+  "lmhlo.pad"(%arg0, %arg1, %arg2) {edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>, edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (memref<1x2x3xf16>, memref<f16>, memref<2x4x5xf16>) -> ()
+// CHECK:        %[[PAD_VALUE:.*]] = affine.load %[[PAD_VAL_INPUT]][] : memref<f16>
+// CHECK-NEXT:   affine.for %[[OUTD0:.*]] = 0 to 2 {
+// CHECK-NEXT:    affine.for %[[OUTD1:.*]] = 0 to 4 {
+// CHECK-NEXT:      affine.for %[[OUTD2:.*]] = 0 to 5 {
+// CHECK-NEXT:       affine.store %[[PAD_VALUE]], %[[OUTPUT]][%[[OUTD0]], %[[OUTD1]], %[[OUTD2]]] : memref<2x4x5xf16>
+// CHECK-NEXT:      }
+// CHECK-NEXT:     }
+// CHECK-NEXT:    }
+// CHECK-NEXT:   affine.for %[[IND0:.*]] = 0 to 1 {
+// CHECK-NEXT:    affine.for %[[IND1:.*]] = 0 to 2 {
+// CHECK-NEXT:      affine.for %[[IND2:.*]] = 0 to 3 {
+// CHECK-NEXT:       %[[VAL:.*]] = affine.load %[[INPUT]][%[[IND0]], %[[IND1]], %[[IND2]]] : memref<1x2x3xf16>
+// CHECK-NEXT:       affine.store %[[VAL]], %[[OUTPUT]][%[[IND0]], %[[IND1]] + 1, %[[IND2]] + 2] : memref<2x4x5xf16>
+// CHECK-NEXT:      }
+// CHECK-NEXT:     }
+// CHECK-NEXT:    }
+  return
+}
