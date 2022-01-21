@@ -214,12 +214,12 @@ func @WhileWithNonReadOnlyVariableResources(%arg0: tensor<i32>) -> tensor<!tf_ty
   %3 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %4 = "tf.StackV2"(%3) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
   %5:5 = "tfl.while"(%2, %3, %2, %4, %0) ({
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf_type.resource>, %arg5: tensor<f32>):  // no predecessors
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf_type.resource>, %arg5: tensor<f32>):
     %9 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %10 = "tf.Less"(%arg3, %9) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "tfl.yield"(%10) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf_type.resource>, %arg5: tensor<f32>):  // no predecessors
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<!tf_type.resource>, %arg5: tensor<f32>):
     %9 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %10 = "tf.Cast"(%arg3) {Truncate = false, device = ""} : (tensor<i32>) -> tensor<f32>
     %11 = "tf.AddV2"(%arg3, %9) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>

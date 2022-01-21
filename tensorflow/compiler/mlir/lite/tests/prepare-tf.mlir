@@ -677,7 +677,7 @@ func @QuantDequantTranspose(%arg0: tensor<2x3xf32>) -> (tensor<2x4xf32>) {
   %1 = "tf.Max"(%0, %cst_0) {device = "", keep_dims = false} : (tensor<3x4xf32>, tensor<i32>) -> tensor<4xf32>
   %2 = "tf.Neg"(%1) {device = ""} : (tensor<4xf32>) -> tensor<4xf32>
   %3 = "tfl.custom_tf"(%cst, %2, %1) ({
-  ^bb0(%arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>):  // no predecessors
+  ^bb0(%arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>):
     %7 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg1, %arg2, %arg3) {device = "", narrow_range = false, num_bits = 8 : i64} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     "tfl.yield"(%7) : (tensor<*xf32>) -> ()
   }) {device = "", narrow_range = false, num_bits = 8 : i64} : (tensor<3x4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<3x4xf32>

@@ -180,7 +180,7 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
 //    %result = scf.parallel (%j) = (%c0) to (%c10) step (%c1) init (%init) {
 //      %elem_to_reduce = load %buffer[%i, %j, %k] : memref<100x10x5xf32>
 //      scf.reduce(%elem_to_reduce)  {
-//        ^bb0(%elem: f32, %acc: f32):   // no predecessors
+//        ^bb0(%elem: f32, %acc: f32):
 //          elem_buf = alloc() : memref<f32>
 //          store %elem, elem_buf[] : memref<f32>
 //          acc_buf = alloc() : memref<f32>

@@ -954,7 +954,7 @@ func @while_memrefs(%arg0: memref<i64>, %arg1: memref<5xf32>, %arg0_out: memref<
 func @scatter_memrefs(%input: memref<200x100x300xf32>, %indices: memref<10x2xi32>,
                       %updates: memref<10x300xf32>, %arg_out: memref<200x100x300xf32>) -> () {
   "lmhlo.scatter" (%input, %indices, %updates, %arg_out) ({
-  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>): // no predecessors
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
     %add = mhlo.add %lhs, %rhs : tensor<f32>
     "mhlo.return"(%add) : (tensor<f32>) -> ()
   }) {

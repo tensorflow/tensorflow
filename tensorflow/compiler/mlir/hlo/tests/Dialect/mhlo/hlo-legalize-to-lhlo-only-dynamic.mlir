@@ -123,7 +123,7 @@ func @row_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
   // CHECK-SAME: %[[ARG]], %[[VAL]], %[[OUT]]
   // CHECK: return %[[OUT]] : memref<?xf32>
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
-  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>}
@@ -143,7 +143,7 @@ func @column_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32>
   // CHECK-SAME: %[[ARG]], %[[VAL]], %[[OUT]]
   // CHECK: return %[[OUT]] : memref<?xf32>
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
-  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>}

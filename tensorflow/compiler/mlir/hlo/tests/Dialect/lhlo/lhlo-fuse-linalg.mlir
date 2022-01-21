@@ -69,7 +69,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
    iterator_types = ["parallel", "parallel"]}
      ins(%arg1 : memref<100xf32>)
     outs(%0 : memref<100x10xf32>) {
-   ^bb0(%arg3: f32, %arg4: f32): // no predecessors
+   ^bb0(%arg3: f32, %arg4: f32):
      linalg.yield %arg3 : f32
    }
  %1 = memref.alloc() : memref<100x10xf32>
@@ -80,7 +80,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
    iterator_types = ["parallel", "parallel"]}
     ins(%arg0, %0 : memref<100x10xf32>, memref<100x10xf32>)
    outs(%1 : memref<100x10xf32>) {
-     ^bb0(%arg3: f32, %arg4: f32, %arg5: f32): // no predecessors
+     ^bb0(%arg3: f32, %arg4: f32, %arg5: f32):
        %2 = arith.subf %arg3, %arg4 : f32
        linalg.yield %2 : f32
      }
@@ -91,7 +91,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
    iterator_types = ["parallel", "parallel"]}
      ins(%1 : memref<100x10xf32>)
     outs(%arg2 : memref<100x10xf32>) {
-     ^bb0(%arg3: f32, %arg4: f32): // no predecessors
+     ^bb0(%arg3: f32, %arg4: f32):
        %2 = math.exp %arg3 : f32
        linalg.yield %2 : f32
      }
@@ -263,7 +263,7 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
                                    affine_map<(d0) -> (d0)>],
                   iterator_types = ["parallel"]}
       ins(%arg0 : memref<?xf32>) outs(%1 : memref<?xf32>) {
-  ^bb0(%arg3: f32, %arg4: f32):  // no predecessors
+  ^bb0(%arg3: f32, %arg4: f32):
     %13 = math.abs %arg3 : f32
     linalg.yield %13 : f32
   }
@@ -315,7 +315,7 @@ func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
                                    affine_map<(d0) -> (d0)>],
                   iterator_types = ["parallel"]}
       ins(%arg0 : memref<?xf32>) outs(%1 : memref<?xf32>) {
-  ^bb0(%arg3: f32, %arg4: f32):  // no predecessors
+  ^bb0(%arg3: f32, %arg4: f32):
     %13 = math.abs %arg3 : f32
     linalg.yield %13 : f32
   }
@@ -385,7 +385,7 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
                                    affine_map<(d0) -> (d0)>],
                   iterator_types = ["parallel"]}
       ins(%arg0 : memref<32xf32>) outs(%1 : memref<32xf32>) {
-  ^bb0(%arg3: f32, %arg4: f32):  // no predecessors
+  ^bb0(%arg3: f32, %arg4: f32):
     %13 = math.abs %arg3 : f32
     linalg.yield %13 : f32
   }

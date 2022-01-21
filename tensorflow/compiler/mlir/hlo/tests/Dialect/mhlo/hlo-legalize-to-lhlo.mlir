@@ -515,7 +515,7 @@ func @reduce(%arg0: tensor<1x8xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
   // CHECK:  }) {dimensions = dense<1> : tensor<1xi64>}
   // CHECK-SAME: : (memref<1x8xf32>, memref<f32>, memref<1xf32>) -> ()
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
-  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>}

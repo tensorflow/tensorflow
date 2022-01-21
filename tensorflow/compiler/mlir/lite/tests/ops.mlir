@@ -2540,11 +2540,11 @@ func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> (tensor<*xi32>
 func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<i32> {
   // expected-error @+1 {{number of operands does not match number of results}}
   %0:1 = "tfl.while"(%arg0, %arg1) ({
-  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):  // no predecessors
+  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
     %1 = call @WhileOp_cond(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> tensor<i1>
     "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):  // no predecessors
+  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
     %1:2 = call @WhileOp_body(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
     "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
   }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>)
@@ -2569,11 +2569,11 @@ func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> (tensor<*xi32>
 func @main(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<i32> {
   // expected-error @+1 {{number of arguments in condition function does not match number of arguments in body function}}
   %0:2 = "tfl.while"(%arg0, %arg1) ({
-  ^bb0(%arg2: tensor<*xi32>):  // no predecessors
+  ^bb0(%arg2: tensor<*xi32>):
     %1 = call @WhileOp_cond(%arg2) : (tensor<*xi32>) -> tensor<i1>
     "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):  // no predecessors
+  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
     %1:2 = call @WhileOp_body(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
     "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
   }) : (tensor<i32>, tensor<*xf32>) -> (tensor<i32>, tensor<*xf32>)
@@ -2598,11 +2598,11 @@ func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<2xf32>, %arg2: tensor<1xf
 func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>, %arg2: tensor<2xf32>) -> tensor<i32> {
   // expected-error @+1 {{condition function's argument type does not match body function's argument type}}
   %0:3 = "tfl.while"(%arg0, %arg1, %arg2) ({
-  ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<1xf32>, %arg5: tensor<2xf32>):  // no predecessors
+  ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<1xf32>, %arg5: tensor<2xf32>):
     %1 = call @WhileOp_cond(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<1xf32>, tensor<2xf32>) -> tensor<i1>
     "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<2xf32>, %arg5: tensor<1xf32>):  // no predecessors
+  ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<2xf32>, %arg5: tensor<1xf32>):
     %1:3 = call @WhileOp_body(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>)
     "tfl.yield"(%1#0, %1#1, %1#2) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> ()
   }) : (tensor<i32>, tensor<1xf32>, tensor<2xf32>) -> (tensor<i32>, tensor<2xf32>, tensor<1xf32>)

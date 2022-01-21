@@ -1822,13 +1822,13 @@ func @while_with_id_passthrough(%arg0: tensor<7xf32> {tf._user_specified_name = 
   %4 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %5 = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
   %6:4 = "tf.WhileRegion"(%0, %1, %arg0, %2) ({
-    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):  // no predecessors
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):
       %8 = "tf.Less"(%arg1, %arg2) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
       %9 = "tf.LogicalAnd"(%8, %3) {device = ""} : (tensor<i1>, tensor<i1>) -> tensor<i1>
       %10 = "tf.Identity"(%9) {device = ""} : (tensor<i1>) -> tensor<i1>
       "tf.Yield"(%10) : (tensor<i1>) -> ()
     },  {
-    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):  // no predecessors
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):
       %8 = "tf.Identity"(%arg4) {device = ""} : (tensor<1xi32>) -> tensor<1xi32>
       // CHECK: tf.RandomStandardNormal{{.*}}(%[[SHAPE]])
       %9 = "tf.RandomStandardNormal"(%arg4) {device = "", seed = 87654321 : i64, seed2 = 0 : i64} : (tensor<1xi32>) -> tensor<?xf32>

@@ -309,7 +309,7 @@ func @QuantizeCustomTfOp(%arg0: tensor<128x128x!quant.uniform<u8:f32, 0.1:127>>,
   %1 = "tfl.dequantize"(%arg1) : (tensor<1x!quant.uniform<u8:f32, 0.2:127>>) -> tensor<1xf32>
   %2 = "tfl.dequantize"(%arg2) : (tensor<1x!quant.uniform<u8:f32, 0.4:127>>) -> tensor<1xf32>
   %3 = "tfl.custom_tf"(%0, %1, %2, %arg3) ({
-  ^bb0(%a1: tensor<128x128xf32>, %a2: tensor<1xf32>, %a3: tensor<1xf32>, %a4: tensor<1xi32>):  // no predecessors
+  ^bb0(%a1: tensor<128x128xf32>, %a2: tensor<1xf32>, %a3: tensor<1xf32>, %a4: tensor<1xi32>):
     %4 = "tf.LayerNorm"(%a1, %a2, %a3, %a4) {_tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
    "tfl.yield"(%4) : (tensor<128x128xf32>) -> ()
   }) {_tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
@@ -317,7 +317,7 @@ func @QuantizeCustomTfOp(%arg0: tensor<128x128x!quant.uniform<u8:f32, 0.1:127>>,
   return %4 : tensor<128x128x!quant.uniform<u8:f32, 0.2:125>>
 
 // CHECK: %4 = "tfl.custom_tf"(%arg0, %arg1, %arg2, %arg3) ({
-// CHECK-NEXT: ^bb0(%arg4: tensor<128x128xf32>, %arg5: tensor<1xf32>, %arg6: tensor<1xf32>, %arg7: tensor<1xi32>):  // no predecessors
+// CHECK-NEXT: ^bb0(%arg4: tensor<128x128xf32>, %arg5: tensor<1xf32>, %arg6: tensor<1xf32>, %arg7: tensor<1xi32>):
 // CHECK-NEXT:   "tf.LayerNorm"(%arg4, %arg5, %arg6, %arg7) {_tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
 // CHECK-NEXT:   "tfl.yield"
 // CHECK-NEXT: }) {_tfl_quant_trait = "fully_quantizable", device = ""} :
@@ -333,7 +333,7 @@ func @NotQuantizeCustomTfOp(%arg0: tensor<128x128x!quant.uniform<u8:f32, 0.1:127
   %1 = "tfl.dequantize"(%arg1) : (tensor<1x!quant.uniform<u8:f32, 0.2:127>>) -> tensor<1xf32>
   %2 = "tfl.dequantize"(%arg2) : (tensor<1x!quant.uniform<u8:f32, 0.4:127>>) -> tensor<1xf32>
   %3 = "tfl.custom_tf"(%0, %1, %2, %arg3) ({
-  ^bb0(%a1: tensor<128x128xf32>, %a2: tensor<1xf32>, %a3: tensor<1xf32>, %a4: tensor<1xi32>):  // no predecessors
+  ^bb0(%a1: tensor<128x128xf32>, %a2: tensor<1xf32>, %a3: tensor<1xf32>, %a4: tensor<1xi32>):
     %4 = "tf.LayerNorm"(%a1, %a2, %a3, %a4) {device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
    "tfl.yield"(%4) : (tensor<128x128xf32>) -> ()
   }) {device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
@@ -341,7 +341,7 @@ func @NotQuantizeCustomTfOp(%arg0: tensor<128x128x!quant.uniform<u8:f32, 0.1:127
   return %4 : tensor<128x128x!quant.uniform<u8:f32, 0.2:125>>
 
 // CHECK: "tfl.custom_tf"
-// CHECK-NEXT: ^bb0(%arg4: tensor<128x128xf32>, %arg5: tensor<1xf32>, %arg6: tensor<1xf32>, %arg7: tensor<1xi32>):  // no predecessors
+// CHECK-NEXT: ^bb0(%arg4: tensor<128x128xf32>, %arg5: tensor<1xf32>, %arg6: tensor<1xf32>, %arg7: tensor<1xi32>):
 // CHECK-NEXT:   "tf.LayerNorm"(%arg4, %arg5, %arg6, %arg7) {device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
 // CHECK-NEXT:   "tfl.yield"
 // CHECK-NEXT: }) {device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
@@ -350,7 +350,7 @@ func @NotQuantizeCustomTfOp(%arg0: tensor<128x128x!quant.uniform<u8:f32, 0.1:127
 // CHECK-LABEL: NotQuantizableValues
 func @NotQuantizableValues(%arg0: tensor<1x!tf_type.string>) -> (tensor<1x?x16x!quant.uniform<u8:f32, 0.1:128>>, tensor<1x!tf_type.string>, tensor<1xi32>) {
   %0:3 = "tfl.custom_tf"(%arg0) ({
-  ^bb0(%arg1: tensor<1x!tf_type.string>):  // no predecessors
+  ^bb0(%arg1: tensor<1x!tf_type.string>):
     %1:3 = "tf.SequenceStringProjection"(%arg1) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf_type.string>) -> (tensor<1x?x16xf32>, tensor<1x!tf_type.string>, tensor<1xi32>)
     "tfl.yield"(%1#0, %1#1, %1#2) : (tensor<1x?x16xf32>, tensor<1x!tf_type.string>, tensor<1xi32>) -> ()
   }) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf_type.string>) -> (tensor<1x?x16xf32>, tensor<1x!tf_type.string>, tensor<1xi32>)
@@ -358,7 +358,7 @@ func @NotQuantizableValues(%arg0: tensor<1x!tf_type.string>) -> (tensor<1x?x16x!
   return %2, %0#1, %0#2 : tensor<1x?x16x!quant.uniform<u8:f32, 0.1:128>>, tensor<1x!tf_type.string>, tensor<1xi32>
 
 // CHECK: "tfl.custom_tf"(%arg0) ({
-// CHECK-NEXT: ^bb0(%arg1: tensor<1x!tf_type.string>):  // no predecessors
+// CHECK-NEXT: ^bb0(%arg1: tensor<1x!tf_type.string>):
 // CHECK-NEXT:   "tf.SequenceStringProjection"(%arg1) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf_type.string>) -> (tensor<1x?x16xf32>, tensor<1x!tf_type.string>, tensor<1xi32>)
 // CHECK-NEXT:   "tfl.yield"
 // CHECK: }) {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x!tf_type.string>) -> (tensor<1x?x16x!quant.uniform<u8:f32, 1.000000e-01:128>>, tensor<1x!tf_type.string>, tensor<1xi32>)

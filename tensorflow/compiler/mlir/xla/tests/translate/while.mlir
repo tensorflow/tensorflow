@@ -68,12 +68,12 @@ func @main(%arg0: tensor<f32>) -> tensor<f32> {
   %1 = mhlo.constant dense<100> : tensor<i32>
   %2 = mhlo.constant dense<1.000000e+00> : tensor<f32>
   %3:4 = "mhlo.while"(%0, %1, %2, %arg0) ({
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>):  // no predecessors
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
     %4 = mhlo.constant dense<0> : tensor<i32>
     %5 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%5) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>):  // no predecessors
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
     %4 = mhlo.add %arg3, %arg4 : tensor<f32>
     "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>)
@@ -127,22 +127,22 @@ func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %1 = mhlo.constant dense<100> : tensor<2xi32>
   %2 = mhlo.constant dense<1.000000e+00> : tensor<1xf32>
   %3:4 = "mhlo.while"(%0, %1, %2, %arg0) ({
-  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
     %4 = mhlo.constant dense<0> : tensor<i32>
     %5 = "mhlo.reduce"(%arg1, %4) ({
-    ^bb0(%arg5: tensor<i32>, %arg6: tensor<i32>):  // no predecessors
+    ^bb0(%arg5: tensor<i32>, %arg6: tensor<i32>):
       %8 = mhlo.add %arg5, %arg6 : tensor<i32>
       "mhlo.return"(%8) : (tensor<i32>) -> ()
     }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<1xi32>, tensor<i32>) -> tensor<i32>
     %6 = "mhlo.reduce"(%arg2, %4) ({
-    ^bb0(%arg5: tensor<i32>, %arg6: tensor<i32>):  // no predecessors
+    ^bb0(%arg5: tensor<i32>, %arg6: tensor<i32>):
       %8 = mhlo.add %arg5, %arg6 : tensor<i32>
       "mhlo.return"(%8) : (tensor<i32>) -> ()
     }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi32>, tensor<i32>) -> tensor<i32>
     %7 = "mhlo.compare"(%5, %6) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):  // no predecessors
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
     %4 = "mhlo.broadcast_in_dim"(%arg3) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
     %5 = mhlo.add %arg4, %4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %5) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
@@ -194,11 +194,11 @@ func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %3 = "mhlo.get_tuple_element"(%1) {index = 1 : i32} : (tuple<tensor<i32>, tuple<tensor<i32>>>) -> tuple<tensor<i32>>
     %4 = "mhlo.get_tuple_element"(%3) {index = 0 : i32} : (tuple<tensor<i32>>) -> tensor<i32>
     %5:3 = "mhlo.while"(%0, %2, %4) ({
-    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>):  // no predecessors
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
       %9 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "mhlo.return"(%9) : (tensor<i1>) -> ()
     },  {
-    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>):  // no predecessors
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
       %9 = mhlo.add %arg1, %arg2 : tensor<i32>
       "mhlo.return"(%9, %arg2, %arg3) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
     }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
@@ -243,11 +243,11 @@ func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
   %0 = mhlo.constant dense<false> : tensor<i1>
   %1 = "mhlo.while"(%arg0) ({
-  ^bb0(%arg1: tensor<3x3xf32>):  // no predecessors
+  ^bb0(%arg1: tensor<3x3xf32>):
     %2 = mhlo.constant dense<false> : tensor<i1>
     %3 = mhlo.constant dense<0.000000e+00> : tensor<f32>
     %4 = "mhlo.reduce"(%arg1, %3) ({
-    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
       %7 = mhlo.constant dense<false> : tensor<i1>
       %8 = mhlo.add %arg2, %arg3 : tensor<f32>
       "mhlo.return"(%8) : (tensor<f32>) -> ()
@@ -256,7 +256,7 @@ func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
     %6 = "mhlo.compare"(%4, %5) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%6) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg1: tensor<3x3xf32>):  // no predecessors
+  ^bb0(%arg1: tensor<3x3xf32>):
     %2 = mhlo.constant dense<false> : tensor<i1>
     %3 = mhlo.constant dense<2.000000e+00> : tensor<f32>
     %4 = "mhlo.broadcast_in_dim"(%3) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<3x3xf32>
@@ -299,11 +299,11 @@ func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
 func @main(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1:2 = "mhlo.while"(%0, %arg0) ({
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):  // no predecessors
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
     %2 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%2) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):  // no predecessors
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
     %2 = "mhlo.tuple"(%arg1, %arg2) : (tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>>
     %3 = "mhlo.custom_call"(%arg1, %2) {api_version = 1 : i32, backend_config = "bar", call_target_name = "foo", has_side_effect = false, xla_shape = "(s32[], s32[])"} : (tensor<i32>, tuple<tensor<i32>, tensor<i32>>) -> tuple<tensor<i32>, tensor<i32>>
     %4 = "mhlo.get_tuple_element"(%3) {index = 0 : i32} : (tuple<tensor<i32>, tensor<i32>>) -> tensor<i32>

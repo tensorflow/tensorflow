@@ -137,7 +137,7 @@ def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow",
       module  {
         func @sink_const_to_sort(%arg0: tensor<16xf32>) {
           %0 = "mhlo.sort"(%arg0) ( {
-          ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):  // no predecessors
+          ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
             %cst = arith.constant dense<1.000000e+00> : tensor<f32>
             %1 = mhlo.divide %arg1, %cst : tensor<f32>
             %2 = mhlo.divide %arg2, %cst : tensor<f32>

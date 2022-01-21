@@ -68,7 +68,7 @@ func @reduce_op(%arg0: tensor<?x?xi1>) -> tensor<?xi1> {
   %1 = "mhlo.convert"(%arg0) : (tensor<?x?xi1>) -> tensor<?x?xi1>
   %2 = mhlo.constant dense<true> : tensor<i1>
   %3 = "mhlo.reduce"(%1, %2) ({
-  ^bb0(%arg1: tensor<i1>, %arg2: tensor<i1>):  // no predecessors
+  ^bb0(%arg1: tensor<i1>, %arg2: tensor<i1>):
     %5 = mhlo.and %arg1, %arg2 : tensor<i1>
     "mhlo.return"(%5) : (tensor<i1>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xi1>, tensor<i1>) -> tensor<?xi1>

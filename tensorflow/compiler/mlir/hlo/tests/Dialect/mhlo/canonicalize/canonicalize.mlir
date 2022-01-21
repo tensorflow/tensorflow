@@ -2064,7 +2064,7 @@ func @reshape_of_same_shape_op_result(%arg: tensor<?xf32>,
 // CHECK-LABEL: @map_op_fold
 func @map_op_fold(%arg: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.map"(%arg, %arg1) ({
-  ^bb0(%a: tensor<f32>, %b: tensor<f32>):  // no predecessors
+  ^bb0(%a: tensor<f32>, %b: tensor<f32>):
     "mhlo.return"(%b) : (tensor<f32>) -> ()
   }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
@@ -2073,7 +2073,7 @@ func @map_op_fold(%arg: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
 
 func @sort_drop_second_arg(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<3xi32> {
   %0:2 = "mhlo.sort"(%arg0, %arg1) ({
-  ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<i32>):  // no predecessors
+  ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<i32>):
     %1 = "mhlo.compare"(%arg2, %arg3) {
       comparison_direction = "GT"
     } : (tensor<i32>, tensor<i32>) -> tensor<i1>
@@ -2096,7 +2096,7 @@ func @sort_drop_second_arg(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor
 
 func @sort_no_dim_provided(%arg0: tensor<3x5xi32>) -> tensor<3x5xi32> {
   %0 = "mhlo.sort"(%arg0) ({
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):  // no predecessors
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
     %1 = "mhlo.compare"(%arg1, %arg2) {
       comparison_direction = "GT"
     } : (tensor<i32>, tensor<i32>) -> tensor<i1>

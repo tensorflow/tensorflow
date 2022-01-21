@@ -43,13 +43,13 @@ func @while_multi_operands(%arg0: tensor<3xi32>) -> tuple<tensor<i32>, tensor<3x
   %0 = mhlo.constant dense<false> : tensor<i1>
   %1 = mhlo.constant dense<0> : tensor<i32>
   %2:2 = "mhlo.while"(%1, %arg0) ({
-  ^bb0(%arg1: tensor<i32> , %arg2: tensor<3xi32> ):  // no predecessors
+  ^bb0(%arg1: tensor<i32> , %arg2: tensor<3xi32> ):
     %4 = mhlo.constant dense<false> : tensor<i1>
     %5 = mhlo.constant dense<8> : tensor<i32>
     %6 = "mhlo.compare"(%arg1, %5) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%6) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg1: tensor<i32>, %arg2: tensor<3xi32>):  // no predecessors
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<3xi32>):
     %4 = mhlo.constant dense<false> : tensor<i1>
     %5 = mhlo.constant dense<1> : tensor<i32>
     %6 = mhlo.add %arg1, %5 : tensor<i32>

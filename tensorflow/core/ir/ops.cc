@@ -595,6 +595,7 @@ static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   if (failed(parser.parseRegion(
           *body, entry_args, entry_args.empty() ? ArrayRef<Type>() : arg_types,
+          /*argLocations=*/{},
           /*enableNameShadowing=*/false)))
     return failure();
 
