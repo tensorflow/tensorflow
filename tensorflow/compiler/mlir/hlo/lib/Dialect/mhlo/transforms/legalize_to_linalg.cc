@@ -1346,9 +1346,10 @@ class DynamicUpdateSliceConverter
 
 enum class DotOperationType {
   kVectorDot = 0,
-  kMatrixVector = 1,
-  kMatrixMatrix = 2,
-  kUnsupported = 3
+  kMatrixVector,
+  kVectorMatrix,
+  kMatrixMatrix,
+  kUnsupported
 };
 
 DotOperationType GetDotOperationType(mhlo::DotOp dot_op) {
@@ -1367,6 +1368,10 @@ DotOperationType GetDotOperationType(mhlo::DotOp dot_op) {
   if (lhs_shape.size() == 2 && rhs_shape.size() == 1 &&
       shape_matches(lhs_shape[1], rhs_shape[0])) {
     return DotOperationType::kMatrixVector;
+  }
+  if (lhs_shape.size() == 1 && rhs_shape.size() == 2 &&
+      shape_matches(lhs_shape[0], rhs_shape[0])) {
+    return DotOperationType::kVectorMatrix;
   }
   if (lhs_shape.size() == 2 && rhs_shape.size() == 2 &&
       shape_matches(lhs_shape[1], rhs_shape[0])) {
@@ -1390,6 +1395,11 @@ SmallVector<Value, 2> GetDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
     case DotOperationType::kMatrixVector: {
       if (lhs.getType().cast<ShapedType>().isDynamicDim(0))
         dyn_shape.push_back(b.create<tensor::DimOp>(loc, lhs, 0));
+      break;
+    }
+    case DotOperationType::kVectorMatrix: {
+      if (rhs.getType().cast<ShapedType>().isDynamicDim(1))
+        dyn_shape.push_back(b.create<tensor::DimOp>(loc, rhs, 1));
       break;
     }
     case DotOperationType::kVectorDot:
@@ -2792,6 +2802,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       TransposeConverter<mhlo::TransposeOp>,
       DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
       DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,
+      DotOpConversion<DotOperationType::kVectorMatrix, linalg::VecmatOp>,
       DotOpConversion<DotOperationType::kVectorDot, linalg::DotOp>,
       DotGeneralOpConversion,
       NormalConvOpConversion,
