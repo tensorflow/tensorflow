@@ -260,7 +260,7 @@ void UpdateTerminatorArguments(
     auto argument = func.getArgument(arg_index);
     for (auto& use : argument.getUses()) {
       if (llvm::isa<ReturnOp, TF::YieldOp>(use.getOwner())) {
-        int operand_index = argument.getUses().begin()->getOperandNumber();
+        int operand_index = use.getOperandNumber();
         erase_indices.set(operand_index);
       }
     }
