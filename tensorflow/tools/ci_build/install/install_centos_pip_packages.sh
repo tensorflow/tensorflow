@@ -24,8 +24,8 @@ pip3 install wheel==0.31.1
 
 # Install last working version of setuptools. This must happen before we install
 # absl-py, which uses install_requires notation introduced in setuptools 20.5.
-pip2 install --upgrade setuptools==39.1.0
-pip3 install --upgrade setuptools==39.1.0
+pip2 install --upgrade setuptools
+pip3 install --upgrade setuptools
 
 pip2 install virtualenv
 pip3 install virtualenv
