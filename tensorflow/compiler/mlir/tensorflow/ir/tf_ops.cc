@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/APFloat.h"
@@ -295,11 +296,18 @@ bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
   return true;
 }
 
-std::vector<TensorFlowDialect::AdditionalOpFunction>
-    *TensorFlowDialect::GetAdditionalOperationHooks() {
-  static auto *const additional_operation_hooks =
-      new std::vector<TensorFlowDialect::AdditionalOpFunction>();
-  return additional_operation_hooks;
+// Hook functions which may add additional operations to the dialect.
+// These are invoked at construction time.
+static DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>
+    &GetAdditionalOperationHooks() {
+  static auto *additional_operation_hooks =
+      new DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>();
+  return *additional_operation_hooks;
+}
+
+void TensorFlowDialect::RegisterAdditionalOperationHook(
+    TypeID id, AdditionalOpFunction fn) {
+  GetAdditionalOperationHooks().try_emplace(id, std::move(fn));
 }
 
 TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
@@ -325,8 +333,8 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // registered.
   allowUnknownOperations();
 
-  for (const auto &hook : *GetAdditionalOperationHooks()) {
-    hook(*this);
+  for (auto &hook : GetAdditionalOperationHooks()) {
+    hook.second(*this);
   }
 }
 
