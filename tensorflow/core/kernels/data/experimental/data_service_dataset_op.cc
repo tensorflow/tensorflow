@@ -102,8 +102,6 @@ constexpr char kDataServiceDatasetV3[] = "DataServiceDatasetV3";
 constexpr const char kParallelEpochs[] = "parallel_epochs";
 constexpr const char kDistributedEpoch[] = "distributed_epoch";
 
-constexpr int64_t kLocalTaskBufferSize = 2;
-
 // Same timeout used by the RegisterDatasetOp.
 constexpr absl::Duration kGetMetadataRetryTimeout = absl::Hours(1);
 
@@ -445,7 +443,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(3) << "Returning from GetNext with error " << status_;
           return status_;
         }
-        if (results_.empty() && local_results_buffer_.empty()) {
+        if (results_.empty()) {
           *end_of_sequence = true;
           VLOG(3) << "Returning from GetNext with end_of_sequence";
           return Status::OK();
@@ -664,7 +662,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           }
         }
         Heartbeat();
-        UpdateLocalTasks();
         UpdateBufferSize();
         UpdateWorkerThreads(ctx.get());
         next_check = Env::Default()->NowMicros() +
@@ -846,42 +843,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void UpdateLocalTasks() TF_LOCKS_EXCLUDED(mu_) {
-      if (StrictRoundRobin()) {
-        return;
-      }
-      std::vector<std::shared_ptr<Task>> tasks;
-      absl::flat_hash_map<std::string, std::shared_ptr<Task>>
-          previous_local_tasks, local_tasks;
-      {
-        mutex_lock l(mu_);
-        previous_local_tasks = local_tasks_;
-        tasks = tasks_;
-      }
-
-      for (const std::shared_ptr<Task>& task : tasks) {
-        absl::string_view worker_address = task->info.worker_address();
-        // The `LocalWorkers` class may not truthfully reflect local workers
-        // when a local worker is temporarily down. Instead, we assume that if
-        // a worker is initially local, it must always be local.
-        if (previous_local_tasks.contains(worker_address) ||
-            LocalWorkers::Get(worker_address)) {
-          local_tasks[worker_address] = task;
-        }
-      }
-      mutex_lock l(mu_);
-      local_tasks_ = std::move(local_tasks);
-    }
-
     void UpdateBufferSize() TF_LOCKS_EXCLUDED(mu_) {
       if (dataset()->max_outstanding_requests_ == model::kAutotune) {
         // Adjust `max_outstanding_requests_` to account for newly added tasks.
         // `tasks_` includes the local tasks, so we subtract one from the
         // configured local task buffer size.
         mutex_lock l(mu_);
-        int64_t max_outstanding_requests =
-            tasks_.size() +
-            (GetLocalTaskBufferSize() - 1) * local_tasks_.size();
+        int64_t max_outstanding_requests = tasks_.size();
         if (max_outstanding_requests > max_outstanding_requests_) {
           worker_thread_cv_.notify_all();
         }
@@ -921,7 +889,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(mu_);
           if (task_to_process) {
             task_to_process->in_use = false;
-            RemoveOutstandingRequest(*task_to_process);
+            --outstanding_requests_;
             task_to_process = nullptr;
             worker_thread_cv_.notify_one();
           }
@@ -931,13 +899,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             }
             task_to_process = GetTaskToProcess();
             if (task_to_process) {
+              VLOG(3) << "Selected a task to process: "
+                      << task_to_process->info.ShortDebugString();
               break;
             }
             worker_thread_cv_.wait(l);
           }
           DCHECK(task_to_process != nullptr);
           task_to_process->in_use = true;
-          AddOutstandingRequest(*task_to_process);
+          ++outstanding_requests_;
           if (StrictRoundRobin()) {
             // Reserve a spot in the results_ queue.
             results_.emplace();
@@ -960,7 +930,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(1) << "Failed to get element from worker "
                   << task_to_process->info.worker_address() << ": " << s;
           task_to_process->in_use = false;
-          RemoveOutstandingRequest(*task_to_process);
+          --outstanding_requests_;
           status_ = errors::CreateWithUpdatedMessage(
               s, absl::StrCat("Failed to get element from worker ",
                               task_to_process->info.worker_address(), ": ",
@@ -969,33 +939,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return;
         }
       }
-    }
-
-    // Searches for a task to process, returning nullptr if none is found.
-    std::shared_ptr<Task> GetTaskToProcess() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (!ShouldProcessTask()) {
-        return nullptr;
-      }
-
-      VLOG(4) << "Searching for the next task to process.";
-      if (ShouldProcessLocalTask()) {
-        std::shared_ptr<Task> task = GetLocalTaskToProcess();
-        if (task) {
-          VLOG(3) << "Selected a local task to process: "
-                  << task->info.ShortDebugString();
-          return task;
-        }
-      }
-
-      if (ShouldProcessAnyTask()) {
-        std::shared_ptr<Task> task = GetAnyTaskToProcess();
-        if (task) {
-          VLOG(3) << "Selected a task to process: "
-                  << task->info.ShortDebugString();
-          return task;
-        }
-      }
-      return nullptr;
     }
 
     // Reports whether we can request another element without violating
@@ -1009,50 +952,17 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // Otherwise, results aren't added to `results_` until the data has been
       // successfully retrieved. We need to count requests already added to
       // `results_` as well as in-progress requests.
-      // If there are any local tasks, we allocate additional buffers for them
-      // to improve utilization of local resources.
-      return local_results_buffer_.size() + outstanding_local_requests_ +
-                 results_.size() + outstanding_requests_ <
+      return results_.size() + outstanding_requests_ <
              max_outstanding_requests_;
-    }
-
-    // Prefers reading from local tasks if they exist.
-    bool ShouldProcessLocalTask() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      return dataset()->target_workers_ == TARGET_WORKERS_LOCAL ||
-             (dataset()->target_workers_ == TARGET_WORKERS_AUTO &&
-              !local_tasks_.empty() && !StrictRoundRobin());
-    }
-
-    // Returns whether tf.data service should process any task next. If there
-    // are local tasks, it reserves buffer space for them.
-    bool ShouldProcessAnyTask() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (!ShouldProcessLocalTask()) {
-        return true;
-      }
-
-      // If all local tasks are busy, then process any task, reserving buffer
-      // space for the local tasks.
-      return results_.size() + outstanding_requests_ +
-                 GetLocalTaskBufferSize() * local_tasks_.size() <
-             max_outstanding_requests_;
-    }
-
-    // Searches for a local task to process, returning nullptr if none is found.
-    std::shared_ptr<Task> GetLocalTaskToProcess()
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      for (const auto& address_task : local_tasks_) {
-        const auto& task = address_task.second;
-        if (!task->in_use && !task->end_of_sequence && !task->removed) {
-          return task;
-        }
-      }
-      return nullptr;
     }
 
     // Searches for a task to process, visiting tasks in-order and giving every
     // task a chance to proceed.
-    std::shared_ptr<Task> GetAnyTaskToProcess()
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    std::shared_ptr<Task> GetTaskToProcess() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!ShouldProcessTask()) {
+        return nullptr;
+      }
+
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
         if (StrictRoundRobin() &&
@@ -1083,15 +993,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       return nullptr;
     }
 
-    // Returns the per-task buffer size for each local task. If auto-tuning is
-    // enabled, we reserve additional buffer space for local tasks.
-    int64_t GetLocalTaskBufferSize() const {
-      if (dataset()->max_outstanding_requests_ == model::kAutotune) {
-        return kLocalTaskBufferSize;
-      }
-      return 1;
-    }
-
     // Increments the next task index, starting over if all tasks have been
     // processed.
     void AdvanceTaskIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -1099,24 +1000,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       if (next_task_index_ >= tasks_.size()) {
         current_round_++;
         next_task_index_ = 0;
-      }
-    }
-
-    void AddOutstandingRequest(const Task& task)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (local_tasks_.contains(task.info.worker_address())) {
-        outstanding_local_requests_++;
-      } else {
-        outstanding_requests_++;
-      }
-    }
-
-    void RemoveOutstandingRequest(const Task& task)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (local_tasks_.contains(task.info.worker_address())) {
-        outstanding_local_requests_--;
-      } else {
-        outstanding_requests_--;
       }
     }
 
@@ -1153,11 +1036,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         finished_tasks_++;
       }
       if (enqueue_result && !result.end_of_sequence) {
-        if (local_tasks_.contains(task.info.worker_address())) {
-          local_results_buffer_.push(std::move(result));
-        } else {
-          results_.push(std::move(result));
-        }
+        results_.push(std::move(result));
       }
       get_next_cv_.notify_all();
     }
@@ -1261,18 +1140,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     bool ResultReady() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      const bool local_result_ready =
-          !local_results_buffer_.empty() && local_results_buffer_.front().ready;
-      const bool result_ready = !results_.empty() && results_.front().ready;
-      return local_result_ready || result_ready;
+      return !results_.empty() && results_.front().ready;
     }
 
     Result PopNextResult() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (!local_results_buffer_.empty()) {
-        Result result = std::move(local_results_buffer_.front());
-        local_results_buffer_.pop();
-        return result;
-      }
       Result result = std::move(results_.front());
       results_.pop();
       return result;
@@ -1284,12 +1155,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     std::string DebugString() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       return absl::Substitute(
-          "results_ { size: $0 front.ready: $1 } local_results_buffer_ { size: "
-          "$2 front.ready: $3 } job_finished_: $4 tasks { size: $5 } "
-          "finished_tasks_: $6 num_running_worker_threads_: $7",
+          "results_ { size: $0 front.ready: $1 } job_finished_: $2 "
+          "tasks { size: $3 } finished_tasks_: $4 "
+          "num_running_worker_threads_: $5",
           results_.size(), !results_.empty() && results_.front().ready,
-          local_results_buffer_.size(),
-          !local_results_buffer_.empty() && local_results_buffer_.front().ready,
           job_finished_, tasks_.size(), finished_tasks_,
           num_running_worker_threads_);
     }
@@ -1304,8 +1173,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
 
+    // Number of outstanding requests.
     int64_t outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
-    int64_t outstanding_local_requests_ TF_GUARDED_BY(mu_) = 0;
 
     // max_outstanding_requests controls how many elements may be held in memory
     // at the same time. This count includes both in-progress requests for
@@ -1323,8 +1192,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     // List of tasks to read from.
     std::vector<std::shared_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
-    absl::flat_hash_map<std::string, std::shared_ptr<Task>> local_tasks_
-        TF_GUARDED_BY(mu_);
 
     // The current round robin round we are engaged in. A round involves reading
     // from each task once.
@@ -1345,7 +1212,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // from a worker. When not doing round-robin reads, results are only added
     // to the queue after they are ready, to avoid head-of-line blocking.
     std::queue<Result> results_ TF_GUARDED_BY(mu_);
-    std::queue<Result> local_results_buffer_ TF_GUARDED_BY(mu_);
 
     bool initialized_ = false;
     // Set once in Initialize().
