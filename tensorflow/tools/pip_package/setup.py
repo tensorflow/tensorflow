@@ -91,7 +91,7 @@ REQUIRED_PACKAGES = [
     # These need to be in sync with the existing TF version
     # They are updated during the release process
     # When updating these, please also update the nightly versions below
-    'tensorboard >= 2.7, < 2.8',
+    'tensorboard >= 2.8, < 2.9',
     'tf-estimator-nightly == 2.8.0.dev2021122109',
     'keras >= 2.8.0rc0, < 2.9',
     'tensorflow-io-gcs-filesystem >= 0.23.1',
@@ -106,7 +106,7 @@ REQUIRED_PACKAGES = [
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.8.0.a'
+      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.9.0.a'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.9.0.dev'
     elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
