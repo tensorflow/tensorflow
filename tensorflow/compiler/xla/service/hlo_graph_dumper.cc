@@ -1829,35 +1829,35 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
   <p id='performance_note'></p>
   <script>
   <!--
-  var currId = 0;
-  var renderCache = {};
+  let currId = 0;
+  const renderCache = {};
 
-  var cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
-  var hpccWasm = window["@hpcc-js/wasm"];
+  const cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
+  const hpccWasm = window["@hpcc-js/wasm"];
 
-  var getIdFromHash = function() {
-    var hash = window.location.hash;
-    return parseInt(hash.substring('#frame'.length, hash.length));
+  const getIdFromHash = () => {
+    let hash = window.location.hash;
+    return parseInt(window.location.hash.substring('#frame'.length, window.location.hash.length));
   }
 
-  var renderFrame = function() {
-    var frames_list = document.getElementById('frames_list');
+  const renderFrame = () => {
+    const frames_list = document.getElementById('frames_list');
 
     for (let selected of frames_list.getElementsByClassName('selected')) {
         selected.classList.remove('selected');
     }
 
-    var selected = frames_list.children[currId];
+    const selected = frames_list.children[currId];
     selected.classList.add('selected');
     selected.scrollIntoView();
 
-    var frame = frames[currId];
-    var dot_ptr = frame[0];
-    var dot_txt = dots[dot_ptr];
-    var label = frame[1];
+    const frame = frames[currId];
+    const dot_ptr = frame[0];
+    let dot_txt = dots[dot_ptr];
+    const label = frame[1];
     document.getElementById('performance_note').innerText = "Rendering...";
-    var results = cssregex.exec(dot_txt)
-    var css_data = ''
+    const results = cssregex.exec(dot_txt)
+    let css_data = ''
     if (results !== null) {
         css_data = results[1].replace(/\s*data:.*\s*,/,''); // Strip content-type field.
         // CSS inside DOT is URL-escaped, so we must unescape it
@@ -1866,8 +1866,8 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
         dot_txt = dot_txt.replace(cssregex, ''); // Remove the stylesheet
     }
 
-    var render_start = performance.now();
-    var render_callback = function(svg) {
+    let render_start = performance.now();
+    const render_callback = svg => {
       renderCache[dot_ptr] = svg;
       var area = document.getElementById('rendered');
       area.innerHTML = `${svg}<style>${css_data}</style>`;
@@ -1888,17 +1888,17 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
     }
   };
 
-  window.addEventListener('hashchange', function() {
+  window.addEventListener('hashchange', () => {
     currId = getIdFromHash();
     renderFrame();
   });
 
-  var update = function(delta)  {
+  const update = (delta) => {
     currId = (currId + delta + frames.length) % frames.length;
     window.location.hash = `#frame${currId}`
   };
 
-  window.addEventListener("keydown", function (event) {
+  window.addEventListener("keydown", (event) => {
     if (event.defaultPrevented) {
       return;
     }
@@ -1912,13 +1912,12 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
     event.preventDefault();
   }, true);
 
-  var renderFrameList = function() {
-    var frames_list = document.getElementById('frames_list');
-
+  const renderFrameList = function() {
+    const frames_list = document.getElementById('frames_list');
     for (let i=0; i<frames.length; i++) {
-      var f = frames[i];
-      var frame_descr = f[1];
-      var rendered = document.createElement("li");
+      const f = frames[i];
+      let frame_descr = f[1];
+      const rendered = document.createElement("li");
       if (frame_descr == "") {
         frame_descr = "Unnamed state";
       }
@@ -1930,7 +1929,7 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
     }
   };
 
-  document.addEventListener("DOMContentLoaded", function() {
+  document.addEventListener("DOMContentLoaded", () => {
     if (window.location.hash.indexOf('frame') != -1) {
       currId = getIdFromHash();
     }
@@ -1938,8 +1937,8 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
     renderFrame();
   });
 
-  var dots = [$DOTS];
-  var frames = [$FRAMES];
+  const dots = [$DOTS];
+  const frames = [$FRAMES];
 
   //-->
   </script>
