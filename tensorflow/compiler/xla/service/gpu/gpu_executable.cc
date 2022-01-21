@@ -615,7 +615,7 @@ static Status ExecuteBef(const std::string& module_name,
 
   // Create owning handles for arguments and add pointer to them to 'args'.
   const tfrt::Function* function = bef_executable->function;
-  tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
+  llvm::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());

@@ -65,7 +65,6 @@ using ::tfrt::AsyncValueRef;
 using ::tfrt::Chain;
 using ::tfrt::OpAttrsRef;
 using ::tfrt::RCReference;
-using ::tfrt::SmallVector;
 using ::tfrt::string_view;
 
 constexpr char kOpKernelRunnerTableResourceName[] =

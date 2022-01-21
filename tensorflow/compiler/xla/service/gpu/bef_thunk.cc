@@ -669,7 +669,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   // Create owning handles for arguments and add pointer to them to 'args'.
-  tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
+  llvm::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
