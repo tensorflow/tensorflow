@@ -85,7 +85,8 @@ REQUIRED_PACKAGES = [
     'libclang >= 9.0.1',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
-    'protobuf >= 3.9.2',
+    'protobuf >= 3.9.2, <= 3.19.1; python_version<"3.10"',  # TODO(b/215434202)
+    'protobuf >= 3.19.3; python_version=="3.10"',
     'setuptools < 60',  # TODO(b/211495558): Breaking change in v60 on distutils
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
