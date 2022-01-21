@@ -383,3 +383,27 @@ module {
     return %0 : tensor<0xf32>
   }
 }
+
+// -----
+// Test immutable detection propagates across function calls, with returned
+// handle.
+
+module {
+  func @f() -> tensor<0xf32> {
+    %handle = "tf.VarHandleOp"() {container="", shared_name="var1", device = "/job:worker/replica:0/task:1/device:CPU:0"} : () -> tensor<!tf_type.resource<tensor<0xf32>>>
+    %val, %handle_1 = "tf.PartitionedCall"(%handle) {config = "", config_proto = "", executor_type = "", f = @f_callee} : (tensor<!tf_type.resource<tensor<0xf32>>>) -> (tensor<0xf32>, tensor<*x!tf_type.resource>)
+    return %val : tensor<0xf32>
+  }
+
+  // CHECK: func private @f_callee() -> tensor<0xf32>
+  func private @f_callee(%arg0: tensor<*x!tf_type.resource>) -> (tensor<0xf32>, tensor<*x!tf_type.resource>) {
+    %val = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @f_callee_callee} : (tensor<*x!tf_type.resource>) -> (tensor<0xf32>)
+    return %val, %arg0 : tensor<0xf32>, tensor<*x!tf_type.resource>
+  }
+
+  // CHECK: func private @f_callee_callee() -> tensor<0xf32>
+  func private @f_callee_callee(%arg0: tensor<*x!tf_type.resource>) -> tensor<0xf32> {
+    %c0 = "tf.Const"() { value = dense<1.0> : tensor<0xf32> } : () -> tensor<0xf32>
+    return %c0 : tensor<0xf32>
+  }
+}
