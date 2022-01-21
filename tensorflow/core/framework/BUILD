@@ -936,6 +936,7 @@ cc_library(
         "//tensorflow/core/lib/hash",
         "//tensorflow/core/lib/strings:proto_serialization",
         "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:protobuf",
         "@com_google_absl//absl/strings",
     ],
