@@ -618,6 +618,14 @@ struct UnaryFunctor<CPUDevice, Functor> {
   }
 };
 
+template <typename Functor>
+struct UnaryFunctorWithArg<CPUDevice, Functor> {
+  void operator()(const CPUDevice& d, typename Functor::tout_type out,
+                  typename Functor::tin_type in, float val) {
+    Assign(d, out, in.unaryExpr(typename Functor::func(val)));
+  }
+};
+
 // Partial specialization of ApproximateEqual<Device=CPUDevice, T>.
 template <typename T>
 struct ApproximateEqual<CPUDevice, T> {
