@@ -126,6 +126,11 @@
 
 *   Deterministic Op Functionality:
 
+    *   Fix regression in deterministic selection of deterministic cuDNN
+        convolution algorithms, a regression that was introduced in v2.5. Note
+        that nondeterministic out-of-memory events while selecting algorithms
+        could still lead to nondeterminism, although this is very unlikely. This
+        additional, unlikely source will be eliminated in a later version.
     *   Add determinsitic GPU implementations of:
         *   `tf.function(jit_compile=True)`'s that use `Scatter`.
         *   (since v2.7) Stateful ops used in `tf.data.Dataset`
