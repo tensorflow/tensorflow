@@ -395,7 +395,7 @@ Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
       ToDevicePointer(lapack_info), batch_size));
 #else
 #define CALL_POTRF_BATCHED(T, suffix_lower, suffix_upper) \
-  return Unimplemented("potrf_batched not implemented on rocm");
+  Unimplemented("potrf_batched not implemented on rocm");
 #endif
 
 Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
