@@ -1409,6 +1409,7 @@ distribute_py_test(
         "no_cuda_asan",  # times out
         "no_oss",  # b/178656226
         "noasan",  # b/175816710
+        "notap",  # Flaky
         "notsan",  # b/168645872
     ],
     tpu_tags = [
