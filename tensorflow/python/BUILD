@@ -25,6 +25,7 @@ load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
+load("//tensorflow:tensorflow.bzl", "if_windows")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
@@ -3311,6 +3312,8 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/util:determinism",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/platform:enable_tf2_utils",
+    ]) + if_windows([
+        "//tensorflow/c:kernels_experimental",
     ]),
 )
 
