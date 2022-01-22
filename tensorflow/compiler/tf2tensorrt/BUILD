@@ -959,6 +959,7 @@ pybind_extension(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor",
         "@pybind11",
     ],
 )
