@@ -5,140 +5,61 @@
 *   `tf.lite`:
     *   Added TFLite builtin op support for the following TF ops:
         *   `tf.raw_ops.Bucketize` op on CPU.
-        *   `tf.where` op for data types
-            `tf.int32`/`tf.uint32`/`tf.int8`/`tf.uint8`/`tf.int64`.
+        *   `tf.where` op for data types `tf.int32`/`tf.uint32`/`tf.int8`/`tf.uint8`/`tf.int64`.
         *   `tf.random.normal` op for output data type `tf.float32` on CPU.
         *   `tf.random.uniform` op for output data type `tf.float32` on CPU.
         *   `tf.random.categorical` op for output data type `tf.int64` on CPU.
-*   `tensorflow.experimental.tensorrt`:
 
-    *   `conversion_params` is now deprecated inside `TrtGraphConverterV2` in
-        favor of direct arguments: `max_workspace_size_bytes`, `precision_mode`,
-        `minimum_segment_size`, `maximum_cached_engines`, `use_calibration` and
-        `allow_build_at_runtime`.
-    *   Added a new parameter called `save_gpu_specific_engines` to the
-        `.save()` function inside `TrtGraphConverterV2`. When `False`, the
-        `.save()` function won't save any TRT engines that have been built. When
-        `True` (default), the original behavior is preserved.
-    *   `TrtGraphConverterV2` provides a new API called `.summary()` which
-        outputs a summary of the inference converted by TF-TRT. It namely shows
-        each TRTEngineOp with their input(s)' and output(s)' shape and dtype. A
-        detailed version of the summary is available which prints additionally
-        all the TensorFlow OPs included in each of the TRTEngineOPs.
+*   `tensorflow.experimental.tensorrt`:
+    *   `conversion_params` is now deprecated inside `TrtGraphConverterV2` in favor of direct arguments: `max_workspace_size_bytes`, `precision_mode`, `minimum_segment_size`, `maximum_cached_engines`, `use_calibration` and `allow_build_at_runtime`.
+    *   Added a new parameter called `save_gpu_specific_engines` to the `.save()` function inside `TrtGraphConverterV2`. When `False`, the `.save()` function won't save any TRT engines that have been built. When `True` (default), the original behavior is preserved.
+    *   `TrtGraphConverterV2` provides a new API called `.summary()` which outputs a summary of the inference converted by TF-TRT. It namely shows each `TRTEngineOp` with their input(s)' and output(s)' shape and dtype. A detailed version of the summary is available which prints additionally all the TensorFlow OPs included in each of the `TRTEngineOp`s.
 
 *   `tf.tpu.experimental.embedding`:
+    *   `tf.tpu.experimental.embedding.FeatureConfig` now takes an additional argument `output_shape` which can specify the shape of the output activation for the feature.
+    *   `tf.tpu.experimental.embedding.TPUEmbedding` now has the same behavior as `tf.tpu.experimental.embedding.serving_embedding_lookup` which can take arbitrary rank of dense and sparse tensor. For ragged tensor, though the input tensor remains to be rank 2, the activations now can be rank 2 or above by specifying the output shape in the feature config or via the build method.
 
-    *   `tf.tpu.experimental.embedding.FeatureConfig` now takes an additional
-        argument `output_shape` which can specify the shape of the output
-        activation for the feature.
-    *   `tf.tpu.experimental.embedding.TPUEmbedding` now has the same behavior
-        as `tf.tpu.experimental.embedding.serving_embedding_lookup` which can
-        take arbitrary rank of dense and sparse tensor. For ragged tensor,
-        though the input tensor remains to be rank 2, the activations now can be
-        rank 2 or above by specifying the output shape in the feature config or
-        via the build method.
+*   Add [`tf.config.experimental.enable_op_determinism`](https://www.tensorflow.org/api_docs/python/tf/config/experimental/enable_op_determinism), which makes TensorFlow ops run deterministically at the cost of performance.  Replaces the `TF_DETERMINISTIC_OPS` environmental variable, which is now deprecated. The "Bug Fixes and Other Changes" section lists more determinism-related changes.
 
-*   Add
-    [`tf.config.experimental.enable_op_determinism`](https://www.tensorflow.org/api_docs/python/tf/config/experimental/enable_op_determinism),
-    which makes TensorFlow ops run deterministically at the cost of performance.
-    Replaces the `TF_DETERMINISTIC_OPS` environmental variable, which is now
-    deprecated.
-
-    *   The "Bug Fixes and Other Changes" section lists more determinism-related
-        changes.
-
-*   (Since TF 2.7) Add
-    [PluggableDevice](https://blog.tensorflow.org/2021/06/pluggabledevice-device-plugins-for-TensorFlow.html)
-    support to [TensorFlow Profiler](https://github.com/tensorflow/community/blob/master/rfcs/20210513-pluggable-profiler-for-tensorflow.md).
+*   (Since TF 2.7) Add [PluggableDevice](https://blog.tensorflow.org/2021/06/pluggabledevice-device-plugins-for-TensorFlow.html) support to [TensorFlow Profiler](https://github.com/tensorflow/community/blob/master/rfcs/20210513-pluggable-profiler-for-tensorflow.md).
 
 # Bug Fixes and Other Changes
 
 * `tf.data`:
-  * The optimization `parallel_batch` now becomes default if not disabled by
-    users, which will parallelize copying of batch elements.
-  * Added the ability for `TensorSliceDataset` to identify and handle inputs
-    that are files. This enables creating hermetic SavedModels when using
-    datasets created from files.
-
-    *   The optimization `parallel_batch` now becomes default if not disabled by
-        users, which will parallelize copying of batch elements.
-    *   Added the ability for `TensorSliceDataset` to identify and handle inputs
-        that are files. This enables creating hermetic SavedModels when using
-        datasets created from files.
+  * The optimization `parallel_batch` now becomes default if not disabled by users, which will parallelize copying of batch elements.
+  * Added the ability for `TensorSliceDataset` to identify and handle inputs that are files. This enables creating hermetic SavedModels when using datasets created from files.
+    *   The optimization `parallel_batch` now becomes default if not disabled by users, which will parallelize copying of batch elements.
+    *   Added the ability for `TensorSliceDataset` to identify and handle inputs that are files. This enables creating hermetic SavedModels when using datasets created from files.
 
 *   `tf.lite`:
-
-    *   GPU
-    *   Adds GPU Delegation support for serialization to Java API. This boosts
-        initialization time upto 90% when OpenCL is available.
-    *   Deprecated `Interpreter::SetNumThreads`, in favor of
-        `InterpreterBuilder::SetNumThreads`.
-
-*   Adds `tf.compat.v1.keras.utils.get_or_create_layer` to aid migration to TF2
-    by enabling tracking of nested keras models created in TF1-style, when used
-    with the `tf.compat.v1.keras.utils.track_tf1_style_variables` decorator.
+    *   Adds GPU Delegation support for serialization to Java API. This boosts initialization time up to 90% when OpenCL is available.
+    *   Deprecated `Interpreter::SetNumThreads`, in favor of `InterpreterBuilder::SetNumThreads`.
 
 *   `tf.keras`:
-
-    *   Preprocessing Layers
-    *   Added a `tf.keras.layers.experimental.preprocessing.HashedCrossing`
-        layer which applies the hashing trick to the concatenation of crossed
-        scalar inputs. This provides a stateless way to try adding feature
-        crosses of integer or string data to a model.
-    *   Removed `keras.layers.experimental.preprocessing.CategoryCrossing`.
-        Users should migrate to the `HashedCrossing` layer or use
-        `tf.sparse.cross`/`tf.ragged.cross` directly.
-    *   Added additional `standardize` and `split` modes to `TextVectorization`.
+    *   Adds `tf.compat.v1.keras.utils.get_or_create_layer` to aid migration to TF2 by enabling tracking of nested keras models created in TF1-style, when used with the `tf.compat.v1.keras.utils.track_tf1_style_variables` decorator.
+    *   Added a `tf.keras.layers.experimental.preprocessing.HashedCrossing` layer which applies the hashing trick to the concatenation of crossed scalar inputs. This provides a stateless way to try adding feature crosses of integer or string data to a model.
+    *   Removed `keras.layers.experimental.preprocessing.CategoryCrossing`. Users should migrate to the `HashedCrossing` layer or use `tf.sparse.cross`/`tf.ragged.cross` directly.
+    *   Added additional `standardize` and `split` modes to `TextVectorization`:
         *   `standardize="lower"` will lowercase inputs.
         *   `standardize="string_punctuation"` will remove all puncuation.
         *   `split="character"` will split on every unicode character.
-    *   Added an `output_mode` argument to the `Discretization` and `Hashing`
-        layers with the same semantics as other preprocessing layers. All
-        categorical preprocessing layers now support `output_mode`.
-    *   All preprocessing layer output will follow the compute dtype of a
-        `tf.keras.mixed_precision.Policy`, unless constructed with
-        `output_mode="int"` in which case output will be `tf.int64`. The output
-        type of any preprocessing layer can be controlled individually by
-        passing a `dtype` argument to the layer.
+    *   Added an `output_mode` argument to the `Discretization` and `Hashing` layers with the same semantics as other preprocessing layers. All categorical preprocessing layers now support `output_mode`.
+    *   All preprocessing layer output will follow the compute dtype of a `tf.keras.mixed_precision.Policy`, unless constructed with `output_mode="int"` in which case output will be `tf.int64`. The output type of any preprocessing layer can be controlled individually by passing a `dtype` argument to the layer.
     *   `tf.random.Generator` for keras initializers and all RNG code.
-    *   Added 3 new APIs for enable/disable/check the usage of
-        `tf.random.Generator` in keras backend, which will be the new backend
-        for all the RNG in Keras. We plan to switch on the new code path by
-        default in tf 2.8, and the behavior change will likely to cause some
-        breakage on user side (eg if the test is checking against some golden
-        nubmer). These 3 APIs will allow user to disable and switch back to
-        legacy behavior if they prefer. In future (eg tf 2.10), we expect to
-        totally remove the legacy code path (stateful random Ops), and these 3
-        APIs will be removed as well.
-    *   `tf.keras.callbacks.experimental.BackupAndRestore` is now available as
-        `tf.keras.callbacks.BackupAndRestore`. The experimental endpoint is
-        deprecated and will be removed in a future release.
-    *   `tf.keras.experimental.SidecarEvaluator` is now available as
-        `tf.keras.utils.SidecarEvaluator`. The experimental endpoint is
-        deprecated and will be removed in a future release.
-    *   Metrics update and collection logic in default `Model.train_step()` is
-        now customizable via overriding `Model.compute_metrics()`.
-    *   Losses computation logic in default `Model.train_step()` is now
-        customizable via overriding `Model.compute_loss()`.
-    *   `jit_compile` added to `Model.compile()` on an opt-in basis to compile
-        the model's training step with [XLA](https://www.tensorflow.org/xla).
-        Note that `jit_compile=True` may not necessarily work for all models.
+    *   Added 3 new APIs for enable/disable/check the usage of `tf.random.Generator` in keras backend, which will be the new backend for all the RNG in Keras. We plan to switch on the new code path by default in tf 2.8, and the behavior change will likely to cause some breakage on user side (eg if the test is checking against some golden nubmer). These 3 APIs will allow user to disable and switch back to legacy behavior if they prefer. In future (eg TF 2.10), we expect to totally remove the legacy code path (stateful random Ops), and these 3 APIs will be removed as well.
+    *   `tf.keras.callbacks.experimental.BackupAndRestore` is now available as `tf.keras.callbacks.BackupAndRestore`. The experimental endpoint is deprecated and will be removed in a future release.
+    *   `tf.keras.experimental.SidecarEvaluator` is now available as `tf.keras.utils.SidecarEvaluator`. The experimental endpoint is deprecated and will be removed in a future release.
+    *   Metrics update and collection logic in default `Model.train_step()` is now customizable via overriding `Model.compute_metrics()`.
+    *   Losses computation logic in default `Model.train_step()` is now customizable via overriding `Model.compute_loss()`.
+    *   `jit_compile` added to `Model.compile()` on an opt-in basis to compile the model's training step with [XLA](https://www.tensorflow.org/xla). Note that `jit_compile=True` may not necessarily work for all models.
 
 *   Deterministic Op Functionality:
-
-    *   Fix regression in deterministic selection of deterministic cuDNN
-        convolution algorithms, a regression that was introduced in v2.5. Note
-        that nondeterministic out-of-memory events while selecting algorithms
-        could still lead to nondeterminism, although this is very unlikely. This
-        additional, unlikely source will be eliminated in a later version.
+    *   Fix regression in deterministic selection of deterministic cuDNN convolution algorithms, a regression that was introduced in v2.5. Note that nondeterministic out-of-memory events while selecting algorithms could still lead to nondeterminism, although this is very unlikely. This additional, unlikely source will be eliminated in a later version.
     *   Add determinsitic GPU implementations of:
         *   `tf.function(jit_compile=True)`'s that use `Scatter`.
         *   (since v2.7) Stateful ops used in `tf.data.Dataset`
-        *   (since v2.7) `tf.convert_to_tensor` when fed with (sparse)
-            `tf.IndexedSlices` (because it uses `tf.math.unsorted_segment_sum`)
-        *   (since v2.7) `tf.gather` backprop (because `tf.convert_to_tensor`
-            reduces `tf.gather`'s (sparse) `tf.IndexedSlices` gradients into its
-            dense `params` input)
+        *   (since v2.7) `tf.convert_to_tensor` when fed with (sparse) `tf.IndexedSlices` (because it uses `tf.math.unsorted_segment_sum`)
+        *   (since v2.7) `tf.gather` backprop (because `tf.convert_to_tensor` reduces `tf.gather`'s (sparse) `tf.IndexedSlices` gradients into its dense `params` input)
         *   (since v2.7) `tf.math.segment_mean`
         *   (since v2.7) `tf.math.segment_prod`
         *   (since v2.7) `tf.math.segment_sum`
@@ -146,49 +67,28 @@
         *   (since v2.7) `tf.math.unsorted_segment_prod`
         *   (since v2.7) `tf.math.unsorted_segment_sum`
         *   (since v2.7) `tf.math.unsorted_segment_sqrt`
-        *   (since v2.7) `tf.nn.ctc_loss` (resolved, possibly in prior release,
-            and confirmed with tests)
+        *   (since v2.7) `tf.nn.ctc_loss` (resolved, possibly in prior release, and confirmed with tests)
         *   (since v2.7)`tf.nn.sparse_softmax_crossentropy_with_logits`
-    *   (since v2.7) Run `tf.scatter_nd` and other related scatter functions,
-        such as `tf.tensor_scatter_nd_update`, on CPU (with significant
-        performance penalty).
-    *   Add determinism-unimplemented exception-throwing to the following ops.
-        When op-determinism is expected (i.e. after
-        `tf.config.experimental.enable_op_determinism` has been called), an
-        attempt to use the specified paths through the following ops on a GPU
-        will cause `tf.errors.UnimplementedError` (with an understandable
-        message), unless otherwise specified, to be thrown.
-        *   `FakeQuantWithMinMaxVarsGradient` and
-            `FakeQuantWithMinMaxVarsPerChannelGradient`
-        *   (since v2.7) `tf.compat.v1.get_seed` if the global random seed has
-            not yet been set (via `tf.random.set_seed`). Throws `RuntimeError`
-            from Python or `InvalidArgument` from C++
-        *   (since v2.7) `tf.compat.v1.nn.fused_batch_norm` backprop to `offset`
-            when `is_training=False`
+    *   (since v2.7) Run `tf.scatter_nd` and other related scatter functions, such as `tf.tensor_scatter_nd_update`, on CPU (with significant performance penalty).
+    *   Add determinism-unimplemented exception-throwing to the following ops.  When op-determinism is expected (i.e. after `tf.config.experimental.enable_op_determinism` has been called), an attempt to use the specified paths through the following ops on a GPU will cause `tf.errors.UnimplementedError` (with an understandable message), unless otherwise specified, to be thrown.
+        *   `FakeQuantWithMinMaxVarsGradient` and `FakeQuantWithMinMaxVarsPerChannelGradient`
+        *   (since v2.7) `tf.compat.v1.get_seed` if the global random seed has not yet been set (via `tf.random.set_seed`). Throws `RuntimeError` from Python or `InvalidArgument` from C++
+        *   (since v2.7) `tf.compat.v1.nn.fused_batch_norm` backprop to `offset` when `is_training=False`
         *   (since v2.7) `tf.image.adjust_contrast` forward
-        *   (since v2.7) `tf.image.resize` with `method=ResizeMethod.NEAREST`
-            backprop
+        *   (since v2.7) `tf.image.resize` with `method=ResizeMethod.NEAREST` backprop
         *   (since v2.7) `tf.linalg.svd`
         *   (since v2.7) `tf.math.bincount`
-        *   (since v2.7) `tf.nn.depthwise_conv2d` backprop to `filter` when not
-            using cuDNN convolution
+        *   (since v2.7) `tf.nn.depthwise_conv2d` backprop to `filter` when not using cuDNN convolution
         *   (since v2.7) `tf.nn.dilation2d` gradient
         *   (since v2.7) `tf.nn.max_pool_with_argmax` gradient
-        *   (since v2.7) `tf.raw_ops.DebugNumericSummary` and
-            `tf.raw_ops.DebugNumericSummaryV2`
+        *   (since v2.7) `tf.raw_ops.DebugNumericSummary` and `tf.raw_ops.DebugNumericSummaryV2`
         *   (since v2.7) `tf.timestamp`. Throws `FailedPrecondition`
-        *   (since v2.7) `tf.Variable.scatter_add` (and other scatter methods,
-            both on ref and resource variables)
-        *   (since v2.7) The random-number-generating ops in the `tf.random`
-            module when the global random seed has not yet been set (via
-            `tf.random.set_seed`). Throws `RuntimeError` from Python or
-            `InvalidArgument` from C++
+        *   (since v2.7) `tf.Variable.scatter_add` (and other scatter methods, both on ref and resource variables)
+        *   (since v2.7) The random-number-generating ops in the `tf.random` module when the global random seed has not yet been set (via `tf.random.set_seed`). Throws `RuntimeError` from Python or `InvalidArgument` from C++
 
-*   TensorFlow-oneDNN no longer supports
-   [explicit use of oneDNN blocked tensor format](https://github.com/tensorflow/tensorflow/pull/53288), 
-    e.g., setting the environment variable `TF_ENABLE_MKL_NATIVE_FORMAT` will not have any effect.
-    
+*   TensorFlow-oneDNN no longer supports [explicit use of oneDNN blocked tensor format](https://github.com/tensorflow/tensorflow/pull/53288), e.g., setting the environment variable `TF_ENABLE_MKL_NATIVE_FORMAT` will not have any effect.
 *   TensorFlow has been validated on Windows Subsystem for Linux 2 (aka WSL 2) for both GPUs and CPUs.  
+*   Due to security issues (see section below), all boosted trees code has been deprecated. Users should switch to [TensorFlow Decision Forests](https://github.com/tensorflow/decision-forests). TF's boosted trees code will be eliminated before the branch cut for TF 2.9 and will no longer be present since that release.
 
 # Thanks to our Contributors
 
