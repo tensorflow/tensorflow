@@ -2474,8 +2474,8 @@ func @pad_cst(%arg0: tensor<12x4xf32>) -> tensor<18x12xf32> {
 //   CHECK-DAG: %[[C2:.+]] = arith.constant 2 : index
 //   CHECK-DAG: %[[C5:.+]] = arith.constant 5 : index
 //   CHECK-DAG: %[[C3:.+]] = arith.constant 3 : index
-//       CHECK: linalg.pad_tensor %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
-//       CHECK:  linalg.yield %[[CST]] : f32
+//       CHECK: tensor.pad %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
+//       CHECK:  tensor.yield %[[CST]] : f32
 //       CHECK: } : tensor<12x4xf32> to tensor<18x12xf32>
 
 // -----
@@ -2496,8 +2496,8 @@ func @pad_tensor(%arg0: tensor<12x4xf32>, %arg1: tensor<f32>) -> tensor<18x12xf3
 //   CHECK-DAG:   %[[C5:.+]] = arith.constant 5 : index
 //   CHECK-DAG:   %[[C3:.+]] = arith.constant 3 : index
 //   CHECK-DAG:   %[[PAD:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
-//       CHECK:   linalg.pad_tensor %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
-//       CHECK:     linalg.yield %[[PAD]] : f32
+//       CHECK:   tensor.pad %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
+//       CHECK:     tensor.yield %[[PAD]] : f32
 //       CHECK:   } : tensor<12x4xf32> to tensor<18x12xf32>
 
 // -----
@@ -2671,9 +2671,9 @@ func @linalg.conv_2D_padding_test1(%arg0: tensor<1x33x1x1xf16>, %arg1: tensor<40
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[FILL:.*]] = linalg.fill(%[[ZERO]], %[[INIT]]) : f16, tensor<400x1024x1024x1xf16> -> tensor<400x1024x1024x1xf16>
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
-// CHECK-NEXT: %[[PAD:.*]] = linalg.pad_tensor %[[INPUT]] low[0, 0, 16, 0] high[0, 0, 16, 0]  {
+// CHECK-NEXT: %[[PAD:.*]] = tensor.pad %[[INPUT]] low[0, 0, 16, 0] high[0, 0, 16, 0]  {
 // CHECK-NEXT: ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
-// CHECK-NEXT:   linalg.yield %[[ZERO]] : f16
+// CHECK-NEXT:   tensor.yield %[[ZERO]] : f16
 // CHECK-NEXT: } : tensor<400x1024x1024x1xf16> to tensor<400x1024x1056x1xf16>
 // CHECK-NEXT: %[[RESULT:.*]] = linalg.conv_2d_nhwc_hwcf {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%[[PAD]], %[[FILTER]] : tensor<400x1024x1056x1xf16>, tensor<1x33x1x1xf16>) outs(%[[FILL]] : tensor<400x1024x1024x1xf16>) -> tensor<400x1024x1024x1xf16>
 // CHECK-NEXT: return %[[RESULT]] : tensor<400x1024x1024x1xf16>
@@ -2691,9 +2691,9 @@ func @linalg.conv_2D_padding_test2(%arg0: tensor<1x33x1x1xf16>, %arg1: tensor<40
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[FILL:.*]] = linalg.fill(%[[ZERO]], %[[INIT]]) : f16, tensor<400x1024x1024x1xf16> -> tensor<400x1024x1024x1xf16>
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
-// CHECK-NEXT: %[[PAD:.*]] = linalg.pad_tensor %[[INPUT]] low[0, 8, 16, 0] high[0, 8, 16, 0]  {
+// CHECK-NEXT: %[[PAD:.*]] = tensor.pad %[[INPUT]] low[0, 8, 16, 0] high[0, 8, 16, 0]  {
 // CHECK-NEXT: ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
-// CHECK-NEXT:   linalg.yield %[[ZERO]] : f16
+// CHECK-NEXT:   tensor.yield %[[ZERO]] : f16
 // CHECK-NEXT: } : tensor<400x1024x1024x1xf16> to tensor<400x1040x1056x1xf16>
 // CHECK-NEXT: %[[RESULT:.*]] = linalg.conv_2d_nhwc_hwcf {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%2, %arg0 : tensor<400x1040x1056x1xf16>, tensor<1x33x1x1xf16>) outs(%1 : tensor<400x1024x1024x1xf16>) -> tensor<400x1024x1024x1xf16>
 // CHECK-NEXT: return %[[RESULT]] : tensor<400x1024x1024x1xf16>
@@ -3051,9 +3051,9 @@ func @reduce_window_sum_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
 // CHECK:   linalg.yield %arg2 : f32
 
 // CHECK: %cst = arith.constant 0.000000e+00 : f32
-// CHECK: %[[PAD:.+]] = linalg.pad_tensor %arg0 low[0, 1] high[3, 2]
+// CHECK: %[[PAD:.+]] = tensor.pad %arg0 low[0, 1] high[3, 2]
 // CHECK: ^bb0(%arg2: index, %arg3: index):
-// CHECK:   linalg.yield %cst : f32
+// CHECK:   tensor.yield %cst : f32
 
 // CHECK: %[[WINDOW:.+]] = linalg.init_tensor [2] : tensor<2xf32>
 // CHECK: %[[REDUCE:.+]] = linalg.generic {indexing_maps = [#[[MAP2]], #[[MAP3]], #[[MAP4]]], iterator_types = ["parallel", "parallel", "reduction"]} ins(%[[PAD]], %[[WINDOW]] : tensor<7x9xf32>, tensor<2xf32>) outs(%[[FILL]] : tensor<4x7xf32>) {

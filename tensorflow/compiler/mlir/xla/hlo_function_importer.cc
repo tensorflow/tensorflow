@@ -272,6 +272,7 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
 tensorflow::Status HloFunctionImporter::ImportAsRegion(
     const HloComputation& computation, mlir::Region* region,
     bool flatten_region_arg_tuple) {
+  auto loc = region->getLoc();
   // TODO(hinsu): Store computation name as an attribute for round-trip.
   auto* block = new mlir::Block;
   region->push_back(block);
@@ -284,10 +285,13 @@ tensorflow::Status HloFunctionImporter::ImportAsRegion(
     for (auto arg : args) {
       llvm::SmallVector<Type> flattened_arg_types;
       FlattenTupleType(arg, flattened_arg_types);
-      block->addArguments(flattened_arg_types);
+      block->addArguments(
+          flattened_arg_types,
+          mlir::SmallVector<mlir::Location>(flattened_arg_types.size(), loc));
     }
   } else {
-    block->addArguments(args);
+    block->addArguments(args,
+                        mlir::SmallVector<mlir::Location>(args.size(), loc));
   }
 
   return ImportInstructions(computation, block, flatten_region_arg_tuple);

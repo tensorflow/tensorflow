@@ -204,13 +204,13 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
 // CHECK-SAME:   outs (%[[TMP_INIT_:.*]] = %[[TMP_FILL]]: tensor<8xf32>)
 
      // CHECK: %[[LHS_SUB:.*]] = tensor.extract_slice %[[LHS_]][%[[I]]]
-     // CHECK: %[[LHS_PAD:.*]] = linalg.pad_tensor %[[LHS_SUB]]
+     // CHECK: %[[LHS_PAD:.*]] = tensor.pad %[[LHS_SUB]]
      // CHECK: %[[LHS_RESHAPE:.*]] = tensor.expand_shape %[[LHS_PAD]]
 // CHECK-SAME:   {{\[\[}}0, 1]]
 // CHECK-SAME:   : tensor<16xf32> into tensor<2x8xf32>
 
      // CHECK: %[[RHS_SUB:.*]] = tensor.extract_slice %[[RHS_]][%[[I]]]
-     // CHECK: %[[RHS_PAD:.*]] = linalg.pad_tensor %[[RHS_SUB]]
+     // CHECK: %[[RHS_PAD:.*]] = tensor.pad %[[RHS_SUB]]
      // CHECK: %[[RHS_RESHAPE:.*]] = tensor.expand_shape %[[RHS_PAD]]
 // CHECK-SAME:   {{\[\[}}0, 1]]
 // CHECK-SAME:   : tensor<16xf32> into tensor<2x8xf32>

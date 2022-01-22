@@ -121,7 +121,7 @@ struct VectorizeTiledOpsPass
 
     // Vectorize padding.
     mlir::OwningRewritePatternList patterns(funcOp.getContext());
-    mlir::linalg::populatePadTensorOpVectorizationPatterns(patterns);
+    mlir::linalg::populatePadOpVectorizationPatterns(patterns);
     mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(
         patterns);
     patterns.insert<TransferReadOfOneDimExpandShape>(funcOp.getContext());

@@ -131,7 +131,9 @@ struct RankSpecializationClusterPattern : public RewritePattern {
     // Create body block.
     auto operand_types = llvm::to_vector<16>(
         llvm::map_range(operand_set, [](Value v) { return v.getType(); }));
-    Block *block = rewriter.createBlock(&cluster_op.body(), {}, operand_types);
+    Block *block =
+        rewriter.createBlock(&cluster_op.body(), {}, operand_types,
+                             SmallVector<Location>(operand_types.size(), loc));
 
     // Copy operations into the body.
     BlockAndValueMapping bvm;
@@ -215,7 +217,9 @@ struct MergeRankSpecializationClusterOpsPattern
         loc, result_types, new_operands);
     auto operand_types = llvm::to_vector<16>(
         llvm::map_range(new_operands, [](Value v) { return v.getType(); }));
-    Block *new_body = rewriter.createBlock(&new_op.body(), {}, operand_types);
+    Block *new_body =
+        rewriter.createBlock(&new_op.body(), {}, operand_types,
+                             SmallVector<Location>(operand_types.size(), loc));
     rewriter.setInsertionPointToStart(new_body);
 
     // Map operands and copy operations of the preceding cluster into the new

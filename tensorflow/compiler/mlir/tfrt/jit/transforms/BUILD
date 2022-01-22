@@ -85,6 +85,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorOps",
     ],

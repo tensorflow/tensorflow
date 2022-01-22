@@ -1619,8 +1619,8 @@ static Status ProcessFusionForConversion(mlir::Region* region,
     }
   });
 
-  for (auto load : loads) {
-    auto arg = region->addArgument(load.getType());
+  for (auto& load : loads) {
+    auto arg = region->addArgument(load.getType(), region->getLoc());
     load.replaceAllUsesWith(arg);
     Shape shape = GetShape(load.getResult());
     operand_shapes->push_back(std::move(shape));

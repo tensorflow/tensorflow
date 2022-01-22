@@ -190,7 +190,7 @@ bool RemoveAllControlOutputs(FuncOp func) {
 void AppendFunctionArguments(FuncOp func, int num_resources,
                              ShapedType chaining_data_type) {
   for (int i = 0; i < num_resources; ++i) {
-    func.getRegion().addArgument(chaining_data_type);
+    func.getRegion().addArgument(chaining_data_type, func.getLoc());
   }
 
   FunctionType ftype =

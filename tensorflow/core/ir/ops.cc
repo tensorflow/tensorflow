@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
@@ -59,14 +60,14 @@ namespace tfg {
 
 // TFGraph support for interacting with the AsmPrinter.
 // Gives prettier names to SSA values.
-struct TFGraphOpAsmInterface : public OpAsmDialectInterface {
-  using OpAsmDialectInterface::OpAsmDialectInterface;
+struct TFGraphOpAsmInterface
+    : public OpAsmOpInterface::FallbackModel<TFGraphOpAsmInterface> {
+  static bool classof(Operation *op) { return true; }
 
   // Name operation results with the operation name, except control outputs
   // which are named "ctl". MLIR will automatically use a numerical suffix to
   // unique.
-  void getAsmResultNames(Operation *op,
-                         OpAsmSetValueNameFn set_name_fn) const final {
+  void getAsmResultNames(Operation *op, OpAsmSetValueNameFn set_name_fn) const {
     // We only name the results when there are results to name, an op like
     // `print` which does not have results will just use the `ctl` name for the
     // control output.
@@ -80,6 +81,10 @@ struct TFGraphOpAsmInterface : public OpAsmDialectInterface {
       }
     }
   }
+  void getAsmBlockArgumentNames(Operation *op, Region &region,
+                                OpAsmSetValueNameFn setNameFn) const {
+    return;
+  }
 };
 
 // Dialect construction: there is one instance per context and it registers its
@@ -90,12 +95,12 @@ void TFGraphDialect::initialize() {
 #define GET_OP_LIST
 #include "tensorflow/core/ir/ops.cc.inc"
       >();
-  addInterfaces<TFGraphOpAsmInterface>();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.
   allowUnknownOperations();
 
+  fallbackOpAsmInterface_ = new TFGraphOpAsmInterface;
   // Caching some often used context-owned informations for fast-access.
   name_key_ = StringAttr::get(getContext(), getNameAttrKey());
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
@@ -103,6 +108,18 @@ void TFGraphDialect::initialize() {
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
   control_ty_ = ControlType::get(getContext());
 }
+
+// Provides a hook for op interface.
+void *TFGraphDialect::getRegisteredInterfaceForOp(mlir::TypeID interface,
+                                                  mlir::OperationName opName) {
+  if (interface == TypeID::get<mlir::OpAsmOpInterface>()) {
+    return fallbackOpAsmInterface_;
+  }
+
+  return nullptr;
+}
+
+TFGraphDialect::~TFGraphDialect() { delete fallbackOpAsmInterface_; }
 
 // Print an operation that belongs to this dialect, if unregistered.
 // The general syntax is:

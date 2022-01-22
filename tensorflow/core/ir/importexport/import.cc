@@ -707,8 +707,9 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   // Create the func operation in which we will convert the individual nodes.
   OpBuilder builder = OpBuilder::atBlockEnd(module.getBody());
   MLIRContext* context = module->getContext();
+  Location unknown_loc = builder.getUnknownLoc();
   GraphFuncOp func_op = builder.create<GraphFuncOp>(
-      builder.getUnknownLoc(), name, FunctionType::get(context, {}, {}),
+      unknown_loc, name, FunctionType::get(context, {}, {}),
       /*generic=*/false);
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   const OpDef& signature = fdef.signature();
@@ -775,11 +776,11 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
         return InvalidArgument(
             "Expect `_Arg` node to have a single output, got ",
             arg_op->getNumResults());
-      body->addArgument(arg_op->getResult(0).getType());
+      body->addArgument(arg_op->getResult(0).getType(), unknown_loc);
       arg_types.push_back(arg_op->getResult(0).getType());
       arg_op->getResult(0).replaceAllUsesWith(body->getArguments().back());
 
-      body->addArgument(arg_op->getResult(1).getType());
+      body->addArgument(arg_op->getResult(1).getType(), unknown_loc);
       arg_types.push_back(arg_op->getResult(1).getType());
       arg_op->getResult(1).replaceAllUsesWith(body->getArguments().back());
 

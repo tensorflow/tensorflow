@@ -35,7 +35,10 @@ static void moveBlock(Block* source_block, Block* destination_block,
   if (!destination_block->empty())
     rewriter.eraseOp(destination_block->getTerminator());
 
-  destination_block->addArguments(block_arguments_type);
+  destination_block->addArguments(
+      block_arguments_type,
+      SmallVector<Location>(block_arguments_type.size(),
+                            source_block->getParent()->getLoc()));
   rewriter.mergeBlocks(source_block, destination_block,
                        destination_block->getArguments());
 }

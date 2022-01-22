@@ -394,10 +394,10 @@ Status ImportGenericFunction(
   // Create the block arguments and populate the `values_map` with the matching
   // input names.
   for (auto type_and_name : llvm::zip(arg_types, arg_names)) {
-    Value arg = body->addArgument(std::get<0>(type_and_name));
+    Value arg = body->addArgument(std::get<0>(type_and_name), unknown_loc);
     llvm::StringMap<SmallVector<Value, 1>>& values =
         values_map[std::get<1>(type_and_name)];
-    Value ctl = body->addArgument(control_ty);
+    Value ctl = body->addArgument(control_ty, unknown_loc);
     values[""].push_back(arg);
     values["^"].push_back(ctl);
   }

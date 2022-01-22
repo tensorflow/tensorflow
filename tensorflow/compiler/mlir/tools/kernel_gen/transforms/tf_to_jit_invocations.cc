@@ -120,7 +120,8 @@ struct TFToJITInvocationsPattern : public RewritePattern {
     {
       OpBuilder::InsertionGuard guard(rewriter);
       Block *block =
-          rewriter.createBlock(&jit_compile_op.body(), {}, operand_types);
+          rewriter.createBlock(&jit_compile_op.body(), {}, operand_types,
+                               SmallVector<Location>(operands.size(), loc));
       for (auto it : llvm::zip(operands, block->getArguments()))
         bvm.map(std::get<0>(it), std::get<1>(it));
       rewriter.setInsertionPointToStart(block);
@@ -296,8 +297,9 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
                   BlockAndValueMapping bvm;
                   {
                     OpBuilder::InsertionGuard guard(rewriter);
-                    Block *block = rewriter.createBlock(&jit_compile_op.body(),
-                                                        {}, operand_types);
+                    Block *block = rewriter.createBlock(
+                        &jit_compile_op.body(), {}, operand_types,
+                        SmallVector<Location>(operand_types.size(), loc));
                     for (auto it :
                          llvm::zip(op->getOperands(), block->getArguments()))
                       bvm.map(std::get<0>(it), std::get<1>(it));

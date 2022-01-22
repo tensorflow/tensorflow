@@ -1410,12 +1410,13 @@ std::string SubgraphName(bool set_implicit_main_func, unsigned index,
 void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
   OpBuilder op_builder{region};
   region.push_back(new mlir::Block());
-  region.addArguments(func.getType().getInputs());
+  Location loc = region.getLoc();
+  auto inputs = func.getType().getInputs();
+  region.addArguments(inputs, mlir::SmallVector<Location>(inputs.size(), loc));
   op_builder.setInsertionPointToStart(&region.front());
   auto call_op = op_builder.create<mlir::CallOp>(
-      region.getLoc(), func.getType().getResults(), func.sym_name(),
-      region.getArguments());
-  op_builder.create<mlir::TFL::YieldOp>(region.getLoc(), call_op.getResults());
+      loc, func.getType().getResults(), func.sym_name(), region.getArguments());
+  op_builder.create<mlir::TFL::YieldOp>(loc, call_op.getResults());
 }
 
 // TFL::WhileOp has regions, so we add CallOp to call the FuncOp in the regions

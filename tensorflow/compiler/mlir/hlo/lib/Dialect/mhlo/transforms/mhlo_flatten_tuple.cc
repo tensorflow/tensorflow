@@ -88,6 +88,7 @@ Value CreateTupleValue(OpBuilder &builder, Location loc,
 
 // Flattens the tuples in the region's arguments and returning values.
 void FlattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
+  Location loc = region.getLoc();
   OpBuilder regionOpBuilder(region);
 
   // Flatten tuples in arguments. The order of arguments must match the order
@@ -101,12 +102,12 @@ void FlattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
     llvm::SmallVector<Value, 4> newArguments;
     FlattenTupleType(argument, newTypes);
     for (auto type : newTypes) {
-      newArguments.push_back(region.addArgument(type));
+      newArguments.push_back(region.addArgument(type, loc));
     }
 
     // Replaces uses of the replacing argument.
-    auto tupleValue = CreateTupleValue(regionOpBuilder, region.getLoc(),
-                                       newArguments, argument.getType());
+    auto tupleValue = CreateTupleValue(regionOpBuilder, loc, newArguments,
+                                       argument.getType());
     argument.replaceAllUsesWith(tupleValue);
   }
   // Removes old tuple arguments.
@@ -126,7 +127,7 @@ void FlattenTupleInRegion(Region &region, PatternRewriter &rewriter) {
     for (auto operand : returnOp.getOperands()) {
       FlattenTupleValue(builder, returnOp.getLoc(), operand, results);
     }
-    builder.create<mhlo::ReturnOp>(region.getLoc(), results);
+    builder.create<mhlo::ReturnOp>(loc, results);
     rewriter.eraseOp(returnOp);
   }
 }
