@@ -399,12 +399,8 @@ class _NameBasedRestoreCoordinator(object):
           # fails.
           saveable = saveable_factory()
         except TypeError:
-          # Even if we can't name this object, we should construct it and check
-          # whether it's optional to restore it. If it's optional we don't need
-          # to make assertions fail.
-          if not saveable_factory("").optional_restore:
-            self.unused_attributes.setdefault(trackable,
-                                              []).append(attribute_name)
+          self.unused_attributes.setdefault(trackable,
+                                            []).append(attribute_name)
           continue
       else:
         saveable = saveable_factory
