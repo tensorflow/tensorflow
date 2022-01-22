@@ -2102,6 +2102,9 @@ class Stream {
     return parent()->GetDeviceDescription().cuda_compute_capability();
   }
 
+  std::string GetGcnArchName() const {
+    return parent()->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
+  }
   // Returns the (internal usage) temporary-memory-allocation manager associated
   // with this stream.
   internal::TemporaryMemoryManager *temporary_memory_manager();

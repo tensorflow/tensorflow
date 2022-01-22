@@ -84,29 +84,42 @@ DnnBatchDescriptors MakeBatchNormDescriptors(const Shape& shape,
   int64_t batch_size = 1;
   int64_t y_size = 1;
   int64_t physical_dim;
-  for (physical_dim = 0; physical_dim != logical_to_physical[feature_index];
-       ++physical_dim) {
-    CHECK_LT(physical_dim, shape.dimensions_size());
-    batch_size *= physical_dim_size(physical_dim);
+  bool    is_nhwc = false;
+#if TENSORFLOW_USE_ROCM
+  if(logical_to_physical[feature_index] == 3) is_nhwc = true;
+#endif
+  if(is_nhwc){
+    batch_size *= physical_dim_size(0); //N
+    for (physical_dim = 0; physical_dim != logical_to_physical[feature_index];
+         ++physical_dim) {
+      CHECK_LT(physical_dim, shape.dimensions_size());
+      y_size *= physical_dim_size(physical_dim); // H*W
+    }
   }
-  ++physical_dim;  // Skip the feature dimension.
-  for (; physical_dim < shape.dimensions_size(); ++physical_dim) {
-    y_size *= physical_dim_size(physical_dim);
+  else{
+    for (physical_dim = 0; physical_dim != logical_to_physical[feature_index];
+         ++physical_dim) {
+      CHECK_LT(physical_dim, shape.dimensions_size());
+      batch_size *= physical_dim_size(physical_dim);
+    }
+    ++physical_dim;  // Skip the feature dimension.
+    for (; physical_dim < shape.dimensions_size(); ++physical_dim) {
+      y_size *= physical_dim_size(physical_dim);
+    }
   }
-
+  auto Layout = (is_nhwc) ? se::dnn::DataLayout::kBatchYXDepth : se::dnn::DataLayout::kBatchDepthYX;
   DnnBatchDescriptors batch_descs;
-  batch_descs.input_desc.set_layout(se::dnn::DataLayout::kBatchDepthYX)
+  batch_descs.input_desc.set_layout(Layout)
       .set_count(batch_size)
       .set_feature_map_count(shape.dimensions(feature_index))
       .set_height(y_size)
       .set_width(1);
 
-  batch_descs.scale_offset_desc.set_layout(se::dnn::DataLayout::kBatchDepthYX)
+  batch_descs.scale_offset_desc.set_layout(Layout)
       .set_feature_map_count(batch_descs.input_desc.feature_map_count())
       .set_height(1)
       .set_width(1)
       .set_count(1);
-
   return batch_descs;
 }
 

@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
-
+#include "rocm/rocm_config.h"
 namespace {
 
 // Converts (via narrowing) a type T value to a type U, and checks that the
@@ -5147,6 +5147,26 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackward(
       scale_offset_mean_variance_descriptor, scale_data, offset_data,
       saved_mean_data, saved_var_data, x_bn_backprop_data, scale_backprop_data,
       offset_backprop_data, output_profile_result);
+}
+
+// A helper function to decide whether to use
+// NHWC in Convolution/Batchnorm. This mode can be faster in
+// in FP16 workloads on gfx908 and beyond. Requires ROCm 5.0+.
+// TODO(stevenireeves): Use autotune to choose between this mode and
+// NCHW when MIOpen has more optimized kernels. 
+bool UseNhwcLayoutForRocm() {
+#if TF_ROCM_VERSION >= 50000
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_USE_ROCM_NHWC",
+        /*default_val=*/false, &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
+#else //TF_ROCM_VERSION < 50000
+  return false;
+#endif
 }
 
 }  // namespace gpu
