@@ -15,7 +15,7 @@
 
 """MetaGraph and related functions."""
 import copy
-from packaging import version as packaging_version  # pylint: disable=g-bad-import-order
+from distutils import version as distutils_version  # pylint: disable=g-bad-import-order
 import os.path
 import re
 
@@ -815,7 +815,8 @@ def import_scoped_meta_graph_with_return_elements(
       variables_have_trainable = True
     else:
       variables_have_trainable = (
-          packaging_version.parse(tf_version) >= packaging_version.parse("1.9"))
+          distutils_version.LooseVersion(tf_version)
+          >= distutils_version.LooseVersion("1.9"))
 
     # Sort collections so we see TRAINABLE_VARIABLES first and can default these
     # variables to trainable if the value is not set in their VariableDef.
