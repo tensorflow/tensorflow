@@ -62,7 +62,7 @@ if '--project_name' in sys.argv:
 # Returns standard if a tensorflow-* package is being built, and nightly if a
 # tf_nightly-* package is being built.
 def standard_or_nightly(standard, nightly):
-return nightly if 'tf_nightly' in project_name else standard
+  return nightly if 'tf_nightly' in project_name else standard
 
 # All versions of TF need these packages. We indicate the widest possible range
 # of package releases possible to be as up-to-date as possible as well as to
