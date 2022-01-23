@@ -2121,7 +2121,7 @@ OpInfo::TensorProperties OpLevelCostEstimator::DescribeTensor(
 }
 
 /* static */
-OpLevelCostEstimator::ConvolutionDimensions
+StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
 OpLevelCostEstimator::OpDimensionsFromInputs(
     const TensorShapeProto& original_image_shape, const OpInfo& op_info,
     bool* found_unknown_shapes) {
@@ -2158,6 +2158,11 @@ OpLevelCostEstimator::OpDimensionsFromInputs(
   std::vector<int64> strides = GetStrides(op_info);
   int64 sx = strides[x_index];
   int64 sy = strides[y_index];
+  if (sx == 0 || sy == 0) {
+    return errors::InvalidArgument(
+        "Stride must be > 0 for Height and Width, but got (", sy, ", ", sx,
+        ")");
+  }
   const auto padding = GetPadding(op_info);
 
   int64 ox = GetOutputSize(ix, kx, sx, padding);
@@ -2174,8 +2179,9 @@ Status OpLevelCostEstimator::PredictMaxPool(const OpContext& op_context,
   bool found_unknown_shapes = false;
   const auto& op_info = op_context.op_info;
   // x: op_info.inputs(0)
-  ConvolutionDimensions dims = OpDimensionsFromInputs(
-      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
+                      OpDimensionsFromInputs(op_info.inputs(0).shape(), op_info,
+                                             &found_unknown_shapes));
   // kx * ky - 1 comparisons per output (kx * xy > 1)
   // or 1 copy per output (kx * k1 = 1).
   int per_output_ops = dims.kx * dims.ky == 1 ? 1 : dims.kx * dims.ky - 1;
@@ -2215,8 +2221,9 @@ Status OpLevelCostEstimator::PredictMaxPoolGrad(const OpContext& op_context,
                                    op_info.ShortDebugString());
   }
 
-  ConvolutionDimensions dims = OpDimensionsFromInputs(
-      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
+                      OpDimensionsFromInputs(op_info.inputs(0).shape(), op_info,
+                                             &found_unknown_shapes));
 
   int64 ops = 0;
   if (dims.kx == 1 && dims.ky == 1) {
@@ -2291,8 +2298,9 @@ Status OpLevelCostEstimator::PredictAvgPool(const OpContext& op_context,
   bool found_unknown_shapes = false;
   const auto& op_info = op_context.op_info;
   // x: op_info.inputs(0)
-  ConvolutionDimensions dims = OpDimensionsFromInputs(
-      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
+                      OpDimensionsFromInputs(op_info.inputs(0).shape(), op_info,
+                                             &found_unknown_shapes));
 
   // kx * ky - 1 additions and 1 multiplication per output.
   int64 ops = dims.batch * dims.ox * dims.oy * dims.oz * dims.kx * dims.ky;
@@ -2348,8 +2356,9 @@ Status OpLevelCostEstimator::PredictAvgPoolGrad(const OpContext& op_context,
     found_unknown_shapes = true;
   }
 
-  ConvolutionDimensions dims =
-      OpDimensionsFromInputs(x_shape, op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(
+      ConvolutionDimensions dims,
+      OpDimensionsFromInputs(x_shape, op_info, &found_unknown_shapes));
 
   int64 ops = 0;
   if (dims.kx <= dims.sx && dims.ky <= dims.sy) {
@@ -2375,8 +2384,9 @@ Status OpLevelCostEstimator::PredictFusedBatchNorm(
   // offset: op_info.inputs(2)
   // mean: op_info.inputs(3)  --> only for inference
   // variance: op_info.inputs(4) --> only for inference
-  ConvolutionDimensions dims = OpDimensionsFromInputs(
-      op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
+                      OpDimensionsFromInputs(op_info.inputs(0).shape(), op_info,
+                                             &found_unknown_shapes));
   const bool is_training = IsTraining(op_info);
 
   int64 ops = 0;
@@ -2425,8 +2435,9 @@ Status OpLevelCostEstimator::PredictFusedBatchNormGrad(
   // scale: op_info.inputs(2)
   // mean: op_info.inputs(3)
   // variance or inverse of variance: op_info.inputs(4)
-  ConvolutionDimensions dims = OpDimensionsFromInputs(
-      op_info.inputs(1).shape(), op_info, &found_unknown_shapes);
+  TF_ASSIGN_OR_RETURN(ConvolutionDimensions dims,
+                      OpDimensionsFromInputs(op_info.inputs(1).shape(), op_info,
+                                             &found_unknown_shapes));
 
   int64 ops = 0;
   const auto rsqrt_cost = Eigen::internal::functor_traits<
