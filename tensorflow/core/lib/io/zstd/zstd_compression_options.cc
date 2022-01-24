@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/io/compression.h"
+#include "tensorflow/core/lib/io/zstd/zstd_compression_options.h"
 
 namespace tensorflow {
 namespace io {
-namespace compression {
 
-const char kNone[] = "";
-const char kGzip[] = "GZIP";
-const char kSnappy[] = "SNAPPY";
-const char kZlib[] = "ZLIB";
-const char kZstd[] = "ZSTD";
+ZstdCompressionOptions::ZstdCompressionOptions() {
+  input_buffer_size = ZSTD_CStreamInSize();
+  output_buffer_size = ZSTD_DStreamOutSize();
 
-}  // namespace compression
+  window_log = 0;                // default
+  compression_level = 3;         // ZSTD_CLEVEL_DEFAULT
+  compression_strategy = 0;      // default
+  nb_workers = 0;                // single-threaded by default
+  flush_mode = ZSTD_e_continue;  // ZSTD_e_continue
+}
+
 }  // namespace io
 }  // namespace tensorflow

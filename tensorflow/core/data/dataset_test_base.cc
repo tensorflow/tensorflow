@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -65,6 +64,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/core/lib/io/zstd/zstd_compression_options.h"
+#include "tensorflow/core/lib/io/zstd/zstd_outputbuffer.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -79,6 +80,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 
 namespace tensorflow {
 namespace data {
@@ -89,6 +91,8 @@ string ToString(CompressionType compression_type) {
       return "ZLIB";
     case CompressionType::GZIP:
       return "GZIP";
+    case CompressionType::ZSTD:
+      return "ZSTD";
     case CompressionType::RAW:
       return "RAW";
     case CompressionType::UNCOMPRESSED:
@@ -109,6 +113,18 @@ io::ZlibCompressionOptions GetZlibCompressionOptions(
       LOG(WARNING) << "ZlibCompressionOptions does not have an option for "
                    << ToString(compression_type);
       return io::ZlibCompressionOptions::DEFAULT();
+  }
+}
+
+io::ZstdCompressionOptions GetZstdCompressionOptions(
+    CompressionType compression_type) {
+  switch (compression_type) {
+    case CompressionType::ZSTD:
+      return io::ZstdCompressionOptions::DEFAULT();
+    case CompressionType::UNCOMPRESSED:
+      LOG(WARNING) << "ZstdCompressionOptions does not have an option for "
+                   << ToString(compression_type);
+      return io::ZstdCompressionOptions::DEFAULT();
   }
 }
 
@@ -135,6 +151,15 @@ Status WriteDataToFile(const string& filename, const char* data,
     TF_RETURN_IF_ERROR(out.Append(data));
     TF_RETURN_IF_ERROR(out.Flush());
     TF_RETURN_IF_ERROR(out.Close());
+  } else if (params.compression_type == CompressionType::ZSTD) {
+    auto zstd_compression_options =
+        GetZstdCompressionOptions(params.compression_type);
+    io::ZstdOutputBuffer out(file_writer.get(), params.input_buffer_size,
+                             params.output_buffer_size,
+                             zstd_compression_options);
+    TF_RETURN_IF_ERROR(out.Append(data));
+    TF_RETURN_IF_ERROR(out.Flush());
+    TF_RETURN_IF_ERROR(out.Close());
   } else {
     return tensorflow::errors::InvalidArgument(
         "Unsupported compression_type: ", ToString(params.compression_type));
@@ -154,7 +179,13 @@ Status WriteDataToTFRecordFile(const string& filename,
   TF_RETURN_IF_ERROR(env->NewWritableFile(filename, &file_writer));
   auto options = io::RecordWriterOptions::CreateRecordWriterOptions(
       ToString(params.compression_type));
-  options.zlib_options.input_buffer_size = params.input_buffer_size;
+  if (params.compression_type == CompressionType::ZLIB ||
+      params.compression_type == CompressionType::GZIP) {
+    options.zlib_options.input_buffer_size = params.input_buffer_size;
+  } else if (params.compression_type == CompressionType::ZSTD) {
+    options.zstd_options.input_buffer_size = params.input_buffer_size;
+    options.zstd_options.output_buffer_size = params.output_buffer_size;
+  }
   io::RecordWriter record_writer(file_writer.get(), options);
   for (const auto& record : records) {
     TF_RETURN_IF_ERROR(record_writer.WriteRecord(record));

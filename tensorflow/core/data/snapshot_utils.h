@@ -155,10 +155,11 @@ class CustomWriter : public Writer {
   const std::string filename_;
   const std::string compression_type_;
   const DataTypeVector dtypes_;
-  // We hold zlib_dest_ because we may create a ZlibOutputBuffer and put that
-  // in dest_ if we want compression. ZlibOutputBuffer doesn't own the original
-  // dest_ and so we need somewhere to store the original one.
-  std::unique_ptr<WritableFile> zlib_underlying_dest_;
+  // We hold underlying_dest_ because we may create a ZlibOutputBuffer or
+  // ZstdOutputBuffer and put that in dest_ if we want compression.
+  // ZlibOutputBuffer or ZstdOutputBuffer doesn't own the original dest_ and so
+  // we need somewhere to store the original one.
+  std::unique_ptr<WritableFile> underlying_dest_;
   std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
   int num_simple_ = 0;
   int num_complex_ = 0;

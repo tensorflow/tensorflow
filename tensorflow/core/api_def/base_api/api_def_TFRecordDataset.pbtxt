@@ -12,7 +12,7 @@ END
     name: "compression_type"
     description: <<END
 A scalar containing either (i) the empty string (no
-compression), (ii) "ZLIB", or (iii) "GZIP".
+compression), (ii) "ZLIB", (iii) "GZIP", or (iiii) "ZSTD".
 END
   }
   in_arg {

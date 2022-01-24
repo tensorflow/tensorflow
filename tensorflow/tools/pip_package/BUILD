@@ -230,6 +230,7 @@ filegroup(
         "@termcolor_archive//:COPYING.txt",
         "@typing_extensions_archive//:LICENSE",
         "@zlib//:zlib.h",
+        "@zstd//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

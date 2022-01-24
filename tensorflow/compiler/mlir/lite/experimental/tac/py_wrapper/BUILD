@@ -89,6 +89,7 @@ pybind_extension(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
+        "@zstd//:__subpackages__",
     ],
     deps = [
         ":tac_wrapper_lib",

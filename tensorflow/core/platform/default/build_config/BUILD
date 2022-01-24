@@ -166,6 +166,7 @@ cc_library(
         "@fft2d",
         "@highwayhash//:sip_hash",
         "@zlib",
+        "@zstd",
     ],
 )
 

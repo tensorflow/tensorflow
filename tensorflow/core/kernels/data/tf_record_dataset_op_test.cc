@@ -137,6 +137,23 @@ TFRecordDatasetParams TFRecordDatasetParams3() {
                                /*buffer_size=*/10,
                                /*node_name=*/kNodeName);
 }
+// Test case 4: multiple text files with ZSTD compression.
+TFRecordDatasetParams TFRecordDatasetParams4() {
+  std::vector<tstring> filenames = {
+      absl::StrCat(testing::TmpDir(), "/tf_record_ZSTD_1"),
+      absl::StrCat(testing::TmpDir(), "/tf_record_ZSTD_2")};
+  std::vector<std::vector<string>> contents = {{"1", "22", "333"},
+                                               {"a", "bb", "ccc"}};
+  CompressionType compression_type = CompressionType::ZSTD;
+  if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
+    VLOG(WARNING) << "Failed to create the test files: "
+                  << absl::StrJoin(filenames, ", ");
+  }
+  return TFRecordDatasetParams(filenames,
+                               /*compression_type=*/compression_type,
+                               /*buffer_size=*/10,
+                               /*node_name=*/kNodeName);
+}
 
 std::vector<GetNextTestCase<TFRecordDatasetParams>> GetNextTestCases() {
   return {
@@ -148,6 +165,9 @@ std::vector<GetNextTestCase<TFRecordDatasetParams>> GetNextTestCases() {
        CreateTensors<tstring>(
            TensorShape({}), {{"1"}, {"22"}, {"333"}, {"a"}, {"bb"}, {"ccc"}})},
       {/*dataset_params=*/TFRecordDatasetParams3(),
+       CreateTensors<tstring>(
+           TensorShape({}), {{"1"}, {"22"}, {"333"}, {"a"}, {"bb"}, {"ccc"}})},
+      {/*dataset_params=*/TFRecordDatasetParams4(),
        CreateTensors<tstring>(
            TensorShape({}), {{"1"}, {"22"}, {"333"}, {"a"}, {"bb"}, {"ccc"}})}};
 }
@@ -187,6 +207,17 @@ std::vector<SkipTestCase<TFRecordDatasetParams>> SkipTestCases() {
            /*expected_outputs=*/
            CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
           {/*dataset_params=*/TFRecordDatasetParams3(),
+           /*num_to_skip*/ 7, /*expected_num_skipped*/ 6},
+
+          {/*dataset_params=*/TFRecordDatasetParams4(),
+           /*num_to_skip*/ 2, /*expected_num_skipped*/ 2, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"333"}})},
+          {/*dataset_params=*/TFRecordDatasetParams4(),
+           /*num_to_skip*/ 4, /*expected_num_skipped*/ 4, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
+          {/*dataset_params=*/TFRecordDatasetParams4(),
            /*num_to_skip*/ 7, /*expected_num_skipped*/ 6}};
 }
 
@@ -256,6 +287,10 @@ IteratorSaveAndRestoreTestCases() {
        CreateTensors<tstring>(
            TensorShape({}), {{"1"}, {"22"}, {"333"}, {"a"}, {"bb"}, {"ccc"}})},
       {/*dataset_params=*/TFRecordDatasetParams3(),
+       /*breakpoints=*/{0, 2, 7},
+       CreateTensors<tstring>(
+           TensorShape({}), {{"1"}, {"22"}, {"333"}, {"a"}, {"bb"}, {"ccc"}})},
+      {/*dataset_params=*/TFRecordDatasetParams4(),
        /*breakpoints=*/{0, 2, 7},
        CreateTensors<tstring>(
            TensorShape({}), {{"1"}, {"22"}, {"333"}, {"a"}, {"bb"}, {"ccc"}})}};

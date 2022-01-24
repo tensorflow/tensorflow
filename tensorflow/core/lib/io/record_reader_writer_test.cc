@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/io/record_reader.h"
-#include "tensorflow/core/lib/io/record_writer.h"
-
 #include <zlib.h>
+
 #include <vector>
-#include "tensorflow/core/platform/env.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/io/record_reader.h"
+#include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -40,8 +40,12 @@ io::RecordReaderOptions GetMatchingReaderOptions(
     const io::RecordWriterOptions& options) {
   if (options.compression_type == io::RecordWriterOptions::ZLIB_COMPRESSION) {
     return io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB");
+  } else if (options.compression_type ==
+             io::RecordWriterOptions::ZSTD_COMPRESSION) {
+    return io::RecordReaderOptions::CreateRecordReaderOptions("ZSTD");
+  } else {
+    return io::RecordReaderOptions::CreateRecordReaderOptions("");
   }
-  return io::RecordReaderOptions::CreateRecordReaderOptions("");
 }
 
 uint64 GetFileSize(const string& fname) {
@@ -294,6 +298,42 @@ TEST(RecordReaderWriterTest, TestZlib) {
       io::RecordReaderOptions options;
       options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
       options.zlib_options.input_buffer_size = buf_size;
+      io::RecordReader reader(read_file.get(), options);
+      uint64 offset = 0;
+      tstring record;
+      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      EXPECT_EQ("abc", record);
+      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      EXPECT_EQ("defg", record);
+    }
+  }
+}
+
+TEST(RecordReaderWriterTest, TestZstd) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/record_reader_writer_zstd_test";
+
+  for (auto buf_size : BufferSizes()) {
+    {
+      std::unique_ptr<WritableFile> file;
+      TF_CHECK_OK(env->NewWritableFile(fname, &file));
+
+      io::RecordWriterOptions options;
+      options.compression_type = io::RecordWriterOptions::ZSTD_COMPRESSION;
+      options.zstd_options.output_buffer_size = buf_size;
+      io::RecordWriter writer(file.get(), options);
+      TF_EXPECT_OK(writer.WriteRecord("abc"));
+      TF_EXPECT_OK(writer.WriteRecord("defg"));
+      TF_CHECK_OK(writer.Flush());
+    }
+
+    {
+      std::unique_ptr<RandomAccessFile> read_file;
+      // Read it back with the RecordReader.
+      TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+      io::RecordReaderOptions options;
+      options.compression_type = io::RecordReaderOptions::ZSTD_COMPRESSION;
+      options.zstd_options.input_buffer_size = buf_size;
       io::RecordReader reader(read_file.get(), options);
       uint64 offset = 0;
       tstring record;

@@ -85,6 +85,15 @@ class TFRecordWriterTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertAllEqual(self._record(i), r)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testWriteZSTD(self):
+    options = tf_record.TFRecordOptions(tf_record.TFRecordCompressionType.ZSTD)
+    self.evaluate(
+        self.writer_fn(self._createFile(options), compression_type="ZSTD"))
+    for i, r in enumerate(
+        tf_record.tf_record_iterator(self._outputFilename(), options=options)):
+      self.assertAllEqual(self._record(i), r)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testFailDataset(self):
     with self.assertRaises(TypeError):
       writers.TFRecordWriter(self._outputFilename(), "").write("whoops")

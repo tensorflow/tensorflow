@@ -703,6 +703,23 @@ class TFRecordReaderTest(TFCompressionTestCase):
         self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
         self.assertAllEqual(self._Record(i, j), v)
 
+  @test_util.run_deprecated_v1
+  def testReadZstdFiles(self):
+    options = tf_record.TFRecordOptions(TFRecordCompressionType.ZSTD)
+    files = self._CreateFiles(options)
+
+    reader = io_ops.TFRecordReader(name="test_reader", options=options)
+    queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+    key, value = reader.read(queue)
+
+    self.evaluate(queue.enqueue_many([files]))
+    self.evaluate(queue.close())
+    for i in range(self._num_files):
+      for j in range(self._num_records):
+        k, v = self.evaluate([key, value])
+        self.assertTrue(compat.as_text(k).startswith("%s:" % files[i]))
+        self.assertAllEqual(self._Record(i, j), v)
+
 
 class AsyncReaderTest(test.TestCase):
 

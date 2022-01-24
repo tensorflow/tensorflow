@@ -30,6 +30,7 @@ class TFRecordCompressionType(object):
   NONE = 0
   ZLIB = 1
   GZIP = 2
+  ZSTD = 3
 
 
 @tf_export(
@@ -41,6 +42,7 @@ class TFRecordOptions(object):
   compression_type_map = {
       TFRecordCompressionType.ZLIB: "ZLIB",
       TFRecordCompressionType.GZIP: "GZIP",
+      TFRecordCompressionType.ZSTD: "ZSTD",
       TFRecordCompressionType.NONE: ""
   }
 
@@ -53,7 +55,14 @@ class TFRecordOptions(object):
                compression_level=None,
                compression_method=None,
                mem_level=None,
-               compression_strategy=None):
+               compression_strategy=None,
+               zstd_input_buffer_size=None,
+               zstd_output_buffer_size=None,
+               zstd_flush_mode=None,
+               zstd_nb_workers=None,
+               zstd_compression_level=None,
+               zstd_compression_strategy=None,
+               zstd_window_log=None):
     # pylint: disable=line-too-long
     """Creates a `TFRecordOptions` instance.
 
@@ -61,10 +70,12 @@ class TFRecordOptions(object):
     Documentation, details, and defaults can be found in
     [`zlib_compression_options.h`](https://www.tensorflow.org/code/tensorflow/core/lib/io/zlib_compression_options.h)
     and in the [zlib manual](http://www.zlib.net/manual.html).
+    For documentation options and details prefixed by `zstd_*`, find the
+    documentation in the [zstd manual](https://facebook.github.io/zstd/zstd_manual.html).
     Leaving an option as `None` allows C++ to set a reasonable default.
 
     Args:
-      compression_type: `"GZIP"`, `"ZLIB"`, or `""` (no compression).
+      compression_type: `"GZIP"`, `"ZLIB"`, `"ZSTD"` or `""` (no compression).
       flush_mode: flush mode or `None`, Default: Z_NO_FLUSH.
       input_buffer_size: int or `None`.
       output_buffer_size: int or `None`.
@@ -73,6 +84,13 @@ class TFRecordOptions(object):
       compression_method: compression method or `None`.
       mem_level: 1 to 9, or `None`.
       compression_strategy: strategy or `None`. Default: Z_DEFAULT_STRATEGY.
+      zstd_input_buffer_size: int or `None`. 
+      zstd_output_buffer_size: int or `None`.
+      zstd_flush_mode: int or `None`.
+      zstd_nb_workers: int or `None`.
+      zstd_compression_level: 0 to 19, or `None`. Default: ZSTD_CLEVEL_DEFAULT.
+      zstd_compression_strategy: 0 to 9, or `None`. Default: 0.
+      zstd_window_log: between ZSTD_WINDOWLOG_MIN and ZSTD_WINDOWLOG_MAX. Default: 0.
 
     Returns:
       A `TFRecordOptions` object.
@@ -93,6 +111,13 @@ class TFRecordOptions(object):
     self.compression_method = compression_method
     self.mem_level = mem_level
     self.compression_strategy = compression_strategy
+    self.zstd_input_buffer_size = zstd_input_buffer_size
+    self.zstd_output_buffer_size = zstd_output_buffer_size
+    self.zstd_flush_mode = zstd_flush_mode
+    self.zstd_nb_workers = zstd_nb_workers
+    self.zstd_compression_level = zstd_compression_level
+    self.zstd_compression_strategy = zstd_compression_strategy
+    self.zstd_window_log = zstd_window_log
 
   @classmethod
   def get_compression_type_string(cls, options):
@@ -102,7 +127,7 @@ class TFRecordOptions(object):
       options: `TFRecordOption`, `TFRecordCompressionType`, or string.
 
     Returns:
-      Compression type as string (e.g. `'ZLIB'`, `'GZIP'`, or `''`).
+      Compression type as string (e.g. `'ZLIB'`, `'GZIP'`, `'ZSTD'`, or `''`).
 
     Raises:
       ValueError: If compression_type is invalid.
@@ -142,6 +167,20 @@ class TFRecordOptions(object):
       options.zlib_options.mem_level = self.mem_level
     if self.compression_strategy is not None:
       options.zlib_options.compression_strategy = self.compression_strategy
+    if self.zstd_input_buffer_size is not None:
+      options.zstd_options.input_buffer_size = self.zstd_input_buffer_size
+    if self.zstd_output_buffer_size is not None:
+      options.zstd_options.output_buffer_size = self.zstd_output_buffer_size
+    if self.zstd_flush_mode is not None:
+      options.zstd_options.flush_mode = self.zstd_flush_mode
+    if self.zstd_nb_workers is not None:
+      options.zstd_options.nb_workers = self.zstd_nb_workers
+    if self.zstd_compression_level is not None:
+      options.zstd_options.compression_level = self.zstd_compression_level
+    if self.zstd_compression_strategy is not None:
+      options.zstd_options.compression_strategy = self.zstd_compression_strategy
+    if self.zstd_window_log is not None:
+      options.zstd_options.window_log = self.zstd_window_log
     return options
 
 

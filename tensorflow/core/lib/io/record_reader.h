@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/snappy/snappy_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
+#include "tensorflow/core/lib/io/zstd/zstd_compression_options.h"
+#include "tensorflow/core/lib/io/zstd/zstd_inputstream.h"
 #endif  // IS_SLIM_BUILD
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -38,7 +40,8 @@ struct RecordReaderOptions {
   enum CompressionType {
     NONE = 0,
     ZLIB_COMPRESSION = 1,
-    SNAPPY_COMPRESSION = 2
+    SNAPPY_COMPRESSION = 2,
+    ZSTD_COMPRESSION = 3
   };
   CompressionType compression_type = NONE;
 
@@ -54,6 +57,7 @@ struct RecordReaderOptions {
   // Options specific to compression.
   ZlibCompressionOptions zlib_options;
   SnappyCompressionOptions snappy_options;
+  ZstdCompressionOptions zstd_options;
 #endif  // IS_SLIM_BUILD
 };
 
