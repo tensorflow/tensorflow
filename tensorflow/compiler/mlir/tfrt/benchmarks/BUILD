@@ -255,6 +255,23 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
+    name = "sum_3d_op_benchmark",
+    testonly = 1,
+    srcs = ["sum_3d_op_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        ":reduction_benchmark",
+    ],
+)
+
+tf_cc_binary(
     name = "sum_col_op_benchmark",
     testonly = 1,
     srcs = ["sum_col_op_benchmark.cc"],
