@@ -189,9 +189,10 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "sparse_tensor_dense_matmul_op_deterministic_test",
+    # Test name is shortened to workaround Windows Bazel's 259 char path limit.
+    name = "sparse_tensor_dense_matmul_op_d9m_test",
     size = "small",
-    srcs = ["sparse_tensor_dense_matmul_op_deterministic_test.py"],
+    srcs = ["sparse_tensor_dense_matmul_op_d9m_test.py"],
     tags = [
         "no_cuda_asan",
         "notsan",
@@ -258,9 +259,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "sparse_xent_op_deterministic_test",
+    name = "sparse_xent_op_d9m_test",
     size = "medium",
-    srcs = ["sparse_xent_op_deterministic_test.py"],
+    srcs = ["sparse_xent_op_d9m_test.py"],
     tags = ["no_windows"],  # Fails as SegmentSum is nondeterministic on Windows
     xla_enable_strict_auto_jit = False,
     deps = [

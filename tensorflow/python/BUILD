@@ -2840,9 +2840,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "image_grad_deterministic_test",
+    name = "image_grad_d9m_test",
     size = "large",
-    srcs = ["ops/image_grad_deterministic_test.py"],
+    srcs = ["ops/image_grad_d9m_test.py"],
     python_version = "PY3",
     shard_count = 5,
     deps = [
@@ -3016,9 +3016,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "nn_fused_batchnorm_deterministic_test",
+    name = "nn_fused_batchnorm_d9m_test",
     size = "medium",
-    srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
+    srcs = ["ops/nn_fused_batchnorm_d9m_test.py"],
     python_version = "PY3",
     shard_count = 4,
     tags = [
