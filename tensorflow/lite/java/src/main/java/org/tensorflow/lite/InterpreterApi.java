@@ -95,6 +95,7 @@ public interface InterpreterApi extends AutoCloseable {
       this.useNNAPI = other.useNNAPI;
       this.allowCancellation = other.allowCancellation;
       this.delegates = new ArrayList<>(other.delegates);
+      this.runtime = other.runtime;
     }
 
     /**
@@ -178,6 +179,54 @@ public interface InterpreterApi extends AutoCloseable {
       return Collections.unmodifiableList(delegates);
     }
 
+    /** Enum to represent where to get the TensorFlow Lite runtime implementation from. */
+    public static enum TfLiteRuntime {
+      /**
+       * Use a TF Lite runtime implementation that is linked into the application. If there is no
+       * suitable TF Lite runtime implementation linked into the application, then attempting to
+       * create an InterpreterApi instance with this TfLiteRuntime setting will throw an
+       * IllegalStateException exception (even if the OS or system services could provide a TF Lite
+       * runtime implementation).
+       *
+       * <p>This is the default setting. This setting is also appropriate for apps that must run on
+       * systems that don't provide a TF Lite runtime implementation.
+       */
+      FROM_APPLICATION_ONLY,
+
+      /**
+       * Use a TF Lite runtime implementation provided by the OS or system services. This will be
+       * obtained from a system library / shared object / service, such as Google Play Services. It
+       * may be newer than the version linked into the application (if any). If there is no suitable
+       * TF Lite runtime implementation provided by the system, then attempting to create an
+       * InterpreterApi instance with this TfLiteRuntime setting will throw an IllegalStateException
+       * exception (even if there is a TF Lite runtime implementation linked into the application).
+       *
+       * <p>This setting is appropriate for code that will use a system-provided TF Lite runtime,
+       * which can reduce app binary size and can be updated more frequently.
+       */
+      FROM_SYSTEM_ONLY,
+
+      /**
+       * Use a system-provided TF Lite runtime implementation, if any, otherwise use the TF Lite
+       * runtime implementation linked into the application, if any. If no suitable TF Lite runtime
+       * can be found in any location, then attempting to create an InterpreterApi instance with
+       * this TFLiteRuntime setting will throw an IllegalStateException. If there is both a suitable
+       * TF Lite runtime linked into the application and also a suitable TF Lite runtime provided by
+       * the system, the one provided by the system will be used.
+       *
+       * <p>This setting is suitable for use in code that doesn't care where the TF Lite runtime is
+       * coming from (e.g. middleware layers).
+       */
+      PREFER_SYSTEM_OVER_APPLICATION,
+    };
+
+    /** Method for specifying where to get the TF Lite runtime implementation from. */
+    public Options setRuntime(TfLiteRuntime runtime) {
+      this.runtime = runtime;
+      return this;
+    }
+
+    TfLiteRuntime runtime = TfLiteRuntime.FROM_APPLICATION_ONLY;
     int numThreads = -1;
     Boolean useNNAPI;
     Boolean allowCancellation;
