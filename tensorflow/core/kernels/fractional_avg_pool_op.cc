@@ -314,12 +314,22 @@ class FractionalAvgPoolGradOp : public OpKernel {
         int64 in_row_end = overlapping_ ? row_seq_tensor_flat(r + 1)
                                         : row_seq_tensor_flat(r + 1) - 1;
         in_row_end = std::min(in_row_end, in_max_row_index);
+        OP_REQUIRES(context, in_row_start >= 0 && in_row_end >= 0,
+                    errors::InvalidArgument(
+                        "Row sequence tensor values must not be negative, got ",
+                        row_seq_tensor_flat));
+
         for (int64 c = 0; c < out_cols; ++c) {
           const int64 in_col_start = col_seq_tensor_flat(c);
           int64 in_col_end = overlapping_ ? col_seq_tensor_flat(c + 1)
                                           : col_seq_tensor_flat(c + 1) - 1;
           in_col_end = std::min(in_col_end, in_max_col_index);
 
+          OP_REQUIRES(
+              context, in_col_start >= 0 && in_col_end >= 0,
+              errors::InvalidArgument(
+                  "Column sequence tensor values must not be negative, got ",
+                  col_seq_tensor_flat));
           const int64 num_elements_in_pooling_cell =
               (in_row_end - in_row_start + 1) * (in_col_end - in_col_start + 1);
           const int64 out_index = (b * out_rows + r) * out_cols + c;
