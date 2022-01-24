@@ -700,7 +700,6 @@ build:tfrt --deleted_packages=
 #   //tensorflow/compiler/xla/service/gpu/tests:mnist
 build:experimental_tfrt_gpu --config=tfrt
 build:experimental_tfrt_gpu --@tf_runtime//:enable_gpu
-build:experimental_tfrt_gpu --@rules_cuda//cuda:enable_cuda
 build:experimental_tfrt_gpu --@rules_cuda//cuda:cuda_runtime=//tensorflow/compiler/xla/service/gpu:cuda_runtime_for_xlir
 build:experimental_tfrt_gpu --nocheck_visibility
 build:experimental_tfrt_gpu --incompatible_strict_action_env
