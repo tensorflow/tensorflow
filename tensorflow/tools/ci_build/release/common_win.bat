@@ -24,7 +24,7 @@ SET PY_EXE=C:\%PYTHON_DIRECTORY%\python.exe
 SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 
 @REM First, upgrade pypi wheels
-%PY_EXE% -m pip install --upgrade "setuptools<60" pip wheel
+%PY_EXE% -m pip install --upgrade "setuptools" pip wheel
 
 @REM NOTE: Windows doesn't have any additional requirements from the common ones.
 %PY_EXE% -m pip install -r tensorflow/tools/ci_build/release/requirements_common.txt

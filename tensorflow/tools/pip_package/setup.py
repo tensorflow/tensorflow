@@ -81,12 +81,12 @@ REQUIRED_PACKAGES = [
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
-    'keras_preprocessing >= 1.1.1', # 1.1.0 needs tensorflow==1.7
+    'keras_preprocessing >= 1.1.1',  # 1.1.0 needs tensorflow==1.7
     'libclang >= 9.0.1',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.9.2',
-    'setuptools < 60',  # TODO(b/211495558): Breaking change in v60 on distutils
+    'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
@@ -103,8 +103,7 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.8, < 2.9',
-                        'tb-nightly ~= 2.9.0.a'),
+    standard_or_nightly('tensorboard >= 2.8, < 2.9', 'tb-nightly ~= 2.9.0.a'),
     standard_or_nightly('tensorflow_estimator >= 2.8.0rc0, < 2.9',
                         'tf-estimator-nightly ~= 2.9.0.dev'),
     standard_or_nightly('keras >= 2.8.0rc0, < 2.9',
@@ -277,7 +276,7 @@ setup(
     version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
-    long_description_content_type="text/markdown",
+    long_description_content_type='text/markdown',
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',

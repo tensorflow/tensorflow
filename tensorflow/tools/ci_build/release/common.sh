@@ -117,7 +117,7 @@ function install_ubuntu_16_pip_deps {
   done
 
   # First, upgrade pypi wheels
-  "${PIP_CMD}" install --user --upgrade 'setuptools<60' pip wheel
+  "${PIP_CMD}" install --user --upgrade 'setuptools' pip wheel
 
   # LINT.IfChange(linux_pip_installations_orig)
   # Remove any historical keras package if they are installed.
@@ -146,7 +146,7 @@ function install_ubuntu_16_python_pip_deps {
   done
 
   # First, upgrade pypi wheels
-  ${PIP_CMD} install --user --upgrade 'setuptools<60' pip wheel
+  ${PIP_CMD} install --user --upgrade 'setuptools' pip wheel
 
   # LINT.IfChange(linux_pip_installations)
   # Remove any historical keras package if they are installed.
@@ -189,7 +189,7 @@ function install_ubuntu_pip_deps_novenv () {
   # Install on default python Env (No Virtual Env for pip packages)
   PIP_CMD="${1} -m pip"
   REQUIREMENTS_FNAME="requirements_ubuntu.txt"
-  ${PIP_CMD} install --user --upgrade 'setuptools<60' pip wheel pyparsing auditwheel~=3.3.1
+  ${PIP_CMD} install --user --upgrade 'setuptools' pip wheel pyparsing auditwheel~=3.3.1
   ${PIP_CMD} install --user -r tensorflow/tools/ci_build/release/${REQUIREMENTS_FNAME}
   ${PIP_CMD} list
 
@@ -256,7 +256,7 @@ function install_macos_pip_deps {
   PIP_CMD="python -m pip"
 
   # First, upgrade pypi wheels
-  ${PIP_CMD} install --upgrade 'setuptools<60' pip wheel
+  ${PIP_CMD} install --upgrade 'setuptools' pip wheel
 
   # LINT.IfChange(mac_pip_installations)
   # Remove any historical keras package if they are installed.
@@ -275,7 +275,7 @@ function install_macos_pip_deps_no_venv {
   PIP_CMD="${1} -m pip"
 
   # First, upgrade pypi wheels
-  ${PIP_CMD} install --user --upgrade 'setuptools<60' pip wheel
+  ${PIP_CMD} install --user --upgrade 'setuptools' pip wheel
 
   # LINT.IfChange(mac_pip_installations)
   # Remove any historical keras package if they are installed.
