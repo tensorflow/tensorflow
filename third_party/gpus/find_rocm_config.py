@@ -182,10 +182,20 @@ def _find_rocblas_config(rocm_install_path):
 def _find_rocrand_config(rocm_install_path):
 
   def rocrand_version_number(path):
-    version_file = os.path.join(path, "rocrand/include/rocrand_version.h")
-    if not os.path.exists(version_file):
+    possible_version_files = [
+        "rocrand/include/rocrand_version.h",  # ROCm 5.0 and prior
+        "include/rocrand/rocrand_version.h",  # ROCm 5.1
+    ]
+    version_file = None
+    for f in possible_version_files:
+      version_file_path = os.path.join(path, f)
+      if os.path.exists(version_file_path):
+        version_file = version_file_path
+        break
+    if not version_file:
       raise ConfigError(
-          'rocblas version file "{}" not found'.format(version_file))
+          'rocrand version file not found in {}'.format(
+            possible_version_files))
     version_number = _get_header_version(version_file, "ROCRAND_VERSION")
     return version_number
 
@@ -287,10 +297,20 @@ def _find_hipsparse_config(rocm_install_path):
 def _find_hipsolver_config(rocm_install_path):
 
   def hipsolver_version_numbers(path):
-    version_file = os.path.join(path, "hipsolver/include/hipsolver-version.h")
-    if not os.path.exists(version_file):
+    possible_version_files = [
+        "hipsolver/include/hipsolver-version.h",  # ROCm 5.0 and prior
+        "hipsolver/include/internal/hipsolver-version.h",  # ROCm 5.1
+    ]
+    version_file = None
+    for f in possible_version_files:
+      version_file_path = os.path.join(path, f)
+      if os.path.exists(version_file_path):
+        version_file = version_file_path
+        break
+    if not version_file:
       raise ConfigError(
-          'hipsolver version file "{}" not found'.format(version_file))
+          'hipsolver version file not found in {}'.format(
+            possible_version_files))
     major = _get_header_version(version_file, "hipsolverVersionMajor")
     minor = _get_header_version(version_file, "hipsolverVersionMinor")
     patch = _get_header_version(version_file, "hipsolverVersionPatch")
