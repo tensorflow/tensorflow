@@ -17,19 +17,61 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 
+#include "llvm/ADT/TypeSwitch.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/OpImplementation.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
+
+// Generated dialect definitions.
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_dialect.cc.inc"
+
+// Generated op classes.
+#define GET_OP_CLASSES
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.cc.inc"
+
+// Generated type classes.
+#define GET_TYPEDEF_CLASSES
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.cc.inc"
+
 namespace mlir {
 namespace gml_st {
 
-GmlStDialect::GmlStDialect(MLIRContext* context)
-    : Dialect(getDialectNamespace(), context, TypeID::get<GmlStDialect>()) {
+void GmlStDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.cc.inc"
       >();
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.cc.inc"
+      >();
+}
+
+LogicalResult MaterializeOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr attrs,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  MaterializeOp::Adaptor adaptor(operands, attrs);
+
+  ShapedType sourceType = adaptor.source().getType().cast<ShapedType>();
+  Type subsetType = adaptor.subset().getType();
+
+  if (auto tileType = subsetType.dyn_cast<TileType>()) {
+    if (auto memrefType = sourceType.dyn_cast<MemRefType>()) {
+      inferredReturnTypes.push_back(
+          MemRefType::get(tileType.getShape(), sourceType.getElementType()));
+    } else if (auto tensorType = sourceType.dyn_cast<RankedTensorType>()) {
+      inferredReturnTypes.push_back(RankedTensorType::get(
+          tileType.getShape(), sourceType.getElementType()));
+    } else {
+      return failure();
+    }
+  } else if (subsetType.isa<PointType>()) {
+    inferredReturnTypes.push_back(sourceType.getElementType());
+  } else {
+    return failure();
+  }
+  return success();
 }
 
 }  // namespace gml_st
 }  // namespace mlir
-
-#define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.cc.inc"
