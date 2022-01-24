@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -67,27 +68,38 @@ class SparseSliceOp : public OpKernel {
                     " but got length ", input_size.NumElements()));
 
     sparse::SparseTensor sparse_tensor;
+    TensorShape sparse_tensor_shape;
     OP_REQUIRES_OK(context,
-                   sparse::SparseTensor::Create(
-                       input_indices, input_values,
-                       TensorShape(input_shape.vec<int64>()), &sparse_tensor));
+                   TensorShapeBase<TensorShape>::BuildTensorShapeBase(
+                       input_shape.vec<int64>(), &sparse_tensor_shape));
+    OP_REQUIRES_OK(context, sparse::SparseTensor::Create(
+                                input_indices, input_values,
+                                sparse_tensor_shape, &sparse_tensor));
 
     const gtl::ArraySlice<int64> start(input_start.flat<int64>().data(),
                                        input_dims);
     const gtl::ArraySlice<int64> size(input_size.flat<int64>().data(),
                                       input_dims);
 
-    const sparse::SparseTensor output =
+    const StatusOr<sparse::SparseTensor> output_or =
         sparse::SparseTensor::Slice<T>(sparse_tensor, start, size);
+    OP_REQUIRES_OK(context, output_or.status());
+    auto output = output_or.ValueOrDie();
 
     context->set_output(0, output.indices());
     context->set_output(1, output.values());
 
-    const TensorShape output_shape(output.shape());
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context, TensorShapeBase<TensorShape>::BuildTensorShapeBase(
+                                output.shape(), &output_shape));
+
+    TensorShape allocated_shape;
+    OP_REQUIRES_OK(context, TensorShapeBase<TensorShape>::BuildTensorShapeBase(
+                                {output_shape.dims()}, &allocated_shape));
 
     Tensor* shape = nullptr;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(2, {output_shape.dims()}, &shape));
+                   context->allocate_output(2, allocated_shape, &shape));
     for (int dim = 0; dim < output_shape.dims(); ++dim) {
       shape->vec<int64>()(dim) = output_shape.dim_size(dim);
     }
