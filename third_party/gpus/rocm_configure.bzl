@@ -331,7 +331,7 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
             ("amdhip64", rocm_config.rocm_toolkit_path + "/hip"),
             ("rocblas", rocm_config.rocm_toolkit_path + "/rocblas"),
             (hipfft_or_rocfft, rocm_config.rocm_toolkit_path + "/" + hipfft_or_rocfft),
-            ("hiprand", rocm_config.rocm_toolkit_path + "/hiprand"),
+            ("hiprand", rocm_config.rocm_toolkit_path),
             ("MIOpen", rocm_config.rocm_toolkit_path + "/miopen"),
             ("rccl", rocm_config.rocm_toolkit_path + "/rccl"),
             ("hipsparse", rocm_config.rocm_toolkit_path + "/hipsparse"),
