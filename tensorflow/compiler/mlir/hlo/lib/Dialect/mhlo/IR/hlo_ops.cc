@@ -2911,13 +2911,33 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
                                 PatternRewriter& rewriter) const override {
     auto type = op.getType().dyn_cast<RankedTensorType>();
     auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
-    if (!type || !type.hasStaticShape() || !operandType ||
-        !operandType.hasStaticShape()) {
-      return rewriter.notifyMatchFailure(op, "requires static shape");
+    auto outputDimOp = op.output_dimensions().getDefiningOp();
+    if (!type || !operandType || !operandType.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(op, "requires operand static shape");
     }
-    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
-        op, op.getType(), op.operand(), op.broadcast_dimensions());
-    return success();
+    // output has static shape, replace with broadcast_in_dim
+    if (type.hasStaticShape()) {
+      rewriter.replaceOpWithNewOp<BroadcastInDimOp>(op, type, op.operand(),
+                                                    op.broadcast_dimensions());
+      return success();
+    }
+    // output_dimensions are constant, set output shape with output_dimensions,
+    // then replace with broadcast_in_dim
+    if (outputDimOp && outputDimOp->hasTrait<mlir::OpTrait::ConstantLike>()) {
+      DenseIntElementsAttr shapeAttr;
+      if (matchPattern(outputDimOp, m_Constant(&shapeAttr))) {
+        SmallVector<int64_t> outputShape;
+        for (APInt shape : shapeAttr.getValues<APInt>()) {
+          outputShape.push_back(shape.getZExtValue());
+        }
+        rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+            op, RankedTensorType::get(outputShape, type.getElementType()),
+            op.operand(), op.broadcast_dimensions());
+        return success();
+      }
+    }
+    return rewriter.notifyMatchFailure(
+        op, "requires output static shape or constant broadcast dimensions");
   }
 };
 
