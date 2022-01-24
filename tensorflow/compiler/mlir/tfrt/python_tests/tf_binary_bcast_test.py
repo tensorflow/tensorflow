@@ -58,7 +58,7 @@ class TfBinaryBcastTest(test.TestCase):
 
         [res] = jitrt.execute(compiled, [arg0, arg1, arg2])
         ref = np.arctan2((np.log1p(arg0) - arg1) * arg2, arg2)
-        np.testing.assert_allclose(res, ref, atol=1e-05)
+        np.testing.assert_allclose(res, ref, atol=1e-04)
 
   def test_bcast_2d_2d(self):
     mlir_function = """
