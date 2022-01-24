@@ -2055,6 +2055,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
     })
 
+    self._validate_quantized_input_stats(converter_kwargs, quant_mode)
     if not self.experimental_new_converter:
       logging.warning(
           "Please consider switching to the new converter by setting "
@@ -2064,8 +2065,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       logging.info("Using experimental converter: If you encountered a problem "
                    "please file a bug. You can opt-out "
                    "by setting experimental_new_converter=False")
-
-    self._validate_quantized_input_stats(converter_kwargs, quant_mode)
     # Converts model.
     if self._has_valid_tensors():
       result = _convert_graphdef(

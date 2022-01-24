@@ -83,11 +83,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       _ = lite.TFLiteConverterV2.from_concrete_functions([root.f], root)
     self.assertIn('call get_concrete_function', str(error.exception))
 
-  @parameterized.named_parameters(
-      ('EnableMlirConverter', True),  # enable mlir
-      ('DisableMlirConverter', False))  # disable mlir
   @test_util.run_v2_only
-  def testFloat(self, enable_mlir_converter):
+  def testFloat(self):
     root = self._getSimpleVariableModel()
     input_data = tf.constant(1., shape=[1])
     concrete_func = root.f.get_concrete_function(input_data)
@@ -95,7 +92,6 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
                                                                root)
-    converter.experimental_new_converter = enable_mlir_converter
     tflite_model = converter.convert()
 
     # Check output value from converted model.
@@ -670,11 +666,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       new_value = self._evaluateTFLiteModel(new_tflite, [input_data])
       self.assertAllClose(old_value, new_value, atol=1e-01)
 
-  @parameterized.named_parameters(
-      ('EnableMlirConverter', True),  # enable mlir
-      ('DisableMlirConverter', False))  # disable mlir
   @test_util.run_v2_only
-  def testEmbeddings(self, enable_mlir_converter):
+  def testEmbeddings(self):
     """Test model with embeddings."""
     input_data = tf.constant(
         np.array(np.random.random_sample((20)), dtype=np.int32))
@@ -701,7 +694,6 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
                                                                root)
-    converter.experimental_new_converter = enable_mlir_converter
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -1238,11 +1230,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         self.assertEqual(operator.version, 3)
         break
 
-  @parameterized.named_parameters(
-      ('EnableMlirConverter', True),  # enable mlir
-      ('DisableMlirConverter', False))  # disable mlir
   @test_util.run_v2_only
-  def testForceSelectTFOps(self, enable_mlir_converter):
+  def testForceSelectTFOps(self):
     root = self._getSimpleVariableModel()
     input_data = tf.constant(1., shape=[1])
     concrete_func = root.f.get_concrete_function(input_data)
@@ -1250,7 +1239,6 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
                                                                root)
-    converter.experimental_new_converter = enable_mlir_converter
     converter.target_spec.supported_ops = [
         tf.lite.OpsSet.SELECT_TF_OPS
     ]
@@ -2129,18 +2117,6 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
     converter.convert()
     self._assertValidDebugInfo(converter._debug_info)
-
-  @test_util.run_v2_only
-  def testFallbackPath(self):
-    """Test a SavedModel fallback path using old converter."""
-    saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
-
-    # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
-    converter.experimental_new_converter = False
-    tflite_model = converter.convert()
-
-    self.assertTrue(tflite_model)
 
   @test_util.run_v2_only
   def testNonStatefulConvLSTM2D(self):
