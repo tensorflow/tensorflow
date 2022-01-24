@@ -85,6 +85,7 @@ REQUIRED_PACKAGES = [
     'libclang >= 9.0.1',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
+    'packaging',
     'protobuf >= 3.9.2',
     'setuptools',
     'six >= 1.12.0',
