@@ -16,18 +16,19 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.io.File;
-import java.lang.reflect.Constructor;
 import java.nio.ByteBuffer;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
 /**
- * Factory for constructing InterpreterApi instances.
+ * Private interface specifying factory for constructing InterpreterApi instances. This interface is
+ * an implementation detail of InterpreterFactory and should only be used from within the TensorFlow
+ * Lite implementation. We can't make it package-private, though, because it is used from both
+ * org.tensorflow.lite.InterpreterFactoryImpl and
+ * com.google.android.gms.tflite.InterpreterFactoryImpl.
  *
- * <p>This one is a proxy for the actual TF Lite runtime's implementation factory.
+ * @hide
  */
-public class InterpreterFactory {
-  public InterpreterFactory() {}
-
+public interface InterpreterFactoryApi {
   /**
    * Constructs an {@link InterpreterApi} instance, using the specified model and options. The model
    * will be loaded from a file.
@@ -37,10 +38,7 @@ public class InterpreterFactory {
    * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
    *     model.
    */
-  public InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
-    InterpreterFactoryApi factory = getFactory();
-    return factory.create(modelFile, options);
-  }
+  public InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options);
 
   /**
    * Constructs an {@link InterpreterApi} instance, using the specified model and options. The model
@@ -54,34 +52,14 @@ public class InterpreterFactory {
    * @throws IllegalArgumentException if {@code byteBuffer} is not a {@code MappedByteBuffer} nor a
    *     direct {@code ByteBuffer} of nativeOrder.
    */
-  public InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
-    InterpreterFactoryApi factory = getFactory();
-    return factory.create(byteBuffer, options);
-  }
+  public InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options);
 
-  static InterpreterFactoryApi getFactory() {
-    InterpreterFactoryApi factory;
-    try {
-      Class<?> clazz = Class.forName("org.tensorflow.lite.InterpreterFactoryImpl");
-      factory = (InterpreterFactoryApi) clazz.getDeclaredConstructor().newInstance();
-      // It would suffice to catch ReflectiveOperationException, but that requires API level 19.
-    } catch (Exception e) {
-      try {
-        Class<?> clazz = Class.forName("com.google.android.gms.tflite.InterpreterFactoryImpl");
-        Constructor<?> constructor = clazz.getDeclaredConstructor();
-        constructor.setAccessible(true);
-        factory = (InterpreterFactoryApi) constructor.newInstance();
-      } catch (Exception e2) {
-        e.addSuppressed(e2);
-        throw new IllegalStateException(
-            "Failed to create the InterpreterFactoryImpl dynamically -- "
-                + "make sure your app links in the right TensorFlow Lite runtime. "
-                + "You should declare a build dependency on either "
-                + "org.tensorflow.lite:tensorflow-lite or "
-                + "com.google.android.gms:play-services-tflite-java",
-            e);
-      }
-    }
-    return factory;
-  }
+  /** Returns the version of the underlying TensorFlowLite runtime. */
+  public String runtimeVersion();
+
+  /**
+   * Returns the version of the TensorFlowLite model schema that is supported by the underlying
+   * TensorFlowLite runtime.
+   */
+  public String schemaVersion();
 }
