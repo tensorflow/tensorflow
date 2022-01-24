@@ -57,6 +57,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
@@ -343,6 +344,66 @@ static LogicalResult Verify(CustomCallOp op) {
 
   // Verify that results and result layouts match.
   return verify_types_and_layouts(result_types, result_layouts, "result");
+}
+
+//===----------------------------------------------------------------------===//
+// DotOp
+//===----------------------------------------------------------------------===//
+namespace {
+bool dimCompatible(int64_t a, int64_t b) {
+  return ShapedType::kDynamicSize == a || ShapedType::kDynamicSize == b ||
+         a == b;
+}
+
+ShapedType inferDotReturnType(ShapedType lhs, ShapedType rhs) {
+  auto element_type = lhs.getElementType();
+  if (!lhs.hasRank() || !rhs.hasRank()) {
+    return UnrankedTensorType::get(element_type);
+  }
+
+  // vector dot vector
+  if (1 == lhs.getRank() && 1 == rhs.getRank() &&
+      dimCompatible(lhs.getDimSize(0), rhs.getDimSize(0))) {
+    return RankedTensorType::get({}, element_type);
+  }
+  // matrix dot vector
+  if (2 == lhs.getRank() && 1 == rhs.getRank() &&
+      dimCompatible(lhs.getDimSize(1), rhs.getDimSize(0))) {
+    return RankedTensorType::get({lhs.getDimSize(0)}, element_type);
+  }
+  // vector dot matrix
+  if (1 == lhs.getRank() && 2 == rhs.getRank() &&
+      dimCompatible(lhs.getDimSize(0), rhs.getDimSize(0))) {
+    return RankedTensorType::get({rhs.getDimSize(1)}, element_type);
+  }
+  // matrix dot matrix
+  if (2 == lhs.getRank() && 2 == rhs.getRank() &&
+      dimCompatible(lhs.getDimSize(1), rhs.getDimSize(0))) {
+    int64_t shape[2] = {lhs.getDimSize(0), rhs.getDimSize(1)};
+    return RankedTensorType::get(shape, element_type);
+  }
+  return {};
+}
+}  // namespace
+
+static LogicalResult Verify(DotOp op) {
+  auto lhs_type = op.lhs().getType().cast<ShapedType>();
+  auto rhs_type = op.rhs().getType().cast<ShapedType>();
+  auto result_type = op.getType().cast<ShapedType>();
+  auto expect_return_type = inferDotReturnType(lhs_type, rhs_type);
+  if (!expect_return_type) {
+    return op.emitError() << "Unexpected operands type: " << lhs_type << " and "
+                          << rhs_type;
+  }
+  if (result_type.hasRank() && expect_return_type.hasRank()) {
+    if (result_type.getShape() != expect_return_type.getShape()) {
+      return op.emitError()
+             << "Unexpected result type: has " << result_type
+             << " but inferred " << expect_return_type << " from operands "
+             << lhs_type << " and " << rhs_type;
+    }
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -818,7 +879,7 @@ OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
   if (!type) return {};
 
   int32_t dim = dimension();
-  if (ShapedType::isDynamic(dim)) return {};
+  if (type.isDynamicDim(dim)) return {};
   // The result type is always is a 0-d i32 tensor.
   return DenseIntElementsAttr::get<int32_t>(
       getResult().getType().cast<RankedTensorType>(), type.getDimSize(dim));
@@ -1558,12 +1619,12 @@ class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
             op.operand().getDefiningOp())) {
       auto new_indices =
           broadcast_in_dim_op.broadcast_dimensions()
-              .mapValues(
-                  op.broadcast_dimensions().DenseElementsAttr::getElementType(),
-                  [&bs_dim_indices](const APInt& dim) -> APInt {
-                    return APInt(dim.getBitWidth(),
-                                 bs_dim_indices[dim.getSExtValue()], true);
-                  })
+              .mapValues(op.broadcast_dimensions().getElementType(),
+                         [&bs_dim_indices](const APInt& dim) -> APInt {
+                           return APInt(dim.getBitWidth(),
+                                        bs_dim_indices[dim.getSExtValue()],
+                                        true);
+                         })
               .cast<DenseIntElementsAttr>();
       rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
           op, op.getType(), broadcast_in_dim_op.operand(), new_indices);
@@ -3020,6 +3081,7 @@ void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
         p << ") ";
       }
     }
+    p << ' ';
     p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
   }
 }
@@ -4921,7 +4983,7 @@ static LogicalResult EliminateRedundantTranspse(TransposeOp op,
   auto operand_permutation = tranpose_operand.permutation().getValues<APInt>();
   auto new_permutation =
       op.permutation()
-          .mapValues(op.permutation().DenseElementsAttr::getElementType(),
+          .mapValues(op.permutation().getElementType(),
                      [&operand_permutation](const APInt& index) -> APInt {
                        return operand_permutation[index.getSExtValue()];
                      })
@@ -5540,9 +5602,9 @@ void printWhileOp(WhileOp op, OpAsmPrinter& p) {
   }
   p.printOptionalAttrDictWithKeyword(op->getAttrs());
   p.printNewline();
-  p << " cond";
+  p << " cond ";
   p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
-  p << " do";
+  p << " do ";
   p.printRegion(op->getRegion(1), /*printEntryBlockArgs=*/false);
 }
 
@@ -6386,7 +6448,7 @@ static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
                                               unsigned arg_index,
                                               Operation* op) {
   // The attribute can only be applied to function-like operations.
-  if (!op->hasTrait<mlir::OpTrait::FunctionLike>())
+  if (!isa<mlir::FunctionOpInterface>(op))
     return op->emitOpError() << "attribute " << attr_name
                              << " can only be used on function-like operations";
 
@@ -6402,7 +6464,8 @@ static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
   // Verify that the result index is not out of range. Since the attribute is a
   // function argument attribute, the argument index is always correct when this
   // verifier is called.
-  auto ftype = mlir::function_like_impl::getFunctionType(op);
+  FunctionOpInterface funcOp = cast<FunctionOpInterface>(op);
+  FunctionType ftype = funcOp.getType().cast<FunctionType>();
   if (alias_attr.getResultIndex() >= ftype.getNumResults())
     return op->emitOpError() << "attribute " << attr_name
                              << " result index is out of range, must be <"
@@ -6475,7 +6538,7 @@ LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,
 LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
                                                     NamedAttribute attr) {
   if (auto alias_attr = attr.getValue().dyn_cast<ArgResultAliasAttr>()) {
-    if (!op->hasTrait<mlir::OpTrait::FunctionLike>())
+    if (!isa<mlir::FunctionOpInterface>(op))
       return op->emitOpError()
              << "attribute " << attr.getName()
              << " can only be used on function-like operations";

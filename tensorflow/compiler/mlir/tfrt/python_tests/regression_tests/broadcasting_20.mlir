@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?x?xf32>, %V__1: tensor<?xf32>, %V__2: tensor<2xi32>, %V__3: tensor<?x?xf32>) -> tensor<?x?xf32> {
+builtin.func @test(%V__0: tensor<?x?xf32> { python_test_attrs.static_type = tensor<3x3xf32> }, %V__1: tensor<?xf32> { python_test_attrs.static_type = tensor<3xf32> }, %V__2: tensor<2xi32> { python_test_attrs.shape_value = dense<[3, 3]> : tensor<2xi32> }, %V__3: tensor<?x?xf32> { python_test_attrs.static_type = tensor<1x3xf32> }) -> tensor<?x?xf32> {
   %0 = "tf.Mul"(%V__1, %V__1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.Sinh"(%0) : (tensor<?xf32>) -> tensor<?xf32>
   %2 = "tf.FloorMod"(%1, %V__1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>

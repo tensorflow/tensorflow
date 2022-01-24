@@ -1588,7 +1588,7 @@ def assert_type_v2(tensor, tf_type, message=None, name=None):
   >>> tf.debugging.assert_type(c, tf_type= tf.int32)
 
   Args:
-    tensor: A `Tensor`, `SparseTensor` or `tf.Variable .
+    tensor: A `Tensor`, `SparseTensor` or `tf.Variable` .
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.

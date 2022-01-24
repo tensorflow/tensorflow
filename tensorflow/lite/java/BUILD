@@ -52,7 +52,10 @@ JAVA_API_SRCS = [
     "src/main/java/org/tensorflow/lite/DataType.java",
     "src/main/java/org/tensorflow/lite/Delegate.java",
     "src/main/java/org/tensorflow/lite/InterpreterApi.java",
+    "src/main/java/org/tensorflow/lite/InterpreterFactory.java",
+    "src/main/java/org/tensorflow/lite/InterpreterFactoryApi.java",
     "src/main/java/org/tensorflow/lite/Tensor.java",
+    "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
     "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
 ]
 
@@ -77,6 +80,8 @@ filegroup(
         "src/main/java/org/tensorflow/lite/Delegate.java",
         "src/main/java/org/tensorflow/lite/InterpreterApi.java",
         "src/main/java/org/tensorflow/lite/InterpreterFactory.java",
+        "src/main/java/org/tensorflow/lite/InterpreterFactoryApi.java",
+        "src/main/java/org/tensorflow/lite/InterpreterFactoryImpl.java",
         "src/main/java/org/tensorflow/lite/InterpreterImpl.java",
         "src/main/java/org/tensorflow/lite/NativeInterpreterWrapper.java",
         "src/main/java/org/tensorflow/lite/NativeSignatureRunnerWrapper.java",
@@ -91,13 +96,20 @@ filegroup(
 )
 
 # Java source files for just the experimental APIs.
+JAVA_EXPERIMENTAL_SRCS = [
+    "src/main/java/org/tensorflow/lite/Interpreter.java",
+    "src/main/java/org/tensorflow/lite/NativeInterpreterWrapperExperimental.java",
+    "src/main/java/org/tensorflow/lite/package-info.java",
+]
+
 filegroup(
     name = "java_experimental_srcs",
-    srcs = [
-        "src/main/java/org/tensorflow/lite/Interpreter.java",
-        "src/main/java/org/tensorflow/lite/NativeInterpreterWrapperExperimental.java",
-        "src/main/java/org/tensorflow/lite/package-info.java",
-    ],
+    srcs = JAVA_EXPERIMENTAL_SRCS,
+)
+
+filegroup(
+    name = "java_stable_runtime_srcs",
+    srcs = [x for x in JAVA_SRCS if x not in JAVA_API_SRCS and x not in JAVA_EXPERIMENTAL_SRCS],
 )
 
 #-----------------------------------------------------------------------------
@@ -296,10 +308,14 @@ java_library(
 # Java source dependencies for TF Lite Java APIs, excluding experimental APIs.
 java_library(
     name = "tensorflowlite_javalib_stable",
-    srcs = [":java_stable_srcs"],
+    srcs = [":java_stable_runtime_srcs"],
     javacopts = JAVACOPTS,
     visibility = ["//visibility:private"],
+    exports = [
+        ":tensorflowlite_api_javalib",
+    ],
     deps = [
+        ":tensorflowlite_api_javalib",
         "@org_checkerframework_qual",
     ],
 )
@@ -310,7 +326,11 @@ java_library(
     srcs = [":java_experimental_srcs"],
     javacopts = JAVACOPTS,
     visibility = ["//visibility:private"],
+    exports = [
+        ":tensorflowlite_api_javalib",
+    ],
     deps = [
+        ":tensorflowlite_api_javalib",
         ":tensorflowlite_javalib_stable",
         "@org_checkerframework_qual",
     ],
@@ -322,7 +342,7 @@ java_library(
     srcs = ["//tensorflow/lite/delegates/flex/java/src/main/java/org/tensorflow/lite/flex:flex_delegate"],
     javacopts = JAVACOPTS,
     deps = [
-        "//tensorflow/lite/java:tensorflowlite_javalib",
+        ":tensorflowlite_javalib",
         "@org_checkerframework_qual",
     ],
 )

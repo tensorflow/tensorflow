@@ -16,10 +16,15 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.io.File;
+import java.lang.reflect.Constructor;
 import java.nio.ByteBuffer;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
-/** Factory for constructing InterpreterApi instances. */
+/**
+ * Factory for constructing InterpreterApi instances.
+ *
+ * <p>This one is a proxy for the actual TF Lite runtime's implementation factory.
+ */
 public class InterpreterFactory {
   public InterpreterFactory() {}
 
@@ -33,8 +38,8 @@ public class InterpreterFactory {
    *     model.
    */
   public InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
-    return new InterpreterImpl(
-        modelFile, options == null ? null : new InterpreterImpl.Options(options));
+    InterpreterFactoryApi factory = getFactory();
+    return factory.create(modelFile, options);
   }
 
   /**
@@ -50,7 +55,33 @@ public class InterpreterFactory {
    *     direct {@code ByteBuffer} of nativeOrder.
    */
   public InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
-    return new InterpreterImpl(
-        byteBuffer, options == null ? null : new InterpreterImpl.Options(options));
+    InterpreterFactoryApi factory = getFactory();
+    return factory.create(byteBuffer, options);
+  }
+
+  static InterpreterFactoryApi getFactory() {
+    InterpreterFactoryApi factory;
+    try {
+      Class<?> clazz = Class.forName("org.tensorflow.lite.InterpreterFactoryImpl");
+      factory = (InterpreterFactoryApi) clazz.getDeclaredConstructor().newInstance();
+      // It would suffice to catch ReflectiveOperationException, but that requires API level 19.
+    } catch (Exception e) {
+      try {
+        Class<?> clazz = Class.forName("com.google.android.gms.tflite.InterpreterFactoryImpl");
+        Constructor<?> constructor = clazz.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        factory = (InterpreterFactoryApi) constructor.newInstance();
+      } catch (Exception e2) {
+        e.addSuppressed(e2);
+        throw new IllegalStateException(
+            "Failed to create the InterpreterFactoryImpl dynamically -- "
+                + "make sure your app links in the right TensorFlow Lite runtime. "
+                + "You should declare a build dependency on either "
+                + "org.tensorflow.lite:tensorflow-lite or "
+                + "com.google.android.gms:play-services-tflite-java",
+            e);
+      }
+    }
+    return factory;
   }
 }

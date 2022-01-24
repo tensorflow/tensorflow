@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?xf32>, %V__1: tensor<?xf32>, %V__2: tensor<?xf32>, %V__3: tensor<?xf32>) -> tensor<?xf32> {
+builtin.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<1xf32> }, %V__1: tensor<?xf32> { python_test_attrs.static_type = tensor<3xf32> }, %V__2: tensor<?xf32> { python_test_attrs.static_type = tensor<1xf32> }, %V__3: tensor<?xf32> { python_test_attrs.static_type = tensor<3xf32> }) -> tensor<?xf32> {
   %0 = "tf.Rint"(%V__0) : (tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.RealDiv"(%V__0, %0) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %2 = "tf.Relu"(%1) : (tensor<?xf32>) -> tensor<?xf32>

@@ -106,6 +106,7 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingTensorBatchFixedState_Create);
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingTensorBatchFixedState_Destroy);
   TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_EnqueueTensorBatch);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_RecvActivationsComputation);
 
   return tensorflow::Status::OK();
 }

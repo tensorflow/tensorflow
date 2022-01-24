@@ -1268,19 +1268,21 @@ class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
       nvinfer1::DataType datatype =
           algoChoices[i]->getAlgorithmIOInfo(0).getDataType();
 
-      if (implementation == static_cast<int64_t>(LayerImpl::kSHUFFLE) &&
-          (
-#if IS_TRT_VERSION_GE(8, 0, 0, 0)
-              // Reject shuffle node when input format is linear row major INT8
-              // format
-              format == nvinfer1::TensorFormat::kLINEAR &&
-              datatype == nvinfer1::DataType::kINT8
-#else
-              // Reject shuffle node when input format is 32-wide channel
-              // vectorized row major FP32 format
-              format == nvinfer1::TensorFormat::kCHW32
+      bool reject_tactic = false;
+#if IS_TRT_VERSION_GE(8, 0, 0, 0) && !IS_TRT_VERSION_GE(8, 0, 3, 0)
+      // Reject shuffle node when input format is linear row major INT8 format
+      reject_tactic =
+          (implementation == static_cast<int64_t>(LayerImpl::kSHUFFLE) &&
+           (format == nvinfer1::TensorFormat::kLINEAR &&
+            datatype == nvinfer1::DataType::kINT8));
+#elif !IS_TRT_VERSION_GE(8, 0, 0, 0)
+      // Reject shuffle node when input format is 32-wide channel
+      // vectorized row major FP32 format
+      reject_tactic =
+          (implementation == static_cast<int64_t>(LayerImpl::kSHUFFLE) &&
+           (format == nvinfer1::TensorFormat::kCHW32));
 #endif  // !IS_TRT_VERSION_GE(8, 0, 0, 0)
-              )) {
+      if (reject_tactic) {
         if (!forced_algorithm_id.has_value()) {
           VLOG(1) << "Rejecting a disallowed tactic: " << tacticId
                   << " for node " << algoContext.getName()

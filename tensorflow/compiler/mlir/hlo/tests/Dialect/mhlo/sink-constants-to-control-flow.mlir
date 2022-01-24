@@ -8,7 +8,7 @@ func @sink_const_to_while(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK-SAME: (%[[ITER_ARG:.*]] = %[[ARG1A:.+]]
   %c0 = mhlo.constant dense<1> : tensor<i64>
   %c1 = mhlo.constant dense<2> : tensor<i64>
-  %0 = "mhlo.while"(%arg0) ( {
+  %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<i64>):
     // CHECK: %[[C0:.+]] = mhlo.constant dense<1> : tensor<i64>
     // CHECK: "mhlo.compare"(%[[C0]], %[[ITER_ARG]])
@@ -36,7 +36,7 @@ func @sink_const_to_conditional(%arg0: tensor<i64>) -> tensor<i64> {
   %c1 = mhlo.constant dense<2> : tensor<i64>
   %0 = "mhlo.compare"(%arg0, %c0) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
   // CHECK: mhlo.if
-  %2 = "mhlo.if"(%0) ( {
+  %2 = "mhlo.if"(%0) ({
     // CHECK: %[[C0:.+]] = mhlo.constant dense<1> : tensor<i64>
     // CHECK: %[[ADD0:.+]] = mhlo.add %[[C0]],
     %3 = mhlo.add %c0, %arg0 : tensor<i64>
@@ -53,7 +53,7 @@ func @sink_const_to_conditional(%arg0: tensor<i64>) -> tensor<i64> {
 func @sink_const_to_sort(%arg0: tensor<16xf32>) {
   %c0 = arith.constant dense<1.0> : tensor<f32>
   // CHECK: "mhlo.sort"
-  %0 = "mhlo.sort"(%arg0) ( {
+  %0 = "mhlo.sort"(%arg0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     // CHECK: constant dense<1.000000e+00>
     %1 = "mhlo.divide"(%arg1, %c0) : (tensor<f32>, tensor<f32>) -> tensor<f32>

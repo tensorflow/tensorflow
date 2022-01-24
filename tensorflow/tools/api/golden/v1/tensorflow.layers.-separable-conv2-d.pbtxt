@@ -1,9 +1,9 @@
 path: "tensorflow.layers.SeparableConv2D"
 tf_class {
   is_instance: "<class \'keras.legacy_tf_layers.convolutional.SeparableConv2D\'>"
-  is_instance: "<class \'keras.layers.convolutional.SeparableConv2D\'>"
-  is_instance: "<class \'keras.layers.convolutional.SeparableConv\'>"
-  is_instance: "<class \'keras.layers.convolutional.Conv\'>"
+  is_instance: "<class \'keras.layers.convolutional.separable_conv2d.SeparableConv2D\'>"
+  is_instance: "<class \'keras.layers.convolutional.base_separable_conv.SeparableConv\'>"
+  is_instance: "<class \'keras.layers.convolutional.base_conv.Conv\'>"
   is_instance: "<class \'keras.legacy_tf_layers.base.Layer\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"

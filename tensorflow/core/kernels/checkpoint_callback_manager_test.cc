@@ -277,6 +277,32 @@ TEST_F(CheckpointCallbackManagerTest, SaveAndRestore) {
   EXPECT_EQ(restore_callback_count, 1);
 }
 
+TEST_F(CheckpointCallbackManagerTest, RestoreLazyCallback) {
+  int callback_call_count = 0;
+  RestoreCallback restore_callback = [&callback_call_count](
+                                         absl::string_view checkpoint_id,
+                                         absl::string_view str) {
+    EXPECT_EQ(checkpoint_id, "model.ckpt-100");
+    EXPECT_EQ(str, "Apple");
+    ++callback_call_count;
+    return Status::OK();
+  };
+
+  TF_EXPECT_OK(WriteStringToFile(
+      Env::Default(), io::JoinPath(testing::TmpDir(), "model.ckpt-100.foo"),
+      "Apple"));
+
+  EXPECT_EQ(callback_call_count, 0);
+  checkpoint_callback_manager_->Restore(
+      io::JoinPath(testing::TmpDir(), "model.ckpt-100"));
+  EXPECT_EQ(callback_call_count, 0);
+
+  TF_ASSERT_OK(checkpoint_callback_manager_->RegisterRestoreCallback(
+      "foo", std::move(restore_callback)));
+
+  EXPECT_EQ(callback_call_count, 1);
+}
+
 }  // namespace
 }  // namespace checkpoint
 }  // namespace tensorflow

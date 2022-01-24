@@ -127,8 +127,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Add the broadcast propagation pass first, because it can help to avoid
   // exponential complexity from the EarlyBroadcastInDimOp pattern which is used
   // in the merge assuming ops pass further down.
-  pm.addNestedPass<FuncOp>(
-      mlir::mhlo::createMergeAssumingOpsPass(/*propagate_broadcasts=*/false));
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -136,6 +135,10 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // After all shape constraints removed and broadcasts moved to the top, try
   // to resolve broadcasts that can be converted to linalg generic operations.
   pm.addNestedPass<FuncOp>(CreateSymbolicShapeOptimizationPass());
+
+  // Group reduction and parallel dimensions of reduction operations and realize
+  // them through equivalent 1D or 2D reductions, if possible.
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
 
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
@@ -212,6 +215,12 @@ void CreateDefaultTfJitRtPipeline(OpPassManager& pm) {
   TfJitRtPipelineOptions options;
   options.vectorize = tensorflow::GetJitRtFlags().vectorize;
   CreateTfJitRtPipeline(pm, options);
+}
+
+void CreateJitRtSpecializationPipeline(mlir::OpPassManager& pm) {
+  pm.addPass(std::make_unique<AddTensorflowProducerVersion>());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::createCanonicalizerPass());
 }
 
 static mlir::PassPipelineRegistration<TfJitRtPipelineOptions> tf_jitrt_pipeline(

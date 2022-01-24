@@ -282,9 +282,9 @@ class BufferReuse : BufferPlacementTransformationBase {
 /// The buffer reuse pass that uses already allocated buffers if all critera
 /// are met.
 struct BufferReusePass : BufferReuseBase<BufferReusePass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     // Reuse allocated buffer instead of new allocation.
-    Operation *funcOp = getFunction();
+    Operation *funcOp = getOperation();
     BufferReuse optimizer(funcOp);
     optimizer.reuse();
   }
@@ -292,7 +292,7 @@ struct BufferReusePass : BufferReuseBase<BufferReusePass> {
 
 }  // end namespace
 
-std::unique_ptr<FunctionPass> createBufferReusePass() {
+std::unique_ptr<OperationPass<FuncOp>> createBufferReusePass() {
   return std::make_unique<BufferReusePass>();
 }
 

@@ -958,7 +958,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allocate_buffers_for_constants, BufferAssigner::Colorer colorer,
-    const absl::flat_hash_set<HloOpcode>& must_not_live_out,
+    absl::optional<BufferAssigner::MustNotLiveOut> must_not_live_out,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
     std::unique_ptr<PresetAssignments> preset_assignments) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
@@ -1064,12 +1064,12 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     return false;
   }
 
-  if (!must_not_live_out_.empty()) {
+  if (must_not_live_out_.has_value()) {
     if (allocation->maybe_live_out()) {
-      // If a buffer maybe live out, the allocation cannot contain any node from
-      // the "must_not_live_out_" set.
+      // If a buffer maybe live out, the allocation cannot contain any node
+      // where must_not_live_out_ returns true.
       for (const HloValue* value : hlo_buffer.values()) {
-        if (must_not_live_out_.count(value->instruction()->opcode()) > 0) {
+        if ((*must_not_live_out_)(value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << value->instruction()->ToString()
                   << " cannot live out of the module";
           return false;
@@ -1077,14 +1077,14 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
       }
     }
     // The above check is not enough -- There could be the case where an
-    // allocation can be not live out and contains an instruction with opcode
-    // from the "must_not_live_out_" set, but assigning a live out buffer to
-    // that allocation makes the allocation live out and also contains
-    // instruction from the "must_not_live_out_" set.
+    // allocation can be not live out and contains an instruction where
+    // must_not_live_out_ returns true, but assigning a live out buffer to
+    // that allocation makes the allocation live out and also contain an
+    // instruction where ust_not_live_out_ returns true.
     if (assignment->alias_analysis().BufferLivesOut(hlo_buffer)) {
       for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
-        if (must_not_live_out_.count(
-                buffer_offset_size.first->instruction()->opcode()) > 0) {
+        const HloValue* value = buffer_offset_size.first;
+        if ((*must_not_live_out_)(value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << buffer_offset_size.first->instruction()
                   << " cannot live out of the module";
           return false;

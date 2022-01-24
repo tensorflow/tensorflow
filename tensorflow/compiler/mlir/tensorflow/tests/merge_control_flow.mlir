@@ -7,16 +7,16 @@ func @different_predicate_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
      }) {is_stateless = true} : (tensor<i1>) -> ()
-    "tf.IfRegion"(%1) ( {
+    "tf.IfRegion"(%1) ({
       %2 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -34,14 +34,14 @@ func @different_block_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
     %3 = "tf.A"() : () -> (tensor<?xf32>)
     %4 = "tf.B"() : () -> (tensor<i32>)
     "tf.WhileRegion"(%4, %3) ({
     ^bb0(%arg1: tensor<i32>, %arg2: tensor<?xf32>):
-      "tf.IfRegion"(%0) ( {
+      "tf.IfRegion"(%0) ({
         %2 = "tf.A"() : () -> (tensor<f32>)
         "tf.Yield"() : () -> ()
         }, {
@@ -50,7 +50,7 @@ func @different_block_no_merge() {
        "tf.Yield"(%1) : (tensor<i1>) -> ()
     }, {
     ^bb0(%arg1: tensor<i32>, %arg2: tensor<?xf32>):
-      "tf.IfRegion"(%0) ( {
+      "tf.IfRegion"(%0) ({
         %2 = "tf.B"() : () -> (tensor<f32>)
         "tf.Yield"() : () -> ()
         }, {
@@ -73,15 +73,15 @@ func @same_predicate_no_returns_merged() {
   // CHECK-SAME:   _then_func_name = "thenFunc1"
 
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
      }) {is_stateless = true, _else_func_name = "elseFunc1", _then_func_name = "thenFunc1"} : (tensor<i1>) -> ()
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -99,9 +99,9 @@ func @same_predicate_intermediate_dependency_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
@@ -110,7 +110,7 @@ func @same_predicate_intermediate_dependency_no_merge() {
      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %3 = "tf.D"(%1) : (tensor<f32>) -> (tensor<f32>)
     %4 = "tf.E"(%3) : (tensor<f32>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.B"(%4) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -128,9 +128,9 @@ func @same_predicate_side_effect_dependency_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
@@ -138,7 +138,7 @@ func @same_predicate_side_effect_dependency_no_merge() {
       "tf.Yield"(%2) : (tensor<f32>) -> ()
      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     "tf.D"(%1) : (tensor<f32>) -> ()
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %4 = "tf.B"(%1) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -157,16 +157,16 @@ func @same_predicate_stateless_merge() {
   // CHECK:        "tf.IfRegion"
   // CHECK:        is_stateless = false
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %4 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -192,16 +192,16 @@ func @same_predicate_returns_merged() {
   // CHECK-NOT:    "tf.IfRegion"
   // CHECK         "tf.E"(%[[IF_OUTPUT]]#0, %[[IF_OUTPUT]]#1)
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %3 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
       %3 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    %2 = "tf.IfRegion"(%0) ( {
+    %2 = "tf.IfRegion"(%0) ({
       %3 = "tf.B"() : () -> (tensor<i32>)
       "tf.Yield"(%3) : (tensor<i32>) -> ()
       }, {
@@ -228,16 +228,16 @@ func @same_predicate_returns_unused() {
   // CHECK-NOT:    "tf.IfRegion"
   // CHECK         "tf.E"(%[[IF_OUTPUT]])
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %3 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
       %3 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    %2 = "tf.IfRegion"(%0) ( {
+    %2 = "tf.IfRegion"(%0) ({
       %3 = "tf.B"() : () -> (tensor<i32>)
       "tf.Yield"(%3) : (tensor<i32>) -> ()
       }, {
@@ -263,16 +263,16 @@ func @same_predicate_dependency() {
   // CHECK-NOT:    "tf.IfRegion"
   // CHECK         "tf.E"(%[[IF_OUTPUT]])
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %3 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
       %3 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    %2 = "tf.IfRegion"(%0) ( {
+    %2 = "tf.IfRegion"(%0) ({
       %3 = "tf.B"(%1) : (tensor<f32>) -> (tensor<i32>)
       "tf.Yield"(%3) : (tensor<i32>) -> ()
       }, {
@@ -302,9 +302,9 @@ func @same_predicate_results_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>
   // CHECK         "tf.E"(%[[IF_OUTPUT#1]])
   // CHECK-NEXT    "tf.F"(%[[IF_OUTPUT#1]])
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %3 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
@@ -313,7 +313,7 @@ func @same_predicate_results_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
     "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %4 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
-    %5 = "tf.IfRegion"(%0) ( {
+    %5 = "tf.IfRegion"(%0) ({
       %3 = "tf.B"(%4) : (tensor<f32>) -> (tensor<i32>)
       "tf.Yield"(%3) : (tensor<i32>) -> ()
       }, {
@@ -341,9 +341,9 @@ func @same_predicate_side_effect_moved(%arg0: tensor<!tf_type.resource<tensor<f3
   // CHECK-NOT:    "tf.IfRegion"
   // CHECK         "tf.ReadVariableOp(arg0)
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %3 = "tf.A"() : () -> (tensor<f32>)
       "tf.AssignVariableOp"(%arg0, %3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
       "tf.Yield"(%3) : (tensor<f32>) -> ()
@@ -353,7 +353,7 @@ func @same_predicate_side_effect_moved(%arg0: tensor<!tf_type.resource<tensor<f3
      }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
     %8 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> (tensor<f32>)
     %4 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
-    %5 = "tf.IfRegion"(%0) ( {
+    %5 = "tf.IfRegion"(%0) ({
       %3 = "tf.B"(%4) : (tensor<f32>) -> (tensor<i32>)
       "tf.Yield"(%3) : (tensor<i32>) -> ()
       }, {
@@ -374,21 +374,21 @@ func @same_predicate_3_ifregions() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
      }) { is_stateless = true } : (tensor<i1>) -> ()
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
     }) { is_stateless = true } : (tensor<i1>) -> ()
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -412,9 +412,9 @@ func @same_predicate_3_ifregions_only_merge2() {
   // CHECK:          "tf.E"
   // CHECK-NEXT:     "tf.G"
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
@@ -422,14 +422,14 @@ func @same_predicate_3_ifregions_only_merge2() {
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
     %3 = "tf.D"(%1) : (tensor<f32>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %4 = "tf.E"(%3) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.G"(%3) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -454,24 +454,24 @@ func @same_predicate_3_ifregions_reorder() {
   // CHECK-NEXT    "tf.IfRegion"
   // CHECK:          "tf.E"
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%8) ( {
+    "tf.IfRegion"(%8) ({
       %4 = "tf.E"(%1) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.G"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -488,24 +488,24 @@ func @same_predicate_3_ifregions_reorder() {
 // CHECK-LABEL: func @same_predicate_3_ifregions_intermediate_dep
 func @same_predicate_3_ifregions_intermediate_dep() {
   // CHECK-COUNT-3:        "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    %9 = "tf.IfRegion"(%8) ( {
+    %9 = "tf.IfRegion"(%8) ({
       %4 = "tf.E"(%1) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.G"(%9) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -522,24 +522,24 @@ func @same_predicate_3_ifregions_intermediate_dep() {
 // CHECK-LABEL: func @same_predicate_3_ifregions_intermediate_side_effect
 func @same_predicate_3_ifregions_intermediate_side_effect() {
   // CHECK-COUNT-3:   "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
-    %9 = "tf.IfRegion"(%8) ( {
+    %9 = "tf.IfRegion"(%8) ({
       %4 = "tf.E"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.G"(%1) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -556,30 +556,30 @@ func @same_predicate_3_ifregions_intermediate_side_effect() {
 // CHECK-LABEL: func @side_effect_analysis_updated
 func @side_effect_analysis_updated() {
   // CHECK-COUNT-3:   "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    %9 = "tf.IfRegion"(%8) ( {
+    %9 = "tf.IfRegion"(%8) ({
       %4 = "tf.E"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.G"(%1) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
     }) { is_stateless = false} : (tensor<i1>) -> ()
-    "tf.IfRegion"(%8) ( {
+    "tf.IfRegion"(%8) ({
       %4 = "tf.E"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
@@ -597,9 +597,9 @@ func @side_effect_analysis_updated() {
 func @same_predicate_2_ifregions_multiple_side_effect_ops() {
   // CHECK:       "tf.IfRegion"
   // CHECK-NOT:   "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       %3 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
@@ -607,7 +607,7 @@ func @same_predicate_2_ifregions_multiple_side_effect_ops() {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
-    %9 = "tf.IfRegion"(%0) ( {
+    %9 = "tf.IfRegion"(%0) ({
       %4 = "tf.E"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {

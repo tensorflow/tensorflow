@@ -285,12 +285,14 @@ static absl::optional<std::string> DumpToFileInDirOrStdoutImpl(
 
 // Returns whether the computation is trivial enough not to warrant dumping.
 // Currently skips instructions where the root instruction has only parameters
-// as operands.
+// as operands AND is not a fusion.
 static bool IsTrivial(const HloComputation& computation) {
   const HloInstruction* root = computation.root_instruction();
-  return absl::c_all_of(root->operands(), [&](const HloInstruction* op) {
-    return op->opcode() == HloOpcode::kParameter;
-  });
+  return absl::c_all_of(root->operands(),
+                        [&](const HloInstruction* op) {
+                          return op->opcode() == HloOpcode::kParameter;
+                        }) &&
+         root->opcode() != HloOpcode::kFusion;
 }
 
 // Returns full file paths of all dumps of the module.

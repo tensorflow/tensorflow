@@ -1257,7 +1257,8 @@ class StaticVocabularyTable(LookupInterface):
       initializer: A `TableInitializerBase` object that contains the data used
         to initialize the table. If None, then we only use out-of-vocab buckets.
       num_oov_buckets: Number of buckets to use for out-of-vocabulary keys. Must
-        be greater than zero.
+        be greater than zero. If out-of-vocab buckets are not required, use
+        `StaticHashTable` instead.
       lookup_key_dtype: Data type of keys passed to `lookup`. Defaults to
         `initializer.key_dtype` if `initializer` is specified, otherwise
         `tf.string`. Must be string or integer, and must be castable to
@@ -1276,7 +1277,7 @@ class StaticVocabularyTable(LookupInterface):
         integer or string. Also when initializer.value_dtype != int64.
     """
     if num_oov_buckets <= 0:
-      raise ValueError("`num_oov_buckets` must be > 0.")
+      raise ValueError("`num_oov_buckets` must be > 0; use StaticHashTable.")
     # If a name ends with a '/' it is a "name scope", remove all trailing '/'
     # characters to use as table name.
     if name:

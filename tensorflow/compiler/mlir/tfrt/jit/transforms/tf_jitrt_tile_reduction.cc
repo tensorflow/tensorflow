@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -59,10 +60,10 @@ using mlir::linalg::LinalgTilingLoopType;
 using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
 using mlir::linalg::PaddingValueComputationFunction;
-using mlir::linalg::PadTensorOp;
 using mlir::linalg::TiledLoopOp;
 using mlir::linalg::YieldOp;
 using mlir::tensor::ExpandShapeOp;
+using mlir::tensor::PadOp;
 
 // Tiles a GenericOp that models a 2D row or column reduction.
 struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
@@ -244,7 +245,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
       auto element_type = slice.getType().cast<ShapedType>().getElementType();
 
       // Pad input tile.
-      Value pad = PadTensorOp::createPadHighOp(
+      Value pad = mlir::tensor::createPadHighOp(
           RankedTensorType::get({tile_size}, element_type), slice,
           neutral_value, false, nested_loc, b);
 

@@ -27,7 +27,7 @@ func @fusion(%arg0: memref<4096xf32>) {
     // CHECK-SAME: blocks in (%[[bx]], %[[by]], %[[bz]])
     // CHECK-SAME: threads in (%[[tx]], %[[ty]], %[[tz]])
     // CHECK-SAME: args(%arg0 : memref<4096xf32>)
-    "lmhlo.fusion"() ( {
+    "lmhlo.fusion"() ({
       %tensor = bufferization.to_tensor %arg0 : memref<4096xf32>
       %result = mhlo.add %tensor, %tensor : tensor<4096xf32>
       memref.tensor_store %result, %arg0 : memref<4096xf32>

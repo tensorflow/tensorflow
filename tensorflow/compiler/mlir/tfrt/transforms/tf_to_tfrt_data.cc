@@ -250,8 +250,8 @@ class TFToTFRTDataRewritePass
     mlir::OwningRewritePatternList patterns(&getContext());
     patterns.insert<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
                     ConstOpConversion, ReturnOpConversion>(context);
-    mlir::populateFunctionLikeTypeConversionPattern<FuncOp>(patterns,
-                                                            data_converter);
+    mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
+        patterns, data_converter);
 
     auto result =
         mlir::applyPartialConversion(module, target, std::move(patterns));

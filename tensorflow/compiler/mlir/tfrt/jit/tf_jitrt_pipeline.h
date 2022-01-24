@@ -69,6 +69,11 @@ void CreateTfJitRtPipeline(mlir::OpPassManager& pm,
 // Calls CreateTfJitRtPipeline with the default TfJitRtPipelineOptions.
 void CreateDefaultTfJitRtPipeline(mlir::OpPassManager& pm);
 
+// Creates a pipeline that runs on compiled module specialization. It runs the
+// Tensorflow shape inference and canonicalization, so that specialized function
+// always has ranked inputs and results to infer JitRt ABI requirements.
+void CreateJitRtSpecializationPipeline(mlir::OpPassManager& pm);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_PIPELINE_H_

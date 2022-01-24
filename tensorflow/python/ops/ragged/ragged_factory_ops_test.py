@@ -21,9 +21,11 @@ on CPU.
 
 from absl.testing import parameterized
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -75,6 +77,26 @@ class RaggedFactoryOpsTest(test_util.TensorFlowTestCase,
     t = ragged_factory()
     result = self.evaluate(map_fn_producer(t))
     self.assertAllEqual(t.values, result.values)
+
+  @parameterized.parameters(
+      (ragged_int64,),
+      (ragged_str,),
+  )
+  def testRaggedWithMultiDeviceIterator(self, ragged_factory):
+
+    @def_function.function
+    def dataset_producer(t):
+      ragged_ds = dataset_ops.Dataset.from_tensor_slices(t).batch(2)
+      it = multi_device_iterator_ops.MultiDeviceIterator(ragged_ds, ['GPU:0'])
+      with ops.device_v2('GPU:0'):
+        return it.get_next_as_optional()
+
+    t = ragged_factory()
+    if t.dtype == dtypes.string:
+      self.skipTest('b/194439197: fix ragged tensor of string')
+    result = dataset_producer(t)
+    self.assertAllEqual(
+        self.evaluate(t[0]), self.evaluate(result[0].get_value()[0]))
 
   @parameterized.parameters(
       (ragged_int64,),

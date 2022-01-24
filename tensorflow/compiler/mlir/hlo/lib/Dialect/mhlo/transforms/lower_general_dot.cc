@@ -170,10 +170,10 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 struct LegalizeGeneralDotPass
     : public LegalizeGeneralDotPassBase<LegalizeGeneralDotPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
-  void runOnFunction() override {
+  void runOnOperation() override {
     OwningRewritePatternList patterns(&getContext());
     PopulateGeneralDotOpLoweringPatterns(&patterns, &getContext());
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 

@@ -98,7 +98,12 @@ def TFGraphDialect : Dialect {
     llvm::unique_function<void(Operation *, OpAsmPrinter &)>
     getOperationPrinter(Operation *op) const override;
 
+    // Provides a hook for op interface.
+    void *getRegisteredInterfaceForOp(mlir::TypeID interface,
+                                      mlir::OperationName opName) override;
+
   private:
+    TFGraphOpAsmInterface *fallbackOpAsmInterface_ = nullptr;
     // Cached identifier for efficiency purpose.
     StringAttr name_key_;
     StringAttr device_key_;
@@ -107,6 +112,7 @@ def TFGraphDialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tfg";
+  let hasNonDefaultDestructor = 1;
 }
 
 //===----------------------------------------------------------------------===//

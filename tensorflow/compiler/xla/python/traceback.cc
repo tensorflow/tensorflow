@@ -166,8 +166,9 @@ void BuildTracebackSubmodule(py::module& m) {
   m.def(
       "replace_thread_exc_traceback",
       [](py::object tb) {
-        if (!PyTraceBack_Check(tb.ptr())) {
-          throw std::runtime_error("argument must be a traceback object");
+        if (!tb.is_none() && !PyTraceBack_Check(tb.ptr())) {
+          throw std::runtime_error(
+              "argument must be a traceback object or None");
         }
         PyThreadState* thread_state = PyThreadState_Get();
         if (!thread_state->exc_info->exc_traceback) {
@@ -176,7 +177,8 @@ void BuildTracebackSubmodule(py::module& m) {
               "exception traceback");
         }
         PyObject* old_exc_traceback = thread_state->exc_info->exc_traceback;
-        thread_state->exc_info->exc_traceback = tb.release().ptr();
+        PyObject* new_tb = tb.is_none() ? nullptr : tb.release().ptr();
+        thread_state->exc_info->exc_traceback = new_tb;
         Py_XDECREF(old_exc_traceback);
       },
       py::arg("traceback"));

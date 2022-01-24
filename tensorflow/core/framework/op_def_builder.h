@@ -193,11 +193,7 @@ class OpDefBuilder {
   // may start the description with an "=" (like name:= <description>)
   // to suppress the automatically-generated type documentation in
   // generated output.
-#ifndef TF_LEAN_BINARY
   OpDefBuilder& Doc(std::string text);
-#else
-  OpDefBuilder& Doc(string text) { return *this; }
-#endif
 
   // Sets the function to be used as type constructor.
   // See OpRegistrationData::type_ctor.

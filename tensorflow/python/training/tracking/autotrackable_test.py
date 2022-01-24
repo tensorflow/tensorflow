@@ -39,23 +39,22 @@ class InterfaceTests(test.TestCase):
     root.leaf = duplicate_name_dep
     root._track_trackable(duplicate_name_dep, name="leaf", overwrite=True)
     self.assertIs(duplicate_name_dep, root._lookup_dependency("leaf"))
-    (_, dep_object), = root._checkpoint_dependencies
-    self.assertIs(duplicate_name_dep, dep_object)
+    self.assertIs(duplicate_name_dep, root._trackable_children()["leaf"])
 
   def testRemoveDependency(self):
     root = autotrackable.AutoTrackable()
     root.a = autotrackable.AutoTrackable()
-    self.assertEqual(1, len(root._checkpoint_dependencies))
+    self.assertEqual(1, len(root._trackable_children()))
     self.assertEqual(1, len(root._unconditional_checkpoint_dependencies))
-    self.assertIs(root.a, root._checkpoint_dependencies[0].ref)
+    self.assertIs(root.a, root._trackable_children()["a"])
     del root.a
     self.assertFalse(hasattr(root, "a"))
-    self.assertEqual(0, len(root._checkpoint_dependencies))
+    self.assertEqual(0, len(root._trackable_children()))
     self.assertEqual(0, len(root._unconditional_checkpoint_dependencies))
     root.a = autotrackable.AutoTrackable()
-    self.assertEqual(1, len(root._checkpoint_dependencies))
+    self.assertEqual(1, len(root._trackable_children()))
     self.assertEqual(1, len(root._unconditional_checkpoint_dependencies))
-    self.assertIs(root.a, root._checkpoint_dependencies[0].ref)
+    self.assertIs(root.a, root._trackable_children()["a"])
 
   def testListBasic(self):
     a = autotrackable.AutoTrackable()
@@ -66,10 +65,10 @@ class InterfaceTests(test.TestCase):
     a_deps = util.list_objects(a)
     self.assertIn(b, a_deps)
     self.assertIn(c, a_deps)
-    direct_a_dep, = a._checkpoint_dependencies
-    self.assertEqual("l", direct_a_dep.name)
-    self.assertIn(b, direct_a_dep.ref)
-    self.assertIn(c, direct_a_dep.ref)
+    self.assertIn("l", a._trackable_children())
+    direct_a_dep = a._trackable_children()["l"]
+    self.assertIn(b, direct_a_dep)
+    self.assertIn(c, direct_a_dep)
 
   @test_util.run_in_graph_and_eager_modes
   def testMutationDirtiesList(self):

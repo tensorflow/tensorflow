@@ -183,8 +183,8 @@ static void populateI1TypeConversionPatterns(
     I1TypeConverter &type_converter, OwningRewritePatternList &patterns) {
   patterns.add<I1ToI8GenericConversionPattern>(type_converter,
                                                patterns.getContext());
-  mlir::populateFunctionLikeTypeConversionPattern<FuncOp>(patterns,
-                                                          type_converter);
+  mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
+      patterns, type_converter);
 }
 
 struct JitRtLegalizeI1TypesPass

@@ -234,7 +234,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
 }
 
 Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
-                                                DatasetBase* dataset) {
+                                                const DatasetBase* dataset) {
   std::shared_ptr<State> new_state;
   {
     tf_shared_lock l(mu_);

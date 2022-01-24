@@ -132,11 +132,11 @@ struct LegalizeGatherToTorchIndexSelectPass
     : public LegalizeGatherToTorchIndexSelectPassBase<
           LegalizeGatherToTorchIndexSelectPass> {
   /// Perform the lowering of standard dialect operations to approximations.
-  void runOnFunction() override {
+  void runOnOperation() override {
     OwningRewritePatternList patterns(&getContext());
     PopulateGatherToTorchIndexSelectPatterns(&getContext(), &patterns);
     if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
+            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
 };
@@ -147,7 +147,8 @@ void PopulateGatherToTorchIndexSelectPatterns(
   patterns->insert<GatherIsTorchIndexSelect>(context);
 }
 
-std::unique_ptr<FunctionPass> createLegalizeGatherToTorchIndexSelectPass() {
+std::unique_ptr<OperationPass<FuncOp>>
+createLegalizeGatherToTorchIndexSelectPass() {
   return std::make_unique<LegalizeGatherToTorchIndexSelectPass>();
 }
 

@@ -367,6 +367,30 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
         dimensions.transformed_from_dimensions.push_back(d);
       }
     } else if (any_present) {
+      // Try to find if there is a to dimension that is like (from) [2,32] ->
+      // (to) [4,4,4] to detect that from dimensoin 1 can be partially mapped
+      // into dimension 1 and 2 of the to sizes with a partial size of 2.
+      if (common_factors[i].first + 2 == common_factors[i + 1].first &&
+          absl::c_linear_search(from_dimensions, common_factors[i].first + 1)) {
+        int64_t from_size = from_sizes[common_factors[i + 1].first - 1];
+        bool has_to_dim = false;
+        for (int64_t to_dim = common_factors[i + 1].second - 1;
+             to_dim >= common_factors[i].second; --to_dim) {
+          const int64_t to_size = to_sizes[to_dim];
+          if (from_size % to_size == 0) {
+            has_to_dim = true;
+            from_size /= to_size;
+            dimensions.to_dimensions.push_back(to_dim);
+          } else {
+            break;
+          }
+        }
+        if (has_to_dim) {
+          dimensions.split_from_sizes.push_back(from_size);
+          dimensions.split_from_dimensions.push_back(common_factors[i].first +
+                                                     1);
+        }
+      }
       for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
            ++d) {
         if (absl::c_linear_search(from_dimensions, d)) {
@@ -375,6 +399,7 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
       }
     }
   }
+  absl::c_sort(dimensions.to_dimensions);
   return dimensions;
 }
 std::string SanitizeFileName(std::string file_name) {

@@ -118,12 +118,11 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
 void PopulateTrigonometricToApproximationPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
-// Populate patterns to move dynamic broadcasts up over element-wise operations
-// and broadcast the operands rather than the result. This will eventually allow
-// for larger fusions.
+// Populate patterns to prepare moving dynamic broadcasts up over element-wise
+// operations and broadcast the operands rather than the result. This will
+// eventually allow for larger fusions.
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
-                                      OwningRewritePatternList *patterns,
-                                      bool propagate_broadcasts);
+                                      OwningRewritePatternList *patterns);
 
 // Populate patterns to group reduction and parallecol dimensions of reduction
 // operations and realize them through equivalent 1D or 2D reductions, if

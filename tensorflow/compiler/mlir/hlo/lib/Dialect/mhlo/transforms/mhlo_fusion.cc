@@ -483,8 +483,8 @@ class FusionPlanner {
 };
 
 struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
-  void runOnFunction() override {
-    FuncOp func = getFunction();
+  void runOnOperation() override {
+    FuncOp func = getOperation();
     if (!IsTargetFunc(func)) {
       return;
     }

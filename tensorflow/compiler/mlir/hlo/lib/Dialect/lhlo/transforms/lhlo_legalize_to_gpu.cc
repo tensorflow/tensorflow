@@ -179,14 +179,14 @@ struct LhloLegalizeToGpuPass
                     memref::MemRefDialect, scf::SCFDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     OwningRewritePatternList patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<arith::ArithmeticDialect, linalg::LinalgDialect,
                            memref::MemRefDialect, StandardOpsDialect,
                            gpu::GPUDialect, scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<ReduceOp>();
-    auto func = getFunction();
+    auto func = getOperation();
     patterns.insert<LhloReduceToGPULaunchConverter>(func.getContext());
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
@@ -196,7 +196,7 @@ struct LhloLegalizeToGpuPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createLegalizeToGpuPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass() {
   return std::make_unique<LhloLegalizeToGpuPass>();
 }
 

@@ -17,62 +17,50 @@
 PIP="$1"
 PIP_INSTALL=("${PIP}" "install" "--prefer-binary" --upgrade)
 
-if [[ ! -x "$(which "${PIP}")" ]]; then
-  # Python2 doesn't ship with pip by default.
-  PYTHON="${PIP/pip/python}"
-  wget "https://bootstrap.pypa.io/get-pip.py"
-  "${PYTHON}" "get-pip.py"
-  rm "get-pip.py"
-fi
+PYTHON="${PIP/pip/python}"
+wget "https://bootstrap.pypa.io/get-pip.py"
+"${PYTHON}" "get-pip.py" --force-reinstall
+rm "get-pip.py"
+"${PYTHON}" -m ensurepip --upgrade
 
 PACKAGES=(
-  # NOTE: As numpy has releases that break semver guarantees and several other
-  # deps depend on numpy without an upper bound, we must install numpy before
-  # everything else.
-  "numpy~=1.19.2"
-  "auditwheel"
-  "wheel"
-  "setuptools"
-  "virtualenv"
-  "six"
-  "future"
   "absl-py"
-  "werkzeug"
-  "bleach"
-  "markdown"
-  "protobuf"
-  "scipy"
-  "scikit-learn"
-  "pandas"
-  "psutil"
-  "py-cpuinfo"
-  "pylint==2.7.4"
-  "pycodestyle"
-  "portpicker"
-  "grpcio"
+  "argparse"
   "astor"
+  "auditwheel"
+  "bleach"
+  "dill"
+  "dm-tree"
+  "future"
   "gast"
-  "termcolor"
+  "grpcio"
+  "h5py"
   "keras-nightly"
   "keras_preprocessing"
-  "h5py"
-  "tf-estimator-nightly"
-  "tb-nightly"
-  "argparse"
-  "dm-tree"
-  "dill"
-  "tblib"
-  "pybind11"
   "libclang"
+  "markdown"
+  "numpy"
+  "pandas"
+  "portpicker"
+  "protobuf"
+  "psutil"
+  "py-cpuinfo"
+  "pybind11"
+  "pycodestyle"
+  "pylint==2.7.4"
+  "scikit-learn"
+  "scipy"
+  "six"
+  "tb-nightly"
+  "tblib"
+  "termcolor"
+  "tf-estimator-nightly"
+  "werkzeug"
+  "wheel"
 )
-
-# tf.mock require the following for python2:
-if [[ "${PIP}" == *pip2* ]]; then
-  PACKAGES+=("mock")
-fi
 
 # Get the latest version of pip so it recognize manylinux2010
 "${PIP}" "install" "--upgrade" "pip"
+"${PIP}" "install" "--upgrade" "setuptools" "virtualenv"
 
 "${PIP_INSTALL[@]}" "${PACKAGES[@]}"
-

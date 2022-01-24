@@ -143,12 +143,12 @@ struct GroupReductionDimensionsPattern : public OpRewritePattern<ReduceOp> {
 
 struct GroupReductionDimensionsPass
     : public GroupReductionDimensionsPassBase<GroupReductionDimensionsPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
     mhlo::populateGroupReductionDimensionsPatterns(ctx, &patterns);
-    if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
       return signalPassFailure();
     }
   }
@@ -161,7 +161,7 @@ void populateGroupReductionDimensionsPatterns(
   patterns->insert<GroupReductionDimensionsPattern>(context);
 }
 
-std::unique_ptr<FunctionPass> createGroupReductionDimensionsPass() {
+std::unique_ptr<OperationPass<FuncOp>> createGroupReductionDimensionsPass() {
   return std::make_unique<GroupReductionDimensionsPass>();
 }
 

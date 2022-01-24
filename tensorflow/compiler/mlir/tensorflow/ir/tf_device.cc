@@ -409,6 +409,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   // lengths.
   p->printOptionalAttrDict(op->getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
                                kOperandSegmentSizesAttr});
+  *p << ' ';
   p->printRegion(op.body(), /*printEntryBlockArgs=*/false);
 }
 
@@ -535,12 +536,12 @@ void BuildReplicateOp(
           VerifyCompatibleTypes(input.getType(), replicated_input.second)));
       state->addOperands(input);
     }
-    block.addArgument(replicated_input.second);
+    block.addArgument(replicated_input.second, state->location);
   }
 
   for (auto packed_input : packed_inputs) {
     state->addOperands(packed_input);
-    block.addArgument(packed_input.getType());
+    block.addArgument(packed_input.getType(), state->location);
   }
 
   // Add derived `operand_segment_sizes` attribute.

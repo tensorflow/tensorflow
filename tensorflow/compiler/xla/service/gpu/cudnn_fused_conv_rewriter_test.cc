@@ -838,6 +838,78 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasIfMultipleUsers) {
   EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
 }
 
+TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputThroughRelu) {
+  const std::string module_str = R"(
+    HloModule Test
+
+    ENTRY Test {
+      inputs = f32[1,17,9,9] parameter(0)
+      filters = f32[3,3,17,32] parameter(1)
+      side_input = f32[1,32,9,9] parameter(2)
+      conv = f32[1,32,9,9] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      relu = maximum(conv, f32[1,32,9,9] broadcast(f32[] constant(0)))
+      ROOT root = add(relu, side_input)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  GpuConvRewriter rewriter;
+  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  CudnnFusedConvRewriter fuser;
+  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* conv;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::AddAnyOrder(
+          m::Parameter(2),
+          m::GetTupleElement(
+              m::CustomCall(&conv, m::Parameter(0), m::Parameter(1),
+                            m::Broadcast(m::ConstantEffectiveScalar(0))),
+              0))));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          conv->backend_config<CudnnConvBackendConfig>());
+  EXPECT_EQ(config.conv_result_scale(), 1);
+  EXPECT_EQ(config.activation_mode(), se::dnn::kRelu);
+}
+
+TEST_F(CudnnFusedConvRewriterHloTest, DontFuseBiasThroughRelu) {
+  const std::string module_str = R"(
+    HloModule Test
+
+    ENTRY Test {
+      inputs = f32[1,17,9,9] parameter(0)
+      filters = f32[3,3,17,32] parameter(1)
+      bias = f32[1,32,9,9] broadcast(f32[32] parameter(2)), dimensions={1}
+      conv = f32[1,32,9,9] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      relu = maximum(conv, f32[1,32,9,9] broadcast(f32[] constant(0)))
+      ROOT root = add(relu, bias)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  GpuConvRewriter rewriter;
+  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  CudnnFusedConvRewriter fuser;
+  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* conv;
+  ASSERT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::AddAnyOrder(
+                  m::Broadcast(m::Parameter(2)),
+                  m::GetTupleElement(m::CustomCall(
+                      &conv, m::Parameter(0), m::Parameter(1),
+                      m::Broadcast(m::ConstantEffectiveScalar(0)))))));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          conv->backend_config<CudnnConvBackendConfig>());
+  EXPECT_EQ(config.conv_result_scale(), 1);
+  EXPECT_EQ(config.activation_mode(), se::dnn::kRelu);
+}
+
 TEST_F(CudnnFusedConvRewriterHloTest, DontFuseSideInputIfMultipleUsers) {
   const std::string module_str = R"(
     HloModule Test

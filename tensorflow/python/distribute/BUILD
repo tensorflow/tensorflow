@@ -1126,10 +1126,16 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
+<<<<<<< HEAD
         "no_cuda_asan",  # times out
         "no_gpu",  # TODO(b/213596871): times out
         "notsan",  # b/177098062
         "no_rocm", # broken in 4.1
+=======
+        "no_cuda_asan",  # TODO(b/214574707): times out
+        "no_gpu",  # TODO(b/214574707): times out
+        "notsan",  # TODO(b/177098062): flaky for over a year
+>>>>>>> upstream/master
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1410,6 +1416,7 @@ distribute_py_test(
         "no_cuda_asan",  # times out
         "no_oss",  # b/178656226
         "noasan",  # b/175816710
+        "notap",  # Flaky
         "notsan",  # b/168645872
     ],
     tpu_tags = [

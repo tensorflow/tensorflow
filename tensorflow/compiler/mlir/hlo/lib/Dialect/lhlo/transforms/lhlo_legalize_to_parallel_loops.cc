@@ -167,7 +167,7 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
 //
 // Example:
 //
-//  "lmhlo.reduce"(%buffer, %init_buf, %result) ( {
+//  "lmhlo.reduce"(%buffer, %init_buf, %result) ({
 //    ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
 //      <LHLO ops>
 //    } ) {dimensions = dense<[1]> : tensor<1xi64>}
@@ -180,7 +180,7 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
 //    %result = scf.parallel (%j) = (%c0) to (%c10) step (%c1) init (%init) {
 //      %elem_to_reduce = load %buffer[%i, %j, %k] : memref<100x10x5xf32>
 //      scf.reduce(%elem_to_reduce)  {
-//        ^bb0(%elem: f32, %acc: f32):   // no predecessors
+//        ^bb0(%elem: f32, %acc: f32):
 //          elem_buf = alloc() : memref<f32>
 //          store %elem, elem_buf[] : memref<f32>
 //          acc_buf = alloc() : memref<f32>
@@ -330,7 +330,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 // func @reduce_window(%arg: memref<112x112xf32>,
 //              %init: memref<f32>,
 //              %result: memref<56x56xf32>) {
-//   "lmhlo.reduce_window"(%arg, %init, %result) ( {
+//   "lmhlo.reduce_window"(%arg, %init, %result) ({
 //     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
 //       "lmhlo.maximum"(%lhs, %rhs, %res)
 //         : (memref<f32>, memref<f32>, memref<f32>) -> ()
@@ -713,8 +713,8 @@ struct LhloLegalizeToParallelLoopsPass
                     memref::MemRefDialect, scf::SCFDialect>();
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
 
     OwningRewritePatternList patterns(&getContext());
     // clang-format off

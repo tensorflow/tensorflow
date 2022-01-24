@@ -76,12 +76,13 @@ void ModifyFunctionSignature(
     llvm::function_ref<bool(int64_t)> arg_buffer_size_is_fixed) {
   auto new_input_types = llvm::to_vector<8>(func.getType().getInputs());
   int64_t original_arg_count = new_input_types.size();
+  Location loc = func.getLoc();
   for (int64_t i = 0; i < original_arg_count; ++i) {
     auto buffer_type = arg_to_buffer_type(i);
     if (!buffer_type.hasValue()) continue;
     func.getArgument(i).setType(*buffer_type);
     new_input_types[i] = *buffer_type;
-    auto size_arg = func.front().addArgument(size_type);
+    auto size_arg = func.front().addArgument(size_type, loc);
     new_input_types.push_back(size_arg.getType());
     if (buffer_to_size) {
       (*buffer_to_size)[func.getArgument(i)] = {size_arg,
@@ -276,7 +277,8 @@ LogicalResult HandleWhileRegionOp(
       if (it == buffer_to_size->end()) continue;
       auto buffer_type = it->getFirst().getType();
       region.getArgument(i).setType(buffer_type);
-      auto size_arg = region.addArgument(cutil::GetSizeType(builder));
+      auto size_arg =
+          region.addArgument(cutil::GetSizeType(builder), region.getLoc());
       (*buffer_to_size)[region.getArgument(i)] = {size_arg,
                                                   it->getSecond().fixed};
     }

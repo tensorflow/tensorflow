@@ -25,12 +25,19 @@
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 
+#if XLA_ENABLE_XCCL
+#include "tfrt/gpu/wrapper/ccl_wrapper.h"  // from @tf_runtime
+#endif  // XLA_ENABLE_XCCL
+
 namespace tensorflow {
+
+#if XLA_ENABLE_XCCL
 namespace {
 
 ncclRedOp_t ToNcclReduction(xla::ReductionKind kind) {
@@ -92,7 +99,7 @@ FailureOr<Value> CclOpConversionRewrite(lmhlo::AllGatherOp srcOp, Value chain,
       return rewriter.notifyMatchFailure(
           srcOp, "Failed to convert operand data type to ncclDataType_t.");
     }
-    ncclDataType_t nccl_data_type = nccl_data_type_or.getValue();
+    tfrt::gpu::wrapper::CclDataType nccl_data_type = *nccl_data_type_or;
 
     Value input = mapping.lookup(operands[i]);
     Value output = mapping.lookup(results[i]);
@@ -297,5 +304,12 @@ void populateCclConversionPattern(RewritePatternSet& patterns,
                CclRewritePattern<lmhlo::CollectivePermuteOp>>(
       converter, patterns.getContext());
 }
+
+#else  // XLA_ENABLE_XCCL
+
+void populateCclConversionPattern(RewritePatternSet& patterns,
+                                  TypeConverter& converter) {}
+
+#endif  // XLA_ENABLE_XCCL
 
 }  // namespace tensorflow

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
+#include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -51,10 +52,14 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::StrCat;
+
 using ::tfrt::jitrt::CompilationOptions;
+using ::tfrt::jitrt::CompilationPipelineOptions;
+using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConverter;
 
@@ -73,24 +78,30 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
                                                  Specialization specialization,
                                                  bool vectorize,
                                                  bool legalize_i1_tensors) {
+  // Options for the default JitRt compilation pipeline (lowering to LLVM).
+  CompilationPipelineOptions copts;
+  copts.alignment = EIGEN_MAX_ALIGN_BYTES;
+  copts.num_worker_threads = 4;
+
   CompilationOptions opts;
-  opts.alignment = EIGEN_MAX_ALIGN_BYTES;
-  // Create an async task for each worker thread.
-  opts.num_worker_threads = 4;
   opts.register_dialects = [](mlir::DialectRegistry& registry) {
     mlir::RegisterAllTensorFlowDialects(registry);
+    RegisterDefaultJitRtDialects(registry);
     // Needed to verify function argument attributes which are used to
     // annotate dynamic shaped types with static type information.
     mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
   };
-  opts.register_pass_pipeline = [=](mlir::OpPassManager& pm) {
+  opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
     tensorflow::TfJitRtPipelineOptions opts;
     opts.vectorize = vectorize;
     opts.legalize_i1_tensors = legalize_i1_tensors;
     tensorflow::CreateTfJitRtPipeline(pm, opts);
+    CreateDefaultJitRtCompilationPipeline(pm, copts);
   };
+  opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
   opts.specialization = specialization;
-  opts.type_converter = mlir::bufferization::BufferizeTypeConverter();
+  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+      mlir::bufferization::BufferizeTypeConverter());
 
   // Instantiate new JitExecutable from the MLIR source.
   llvm::Expected<JitExecutable> jit_executable =

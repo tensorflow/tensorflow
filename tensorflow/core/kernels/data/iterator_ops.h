@@ -62,7 +62,8 @@ class IteratorResource : public ResourceBase {
   //
   // `SetIteratorFromDataset` should be called before calling `GetNext`, `Save`,
   // or `Restore`.
-  Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset);
+  Status SetIteratorFromDataset(OpKernelContext* ctx,
+                                const DatasetBase* dataset);
 
   string DebugString() const override { return "Iterator resource"; }
 

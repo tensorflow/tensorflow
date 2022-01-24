@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?xf32>, %V__1: tensor<2xi32>) -> tensor<?x?xf32> {
+builtin.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<1xf32> }, %V__1: tensor<2xi32> { python_test_attrs.shape_value = dense<[4, 3]> : tensor<2xi32> }) -> tensor<?x?xf32> {
   %0 = "tf.Asinh"(%V__0) : (tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.BroadcastTo"(%0, %V__1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   %2 = "tf.Acosh"(%1) : (tensor<?x?xf32>) -> tensor<?x?xf32>

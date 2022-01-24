@@ -272,6 +272,15 @@ StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
       TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
     }
 
+    // Can't fuse bias or side-input if the conv already has a relu (or other
+    // activation), because bias and side-input are added before the activation
+    // is applied.
+    TF_ASSIGN_OR_RETURN(auto config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.activation_mode() != se::dnn::kNone) {
+      continue;
+    }
+
     // Does `conv` already have a (nonzero) bias?  Does it already have a
     // side_input?
     bool can_accept_bias =
@@ -298,8 +307,6 @@ StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
 
     absl::InlinedVector<HloInstruction*, 4> new_operands(
         conv->operands().begin(), conv->operands().end());
-    TF_ASSIGN_OR_RETURN(auto config,
-                        conv->backend_config<CudnnConvBackendConfig>());
     if (can_accept_bias && addend_may_be_rank1_bias) {
       new_operands[2] = MakeConvertToHlo(addend->mutable_operand(0), bias_ty);
     } else if (can_accept_bias && addend_may_be_rank0_bias) {

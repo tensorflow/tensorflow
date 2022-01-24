@@ -1397,6 +1397,49 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
         self._get_replica_numpy(output[2], strategy, 0).shape, (2, 3, 2))
 
   @parameterized.parameters([True, False])
+  def test_sequence_feature_with_build(self, is_updated_shape):
+    seq_length = 3
+    # Set the max_seq_length in feature config
+    for feature in self.feature_config:
+      feature.max_sequence_length = seq_length
+    strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+    dataset = self._create_sparse_dataset(strategy)
+    feature_iter = iter(
+        strategy.experimental_distribute_dataset(
+            dataset,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
+    if is_updated_shape:
+      mid_level_api.build([
+          TensorShape([self.batch_size, seq_length, 2]),
+          TensorShape([self.batch_size, seq_length, 2]),
+          TensorShape([self.batch_size, seq_length, 3])
+      ])
+    else:
+      mid_level_api.build([
+          TensorShape([self.batch_size, 2]),
+          TensorShape([self.batch_size, 2]),
+          TensorShape([self.batch_size, 3])
+      ])
+
+    @def_function.function
+    def test_fn():
+
+      def step():
+        return mid_level_api.dequeue()
+
+      mid_level_api.enqueue(next(feature_iter), training=False)
+      return strategy.run(step)
+
+    output = test_fn()
+    self.assertEqual(
+        self._get_replica_numpy(output[0], strategy, 0).shape, (2, 3, 4))
+    self.assertEqual(
+        self._get_replica_numpy(output[1], strategy, 0).shape, (2, 3, 4))
+    self.assertEqual(
+        self._get_replica_numpy(output[2], strategy, 0).shape, (2, 3, 2))
+
+  @parameterized.parameters([True, False])
   def test_missing_feature(self, is_sparse):
     strategy = self._get_strategy()
     with strategy.scope():
@@ -1732,8 +1775,6 @@ class TPUEmbeddingHighDimensionalTensorTest(parameterized.TestCase,
         [TensorShape((1, 3)),
          TensorShape((2, 4)),
          TensorShape((2, 4))])
-    # The GCD of batch size 1 and 2 should be 1.
-    self.assertEqual(mid_level_api._config_proto.batch_size_per_tensor_core, 1)
 
   def test_build_incorrect_output_shapes(self):
     _, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')

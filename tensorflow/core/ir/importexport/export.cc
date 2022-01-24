@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/FunctionSupport.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -97,7 +97,7 @@ static Status GetValueName(Value operand, std::string &name, Type control_ty) {
     // Function arguments are coming as pair: the even are the actual tensors
     // while the odd position are the associated control input.
     if (is_control) name = "^";
-    DictionaryAttr arg_attrs = function_like_impl::getArgAttrDict(
+    DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
         block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
     if (!arg_attrs)
       return InvalidArgument("Missing attribute for argument #", arg_num);
@@ -527,7 +527,7 @@ Status ExportFunction(GraphFuncOp func_op,
     // Odd position are just for control dependencies.
     if (arg_num % 2) continue;
     DictionaryAttr arg_attrs =
-        function_like_impl::getArgAttrDict(func_op, arg_num);
+        function_interface_impl::getArgAttrDict(func_op, arg_num);
     OpDef::ArgDef *arg = signature->mutable_input_arg(arg_num / 2);
     StringAttr description = arg_attrs.getAs<StringAttr>("tfg.description");
     if (description) arg->set_description(description.getValue().str());

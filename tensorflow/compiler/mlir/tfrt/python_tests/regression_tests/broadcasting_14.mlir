@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?xf32>) -> tensor<?xf32> {
+builtin.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<11xf32> }) -> tensor<?xf32> {
   %0 = "tf.Elu"(%V__0) : (tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.Tanh"(%0) : (tensor<?xf32>) -> tensor<?xf32>
   %2 = "tf.LeakyRelu"(%1) {alpha = 0.1 : f32} : (tensor<?xf32>) -> tensor<?xf32>

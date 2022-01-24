@@ -74,6 +74,7 @@ cc_library(
     ] + if_not_android([
         ":profiler_interface",
         ":profiler_factory",
+        ":profiler_collection",
         ":profiler_lock",
         "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
         "//tensorflow/core/profiler/utils:time_utils",
@@ -103,6 +104,7 @@ cc_library(
         "//tensorflow/core/profiler:__pkg__",
     ],
     deps = [
+        ":profiler_controller",
         ":profiler_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
@@ -134,6 +136,28 @@ cc_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "profiler_collection",
+    srcs = ["profiler_collection.cc"],
+    hdrs = ["profiler_collection.h"],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "profiler_controller",
+    srcs = ["profiler_controller.cc"],
+    hdrs = ["profiler_controller.h"],
+    deps = [
+        ":profiler_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ],

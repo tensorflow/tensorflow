@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -1326,7 +1327,25 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.fixed_work_group_size = false;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   } else if (gpu_info.IsAdreno()) {
-    conv_params.block_size = int4(2, 2, 1, 2);
+    if (dst_shape) {
+      const int wave_size = gpu_info.adreno_info.GetWaveSize(
+          definition.precision == CalculationsPrecision::F16);
+      const double task_size =
+          1.0 * dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
+      const double waves =
+          task_size / gpu_info.GetComputeUnitsCount() / wave_size;
+      if (waves <= 6.0f) {
+        conv_params.block_size = int4(1, 1, 1, 1);
+      } else if (waves <= 12.0f) {
+        conv_params.block_size = int4(2, 1, 1, 1);
+      } else if (waves <= 24.0f) {
+        conv_params.block_size = int4(2, 1, 1, 2);
+      } else {
+        conv_params.block_size = int4(2, 2, 1, 2);
+      }
+    } else {
+      conv_params.block_size = int4(2, 2, 1, 2);
+    }
     if (gpu_info.adreno_info.IsAdreno3xx()) {
       if (definition.precision == CalculationsPrecision::F16) {
         conv_params.block_size = int4(2, 2, 1, 2);

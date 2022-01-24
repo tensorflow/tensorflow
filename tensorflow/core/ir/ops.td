@@ -18,16 +18,18 @@ limitations under the License.
 #define TFG_OPS
 
 include "tensorflow/core/ir/dialect.td"
+include "tensorflow/core/ir/interfaces.td"
 include "tensorflow/core/ir/types/attributes.td"
 include "tensorflow/core/ir/types/types.td"
 
-include "mlir/IR/RegionKindInterface.td"
-include "mlir/Interfaces/CallInterfaces.td"
-include "mlir/IR/SymbolInterfaces.td"
-include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
+include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TFGraph op definitions
@@ -73,7 +75,8 @@ def TFGraph_GraphOp : TFGraph_Op<"graph",
 
 def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
     RegionKindInterface, HasOnlyGraphRegion, SingleBlock, CallableOpInterface,
-    FunctionLike, IsolatedFromAbove, Symbol, OpAsmOpInterface]> {
+    FunctionOpInterface, IsolatedFromAbove, Symbol, OpAsmOpInterface,
+    DeclareOpInterfaceMethods<ControlArgumentInterface>]> {
   let summary = "Define a function as modeled by FunctionDef.";
   let description = [{
     This operation is modeling a function definition, corresponding to the
@@ -102,6 +105,12 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
 
     TFGraphDialect *getDialect() {
       return cast<TFGraphDialect>((*this)->getDialect());
+    }
+
+    /// Returns the type of this function.
+    /// FIXME: We should drive this via the ODS `type` param.
+    FunctionType getType() {
+      return getTypeAttr().getValue().cast<FunctionType>();
     }
 
     // Returns true if this function is marked for JIT compilation.
@@ -133,7 +142,7 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
     // return null in the case of an external callable object, e.g. an external
     // function.
     Region *getCallableRegion() {
-      return isExternal() ? nullptr : &FunctionLike::getBody();
+      return isExternal() ? nullptr : &this->getRegion();
     }
 
     // Returns the results types that the callable region produces when
@@ -141,29 +150,23 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
     ArrayRef<Type> getCallableResults() { return getType().getResults(); }
 
     //===------------------------------------------------------------------===//
+    // FunctionOpInterface Methods
+    //===------------------------------------------------------------------===//
+
+    /// Returns the argument types of this function.
+    ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
+
+    /// Returns the result types of this function.
+    ArrayRef<Type> getResultTypes() { return getType().getResults(); }
+
+    LogicalResult verifyType();
+    LogicalResult verifyBody();
+
+    //===------------------------------------------------------------------===//
     // SymbolOpInterface Methods
     //===------------------------------------------------------------------===//
 
     bool isDeclaration() { return isExternal(); }
-
-  private:
-    // This trait needs access to the hooks defined below.
-    friend class OpTrait::FunctionLike<GraphFuncOp>;
-
-    // Returns the number of arguments. Hook for OpTrait::FunctionLike.
-    unsigned getNumFuncArguments() { return getType().getNumInputs(); }
-
-    // Returns the number of results. Hook for OpTrait::FunctionLike.
-    unsigned getNumFuncResults() { return getType().getNumResults(); }
-
-    // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
-    // attribute is present and checks if it holds a function type. Ensures
-    // getType, getNumFuncArguments, and getNumFuncResults can be called safely
-    LogicalResult verifyType();
-
-    // Hook for OpTrait::FunctionLike, called after verifying the function
-    // type and the presence of the (potentially empty) function body.
-    LogicalResult verifyBody();
   }];
 
   let parser = [{ return ParseGraphFunc(parser, result); }];
@@ -242,12 +245,15 @@ def TFGraph_CastOp : TFGraph_Op<"Cast", [NoSideEffect]> {
   let arguments = (ins
     // Op operands.
     TFGraph_Tensor:$x,
+    Variadic<ControlType>:$ctls,
     // Required attributes.
     TFGraph_TypeOrPlaceholder:$SrcT,
     TFGraph_TypeOrPlaceholder:$DstT,
     DefaultValuedAttr<BoolAttr, "false">:$Truncate
   );
   let results = (outs AnyType:$y, ControlType:$ctl);
+
+  let hasFolder = 1;
 }
 
 // Base class for TFGraph concrete ops.
