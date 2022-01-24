@@ -98,6 +98,9 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
   explicit BoostedTreesCreateQuantileStreamResourceOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kMaxElementsName, &max_elements_));
   }
 
@@ -108,6 +111,10 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
     // disallowed.
     const Tensor* epsilon_t;
     OP_REQUIRES_OK(context, context->input(kEpsilonName, &epsilon_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(epsilon_t->shape()),
+                errors::InvalidArgument(
+                    "epsilon must be a scalar, got a tensor of shape ",
+                    epsilon_t->shape().DebugString()));
     float epsilon = epsilon_t->scalar<float>()();
     OP_REQUIRES(
         context, epsilon > 0,
@@ -115,6 +122,10 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
 
     const Tensor* num_streams_t;
     OP_REQUIRES_OK(context, context->input(kNumStreamsName, &num_streams_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_streams_t->shape()),
+                errors::InvalidArgument(
+                    "num_streams must be a scalar, got a tensor of shape ",
+                    num_streams_t->shape().DebugString()));
     int64 num_streams = num_streams_t->scalar<int64>()();
     OP_REQUIRES(context, num_streams >= 0,
                 errors::InvalidArgument(
@@ -143,6 +154,9 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
   explicit BoostedTreesMakeQuantileSummariesOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
   }
 
@@ -156,7 +170,8 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
     const Tensor* example_weights_t;
     OP_REQUIRES_OK(context,
                    context->input(kExampleWeightsName, &example_weights_t));
-    DCHECK(float_features_list.size() > 0) << "Got empty feature list";
+    OP_REQUIRES(context, float_features_list.size() > 0,
+                errors::Internal("Got empty feature list"));
     auto example_weights = example_weights_t->flat<float>();
     const int64 weight_size = example_weights.size();
     const int64 batch_size = float_features_list[0].flat<float>().size();
@@ -166,6 +181,10 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
             "Weights should be a single value or same size as features.")));
     const Tensor* epsilon_t;
     OP_REQUIRES_OK(context, context->input(kEpsilonName, &epsilon_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(epsilon_t->shape()),
+                errors::InvalidArgument(
+                    "epsilon must be a scalar, got a tensor of shape ",
+                    epsilon_t->shape().DebugString()));
     float epsilon = epsilon_t->scalar<float>()();
 
     OpOutputList summaries_output_list;
@@ -190,7 +209,8 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
             context,
             summaries_output_list.allocate(
                 index,
-                TensorShape({static_cast<int64>(summary_entry_list.size()), 4}),
+                TensorShape(
+                    {static_cast<int64_t>(summary_entry_list.size()), 4}),
                 &output_t));
         auto output = output_t->matrix<float>();
         for (auto row = 0; row < summary_entry_list.size(); row++) {
@@ -223,6 +243,9 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
   explicit BoostedTreesFlushQuantileSummariesOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
   }
 
@@ -282,7 +305,11 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
  public:
   explicit BoostedTreesQuantileStreamResourceAddSummariesOp(
       OpKernelConstruction* const context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
+  }
 
   void Compute(OpKernelContext* context) override {
     ResourceHandle handle;
@@ -298,7 +325,10 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list(kSummariesName, &summaries_list));
     int32 num_streams = stream_resource->num_streams();
-    CHECK_EQ(static_cast<int>(num_streams), summaries_list.size());
+    OP_REQUIRES(
+        context, num_streams == summaries_list.size(),
+        errors::Internal("Expected num_streams == summaries_list.size(), got ",
+                         num_streams, " vs ", summaries_list.size()));
 
     auto do_quantile_add_summary = [&](const int64 begin, const int64 end) {
       // Iterating all features.
@@ -313,7 +343,10 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
         const auto summary_values = summaries.matrix<float>();
         const auto& tensor_shape = summaries.shape();
         const int64 entries_size = tensor_shape.dim_size(0);
-        CHECK_EQ(tensor_shape.dim_size(1), 4);
+        OP_REQUIRES(
+            context, tensor_shape.dim_size(1) == 4,
+            errors::Internal("Expected tensor_shape.dim_size(1) == 4, got ",
+                             tensor_shape.dim_size(1)));
         std::vector<QuantileSummaryEntry> summary_entries;
         summary_entries.reserve(entries_size);
         for (int64 i = 0; i < entries_size; i++) {
@@ -346,6 +379,9 @@ class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
   explicit BoostedTreesQuantileStreamResourceDeserializeOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kNumStreamsName, &num_features_));
   }
 
@@ -365,6 +401,12 @@ class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
       // Iterating over all streams.
       for (int64 stream_idx = begin; stream_idx < end; stream_idx++) {
         const Tensor& bucket_boundaries_t = bucket_boundaries_list[stream_idx];
+        OP_REQUIRES(
+            context, TensorShapeUtils::IsVector(bucket_boundaries_t.shape()),
+            errors::InvalidArgument("bucket boundaries for each stream must be "
+                                    "a vector, received shape ",
+                                    bucket_boundaries_t.shape().DebugString(),
+                                    " for stream ", stream_idx));
         const auto& bucket_boundaries = bucket_boundaries_t.vec<float>();
         std::vector<float> result;
         result.reserve(bucket_boundaries.size());
@@ -396,6 +438,9 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
   explicit BoostedTreesQuantileStreamResourceFlushOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context,
                    context->GetAttr(kGenerateQuantiles, &generate_quantiles_));
   }
@@ -412,6 +457,10 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
 
     const Tensor* num_buckets_t;
     OP_REQUIRES_OK(context, context->input(kNumBucketsName, &num_buckets_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_buckets_t->shape()),
+                errors::InvalidArgument(
+                    "num_buckets must be a scalar, got a tensor of shape ",
+                    num_buckets_t->shape().DebugString()));
     const int64 num_buckets = num_buckets_t->scalar<int64>()();
     const int64 num_streams = stream_resource->num_streams();
 
@@ -452,6 +501,9 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
   explicit BoostedTreesQuantileStreamResourceGetBucketBoundariesOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
   }
 
@@ -466,7 +518,9 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
     mutex_lock l(*stream_resource->mutex());
 
     const int64 num_streams = stream_resource->num_streams();
-    CHECK_EQ(num_features_, num_streams);
+    OP_REQUIRES(context, num_streams == num_features_,
+                errors::Internal("Expected num_streams == num_features_, got ",
+                                 num_streams, " vs ", num_features_));
     OpOutputList bucket_boundaries_list;
     OP_REQUIRES_OK(context, context->output_list(kBucketBoundariesName,
                                                  &bucket_boundaries_list));
@@ -476,10 +530,10 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
       for (int64 stream_idx = begin; stream_idx < end; stream_idx++) {
         const auto& boundaries = stream_resource->boundaries(stream_idx);
         Tensor* bucket_boundaries_t = nullptr;
-        OP_REQUIRES_OK(context,
-                       bucket_boundaries_list.allocate(
-                           stream_idx, {static_cast<int64>(boundaries.size())},
-                           &bucket_boundaries_t));
+        OP_REQUIRES_OK(
+            context, bucket_boundaries_list.allocate(
+                         stream_idx, {static_cast<int64_t>(boundaries.size())},
+                         &bucket_boundaries_t));
         auto* quantiles_flat = bucket_boundaries_t->flat<float>().data();
         memcpy(quantiles_flat, boundaries.data(),
                sizeof(float) * boundaries.size());
@@ -510,6 +564,9 @@ class BoostedTreesBucketizeOp : public OpKernel {
  public:
   explicit BoostedTreesBucketizeOp(OpKernelConstruction* const context)
       : OpKernel(context) {
+    VLOG(1) << "Boosted Trees kernels in TF are deprecated. Please use "
+            << "TensorFlow Decision Forests instead "
+            << "(https://github.com/tensorflow/decision-forests).\n";
     OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
   }
 
