@@ -3618,9 +3618,8 @@ static LogicalResult Verify(SetStaticDimensionBoundsOp op) {
                                "only tensors of rank 1,2 are supported";
   }
 
-  if (!static_shape_type.hasRank() || static_shape_type.getRank() != 1) {
-    return op.emitOpError(
-        "static shape must be a ranked tensor of rank 1 (vector)");
+  if (static_shape_type.hasRank() && static_shape_type.getRank() != 1) {
+    return op.emitOpError("static shape must be of rank 1 (vector)");
   }
   if (input_type_rank != -1 && static_shape_type.hasStaticShape()) {
     if (static_shape_type.getShape()[0] != input_type_rank) {
