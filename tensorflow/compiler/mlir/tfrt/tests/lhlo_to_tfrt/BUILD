@@ -8,9 +8,6 @@ glob_lit_tests(
     default_tags = ["nomsan"],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     features = if_oss(["--path=org_tensorflow/tensorflow/compiler/mlir/tfrt"]),
-    tags_override = {
-        "fusion.mlir": ["no_oss"],  # b/205277192
-    },
     test_file_exts = ["mlir"],
 )
 
