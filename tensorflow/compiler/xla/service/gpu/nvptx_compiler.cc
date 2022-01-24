@@ -351,7 +351,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
     // out we have no way of telling how far through the process we got).
-    RecordLlvmToPtxDuration(end_usecs - start_usecs);
+    RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
   }
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
@@ -399,10 +399,17 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");
         }
+        uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+
         StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
             stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
+          uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+          // This won't record values for calls that error out (because if they
+          // error out we have no way of telling how far through the process we
+          // got).
+          RecordPtxToCubinDuration(end_usecs - start_usecs);
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()
                   << " CUBIN size: " << cache_value->cubin_data.size();
