@@ -263,7 +263,7 @@ class MklDnnShape {
 #define INVALID_DIM_SIZE -1
 
  public:
-  MklDnnShape() {
+  MklDnnShape() : data_{} {
     for (size_t i = 0; i < sizeof(data_.sizes_) / sizeof(data_.sizes_[0]);
          ++i) {
       data_.sizes_[i] = -1;
