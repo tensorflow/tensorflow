@@ -60,28 +60,9 @@ _HOOK_KEY = "TPUEmbedding_saveable"
 _NAME_KEY = "_tpu_embedding_layer"
 
 
-# TODO(bfontain): Cleanup and remove this once there is an implementation of
-# sharded variables that can be used in the PSStrategy with optimizers.
-# We implement just enough of the of a tf.Variable so that this could be passed
-# to an optimizer.
 class TPUShardedVariable(sharded_variable.ShardedVariableMixin):
   """A ShardedVariable class for TPU."""
-
-  @property
-  def _in_graph_mode(self):
-    return self.variables[0]._in_graph_mode  # pylint: disable=protected-access
-
-  @property
-  def _unique_id(self):
-    return self.variables[0]._unique_id  # pylint: disable=protected-access
-
-  @property
-  def _distribute_strategy(self):
-    return self.variables[0]._distribute_strategy  # pylint: disable=protected-access
-
-  @property
-  def _shared_name(self):
-    return self._name
+  pass
 
 
 def _add_key_attr(op, name):
