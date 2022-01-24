@@ -313,7 +313,6 @@ java_library(
     name = "tensorflowlite_javalib_stable",
     srcs = [":java_stable_runtime_srcs"],
     javacopts = JAVACOPTS,
-    visibility = ["//visibility:private"],
     exports = [
         ":tensorflowlite_api_javalib",
     ],

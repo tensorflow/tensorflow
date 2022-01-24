@@ -71,7 +71,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testInterpreter() throws Exception {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       assertThat(interpreter).isNotNull();
       assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
@@ -84,7 +84,7 @@ public final class InterpreterApiTest {
   public void testInterpreterWithOptions() throws Exception {
     InterpreterApi.Options options = new InterpreterApi.Options(TEST_OPTIONS);
     try (InterpreterApi interpreter =
-        new InterpreterFactory().create(MODEL_BUFFER, options.setNumThreads(2).setUseNNAPI(true))) {
+        InterpreterApi.create(MODEL_BUFFER, options.setNumThreads(2).setUseNNAPI(true))) {
       assertThat(interpreter).isNotNull();
       assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
@@ -95,7 +95,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testInterpreterWithNullOptions() throws Exception {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, null)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, null)) {
       assertThat(interpreter).isNotNull();
       assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
@@ -114,7 +114,7 @@ public final class InterpreterApiTest {
   public void testRuntimeFromApplicationOnly() throws Exception {
     InterpreterApi.Options options =
         new InterpreterApi.Options().setRuntime(TfLiteRuntime.FROM_APPLICATION_ONLY);
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, options)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, options)) {
       assertThat(interpreter).isNotNull();
       assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
@@ -133,7 +133,7 @@ public final class InterpreterApiTest {
   public void testRuntimeFromSystemOnly() throws Exception {
     InterpreterApi.Options options =
         new InterpreterApi.Options().setRuntime(TfLiteRuntime.FROM_SYSTEM_ONLY);
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, options)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, options)) {
       assertThat(interpreter).isNotNull();
       assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
@@ -155,8 +155,7 @@ public final class InterpreterApiTest {
       System.err.println("Not testing with file model, since file paths aren't supported.");
       return;
     }
-    try (InterpreterApi interpreter =
-        new InterpreterFactory().create(new File(MODEL_PATH), TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(new File(MODEL_PATH), TEST_OPTIONS)) {
       float[] oneD = {1.23f, 6.54f, 7.81f};
       float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
       float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -174,7 +173,7 @@ public final class InterpreterApiTest {
     ByteBuffer byteBuffer = ByteBuffer.allocateDirect(MODEL_BUFFER.capacity());
     byteBuffer.order(ByteOrder.nativeOrder());
     byteBuffer.put(MODEL_BUFFER.duplicate());  // Use duplicate to avoid updating MODEL_BUFFER.
-    try (InterpreterApi interpreter = new InterpreterFactory().create(byteBuffer, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(byteBuffer, TEST_OPTIONS)) {
       float[] oneD = {1.23f, 6.54f, 7.81f};
       float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
       float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -193,7 +192,7 @@ public final class InterpreterApiTest {
     byteBuffer.order(ByteOrder.nativeOrder());
     byteBuffer.put(MODEL_BUFFER.duplicate());  // Use duplicate to avoid updating MODEL_BUFFER.
     try {
-      new InterpreterFactory().create(byteBuffer, TEST_OPTIONS);
+      InterpreterApi.create(byteBuffer, TEST_OPTIONS);
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e)
@@ -206,7 +205,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testRun() {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       Float[] oneD = {1.23f, 6.54f, 7.81f};
       Float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
       Float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -223,7 +222,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testRunWithBoxedInputs() {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       float[] oneD = {1.23f, 6.54f, 7.81f};
       float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
       float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -239,7 +238,7 @@ public final class InterpreterApiTest {
   @Test
   public void testRunForMultipleInputsOutputs() {
     try (InterpreterApi interpreter =
-        new InterpreterFactory().create(MULTIPLE_INPUTS_MODEL_BUFFER, TEST_OPTIONS)) {
+        InterpreterApi.create(MULTIPLE_INPUTS_MODEL_BUFFER, TEST_OPTIONS)) {
       assertThat(interpreter.getInputTensorCount()).isEqualTo(4);
       assertThat(interpreter.getInputTensor(0).index()).isGreaterThan(-1);
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
@@ -275,7 +274,7 @@ public final class InterpreterApiTest {
     float[][][][] fourD = {threeD, threeD};
     ByteBuffer parsedOutput =
         ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       interpreter.run(fourD, parsedOutput);
     }
     float[] outputOneD = {
@@ -288,7 +287,7 @@ public final class InterpreterApiTest {
   @Test
   public void testRunWithScalarInput() {
     FloatBuffer parsedOutput = FloatBuffer.allocate(1);
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       interpreter.run(2.37f, parsedOutput);
     }
     assertThat(parsedOutput.get(0)).isWithin(0.1f).of(7.11f);
@@ -296,7 +295,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testResizeInput() {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       int[] inputDims = {1};
       interpreter.resizeInput(0, inputDims);
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
@@ -309,7 +308,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testAllocateTensors() {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       // Redundant allocateTensors() should have no effect.
       interpreter.allocateTensors();
 
@@ -336,7 +335,7 @@ public final class InterpreterApiTest {
   @Test
   public void testUnknownDims() {
     try (InterpreterApi interpreter =
-        new InterpreterFactory().create(UNKNOWN_DIMS_MODEL_PATH_BUFFER, TEST_OPTIONS)) {
+        InterpreterApi.create(UNKNOWN_DIMS_MODEL_PATH_BUFFER, TEST_OPTIONS)) {
       int[] inputDims = {1, 1, 3, 3};
       int[] inputDimsSignature = {1, -1, 3, 3};
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
@@ -373,7 +372,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testRunWithWrongInputType() {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       int[] oneD = {4, 3, 9};
       int[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
       int[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -397,7 +396,7 @@ public final class InterpreterApiTest {
   public void testRunWithUnsupportedInputType() {
     DoubleBuffer doubleBuffer = DoubleBuffer.allocate(10);
     float[][][][] parsedOutputs = new float[2][8][8][3];
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       interpreter.run(doubleBuffer, parsedOutputs);
       fail();
     } catch (IllegalArgumentException e) {
@@ -407,7 +406,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testRunWithWrongOutputType() {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       float[] oneD = {1.23f, 6.54f, 7.81f};
       float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
       float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -429,7 +428,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testGetInputIndex() {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       try {
         interpreter.getInputIndex("WrongInputName");
         fail();
@@ -447,7 +446,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testGetOutputIndex() {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       try {
         interpreter.getOutputIndex("WrongOutputName");
         fail();
@@ -466,7 +465,7 @@ public final class InterpreterApiTest {
   @Test
   public void testTurnOnNNAPI() throws Exception {
     InterpreterApi.Options options = new InterpreterApi.Options(TEST_OPTIONS).setUseNNAPI(true);
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, options)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, options)) {
       float[] oneD = {1.23f, 6.54f, 7.81f};
       float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
       float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -481,7 +480,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testRedundantClose() throws Exception {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       interpreter.close();
       interpreter.close();
     } // Implicitly calls interpreter.close() for a third time.
@@ -489,7 +488,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testNullInputs() throws Exception {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       try {
         interpreter.run(null, new float[2][8][8][3]);
         fail();
@@ -501,7 +500,7 @@ public final class InterpreterApiTest {
 
   @Test
   public void testNullOutputs() throws Exception {
-    try (InterpreterApi interpreter = new InterpreterFactory().create(MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, TEST_OPTIONS)) {
       float[] input = {1.f};
       interpreter.run(input, null);
       float output = interpreter.getOutputTensor(0).asReadOnlyBuffer().getFloat(0);
@@ -513,7 +512,7 @@ public final class InterpreterApiTest {
   @Test
   public void testFlexModel() throws Exception {
     try {
-      new InterpreterFactory().create(FLEX_MODEL_BUFFER, TEST_OPTIONS);
+      InterpreterApi.create(FLEX_MODEL_BUFFER, TEST_OPTIONS);
       fail();
     } catch (IllegalStateException e) {
       // Expected failure.
@@ -530,8 +529,7 @@ public final class InterpreterApiTest {
     int[] multipliers = {1, 1, 2};
     boolean[][][] parsedOutputs = new boolean[2][2][4];
 
-    try (InterpreterApi interpreter =
-        new InterpreterFactory().create(BOOL_MODEL_BUFFER, TEST_OPTIONS)) {
+    try (InterpreterApi interpreter = InterpreterApi.create(BOOL_MODEL_BUFFER, TEST_OPTIONS)) {
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.BOOL);
       Object[] inputsArray = {inputs, multipliers};
       Map<Integer, Object> outputsMap = new HashMap<>();
@@ -562,7 +560,7 @@ public final class InterpreterApiTest {
   @Test
   public void testDynamicShapesWithDirectBufferInputs() {
     try (InterpreterApi interpreter =
-        new InterpreterFactory().create(DYNAMIC_SHAPES_MODEL_BUFFER, TEST_OPTIONS)) {
+        InterpreterApi.create(DYNAMIC_SHAPES_MODEL_BUFFER, TEST_OPTIONS)) {
       ByteBuffer input0 =
           ByteBuffer.allocateDirect(8 * 42 * 1024 * 4).order(ByteOrder.nativeOrder());
       ByteBuffer input1 =
@@ -589,7 +587,7 @@ public final class InterpreterApiTest {
   @Test
   public void testDynamicShapesWithEmptyOutputs() {
     try (InterpreterApi interpreter =
-        new InterpreterFactory().create(DYNAMIC_SHAPES_MODEL_BUFFER, TEST_OPTIONS)) {
+        InterpreterApi.create(DYNAMIC_SHAPES_MODEL_BUFFER, TEST_OPTIONS)) {
       ByteBuffer input0 =
           ByteBuffer.allocateDirect(8 * 42 * 1024 * 4).order(ByteOrder.nativeOrder());
       ByteBuffer input1 =

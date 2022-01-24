@@ -72,12 +72,12 @@ public final class TensorFlowLite {
 
   /** Returns the version of the underlying TensorFlowLite runtime. */
   public static String runtimeVersion() {
-    return InterpreterFactory.getFactory(new InterpreterApi.Options()).runtimeVersion();
+    return InterpreterApi.getFactory(new InterpreterApi.Options()).runtimeVersion();
   }
 
   /** Returns the version of the underlying TensorFlowLite model schema. */
   public static String schemaVersion() {
-    return InterpreterFactory.getFactory(new InterpreterApi.Options()).schemaVersion();
+    return InterpreterApi.getFactory(new InterpreterApi.Options()).schemaVersion();
   }
 
   /**
