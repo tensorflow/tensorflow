@@ -152,6 +152,16 @@ class StringNGramsOp : public tensorflow::OpKernel {
         // We don't have to worry about dynamic padding sizes here: if padding
         // was dynamic, every sequence would have had sufficient padding to
         // generate at least one ngram.
+
+        // If reached here, pad_width should be > 0, pad_width_ = -1,
+        // which indicates max(ngram_widths) - 1 cannot be used here since
+        // ngram_width is not known.
+        OP_REQUIRES(
+            context, pad_width_ >= 0,
+            errors::InvalidArgument("Pad width should be >= 0 when "
+                                    "preserve_short_sequences is True and "
+                                    "ngram_widths are not provided, got ",
+                                    pad_width_));
         int ngram_width = data_length + 2 * pad_width_;
         auto output_start = &ngrams_data[output_start_idx];
         int num_ngrams = 1;
