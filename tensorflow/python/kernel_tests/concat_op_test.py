@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -573,6 +574,17 @@ class ConcatOpTest(test.TestCase):
         t1 = [1]
         t2 = [2]
         gen_array_ops.concat_v2([t1, t2], 1).eval()
+
+  def testConcatInvalidAxisInTfFunction(self):
+
+    @def_function.function
+    def concat_wrapper():
+      y = gen_array_ops.concat_v2(
+          values=[[1, 2, 3], [4, 5, 6]], axis=0xb500005b)
+      return y
+
+    with self.assertRaises(ValueError):
+      concat_wrapper()
 
   def testConcatNegativeAxis(self):
     with test_util.use_gpu():
