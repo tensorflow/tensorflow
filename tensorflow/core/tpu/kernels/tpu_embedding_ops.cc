@@ -69,9 +69,9 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
 
     TpuEmbeddingEngine_RecvActivationsComputation_Params recv_activation_params;
     TpuSerializedProto xla_computation_serialized;
-    absl::Cleanup proto_cleanup = [&xla_computation_serialized] {
+    auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
       StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
-    };
+    });
     recv_activation_params.xla_computation = &xla_computation_serialized;
     StatusHelper status;
     recv_activation_params.status = status.c_status;
@@ -80,9 +80,8 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
     OP_REQUIRES_VALUE(auto shape, ctx, builder->GetShape(deduplication_data));
     XLA_Shape c_shape;
     ApiConverter::ToC(shape, &c_shape);
-    absl::Cleanup c_shape_cleanup = [&c_shape] {
-      ApiConverter::Destroy(&c_shape);
-    };
+    auto c_shape_cleanup =
+        absl::MakeCleanup([&c_shape] { ApiConverter::Destroy(&c_shape); });
     recv_activation_params.deduplication_data_shape = &c_shape;
     tpu::OpsApiFn()->TpuEmbeddingEngine_RecvActivationsComputationFn(
         &recv_activation_params);
