@@ -19,6 +19,8 @@ See the [Summaries and
 TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard) guide.
 """
 
+import warnings
+
 from google.protobuf import json_format as _json_format
 
 # exports Summary, SummaryDescription, Event, TaggedRunMetadata, SessionLog
@@ -112,14 +114,22 @@ def scalar(name, tensor, collections=None, family=None):
   """
   # Special case: invoke v2 op for TF2 users who have a v2 writer.
   if _ops.executing_eagerly_outside_functions():
-    # Apart from an existing writer, users need to call
-    # `tf.summary.experimental.set_step` in order to invoke v2 API here.
-    if _summary_ops_v2.get_step(
-    ) is not None and _summary_ops_v2.has_default_writer():
+    if not _summary_ops_v2.has_default_writer():
+      # A default summary writer needs to be present.
+      warnings.warn(
+          'Cannot activate TF2 compatibility support for TF1 summary ops: '
+          'default summary writer not found.')
+
+    elif _summary_ops_v2.get_step() is None:
+      # Users need to call `tf.summary.experimental.set_step` to invoke v2 API.
+      warnings.warn(
+          'Cannot activate TF2 compatibility support for TF1 summary ops: '
+          'global step not set. To set step for summary writer, '
+          'use `tf.summary.experimental.set_step`.')
+    else:
       # Defer the import to happen inside the symbol to prevent breakage due to
       # missing dependency.
-      # pylint: disable=g-import-not-at-top
-      from tensorboard.summary.v2 import scalar as scalar_v2
+      from tensorboard.summary.v2 import scalar as scalar_v2  # pylint: disable=g-import-not-at-top
       # TODO(b/210992280): Handle the family argument.
       scalar_v2(name, data=tensor)
       # Return an empty Tensor, which will be acceptable as an input to the
