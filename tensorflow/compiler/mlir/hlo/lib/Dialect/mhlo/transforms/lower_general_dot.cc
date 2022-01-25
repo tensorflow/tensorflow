@@ -41,17 +41,21 @@ Value TransposeReshape(Value arg, Location loc,
                        llvm::ArrayRef<int64_t> left_dims,
                        llvm::ArrayRef<int64_t> right_dims,
                        llvm::ArrayRef<int64_t> arg_shape,
-                       PatternRewriter *rewriter) {
+                       PatternRewriter &rewriter) {
   auto element_type = getElementTypeOrSelf(arg.getType());
 
   int64_t left_size = 1;
   for (auto dim : left_dims) {
-    left_size *= arg_shape[dim];
+    left_size = (ShapedType::isDynamic(arg_shape[dim]) || left_size < 0)
+                    ? ShapedType::kDynamicSize
+                    : left_size * arg_shape[dim];
   }
 
   int64_t right_size = 1;
   for (auto dim : right_dims) {
-    right_size *= arg_shape[dim];
+    right_size = (ShapedType::isDynamic(arg_shape[dim]) || right_size < 0)
+                     ? ShapedType::kDynamicSize
+                     : right_size * arg_shape[dim];
   }
 
   // Generate the transpose permutation attribute.
@@ -61,7 +65,7 @@ Value TransposeReshape(Value arg, Location loc,
 
   TensorType transpose_permutation_type = RankedTensorType::get(
       {static_cast<int64_t>(transpose_permutation.size())},
-      rewriter->getIntegerType(64));
+      rewriter.getIntegerType(64));
 
   auto transpose_permutation_attr =
       DenseIntElementsAttr::get(transpose_permutation_type,
@@ -74,18 +78,64 @@ Value TransposeReshape(Value arg, Location loc,
     transposed_shape.push_back(arg_shape[val]);
   }
   auto transpose_type = RankedTensorType::get(transposed_shape, element_type);
-  auto transpose_result = rewriter->create<TransposeOp>(
+  Value transpose_result = rewriter.create<TransposeOp>(
       loc, transpose_type, arg, transpose_permutation_attr);
+
+  // If there are only a single pair of contracting dimensions and the output
+  // rank is two we can skip a needless reshape.
+  if (transpose_type.getRank() == 2 && left_dims.size() == 1 &&
+      right_dims.size() == 1)
+    return transpose_result;
 
   // Return the final result.
   auto reshaped_type =
       RankedTensorType::get({left_size, right_size}, element_type);
-  return rewriter->create<ReshapeOp>(loc, reshaped_type, transpose_result);
+
+  if (reshaped_type.hasStaticShape()) {
+    return rewriter.create<mhlo::ReshapeOp>(loc, reshaped_type,
+                                            transpose_result);
+  }
+
+  SmallVector<Value> reshape_dims;
+  auto multiply_dynamic_dims = [&](llvm::ArrayRef<int64_t> dims) -> Value {
+    Value dynamic_size = rewriter.create<mhlo::GetDimensionSizeOp>(
+        loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
+        rewriter.getI64IntegerAttr(dims.front()));
+
+    for (auto idx : dims.drop_front()) {
+      Value dim = rewriter.create<mhlo::GetDimensionSizeOp>(
+          loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
+          rewriter.getI64IntegerAttr(idx));
+      dynamic_size = rewriter.create<mhlo::MulOp>(loc, dynamic_size, dim);
+    }
+    return dynamic_size;
+  };
+
+  if (left_size < 0) {
+    reshape_dims.push_back(multiply_dynamic_dims(left_dims));
+  } else {
+    reshape_dims.push_back(
+        rewriter.create<ConstOp>(loc, rewriter.getI32TensorAttr(left_size)));
+  }
+
+  if (right_size < 0) {
+    reshape_dims.push_back(multiply_dynamic_dims(right_dims));
+  } else {
+    reshape_dims.push_back(
+        rewriter.create<ConstOp>(loc, rewriter.getI32TensorAttr(right_size)));
+  }
+
+  Value reshape_dims_tensor = rewriter.create<mhlo::ConcatenateOp>(
+      loc, RankedTensorType::get({2}, rewriter.getI32Type()), reshape_dims,
+      rewriter.getI64IntegerAttr(0));
+
+  return rewriter.create<DynamicReshapeOp>(loc, reshaped_type, transpose_result,
+                                           reshape_dims_tensor);
 }
 
 Value ProcessDotArg(Value arg, Location loc,
                     ArrayRef<int64_t> contract_dims_attr, bool outer_dims_first,
-                    PatternRewriter *rewriter) {
+                    PatternRewriter &rewriter) {
   auto shape = arg.getType().cast<ShapedType>().getShape();
 
   llvm::SmallVector<bool, 5> is_outer_dim;
@@ -128,6 +178,7 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 
   LogicalResult matchAndRewrite(DotGeneralOp op,
                                 PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
     auto dot_element_type = getElementTypeOrSelf(op);
 
     auto dot_numbers = op.dot_dimension_numbers();
@@ -136,20 +187,34 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
       return failure();
     }
 
-    auto lhs = ProcessDotArg(op.lhs(), op.getLoc(),
-                             dot_numbers.getLhsContractingDimensions(),
-                             /*outer_dims_first=*/true, &rewriter);
+    auto lhs_contracting_dims = dot_numbers.getLhsContractingDimensions();
+    auto rhs_contracting_dims = dot_numbers.getRhsContractingDimensions();
 
-    auto rhs = ProcessDotArg(op.rhs(), op.getLoc(),
-                             dot_numbers.getRhsContractingDimensions(),
-                             /*outer_dims_first=*/false, &rewriter);
+    auto lhs = op.lhs();
+    auto rhs = op.rhs();
+
+    RankedTensorType lhs_ty = lhs.getType().dyn_cast<RankedTensorType>();
+    RankedTensorType rhs_ty = rhs.getType().dyn_cast<RankedTensorType>();
+    if (!lhs_ty || !rhs_ty) return failure();
+
+    if (!(lhs_contracting_dims.size() == 1 &&
+          lhs_contracting_dims.front() == 1)) {
+      lhs = ProcessDotArg(op.lhs(), op.getLoc(),
+                          dot_numbers.getLhsContractingDimensions(),
+                          /*outer_dims_first=*/true, rewriter);
+    }
+
+    if (!(rhs_contracting_dims.size() == 1 &&
+          rhs_contracting_dims.front() == 0)) {
+      rhs = ProcessDotArg(op.rhs(), op.getLoc(),
+                          dot_numbers.getRhsContractingDimensions(),
+                          /*outer_dims_first=*/false, rewriter);
+    }
 
     // Accept only static shaped types.
     auto lhs_shape_type = lhs.getType().dyn_cast_or_null<ShapedType>();
     auto rhs_shape_type = rhs.getType().dyn_cast_or_null<ShapedType>();
     if (!lhs_shape_type || !rhs_shape_type) return failure();
-    if (!lhs_shape_type.hasStaticShape() || !rhs_shape_type.hasStaticShape())
-      return failure();
 
     // Dot resulting shape.
     auto lhs_shape = lhs_shape_type.getShape();
@@ -159,10 +224,64 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 
     ArrayAttr precision_config;
     if (op.precision_config()) precision_config = *op.precision_config();
-    auto new_dot_op = rewriter.create<DotOp>(op.getLoc(), new_dot_type, lhs,
-                                             rhs, precision_config);
+    Value new_dot_op = rewriter
+                           .create<DotOp>(op.getLoc(), new_dot_type, lhs, rhs,
+                                          precision_config)
+                           .getResult();
+    if (lhs_contracting_dims.size() == (lhs_ty.getRank() - 1) &&
+        rhs_contracting_dims.size() == (rhs_ty.getRank() - 1)) {
+      rewriter.replaceOp(op, new_dot_op);
+      return success();
+    }
 
-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), new_dot_op);
+    ShapedType result_ty = op.getType().cast<ShapedType>();
+
+    // We can avoid all the computation below if we know the static shape.
+    if (result_ty.hasStaticShape()) {
+      rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(op, result_ty, new_dot_op);
+      return success();
+    }
+
+    llvm::SmallVector<int64_t> static_dims;
+    llvm::SmallVector<Value> dyn_dims;
+
+    auto getDynamicDims = [&](Value arg,
+                              llvm::ArrayRef<int64_t> contracting_dims) {
+      RankedTensorType ty = arg.getType().cast<RankedTensorType>();
+      int index = 0;
+      for (auto contracting_dim : contracting_dims) {
+        for (; index < contracting_dim; index++) {
+          static_dims.push_back(ty.getDimSize(index));
+          dyn_dims.push_back(rewriter.create<mhlo::GetDimensionSizeOp>(
+              loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
+              rewriter.getI64IntegerAttr(index)));
+        }
+        index++;
+      }
+
+      for (; index < ty.getRank(); index++) {
+        static_dims.push_back(ty.getDimSize(index));
+        dyn_dims.push_back(rewriter.create<mhlo::GetDimensionSizeOp>(
+            loc, RankedTensorType::get({1}, rewriter.getI32Type()), arg,
+            rewriter.getI64IntegerAttr(index)));
+      }
+    };
+
+    getDynamicDims(op.lhs(), lhs_contracting_dims);
+    getDynamicDims(op.rhs(), rhs_contracting_dims);
+
+    Value reshape_dims_tensor = rewriter.create<mhlo::ConcatenateOp>(
+        loc,
+        RankedTensorType::get({static_cast<int64_t>(dyn_dims.size())},
+                              rewriter.getI32Type()),
+        dyn_dims, rewriter.getI64IntegerAttr(0));
+
+    Value result = rewriter.create<DynamicReshapeOp>(
+        op.getLoc(),
+        RankedTensorType::get(static_dims, result_ty.getElementType()),
+        new_dot_op, reshape_dims_tensor);
+
+    rewriter.replaceOp(op, result);
     return success();
   }
 };
