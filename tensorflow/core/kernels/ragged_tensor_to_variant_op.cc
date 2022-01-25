@@ -231,20 +231,22 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
       // Just one flat_value tensor: return as-is.
       context->set_output(0, values[0]);
     } else {
+      Tensor* out = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, dense_values_shape, &out));
+      // ConcatCPU assumes non-empty output.
+      if (dense_values_shape.num_elements() == 0) return;
       // Multiple flat_values tensors: concatenate them together.
       using Piece = typename TTypes<VALUE_TYPE, 2>::Matrix;
       using ConstPiece = typename TTypes<VALUE_TYPE, 2>::ConstMatrix;
       std::vector<std::unique_ptr<ConstPiece>> pieces;
       pieces.reserve(values.size());
       for (const Tensor& t : values) {
-        // ConcatCPU expects non-empty tensors.
+        // ConcatCPU assumes non-empty inputs.
         if (t.NumElements() == 0) continue;
         pieces.emplace_back(
             new ConstPiece(t.shaped<VALUE_TYPE, 2>({1, t.NumElements()})));
       }
-      Tensor* out = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, dense_values_shape, &out));
       Piece out_flat =
           out->shaped<VALUE_TYPE, 2>({1, dense_values_shape.num_elements()});
       ConcatCPU<VALUE_TYPE>(context->device(), pieces, &out_flat);
