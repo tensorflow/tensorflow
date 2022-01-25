@@ -1286,9 +1286,6 @@ class HloInstruction {
   // This function returns the same hash value for equivalent HLO instructions,
   // with respect to HloInstruction::Identical() method.
   // TODO(majnemer): Make the comment here more crisp & accurate.
-  // TODO(jlebar): Remove this and just call HashOf(*this) everywhere?
-  uint64_t Hash() const { return HashOf(*this); }
-
   template <typename H>
   friend H AbslHashValue(H h, const HloInstruction& hlo) {
     h = H::combine(std::move(h), hlo.opcode(), hlo.shape());

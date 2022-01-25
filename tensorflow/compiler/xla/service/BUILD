@@ -3800,7 +3800,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

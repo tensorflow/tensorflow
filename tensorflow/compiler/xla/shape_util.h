@@ -783,11 +783,6 @@ class ShapeUtil {
               .ok());
   }
 
-  // Compute a hash for `shape`.
-  // TODO(majnemer): remove this once all callers are migrated to use ABSL
-  // machinery.
-  static size_t Hash(const Shape& shape) { return HashOf(shape); }
-
   // About 0-2-1 transpose:
   //
   // If a shape can be viewed as three logical components 0-1-2 in the order of

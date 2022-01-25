@@ -90,7 +90,15 @@ class ComputationLayout {
 
   bool operator==(const ComputationLayout& other) const;
   bool operator!=(const ComputationLayout& other) const;
-  uint64_t Hash() const;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ComputationLayout& computation_layout) {
+    h = H::combine(std::move(h), computation_layout.result_layout_.shape());
+    for (const auto& parameter_layout : computation_layout.parameter_layouts_) {
+      h = H::combine(std::move(h), parameter_layout.shape());
+    }
+    return h;
+  }
 
  private:
   std::vector<ShapeLayout> parameter_layouts_;

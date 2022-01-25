@@ -127,7 +127,7 @@ StatusOr<std::string> GetComputationHloDotGraph(
 StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
-  return hlo_module->Hash();
+  return HashOf(*hlo_module);
 }
 // Safe version of ShapeUtil::MakeShapeWithLayout that fails gracefully on
 // invalid input.

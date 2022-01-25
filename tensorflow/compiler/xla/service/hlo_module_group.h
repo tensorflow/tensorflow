@@ -71,7 +71,13 @@ class HloModuleGroup {
     }
   }
 
-  uint64_t Hash() const;
+  template <typename H>
+  friend H AbslHashValue(H h, const HloModuleGroup& group) {
+    for (auto& module : group.modules_) {
+      h = H::combine(std::move(h), *module);
+    }
+    return H::combine(std::move(h), group.modules_.size());
+  }
 
   // Serialize the module group to/from a proto.
   HloModuleGroupProto ToProto() const;

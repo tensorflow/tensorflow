@@ -850,19 +850,6 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
   return it == computations_in_module.end() ? nullptr : *it;
 }
 
-uint64_t HloModule::Hash() const {
-  uint64_t result = entry_computation_layout().Hash();
-  // Use MakeComputationSorted() instead of MakeComputationPostOrder()
-  // because naming may affect the order of MakeComputationPostOrder() but not
-  // MakeComputationSorted().
-  for (auto* computation : MakeComputationSorted()) {
-    for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      result = tensorflow::Hash64Combine(result, instruction->Hash());
-    }
-  }
-  return result;
-}
-
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);
 
 }  // namespace xla

@@ -185,10 +185,6 @@ class LayoutUtil {
   // layout `layout` as the most major dimension.
   static Layout MoveDimToMajor(const Layout& layout, int64_t dim);
 
-  // Compute a hash for `layout`.
-  // TODO(majnemer): remove the need for this helper.
-  static size_t Hash(const Layout& layout) { return HashOf(layout); }
-
   // Returns the linearized index of the cell at the given indices. The unit
   // of the offset is in elements of the shape.
   //

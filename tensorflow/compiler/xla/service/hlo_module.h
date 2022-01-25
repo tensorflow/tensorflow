@@ -153,7 +153,18 @@ class HloModule {
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO modules,
   // with respect to HloInstruction::Identical() method.
-  uint64_t Hash() const;
+  template <typename H>
+  friend H AbslHashValue(H h, const HloModule& module) {
+    h = H::combine(std::move(h), module.entry_computation_layout());
+    // Use MakeComputationSorted() instead of MakeComputationPostOrder()
+    // because naming may affect the order of MakeComputationPostOrder() but not
+    // MakeComputationSorted().
+    auto computations = module.MakeComputationSorted();
+    for (auto* computation : computations) {
+      h = H::combine(std::move(h), *computation);
+    }
+    return H::combine(std::move(h), computations.size());
+  }
 
   // Gets the computations in this module.
   //

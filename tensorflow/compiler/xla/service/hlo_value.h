@@ -59,7 +59,7 @@ struct HloPosition {
 
   template <typename H>
   friend H AbslHashValue(H h, const HloPosition& pos) {
-    return H::combine(std::move(h), pos.instruction->Hash(), pos.index);
+    return H::combine(std::move(h), *pos.instruction, pos.index);
   }
 };
 
