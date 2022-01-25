@@ -126,7 +126,7 @@ tflite_flex_cc_library(
 # ops and kernels. The output library name is platform dependent:
 #   - Linux/Android: `libtensorflowlite_flex.so`
 #   - Mac: `libtensorflowlite_flex.dylib`
-#   - Windows: `libtensorflowlite_flex.dll`
+#   - Windows: `tensorflowlite_flex.dll`
 tflite_flex_shared_library(
     name = "tensorflowlite_flex",
 )
