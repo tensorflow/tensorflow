@@ -185,6 +185,44 @@ class SparseCount : public OpKernel {
                 errors::InvalidArgument(
                     "Input indices must be a 2-dimensional tensor. Got: ",
                     indices.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(values.shape()),
+                errors::InvalidArgument("Input values must be a vector. Got: ",
+                                        values.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(shape.shape()),
+                errors::InvalidArgument("Input shape must be a vector. Got: ",
+                                        shape.shape().DebugString()));
+    OP_REQUIRES(context,
+                values.shape().dim_size(0) == indices.shape().dim_size(0),
+                errors::InvalidArgument(
+                    "Number of values must match first dimension of indices.",
+                    "Got ", values.shape().dim_size(0),
+                    " values, indices shape: ", indices.shape().DebugString()));
+    OP_REQUIRES(
+        context, shape.shape().dim_size(0) == indices.shape().dim_size(1),
+        errors::InvalidArgument(
+            "Number of dimensions must match second dimension of indices.",
+            "Got ", shape.shape().dim_size(0),
+            " dimensions, indices shape: ", indices.shape().DebugString()));
+    OP_REQUIRES(context, shape.NumElements() > 0,
+                errors::InvalidArgument(
+                    "The shape argument requires at least one element."));
+    // Validate indices: each index must be valid for the corresponding
+    // dimension. This could be possibly done better.
+    const auto indices_values = indices.matrix<int64_t>();
+    const auto shape_vector = shape.vec<int64_t>();
+    int num_values = values.NumElements();  // same as first dim of indices
+    int rank = indices.shape().dim_size(1);
+    for (int i = 0; i < num_values; ++i) {
+      for (int j = 0; j < rank; ++j) {
+        OP_REQUIRES(
+            context,
+            indices_values(i, j) >= 0 && indices_values(i, j) < shape_vector(j),
+            errors::InvalidArgument(
+                "Invalid index value at ", i, ": dimension ", j, " has value ",
+                indices_values(i, j), " which is not in [0, ", shape_vector(j),
+                ") (as given by dense shape ", shape.DebugString()));
+      }
+    }
 
     if (use_weights) {
       OP_REQUIRES(
@@ -195,14 +233,9 @@ class SparseCount : public OpKernel {
               "; values shape: ", values.shape().DebugString()));
     }
 
-    OP_REQUIRES(context, shape.NumElements() != 0,
-                errors::InvalidArgument(
-                    "The shape argument requires at least one element."));
-
     bool is_1d = shape.NumElements() == 1;
     auto shape_vector = shape.flat<int64>();
     int num_batches = is_1d ? 1 : shape_vector(0);
-    int num_values = values.NumElements();
 
     for (int b = 0; b < shape_vector.size(); b++) {
       OP_REQUIRES(context, shape_vector(b) >= 0,
@@ -224,16 +257,6 @@ class SparseCount : public OpKernel {
     auto per_batch_counts = BatchedMap<W>(num_batches);
 
     T max_value = 0;
-
-    OP_REQUIRES(context, num_values <= indices.shape().dim_size(0),
-                errors::InvalidArgument(
-                    "The first dimension of indices must be equal to or "
-                    "greather than number of values. ( ",
-                    indices.shape().dim_size(0), " vs. ", num_values, " )"));
-    OP_REQUIRES(context, indices.shape().dim_size(1) > 0,
-                errors::InvalidArgument("The second dimension of indices must "
-                                        "be greater than 0. Received: ",
-                                        indices.shape().dim_size(1)));
 
     for (int idx = 0; idx < num_values; ++idx) {
       int batch = is_1d ? 0 : indices_values(idx, 0);
