@@ -33,37 +33,33 @@ TupleSimplifier::TupleSimplifier(bool exclude_entry_computation)
     : exclude_entry_computation_(exclude_entry_computation) {}
 
 StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
-  bool changed = false;
   HloInstruction* top_tuple = nullptr;
-  bool can_simplify = true;
   if (tuple->parent()->root_instruction() == tuple &&
       tuple->parent()->HasSideEffect()) {
-    return changed;
+    return false;
   }
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
     HloInstruction* operand = tuple->mutable_operand(operand_number);
     if (operand->opcode() != HloOpcode::kGetTupleElement ||
         operand->tuple_index() != operand_number) {
-      can_simplify = false;
-      break;
+      return false;
     }
     if (top_tuple == nullptr) {
       top_tuple = operand->mutable_operand(0);
       if (!ShapeUtil::Compatible(top_tuple->shape(), tuple->shape())) {
-        can_simplify = false;
-        break;
+        return false;
       }
     } else if (top_tuple != operand->operand(0)) {
-      can_simplify = false;
-      break;
+      return false;
     }
   }
-  if (can_simplify && top_tuple != nullptr) {
-    TF_ASSIGN_OR_RETURN(changed,
-                        tuple->parent()->ReplaceInstruction(
-                            tuple, top_tuple, /*preserve_sharding=*/true));
+  if (top_tuple == nullptr) {
+    return false;
   }
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      tuple->parent()->ReplaceInstruction(
+                          tuple, top_tuple, /*preserve_sharding=*/true));
   return changed;
 }
 
