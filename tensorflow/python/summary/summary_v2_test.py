@@ -31,7 +31,8 @@ class SummaryV2Test(test.TestCase):
   @test_util.run_v2_only
   def test_scalar_summary_v2__w_writer(self):
     """Tests scalar v2 invocation with a v2 writer."""
-    with test.mock.patch.object(summary_v2, 'scalar') as mock_scalar_v2:
+    with test.mock.patch.object(
+        summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
       with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default(
           step=1):
         i = constant_op.constant(2.5)
@@ -44,16 +45,22 @@ class SummaryV2Test(test.TestCase):
   @test_util.run_v2_only
   def test_scalar_summary_v2__wo_writer(self):
     """Tests scalar v2 invocation with no writer."""
-    with test.mock.patch.object(summary_v2, 'scalar') as mock_scalar_v2:
-      summary_lib.scalar('float', constant_op.constant(2.5))
+    with self.assertWarnsRegex(
+        UserWarning, 'default summary writer not found'):
+      with test.mock.patch.object(
+          summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
+        summary_lib.scalar('float', constant_op.constant(2.5))
     mock_scalar_v2.assert_not_called()
 
   @test_util.run_v2_only
   def test_scalar_summary_v2__global_step_not_set(self):
     """Tests scalar v2 invocation when global step is not set."""
-    with test.mock.patch.object(summary_v2, 'scalar') as mock_scalar_v2:
-      with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default():
-        summary_lib.scalar('float', constant_op.constant(2.5))
+    with self.assertWarnsRegex(UserWarning, 'global step not set'):
+      with test.mock.patch.object(
+          summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
+        with summary_ops_v2.create_summary_file_writer(
+            '/tmp/test').as_default():
+          summary_lib.scalar('float', constant_op.constant(2.5))
     mock_scalar_v2.assert_not_called()
 
 
