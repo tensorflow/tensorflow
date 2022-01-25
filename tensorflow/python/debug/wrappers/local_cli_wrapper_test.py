@@ -112,7 +112,7 @@ class LocalCLIDebuggerWrapperSessionForTest(
             config_file_path=os.path.join(tempfile.mkdtemp(), ".tfdbg_config")))
     self._register_this_run_info(readline_cli)
 
-    while True:
+    while self._command_pointer < len(self._command_sequence):
       command = self._command_sequence[self._command_pointer]
       self._command_pointer += 1
 
@@ -132,7 +132,7 @@ class LocalCLIDebuggerWrapperSessionForTest(
 class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self._tmp_dir = tempfile.mktemp()
+    self._tmp_dir = tempfile.mkdtemp()
 
     self.v = variables.VariableV1(10.0, name="v")
     self.w = variables.VariableV1(21.0, name="w")
@@ -174,15 +174,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     local_cli_wrapper.LocalCLIDebugWrapperSession(
         session.Session(), log_usage=False)
 
-  def testConstructWrapperWithExistingEmptyDumpRoot(self):
-    os.mkdir(self._tmp_dir)
-    self.assertTrue(os.path.isdir(self._tmp_dir))
-
-    local_cli_wrapper.LocalCLIDebugWrapperSession(
-        session.Session(), dump_root=self._tmp_dir, log_usage=False)
-
   def testConstructWrapperWithExistingNonEmptyDumpRoot(self):
-    os.mkdir(self._tmp_dir)
     dir_path = os.path.join(self._tmp_dir, "foo")
     os.mkdir(dir_path)
     self.assertTrue(os.path.isdir(dir_path))
@@ -193,7 +185,6 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
           session.Session(), dump_root=self._tmp_dir, log_usage=False)
 
   def testConstructWrapperWithExistingFileDumpRoot(self):
-    os.mkdir(self._tmp_dir)
     file_path = os.path.join(self._tmp_dir, "foo")
     open(file_path, "a").close()  # Create the file
     self.assertTrue(os.path.isfile(file_path))
@@ -528,16 +519,6 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(wrapped_sess.observers["tf_errors"]))
     tf_error = wrapped_sess.observers["tf_errors"][0]
     self.assertEqual("y", tf_error.op.name)
-
-  def testRuntimeErrorBeforeGraphExecutionIsRaised(self):
-    # Use an impossible device name to cause an error before graph execution.
-    with ops.device("/device:GPU:1337"):
-      w = variables.VariableV1([1.0] * 10, name="w")
-
-    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
-        [["run"]], self.sess, dump_root=self._tmp_dir)
-    with self.assertRaisesRegex(errors.OpError, r".*[Dd]evice.*1337.*"):
-      wrapped_sess.run(w)
 
   def testRunTillFilterPassesShouldLaunchCLIAtCorrectRun(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
