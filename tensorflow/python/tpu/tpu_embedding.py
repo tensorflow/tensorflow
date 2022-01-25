@@ -1383,9 +1383,8 @@ class TPUEmbedding(object):
     _validate_feature_to_config_dict(table_to_config_dict,
                                      feature_to_config_dict)
     self._feature_to_config_dict = _create_ordered_dict(feature_to_config_dict)
-    self._table_to_features_dict, self._table_to_num_features_dict = (
-        _create_table_to_features_and_num_features_dicts(
-            self._feature_to_config_dict))
+    self._table_to_features_dict = (
+        _create_table_to_features_dict(self._feature_to_config_dict))
     self._combiners = _create_combiners(self._table_to_config_dict,
                                         self._table_to_features_dict)
 
@@ -1548,8 +1547,6 @@ class TPUEmbedding(object):
                                              len(self.hosts))
       table_descriptor.dimension = table_config.dimension
 
-      table_descriptor.num_features = self._table_to_num_features_dict[table]
-
       optimization_parameters = (
           self._optimizer_handler_dict[table].get_optimization_parameters())
 
@@ -1613,7 +1610,6 @@ class TPUEmbedding(object):
           feature_descriptor.input_shape.extend([self._batch_size_per_core])
 
     config_proto.mode = self._mode
-    config_proto.batch_size_per_tensor_core = self._batch_size_per_core
     config_proto.num_hosts = self._num_hosts
     config_proto.num_tensor_cores = self._num_cores
     config_proto.sharding_strategy = (
@@ -2963,30 +2959,19 @@ def _create_combiners(table_to_config_dict, table_to_features_dict):
   return combiners
 
 
-def _create_table_to_features_and_num_features_dicts(feature_to_config_dict):
+def _create_table_to_features_dict(feature_to_config_dict):
   """Create mapping from table to a list of its features."""
   table_to_features_dict_tmp = {}
-  table_to_num_features_dict_tmp = {}
   for feature, feature_config in six.iteritems(feature_to_config_dict):
     if feature_config.table_id in table_to_features_dict_tmp:
       table_to_features_dict_tmp[feature_config.table_id].append(feature)
     else:
       table_to_features_dict_tmp[feature_config.table_id] = [feature]
-      table_to_num_features_dict_tmp[feature_config.table_id] = 0
-    if feature_config.max_sequence_length == 0:
-      table_to_num_features_dict_tmp[feature_config.table_id] = (
-          table_to_num_features_dict_tmp[feature_config.table_id] + 1)
-    else:
-      table_to_num_features_dict_tmp[feature_config.table_id] = (
-          table_to_num_features_dict_tmp[feature_config.table_id] +
-          feature_config.max_sequence_length)
 
   table_to_features_dict = collections.OrderedDict()
-  table_to_num_features_dict = collections.OrderedDict()
   for table in sorted(table_to_features_dict_tmp):
     table_to_features_dict[table] = sorted(table_to_features_dict_tmp[table])
-    table_to_num_features_dict[table] = table_to_num_features_dict_tmp[table]
-  return table_to_features_dict, table_to_num_features_dict
+  return table_to_features_dict
 
 
 def _create_device_fn(hosts):

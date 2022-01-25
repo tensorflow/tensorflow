@@ -49,23 +49,25 @@ const char kTFLiteDataLayout[] = "NHWC";
 }  // namespace
 
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
-                           mlir::OpPassManager* pass_manager) {
-  pass_manager->addNestedPass<mlir::FuncOp>(
+                           mlir::OpPassManager& pass_manager) {
+  pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreatePrepareQuantizePass(quant_specs));
   if (quant_specs.default_ranges.first.hasValue() ||
       quant_specs.default_ranges.second.hasValue()) {
-    pass_manager->addNestedPass<mlir::FuncOp>(
+    pass_manager.addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateDefaultQuantParamsPass(
             quant_specs.default_ranges.first.getValueOr(0.0),
             quant_specs.default_ranges.second.getValueOr(0.0),
             quant_specs.IsSignedInferenceType()));
   }
-  pass_manager->addNestedPass<mlir::FuncOp>(
+  pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreateQuantizePass(quant_specs));
   bool emit_quant_adaptor_ops =
       quant_specs.inference_type != quant_specs.inference_input_type;
-  pass_manager->addNestedPass<mlir::FuncOp>(
+  pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+  pass_manager.addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateOptimizeOpOrderPass());
 }
 
 void AddDynamicRangeQuantizationPasses(
@@ -79,6 +81,8 @@ void AddDynamicRangeQuantizationPasses(
       quant_specs.inference_type != quant_specs.inference_input_type;
   pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+  pass_manager.addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateOptimizeOpOrderPass());
 }
 
 void AddConvertHloToTfPass(std::string entry_function_name,
@@ -170,6 +174,8 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
   // during which resources dont get frozen in the python layer.
   pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
+
+  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 }
 
 // This is the later part of the conversion in isolation. This enables a caller
@@ -187,8 +193,6 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
       toco_flags.tf_quantization_mode().empty()) {
     pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
   }
-
-  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
@@ -321,7 +325,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     // completed. Add either full integer quantization or dynamic range
     // quantization passes based on quant_specs.
     if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
-      AddQuantizationPasses(pass_config.quant_specs, pass_manager);
+      AddQuantizationPasses(pass_config.quant_specs, *pass_manager);
     } else if (pass_config.quant_specs
                    .RunAndRewriteDynamicRangeQuantizationPasses()) {
       AddDynamicRangeQuantizationPasses(pass_config.quant_specs, *pass_manager);

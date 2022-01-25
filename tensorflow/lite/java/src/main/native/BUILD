@@ -50,12 +50,20 @@ filegroup(
 filegroup(
     name = "native_stable_srcs",
     srcs = [
+        "interpreter_factory_impl_jni.cc",
         "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
         "nativesignaturerunner_jni.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
         "xnnpackdelegate_jni.cc",
+    ],
+)
+
+filegroup(
+    name = "native_api_srcs",
+    srcs = [
+        "tensorflow_lite_jni.cc",
     ],
 )
 

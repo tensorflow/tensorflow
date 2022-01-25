@@ -32,7 +32,7 @@ ENTRY %tfcompile.0 {
 
   %tuple.5 = (f32[]) tuple(%arg0.1), metadata={op_type="If" op_name="cond/Merge_if"}
 
-  // CHECK: [[R2:%.+]] = "mhlo.if"([[R1]]) ( {
+  // CHECK: [[R2:%.+]] = "mhlo.if"([[R1]]) ({
   // CHECK:   [[R3:%.+]] = "mhlo.log"([[A0]])
   // CHECK:   "mhlo.return"([[R3]])
   // CHECK: },  {
@@ -82,7 +82,7 @@ ENTRY %tfcompile.0 {
 // CHECK-SAME: (%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>)
 //CHECK-NEXT:    %[[CST:.*]] = mhlo.constant
 //CHECK-NEXT:    %[[CMP:.*]] = "mhlo.compare"(%[[A0]], %[[CST]]) {comparison_direction = "LT"}
-//CHECK-NEXT:    %[[IF:.*]]:3 = "mhlo.if"(%[[CMP]]) ( {
+//CHECK-NEXT:    %[[IF:.*]]:3 = "mhlo.if"(%[[CMP]]) ({
 //CHECK-NEXT:      %[[LOG0:.*]] = "mhlo.log"(%[[A0]]) : (tensor<f32>) -> tensor<f32>
 //CHECK-NEXT:      %[[LOG1:.*]] = "mhlo.log"(%[[A1]]) : (tensor<f32>) -> tensor<f32>
 //CHECK-NEXT:      "mhlo.return"(%[[LOG0]], %[[LOG1]], %[[A0]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> ()
@@ -129,7 +129,7 @@ ENTRY %tfcompile.0 {
 // CHECK-SAME: (%[[A0:.*]]: tensor<f32>)
 // CHECK-NEXT:    %[[CST:.*]] = mhlo.constant
 // CHECK-NEXT:    %[[CMP:.*]] = "mhlo.compare"(%[[A0]], %[[CST]]) {comparison_direction = "LT"}
-// CHECK-NEXT:    %[[IF:.*]] = "mhlo.if"(%[[CMP]]) ( {
+// CHECK-NEXT:    %[[IF:.*]] = "mhlo.if"(%[[CMP]]) ({
 // CHECK-NEXT:      %[[LOG0:.*]] = "mhlo.log"(%[[A0]]) : (tensor<f32>) -> tensor<f32>
 // CHECK-NEXT:      "mhlo.return"(%[[LOG0]]) : (tensor<f32>) -> ()
 // CHECK-NEXT:    },  {
@@ -179,10 +179,10 @@ ENTRY %tfcompile.0 {
 // CHECK-LABEL: func private @tfcompile.3
 // CHECK-SAME: (%[[A0:.+]]: tensor<i1>, %[[A1:.+]]: tensor<f32>, %[[A2:.+]]: tensor<f32>)
 // CHECK-NEXT:    %[[CST1:.*]] = mhlo.constant
-// CHECK-NEXT:    %[[OUTER_IF:.+]]:2 = "mhlo.if"(%[[A0]]) ( {
+// CHECK-NEXT:    %[[OUTER_IF:.+]]:2 = "mhlo.if"(%[[A0]]) ({
 // CHECK-NEXT:      %[[PRED1:.*]] = mhlo.constant
 // CHECK-NEXT:      %[[CST2:.*]] = mhlo.constant
-// CHECK-NEXT:      %[[INNER_IF:.+]] = "mhlo.if"(%[[PRED1]]) ( {
+// CHECK-NEXT:      %[[INNER_IF:.+]] = "mhlo.if"(%[[PRED1]]) ({
 // CHECK-NEXT:         "mhlo.return"(%[[CST2]]) : (tensor<f32>) -> ()
 // CHECK-NEXT:       },  {
 // CHECK-NEXT:         %[[CST3:.*]] = mhlo.constant

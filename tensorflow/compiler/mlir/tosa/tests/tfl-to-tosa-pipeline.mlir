@@ -675,6 +675,19 @@ func @test_strided_slice_simple(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_strided_slice_strideless
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [9, 1, 2], start = [4, 0, 1]}
+// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [9, 2]}
+func @test_strided_slice_strideless(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %cst = arith.constant dense<[4, 0, 1]> : tensor<3xi32>
+  %cst_0 = arith.constant dense<[13, 21, 3]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[1, 1, 1]> : tensor<3xi32>
+  %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 3 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 2 : i32}  : (tensor<13x21x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_strided_slice_shrink
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [1, 21, 1], start = [4, 0, 1]}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) {new_shape = [1, 1, 7, 3, 1, 1]}

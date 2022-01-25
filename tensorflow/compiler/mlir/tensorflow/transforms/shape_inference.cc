@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -1043,7 +1044,8 @@ bool ShapeInference::InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
   DCOMMENT_OP(op, "Inferring shape for with N = " << N << " and M = " << M);
 
   // Initialize with function input types.
-  SmallVector<Type> input_types(f.getArgumentTypes());
+  auto input_types = llvm::to_vector<1>(
+      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
   DatasetInput input_elements =
       GetDatasetInput(op->getOperand(0).getDefiningOp());
@@ -1147,7 +1149,8 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   }
 
   // Initialize with function input types.
-  SmallVector<Type> input_types(f.getArgumentTypes());
+  auto input_types = llvm::to_vector<1>(
+      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
   // Track if changed to skip enqueueing.
   bool changed = false;
@@ -1643,6 +1646,7 @@ bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
   if (op->hasTrait<OpTrait::SameOperandsAndResultShape>())
     return RefineShapeForPassThroughOps(op);
   if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);
+  if (isa<tensor::CastOp>(op)) return InferShapeForCast(op);
   return false;
 }
 
@@ -1729,6 +1733,13 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
                                             op->getResults());
   }
 
+  // The shape inference function for `ReduceDatasetOp` should always be
+  // executed regardless of whether the result type can be refined.
+  if (auto reduce_dataset_op = dyn_cast<ReduceDatasetOp>(op)) {
+    // TODO(jpienaar): The output type of these ops need to be refined.
+    return InferShapeForReduceDataset(reduce_dataset_op, max_iterations);
+  }
+
   // If no result for this op needs shape inference, we have a fast-path return.
   // But if the type is a resource/variant, we do not skip it because we might
   // not have the handle shapes.
@@ -1744,10 +1755,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // needed.
   if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);
 
-  // tf.Cast and tensor::Cast are only inferred if they have at least one user
-  // in the TF dialect or feeding into the function return. This is necessary to
-  // avoid inserting casts which cannot be refined.
-  if (isa<CastOp, tensor::CastOp>(op)) return InferShapeForCast(op);
+  // tf.Cast is only inferred if it has at least one user in the TF dialect or
+  // feeding into the function return. This is necessary to avoid inserting
+  // casts which cannot be refined.
+  if (isa<CastOp>(op)) return InferShapeForCast(op);
 
   // Handle IfOp here by inferring the shape from the else/then function
   // results. Since `output_shapes` is a derived attribute, avoid going down the
@@ -1778,11 +1789,6 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   if (auto map_dataset_op = dyn_cast<MapDatasetOp>(op)) {
     // TODO(jpienaar): The output type of these ops need to be refined.
     return InferShapeForMapDataset(map_dataset_op, max_iterations);
-  }
-
-  if (auto reduce_dataset_op = dyn_cast<ReduceDatasetOp>(op)) {
-    // TODO(jpienaar): The output type of these ops need to be refined.
-    return InferShapeForReduceDataset(reduce_dataset_op, max_iterations);
   }
 
   if (auto takewhile_dataset_op = dyn_cast<TakeWhileDatasetOp>(op)) {

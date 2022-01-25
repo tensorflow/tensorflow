@@ -72,9 +72,8 @@ struct SendRecv : public ::mlir::SideEffects::Resource::Base<SendRecv> {
   StringRef getName() final { return "<SendRecv>"; }
 };
 
-struct TPUCompileExecute
-    : public ::mlir::SideEffects::Resource::Base<TPUCompileExecute> {
-  StringRef getName() final { return "<TPUCompileExecute>"; }
+struct TPUExecute : public ::mlir::SideEffects::Resource::Base<TPUExecute> {
+  StringRef getName() final { return "<TPUExecute>"; }
 };
 
 struct MustExecute : public ::mlir::SideEffects::Resource::Base<MustExecute> {

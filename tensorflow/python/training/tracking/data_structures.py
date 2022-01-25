@@ -574,7 +574,17 @@ class ListWrapper(
           "restoration on object creation.\n\nIf you don't need this list "
           "checkpointed, wrap it in a NoDependency object; it will be "
           "subsequently ignored.")
-    return super(ListWrapper, self)._trackable_children(save_type, **kwargs)
+    children = super(ListWrapper, self)._trackable_children(save_type, **kwargs)
+
+    if save_type == base.SaveType.SAVEDMODEL:
+      # Add functions to be serialized.
+      children.update({
+          str(key): value
+          for key, value in enumerate(self)
+          if _is_function(value)
+      })
+
+    return children
 
   def _has_mutation_or_trackable(self):
     """Short-circuits a check for trackables if there's already a mutation."""
@@ -703,12 +713,6 @@ class ListWrapper(
 
   def __repr__(self):
     return "ListWrapper(%s)" % (repr(self._storage),)
-
-  def _list_functions_for_serialization(self, unused_functions):
-    return {
-        str(key): value for key, value in enumerate(self)
-        if _is_function(value)
-    }
 
 
 class Mapping(TrackableDataStructure, collections_abc.Mapping):
@@ -869,7 +873,15 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
           "dictionary checkpointed, wrap it in a "
           "non-trackable object; it will be subsequently ignored.")
     assert not self._dirty  # Any reason for dirtiness should have an exception.
-    return super(_DictWrapper, self)._trackable_children(save_type, **kwargs)
+    children = super(_DictWrapper,
+                     self)._trackable_children(save_type, **kwargs)
+
+    if save_type == base.SaveType.SAVEDMODEL:
+      # Add functions to be serialized.
+      children.update(
+          {key: value for key, value in self.items() if _is_function(value)})
+
+    return children
 
   @property
   def _dirty(self):
@@ -954,12 +966,6 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
   def update(self, *args, **kwargs):
     for key, value in six.iteritems(dict(*args, **kwargs)):
       self[key] = value
-
-  def _list_functions_for_serialization(self, unused_serialization_cache):
-    return {
-        key: value for key, value in self.items()
-        if _is_function(value)
-    }
 
 
 class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):

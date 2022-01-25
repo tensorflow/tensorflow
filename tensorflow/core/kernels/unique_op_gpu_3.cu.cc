@@ -40,4 +40,4 @@ REGISTER_UNIQUE_GPU(bool);
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

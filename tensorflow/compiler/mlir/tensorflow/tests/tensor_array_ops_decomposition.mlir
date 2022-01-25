@@ -355,7 +355,7 @@ func @main() -> () {
   // CHECK-NOT: tf.TensorArrayV3
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   // CHECK: %[[FLOW_INIT:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
-  // CHECK: %[[WHILE:.*]]:2 = "tf.WhileRegion"(%[[FLOW_INIT]], %[[SIZE]]) ( {
+  // CHECK: %[[WHILE:.*]]:2 = "tf.WhileRegion"(%[[FLOW_INIT]], %[[SIZE]]) ({
   %while:2 = "tf.WhileRegion"(%ta#1, %size) ({
   // CHECK: ^bb0(%[[BARG0:.*]]: tensor<f32>, %[[BARG1:.*]]: tensor<i32>):
   ^bb0(%barg0: tensor<f32>, %barg1: tensor<i32>):
@@ -402,7 +402,7 @@ func @main(%arg0: tensor<i1>) -> () {
   // CHECK: "tf.AssignVariableOp"(%[[TA_BUFFER]]
   // CHECK-NOT: tf.TensorArrayV3
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
-  // CHECK: "tf.IfRegion"(%[[PRED]]) ( {
+  // CHECK: "tf.IfRegion"(%[[PRED]]) ({
   %case_op = "tf.IfRegion"(%arg0) ({
       // CHECK: %[[TA_VAL:.*]] = "tf.ReadVariableOp"(%[[TA_BUFFER]])
       // CHECK: "tf.Slice"(%[[TA_VAL]]
@@ -604,7 +604,7 @@ func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resour
   %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
   // CHECK: %[[BR_INDEX:.*]] = "tf.SomeOp"() : () -> tensor<i32>
   %branch_index = "tf.SomeOp"() : () -> tensor<i32>
-  // CHECK: "tf.CaseRegion"(%[[BR_INDEX]]) ( {
+  // CHECK: "tf.CaseRegion"(%[[BR_INDEX]]) ({
   "tf.CaseRegion"(%branch_index) ({
     // CHECK: %[[READ_GVAR:.*]] = "tf.ReadVariableOp"(%[[GVAR]])
     // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ_GVAR]],

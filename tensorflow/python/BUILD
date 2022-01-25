@@ -25,6 +25,7 @@ load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
+load("//tensorflow:tensorflow.bzl", "if_windows")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
@@ -986,8 +987,11 @@ py_library(
     visibility = visibility,
     deps = [
         ":array_ops_gen",
+        ":control_flow_util",
         ":math_ops_gen",
+        "//tensorflow/python/compat",
         "//tensorflow/python/framework:common_shapes",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -1265,6 +1269,7 @@ py_library(
     name = "control_flow_util_v2",
     srcs = ["ops/control_flow_util_v2.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//waymo/ml:__subpackages__"],
     deps = [
         ":control_flow_util",
         ":control_flow_v2_func_graphs",
@@ -3306,6 +3311,8 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/util:determinism",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/platform:enable_tf2_utils",
+    ]) + if_windows([
+        "//tensorflow/c:kernels_experimental",
     ]),
 )
 

@@ -86,6 +86,13 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
     TF_RETURN_IF_ERROR(
         mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
+  } else if (options.tpu_target == TfrtTpuInfraTarget::kTfFallback) {
+    auto tpu_partitioned_call_fallback_compat_result =
+        tensorflow::RunTPUPartitionedCallFallbackCompatConversion(module);
+    if (mlir::failed(tpu_partitioned_call_fallback_compat_result)) {
+      return diag_handler.Combine(tensorflow::errors::Internal(
+          "Failed to process TPUPartitionedCallOp for fallback execution"));
+    }
   }
 
   if (VLOG_IS_ON(1)) {

@@ -255,9 +255,12 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
     if (!the_only_copy) return failure();
 
     auto new_reduce = rewriter.cloneWithoutRegions(reduce);
-    Block* new_block =
-        rewriter.createBlock(&new_reduce.body(), new_reduce.body().end(),
-                             reduce.body().front().getArgumentTypes());
+    auto& old_reduce_body = reduce.body().front();
+    Block* new_block = rewriter.createBlock(
+        &new_reduce.body(), new_reduce.body().end(),
+        old_reduce_body.getArgumentTypes(),
+        SmallVector<Location>(old_reduce_body.getNumArguments(),
+                              reduce.getLoc()));
 
     mlir::BlockAndValueMapping bvm;
     for (auto item : llvm::zip(reduce.body().front().getArguments(),

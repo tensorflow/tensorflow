@@ -553,7 +553,8 @@ Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
 
   auto old_args_size = block.getNumArguments();
 
-  block.addArguments(types);
+  block.addArguments(
+      types, SmallVector<Location>(types.size(), block.getParent()->getLoc()));
 
   auto old_args = ArrayRef<Value>(block.getArguments().begin(),
                                   block.getArguments().begin() + old_args_size);
@@ -822,7 +823,7 @@ LogicalResult RewriteFunction(
   // If a function is public, it's signature should not be modified, and instead
   // a token will be created. Otherwise a token block argument is inserted.
   Value init_token =
-      rewrite_block ? func_body.addArgument(token_type)
+      rewrite_block ? func_body.addArgument(token_type, func.getLoc())
                     : builder.create<CreateTokenOp>(func.getLoc(), token_type)
                           .getResult();
 

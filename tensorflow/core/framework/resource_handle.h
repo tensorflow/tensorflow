@@ -104,7 +104,7 @@ class ResourceHandle {
 
   std::string DebugString() const;
 
-  std::string SummarizeValue() const { return "Resource Tensor"; }
+  std::string SummarizeValue() const;
 
   // GUID for anonymous resources. Resources with this shared_name will have
   // their shared_name replaced with a GUID at creation time

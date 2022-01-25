@@ -41,8 +41,8 @@ class TFOp {
     return static_cast<TFGraphDialect *>(op_.getDialect());
   }
 
-  // The control operands are always after the regular inputs.
-  ValueRange getControlOperands() {
+  // Returns the regular operands, the control operands will be excluded.
+  OperandRange getNonControlOperands() {
     OperandRange operands = op_.getOperands();
     if (operands.empty()) return operands;
     OperandRange::iterator first_control_op = std::prev(operands.end());
@@ -51,7 +51,13 @@ class TFOp {
       --first_control_op;
     if (!first_control_op.getBase()->get().getType().isa<ControlType>())
       ++first_control_op;
-    return llvm::make_range(first_control_op, operands.end());
+    return llvm::make_range(operands.begin(), first_control_op);
+  }
+
+  // The control operands are always after the regular inputs.
+  OperandRange getControlOperands() {
+    return llvm::make_range(getNonControlOperands().end(),
+                            op_.getOperands().end());
   }
 
   // Returns the control token produced by this operation.

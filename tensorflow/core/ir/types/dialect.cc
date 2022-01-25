@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionSupport.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -64,28 +64,6 @@ void TFTypeDialect::initialize() {
 #define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
 #include "tensorflow/core/ir/types/types.def"
            >();
-}
-
-// Entry point for Attribute parsing, TableGen generated code will handle the
-// dispatch to the individual classes.
-Attribute TFTypeDialect::parseAttribute(DialectAsmParser &parser,
-                                        Type type) const {
-  StringRef attr_tag;
-  if (failed(parser.parseKeyword(&attr_tag))) return Attribute();
-  {
-    Attribute attr;
-    auto parse_result = generatedAttributeParser(parser, attr_tag, type, attr);
-    if (parse_result.hasValue()) return attr;
-  }
-  parser.emitError(parser.getNameLoc(), "unknown tf_type attribute");
-  return Attribute();
-}
-
-// Entry point for Attribute printing, TableGen generated code will handle the
-// dispatch to the individual classes.
-void TFTypeDialect::printAttribute(Attribute attr,
-                                   DialectAsmPrinter &os) const {
-  (void)generatedAttributePrinter(attr, os);
 }
 
 namespace {

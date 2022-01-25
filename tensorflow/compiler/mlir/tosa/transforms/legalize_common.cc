@@ -2282,8 +2282,12 @@ llvm::Optional<Value> convertStridedSliceOp(
       rewriter.getI64ArrayAttr(a1_begin), rewriter.getI64ArrayAttr(a1_size));
 
   if (all_strides_one) {
-    return reverseNegativeStride(rewriter, op, a1_slice_op.getResult(),
-                                 strides);
+    auto reversed =
+        reverseNegativeStride(rewriter, op, a1_slice_op.getResult(), strides);
+    return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(),
+                                             result_type, reversed,
+                                             rewriter.getI64ArrayAttr(a4_shape))
+        .getResult();
   }
 
   // Step 2: reshape the sliced array

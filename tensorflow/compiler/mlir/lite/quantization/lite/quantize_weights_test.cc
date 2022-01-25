@@ -499,9 +499,7 @@ TEST_F(QuantizeWeightsTest, SharedWeights_Dequantize) {
   EXPECT_EQ(num_conv_ops, 2);
 }
 
-// TODO(b/214097676): Support input argument quantization for MLIR dynamic range
-// quantization
-TEST_F(QuantizeWeightsTest, DISABLED_VerifyGatherQuantization) {
+TEST_F(QuantizeWeightsTest, VerifyGatherQuantization) {
   LoadGatherTestModel();
   flatbuffers::FlatBufferBuilder builder;
   auto status = QuantizeWeights(&builder, model_, 0);

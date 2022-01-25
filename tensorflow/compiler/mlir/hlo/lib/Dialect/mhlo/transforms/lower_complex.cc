@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -43,18 +44,18 @@ namespace {
 class LowerComplexPass : public LowerComplexPassBase<LowerComplexPass> {
  public:
   /// Performs the lowering to MHLO dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 #include "generated_lower_complex.inc"
 
 // Lowers the complex operations that can be represented using other operations.
-void LowerComplexPass::runOnFunction() {
+void LowerComplexPass::runOnOperation() {
   // Add lowering patterns to the list.
   OwningRewritePatternList patterns(&getContext());
   mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
-  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }
 
 }  // end anonymous namespace
@@ -66,6 +67,7 @@ void mlir::mhlo::PopulateComplexLoweringPatterns(
   populateWithGenerated(*patterns);
 }
 
-std::unique_ptr<mlir::FunctionPass> mlir::mhlo::createLowerComplexPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+mlir::mhlo::createLowerComplexPass() {
   return std::make_unique<mlir::mhlo::LowerComplexPass>();
 }

@@ -1,8 +1,8 @@
 path: "tensorflow.layers.MaxPooling3D"
 tf_class {
   is_instance: "<class \'keras.legacy_tf_layers.pooling.MaxPooling3D\'>"
-  is_instance: "<class \'keras.layers.pooling.MaxPooling3D\'>"
-  is_instance: "<class \'keras.layers.pooling.Pooling3D\'>"
+  is_instance: "<class \'keras.layers.pooling.max_pooling3d.MaxPooling3D\'>"
+  is_instance: "<class \'keras.layers.pooling.base_pooling3d.Pooling3D\'>"
   is_instance: "<class \'keras.legacy_tf_layers.base.Layer\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"

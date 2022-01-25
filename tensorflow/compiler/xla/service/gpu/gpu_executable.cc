@@ -54,7 +54,6 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
@@ -610,7 +609,7 @@ static Status ExecuteBef(const std::string& module_name,
   auto gpu_context = [&] {
     tensorflow::mutex_lock lock(bef_executable->mutex);
     return bef_executable->gpu_ctx_cache.GetOrCreate(
-        stream->parent()->gpu_context()->context());
+        se::gpu::GpuDriver::GetContextHandle(stream->parent()->gpu_context()));
   }();
   auto gpu_stream =
       tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream->gpu_stream());
@@ -626,11 +625,11 @@ static Status ExecuteBef(const std::string& module_name,
 
   // Create owning handles for arguments and add pointer to them to 'args'.
   const tfrt::Function* function = bef_executable->function;
-  tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
+  llvm::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
-  args.push_back(gpu_stream.get());
+  args.push_back(gpu_stream.get().value());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
   for (size_t i = 0; i < num_allocations; i++) {
     auto input = buffer_allocations.GetDeviceAddress(i);

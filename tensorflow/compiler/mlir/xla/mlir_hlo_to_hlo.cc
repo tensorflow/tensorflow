@@ -1254,12 +1254,56 @@ LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  auto result = op.getResult();
+  auto results = op.getResults();
   auto xla_arg_1 = value_map[*op.getODSOperands(0).begin()];
   auto xla_result = xla::RngBitGenerator(
       static_cast<xla::RandomAlgorithm>(op.rng_algorithm()), Unwrap(xla_arg_1),
-      xla::TypeToShape(result.getType()).tuple_shapes(1));
-  value_map[result] = xla_result;
+      xla::TypeToShape(results[1].getType()));
+
+  for (const auto& item : llvm::enumerate(results))
+    value_map[item.value()] = xla::GetTupleElement(xla_result, item.index());
+
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(BatchNormGradOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto results = op.getResults();
+
+  xla::XlaOp operand, scale, mean, variance, grad_output;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  if (failed(GetXlaOp(op.scale(), value_map, &scale, op))) return failure();
+  if (failed(GetXlaOp(op.mean(), value_map, &mean, op))) return failure();
+  if (failed(GetXlaOp(op.variance(), value_map, &variance, op)))
+    return failure();
+  if (failed(GetXlaOp(op.grad_output(), value_map, &grad_output, op)))
+    return failure();
+
+  auto xla_result =
+      xla::BatchNormGrad(operand, scale, mean, variance, grad_output,
+                         ConvertAPFloat(op.epsilon()), op.feature_index());
+
+  for (const auto& item : llvm::enumerate(results))
+    value_map[item.value()] = xla::GetTupleElement(xla_result, item.index());
+
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(BatchNormTrainingOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto results = op.getResults();
+
+  xla::XlaOp operand, scale, offset;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  if (failed(GetXlaOp(op.scale(), value_map, &scale, op))) return failure();
+  if (failed(GetXlaOp(op.offset(), value_map, &offset, op))) return failure();
+
+  auto xla_result = xla::BatchNormTraining(
+      operand, scale, offset, ConvertAPFloat(op.epsilon()), op.feature_index());
+
+  for (const auto& item : llvm::enumerate(results))
+    value_map[item.value()] = xla::GetTupleElement(xla_result, item.index());
+
   return mlir::success();
 }
 
@@ -1425,6 +1469,28 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   // mhlo.WhileOp supports multiple returns, untuple all the results of XLA's.
   for (const auto& it : llvm::enumerate(op.getResults())) {
     value_map[it.value()] = xla::GetTupleElement(whileop, it.index());
+  }
+
+  return success();
+}
+
+LogicalResult ExportXlaOp(OptimizationBarrierOp op, OpLoweringContext ctx) {
+  // In case MHLO's OptimizationBarrierOp has multiple operands,
+  // create xla::Tuple, using those operands, to be used as
+  // sole operand of xla::OptimizationBarrier.
+  llvm::SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op, op.getOperands(), ctx, operands))) return failure();
+  if (operands.empty()) return success();
+
+  auto& value_map = *ctx.values;
+  if (operands.size() == 1) {
+    value_map[op.getResult(0)] = xla::OptimizationBarrier(operands[0]);
+  } else {
+    auto result = xla::OptimizationBarrier(Tuple(ctx.builder, operands));
+
+    for (const auto& it : llvm::enumerate(op.getResults())) {
+      value_map[it.value()] = xla::GetTupleElement(result, it.index());
+    }
   }
 
   return success();

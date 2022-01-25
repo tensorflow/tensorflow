@@ -58,7 +58,7 @@ func @while_cond_10_frozen0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: t
 // CANON-SAME:         (tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>)
 // CANON:           [[VAL_1:%.*]] = arith.constant dense<1.000000e+00> : tensor<256x256xf32>
 // CANON:           [[VAL_2:%.*]] = arith.constant dense<0> : tensor<i32>
-// CANON:           [[VAL_6:%.*]]:3 = "tfl.while"([[VAL_2]], [[VAL_2]], [[VAL_0]]) ( {
+// CANON:           [[VAL_6:%.*]]:3 = "tfl.while"([[VAL_2]], [[VAL_2]], [[VAL_0]]) ({
 // CANON:           ^bb0([[VAL_7:%.*]]: tensor<*xi32>, [[VAL_8:%.*]]: tensor<*xi32>, [[VAL_9:%.*]]: tensor<*xf32>):
 // CANON:             [[VAL_3:%.*]] = arith.constant dense<10> : tensor<i32>
 // CANON:             [[VAL_10:%.*]] = "tf.Less"([[VAL_8]], [[VAL_3]])

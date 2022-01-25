@@ -102,8 +102,6 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   AlgebraicSimplifierOptions options;
   options.set_replace_transpose_with_bitcast(false);
   options.set_enable_conv_operand_swap(false);
-  options.set_cudnn_batchnorm_forward_training_metadata(
-      kCudnnBatchNormForwardTrainingCallTarget);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   // GpuConvRewriter, GpuConvPaddingLegalization and

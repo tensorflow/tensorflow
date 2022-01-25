@@ -65,7 +65,7 @@ monitoring::CounterCell& TrainingTimeSaved(absl::string_view api_label);
 // Returns  "/tensorflow/core/checkpoint/write/checkpoint_size" cell
 // belonging to field (`api_label`, `filesize`).
 monitoring::CounterCell& CheckpointSize(absl::string_view api_label,
-                                        uint64 filesize);
+                                        int64_t filesize);
 
 }  // namespace metrics
 }  // namespace tensorflow

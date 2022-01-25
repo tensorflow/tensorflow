@@ -115,23 +115,6 @@ Status PopulateConvMap(
           ". Actual version: ", params_proto.version());
     }
 
-    const AlgorithmConfigProto &algorithm_config_proto = kv.value();
-
-    AutotuneEntry<Op> entry;
-#if TENSORFLOW_USE_ROCM
-    // ROCm doesn't yet support the OpRunner-based API, so for the time being we
-    // still need legacy AlgorithmDesc entries in the autotune map.  Long-term,
-    // this should be folded into the next case.
-    entry = AutotuneEntry<Op>(AlgorithmConfig(algorithm_config_proto));
-#else
-    entry = AutotuneEntry<Op>(
-        AlgorithmDesc(algorithm_config_proto.algorithm()),
-        algorithm_config_proto.has_algorithm_no_scratch()
-            ? absl::optional<AlgorithmDesc>(
-                  AlgorithmDesc(algorithm_config_proto.algorithm_no_scratch()))
-            : absl::nullopt);
-#endif
-
     auto iter = device_identifiers_map.find(params_proto.device_identifier());
     std::vector<int> device_ids;
     if (iter == device_identifiers_map.end()) {
@@ -154,7 +137,25 @@ Status PopulateConvMap(
       devices_matched = true;
     }
 
+    const AlgorithmConfigProto &algorithm_config_proto = kv.value();
+    const AlgorithmDesc primary(algorithm_config_proto.algorithm());
+    const absl::optional<AlgorithmDesc> fallback =
+        algorithm_config_proto.has_algorithm_no_scratch()
+            ? absl::optional<AlgorithmDesc>(
+                  AlgorithmDesc(algorithm_config_proto.algorithm_no_scratch()))
+            : absl::nullopt;
+
     for (int device_id : device_ids) {
+      AutotuneEntry<Op> entry;
+#if TENSORFLOW_USE_ROCM
+      // ROCm doesn't yet support the OpRunner-based API, so for the time being
+      // we still need legacy AlgorithmDesc entries in the autotune map.
+      // Long-term, this should be folded into the next case.
+      entry = AutotuneEntry<Op>(AlgorithmConfig(algorithm_config_proto));
+#else
+      entry = AutotuneEntry<Op>(primary, fallback);
+#endif
+
       autotune_map->Insert(ConvParameters(device_id, params_proto), entry);
     }
   }

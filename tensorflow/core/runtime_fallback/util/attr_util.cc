@@ -49,7 +49,6 @@ using ::tfrt::HostContext;
 using ::tfrt::OpAttrsRawEntry;
 using ::tfrt::OpAttrsRef;
 using ::tfrt::OpAttrType;
-using ::tfrt::SmallVector;
 using ::tfrt::string_view;
 
 llvm::Expected<tensorflow::Tensor> DecodeDenseAttrToTfTensor(
@@ -123,7 +122,7 @@ llvm::Error FillAttrValueMapUsingArray(const OpAttrsRawEntry& entry,
           llvm::makeArrayRef(static_cast<const tfrt::DType*>(op_attr.GetData()),
                              op_attr.element_count);
 
-      SmallVector<tensorflow::DataType, 4> tf_dtypes;
+      llvm::SmallVector<tensorflow::DataType, 4> tf_dtypes;
       tf_dtypes.reserve(bef_dtypes.size());
       for (auto bef_dtype : bef_dtypes) {
         tf_dtypes.push_back(ConvertBefAttrTypeToTfDataType(bef_dtype));

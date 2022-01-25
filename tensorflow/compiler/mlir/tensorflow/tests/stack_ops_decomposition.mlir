@@ -185,7 +185,7 @@ func @main(%arg0: tensor<i32>) -> () {
   // CHECK: tf.AssignVariableOp
   // CHECK: tf.AssignVariableOp
   %stack = "tf.StackV2"(%max_size) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
-  // CHECK: %[[CASE_OUTPUT:.*]] = "tf.CaseRegion"(%[[BRANCH_INDEX]]) ( {
+  // CHECK: %[[CASE_OUTPUT:.*]] = "tf.CaseRegion"(%[[BRANCH_INDEX]]) ({
   %case_op = "tf.CaseRegion"(%arg0) ({
     %elem = "tf._SomeOp"() : () -> tensor<f32>
     // CHECK-NOT: tf.StackPushV2

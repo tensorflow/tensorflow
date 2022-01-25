@@ -3172,8 +3172,8 @@ static LogicalResult Verify(BitcastOp op) {
   // We only handle float and int element type in the verifier currently
   // TODO(hanxiongwang): we can plan to handle more element type checks besides
   // int and float in the verifier
-  if (input_type.hasStaticShape() && input_element_type.isIntOrFloat() &&
-      output_element_type.isIntOrFloat()) {
+  if (input_type.hasStaticShape() && output_type.hasStaticShape() &&
+      input_element_type.isIntOrFloat() && output_element_type.isIntOrFloat()) {
     const auto input_element_type_bitwidth =
         input_element_type.getIntOrFloatBitWidth();
     const auto output_element_type_bitwidth =
@@ -3186,8 +3186,11 @@ static LogicalResult Verify(BitcastOp op) {
         return failure();
       }
       if (input_type.getShape().size() != output_type.getShape().size() + 1) {
-        op.emitOpError() << "size of input tensor shape shall be greater "
-                         << "then size of output tensor shape by one";
+        op.emitOpError() << "rank of input tensor is "
+                         << input_type.getShape().size()
+                         << ". rank of output tensor is expected to be "
+                         << input_type.getShape().size() - 1 << ", instead of "
+                         << output_type.getShape().size() << ".";
         return failure();
       }
       const auto rightmost_dim_size_divisor =
@@ -3202,7 +3205,11 @@ static LogicalResult Verify(BitcastOp op) {
       }
       for (auto idx = 0; idx < output_type.getShape().size(); idx++) {
         if (input_type.getShape()[idx] != output_type.getShape()[idx]) {
-          op.emitOpError("invalid output shape of tensor");
+          op.emitOpError()
+              << "the " << idx << "th dim of output tensor is "
+              << output_type.getShape()[idx]
+              << ". It is not equal to the one in input tensor, which is "
+              << input_type.getShape()[idx];
           return failure();
         }
       }
@@ -3216,8 +3223,11 @@ static LogicalResult Verify(BitcastOp op) {
         return failure();
       }
       if (input_type.getShape().size() + 1 != output_type.getShape().size()) {
-        op.emitOpError() << "size of input tensor shape shall be lesser "
-                         << "then size of output tensor shape by one";
+        op.emitOpError() << "rank of input tensor is "
+                         << input_type.getShape().size()
+                         << ". rank of output tensor is expected to be "
+                         << input_type.getShape().size() + 1 << ", instead of "
+                         << output_type.getShape().size() << ".";
         return failure();
       }
       const auto rightmost_dim_size_divisor =
@@ -3231,7 +3241,11 @@ static LogicalResult Verify(BitcastOp op) {
       }
       for (auto idx = 0; idx < input_type.getShape().size(); idx++) {
         if (input_type.getShape()[idx] != output_type.getShape()[idx]) {
-          op.emitOpError("invalid output shape of tensor");
+          op.emitOpError()
+              << "the " << idx << "th dim of output tensor is "
+              << output_type.getShape()[idx]
+              << ". It is not equal to the one in input tensor, which is "
+              << input_type.getShape()[idx];
           return failure();
         }
       }
@@ -3243,7 +3257,7 @@ static LogicalResult Verify(BitcastOp op) {
         return success();
       }
       op.emitOpError()
-          << "input tensor shape shall be equal to output tensor shape";
+          << "output tensor shape shall be equal to input tensor shape";
       return failure();
     };
 

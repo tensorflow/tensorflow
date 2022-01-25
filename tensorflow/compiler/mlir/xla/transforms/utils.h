@@ -36,9 +36,9 @@ void BuildReduceBody(Type element_type, Region* body, OpBuilder* builder) {
 
   // Block arguments are scalars of the given element type.
   Type type = RankedTensorType::get(/*shape=*/{}, element_type);
-  block->addArguments({type, type});
-
   Location loc = body->getLoc();
+  block->addArguments({type, type}, SmallVector<Location, 2>(2, loc));
+
   auto reducer =
       builder->create<Op>(loc, block->getArgument(0), block->getArgument(1));
   builder->create<ReturnOp>(loc, reducer.getResult());

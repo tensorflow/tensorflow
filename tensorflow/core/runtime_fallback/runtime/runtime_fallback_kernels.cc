@@ -120,7 +120,6 @@ using tfrt::RemainingAttributes;
 using tfrt::RemainingResults;
 using tfrt::Result;
 using tfrt::ShapeAttr;
-using tfrt::SmallVector;
 using tfrt::string_view;
 using tfrt::StringAttr;
 using tfrt::StringAttribute;
@@ -145,7 +144,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
         host, tfrt::StrCat("error getting rank from TF tensor handle: ",
                            status.error_message()));
 
-  SmallVector<tfrt::Index, 4> dims;
+  llvm::SmallVector<tfrt::Index, 4> dims;
   for (auto i = 0; i < rank; ++i) {
     int64_t dim;
     status = th->Dim(i, &dim);
@@ -419,7 +418,7 @@ static tensorflow::Status PrepareAttributes(EagerOperation* eager_op,
             static_cast<const tfrt::DType*>(op_attr.GetData()),
             op_attr.element_count);
 
-        SmallVector<tensorflow::DataType, 4> tf_dtypes;
+        llvm::SmallVector<tensorflow::DataType, 4> tf_dtypes;
         tf_dtypes.reserve(bef_dtypes.size());
         for (auto bef_dtype : bef_dtypes) {
           tf_dtypes.push_back(ConvertBefAttrTypeToTfDataType(bef_dtype));

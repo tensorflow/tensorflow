@@ -87,6 +87,7 @@ class PostQuantizeRemoveQDQPass
 void RemoveQuantizationAdaptorOps(FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
   auto& bb = func.front();
+  auto loc = func.getLoc();
 
   int num_args = bb.getNumArguments();
   llvm::SmallVector<Type, 4> input_types;
@@ -107,7 +108,7 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
       auto quantize_output = quantize_op.output();
       auto quantize_type = quantize_output.getType();
       input_types.push_back(quantize_type);
-      auto new_arg = bb.addArgument(quantize_type);
+      auto new_arg = bb.addArgument(quantize_type, loc);
       quantize_output.replaceAllUsesWith(new_arg);
       quantize_op.erase();
       arg.dropAllUses();
@@ -125,7 +126,7 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
     // the pattern isn't found.
     Type arg_type = arg.getType();
     input_types.push_back(arg_type);
-    auto new_arg = bb.addArgument(arg_type);
+    auto new_arg = bb.addArgument(arg_type, loc);
     arg.replaceAllUsesWith(new_arg);
     arg.dropAllUses();
     bb.eraseArgument(0);

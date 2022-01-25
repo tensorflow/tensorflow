@@ -23,6 +23,8 @@ def HLO_Dialect : Dialect {
   let cppNamespace = "::mlir::mhlo";
 
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let useDefaultAttributePrinterParser = 0;
+  let useDefaultTypePrinterParser = 0;
 }
 
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.td"

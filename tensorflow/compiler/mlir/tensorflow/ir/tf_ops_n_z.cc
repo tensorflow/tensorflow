@@ -2172,7 +2172,7 @@ void TPUExecuteOp::getEffects(
         &effects) {
   effects.reserve(args().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
-                       ResourceEffects::TPUCompileExecute::get());
+                       ResourceEffects::TPUExecute::get());
 
   for (Value value : args()) {
     if (value.getType()
@@ -2235,7 +2235,7 @@ void TPUExecuteAndUpdateVariablesOp::getEffects(
         &effects) {
   effects.reserve(device_var_reads_indices().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
-                       ResourceEffects::TPUCompileExecute::get());
+                       ResourceEffects::TPUExecute::get());
   auto resource_handles = llvm::make_filter_range(args(), [](Value value) {
     return value.getType()
         .cast<TensorType>()
