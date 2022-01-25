@@ -204,8 +204,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         imported_graph.control_outputs)
 
   def _make_asset(self, contents):
-    filename = tempfile.mktemp(prefix=self.get_temp_dir())
-    with open(filename, "w") as f:
+    fd, filename = tempfile.mkstemp(prefix=self.get_temp_dir())
+    with os.fdopen(fd, "w") as f:
       f.write(contents)
     return filename
 
