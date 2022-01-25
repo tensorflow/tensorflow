@@ -39,6 +39,7 @@ tf_kernel_library(
         ":tpu_compile_op",
         ":tpu_configuration_ops",
         ":tpu_embedding_configuration_ops",
+        ":tpu_embedding_load_retrieve_ops",
         ":tpu_embedding_ops",
         ":tpu_execute_op",
         ":tpu_functional_ops",
@@ -179,6 +180,30 @@ tf_kernel_library(
         "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/tpu:proto_helper",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_embedding_load_retrieve_ops",
+    srcs = ["tpu_embedding_load_retrieve_ops.cc"],
+    hdrs = ["tpu_embedding_load_retrieve_ops.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_embedding_configuration_proto_rewrite",
+        "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/core/tpu/ops:tpu_embedding_shape_util",
+        "//tensorflow/stream_executor/tpu:c_api_conversions",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
+        "//tensorflow/stream_executor/tpu:status_helper",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
 )
