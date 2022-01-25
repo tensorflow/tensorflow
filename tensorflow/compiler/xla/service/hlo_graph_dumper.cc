@@ -1782,9 +1782,30 @@ static std::string EscapeJSTemplateString(absl::string_view s) {
   return absl::StrReplaceAll(s, {{"`", "|"}, {"$", "|"}});
 }
 
-// Generates a fusion explorer for the given computation using the data in
-// fusion_visualizer_state and the URL renderer. Precondition: url_renderer !=
-// nullptr.
+// Precondition: (url_renderer != nullptr || format != kUrl).
+//
+// (We specify this as a precondition rather than checking it in here and
+// returning an error because we want to fail quickly when there's no URL
+// renderer available, and this function runs only after we've done all the work
+// of producing dot for the graph.)
+StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
+                                      absl::string_view dot,
+                                      RenderedGraphFormat format)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
+  switch (format) {
+    case RenderedGraphFormat::kUrl:
+      CHECK(url_renderer != nullptr)
+          << "Should have checked url_renderer != null before calling.";
+      return (*url_renderer)(dot);
+    case RenderedGraphFormat::kHtml:
+      return WrapDotInHtml(dot);
+    case RenderedGraphFormat::kDot:
+      return std::string(dot);
+  }
+}
+
+}  // namespace
+
 StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
   tensorflow::mutex_lock lock(fusion_visualizer_state_mu);
   using absl::StrAppend;
@@ -1821,10 +1842,6 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
   <title>Fusion Explorer: $TITLE</title>
   <div id='rendered'></div>
   <ul id='frames_list'></ul>
-  <p>
-    <a id='prev' href='#'>Prev Step</a>
-    <a id='next' href='#'>Next Step</a>
-  </p>
   <p>Use j/k for keyboard navigation.</p>
   <p id='performance_note'></p>
   <script>
@@ -1963,33 +1980,6 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
        {"$TITLE",
         absl::StrCat(computation.parent()->name(), "_", computation.name())}});
 }
-
-// Precondition: (url_renderer != nullptr || (format != kUrl
-//   && format != kFusionVisualization)).
-//
-// (We specify this as a precondition rather than checking it in here and
-// returning an error because we want to fail quickly when there's no URL
-// renderer available, and this function runs only after we've done all the work
-// of producing dot for the graph.)
-StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
-                                      absl::string_view dot,
-                                      RenderedGraphFormat format)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
-  switch (format) {
-    case RenderedGraphFormat::kUrl:
-      CHECK(url_renderer != nullptr)
-          << "Should have checked url_renderer != null before calling.";
-      return (*url_renderer)(dot);
-    case RenderedGraphFormat::kHtml:
-      return WrapDotInHtml(dot);
-    case RenderedGraphFormat::kDot:
-      return std::string(dot);
-    case RenderedGraphFormat::kFusionVisualization:
-      return WrapFusionExplorer(computation);
-  }
-}
-
-}  // namespace
 
 void RegisterGraphToURLRenderer(
     std::function<StatusOr<std::string>(absl::string_view)> renderer) {

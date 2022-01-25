@@ -358,17 +358,13 @@ static std::vector<std::string> DumpHloModuleImpl(
   if (opts.dump_fusion_visualization) {
     for (const HloComputation* computation :
          module.MakeNonfusionComputations()) {
-      StatusOr<std::string> rendered_graph = RenderGraph(
-          *computation,
-          /*label=*/absl::StrCat(filename, "_", computation->name()),
-          module.config().debug_options(),
-          RenderedGraphFormat::kFusionVisualization, profile);
-
       if (IsTrivial(*computation)) {
         VLOG(1) << "Skipping computation " << computation->name()
                 << " as trivial";
         continue;
       }
+
+      StatusOr<std::string> rendered_graph = WrapFusionExplorer(*computation);
       if (!rendered_graph.ok()) {
         VLOG(1) << "Skipping fusion visualization"
                 << " for computation " << computation->name()
