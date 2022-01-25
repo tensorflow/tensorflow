@@ -35,6 +35,14 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport();
 // Wrap function with XLA:CPU's C interface.
 std::unique_ptr<OperationPass<ModuleOp>> CreateOutlineWithXLAFrameworkPass();
 
+// Convert XLAFramework operations to LLVM operations.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeXLAFrameworkToLLVMPass();
+
+// Patterns to lower all XLAFramework operations and types to LLVM versions.
+void PopulateLegalizeXLAFrameworkToLLVMPatterns(
+    llvm::StringRef device_type, OwningRewritePatternList& patterns,
+    MLIRContext* ctx, bool prefer_tf2xla = false);
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
 

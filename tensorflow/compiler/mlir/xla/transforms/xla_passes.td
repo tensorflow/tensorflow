@@ -31,6 +31,13 @@ def PrepareForExportPass : FunctionPass<"xla-prepare-for-export"> {
   let constructor = "::mlir::mhlo::CreatePrepareForExport()";
 }
 
+def LegalizeXLAFrameworkToLLVM : Pass<"xla-legalize-xla-framework-to-llvm", "ModuleOp"> {
+  let summary = "Legalize XLAFramework to bare pointers and LLVM memref descriptors";
+  let dependentDialects = ["::mlir::LLVM::LLVMDialect"];
+  let constructor = "::mlir::mhlo::CreateLegalizeXLAFrameworkToLLVMPass()";
+}
+
+
 def OutlineWithXLAFramework : Pass<"outline-with-xla-framework", "ModuleOp"> {
   let summary = "Create XLAFramework based wrapper function to match XLA:CPU's interface";
   let dependentDialects = ["::mlir::xla_framework::XLAFrameworkDialect"];
