@@ -257,6 +257,15 @@ class SparseSplitOpTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'axis is required'):
       sparse_ops.sparse_split(num_split=2, sp_input=1)
 
+  def testInvalidArgumentError(self):
+    # Test case for GitHub issue 53660.
+    axis = [1, 2]
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 r'axis should be a scalar'):
+      self.evaluate(
+          sparse_ops.sparse_split(
+              sp_input=self._SparseTensor_4x6(), num_split=3, axis=axis))
+
 
 if __name__ == '__main__':
   test.main()
