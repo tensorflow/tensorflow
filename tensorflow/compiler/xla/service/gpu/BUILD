@@ -534,7 +534,7 @@ tf_cuda_library(
     compatible_with = [],
     defines = if_gpu_is_configured(["XLA_ENABLE_XCCL"]),
     tags = ["manual"],  # Only builds with if_nccl().
-    deps = [
+    deps = if_gpu_is_configured([
         ":gpu_executable_run_options",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:str_format",
@@ -546,7 +546,7 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/core:lib",
-    ] + if_cuda_is_configured([
+    ]) + if_cuda_is_configured([
         "@local_config_nccl//:nccl",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rccl",
