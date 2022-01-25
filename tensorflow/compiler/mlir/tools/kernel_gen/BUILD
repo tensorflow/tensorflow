@@ -64,6 +64,7 @@ cc_library(
         "//tensorflow/core/platform:cuda_libdevice_path",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineToStandard",
+        "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithmeticTransforms",
         "@llvm-project//mlir:BufferizationTransforms",

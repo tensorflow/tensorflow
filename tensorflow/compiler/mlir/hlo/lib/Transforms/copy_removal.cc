@@ -17,14 +17,14 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/BufferUtils.h"
 
 namespace mlir {
 
 namespace {
 
-class CopyRemoval : BufferPlacementTransformationBase {
+class CopyRemoval : bufferization::BufferPlacementTransformationBase {
  public:
   explicit CopyRemoval(Operation *op)
       : BufferPlacementTransformationBase(op),
@@ -101,7 +101,8 @@ class CopyRemoval : BufferPlacementTransformationBase {
     for (auto *eraseOp : toErase) eraseOp->erase();
 
     // Erase all allocs without uses.
-    for (const BufferPlacementAllocs::AllocEntry &entry : allocs) {
+    for (const bufferization::BufferPlacementAllocs::AllocEntry &entry :
+         allocs) {
       Value alloc = std::get<0>(entry);
       if (alloc.use_empty()) alloc.getDefiningOp()->erase();
     }
@@ -116,7 +117,8 @@ class CopyRemoval : BufferPlacementTransformationBase {
     SmallPtrSet<Value, 16U> processedAliases;
 
     // Iterate over the allocs.
-    for (const BufferPlacementAllocs::AllocEntry &entry : allocs) {
+    for (const bufferization::BufferPlacementAllocs::AllocEntry &entry :
+         allocs) {
       Value allocValue = std::get<0>(entry);
 
       // Resolve the aliases of the current alloc and iterate over them.

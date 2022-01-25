@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
@@ -56,7 +57,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -296,7 +296,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   if (cpu_codegen) {
     pm.addNestedPass<mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateVectorizationPass());
-    pm.addNestedPass<mlir::FuncOp>(mlir::createBufferLoopHoistingPass());
+    pm.addNestedPass<mlir::FuncOp>(
+        mlir::bufferization::createBufferLoopHoistingPass());
     pm.addNestedPass<::mlir::FuncOp>(
         mlir::kernel_gen::transforms::CreateShapeSimplification());
     pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
@@ -364,9 +365,11 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // deallocs.
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
   // TODO(herhut): Enable once no-longer broken.
-  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(
-      [](Value alloc) { return IsSmallAlloc(alloc); }));
+  pm.addNestedPass<mlir::FuncOp>(
+      ::mlir::bufferization::createBufferHoistingPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::bufferization::createPromoteBuffersToStackPass(
+          [](Value alloc) { return IsSmallAlloc(alloc); }));
   // Free all temporaries,
   pm.addNestedPass<mlir::FuncOp>(
       ::mlir::bufferization::createBufferDeallocationPass());
