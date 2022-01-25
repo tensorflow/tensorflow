@@ -1130,21 +1130,20 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
   @parameterized.named_parameters(
       # Quantize to Float16 even if rep data provided.
-      ('UseRepresentativeData', True, False, True, False, False, False, False,
+      ('UseRepresentativeData', True, False, True, False, False, False,
        [metadata_fb.ModelOptimizationMode.PTQ_FLOAT16]),
       # Quantize to Float16 if no rep data provided.
-      ('NoRepresentativeData', False, False, True, False, False, False, False,
+      ('NoRepresentativeData', False, False, True, False, False, False,
        [metadata_fb.ModelOptimizationMode.PTQ_FLOAT16]),
       # Post training quantization if both rep data and int8 included.
-      ('SampleDataIncludeInt8', True, True, False, False, False, True, False,
+      ('SampleDataIncludeInt8', True, True, False, False, True, False,
        [metadata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER]),
       # Same as above, but using MLIR quantizer
-      ('SampleDataIncludeInt8Quant', True, True, False, False, False, True,
-       True, [metadata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER]))
+      ('SampleDataIncludeInt8Quant', True, True, False, False, True, True,
+       [metadata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER]))
   def testQuantizeFloat16(self, use_rep_data, include_int8,
                           is_float16_quantized, is_float16_accumulation,
-                          is_error, is_post_training_quantized,
-                          enable_mlir_quantizer,
+                          is_post_training_quantized, enable_mlir_quantizer,
                           expected_opt_modes):
     with ops.Graph().as_default():
       inp, output, calibration_gen = self._getIntegerQuantizeModel()
@@ -1180,13 +1179,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       quantized_converter.representative_dataset = calibration_gen
     if is_float16_accumulation:
       quantized_converter.target_spec.experimental_supported_accumulation_type = dtypes.float16  # pylint: disable=line-too-long
-
-    if is_error:
-      with self.assertRaises(ValueError) as error:
-        quantized_converter.convert()
-      self.assertEqual(
-          'representative_dataset is required when specifying '
-          'TFLITE_BUILTINS_INT8 or INT8 supported types.', str(error.exception))
 
     else:
       quantized_tflite_model = quantized_converter.convert()
