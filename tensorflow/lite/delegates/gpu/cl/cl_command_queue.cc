@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -180,12 +181,14 @@ ProfilingCommandQueue::ProfilingCommandQueue(cl_command_queue queue)
 ProfilingCommandQueue::ProfilingCommandQueue(ProfilingCommandQueue&& queue)
     : CLCommandQueue(std::move(queue)),
       events_(std::move(queue.events_)),
+      number_of_dispatches_(std::move(queue.number_of_dispatches_)),
       current_label_(std::move(queue.current_label_)) {}
 
 ProfilingCommandQueue& ProfilingCommandQueue::operator=(
     ProfilingCommandQueue&& queue) {
   if (this != &queue) {
     events_ = std::move(queue.events_);
+    number_of_dispatches_ = std::move(queue.number_of_dispatches_);
     current_label_ = std::move(queue.current_label_);
     CLCommandQueue::operator=(std::move(queue));
   }
@@ -196,12 +199,16 @@ void ProfilingCommandQueue::SetEventsLabel(const std::string& name) {
   current_label_ = name;
 }
 
-void ProfilingCommandQueue::ResetMeasurements() { events_.clear(); }
+void ProfilingCommandQueue::ResetMeasurements() {
+  events_.clear();
+  number_of_dispatches_.clear();
+}
 
 absl::Status ProfilingCommandQueue::Dispatch(const CLKernel& kernel,
                                              const int3& work_groups_count,
                                              const int3& work_group_size) {
   events_.push_back(CLEvent());
+  number_of_dispatches_.push_back(1);
   RETURN_IF_ERROR(CLCommandQueue::Dispatch(kernel, work_groups_count,
                                            work_group_size,
                                            &events_[events_.size() - 1]));
@@ -209,13 +216,56 @@ absl::Status ProfilingCommandQueue::Dispatch(const CLKernel& kernel,
   return absl::OkStatus();
 }
 
+absl::Status ProfilingCommandQueue::DispatchNTimes(
+    const CLKernel& kernel, const int3& work_groups_count,
+    const int3& work_group_size, int n, int flush_period) {
+  number_of_dispatches_.push_back(n);
+  if (n == 1) {
+    events_.push_back(CLEvent());
+    RETURN_IF_ERROR(CLCommandQueue::Dispatch(kernel, work_groups_count,
+                                             work_group_size,
+                                             &events_[events_.size() - 1]));
+    events_.back().SetName(current_label_);
+  } else {
+    events_.push_back(CLEvent());
+    events_.push_back(CLEvent());
+    RETURN_IF_ERROR(CLCommandQueue::Dispatch(kernel, work_groups_count,
+                                             work_group_size,
+                                             &events_[events_.size() - 2]));
+    for (int i = 1; i < n - 1; ++i) {
+      RETURN_IF_ERROR(
+          CLCommandQueue::Dispatch(kernel, work_groups_count, work_group_size));
+      if (flush_period && i % flush_period == 0) {
+        clFlush(queue_);
+      }
+    }
+    RETURN_IF_ERROR(CLCommandQueue::Dispatch(kernel, work_groups_count,
+                                             work_group_size,
+                                             &events_[events_.size() - 1]));
+    clFlush(queue_);
+    events_[events_.size() - 2].SetName(current_label_);
+    events_[events_.size() - 1].SetName(current_label_);
+  }
+  return absl::OkStatus();
+}
+
 ProfilingInfo ProfilingCommandQueue::GetProfilingInfo() const {
   ProfilingInfo result;
-  result.dispatches.resize(events_.size());
-  for (int i = 0; i < events_.size(); ++i) {
-    result.dispatches[i].label = events_[i].GetName();
-    result.dispatches[i].duration =
-        absl::Nanoseconds(events_[i].GetEventTimeNs());
+  result.dispatches.resize(number_of_dispatches_.size());
+  int events_counter = 0;
+  for (int i = 0; i < number_of_dispatches_.size(); ++i) {
+    result.dispatches[i].label = events_[events_counter].GetName();
+    if (number_of_dispatches_[i] == 1) {
+      result.dispatches[i].duration =
+          absl::Nanoseconds(events_[events_counter].GetEventTimeNs());
+      events_counter += 1;
+    } else {
+      result.dispatches[i].duration =
+          absl::Nanoseconds(events_[events_counter + 1].GetFinishedTimeNs() -
+                            events_[events_counter].GetStartedTimeNs()) /
+          number_of_dispatches_[i];
+      events_counter += 2;
+    }
   }
   return result;
 }

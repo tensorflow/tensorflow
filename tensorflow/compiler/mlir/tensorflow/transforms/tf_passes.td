@@ -1887,7 +1887,7 @@ def FunctionalControlFlowToCFGPass : FunctionPass<"tf-functional-control-flow-to
   let dependentDialects = ["tensor::TensorDialect"];
 }
 
-def BreakUpIslandsPass : FunctionPass<"tf-functional-control-flow-to-cfg"> {
+def BreakUpIslandsPass : FunctionPass<"tf-executor-break-up-islands"> {
   let summary = "Transform from TF control dialect to TF executor dialect.";
   let constructor = "CreateBreakUpIslandsPass()";
   let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];

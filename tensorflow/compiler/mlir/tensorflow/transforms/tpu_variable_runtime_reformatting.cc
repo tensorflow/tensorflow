@@ -378,8 +378,8 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   devices.reserve(device_map.size());
 
   for (auto it : device_map) {
-    auto device_alias = it.first.strref();
-    auto device_list = it.second.cast<ArrayAttr>();
+    auto device_alias = it.getName().strref();
+    auto device_list = it.getValue().cast<ArrayAttr>();
     llvm::SmallVector<StringRef, 4> device_list_for_alias;
     device_list_for_alias.reserve(device_list.size());
 

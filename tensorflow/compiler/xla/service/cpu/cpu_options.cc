@@ -79,7 +79,7 @@ absl::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
     return absl::nullopt;
   }
 
-  std::vector<string> tile_components = absl::StrSplit(it->second, ':');
+  std::vector<std::string> tile_components = absl::StrSplit(it->second, ':');
   CHECK_EQ(tile_components.size(), 3);
 
   int64_t tile_size_m;

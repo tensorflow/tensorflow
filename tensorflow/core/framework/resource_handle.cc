@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/demangle.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -90,9 +91,16 @@ bool ResourceHandle::ParseFromString(const string& s) {
 }
 
 string ResourceHandle::DebugString() const {
-  return strings::StrCat("device: ", device(), " container: ", container(),
-                         " name: ", name(), " hash_code: ", hash_code(),
-                         " maybe_type_name: ", maybe_type_name());
+  return absl::StrFormat(
+      "device: %s container: %s name: %s hash_code: 0x%X maybe_type_name %s",
+      device(), container(), name(), hash_code(),
+      port::Demangle(maybe_type_name()));
+}
+string ResourceHandle::SummarizeValue() const {
+  return absl::StrFormat(
+      "ResourceHandle(name=\"%s\", device=\"%s\", container=\"%s\", "
+      "type=\"%s\")",
+      name(), device(), container(), port::Demangle(maybe_type_name()));
 }
 
 ResourceHandle ResourceHandle::MakeRefCountingHandle(
@@ -120,9 +128,10 @@ Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
     return errors::InvalidArgument(
         "Trying to access a handle's resource using the wrong type. ",
         "The handle points to a resource (name '", name(), "') of type '",
-        maybe_type_name(), "' (hash code ", hash_code(),
+        port::Demangle(maybe_type_name()), "' (hash code ", hash_code(),
         ") but you are trying to access the resource as type '",
-        type_index.name(), "' (hash code ", type_index.hash_code(), ")");
+        port::Demangle(type_index.name()), "' (hash code ",
+        type_index.hash_code(), ")");
   }
   return Status::OK();
 }

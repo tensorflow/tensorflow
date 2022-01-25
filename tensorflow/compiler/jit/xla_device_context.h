@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -58,7 +59,7 @@ class XlaDeviceContext : public DeviceContext {
       std::shared_ptr<se::Stream> device_to_host_stream,
       std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
       xla::LocalClient* client,
-      XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+      XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
       thread::ThreadPool* thread_pool);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
@@ -80,8 +81,9 @@ class XlaDeviceContext : public DeviceContext {
     return device_to_device_streams_.at(index).get();
   }
   xla::TransferManager* transfer_manager() const { return transfer_manager_; }
-  const XlaHelpers::ShapeRepresentationFn& shape_representation_fn() const {
-    return shape_representation_fn_;
+  const XlaShapeLayoutHelpers::ShapeDeterminationFns& shape_determination_fns()
+      const {
+    return shape_determination_fns_;
   }
 
   // Returns a device-to-device stream, in round-robin fashion.
@@ -112,7 +114,7 @@ class XlaDeviceContext : public DeviceContext {
   // Transfer manager, for marshalling data to and from the device.
   xla::TransferManager* transfer_manager_;
 
-  XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns_;
 
   // Thread pool used for running closures
   thread::ThreadPool* thread_pool_;

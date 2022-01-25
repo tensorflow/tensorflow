@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -141,6 +142,25 @@ bool IsCompositeDevice(absl::string_view device_type) {
   return device_type == kCompositeDeviceType;
 }
 
+inline bool IsHostMemoryType(const FullTypeDef& t) {
+  switch (t.type_id()) {
+    case TFT_TENSOR:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_ARRAY:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_DATASET:
+      return true;
+    case TFT_MUTEX_LOCK:
+      return true;
+    case TFT_RAGGED:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_STRING:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // TODO(mdan): This is still too coarse.
 // Host-memory constraints are specific to kernel registrations, so in theory
 // they depend on the assigned device.
@@ -153,13 +173,8 @@ bool HasHostMemoryOutType(const Node& node) {
   DCHECK(ft.type_id() == TFT_PRODUCT) << ft.DebugString();
 
   for (const auto& arg : ft.args()) {
-    switch (arg.type_id()) {
-      case TFT_DATASET:
-        return true;
-      case TFT_MUTEX_LOCK:
-        return true;
-      default:
-        continue;
+    if (IsHostMemoryType(arg)) {
+      return true;
     }
   }
 
@@ -857,7 +872,8 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
     }
 
     if (!constrain_to_host.has_value()) {
-      // TODO(mdan): Base this logic on type information and remove the DFS.
+      // Legacy slow path. This covers legacy data types and ops which have not
+      // been upgraded to FullType.
       auto edge_filter = [&](const Edge& edge) -> bool {
         // We already found the underlying data type.
         if (constrain_to_host.has_value()) return false;

@@ -22,6 +22,7 @@ from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class ArrayGradTest(test.TestCase):
 
@@ -113,6 +114,7 @@ class ArrayGradTest(test.TestCase):
 
     self._testGrad(f, x)
 
+  @test_util.disable_xla("b/206689921")  # XLA does not support DT_INT64
   def test_broadcast_to_int64(self):
     x = constant_op.constant([1., 2., 3.], dtype=dtypes.float64)
     y = constant_op.constant([2, 3], dtype=dtypes.int64)

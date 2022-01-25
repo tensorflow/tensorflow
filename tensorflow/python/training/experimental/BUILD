@@ -113,37 +113,3 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
-
-py_library(
-    name = "loss_scaling_gradient_tape",
-    srcs = ["loss_scaling_gradient_tape.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":loss_scale",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:unconnected_gradients",
-        "//tensorflow/python:util",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/eager:backprop",
-    ],
-)
-
-cuda_py_test(
-    name = "loss_scaling_gradient_tape_test",
-    size = "medium",
-    srcs = ["loss_scaling_gradient_tape_test.py"],
-    shard_count = 2,
-    tags = ["no_oss"],
-    deps = [
-        ":loss_scale",
-        ":loss_scaling_gradient_tape",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_test_combinations_lib",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/eager:def_function",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)

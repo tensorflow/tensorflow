@@ -52,6 +52,8 @@ def HLOClient_Dialect : Dialect {
     and provide conversion patterns to fully materialize into lower level
     dialects.
   }];
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
@@ -623,7 +625,7 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
   let arguments = (ins AnyAttr:$value, HLO_Tensor:$operand);
   let results = (outs HLO_Tensor);
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def HLOClient_DigammaOp : HLOClient_UnaryElementwiseOp<"digamma",

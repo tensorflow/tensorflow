@@ -1081,9 +1081,9 @@ class GeluTest(test_lib.TestCase):
     self.assertAllClose(y, z)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SwishTest(test_lib.TestCase):
 
-  @test_util.run_deprecated_v1
   def testValues(self):
     np_values = np.array(
         [np.linspace(-7.0, 0.0, 100),
@@ -1098,16 +1098,45 @@ class SwishTest(test_lib.TestCase):
 
     self.assertAllClose(actual_outputs, expected_outputs)
 
-  @test_util.run_deprecated_v1
+  def testValuesWithBeta(self):
+    np_values = np.array(
+        [np.linspace(-7.0, 0.0, 100),
+         np.linspace(0.0, 7.0, 100)],
+        dtype=np.float32)
+    tf_values = constant_op.constant(np_values)
+    actual_tf_outputs = nn_impl.swish(tf_values, beta=0.5)
+    expected_tf_outputs = tf_values * math_ops.sigmoid(0.5 * tf_values)
+
+    actual_outputs, expected_outputs = self.evaluate(
+        [actual_tf_outputs, expected_tf_outputs])
+
+    self.assertAllClose(actual_outputs, expected_outputs)
+
   def testGradients(self):
     shape = [5, 3, 4]
     sigma = 5
     input_values = np.random.randn(*shape) * sigma
     x_tf = constant_op.constant(input_values)
-    y_tf = nn_impl.swish(x_tf)
     with self.cached_session():
-      err = gradient_checker.compute_gradient_error(x_tf, shape, y_tf, shape)
-    self.assertLess(err, 1e-4)
+      def f(x):  # pylint: disable=invalid-name
+        return nn_impl.swish(x)
+
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [x_tf])
+      self.assertAllClose(theoretical, numerical)
+
+  def testGradientsWithBeta(self):
+    shape = [5, 3, 4]
+    sigma = 5
+    input_values = np.random.randn(*shape) * sigma
+    x_tf = constant_op.constant(input_values)
+    with self.cached_session():
+      def f(x):  # pylint: disable=invalid-name
+        return nn_impl.swish(x, beta=0.5)
+
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [x_tf])
+      self.assertAllClose(theoretical, numerical)
 
 
 class MomentsTest(test_lib.TestCase):

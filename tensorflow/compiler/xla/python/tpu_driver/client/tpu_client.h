@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -38,7 +40,10 @@ limitations under the License.
 
 namespace xla {
 
-constexpr char kTpuPlatform[] = "tpu";
+inline const char* TpuPlatform() {
+  static constexpr char kTpuPlatform[] = "tpu";
+  return kTpuPlatform;
+}
 
 class PyTpuClient;
 
@@ -299,6 +304,12 @@ class PyTpuExecutable {
  public:
   static StatusOr<std::unique_ptr<PyTpuExecutable>> Compile(
       const XlaComputation& computation,
+      absl::optional<std::vector<Shape>> argument_layouts,
+      const ExecutableBuildOptions* build_options,
+      std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
+
+  static StatusOr<std::unique_ptr<PyTpuExecutable>> CompileMlir(
+      mlir::ModuleOp module,
       absl::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
       std::shared_ptr<PyTpuClient> client, bool tuple_arguments);

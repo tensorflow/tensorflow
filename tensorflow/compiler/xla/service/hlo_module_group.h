@@ -60,9 +60,9 @@ class HloModuleGroup {
   // method runs, the module group will be empty.
   std::vector<std::unique_ptr<HloModule>> ConsumeModules();
 
-  string name() const { return name_; }
+  std::string name() const { return name_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Deallocate removed instructions in each module.
   void Cleanup() {
@@ -71,7 +71,13 @@ class HloModuleGroup {
     }
   }
 
-  uint64 Hash() const;
+  template <typename H>
+  friend H AbslHashValue(H h, const HloModuleGroup& group) {
+    for (auto& module : group.modules_) {
+      h = H::combine(std::move(h), *module);
+    }
+    return H::combine(std::move(h), group.modules_.size());
+  }
 
   // Serialize the module group to/from a proto.
   HloModuleGroupProto ToProto() const;
@@ -86,7 +92,7 @@ class HloModuleGroup {
   bool empty() const { return modules_.empty(); }
 
  private:
-  string name_;
+  std::string name_;
 
   // Vector of modules as std::unique_ptrs.
   std::vector<std::unique_ptr<HloModule>> modules_;

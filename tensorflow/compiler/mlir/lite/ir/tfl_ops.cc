@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -687,17 +688,18 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
       const int64_t result_dim_size = result_dim_sizes[dim];
 
       if (dim == axis) {
-        if (RankedTensorType::isDynamic(operand_dim_size) ||
-            RankedTensorType::isDynamic(result_dim_size))
+        if (ShapedType::isDynamic(operand_dim_size) ||
+            ShapedType::isDynamic(result_dim_size)) {
           result_dim_sizes[axis] = kDynamicSize;
-        else
+        } else {
           result_dim_sizes[axis] += operand_dim_size;
+        }
         continue;
       }
 
-      if (RankedTensorType::isDynamic(operand_dim_size)) continue;
+      if (ShapedType::isDynamic(operand_dim_size)) continue;
 
-      if (RankedTensorType::isDynamic(result_dim_size)) {
+      if (ShapedType::isDynamic(result_dim_size)) {
         result_dim_sizes[dim] = operand_dim_size;
         result_dim_sizes_loc[dim] = operand.index();
         continue;
@@ -714,8 +716,8 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
   }
 
   const int64_t output_concated_dim_size = output_type.getDimSize(axis);
-  if (!RankedTensorType::isDynamic(output_concated_dim_size) &&
-      !RankedTensorType::isDynamic(result_dim_sizes[axis]) &&
+  if (!ShapedType::isDynamic(output_concated_dim_size) &&
+      !ShapedType::isDynamic(result_dim_sizes[axis]) &&
       result_dim_sizes[axis] != output_concated_dim_size)
     return op->emitOpError()
            << "dimension size of dimension #" << axis << " of output "
@@ -887,6 +889,35 @@ LogicalResult Verify(GatherOp op) {
     }
   }
   return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// BroadcastToOp
+//===----------------------------------------------------------------------===//
+
+// Canonicalizes BroadcastToOp to ReshapeOp if the input and output has the same
+// number of elements.
+struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
+  using OpRewritePattern<BroadcastToOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(BroadcastToOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input_type = op.input().getType().cast<ShapedType>();
+    auto output_type = op.getType().cast<ShapedType>();
+    if (!input_type.hasStaticShape() || !output_type.hasStaticShape() ||
+        input_type.getNumElements() != output_type.getNumElements()) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.input(),
+                                           op.shape());
+    return success();
+  }
+};
+
+void BroadcastToOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ConvertBroadcastToReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1106,13 +1137,13 @@ LogicalResult Conv2DOp::inferReturnTypes(
     return success();
   }
 
-  auto stride_h = op.stride_h().getInt();
-  auto stride_w = op.stride_w().getInt();
-  auto dilation_h = op.dilation_h_factor().getInt();
-  auto dilation_w = op.dilation_w_factor().getInt();
+  auto stride_h = op.stride_hAttr().getInt();
+  auto stride_w = op.stride_wAttr().getInt();
+  auto dilation_h = op.dilation_h_factorAttr().getInt();
+  auto dilation_w = op.dilation_w_factorAttr().getInt();
 
   // We don't have EXPLICIT PADDING in TfLite.
-  auto paddings = op.padding().getValue();
+  auto paddings = op.padding();
   tensorflow::Padding padding;
   auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
   if (!padding_is_valid.ok()) {
@@ -2098,7 +2129,7 @@ LogicalResult UnpackOp::inferReturnTypes(
     return emitOptionalError(loc, "input count should be equal to 1");
   }
 
-  const int64_t num_value = op.num().getInt();
+  const int64_t num_value = op.numAttr().getInt();
   auto input_type = operands[0].getType().dyn_cast<ShapedType>();
   if (!input_type || !input_type.hasRank()) {
     // If input is unranked, then so is output.
@@ -2117,14 +2148,14 @@ LogicalResult UnpackOp::inferReturnTypes(
     return emitOptionalError(loc, "input should be of rank larger than 0");
   }
 
-  int64_t axis_value = op.axis().getInt();
+  int64_t axis_value = op.axisAttr().getInt();
   if (axis_value < 0) {
     axis_value += rank;
   }
   if (axis_value < 0 || axis_value >= rank) {
     return emitOptionalError(
         loc, "attribute 'axis' should be in range [-rank, rank), got axis = ",
-        op.axis().getInt(), ", and rank = ", rank);
+        op.axisAttr().getInt(), ", and rank = ", rank);
   }
 
   if (!ShapedType::isDynamic(input_type.getDimSize(axis_value)) &&
@@ -2466,12 +2497,10 @@ LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
   }
 
   // Default to non-time_major.
-  bool time_majored = attr.getNamed("time_major").hasValue()
-                          ? attr.getNamed("time_major")
-                                .getValue()
-                                .second.cast<BoolAttr>()
-                                .getValue()
-                          : false;
+  Optional<mlir::NamedAttribute> time_major_attr = attr.getNamed("time_major");
+  bool time_majored =
+      time_major_attr ? time_major_attr->getValue().cast<BoolAttr>().getValue()
+                      : false;
 
   int batch =
       time_majored ? input_type.getDimSize(1) : input_type.getDimSize(0);

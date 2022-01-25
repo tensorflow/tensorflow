@@ -75,7 +75,8 @@ class InstructionListVisitor : public DfsHloVisitorWithDefault {
   // The full set of instructions found (may be duplicates, e.g., kParameter).
   std::vector<const HloInstruction*> instructions_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InstructionListVisitor);
+  InstructionListVisitor(const InstructionListVisitor&) = delete;
+  InstructionListVisitor& operator=(const InstructionListVisitor&) = delete;
 };
 
 const std::vector<const HloInstruction*> GetInstructions(HloInstruction* root) {
@@ -121,7 +122,10 @@ class BufferAssignmentTest : public HloTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersReuseForAdd(
       HloModule* module, int64_t alignment = 1) {
-    absl::flat_hash_set<HloOpcode> must_not_live_out = {HloOpcode::kAdd};
+    auto must_not_live_out = [](const HloInstruction* instruction,
+                                const ShapeIndex&) {
+      return instruction->opcode() == HloOpcode::kAdd;
+    };
 
     return BufferAssigner::Run(
                module, absl::make_unique<DependencyHloOrdering>(module),
@@ -166,13 +170,14 @@ class BufferAssignmentTest : public HloTestBase {
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
-               /*must_not_live_out=*/{},
+               /*must_not_live_out=*/absl::nullopt,
                /*can_share_buffer=*/nullptr, std::move(preset_assignments))
         .ConsumeValueOrDie();
   }
 
   // Builds an x+1.0 computation to use in a Map.
-  std::unique_ptr<HloComputation> BuildMapComputationPlus1(const string& name) {
+  std::unique_ptr<HloComputation> BuildMapComputationPlus1(
+      const std::string& name) {
     auto builder = HloComputation::Builder(name);
     auto param =
         builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
@@ -183,7 +188,8 @@ class BufferAssignmentTest : public HloTestBase {
     return builder.Build();
   }
 
-  std::unique_ptr<HloComputation> BuildReduceComputation(const string& name) {
+  std::unique_ptr<HloComputation> BuildReduceComputation(
+      const std::string& name) {
     auto builder = HloComputation::Builder(name);
     auto param =
         builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
@@ -202,7 +208,7 @@ class BufferAssignmentTest : public HloTestBase {
   //   param[(s32,f32[4])] --- get-tuple-element[0] --- less-than
   //
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
-      const string& name) {
+      const std::string& name) {
     auto builder = HloComputation::Builder(name);
     auto const4 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(4)));
@@ -228,7 +234,7 @@ class BufferAssignmentTest : public HloTestBase {
   //   const1[s32] -----------------------------------------/
   //
   std::unique_ptr<HloComputation> BuildWhileBodyComputation(
-      const string& name) {
+      const std::string& name) {
     auto builder = HloComputation::Builder(name);
     auto const1 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(1)));
@@ -249,7 +255,7 @@ class BufferAssignmentTest : public HloTestBase {
   }
 
   std::unique_ptr<HloComputation> BuildR0F32UnaryOpComputation(
-      HloOpcode opcode, const string& name) {
+      HloOpcode opcode, const std::string& name) {
     auto builder = HloComputation::Builder(name);
     auto param =
         builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
@@ -2120,7 +2126,7 @@ ENTRY main {
 class WhileBufferAssignmentTest : public HloTestBase {
  protected:
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
-      const string& name) {
+      const std::string& name) {
     auto builder = HloComputation::Builder(name);
     builder.AddInstruction(
         HloInstruction::CreateParameter(0, loop_state_shape_, "loop_state"));
@@ -2134,7 +2140,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
   }
 
   std::unique_ptr<HloComputation> BuildWhileBodyComputation(
-      const string& name) {
+      const std::string& name) {
     auto builder = HloComputation::Builder(name);
     auto loop_state = builder.AddInstruction(
         HloInstruction::CreateParameter(0, loop_state_shape_, "loop_state"));
@@ -2437,7 +2443,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
       HloInstruction::CreateWhile(r0s32, cond1, body1, while0));
 
   auto zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(r0s32, HloOpcode::kAdd, zero, zero));
   auto cond2 = module->AddEmbeddedComputation(build_cond());

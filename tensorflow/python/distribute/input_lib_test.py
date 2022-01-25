@@ -25,6 +25,7 @@ from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops.options import AutoShardPolicy
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -45,6 +46,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util as framework_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -1094,6 +1096,10 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
 
+    if isinstance(distribution,
+                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
+      self.skipTest("b/213596871")
+
     defun = {
         "lambda": lambda f: f,
         "tf_function": def_function.function
@@ -1511,6 +1517,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
         input_context=distribution.extended._make_input_context())
 
 
+@framework_test_util.with_eager_op_as_function
 class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
                                        parameterized.TestCase):
   """Tests for PER_WORKER and PER_REPLICA's InputOptions variants."""

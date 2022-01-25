@@ -82,7 +82,8 @@ class GRPCStub : public ServiceInterface {
  private:
   grpc::XlaService::Stub* grpc_stub_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GRPCStub);
+  GRPCStub(const GRPCStub&) = delete;
+  GRPCStub& operator=(const GRPCStub&) = delete;
 };
 
 }  // namespace xla

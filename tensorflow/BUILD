@@ -23,6 +23,10 @@ load(
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# copybara:uncomment_begin
+# load("//tools/build_defs/license:license.bzl", "license")
+# copybara:uncomment_end
+
 # copybara:comment_begin(oss-only)
 load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
@@ -40,13 +44,22 @@ load(
 )
 # copybara:comment_end
 
-package(default_visibility = [":internal"])
+package(
+    # copybara:uncomment default_applicable_licenses = [":license"],
+    default_visibility = [":internal"],
+)
+
+# copybara:uncomment_begin
+# license(
+#     name = "license",
+#     package_name = "tensorflow",
+# )
+# copybara:uncomment_end
 
 licenses(["notice"])
 
 exports_files([
     "LICENSE",
-    "ACKNOWLEDGMENTS",
     # The leakr files are used by //third_party/cloud_tpu and
     # //third_party/tensorboard/google:copybara_config_test.
     "leakr_badwords.dic",
@@ -684,6 +697,7 @@ selects.config_setting_group(
         ":emscripten",
         ":ios",
     ],
+    visibility = if_google(["//visibility:public"]),
 )
 
 # This flag disables all google production dependencies, intended for
@@ -720,6 +734,7 @@ config_setting(
 selects.config_setting_group(
     name = "lite_protos",
     match_any = [":lite_protos_legacy"],
+    visibility = if_google(["//visibility:public"]),
 )
 
 selects.config_setting_group(
@@ -728,6 +743,7 @@ selects.config_setting_group(
         ":lite_protos",
         ":mobile",
     ],
+    visibility = if_google(["//visibility:public"]),
 )
 
 selects.config_setting_group(
@@ -736,6 +752,7 @@ selects.config_setting_group(
         ":full_protos",
         ":mobile",
     ],
+    visibility = if_google(["//visibility:public"]),
 )
 
 # copybara:uncomment_begin(google-only)
@@ -1058,6 +1075,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/data:standalone",
     ],
 )
 

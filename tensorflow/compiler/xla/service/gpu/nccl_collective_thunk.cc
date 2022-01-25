@@ -127,31 +127,28 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
         "environment configuration.");
   }
 
+  auto it = absl::c_find(participants, global_device_id);
+  TF_RET_CHECK(it != participants.end());
+  int rank = it - participants.begin();
+
+  OpId op_id(config().op_id);
+  size_t num_local_participants = GetNumLocalParticipants(
+      participants, /*local_devices=*/params.gpu_global_device_ids);
+
+  bool is_local = participants.size() == num_local_participants;
   TF_ASSIGN_OR_RETURN(
-      std::vector<LocalParticipant> local_participants,
-      GetLocalParticipants(participants, params.gpu_global_device_ids));
-
-  // Create the rendezvous for this collective operation.
-  const RendezvousKey rendezvous_key(
-      params.run_id, std::move(participants), local_participants.size(),
-      config().collective_op_kind, config().op_id);
-  VLOG(2) << GetDeviceString(params) << ": key " << rendezvous_key.ToString()
-          << "\n";
-
-  int device_ordinal = params.stream->parent()->device_ordinal();
-  NcclCliqueParticipantData participant(rendezvous_key, device_ordinal,
-                                        params.stream);
-
-  TF_ASSIGN_OR_RETURN(LockedNcclClique locked_clique,
-                      AcquireNcclClique(participant, local_participants,
-                                        params.nccl_unique_id_callback));
-  ncclComm_t comm =
-      locked_clique.clique.GetCommForDeviceOrdinal(device_ordinal);
+      const NcclUniqueIdCallback* unique_id_callback,
+      GetNcclUniqueIdCallback(params.nccl_unique_id_callback, is_local));
 
   se::StreamExecutor* executor = params.stream->parent();
   se::gpu::ScopedActivateExecutorContext scoped_context(executor);
 
-  TF_RETURN_IF_ERROR(RunNcclCollective(params, comm));
+  TF_ASSIGN_OR_RETURN(
+      NcclComm::Lock comm,
+      AcquireNcclComm(params.run_id, op_id, std::move(participants),
+                      num_local_participants, *unique_id_callback, rank));
+
+  TF_RETURN_IF_ERROR(RunNcclCollective(params, *comm));
   return Status::OK();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(

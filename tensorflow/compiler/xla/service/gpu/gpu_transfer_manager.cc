@@ -63,14 +63,14 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
   return absl::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::cuda::kCudaPlatformId,
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::nvptx::kDataLayout)
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::nvptx::DataLayout())
           .getPointerSize(0 /* default address space */));
 }
 
 static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
   return absl::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::rocm::kROCmPlatformId,
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::amdgpu::kDataLayout)
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::amdgpu::DataLayout())
           .getPointerSize(0 /* default address space */));
 }
 

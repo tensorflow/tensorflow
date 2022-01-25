@@ -45,7 +45,6 @@ load(
     "tf_cc_tests",
     "tf_copts",  # @unused
     "tf_cuda_library",
-    "tf_native_cc_binary",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -61,6 +60,9 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_native_cc_shared_library")
 
 package(
     default_visibility = [
@@ -212,9 +214,20 @@ cc_library(
 )
 
 # Used by //tensorflow/python/platform:platform.
-tf_native_cc_binary(
+tf_native_cc_shared_library(
     name = "_cpu_feature_guard.so",
-    linkshared = True,
+    static_deps = [
+        # copybara:comment_begin(oss only)
+        "@bazel_tools//:__subpackages__",
+        "@com_google_absl//:__subpackages__",
+        "@eigen_archive//:__subpackages__",
+        "@hwloc//:__subpackages__",
+        "@local_config_cuda//:__subpackages__",
+        "@nsync//:__subpackages__",
+        "@snappy//:__subpackages__",
+        "//:__subpackages__",
+        # copybara:comment_end
+    ],
     deps = [
         "//tensorflow/core/platform:cpu_feature_guard",
     ],
@@ -292,6 +305,7 @@ cc_library(
 
 cc_library(
     name = "env_time",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["env_time.h"],
     deps = tf_windows_aware_platform_deps("env_time"),
 )
@@ -383,6 +397,7 @@ cc_library(
 
 cc_library(
     name = "logging",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
     deps = tf_logging_deps(),
 )
@@ -390,6 +405,7 @@ cc_library(
 cc_library(
     name = "macros",
     hdrs = ["macros.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 filegroup(
@@ -865,6 +881,7 @@ cc_library(
 cc_library(
     name = "threadpool_interface",
     hdrs = ["threadpool_interface.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":mutex",
         ":types",
@@ -875,6 +892,7 @@ cc_library(
 cc_library(
     name = "threadpool_options",
     hdrs = ["threadpool_options.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":threadpool_interface",
     ],
@@ -1517,6 +1535,7 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -1695,6 +1714,7 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
@@ -1926,4 +1946,5 @@ bzl_library(
     srcs = [
         "rules_cc.bzl",
     ] + tf_platform_alias("rules_cc.bzl"),
+    deps = ["@bazel_skylib//rules:common_settings"],
 )

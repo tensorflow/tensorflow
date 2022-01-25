@@ -351,18 +351,17 @@ static LogicalResult Verify(TFRFuncOp func) {
 }
 
 static ParseResult ParseFuncOp(OpAsmParser &parser, OperationState *result) {
-  auto build_func_type = [](Builder &builder, ArrayRef<Type> arg_types,
-                            ArrayRef<Type> results,
-                            function_like_impl::VariadicFlag, std::string &) {
-    return builder.getFunctionType(arg_types, results);
-  };
-  return function_like_impl::parseFunctionLikeOp(
+  auto build_func_type =
+      [](Builder &builder, ArrayRef<Type> arg_types, ArrayRef<Type> results,
+         function_interface_impl::VariadicFlag,
+         std::string &) { return builder.getFunctionType(arg_types, results); };
+  return function_interface_impl::parseFunctionOp(
       parser, *result, /*allowVariadic=*/false, build_func_type);
 }
 
 static void PrintFuncOp(OpAsmPrinter &p, TFRFuncOp op) {
   FunctionType fn_type = op.getType();
-  function_like_impl::printFunctionLikeOp(
+  function_interface_impl::printFunctionOp(
       p, op, fn_type.getInputs(), /*isVariadic=*/false, fn_type.getResults());
 }
 
@@ -456,9 +455,10 @@ class RemoveRedundantCast : public OpRewritePattern<CastOp> {
     }
 
     // Canonicalize two tfr.cast pairs with different element type to
-    // two tfr.casts with the same element type followed by a tf.Cast
-    if (input_tensor_type.getElementType() !=
-        output_tensor_type.getElementType()) {
+    // two tfr.casts with the same element type followed by a tf.Cast.
+    if ((input_tensor_type.getElementType() !=
+         output_tensor_type.getElementType()) &&
+        !isQuantizedType(input_type) && !isQuantizedType(output_type)) {
       auto new_tfr_cast = rewriter.create<TFR::CastOp>(
           cast_op.getLoc(),
           output_tensor_type.clone(input_tensor_type.getElementType()),

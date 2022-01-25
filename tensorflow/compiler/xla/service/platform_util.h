@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -46,7 +45,7 @@ class PlatformUtil {
 
   // Returns the platform according to the given name. Returns error if there is
   // no such platform.
-  static StatusOr<se::Platform*> GetPlatform(const string& platform_name);
+  static StatusOr<se::Platform*> GetPlatform(const std::string& platform_name);
 
   // Returns a vector of StreamExecutors for the given platform.
   // If populated, only the devices in allowed_devices will have
@@ -59,7 +58,8 @@ class PlatformUtil {
       const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(PlatformUtil);
+  PlatformUtil(const PlatformUtil&) = delete;
+  PlatformUtil& operator=(const PlatformUtil&) = delete;
 };
 
 }  // namespace xla

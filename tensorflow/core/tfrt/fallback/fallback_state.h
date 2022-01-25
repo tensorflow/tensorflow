@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/tfrt/utils/statusor.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

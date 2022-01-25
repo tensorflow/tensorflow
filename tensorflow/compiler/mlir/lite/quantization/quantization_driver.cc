@@ -330,7 +330,7 @@ class QuantizationDriver {
     }
     fn_.walk([&](Operation *op) {
       if (op->hasTrait<OpTrait::IsTerminator>() ||
-          op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
+          !op->hasTrait<OpTrait::quant::QuantizableResult>() ||
           llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp,
                     arith::ConstantOp>(op))
         return;

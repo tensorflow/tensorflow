@@ -10,5 +10,5 @@ def repo():
         urls = tf_mirror_urls("https://github.com/unicode-org/icu/archive/release-64-2.zip"),
         build_file = "//third_party/icu:icu.BUILD",
         system_build_file = "//third_party/icu:BUILD.system",
-        patch_file = "//third_party/icu:udata.patch",
+        patch_file = ["//third_party/icu:udata.patch"],
     )

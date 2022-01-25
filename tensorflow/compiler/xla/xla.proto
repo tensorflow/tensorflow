@@ -107,10 +107,7 @@ message DebugOptions {
   bool xla_hlo_graph_sharding_color = 92;
 
   reserved 93;  // Was xla_hlo_tfgraph_device_scopes
-
-  // If true, the GPU backend is free to use cudnn for HLO batch normalization
-  // ops.
-  bool xla_gpu_use_cudnn_batchnorm = 94;
+  reserved 94;  // Was xla_gpu_use_cudnn_batchnorm
 
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;
@@ -347,6 +344,9 @@ message DebugOptions {
   // disable all-reduce decomposition.
   int32 xla_gpu_all_reduce_blueconnect_num_devices_per_host = 159;
 
+  // Whether to use the cuDNN frontend API for convolutions when possible.
+  bool xla_gpu_enable_cudnn_frontend = 160;
+
   // Disable dumping metadata in HLO dumps.
   bool xla_dump_disable_metadata = 153;
 
@@ -359,7 +359,7 @@ message DebugOptions {
   // logging a warning and proceeding with fallback.
   bool xla_gpu_strict_conv_algorithm_picker = 156;
 
-  // Next id: 160
+  // Next id: 161
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

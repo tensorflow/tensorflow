@@ -11,8 +11,8 @@ gpu.module @kernel_module attributes {gpu.binary_blob = "BLOB!"} {
 }
 
 // CHECK: llvm.func @_mlir_ciface_tf_launch_kernel(!llvm.ptr<i8>, !llvm.ptr<i8>, !llvm.ptr<i8>, i64, i64, i64, i64, i64, i64, !llvm.ptr<ptr<i8>>)
-// CHECK: llvm.mlir.global internal constant @kernel_module_the_kernel_kernel_name("the_kernel\00")
-// CHECK: llvm.mlir.global internal constant @kernel_module_blob("BLOB!")
+// CHECK-DAG: llvm.mlir.global internal constant @kernel_module_the_kernel_kernel_name("the_kernel\00")
+// CHECK-DAG: llvm.mlir.global internal constant @kernel_module_blob("BLOB!")
 
 // CHECK-LABEL: llvm.func @launch
 // CHECK-SAME: (%[[CTX:.*]]: !llvm.ptr<i8>, %{{.*}}: !llvm.ptr<f32>, %arg2: !llvm.ptr<f32>, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: i64, %arg7: i64

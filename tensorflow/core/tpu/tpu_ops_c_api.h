@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/types/optional.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -63,6 +64,9 @@ struct HostComputeMetadataSerializedProto {
 typedef struct XLA_TpuMeshState XLA_TpuMeshState;
 
 typedef struct XLA_TpuEmbeddingEngineState XLA_TpuEmbeddingEngineState;
+
+typedef struct TpuEmbedding_TensorBatchFixedState
+    TpuEmbedding_TensorBatchFixedState;
 
 typedef struct TpuProfiler TpuProfiler;
 
@@ -499,6 +503,160 @@ bool TpuNodeContext_CompactionSupported(int device_ordinal);
 // Globally initialize the TPU system for inference.
 TFTPU_CAPI_EXPORT void TfTpu_InitializeTpuModelServer();
 
+typedef struct TpuEmbeddingEngine_ExecutePartitioner_Params {
+  int32_t struct_size;
+  void* priv;
+  TpuSerializedProto tpu_embedding_config;
+  const XLA_TpuMeshState* tpu_mesh_state;
+  // out
+  size_t* common_config_size;
+  char** common_config;
+  TF_Status* status;
+} TpuEmbeddingEngine_ExecutePartitioner_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ExecutePartitioner(
+    TpuEmbeddingEngine_ExecutePartitioner_Params* params);
+
+typedef struct TpuEmbeddingEngine_ConfigureMemory_Params {
+  int32_t struct_size;
+  void* priv;
+
+  int num_inputs;
+  size_t common_config_string_size;
+  const char* common_config_string;
+  TpuSerializedProto tpu_embedding_config;
+
+  // out
+  size_t* task_host_config_size;
+  char** task_host_config;
+  TF_Status* status;
+} TpuEmbeddingEngine_ConfigureMemory_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConfigureMemory(
+    TpuEmbeddingEngine_ConfigureMemory_Params* params);
+
+typedef struct TpuEmbeddingEngine_ConfigureHost_Params {
+  int32_t struct_size;
+  void* priv;
+
+  int num_inputs;
+  size_t common_config_string_size;
+  const char* common_config_string;
+  size_t task_host_config_size;
+  const TpuSerializedProto* task_host_config;
+  TpuSerializedProto tpu_embedding_config;
+
+  // out
+  size_t* host_config_size;
+  char** host_config;
+  TF_Status* status;
+} TpuEmbeddingEngine_ConfigureHost_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConfigureHost(
+    TpuEmbeddingEngine_ConfigureHost_Params* params);
+
+typedef struct TpuEmbeddingEngine_ConfigureCommunication_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t host_config_size;
+  const TpuSerializedProto* host_config;
+
+  // out
+  TF_Status* status;
+} TpuEmbeddingEngine_ConfigureCommunication_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ConfigureCommunication(
+    TpuEmbeddingEngine_ConfigureCommunication_Params* params);
+
+typedef struct TpuEmbeddingEngine_FinalizeConfiguration_Params {
+  int32_t struct_size;
+  void* priv;
+  const XLA_TpuMeshState* tpu_mesh_state;
+
+  size_t host_config_size;
+  const TpuSerializedProto* host_config;
+
+  // out
+  TF_Status* status;
+} TpuEmbeddingEngine_FinalizeConfiguration_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_FinalizeConfiguration(
+    TpuEmbeddingEngine_FinalizeConfiguration_Params* params);
+
+typedef struct TpuEmbeddingEngine_IsInitialized_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t config_string_size;
+  const char* config_string;
+
+  // out
+  bool* is_tpu_embedding_initialized;
+  TF_Status* status;
+} TpuEmbeddingEngine_IsInitialized_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_IsInitialized(
+    TpuEmbeddingEngine_IsInitialized_Params* params);
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_WriteParameters(
+    TpuEmbeddingEngineParameters* params, TF_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_ReadParameters(
+    TpuEmbeddingEngineParameters* params, TF_Status* status);
+
+typedef struct TpuEmbeddingEngine_EnqueueTensorBatch_Params {
+  int32_t struct_size;
+  void* priv;
+
+  int32_t local_device_ordinal;
+  TpuEmbedding_TensorBatchFixedState* fixed_state;
+
+  TF_Tensor** sample_indices_tensors;
+  size_t sample_indices_tensors_size;
+  TF_Tensor** embedding_indices_tensors;
+  size_t embedding_indices_tensors_size;
+  TF_Tensor** aggregation_weights_tensors;
+  size_t aggregation_weights_tensors_size;
+  TF_Status* status;
+} TpuEmbeddingEngine_EnqueueTensorBatch_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_EnqueueTensorBatch(
+    TpuEmbeddingEngine_EnqueueTensorBatch_Params* params);
+
+typedef struct TpuEmbedding_TensorBatchFixedState_Create_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t combiners_size;
+  char** combiners;
+
+  // out
+  TF_Status* status;
+} TpuEmbedding_TensorBatchFixedState_Create_Params;
+
+TFTPU_CAPI_EXPORT TpuEmbedding_TensorBatchFixedState*
+TpuEmbeddingTensorBatchFixedState_Create(
+    TpuEmbedding_TensorBatchFixedState_Create_Params* params);
+TFTPU_CAPI_EXPORT void TpuEmbeddingTensorBatchFixedState_Destroy(
+    TpuEmbedding_TensorBatchFixedState* fixed_state);
+
+typedef struct TpuEmbeddingEngine_RecvActivationsComputation_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t config_string_size;
+  XLA_Shape* deduplication_data_shape;
+  const XLA_TpuMeshState* tpu_mesh_state;
+
+  // out
+  TpuSerializedProto* xla_computation;
+  TF_Status* status;
+} TpuEmbeddingEngine_RecvActivationsComputation_Params;
+
+TFTPU_CAPI_EXPORT void TpuEmbeddingEngine_RecvActivationsComputation(
+    TpuEmbeddingEngine_RecvActivationsComputation_Params* params);
+
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_XrtCompileAndBuild);
@@ -581,6 +739,19 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_GetOrdinal);
   TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_DequeueFromCoreSelector);
   TFTPU_ADD_FN_IN_STRUCT(TfTpu_GetTpuPartitionedCallParams);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ExecutePartitioner);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ConfigureMemory);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ConfigureHost);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ConfigureCommunication);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_FinalizeConfiguration);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_IsInitialized);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_WriteParameters);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_ReadParameters);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingTensorBatchFixedState_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingTensorBatchFixedState_Destroy);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_EnqueueTensorBatch);
+  TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngine_RecvActivationsComputation);
 };
 
 }  // extern "C"

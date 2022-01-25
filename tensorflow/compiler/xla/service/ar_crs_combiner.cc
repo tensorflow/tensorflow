@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
@@ -105,7 +106,7 @@ bool HasCombinableReplicaGroup(HloInstruction* hlo, int64_t num_replicas,
       if (group.replica_ids_size() != num_partitions) {
         return false;
       }
-      std::unordered_set<int64_t> partition_ids;
+      absl::flat_hash_set<int64_t> partition_ids;
       int64_t replica_id = group.replica_ids(0) / num_partitions;
       for (int64_t i = 0; i < num_partitions; ++i) {
         if (group.replica_ids(i) / num_partitions != replica_id) {

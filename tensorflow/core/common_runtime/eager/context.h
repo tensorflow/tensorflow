@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -153,6 +154,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
   Status AddDevices(std::vector<std::unique_ptr<Device>> devices) override;
+
+  thread::ThreadPool* GetThreadPool() { return thread_pool_.get(); }
 
   // Returns the function library runtime for the given device.
   FunctionLibraryRuntime* func_lib(const Device* d) const {

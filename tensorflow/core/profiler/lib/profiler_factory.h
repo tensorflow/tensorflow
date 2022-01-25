@@ -34,9 +34,9 @@ using ProfilerFactory =
 void RegisterProfilerFactory(ProfilerFactory factory);
 
 // Invokes all registered profiler factories with the given options, and
-// returns the instantiated (non-null) profiler interfaces in result.
-void CreateProfilers(const ProfileOptions& options,
-                     std::vector<std::unique_ptr<ProfilerInterface>>* result);
+// returns the instantiated (non-null) profiler interfaces.
+std::vector<std::unique_ptr<ProfilerInterface>> CreateProfilers(
+    const ProfileOptions& options);
 
 // For testing only.
 void ClearRegisteredProfilersForTest();

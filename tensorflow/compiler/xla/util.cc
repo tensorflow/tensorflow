@@ -44,6 +44,29 @@ limitations under the License.
 
 namespace xla {
 
+std::vector<int64_t> ToMixedRadix(const int64_t n,
+                                  absl::Span<const int64_t> bounds) {
+  if (bounds.empty()) {
+    return {};
+  }
+
+  std::vector<int64_t> digits;
+  digits.reserve(bounds.size());
+  int64_t divisor = Product(bounds);
+  CHECK_GT(divisor, 0);
+  int64_t remainder = n % divisor;
+  for (const int64_t radix : bounds) {
+    CHECK_GT(radix, 0);
+    divisor /= radix;
+    CHECK_GT(divisor, 0);
+
+    // The divisor is always 1 for the last iteration.
+    digits.push_back(remainder / divisor);
+    remainder = remainder % divisor;
+  }
+  return digits;
+}
+
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
@@ -51,14 +74,14 @@ Status WithLogBacktrace(const Status& status) {
   return status;
 }
 
-ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
+ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
                                        const char* file, int line,
                                        TimerStats* timer_stats)
-    : enabled_(enabled),
+    : label_(label),
       file_(file),
       line_(line),
-      label_(label),
-      timer_stats_(timer_stats) {
+      timer_stats_(timer_stats),
+      enabled_(enabled) {
   if (enabled_) {
     start_micros_ = tensorflow::Env::Default()->NowMicros();
   }
@@ -66,7 +89,7 @@ ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
 
 void ScopedLoggingTimer::StopAndLog() {
   if (enabled_) {
-    uint64 end_micros = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros_) / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
@@ -103,13 +126,14 @@ Status AppendStatus(Status prior, absl::string_view context) {
                 absl::StrCat(prior.error_message(), ": ", context)};
 }
 
-string Reindent(absl::string_view original,
-                const absl::string_view indentation) {
-  std::vector<string> pieces =
+std::string Reindent(absl::string_view original,
+                     const absl::string_view indentation) {
+  std::vector<std::string> pieces =
       absl::StrSplit(absl::string_view(original.data(), original.size()), '\n');
-  return absl::StrJoin(pieces, "\n", [indentation](string* out, string s) {
-    absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
-  });
+  return absl::StrJoin(
+      pieces, "\n", [indentation](std::string* out, absl::string_view s) {
+        absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
+      });
 }
 
 template <typename IntT, typename FloatT>
@@ -124,19 +148,19 @@ static void RoundTripNanPayload(FloatT value, std::string* result) {
   }
 }
 
-string RoundTripFpToString(tensorflow::bfloat16 value) {
+std::string RoundTripFpToString(tensorflow::bfloat16 value) {
   std::string result = absl::StrFormat("%.4g", static_cast<float>(value));
   RoundTripNanPayload<uint16_t>(value, &result);
   return result;
 }
 
-string RoundTripFpToString(Eigen::half value) {
+std::string RoundTripFpToString(Eigen::half value) {
   std::string result = absl::StrFormat("%.5g", static_cast<float>(value));
   RoundTripNanPayload<uint16_t>(value, &result);
   return result;
 }
 
-string RoundTripFpToString(float value) {
+std::string RoundTripFpToString(float value) {
   char buffer[tensorflow::strings::kFastToBufferSize];
   tensorflow::strings::FloatToBuffer(value, buffer);
   std::string result = buffer;
@@ -144,7 +168,7 @@ string RoundTripFpToString(float value) {
   return result;
 }
 
-string RoundTripFpToString(double value) {
+std::string RoundTripFpToString(double value) {
   char buffer[tensorflow::strings::kFastToBufferSize];
   tensorflow::strings::DoubleToBuffer(value, buffer);
   std::string result = buffer;
@@ -185,13 +209,13 @@ bool HasInteriorPadding(const PaddingConfig& config) {
 }
 
 namespace {
-string HumanReadableNumOps(double flops, double nanoseconds,
-                           absl::string_view op_prefix) {
+std::string HumanReadableNumOps(double flops, double nanoseconds,
+                                absl::string_view op_prefix) {
   if (nanoseconds == 0) {
     return absl::StrCat("NaN ", op_prefix, "OP/s");
   }
   double nano_flops = flops / nanoseconds;
-  string throughput = tensorflow::strings::HumanReadableNum(
+  std::string throughput = tensorflow::strings::HumanReadableNum(
       static_cast<int64_t>(nano_flops * 1e9));
   absl::string_view sp(throughput);
   // Use the more common "G(FLOPS)", rather than "B(FLOPS)"
@@ -204,11 +228,12 @@ string HumanReadableNumOps(double flops, double nanoseconds,
 }
 }  // namespace
 
-string HumanReadableNumFlops(double flops, double nanoseconds) {
+std::string HumanReadableNumFlops(double flops, double nanoseconds) {
   return HumanReadableNumOps(flops, nanoseconds, "FL");
 }
 
-string HumanReadableNumTranscendentalOps(double trops, double nanoseconds) {
+std::string HumanReadableNumTranscendentalOps(double trops,
+                                              double nanoseconds) {
   return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
@@ -231,7 +256,7 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
     }
     auto msg = text.substr(cur, eol - cur);
     tensorflow::internal::LogString(fname, lineno, sev,
-                                    string(msg.data(), msg.size()));
+                                    std::string(msg.data(), msg.size()));
     cur = eol + 1;
   }
 
@@ -342,6 +367,30 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
         dimensions.transformed_from_dimensions.push_back(d);
       }
     } else if (any_present) {
+      // Try to find if there is a to dimension that is like (from) [2,32] ->
+      // (to) [4,4,4] to detect that from dimensoin 1 can be partially mapped
+      // into dimension 1 and 2 of the to sizes with a partial size of 2.
+      if (common_factors[i].first + 2 == common_factors[i + 1].first &&
+          absl::c_linear_search(from_dimensions, common_factors[i].first + 1)) {
+        int64_t from_size = from_sizes[common_factors[i + 1].first - 1];
+        bool has_to_dim = false;
+        for (int64_t to_dim = common_factors[i + 1].second - 1;
+             to_dim >= common_factors[i].second; --to_dim) {
+          const int64_t to_size = to_sizes[to_dim];
+          if (from_size % to_size == 0) {
+            has_to_dim = true;
+            from_size /= to_size;
+            dimensions.to_dimensions.push_back(to_dim);
+          } else {
+            break;
+          }
+        }
+        if (has_to_dim) {
+          dimensions.split_from_sizes.push_back(from_size);
+          dimensions.split_from_dimensions.push_back(common_factors[i].first +
+                                                     1);
+        }
+      }
       for (int64_t d = common_factors[i].first; d < common_factors[i + 1].first;
            ++d) {
         if (absl::c_linear_search(from_dimensions, d)) {
@@ -350,9 +399,10 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
       }
     }
   }
+  absl::c_sort(dimensions.to_dimensions);
   return dimensions;
 }
-string SanitizeFileName(string file_name) {
+std::string SanitizeFileName(std::string file_name) {
   for (char& c : file_name) {
     if (c == '/' || c == '\\' || c == '[' || c == ']' || c == ' ') {
       c = '_';

@@ -37,6 +37,8 @@ static stream_executor::port::StatusOr<mlir::OwningModuleRef> Import(
   // TODO(fengliuai): get debug info at runtime.
   GraphDebugInfo debug_info;
   GraphImportConfig specs;
+  specs.enable_shape_inference = options.shape_inference_on_tfe_dialect_import;
+
   TF_ASSIGN_OR_RETURN(
       auto module,
       ConvertGraphToMlir(graph, debug_info, *options.flib_def, specs, context));

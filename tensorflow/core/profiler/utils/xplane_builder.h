@@ -46,14 +46,14 @@ class XStatsBuilder {
   // NOTE: A stat shouldn't have existed for the given metadata.
   // Adds a stat for the given metadata and sets its value.
   template <typename ValueT>
-  void AddStatValue(const XStatMetadata& metadata, ValueT value) {
-    SetStatValue(value, AddStat(metadata));
+  void AddStatValue(const XStatMetadata& metadata, ValueT&& value) {
+    SetStatValue(std::forward<ValueT>(value), AddStat(metadata));
   }
 
   // Adds or finds a stat for the given metadata and sets its value.
   template <typename ValueT>
-  void SetOrAddStatValue(const XStatMetadata& metadata, ValueT value) {
-    SetStatValue(value, FindOrAddStat(metadata));
+  void SetOrAddStatValue(const XStatMetadata& metadata, ValueT&& value) {
+    SetStatValue(std::forward<ValueT>(value), FindOrAddStat(metadata));
   }
 
   // Adds a stat by copying a stat from another XPlane. Does not check if a stat

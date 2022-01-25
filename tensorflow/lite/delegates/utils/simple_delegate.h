@@ -56,6 +56,8 @@ class SimpleDelegateKernelInterface {
 
   // Actual subgraph inference should happen on this call.
   // Returns status, and signalling any errors.
+  // NOTE: Tensor data pointers (tensor->data) can change every inference, so
+  // the implementation of this method needs to take that into account.
   virtual TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) = 0;
 };
 

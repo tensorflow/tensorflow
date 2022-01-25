@@ -157,14 +157,15 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
 
   LogicalResult matchAndRewrite(tensor::ExtractOp op,
                                 PatternRewriter &rewriter) const override {
+    auto broadcast_op = op.tensor().getDefiningOp<BroadcastOp>();
+    if (!broadcast_op) return failure();
+
     // Confirm that there is a constant index. This is required, so we can
     // confirm the DimOp's input will define the resulting broadcasted shape in
     // that dimension.
     auto index = op.indices().front().getDefiningOp<arith::ConstantIndexOp>();
     if (!index) return failure();
     auto idx = index.value();
-    auto broadcast_op = op.tensor().getDefiningOp<BroadcastOp>();
-    if (!broadcast_op) return failure();
 
     // Iterate through the operands with 3 considerations in this order:
     // 1. If a static, non-1 dimension is seen, we know this to be the
@@ -233,12 +234,9 @@ struct ShapeSimplification
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(&getContext());
 
-    Dialect *shape_dialect = context->getLoadedDialect<shape::ShapeDialect>();
-    Dialect *mhlo_dialect = context->getLoadedDialect<mhlo::MhloDialect>();
-    for (auto *op : context->getRegisteredOperations()) {
-      if (op->dialect.getTypeID() == shape_dialect->getTypeID() ||
-          op->dialect.getTypeID() == mhlo_dialect->getTypeID())
-        op->getCanonicalizationPatterns(patterns, context);
+    for (auto op : context->getRegisteredOperations()) {
+      if (isa<shape::ShapeDialect, mhlo::MhloDialect>(op.getDialect()))
+        op.getCanonicalizationPatterns(patterns, context);
     }
 
     patterns.insert<BroadcastRemoveSubsumedOperandsPattern,

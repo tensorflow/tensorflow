@@ -27,43 +27,32 @@ namespace tensorrt {
 
 namespace convert {
 
-TRT_ShapedWeights::TRT_ShapedWeights(nvinfer1::DataType type) : type_(type) {
-  shape_.nbDims = 0;
-  shape_.d[0] = 0;
-}
+TRT_ShapedWeights::TRT_ShapedWeights(nvinfer1::DataType type)
+    : shape_(0, DimsAdapter::StorageType{}), type_(type), volume_(0) {}
 
-TRT_ShapedWeights::TRT_ShapedWeights(nvinfer1::DataType type,
-                                     nvinfer1::Dims dims, Tensor tensor)
-    : shape_(dims), type_(type), tensor_(tensor) {
-  if (dims.nbDims == 0) {
-    DCHECK(dims.d[0] == 0 || dims.d[0] == 1);
+StatusOr<TRT_ShapedWeights> TRT_ShapedWeights::CreateWithTensor(
+    nvinfer1::DataType type, DimsAdapter dims, Tensor tensor) {
+  TRT_ShapedWeights weights(type);
+  weights.shape_ = dims;
+  weights.tensor_ = std::forward<Tensor>(tensor);
+  weights.volume_ = weights.shape_.Volume();
+  if (weights.shape_.NumDims() == 0) {
+    DCHECK(weights.shape_.IsScalar());
   }
-}
-
-TRT_ShapedWeights::TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
-    : shape_(rhs.shape_), type_(rhs.type_), tensor_(rhs.tensor_) {}
-
-int64_t TRT_ShapedWeights::count(nvinfer1::Dims dims) {
-  if (dims.nbDims == 0) {
-    assert(dims.d[0] == 0 || dims.d[0] == 1);
-    return dims.d[0];
-  }
-  return static_cast<int64_t>(
-      std::accumulate(dims.d, dims.d + dims.nbDims, 1, std::multiplies<int>()));
+  return weights;
 }
 
 nvinfer1::Weights TRT_ShapedWeights::GetTrtWeights() const {
-  return nvinfer1::Weights{type_, GetPointer<int8>(), count()};
+  return nvinfer1::Weights{type_, GetPointer<int8>(), volume_};
 }
 
-Status TRT_ShapedWeights::SetShape(nvinfer1::Dims dims) {
-  if (this->count() != TRT_ShapedWeights::count(dims)) {
-    VLOG(2) << "Changing shape from "
-            << tensorflow::tensorrt::DebugString(shape_) << ", to "
-            << tensorflow::tensorrt::DebugString(dims);
+Status TRT_ShapedWeights::SetShape(DimsAdapter dims) {
+  if (volume_ != dims.Volume()) {
+    VLOG(2) << "Changing shape from " << shape_.DebugString() << ", to "
+            << dims.DebugString();
     return errors::Internal("SetShape would change number of elements");
   }
-  shape_ = dims;
+  shape_ = std::move(dims);
   return Status::OK();
 }
 
@@ -82,12 +71,12 @@ size_t TRT_ShapedWeights::size_bytes() const {
       data_type_size = 1;
       break;
   }
-  return this->count() * data_type_size;
+  return volume_ * data_type_size;
 }
 
 string TRT_ShapedWeights::DebugString() const {
   return absl::StrCat(
-      "TRT_ShapedWeights(shape=", tensorflow::tensorrt::DebugString(shape_),
+      "TRT_ShapedWeights(shape=", shape_.DebugString(),
       ", type=", tensorflow::tensorrt::DebugString(type_),
       ", values=", reinterpret_cast<uintptr_t>(GetPointer<int8>()), ")");
 }
@@ -142,9 +131,8 @@ ITensorProxyPtr TRT_TensorOrWeights::tensor() const {
 nvinfer1::Dims TRT_TensorOrWeights::GetTrtDims() const {
   if (is_tensor()) {
     return tensor()->getDimensions();
-  } else {
-    return weights().shape_;
   }
+  return weights().Shape().AsTrtDims();
 }
 
 Status TRT_TensorOrWeights::GetTfType(DataType* tf_type) const {
@@ -172,16 +160,17 @@ string TRT_TensorOrWeights::DebugString() const {
   return output;
 }
 
-TRT_ShapedWeights TrtWeightStore::GetTempWeights(nvinfer1::DataType trt_dtype,
-                                                 const nvinfer1::Dims& dims) {
-  TensorShape shape;
+StatusOr<TRT_ShapedWeights> TrtWeightStore::GetTempWeights(
+    nvinfer1::DataType trt_dtype, const DimsAdapter& dims) {
   DataType tf_dtype;
-  // TODO(laigd): make it return a status.
-  TF_CHECK_OK(TensorShapeUtils::MakeShape(dims.d, dims.nbDims, &shape));
-  TF_CHECK_OK(TrtTypeToTfType(trt_dtype, &tf_dtype));
+  TF_RETURN_IF_ERROR(TrtTypeToTfType(trt_dtype, &tf_dtype));
+  TensorShape shape;
+  TF_RETURN_IF_ERROR(dims.TensorShape(&shape));
   // TODO(jie): check weights size_bytes. 0 means type error
   Tensor tensor(tf_dtype, shape);
-  TRT_ShapedWeights weights(trt_dtype, dims, tensor);
+  StatusOr<TRT_ShapedWeights> weights =
+      TRT_ShapedWeights::CreateWithTensor(trt_dtype, dims, tensor);
+  TRT_ENSURE_OK(weights);
   store_.emplace_back(std::move(tensor));
   return weights;
 }

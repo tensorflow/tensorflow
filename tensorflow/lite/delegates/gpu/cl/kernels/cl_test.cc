@@ -80,6 +80,7 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
 
     operation->SetDst(&dst[i], i);
   }
+  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
 
   ClOperation cl_op;
   cl_op.Init(std::move(operation));
@@ -134,6 +135,7 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
 
     operation->SetDst(&dst[i], i);
   }
+  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
 
   ClOperation cl_op;
   cl_op.Init(std::move(operation));
@@ -182,6 +184,7 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
 
     operation->SetDst(&dst[i], i);
   }
+  RETURN_IF_ERROR(operation->AssembleCode(creation_context.device->GetInfo()));
 
   ClOperation cl_op;
   cl_op.Init(std::move(operation));

@@ -63,6 +63,7 @@ def generated_test_models():
         "gather",
         "gather_nd",
         "gather_with_constant",
+        "gelu",
         "global_batch_norm",
         "greater",
         "greater_equal",
@@ -96,6 +97,7 @@ def generated_test_models():
         "minimum",
         "mirror_pad",
         "mul",
+        "multinomial",
         "nearest_upsample",
         "neg",
         "not_equal",
@@ -225,6 +227,7 @@ def generated_test_models_failing(conversion_mode, delegate):
             "leaky_relu",
             "mean",
             "mirror_pad",
+            "multinomial",
             "one_hot",
             "pad",
             "padv2",
@@ -330,6 +333,10 @@ def merged_test_models():
                 # Merged test rules are only for running on the real device environment.
                 if "notap" not in tags:
                     tags.append("notap")
+
+                # Only execute merged tests on real device.
+                if "no_oss" not in tags:
+                    tags.append("no_oss")
                 args = common_test_args_for_generated_models(conversion_mode, False)
                 n = number_of_merged_zip_file(conversion_mode, delegate)
                 for i in range(n):
@@ -409,9 +416,7 @@ def mlir_generated_test_models():
 
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
-
-    # TODO(b/146025965): Remove reference to toco.
-    return ["toco-flex", "forward-compat", "", "mlir-quant"]
+    return ["with-flex", "forward-compat", "", "mlir-quant"]
 
 def generated_test_delegates():
     """Returns a list of delegates."""
@@ -472,7 +477,7 @@ def common_test_args_for_generated_models(conversion_mode, failing):
 
     # Flex conversion shouldn't suffer from the same conversion bugs
     # listed for the default TFLite kernel backend.
-    if conversion_mode == "toco-flex":
+    if conversion_mode == "with-flex":
         args.append("--ignore_known_bugs=false")
 
     return args
@@ -525,9 +530,8 @@ def gen_zip_test(
         flags += " --make_forward_compat_test"
     elif conversion_mode == "mlir-quant":
         flags += " --mlir_quantizer"
-        # TODO(b/146025965): Remove reference to toco.
 
-    elif conversion_mode == "toco-flex":
+    elif conversion_mode == "with-flex":
         flags += " --ignore_converter_errors --run_with_flex"
     if test_name.startswith(merged_test_model_name() + "_"):
         flags += flags_for_merged_test_models(test_name, conversion_mode, delegate)
@@ -562,12 +566,12 @@ def gen_zipped_test_file(name, file, flags = ""):
     """
     native.genrule(
         name = file + ".files",
-        cmd = (("$(locations :generate_examples) " +
+        cmd = (("$(location //tensorflow/lite/testing:generate_examples) " +
                 " --zip_to_output {0} {1} $(@D)").format(file, flags)),
         outs = [file],
         # `exec_tools` is required for PY3 compatibility in place of `tools`.
         exec_tools = [
-            ":generate_examples",
+            "//tensorflow/lite/testing:generate_examples",
         ],
     )
 

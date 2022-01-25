@@ -23,11 +23,13 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -45,9 +47,18 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
+
+// Converts the unsigned integer n into a mixed-radix representation with the
+// given bounds (radices). More precisely, if there are K radices, then the
+// returned vector digits has K entries and satisfies
+//
+//   0 <= digits[i] < bounds[i],  for i = 0, ..., K - 1
+//
+// and FromMixedRadix(digits) == n. The mixed radix representation is unique
+// modulo the product of the entries of bounds.
+std::vector<int64_t> ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds);
 
 // Logs the provided status message with a backtrace.
 //
@@ -60,8 +71,8 @@ Status WithLogBacktrace(const Status& status);
 // the bounds and indices. And for the rare cases of ranks greater than 8,
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
-static constexpr int kInlineRank = 8;
-using DimensionVector = absl::InlinedVector<int64_t, kInlineRank>;
+inline constexpr int InlineRank() { return 8; }
+using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
@@ -99,7 +110,7 @@ struct TimerStats {
   tensorflow::mutex stats_mutex;
   double cumulative_secs ABSL_GUARDED_BY(stats_mutex) = 0;
   double max_secs ABSL_GUARDED_BY(stats_mutex) = 0;
-  uint64 times_called ABSL_GUARDED_BY(stats_mutex) = 0;
+  uint64_t times_called ABSL_GUARDED_BY(stats_mutex) = 0;
 };
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
@@ -113,7 +124,7 @@ class ScopedLoggingTimer {
   // line: Line number to display in logging.
   // `timer_stats`: unowned non-null pointer which is used to populate the
   // global timer statistics.
-  ScopedLoggingTimer(const std::string& label, bool enabled, const char* file,
+  ScopedLoggingTimer(absl::string_view label, bool enabled, const char* file,
                      int line, TimerStats* timer_stats);
 
   // Stop the timer and log the tracked time. Timer is disabled after this
@@ -123,12 +134,12 @@ class ScopedLoggingTimer {
   ~ScopedLoggingTimer();
 
  private:
+  const std::string label_;
+  const char* const file_;
+  const int line_;
+  TimerStats* const timer_stats_;
+  uint64_t start_micros_;
   bool enabled_;
-  const char* file_;
-  int line_;
-  string label_;
-  uint64 start_micros_;
-  TimerStats* timer_stats_;
 };
 
 // Given a vector<T>, returns a Span<char> that points at its
@@ -137,92 +148,54 @@ class ScopedLoggingTimer {
 // Warning: if the vector is updated its storage pointer may change, so use this
 // with caution (ideally in limited scopes with temporary lifetimes).
 template <typename T>
-absl::Span<uint8> MutableByteSlice(std::vector<T>* v) {
-  return absl::Span<uint8>(reinterpret_cast<uint8*>(v->data()),
-                           v->size() * sizeof(T));
+absl::Span<uint8_t> MutableByteSlice(std::vector<T>* v) {
+  return absl::Span<uint8_t>(reinterpret_cast<uint8_t*>(v->data()),
+                             v->size() * sizeof(T));
 }
 
 // Turns an immutable slice of type T into an immutable slice of bytes with the
 // same byte size.
 template <typename T>
-absl::Span<const uint8> CastToByteSlice(absl::Span<const T> slice) {
-  return absl::Span<const uint8>(reinterpret_cast<const uint8*>(slice.data()),
-                                 slice.size() * sizeof(T));
+absl::Span<const uint8_t> CastToByteSlice(absl::Span<const T> slice) {
+  return absl::Span<const uint8_t>(
+      reinterpret_cast<const uint8_t*>(slice.data()), slice.size() * sizeof(T));
 }
 
 // Casts a byte slice to a non-byte type T, checking that the original slice
 // length is a multiple of sizeof(T).
 template <typename T>
-absl::Span<const T> CastByteSlice(absl::Span<const uint8> slice) {
+absl::Span<const T> CastByteSlice(absl::Span<const uint8_t> slice) {
   CHECK_EQ(0, slice.size() % sizeof(T));
   return absl::Span<const T>(reinterpret_cast<const T*>(slice.data()),
                              slice.size() / sizeof(T));
 }
 
-// Convenience function to force a vector to convert to an immutable slice.
-template <typename T>
-absl::Span<const T> AsSlice(const std::vector<T>& v) {
-  return absl::Span<const T>(v);
-}
-
-// Converts a mutable vector pointer into a Span of the same
-// type.
-template <typename T>
-absl::Span<T> AsMutableSlice(std::vector<T>* v) {
-  return absl::Span<T>(v->data(), v->size());
-}
-
-// int64_t is not the same type as tensorflow::protobuf_int64 in open-source.
-// Wrapper function that gives an int64_t array slice view of a repeated int64
-// protobuf field.
-static inline absl::Span<const int64_t> AsInt64Slice(
-    const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
-  absl::Span<const tensorflow::protobuf_int64> slice(v);
-  return absl::Span<const int64_t>(
-      reinterpret_cast<const int64_t*>(slice.data()), slice.size());
-}
-
-// TODO(b/29771030): This nop overload was added to simplify the migration of
-// Shape from a proto to a C++ class. Remove after class has been migrated.
-static inline absl::Span<const int64_t> AsInt64Slice(
-    absl::Span<const int64_t> slice) {
-  return slice;
-}
-
-// As above, but for uint64 types.
-static inline absl::Span<const uint64_t> AsUInt64Slice(
-    const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>& v) {
-  absl::Span<const tensorflow::protobuf_uint64> slice(v);
-  return absl::Span<const uint64_t>(
-      reinterpret_cast<const uint64_t*>(slice.data()), slice.size());
-}
-
 // Compares two containers for equality. Returns true iff the two containers
 // have the same size and all their elements compare equal using their
 // operator==. Like std::equal, but forces size equality.
-template <typename Container1T, typename Container2T>
-bool ContainersEqual(const Container1T& c1, const Container2T& c2) {
-  return ((c1.size() == c2.size()) &&
-          std::equal(std::begin(c1), std::end(c1), std::begin(c2)));
-}
-
 template <typename Container1T,
           typename ElementType = typename Container1T::value_type>
 bool ContainersEqual(const Container1T& c1,
                      std::initializer_list<ElementType> il) {
   absl::Span<const ElementType> c2{il};
-  return ContainersEqual(c1, c2);
+  return absl::c_equal(c1, c2);
 }
 
-// Compares two containers for equality. Returns true iff the two containers
-// have the same size and all their elements compare equal using the predicate
-// p. Like std::equal, but forces size equality.
-template <typename Container1T, typename Container2T, class PredicateT>
-bool ContainersEqual(const Container1T& c1, const Container2T& c2,
-                     PredicateT p) {
-  return ((c1.size() == c2.size()) &&
-          std::equal(std::begin(c1), std::end(c1), std::begin(c2), p));
+template <int&... ExplicitArgumentBarrier, typename... Types>
+size_t HashOf(const Types&... values) {
+  auto tuple = std::tie(values...);
+  return absl::Hash<decltype(tuple)>{}(tuple);
 }
+
+#if defined(__cpp_lib_to_underlying) && __cpp_lib_to_underlying >= 202102L
+using to_underlying = std::to_underlying;
+#else
+// Helper function which implements C++23's std::to_underlying.
+template <typename T>
+constexpr absl::underlying_type_t<T> to_underlying(T value) noexcept {
+  return static_cast<absl::underlying_type_t<T>>(value);
+}
+#endif
 
 // Performs a copy of count values from src to dest, using different strides for
 // source and destination. The source starting index is src_base, while the
@@ -327,7 +300,7 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 //
 // Note: even different amounts of leading whitespace on different lines will be
 // uniformly replaced with "indentation".
-string Reindent(absl::string_view original, absl::string_view indentation);
+std::string Reindent(absl::string_view original, absl::string_view indentation);
 
 template <typename Container>
 int64_t PositionInContainer(const Container& container, int64_t value) {
@@ -338,11 +311,11 @@ int64_t PositionInContainer(const Container& container, int64_t value) {
 // appending the elements of the container. Prefix is prepended and suffix is
 // appended to the returned string.
 template <typename Container>
-string CommaSeparatedString(const Container& c, const char* prefix = "",
-                            const char* suffix = "") {
+std::string CommaSeparatedString(const Container& c, const char* prefix = "",
+                                 const char* suffix = "") {
   // Not using Join() since the implementation here is simple anyway and this
   // avoids copying the string to append prefix.
-  string comma_separated = prefix;
+  std::string comma_separated = prefix;
   const char* separator = "";
   for (const auto& entry : c) {
     absl::StrAppend(&comma_separated, separator, entry);
@@ -355,36 +328,37 @@ string CommaSeparatedString(const Container& c, const char* prefix = "",
 // Overload needed to allow the container to be an initializer list. The default
 // type for T makes an empty initializer list work as well.
 template <typename T = int>
-string CommaSeparatedString(const std::initializer_list<T>& c,
-                            const char* prefix = "", const char* suffix = "") {
+std::string CommaSeparatedString(const std::initializer_list<T>& c,
+                                 const char* prefix = "",
+                                 const char* suffix = "") {
   return CommaSeparatedString<std::initializer_list<T>>(c, prefix, suffix);
 }
 
 // Formats the container in the mathematical notation for a vector, e.g. (1, 3,
 // 7). StrAppend must support appending the elements of c.
 template <typename Container>
-string VectorString(const Container& c) {
+std::string VectorString(const Container& c) {
   return CommaSeparatedString(c, "(", ")");
 }
 
 // Overload needed to allow the container to be an initializer list. The default
 // type for T makes an empty initializer list work as well.
 template <typename T = int>
-string VectorString(const std::initializer_list<T>& c) {
+std::string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
 // Returns a string which can losslessly round trip to a bfloat.
-string RoundTripFpToString(tensorflow::bfloat16 value);
+std::string RoundTripFpToString(tensorflow::bfloat16 value);
 
 // Returns a string which can losslessly round trip to a fp16.
-string RoundTripFpToString(Eigen::half value);
+std::string RoundTripFpToString(Eigen::half value);
 
 // Returns a string which can losslessly round trip to a float.
-string RoundTripFpToString(float value);
+std::string RoundTripFpToString(float value);
 
 // Returns a string which can losslessly round trip to a double.
-string RoundTripFpToString(double value);
+std::string RoundTripFpToString(double value);
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64_t rank);
@@ -413,48 +387,39 @@ T CeilOfRatio(T dividend, T divisor) {
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
-// then multiplying by the divisor. For example: RoundUpToNearest(13, 8) => 16
+// then multiplying by the divisor. For example: RoundUpTo(13, 8) => 16
 template <typename T>
-T RoundUpToNearest(T value, T divisor) {
+T RoundUpTo(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
 }
 
 // Rounds the value down to a multiple of the divisor by first calling
 // FloorOfRatio then multiplying by the divisor. For example:
-// RoundDownToNearest(13, 8) => 8
+// RoundDownTo(13, 8) => 8
 template <typename T>
-T RoundDownToNearest(T value, T divisor) {
+T RoundDownTo(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
 }
 
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
-string HumanReadableNumFlops(double flops, double nanoseconds);
+std::string HumanReadableNumFlops(double flops, double nanoseconds);
 
 // Given a number of transcendental ops executed in an amount of time, produces
 // a string that represents the throughput;
 // e.g. HumanReadableNumTranscendentalOps(1e9, 1e9) => 1.00GTROP/s.
-string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
+std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
 void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
-template <typename T>
-inline bool IsPowerOfTwo(T x) {
-  static_assert(!std::numeric_limits<T>::is_signed, "unsigned types only");
-  return x != 0 && (x & (x - 1)) == 0;
-}
-
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
-inline T LsbMask(int width) {
+constexpr inline T LsbMask(int width) {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
-  CHECK_GE(width, 0) << "Unsupported width " << width;
-  CHECK_LE(width, std::numeric_limits<T>::digits)
-      << "Unsupported width " << width;
   return width == 0
              ? 0
              : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
@@ -462,7 +427,7 @@ inline T LsbMask(int width) {
 
 // Returns the value with every bit except the lower 'width' bits set to zero.
 template <typename T>
-inline T ClearUpperBits(T value, int width) {
+constexpr inline T ClearUpperBits(T value, int width) {
   return value & LsbMask<T>(width);
 }
 
@@ -559,6 +524,9 @@ struct ConvertedDimensionNumbers {
   DimensionVector transformed_from_dimensions;
   DimensionVector untransformed_from_dimensions;
   DimensionVector to_dimensions;
+  DimensionVector split_from_dimensions;
+  DimensionVector split_from_sizes;
+  DimensionVector split_to_dimensions;
 };
 
 // Convert and unsorted list of dimensions from one shapes dimension sizes to
@@ -568,7 +536,7 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
     absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes);
 
 // Removes illegal characters from filenames.
-string SanitizeFileName(string file_name);
+std::string SanitizeFileName(std::string file_name);
 
 template <typename C, typename Value>
 int64_t FindIndex(const C& c, Value&& value) {
@@ -603,7 +571,7 @@ bool IsInt32(T x) {
   // Following conversion rules: "the value is unchanged if it can be
   // represented in the destination type (and bit-field width); otherwise, the
   // value is implementation-defined."
-  return static_cast<int32>(x) == x;
+  return static_cast<int32_t>(x) == x;
 }
 
 template <typename T>
@@ -625,77 +593,6 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 // Note: The resulting representation can still only represent 8-bit exponent
 // range that is available in F32s (out of a total of 11 exponent bits in F64s).
 std::pair<float, float> SplitF64ToF32(double x);
-
-// MakeCleanup(f) returns an RAII cleanup object that calls 'f' in its
-// destructor. The easiest way to use MakeCleanup is with a lambda argument,
-// capturing the return value in an 'auto' local variable. Most users will not
-// need more sophisticated syntax than that.
-//
-// Example:
-//   void func() {
-//     auto resource = acquire_resource();
-//     auto cleanup = MakeCleanup([&] { release_resource(resource); });
-//     TF_RETURN_IF_ERROR(...);  // phew, calls release_resource!
-//   }
-//
-// You can use Cleanup<F> directly, instead of using MakeCleanup and auto,
-// but there's rarely a reason to do that.
-//
-// You can call 'release()' on a Cleanup object to cancel the cleanup
-//
-// You probably do not want to capture by reference in the cleanup lambda a
-// variable that is returned by the function.  This can lead to disabling of RVO
-// at best, and undefined behavior at worst.
-template <typename F>
-class Cleanup {
- public:
-  Cleanup() : released_(true), f_() {}
-
-  template <typename G>
-  explicit Cleanup(G&& f) : f_(std::forward<G>(f)) {}
-
-  Cleanup(Cleanup&& src) : released_(src.is_released()), f_(src.release()) {}
-
-  // Implicitly move-constructible from any compatible Cleanup<G>. The source
-  // will be released as if src.release() were called. A moved-from Cleanup can
-  // be safely destroyed or reassigned.
-  template <typename G>
-  Cleanup(Cleanup<G>&& src) : released_(src.is_released()), f_(src.release()) {}
-
-  // Assignment to a Cleanup object behaves like destroying it and making a new
-  // one in its place, analogous to unique_ptr semantics.
-  Cleanup& operator=(Cleanup&& src) {
-    if (!released_) std::move(f_)();
-    released_ = src.released_;
-    f_ = src.release();
-    return *this;
-  }
-
-  ~Cleanup() {
-    if (!released_) std::move(f_)();
-  }
-
-  // Releases the cleanup function instead of running it. Hint: use
-  // c.release()() to run early.
-  F release() {
-    released_ = true;
-    return std::move(f_);
-  }
-
-  bool is_released() const { return released_; }
-
- private:
-  static_assert(!std::is_reference<F>::value, "F must not be a reference");
-
-  bool released_ = false;
-  F f_;
-};
-
-template <int&... ExplicitParameterBarrier, typename F,
-          typename DecayF = typename std::decay<F>::type>
-ABSL_MUST_USE_RESULT Cleanup<DecayF> MakeCleanup(F&& f) {
-  return Cleanup<DecayF>(std::forward<F>(f));
-}
 
 }  // namespace xla
 

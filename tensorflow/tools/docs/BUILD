@@ -53,17 +53,21 @@ py_test(
     args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module + keras_module)],
     python_version = "PY3",
     tags = [
+        "manual",  # b/215770086
         "no_oss_py2",
         "no_pip",
         "no_rocm",  # No need to rerun this test for ROCm config.
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",
+        "notap",  # b/215770086
         "notsan",
     ],
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -114,6 +118,8 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
@@ -133,6 +139,33 @@ py_test(
     ],
     deps = [
         ":tf_doctest_lib",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "fenced_doctest_lib",
+    srcs = ["fenced_doctest_lib.py"],
+    deps = [
+        ":tf_doctest_lib",
+        "@astor_archive//:astor",
+    ],
+)
+
+py_test(
+    name = "fenced_doctest_test",
+    srcs = ["fenced_doctest_test.py"],
+    data = glob(["**/create_model.md"]),
+    tags = [
+        "no_oss",
+        "no_pip",
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":fenced_doctest_lib",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],

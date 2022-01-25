@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
@@ -47,7 +48,7 @@ class GraphPruningPass
   bool ShouldPreserveIsland(IslandOp island);
   void PruneGraph(GraphOp graph);
 
-  llvm::SmallDenseSet<mlir::Identifier, 4> ops_to_preserve_ids_;
+  llvm::SmallDenseSet<mlir::StringAttr, 4> ops_to_preserve_ids_;
 };
 
 // Checks if a tf_executor.Graph can be pruned.
@@ -112,16 +113,27 @@ GraphPruningPass::GraphPruningPass(
 
 void GraphPruningPass::runOnFunction() {
   for (const auto& op_name : ops_to_preserve_) {
-    ops_to_preserve_ids_.insert(mlir::Identifier::get(op_name, &getContext()));
+    ops_to_preserve_ids_.insert(mlir::StringAttr::get(&getContext(), op_name));
   }
   if (!CanPruneGraph(getFunction())) return;
   getFunction().walk([this](tf_executor::GraphOp graph) { PruneGraph(graph); });
 }
 
-// An op should be preserved if its identifier is contained in
-// `ops_to_preserve_ids_`.
+// An op should be preserved if either its identifier is contained in
+// `ops_to_preserve_ids_` or if it has a `MustExecute` effect.
 bool GraphPruningPass::ShouldPreserveOp(Operation* op) {
-  return ops_to_preserve_ids_.contains(op->getName().getIdentifier());
+  if (ops_to_preserve_ids_.contains(op->getName().getIdentifier())) return true;
+
+  llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
+  auto interface = dyn_cast<MemoryEffectOpInterface>(op);
+  if (interface) interface.getEffects(effects);
+
+  for (const auto& effect : effects) {
+    if (llvm::isa<TF::ResourceEffects::MustExecute>(effect.getResource())) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // An island should be preserved if any of its inner ops should be preserved.

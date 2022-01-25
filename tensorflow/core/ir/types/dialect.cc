@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionSupport.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -64,28 +64,6 @@ void TFTypeDialect::initialize() {
 #define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
 #include "tensorflow/core/ir/types/types.def"
            >();
-}
-
-// Entry point for Attribute parsing, TableGen generated code will handle the
-// dispatch to the individual classes.
-Attribute TFTypeDialect::parseAttribute(DialectAsmParser &parser,
-                                        Type type) const {
-  StringRef attr_tag;
-  if (failed(parser.parseKeyword(&attr_tag))) return Attribute();
-  {
-    Attribute attr;
-    auto parse_result = generatedAttributeParser(parser, attr_tag, type, attr);
-    if (parse_result.hasValue()) return attr;
-  }
-  parser.emitError(parser.getNameLoc(), "unknown tf_type attribute");
-  return Attribute();
-}
-
-// Entry point for Attribute printing, TableGen generated code will handle the
-// dispatch to the individual classes.
-void TFTypeDialect::printAttribute(Attribute attr,
-                                   DialectAsmPrinter &os) const {
-  (void)generatedAttributePrinter(attr, os);
 }
 
 namespace {
@@ -291,6 +269,34 @@ Attribute FuncAttr::parse(AsmParser &parser, Type type) {
   if (failed(parser.parseGreater())) return {};
   return FuncAttr::get(parser.getContext(), name.cast<SymbolRefAttr>(),
                        dict.cast<DictionaryAttr>());
+}
+
+void FuncAttr::walkImmediateSubElements(
+    function_ref<void(Attribute)> walkAttrsFn,
+    function_ref<void(Type)> walkTypesFn) const {
+  // Walk the dictionary attribute first, so that its index is always 0.
+  walkAttrsFn(getAttrs());
+  // Walk the symbol ref attribute if it isn't empty.
+  if (!getName().getRootReference().getValue().empty()) walkAttrsFn(getName());
+}
+
+SubElementAttrInterface FuncAttr::replaceImmediateSubAttribute(
+    ArrayRef<std::pair<size_t, Attribute>> replacements) const {
+  DictionaryAttr attrs = getAttrs();
+  SymbolRefAttr name = getName();
+  for (auto &replacement : replacements) {
+    switch (replacement.first) {
+      case 0:
+        attrs = replacement.second.cast<DictionaryAttr>();
+        break;
+      case 1:
+        name = replacement.second.cast<SymbolRefAttr>();
+        break;
+      default:
+        llvm_unreachable("invalid replacement attribute index");
+    }
+  }
+  return FuncAttr::get(getContext(), name, attrs);
 }
 
 void PlaceholderAttr::print(AsmPrinter &os) const {

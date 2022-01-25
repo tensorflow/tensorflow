@@ -28,6 +28,9 @@ syntax = "proto3";
 
 package xla;
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/compiler/"
+                    "xla/pjrt/distributed/protocol_go_proto";
+
 // Describes a device local to a host.
 message DeviceProto {
   int32 local_device_ordinal = 1;

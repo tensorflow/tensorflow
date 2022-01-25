@@ -28,7 +28,9 @@ class InterpreterTransferManager : public GenericTransferManager {
   ~InterpreterTransferManager() override = default;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(InterpreterTransferManager);
+  InterpreterTransferManager(const InterpreterTransferManager&) = delete;
+  InterpreterTransferManager& operator=(const InterpreterTransferManager&) =
+      delete;
 };
 
 }  // namespace xla

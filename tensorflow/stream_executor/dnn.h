@@ -25,8 +25,10 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 #include "google/protobuf/wrappers.pb.h"
 #include "absl/types/optional.h"
@@ -783,12 +785,12 @@ class AlgorithmDesc {
   typedef int64_t Index;
   AlgorithmDesc() : AlgorithmDesc(0, false, absl::nullopt) {}
   explicit AlgorithmDesc(AlgorithmProto proto) : proto_(std::move(proto)) {}
-  AlgorithmDesc(Index a, bool use_tensor_ops)
-      : AlgorithmDesc(a, use_tensor_ops, absl::nullopt) {}
-  AlgorithmDesc(Index a, bool use_tensor_ops,
+  AlgorithmDesc(Index algo_id, bool use_tensor_ops)
+      : AlgorithmDesc(algo_id, use_tensor_ops, absl::nullopt) {}
+  AlgorithmDesc(Index algo_id, bool use_tensor_ops,
                 absl::optional<uint64_t> workspace_size) {
     proto_.set_is_cudnn_frontend(false);
-    proto_.set_algo_id(a);
+    proto_.set_algo_id(algo_id);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
     if (workspace_size) {
@@ -1394,14 +1396,14 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      ScratchAllocator* scratch_allocator,
+      bool use_fallback, ScratchAllocator* scratch_allocator,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
   virtual port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
   ConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-      dnn::DataType element_type, dnn::DataType output_type,
-      const dnn::BatchDescriptor& input_descriptor,
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::ConvolutionKind kind, dnn::DataType element_type,
+      dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor);
@@ -1416,15 +1418,15 @@ class DnnSupport {
       const dnn::BatchDescriptor& bias_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      dnn::ActivationMode activation_mode,
+      bool use_fallback, dnn::ActivationMode activation_mode,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
   virtual port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
   FusedConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-      dnn::DataType element_type, dnn::DataType bias_type,
-      dnn::DataType output_type, double conv_scale, double side_input_scale,
-      const dnn::BatchDescriptor& input_descriptor,
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::ConvolutionKind kind, dnn::DataType element_type,
+      dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,
+      double side_input_scale, const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& bias_descriptor,
       const dnn::BatchDescriptor& output_descriptor,

@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -386,11 +385,11 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     bool tfl_fusable_op = false;
     for (auto attr_item : dict_attr) {
       // Push other attributes except the TFLFusableOp.
-      if (attr_item.first == kTFLFusableOp &&
-          attr_item.second.dyn_cast<BoolAttr>().getValue()) {
+      if (attr_item.getName() == kTFLFusableOp &&
+          attr_item.getValue().dyn_cast<BoolAttr>().getValue()) {
         tfl_fusable_op = true;
       } else {
-        attributes.push_back(attr_item);
+        attributes.push_back({attr_item.getName(), attr_item.getValue()});
       }
     }
 

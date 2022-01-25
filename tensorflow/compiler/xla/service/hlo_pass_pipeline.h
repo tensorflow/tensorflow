@@ -37,7 +37,7 @@ class PhaseOrderPipeline;
 // Pipeline of HLO passes.
 class HloPassPipeline : public HloPassInterface {
  public:
-  explicit HloPassPipeline(const string& name,
+  explicit HloPassPipeline(const std::string& name,
                            CompilationStats* compilation_stats = nullptr)
       : name_(name), compilation_stats_(compilation_stats) {
     if (compilation_stats == nullptr) {
@@ -132,7 +132,7 @@ class HloPassPipeline : public HloPassInterface {
     return changed;
   }
 
-  const string name_;
+  const std::string name_;
   std::vector<std::unique_ptr<HloPassInterface>> passes_;
   std::vector<std::unique_ptr<HloPassInterface>> invariant_checkers_;
   bool run_called_ = false;

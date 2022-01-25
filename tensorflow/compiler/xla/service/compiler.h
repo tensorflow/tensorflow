@@ -52,6 +52,8 @@ namespace xla {
 // computation.
 using ObjectFileData = std::vector<char>;
 
+class Compiler;
+
 // Abstract superclass describing the result of an ahead-of-time compilation.
 class AotCompilationResult {
  public:
@@ -59,6 +61,15 @@ class AotCompilationResult {
   AotCompilationResult& operator=(AotCompilationResult const&) = delete;
 
   virtual ~AotCompilationResult() = default;
+
+  virtual StatusOr<std::string> SerializeAsString() const {
+    return Unimplemented("SerializeAsString unimplemented.");
+  }
+
+  virtual StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler* compiler, se::StreamExecutor* executor) const {
+    return Unimplemented("LoadExecutable unimplemented.");
+  }
 
  protected:
   AotCompilationResult() = default;
@@ -70,10 +81,12 @@ class AotCompilationOptions {
   AotCompilationOptions(const AotCompilationOptions&) = delete;
   AotCompilationOptions& operator=(AotCompilationOptions const&) = delete;
 
+  explicit AotCompilationOptions(se::Platform::Id platform_id)
+      : platform_id_(platform_id), debug_options_(GetDebugOptionsFromFlags()) {}
   virtual ~AotCompilationOptions() = default;
 
   // Returns the ID of the platform to which these options apply.
-  virtual se::Platform::Id PlatformId() const = 0;
+  virtual se::Platform::Id PlatformId() const { return platform_id_; }
 
   virtual int64_t replica_count() const { return 0; }
   virtual int64_t num_cores() const { return 0; }
@@ -118,16 +131,21 @@ class AotCompilationOptions {
     fusion_config_ = fusion_config;
   }
 
+  se::StreamExecutor* executor() const { return executor_; }
+  void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
+
  protected:
   AotCompilationOptions();
 
  private:
+  se::Platform::Id platform_id_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
   absl::optional<DeviceAssignment> static_device_assignment_;
   std::vector<std::vector<bool>> fusion_config_;
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
+  se::StreamExecutor* executor_ = nullptr;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -213,6 +231,13 @@ class Compiler {
       se::DeviceMemoryAllocator* device_allocator) {
     return RunBackend(std::move(module), executor,
                       CompileOptions{device_allocator});
+  }
+
+  // Returns a (deserialized) AotCompilationResult from a serialized
+  // AotCompilationResult.
+  virtual StatusOr<std::unique_ptr<AotCompilationResult>>
+  LoadAotCompilationResult(const std::string& serialized_aot_result) {
+    return Unimplemented("LoadAotCompilationResult unimplemented.");
   }
 
   // Compiles a set of HLO modules that can run in parallel, potentially

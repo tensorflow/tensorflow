@@ -42,7 +42,7 @@ namespace xla {
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
 StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
-                                                         uint64 size,
+                                                         uint64_t size,
                                                          bool retry_on_failure,
                                                          int64_t memory_space) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";

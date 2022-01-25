@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -56,7 +55,7 @@ class ConvolutionTest : public ClientLibraryTestBase {
 using TestTypes = ::testing::Types<
 // TODO(b/183565702): Support integer convs on GPU.
 #if !XLA_TEST_BACKEND_GPU
-    int32,
+    int32_t,
 #endif
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
     Eigen::half,
@@ -1777,6 +1776,42 @@ ENTRY TestComputation {
   %parameter.1 = f32[10,5]{1,0} parameter(0)
   %parameter.2 = f32[5,7]{1,0} parameter(1)
   ROOT %convolution.3 = f32[10,7]{1,0} convolution(f32[10,5]{1,0} %parameter.1, f32[5,7]{1,0} %parameter.2), dim_labels=bf_io->bf
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestFusedConv2D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f32[8,5,5,1] parameter(0)
+  %p1 = f32[3,3,1,32] parameter(1)
+  %conv = f32[8,5,5,32] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+  %bias = f32[32] parameter(2)
+  %broadcasted_bias = f32[8,5,5,32] broadcast(%bias), dimensions={3}
+  %add = f32[8,5,5,32] add(%conv, %broadcasted_bias)
+  %zero = f32[] constant(0)
+  %zeros = f32[8,5,5,32] broadcast(%zero), dimensions={}
+  ROOT relu = f32[8,5,5,32] maximum(%zeros, %add)
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestFusedConv3D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f32[8,4,5,5,1] parameter(0)
+  %p1 = f32[3,3,3,1,32] parameter(1)
+  %conv = f32[8,4,5,5,32] convolution(p0, p1), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
+  %bias = f32[32] parameter(2)
+  %broadcasted_bias = f32[8,4,5,5,32] broadcast(%bias), dimensions={4}
+  %add = f32[8,4,5,5,32] add(%conv, %broadcasted_bias)
+  %zero = f32[] constant(0)
+  %zeros = f32[8,4,5,5,32] broadcast(%zero), dimensions={}
+  ROOT relu = f32[8,4,5,5,32] maximum(%zeros, %add)
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }

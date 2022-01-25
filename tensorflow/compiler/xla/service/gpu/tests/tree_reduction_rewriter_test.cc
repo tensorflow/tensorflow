@@ -32,6 +32,8 @@ namespace gpu {
 
 namespace {
 
+// TODO(b/210165681): The tests in this file are fragile to HLO op names.
+
 class TreeReductionRewriterTest : public GpuCodegenTest {};
 
 TEST_F(TreeReductionRewriterTest, RowReductionSingleDimensionNoBatched) {
@@ -90,7 +92,7 @@ ENTRY main {
   // Check that we preserve the layout.
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
-// CHECK: reduce.1 = f32[2,4]{0,1}
+// CHECK: f32[2,4]{0,1} reduce(
       )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }

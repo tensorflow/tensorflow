@@ -19,10 +19,14 @@
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_tfrt_gpu.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/wrapper.h"  // from @tf_runtime
 
 namespace tensorflow {
 
-Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module) {
+Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
+                                       mlir::StringRef entry_function_name,
+                                       llvm::ArrayRef<int64_t> buffer_sizes) {
   if (!module) {
     return errors::FailedPrecondition("No MLIR module to lower.");
   }
@@ -36,6 +40,9 @@ Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module) {
     return errors::Internal(
         "Failed to lower LMHLO to TFRT Dialect with gpu kernels.");
   }
+
+  tfrt::gpu::setEntryPoint(module, tfrt::gpu::wrapper::Platform::CUDA,
+                           entry_function_name, buffer_sizes);
   return Status::OK();
 }
 

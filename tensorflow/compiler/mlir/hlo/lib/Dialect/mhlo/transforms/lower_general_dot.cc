@@ -100,7 +100,7 @@ Value ProcessDotArg(Value arg, Location loc,
 
   // Compute the outer dimension orderings.
   llvm::SmallVector<int64_t, 5> outer_dims;
-  for (auto it : llvm::enumerate(is_outer_dim)) {
+  for (const auto &it : llvm::enumerate(is_outer_dim)) {
     if (it.value()) {
       outer_dims.push_back(it.index());
     }
@@ -170,10 +170,10 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 struct LegalizeGeneralDotPass
     : public LegalizeGeneralDotPassBase<LegalizeGeneralDotPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
-  void runOnFunction() override {
+  void runOnOperation() override {
     OwningRewritePatternList patterns(&getContext());
     PopulateGeneralDotOpLoweringPatterns(&patterns, &getContext());
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 

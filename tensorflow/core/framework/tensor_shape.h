@@ -20,9 +20,6 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -417,8 +414,8 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   // These CHECK fail to ease debugging.
   // REQUIRES: dims() == NDIMS
   void CheckDimsEqual(int NDIMS) const;
-  // REQUIRES: dims() >= NDIMS
-  void CheckDimsAtLeast(int NDIMS) const;
+  // REQUIRES: dims() <= NDIMS
+  void CheckDimsAtMost(int NDIMS) const;
 
   // Fill output from `*this`.
   // Helper method for common code between `AsEigenDSize()` and
@@ -656,7 +653,7 @@ Status TensorShape::AsEigenDSizesWithStatus(
 
 template <int NDIMS, typename IndexType>
 Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizesWithPadding() const {
-  CheckDimsAtLeast(NDIMS);
+  CheckDimsAtMost(NDIMS);
   return AsEigenDSizesCopyAndPad<NDIMS, IndexType>();
 }
 

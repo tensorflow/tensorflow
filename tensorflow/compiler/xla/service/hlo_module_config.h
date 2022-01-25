@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -116,14 +117,14 @@ class HloModuleConfig {
   }
 
   // Sets/returns the module seed set during execution.
-  void set_seed(uint64 seed) { seed_ = seed; }
-  uint64 seed() const { return seed_; }
+  void set_seed(uint64_t seed) { seed_ = seed; }
+  uint64_t seed() const { return seed_; }
 
   // Set the launch id of the program. Launch id identifies a set of programs
   // that should be launched together.
-  void set_launch_id(uint64 launch_id) { launch_id_ = launch_id; }
+  void set_launch_id(uint64_t launch_id) { launch_id_ = launch_id; }
 
-  int32 launch_id() const { return launch_id_; }
+  int32_t launch_id() const { return launch_id_; }
 
   void set_replica_count(int64_t replica_count) {
     replica_count_ = replica_count;
@@ -154,7 +155,7 @@ class HloModuleConfig {
     deduplicate_hlo_ = deduplicate_hlo;
   }
 
-  void set_device_type(const string& device_type) {
+  void set_device_type(const std::string& device_type) {
     device_type_ = device_type;
   }
 
@@ -163,9 +164,9 @@ class HloModuleConfig {
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
-  string compilation_cache_key() const;
+  std::string compilation_cache_key() const;
 
-  string device_type() const { return device_type_; }
+  std::string device_type() const { return device_type_; }
 
   const DebugOptions& debug_options() const { return debug_options_; }
 
@@ -287,16 +288,28 @@ class HloModuleConfig {
     return &memory_space_assignment_config_;
   }
 
+  int64_t GetAnalysisAllowance(absl::string_view pass_name) const {
+    auto it = analysis_allowance_map_.find(pass_name);
+    if (it == analysis_allowance_map_.end()) {
+      return -1;
+    }
+    return (*it).second;
+  }
+
+  void SetAnalysisAllowance(absl::string_view pass_name, int64_t allowance) {
+    analysis_allowance_map_[pass_name] = allowance;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
   absl::optional<ComputationLayout> entry_computation_layout_;
 
   // Module/graph-level seed handle.
-  uint64 seed_ = 0;
+  uint64_t seed_ = 0;
 
   // Program id that identifies a set of program to be launched together.
-  int32 launch_id_ = 0;
+  int32_t launch_id_ = 0;
 
   // The number of replicas (data parallelism) to compile this binary for.
   int64_t replica_count_ = 1;
@@ -319,7 +332,7 @@ class HloModuleConfig {
   // execution on the CPU backend.
   int64_t intra_op_parallelism_threads_ = -1;
 
-  string device_type_;
+  std::string device_type_;
 
   DebugOptions debug_options_;
 
@@ -378,6 +391,10 @@ class HloModuleConfig {
   // sharding of operations when multiple computation would be chained and
   // merged together.
   bool allow_spmd_sharding_propagation_to_output_ = false;
+
+  // Each Hlo analysis is allowed at least a constant number of
+  // abstract cost units, before it is considered for early termination.
+  absl::flat_hash_map<absl::string_view, int64_t> analysis_allowance_map_;
 };
 
 }  // namespace xla

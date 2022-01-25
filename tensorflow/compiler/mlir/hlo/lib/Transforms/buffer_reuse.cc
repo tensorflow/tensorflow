@@ -41,7 +41,7 @@ class BufferReuse : BufferPlacementTransformationBase {
         userange(op, allocs, aliases) {}
 
   /// Reuses already allocated buffers to save allocation operations.
-  void reuse(Operation *operation) {
+  void reuse() {
     // Create a list of values that can potentially be replaced for each value
     // in the useRangeMap. The potentialReuseMap maps each value to the
     // respective list.
@@ -66,7 +66,7 @@ class BufferReuse : BufferPlacementTransformationBase {
         // Insert itemB into the right place of the potReuseVector. The order of
         // the vector is defined via the program order of the first use of each
         // item.
-        auto insertionPoint = potReuseVector.begin();
+        auto *insertionPoint = potReuseVector.begin();
         while (insertionPoint != potReuseVector.end()) {
           if (userange.getFirstUseIndex(itemB) <
               userange.getFirstUseIndex(*insertionPoint))
@@ -282,17 +282,17 @@ class BufferReuse : BufferPlacementTransformationBase {
 /// The buffer reuse pass that uses already allocated buffers if all critera
 /// are met.
 struct BufferReusePass : BufferReuseBase<BufferReusePass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     // Reuse allocated buffer instead of new allocation.
-    Operation *funcOp = getFunction();
+    Operation *funcOp = getOperation();
     BufferReuse optimizer(funcOp);
-    optimizer.reuse(funcOp);
+    optimizer.reuse();
   }
 };
 
 }  // end namespace
 
-std::unique_ptr<FunctionPass> createBufferReusePass() {
+std::unique_ptr<OperationPass<FuncOp>> createBufferReusePass() {
   return std::make_unique<BufferReusePass>();
 }
 

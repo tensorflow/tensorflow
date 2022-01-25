@@ -70,7 +70,7 @@ struct ClampWithBroadcastConvert : public OpRewritePattern<ClampOp> {
 
 }  // namespace
 
-void SetupMaterializeBroadcastsLegality(MLIRContext *context,
+void SetupMaterializeBroadcastsLegality(MLIRContext * /*context*/,
                                         ConversionTarget *conversionTarget) {
   conversionTarget->addDynamicallyLegalOp<ClampOp>([](ClampOp op) {
     return op.max().getType() == op.operand().getType() &&

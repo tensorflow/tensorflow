@@ -261,8 +261,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
   def testCallingAnnotateSourceOnUnrelatedSourceFileDoesNotError(self):
     # Create an unrelated source file.
-    unrelated_source_path = tempfile.mktemp()
-    with open(unrelated_source_path, "wt") as source_file:
+    fd, unrelated_source_path = tempfile.mkstemp()
+    with open(fd, "wt") as source_file:
       source_file.write("print('hello, world')\n")
 
     self.assertEqual({},
@@ -273,8 +273,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
     os.remove(unrelated_source_path)
 
   def testLoadingPythonSourceFileWithNonAsciiChars(self):
-    source_path = tempfile.mktemp()
-    with open(source_path, "wb") as source_file:
+    fd, source_path = tempfile.mkstemp()
+    with open(fd, "wb") as source_file:
       source_file.write(u"print('\U0001f642')\n".encode("utf-8"))
     source_lines, _ = source_utils.load_source(source_path)
     self.assertEqual(source_lines, [u"print('\U0001f642')", u""])

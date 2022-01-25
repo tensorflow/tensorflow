@@ -138,6 +138,7 @@ tf_cuda_only_cc_test(
     name = "autotune_serialize_test",
     size = "small",
     srcs = ["autotune_serialize_test.cc"],
+    tags = ["no_rocm"],
     deps = [
         ":autotune_serialize",
         ":conv_autotune_maps",

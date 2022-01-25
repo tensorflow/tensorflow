@@ -220,6 +220,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["cwise_ops_unary_test.py"],
     shard_count = 50,
+    tags = [
+        "no_windows",  # TODO(b/207048097): re-enable
+    ],
     # b/140155706: nans in result
     xla_enable_strict_auto_jit = False,
     deps = [
@@ -344,9 +347,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "segment_reduction_ops_deterministic_test",
+    name = "segment_reduction_ops_d9m_test",
     size = "small",
-    srcs = ["segment_reduction_ops_deterministic_test.py"],
+    srcs = ["segment_reduction_ops_d9m_test.py"],
     tags = ["no_cuda_asan"],  # b/195247538
     xla_enable_strict_auto_jit = False,
     deps = [

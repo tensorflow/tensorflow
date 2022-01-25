@@ -64,10 +64,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -110,7 +113,6 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -576,7 +578,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::AddToInput(
 }
 
 bool PjRtStreamExecutorBuffer::IsOnCpu() const {
-  return client()->platform_id() == kCpuId;
+  return client()->platform_id() == CpuId();
 }
 
 StatusOr<Shape> PjRtStreamExecutorBuffer::logical_on_device_shape() {
@@ -724,7 +726,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     bool can_use_zero_copy =
         host_buffer_semantics == HostBufferSemantics::kZeroCopy &&
         ((absl::bit_cast<std::uintptr_t>(data) &
-          (cpu_function_runtime::kMinAlign - 1)) == 0);
+          (cpu_function_runtime::MinAlign() - 1)) == 0);
     if (host_and_device_strides_equal &&
         (host_buffer_semantics ==
              HostBufferSemantics::kImmutableOnlyDuringCall ||
@@ -741,7 +743,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
             const_cast<void*>(static_cast<const void*>(data)), size);
       } else {
         void* staging_buffer = host_memory_allocator()->AllocateRaw(
-            cpu_function_runtime::kMinAlign, size);
+            cpu_function_runtime::MinAlign(), size);
         buffer = se::DeviceMemoryBase(staging_buffer, size);
         std::memcpy(staging_buffer, data, size);
         if (on_done_with_host_buffer) {
@@ -1540,18 +1542,19 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
   return std::move(buffer);
 }
 
-Status PjRtStreamExecutorBuffer::CopyToRemoteDevice(
-    absl::string_view serialized_descriptor) {
+void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
+    absl::string_view serialized_descriptor, RemoteSendCallback on_done) {
   VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDevice";
-  return client_->CopyToRemoteDevice(this, serialized_descriptor);
+  client_->CopyToRemoteDevice(this, serialized_descriptor, std::move(on_done));
 }
 
-Status PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
-    absl::Span<const std::string> serialized_descriptors,
+void PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
+    absl::Span<const std::pair<std::string, RemoteSendCallback>>
+        serialized_descriptors_and_callbacks,
     const ScatterDetails& scatter_details) {
   VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered";
-  return client_->CopyToRemoteDeviceScattered(this, serialized_descriptors,
-                                              scatter_details);
+  client_->CopyToRemoteDeviceScattered(
+      this, serialized_descriptors_and_callbacks, scatter_details);
 }
 
 Status PjRtStreamExecutorBuffer::BlockHostUntilReady() {
@@ -2047,7 +2050,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
     PjRtDevice* device) const {
-  const uint64 start_time_usecs = tensorflow::Env::Default()->NowMicros();
+  const uint64_t start_time_usecs = tensorflow::Env::Default()->NowMicros();
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);

@@ -21,12 +21,12 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -55,7 +54,7 @@ class LayoutConstraint {
       : mandatory_(mandatory), dfs_(dfs), priority_(priority) {}
   virtual ~LayoutConstraint() = default;
 
-  virtual string ToString() const = 0;
+  virtual std::string ToString() const = 0;
 
   // True if this constraint cannot be overwritten by a different constraint.
   bool mandatory() const { return mandatory_; }
@@ -89,7 +88,7 @@ class BufferLayoutConstraint : public LayoutConstraint {
   const LogicalBuffer& buffer() const { return *buffer_; }
   const Layout& layout() const { return layout_; }
 
-  string ToString() const override;
+  std::string ToString() const override;
 
  private:
   Layout layout_;
@@ -115,7 +114,7 @@ class OperandLayoutConstraint : public LayoutConstraint {
     return instruction_->operand(operand_no_);
   }
 
-  string ToString() const override;
+  std::string ToString() const override;
 
  private:
   ShapeLayout shape_layout_;
@@ -166,7 +165,7 @@ class ComputationLayoutConstraint : public LayoutConstraint {
   bool default_layout_is_used() const {
     return layout_state_ == kDefaultLayoutIsUsed;
   }
-  string ToString() const override;
+  std::string ToString() const override;
 
  private:
   // The layout_state_ variable is used to remember whether the layout for
@@ -573,7 +572,7 @@ class LayoutAssignment : public HloModulePass {
   // CallGraph of the module, used to track callsites of each computation.
   std::unique_ptr<CallGraph> call_graph_;
 
-  string ToString(const LayoutConstraints& constraints) const;
+  std::string ToString(const LayoutConstraints& constraints) const;
 
  private:
   // Map containing the layouts of all computations assigned so
@@ -611,7 +610,7 @@ class LayoutAssignment : public HloModulePass {
       buffer_sets_cache_;
 
   // The set of BufferLayoutConstraints applied to the computation.
-  std::unordered_map<const LogicalBuffer*, BufferLayoutConstraint>
+  absl::node_hash_map<const LogicalBuffer*, BufferLayoutConstraint>
       buffer_constraints_;
 
   // A vector which holds constraints as they are added. Can be cleared with

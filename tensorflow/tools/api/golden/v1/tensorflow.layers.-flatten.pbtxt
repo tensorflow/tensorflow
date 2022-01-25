@@ -1,7 +1,7 @@
 path: "tensorflow.layers.Flatten"
 tf_class {
   is_instance: "<class \'keras.legacy_tf_layers.core.Flatten\'>"
-  is_instance: "<class \'keras.layers.core.flatten.Flatten\'>"
+  is_instance: "<class \'keras.layers.reshaping.flatten.Flatten\'>"
   is_instance: "<class \'keras.legacy_tf_layers.base.Layer\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"

@@ -18,16 +18,17 @@ limitations under the License.
 #include <stddef.h>
 #include <string.h>
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
 #include "absl/base/call_once.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
@@ -47,7 +48,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/VectorOps.h"  // from @llvm-project
@@ -206,8 +207,8 @@ namespace cpu {
 using BufferInfo = cpu_function_runtime::BufferInfo;
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
-    string triple, string cpu_name, string features, string entry_point_name,
-    RelocationModel relocation_model)
+    std::string triple, std::string cpu_name, std::string features,
+    std::string entry_point_name, RelocationModel relocation_model)
     : triple_(std::move(triple)),
       cpu_name_(std::move(cpu_name)),
       features_(std::move(features)),
@@ -273,12 +274,12 @@ absl::once_flag llvm_command_line_options_initialized;
 // recorded.
 class CollectProfileCandidates : public DfsHloVisitorWithDefault {
  public:
-  static StatusOr<std::unordered_map<const HloInstruction*, int64_t>>
+  static StatusOr<absl::flat_hash_map<const HloInstruction*, int64_t>>
   GetCandidatesForComputation(
       const HloComputation& computation,
-      const std::unordered_map<const HloInstruction*, int64_t>&
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
           assigned_indices) {
-    std::unordered_map<const HloInstruction*, int64_t> hlo_to_profile_idx;
+    absl::flat_hash_map<const HloInstruction*, int64_t> hlo_to_profile_idx;
     CollectProfileCandidates profile_candidates_for_computation(
         &hlo_to_profile_idx, assigned_indices);
     TF_RETURN_IF_ERROR(computation.Accept(&profile_candidates_for_computation));
@@ -287,8 +288,8 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 
  private:
   CollectProfileCandidates(
-      std::unordered_map<const HloInstruction*, int64_t>* hlo_to_profile_idx,
-      const std::unordered_map<const HloInstruction*, int64_t>&
+      absl::flat_hash_map<const HloInstruction*, int64_t>* hlo_to_profile_idx,
+      const absl::flat_hash_map<const HloInstruction*, int64_t>&
           assigned_indices)
       : hlo_to_profile_idx_(hlo_to_profile_idx),
         assigned_indices_(assigned_indices) {}
@@ -344,8 +345,8 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  std::unordered_map<const HloInstruction*, int64_t>* hlo_to_profile_idx_;
-  const std::unordered_map<const HloInstruction*, int64_t>& assigned_indices_;
+  absl::flat_hash_map<const HloInstruction*, int64_t>* hlo_to_profile_idx_;
+  const absl::flat_hash_map<const HloInstruction*, int64_t>& assigned_indices_;
 };
 
 }  // namespace
@@ -399,10 +400,19 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     return false;
   };
   pipeline.AddPass<ConvolutionGroupConverter>(
-      cost_model,
+      /*should_expand=*/[](HloInstruction* conv) { return true; }, cost_model,
       /*convert_batch_groups_only=*/true);
+  auto feature_group_should_expand = [](HloInstruction* conv) {
+    switch (conv->shape().element_type()) {
+      case F16:
+      case F32:
+        return false;
+      default:
+        return true;
+    }
+  };
   pipeline.AddPass<ConvolutionGroupConverter>(
-      cost_model,
+      feature_group_should_expand, cost_model,
       /*convert_batch_groups_only=*/false);
   pipeline.AddPass<BatchNormExpander>(
       /*rewrite_training_op=*/true,
@@ -426,13 +436,18 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         /*layout_sensitive=*/false,
         /*allow_mixed_precision=*/false);
 
-    pipeline.AddPass<TreeReductionRewriter>();
     AlgebraicSimplifierOptions options;
     options.set_enable_dot_strength_reduction(false);
+    // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
+    // other platforms do, so it should be changed.
+    options.set_minmax_propagate_nan(false);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<SortSimplifier>();
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+
+    // Needs to happen after algebraic simplifier.
+    pipeline.AddPass<TreeReductionRewriter>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
@@ -503,6 +518,9 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);
+    // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
+    // other platforms do, so it should be changed.
+    options.set_minmax_propagate_nan(false);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
@@ -552,7 +570,7 @@ namespace {
 
 // Align buffers to 16-byte boundaries.
 int64_t memory_alignment(LogicalBuffer::Color) {
-  return cpu_function_runtime::kMinAlign;
+  return cpu_function_runtime::MinAlign();
 }
 
 llvm::TargetOptions CompilerTargetOptions(
@@ -623,9 +641,9 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
 
 Status CreateHloProfilingArtifacts(
     const HloModule& module,
-    std::unordered_map<const HloInstruction*, int64_t>*
+    absl::flat_hash_map<const HloInstruction*, int64_t>*
         instruction_to_profile_idx,
-    std::unordered_map<const HloComputation*, int64_t>*
+    absl::flat_hash_map<const HloComputation*, int64_t>*
         computation_to_profile_idx,
     std::unique_ptr<HloProfileIndexMap>* hlo_profile_index_map,
     std::unique_ptr<HloProfilePrinterData>* hlo_profile_printer_data) {
@@ -776,8 +794,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   llvm_module->setTargetTriple((*jit)->target_triple().getTriple());
 
   HloComputation* entry_computation = module->entry_computation();
-  std::unordered_map<const HloInstruction*, int64_t> instruction_to_profile_idx;
-  std::unordered_map<const HloComputation*, int64_t> computation_to_profile_idx;
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      instruction_to_profile_idx;
+  absl::flat_hash_map<const HloComputation*, int64_t>
+      computation_to_profile_idx;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
   std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
   if (module->config().hlo_profiling_enabled()) {
@@ -841,23 +861,24 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                 schedule.sequence(embedded_computation).instructions())
             .status());
   }
-  string function_name_prefix = entry_computation->name().empty()
-                                    ? "__compute"
-                                    : entry_computation->name();
+  std::string function_name_prefix = entry_computation->name().empty()
+                                         ? "__compute"
+                                         : entry_computation->name();
   TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
                       ir_emitter.EmitComputation(
                           entry_computation, function_name_prefix,
                           /*is_top_level_computation=*/true,
                           schedule.sequence(entry_computation).instructions()));
 
-  string function_name = [&]() {
+  std::string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
     llvm::Mangler::getNameWithPrefix(
         function_name_vector, entry_function->getName(), (*jit)->data_layout());
-    return string(function_name_vector.begin(), function_name_vector.end());
+    return std::string(function_name_vector.begin(),
+                       function_name_vector.end());
   }();
 
-  string ir_module_string;
+  std::string ir_module_string;
   if (embed_ir_in_executable) {
     ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
   }
@@ -1027,9 +1048,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     }
     DumpHloModuleIfEnabled(*module, *assignment, "cpu_after_optimizations");
 
-    std::unordered_map<const HloInstruction*, int64_t>
+    absl::flat_hash_map<const HloInstruction*, int64_t>
         instruction_to_profile_idx;
-    std::unordered_map<const HloComputation*, int64_t>
+    absl::flat_hash_map<const HloComputation*, int64_t>
         computation_to_profile_idx;
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
@@ -1066,7 +1087,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                   schedule.sequence(embedded_computation).instructions())
               .status());
     }
-    const string& entry_point_name = options.entry_point_name();
+    const std::string& entry_point_name = options.entry_point_name();
     TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
                         ir_emitter.EmitComputation(
                             computation, entry_point_name,

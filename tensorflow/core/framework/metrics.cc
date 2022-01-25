@@ -136,6 +136,11 @@ auto* tf_data_service_jobs_created_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/service/jobs_created", "Number of tf.data service jobs.",
     "processing_mode", "coordinated_read");
 
+auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
+    "/tensorflow/data/service/client_iterators",
+    "Number of tf.data service client iterators created.", "worker_uid",
+    "deployment_mode", "processing_mode", "is_coordinated_read");
+
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
@@ -221,7 +226,15 @@ auto* tpu_variable_distribution_time_usecs = monitoring::Counter<0>::New(
     "at the start of a call to TPUExecute.  Timer starts at RunGraph "
     "invocation and ends when TPUExecute args are ready on the current task.");
 
+auto* test_counters =
+    monitoring::Counter<2>::New("/tensorflow/core/test_counters",
+                                "Counters used for testing.", "name", "label");
+
 }  // namespace
+
+auto* tpu_op_error_counter = monitoring::Counter<2>::New(
+    "/tensorflow/tpu/op_error_count",
+    "Count the tpu related errors by op and error_type.", "op", "error_type");
 
 monitoring::Counter<2>* GetGraphOptimizationCounter() {
   static auto* graph_optimization_counter =
@@ -317,6 +330,23 @@ void RecordTFDataServiceJobsCreated(
       is_coordinated_read ? "true" : "false";
   tf_data_service_jobs_created_counter
       ->GetCell(sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceClientIterators(
+    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read) {
+  const std::string deployment_mode_str =
+      tensorflow::data::DeploymentMode_Name(deployment_mode);
+  const std::string sharding_policy_str =
+      data::ProcessingModeDef::ShardingPolicy_Name(
+          processing_mode.sharding_policy());
+  const std::string coordinated_read_str =
+      is_coordinated_read ? "true" : "false";
+  tf_data_service_client_iterators_counter
+      ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
+                sharding_policy_str, coordinated_read_str)
       ->IncrementBy(1);
 }
 
@@ -435,6 +465,38 @@ void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs) {
 
 void RecordUnusedOutput(const string& op_name) {
   graph_unused_outputs->GetCell(op_name)->IncrementBy(1);
+}
+
+void IncrementTestCounter(const string& name, const string& label) {
+  test_counters->GetCell(name, label)->IncrementBy(1);
+}
+
+const monitoring::CounterCell* TestCounter(const string& name,
+                                           const string& label) {
+  return test_counters->GetCell(name, label);
+}
+
+TestDelta::TestDelta(const string& name, const string& label)
+    : cell_(TestCounter(name, label)) {
+  Reset();
+}
+
+void TestDelta::Reset() { last_value_ = cell_->value(); }
+
+int64 TestDelta::Get() { return cell_->value() - last_value_; }
+
+void UpdateTfMlirGraphOptimizationPassStateCounter(
+    const std::string& pass_state, const std::string& processing_state) {
+  static auto* metric = monitoring::Counter<2>::New(
+      "/tensorflow/core/tf_mlir_update_graph_optimization_pass_state_counter",
+      "Tracks changes in a graph's UpdateTfMlirGraphOptimizationPassState",
+      "PassState", "ProcessingState");
+
+  metric->GetCell(pass_state, processing_state)->IncrementBy(1);
+}
+
+void UpdateTpuErrorCounter(const string& op, const string& error_type) {
+  tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
 }
 
 }  // namespace metrics

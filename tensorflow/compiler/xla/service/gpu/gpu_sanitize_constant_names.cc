@@ -40,7 +40,7 @@ StatusOr<bool> GpuSanitizeConstantNames::Run(HloModule* module) {
         continue;
       }
 
-      const string& old_name = instr->name();
+      const std::string& old_name = instr->name();
       instr->UniquifyName(&instr_name_uniquer);
       CHECK_EQ(old_name, instr->name());
     }
@@ -56,7 +56,7 @@ StatusOr<bool> GpuSanitizeConstantNames::Run(HloModule* module) {
       if (instr->opcode() != HloOpcode::kConstant) {
         continue;
       }
-      string sanitized_name = llvm_ir::SanitizeConstantName(*instr);
+      std::string sanitized_name = llvm_ir::SanitizeConstantName(*instr);
       instr->SetAndSanitizeName(sanitized_name);
       instr->UniquifyName(&instr_name_uniquer);
       changed = true;

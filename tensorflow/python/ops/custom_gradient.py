@@ -297,7 +297,7 @@ def custom_gradient(f=None):
   return tf_decorator.make_decorator(f, decorated(f))  # pylint: disable=no-value-for-parameter
 
 
-class Bind(object):
+class Bind:
   """When called evaluates `d(f, args, kwargs)` but supports binding `f`.
 
   >>> @Bind.decorator
@@ -305,7 +305,7 @@ class Bind(object):
   ...   print("my_decorator called with", args, kwargs)
   ...   return f(*args, **kwargs)
 
-  >>> class Foo(object):
+  >>> class Foo:
   ...   @my_decorator
   ...   def bar(self, a, b, c):
   ...     return a * b * c

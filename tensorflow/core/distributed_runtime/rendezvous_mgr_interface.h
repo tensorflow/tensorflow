@@ -41,6 +41,12 @@ class RemoteRendezvous : public Rendezvous {
   // Fully construct the RemoteRendezvous.
   virtual Status Initialize(WorkerSession* session) = 0;
 
+  // In remote eager, set current instance as context default rendezvous which
+  // will be used for eager op-by-op execution.
+  virtual void SetRemoteEagerContextDefault() = 0;
+  // In remote eager, get if current instance is context default rendezvous.
+  virtual bool IsRemoteEagerContextDefault() = 0;
+
  protected:
   bool is_cross_process() override { return true; }
 };
@@ -93,6 +99,9 @@ class RendezvousMgrInterface {
   // TODO(zhifengc): Have a background thread in worker that
   // periodically calls CleanupAll().
   virtual void Cleanup(int64_t step_id) = 0;
+
+  // Remove all rendezvous instances owned by the rendezvous_mgr.
+  virtual void CleanupAll() = 0;
 };
 
 }  // end namespace tensorflow

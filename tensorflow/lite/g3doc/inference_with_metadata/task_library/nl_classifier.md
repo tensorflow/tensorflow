@@ -53,8 +53,10 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Text Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.2.0'
+    // Import the Task Vision Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
 }
 ```
 
@@ -66,8 +68,14 @@ anymore.
 
 ```java
 // Initialization, use NLClassifierOptions to configure input and output tensors
-NLClassifierOptions options = NLClassifierOptions.builder().setInputTensorName(INPUT_TENSOR_NAME).setOutputScoreTensorName(OUTPUT_SCORE_TENSOR_NAME).build();
-NLClassifier classifier = NLClassifier.createFromFileAndOptions(context, modelFile, options);
+NLClassifierOptions options =
+    NLClassifierOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setInputTensorName(INPUT_TENSOR_NAME)
+        .setOutputScoreTensorName(OUTPUT_SCORE_TENSOR_NAME)
+        .build();
+NLClassifier classifier =
+    NLClassifier.createFromFileAndOptions(context, modelFile, options);
 
 // Run inference
 List<Category> results = classifier.classify(input);

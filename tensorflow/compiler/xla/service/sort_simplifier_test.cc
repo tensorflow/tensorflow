@@ -53,7 +53,7 @@ TEST_F(SortSimplifierTest, RemoveUnusedSortOperandArrayResult) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   SortSimplifier simplifier;
-  uint64 num_executions = 0;
+  uint64_t num_executions = 0;
   do {
     num_executions++;
   } while (simplifier.Run(module.get()).ValueOrDie());
@@ -148,7 +148,7 @@ TEST_F(SortSimplifierTest, RemoveUnusedFirstOperand) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   SortSimplifier simplifier;
-  uint64 num_executions = 0;
+  uint64_t num_executions = 0;
   do {
     num_executions++;
   } while (simplifier.Run(module.get()).ValueOrDie());

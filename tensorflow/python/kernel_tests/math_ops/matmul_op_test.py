@@ -68,6 +68,14 @@ class MatVecTest(test_lib.TestCase):
     self.assertAllEqual((2,), c.shape)
     self.assertAllEqual([5 + 2 * 6, 3 * 5 + 4 * 6], c)
 
+  def testEmpty(self):
+    full = np.array([[1., 2.], [3., 4.], [5., 6.]])
+    empty = np.empty([3, 0])
+    self.assertShapeEqual(
+        np.matmul(full.T, empty), math_ops.matmul(full, empty, adjoint_a=True))
+    self.assertShapeEqual(
+        np.matmul(empty.T, full), math_ops.matmul(empty, full, adjoint_a=True))
+
 
 def _AddTest(test, op_name, testcase_name, fn):
   test_name = "_".join(["test", op_name, testcase_name])
@@ -138,6 +146,7 @@ class MatMulGradientTest(test_lib.TestCase):
 
 def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
+  @test_util.run_without_tensor_float_32("Tests matmul")
   def Test(self):
     if not use_static_shape_ or a_np_.dtype in (np.int32, np.int64, np.float16):
       self.skipTest("Skipping infeasible gradient test.")

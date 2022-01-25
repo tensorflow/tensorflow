@@ -38,6 +38,8 @@ def XLIR_Dialect : Dialect {
   }];
 
   let cppNamespace = "xla::gpu";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 // Base class for XLIR dialect ops.
@@ -57,6 +59,30 @@ def XLIR_ModuleLoadOp : XLIR_Op<"module.load"> {
   }];
   let arguments = (ins GPU_ContextType:$ctx);
   let results = (outs GPU_ModuleType);
+}
+
+def XLIR_ReplicaIdOp : XLIR_Op<"replica_id"> {
+  let description = [{
+    xlir.replica_id copies the 4-byte replica ID to the output buffer.
+  }];
+  let arguments = (ins GPU_StreamType:$stream, GPU_BufferType:$output,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream`,` $output`,` $chain attr-dict
+  }];
+}
+
+def XLIR_PartitionIdOp : XLIR_Op<"partition_id"> {
+  let description = [{
+    xlir.partition_id copies the 4-byte partition ID to the output buffer.
+  }];
+  let arguments = (ins GPU_StreamType:$stream, GPU_BufferType:$output,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream`,` $output`,` $chain attr-dict
+  }];
 }
 
 def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
