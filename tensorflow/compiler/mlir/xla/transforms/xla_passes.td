@@ -30,3 +30,9 @@ def PrepareForExportPass : FunctionPass<"xla-prepare-for-export"> {
 
   let constructor = "::mlir::mhlo::CreatePrepareForExport()";
 }
+
+def OutlineWithXLAFramework : Pass<"outline-with-xla-framework", "ModuleOp"> {
+  let summary = "Create XLAFramework based wrapper function to match XLA:CPU's interface";
+  let dependentDialects = ["::mlir::xla_framework::XLAFrameworkDialect"];
+  let constructor = "::mlir::mhlo::CreateOutlineWithXLAFrameworkPass()";
+}
