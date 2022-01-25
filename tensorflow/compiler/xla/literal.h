@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LITERAL_H_
 #define TENSORFLOW_COMPILER_XLA_LITERAL_H_
 
+#include <algorithm>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -267,7 +269,32 @@ class LiteralBase {
   }
 
   // Compute a hash for this literal.
-  size_t Hash(int64_t byte_limit = std::numeric_limits<int64_t>::max()) const;
+  template <typename H>
+  friend H AbslHashValue(H state, const LiteralBase& value) {
+    return LiteralBase::Hash(std::move(state), value);
+  }
+
+  template <typename H, bool kIsLayoutSensitive = true,
+            int64_t kByteLimit = std::numeric_limits<int64_t>::max()>
+  static H Hash(H state, const LiteralBase& literal) {
+    state =
+        Shape::Hash<H, kIsLayoutSensitive>(std::move(state), literal.shape());
+
+    ShapeUtil::ForEachSubshape(
+        literal.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (!subshape.IsArray()) {
+            return;
+          }
+
+          CHECK(LayoutUtil::IsDense(subshape.layout()));
+          auto data = absl::MakeConstSpan(
+              static_cast<const char*>(literal.untyped_data(index)),
+              std::min(kByteLimit, literal.size_bytes(index)));
+          state = H::combine(std::move(state), data);
+        });
+
+    return std::move(state);
+  }
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.

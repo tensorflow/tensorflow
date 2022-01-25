@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -626,7 +627,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   const TargetMachineFeatures& target_machine_features_;
 
   struct LiteralPtrHashFunctor {
-    size_t operator()(const Literal* literal) const { return literal->Hash(); }
+    size_t operator()(const Literal* literal) const { return HashOf(*literal); }
   };
 
   struct LiteralPtrEqualityFunctor {
