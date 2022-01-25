@@ -193,7 +193,7 @@ REGISTER_OP("EnqueueTPUEmbeddingRaggedTensorBatch")
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("EnqueueTPUEmbeddingArbitraryTensorBatch")
-    .Input("sample_indices_or_row_lengths: N * T1")
+    .Input("sample_indices_or_row_splits: N * T1")
     .Input("embedding_indices: N * T2")
     .Input("aggregation_weights: N * T3")
     .Input("mode_override: string")
@@ -207,7 +207,7 @@ REGISTER_OP("EnqueueTPUEmbeddingArbitraryTensorBatch")
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("DynamicEnqueueTPUEmbeddingArbitraryTensorBatch")
-    .Input("sample_indices_or_row_lengths: N * T1")
+    .Input("sample_indices_or_row_splits: N * T1")
     .Input("embedding_indices: N * T2")
     .Input("aggregation_weights: N * T3")
     .Input("mode_override: string")
