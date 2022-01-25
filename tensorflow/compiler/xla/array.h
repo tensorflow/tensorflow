@@ -517,6 +517,12 @@ class Array {
     CHECK_EQ(num_elements(), old_num_elements);
   }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const Array& array) {
+    return H::combine(std::move(h), absl::MakeSpan(array.begin(), array.end()),
+                      array.dimensions());
+  }
+
   // Returns a string representation of the array suitable for debugging.
   std::string ToString() const {
     if (sizes_.empty()) {

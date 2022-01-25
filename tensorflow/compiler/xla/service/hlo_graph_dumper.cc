@@ -434,8 +434,7 @@ class HloDotDumper {
 
   // When coloring by sharding information, we track the sharding string
   // representation to color association, by round-robin the color schemes.
-  absl::flat_hash_map<HloSharding, ColorScheme, HloSharding::Hasher>
-      sharding_colors_;
+  absl::flat_hash_map<HloSharding, ColorScheme> sharding_colors_;
   int64_t next_shard_color_ = 0;
 };
 

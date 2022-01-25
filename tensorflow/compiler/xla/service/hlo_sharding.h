@@ -279,13 +279,15 @@ class HloSharding {
   }
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 
-  size_t Hash() const;
-
-  struct Hasher {
-    size_t operator()(const HloSharding& sharding) const {
-      return sharding.Hash();
+  template <typename H>
+  friend H AbslHashValue(H h, const HloSharding& sharding) {
+    if (sharding.tuple_) {
+      return H::combine(std::move(h), sharding.tuple_elements_);
     }
-  };
+    return H::combine(std::move(h), sharding.replicated_, sharding.manual_,
+                      sharding.tile_assignment_,
+                      sharding.replicate_on_last_tile_dim_);
+  }
 
   // Gets the tile assignment tensor.
   // REQUIRES: !IsReplicated() && !IsTuple()
