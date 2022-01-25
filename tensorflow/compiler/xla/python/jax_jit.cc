@@ -156,7 +156,8 @@ bool CallSignature::operator==(const CallSignature& other) const {
              other.static_args.end(),
              [this](const py::object& a, const py::object& b) {
                try {
-                 return a.equal(b);
+                 return py::type::handle_of(a) == py::type::handle_of(b) &&
+                        a.equal(b);
                } catch (const py::error_already_set& e) {
                  throw std::invalid_argument(absl::StrCat(
                      "static arguments should be comparable using __eq__."
