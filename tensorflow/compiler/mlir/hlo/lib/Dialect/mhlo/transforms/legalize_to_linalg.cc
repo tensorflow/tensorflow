@@ -892,6 +892,31 @@ class HloDynamicBroadcastInDimConverter
   }
 };
 
+// Extract dimension from the tensor, converts to an i32, and pack in a tensor.
+class GetDimSizeConverter
+    : public OpConversionPattern<mhlo::GetDimensionSizeOp> {
+ public:
+  using OpConversionPattern<mhlo::GetDimensionSizeOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::GetDimensionSizeOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    Location loc = op.getLoc();
+    auto result_ty = op.getType();
+    auto element_ty = getElementTypeOrSelf(result_ty);
+    auto dim_attr = rewriter.getIndexAttr(op.dimension());
+    auto dim_const = rewriter.create<arith::ConstantOp>(loc, dim_attr);
+
+    Value dim_op = rewriter.create<tensor::DimOp>(loc, rewriter.getIndexType(),
+                                                  op.operand(), dim_const);
+
+    // Cast to the correct element type and convert to a tensor.
+    Value cast = rewriter.create<arith::IndexCastOp>(loc, element_ty, dim_op);
+    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, result_ty, cast);
+    return success();
+  }
+};
+
 template <typename OpTy>
 class TransposeConverter
     : public DataMovementOpConverter<TransposeConverter<OpTy>, OpTy> {
@@ -2803,6 +2828,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       SliceConverter,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
+      GetDimSizeConverter,
       TransposeConverter<mhlo::TransposeOp>,
       DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
       DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,
