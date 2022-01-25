@@ -245,10 +245,12 @@ FormatConverter<T>::FormatConverter(const std::vector<int>& shape,
   block_size_.resize(block_map_.size());
   for (int i = 0; i < original_rank; i++) {
     if (block_dim < block_map_.size() && block_map_[block_dim] == i) {
-      int orig_dim = traversal_order_[original_rank + block_dim];
-      block_size_[block_dim] = sparsity.dim_metadata[orig_dim].dense_size;
-      blocked_shape_[i] = shape[i] / sparsity.dim_metadata[orig_dim].dense_size;
-      block_dim++;
+      if (original_rank + block_dim < traversal_order_.size()) {
+        int orig_dim = traversal_order_[original_rank + block_dim];
+        block_size_[block_dim] = sparsity.dim_metadata[orig_dim].dense_size;
+        blocked_shape_[i] = shape[i] / sparsity.dim_metadata[orig_dim].dense_size;
+        block_dim++;
+      }
     } else {
       blocked_shape_[i] = shape[i];
     }
@@ -291,13 +293,15 @@ void FormatConverter<T>::Populate(const T* src_data, std::vector<int> indices,
       Populate(src_data, indices, level + 1, prev_idx * shape_of_level + i,
                src_data_ptr, dest_data);
     }
-  } else {
+  } else if (prev_idx + 1 < dim_metadata_[metadata_idx].size()) {
     const auto& array_segments = dim_metadata_[metadata_idx];
     const auto& array_indices = dim_metadata_[metadata_idx + 1];
     for (int i = array_segments[prev_idx]; i < array_segments[prev_idx + 1];
          i++) {
-      indices[level] = array_indices[i];
-      Populate(src_data, indices, level + 1, i, src_data_ptr, dest_data);
+      if (i < array_indices.size() && level < indices.size()) {
+        indices[level] = array_indices[i];
+        Populate(src_data, indices, level + 1, i, src_data_ptr, dest_data);
+      }
     }
   }
 }
