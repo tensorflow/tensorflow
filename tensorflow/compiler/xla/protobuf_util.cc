@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/protobuf_util.h"
 
+#include <string>
+
 #include "absl/hash/hash.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -45,7 +47,7 @@ size_t ProtobufHash(const tensorflow::protobuf::Message& m) {
   // We perform the hash on their serialized representation.
   std::string serialized;
   m.AppendToString(&serialized);
-  return absl::Hash<std::string>()(serialized);
+  return absl::HashOf(serialized);
 }
 
 Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,

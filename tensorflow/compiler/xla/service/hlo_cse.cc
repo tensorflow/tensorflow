@@ -141,14 +141,14 @@ struct CseKey {
     h = H::combine(std::move(h), instruction->opcode(),
                    instruction->shape().dimensions());
     auto window_hash = [](H h, const Window& window) {
-      for (const auto& window_dim : window.dimensions()) {
-        return H::combine(std::move(h), window_dim.size(), window_dim.stride(),
-                          window_dim.padding_low(), window_dim.padding_high(),
-                          window_dim.window_dilation(),
-                          window_dim.base_dilation(),
-                          window_dim.window_reversal());
+      const auto& window_dims = window.dimensions();
+      for (const auto& window_dim : window_dims) {
+        h = H::combine(std::move(h), window_dim.size(), window_dim.stride(),
+                       window_dim.padding_low(), window_dim.padding_high(),
+                       window_dim.window_dilation(), window_dim.base_dilation(),
+                       window_dim.window_reversal());
       }
-      return std::move(h);
+      return H::combine(std::move(h), window_dims.size());
     };
     for (auto operand : instruction->operands()) {
       h = H::combine(std::move(h), operand->unique_id());
@@ -160,14 +160,16 @@ struct CseKey {
       case HloOpcode::kSlice:
         return H::combine(std::move(h), instruction->slice_starts(),
                           instruction->slice_strides());
-      case HloOpcode::kPad:
-        for (const auto& padding_dim :
-             instruction->padding_config().dimensions()) {
+      case HloOpcode::kPad: {
+        const auto& padding_dims = instruction->padding_config().dimensions();
+        for (const auto& padding_dim : padding_dims) {
           h = H::combine(std::move(h), padding_dim.edge_padding_low(),
                          padding_dim.edge_padding_high(),
                          padding_dim.interior_padding());
         }
+        h = H::combine(std::move(h), padding_dims.size());
         return std::move(h);
+      }
       case HloOpcode::kDot: {
         const auto& dot_dimension_numbers =
             instruction->dot_dimension_numbers();

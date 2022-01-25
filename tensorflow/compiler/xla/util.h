@@ -181,12 +181,6 @@ bool ContainersEqual(const Container1T& c1,
   return absl::c_equal(c1, c2);
 }
 
-template <int&... ExplicitArgumentBarrier, typename... Types>
-size_t HashOf(const Types&... values) {
-  auto tuple = std::tie(values...);
-  return absl::Hash<decltype(tuple)>{}(tuple);
-}
-
 #if defined(__cpp_lib_to_underlying) && __cpp_lib_to_underlying >= 202102L
 using to_underlying = std::to_underlying;
 #else

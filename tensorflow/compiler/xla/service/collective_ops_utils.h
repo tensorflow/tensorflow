@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -166,8 +168,7 @@ struct RendezvousKey {
   template <typename H>
   friend H AbslHashValue(H h, const RendezvousKey& k) {
     return H::combine(std::move(h), k.run_id, k.global_devices,
-                      k.num_local_participants,
-                      static_cast<int>(k.collective_op_kind), k.op_id);
+                      k.num_local_participants, k.collective_op_kind, k.op_id);
   }
   friend bool operator==(const RendezvousKey& a, const RendezvousKey& b) {
     return a.run_id == b.run_id && a.global_devices == b.global_devices &&

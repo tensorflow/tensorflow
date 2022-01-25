@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 
 #include <functional>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -171,7 +172,7 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass->name()));
     std::string pass_name = std::string(pass->name());
     VLOG(1) << "  HLO pass " << pass_name;
-    VLOG(2) << "  Module hash " << HashOf(*hlo);
+    VLOG(2) << "  Module hash " << absl::HashOf(*hlo);
     if (!pass->IsPassPipeline()) {
       compilation_stats_->StartPass(pass_name);
     }

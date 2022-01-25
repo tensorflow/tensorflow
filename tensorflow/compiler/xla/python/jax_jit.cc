@@ -180,13 +180,12 @@ bool CallSignature::operator==(const CallSignature& other) const {
 
 template <typename H>
 H AbslHashValue(H h, const CallSignature& s) {
-  h = H::combine_contiguous(std::move(h), s.dynamic_arg_treedefs.data(),
-                            s.dynamic_arg_treedefs.size());
+  h = H::combine(std::move(h), s.dynamic_arg_treedefs,
+                 s.dynamic_arg_signatures);
   for (const auto& name : s.dynamic_arg_names) {
     h = H::combine(std::move(h), name.ptr());
   }
-  h = H::combine_contiguous(std::move(h), s.dynamic_arg_signatures.data(),
-                            s.dynamic_arg_signatures.size());
+  h = H::combine(std::move(h), s.dynamic_arg_names.size());
   for (const auto& static_arg : s.static_args) {
     ssize_t hash;
     try {
@@ -203,9 +202,11 @@ H AbslHashValue(H h, const CallSignature& s) {
     }
     h = H::combine(std::move(h), hash);
   }
+  h = H::combine(std::move(h), s.static_args.size());
   for (const auto& name : s.static_arg_names) {
     h = H::combine(std::move(h), name.ptr());
   }
+  h = H::combine(std::move(h), s.static_arg_names.size());
   h = H::combine(std::move(h), s.device, s.jax_enable_x64);
 
   // We do not hash the extra_jit_context fields since calling Python hash
@@ -1163,8 +1164,7 @@ PyObject* JaxCompiledFunction_tp_repr(PyObject* self) {
   try {
     const std::string& repr = absl::StrFormat(
         "<CompiledFunction of %s>",
-        static_cast<std::string>(
-            py::repr(py::getattr(self, "__wrapped__"))));
+        static_cast<std::string>(py::repr(py::getattr(self, "__wrapped__"))));
     return PyUnicode_FromString(repr.c_str());
   } catch (...) {
     // Ignore all errors when accessing a repr.

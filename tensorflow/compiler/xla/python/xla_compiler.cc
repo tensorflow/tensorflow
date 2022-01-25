@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/hash/hash.h"
@@ -127,7 +128,7 @@ StatusOr<std::string> GetComputationHloDotGraph(
 StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
-  return HashOf(*hlo_module);
+  return absl::HashOf(*hlo_module);
 }
 // Safe version of ShapeUtil::MakeShapeWithLayout that fails gracefully on
 // invalid input.
@@ -210,7 +211,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("__ne__", [](const Layout& layout,
                         const Layout& other) { return layout != other; })
       .def("__hash__",
-           [](const Layout& layout) { return absl::Hash<Layout>()(layout); })
+           [](const Layout& layout) { return absl::HashOf(layout); })
       .def("to_string", &Layout::ToString);
 
   py::class_<Shape> shape_class(m, "Shape");
@@ -336,8 +337,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         const Shape& other) { return shape == other; })
       .def("__ne__", [](const Shape& shape,
                         const Shape& other) { return shape != other; })
-      .def("__hash__",
-           [](const Shape& shape) { return absl::Hash<Shape>()(shape); })
+      .def("__hash__", [](const Shape& shape) { return absl::HashOf(shape); })
       .def("__repr__", [](const Shape& shape) {
         return shape.ToString(/*print_layout=*/true);
       });
@@ -367,9 +367,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         const ShapeIndex& other) { return shape_ind == other; })
       .def("__ne__", [](const ShapeIndex& shape_ind,
                         const ShapeIndex& other) { return shape_ind != other; })
-      .def("__hash__", [](const ShapeIndex& shape_ind) {
-        return absl::Hash<ShapeIndex>()(shape_ind);
-      });
+      .def("__hash__",
+           [](const ShapeIndex& shape_ind) { return absl::HashOf(shape_ind); });
 
   // Literals
   py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")

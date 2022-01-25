@@ -627,7 +627,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   const TargetMachineFeatures& target_machine_features_;
 
   struct LiteralPtrHashFunctor {
-    size_t operator()(const Literal* literal) const { return HashOf(*literal); }
+    size_t operator()(const Literal* literal) const {
+      return absl::HashOf(*literal);
+    }
   };
 
   struct LiteralPtrEqualityFunctor {

@@ -1294,6 +1294,7 @@ class HloInstruction {
       for (size_t i = 0; i < hlo.operands().size(); ++i) {
         h = H::combine(std::move(h), hlo.operand(i)->shape());
       }
+      h = H::combine(std::move(h), hlo.operand_count());
     }
 
     if (hlo.opcode() == HloOpcode::kFusion) {
