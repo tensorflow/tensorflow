@@ -1819,6 +1819,12 @@ struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
     }
 
     switch (rank) {
+      case 2: {
+        res = rewriter.create<linalg::MatmulOp>(
+            loc, result_type, ValueRange{input, filter},
+            ValueRange{zero_tensor}, PruneAttributeList(op));
+        break;
+      }
       case 3: {
         res = rewriter.create<linalg::Conv1DNwcWcfOp>(
             loc, result_type, ValueRange{input, filter},

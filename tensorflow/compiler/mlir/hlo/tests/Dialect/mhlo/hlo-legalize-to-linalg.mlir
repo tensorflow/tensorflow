@@ -2514,6 +2514,21 @@ func @pad_tensor(%arg0: tensor<12x4xf32>, %arg1: tensor<f32>) -> tensor<18x12xf3
 
 // -----
 
+func @linalg.conv_0d_nc(%arg0: tensor<3x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<3x3xf32> {
+
+  %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, f]x[i, o]->[b, f], window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [], reverse = []} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<3x2xf32>, tensor<2x3xf32>) -> tensor<3x3xf32>
+  return %0 : tensor<3x3xf32>
+}
+
+// CHECK-LABEL: @linalg.conv_0d_nc
+// CHECK-DAG: %[[CST:.+]] = arith.constant 0.000000e+00
+// CHECK-DAG: %[[INIT:.+]] = linalg.init_tensor [3, 3]
+// CHECK-DAG: %[[FILL:.+]] = linalg.fill(%cst, %[[INIT]])
+// CHECK-DAG: %[[PAD:.+]] = tensor.pad %arg0 low[0, 0] high[0, 0]
+// CHECK: linalg.matmul ins(%[[PAD]], %arg1 : tensor<3x2xf32>, tensor<2x3xf32>) outs(%[[FILL]] : tensor<3x3xf32>)
+
+// -----
+
 func @linalg.conv_1d_nwc(%arg0: tensor<?x8x?xf32>, %arg1: tensor<2x?x?xf32>)
   -> tensor<?x7x?xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
