@@ -29,9 +29,11 @@ class OperationPass;
 
 namespace mhlo {
 
-
 // Prepare module for export to XLA HLO protos/instruction.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport();
+
+// Wrap function with XLA:CPU's C interface.
+std::unique_ptr<OperationPass<ModuleOp>> CreateOutlineWithXLAFrameworkPass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"

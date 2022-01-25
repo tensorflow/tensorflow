@@ -98,6 +98,7 @@ gentbl_cc_library(
 cc_library(
     name = "xla_passes",
     srcs = [
+        "transforms/outline_with_xla_framework.cc",
         "transforms/prepare_for_export.cc",
         "transforms/xla_passes_detail.h",
     ],
@@ -105,11 +106,26 @@ cc_library(
         "transforms/xla_passes.h",
     ],
     deps = [
+        ":legalize_tf",
+        ":xla_framework",
         ":xla_passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticToLLVM",
+        "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:MathToLLVM",
+        "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:StandardOpsTransforms",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
 )
@@ -730,6 +746,7 @@ td_library(
     srcs = [
         "ir/xla_framework_ops.td",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
@@ -739,6 +756,7 @@ td_library(
 
 gentbl_cc_library(
     name = "xla_framework_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -778,7 +796,6 @@ cc_library(
         "ir/xla_framework.h.inc",
     ],
     hdrs = ["ir/xla_framework.h"],
-    compatible_with = [],
     deps = [
         ":xla_framework_inc_gen",
         "@llvm-project//llvm:Support",
