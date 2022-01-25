@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 
 namespace mlir {
 class FuncOp;
@@ -79,7 +80,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicRangeQuantizePass(
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
-    bool emit_quant_adaptor_ops);
+    bool emit_quant_adaptor_ops, const CustomOpMap& custom_op_map = {});
 
 // Creates an instance of the TensorFlow Lite pass that decomposes hybrid
 // quantization patterns to the same dense operation with tfl dequantization
