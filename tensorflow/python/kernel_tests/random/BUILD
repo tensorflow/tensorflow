@@ -122,6 +122,7 @@ cuda_py_test(
     tags = ["nozapfhahn"],
     xla_tags = [
         "no_cuda_asan",  # times out
+        "nomsan",  # b/216320808
     ],
     deps = [
         ":util",
