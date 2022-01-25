@@ -256,7 +256,10 @@ cuda_py_test(
     name = "division_past_test",
     size = "medium",
     srcs = ["division_past_test.py"],
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
