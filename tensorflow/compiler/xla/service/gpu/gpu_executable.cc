@@ -523,8 +523,7 @@ static Status CheckAlignment(const BufferAllocation& allocation,
 StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-    se::DeviceMemoryAllocator* const memory_allocator,
-    se::StreamExecutor* executor) {
+    se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal) {
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return std::string("Build buffer allocations"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
@@ -537,11 +536,11 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     TF_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase buffer,
         BufferForAllocation(arguments, globals, allocation, memory_allocator,
-                            executor->device_ordinal(), i));
+                            device_ordinal, i));
     buffers.push_back(buffer);
     TF_RETURN_IF_ERROR(CheckAlignment(allocation, buffer, i));
   }
-  return {{buffers, executor->device_ordinal(), memory_allocator}};
+  return {{buffers, device_ordinal, memory_allocator}};
 }
 
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
@@ -688,9 +687,10 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   ExecutionOutput result(/*on_device_shape=*/output_shape_, memory_allocator,
                          device_ordinal);
 
-  TF_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
-                      GenerateBufferAllocations(arguments, globals,
-                                                memory_allocator, executor));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocations buffer_allocations,
+      GenerateBufferAllocations(arguments, globals, memory_allocator,
+                                device_ordinal));
   VLOG(2) << buffer_allocations.ToString();
   std::set<se::DeviceMemoryBase> buffers_in_result;
 

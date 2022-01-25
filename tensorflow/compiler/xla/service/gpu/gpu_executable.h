@@ -209,8 +209,7 @@ class GpuExecutable : public Executable {
   StatusOr<BufferAllocations> GenerateBufferAllocations(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      se::DeviceMemoryAllocator* const memory_allocator,
-      se::StreamExecutor* executor);
+      se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal);
 
   StatusOr<se::DeviceMemoryBase> BufferForAllocation(
       VariantArguments arguments,
