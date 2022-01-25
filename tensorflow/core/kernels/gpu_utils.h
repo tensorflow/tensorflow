@@ -62,7 +62,7 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
                    AutotuneResult* autotune_result);
 
 template <typename T>
-inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64_t size) {
+inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
   se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
   se::DeviceMemory<T> typed(wrapped);
   return typed;
@@ -89,23 +89,11 @@ class AutotuneMap {
   };
 
  public:
-  bool Find(const Parameters& params, Config* config) {
+  bool Find(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
     auto iter = params_config_map_.find(params);
 
     if (iter == params_config_map_.end()) {
-      return false;
-    }
-    *config = iter->second.config;
-    return true;
-  }
-
-  bool FindBasedOnScore(const Parameters& params, Config* config) const {
-    mutex_lock lock(mu_);
-    auto iter = params_config_map_.find(params);
-    if (iter == params_config_map_.end() ||
-        (iter->second.score < min_score_threshold_ &&
-         iter->second.count <= max_autotune_count_)) {
       return false;
     }
     *config = iter->second.config;

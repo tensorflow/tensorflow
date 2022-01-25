@@ -153,9 +153,8 @@ class BatchMatmulParameters {
   uint64 hash_code_;
 };
 
-static inline port::Status GetBlasComputationType(
-    const tensorflow::DataType& dtype, bool allow_tf32,
-    blas::ComputationType* compute_type) {
+static inline port::StatusOr<blas::ComputationType> GetBlasComputationType(
+    const tensorflow::DataType& dtype, bool allow_tf32) {
   using blas::ComputationType;
   static bool use_f32_for_f16_computation =
       tensorflow::MatmulDoFP32ComputationFP16Input();
@@ -164,21 +163,16 @@ static inline port::Status GetBlasComputationType(
   switch (dtype) {
     case tensorflow::DT_HALF:
     case tensorflow::DT_BFLOAT16:
-      *compute_type =
-          use_f32_for_f16_computation ? f32_type : ComputationType::kF16;
-      return port::Status::OK();
+      return use_f32_for_f16_computation ? f32_type : ComputationType::kF16;
     case tensorflow::DT_FLOAT:
-      *compute_type = f32_type;
-      return port::Status::OK();
+      return f32_type;
     case tensorflow::DT_DOUBLE:
-      *compute_type = ComputationType::kF64;
+      return ComputationType::kF64;
       return port::Status::OK();
     case tensorflow::DT_COMPLEX64:
-      *compute_type = f32_type;
-      return port::Status::OK();
+      return f32_type;
     case tensorflow::DT_COMPLEX128:
-      *compute_type = ComputationType::kComplexF64;
-      return port::Status::OK();
+      return ComputationType::kComplexF64;
     default:
       // Unsupported compute_type, return false.
       return port::InternalError("Unsupported dtype for batched matmul 2");
@@ -248,12 +242,11 @@ struct CoefficientType<Eigen::half> {
 
 port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
-    blas::DataType blas_dtype, tensorflow::DataType dtype,
-    blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
-    blas::MatrixDescriptor output_matrix);
+    tensorflow::DataType dtype, blas::MatrixDescriptor lhs_matrix,
+    blas::MatrixDescriptor rhs_matrix, blas::MatrixDescriptor output_matrix);
 
 port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
-    int64_t batch_size, blas::DataType blas_dtype, tensorflow::DataType dtype,
+    int64_t batch_size, tensorflow::DataType dtype,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
     blas::MatrixDescriptor output_matrix);
 

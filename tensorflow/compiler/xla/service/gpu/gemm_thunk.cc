@@ -203,7 +203,6 @@ static Status DoGemmLt(
     se::blas::ProfileResult *output_profile_result) {
   CHECK(output_matrix.transpose == se::blas::Transpose::kNoTranspose);
   tensorflow::DataType dtype = tensorflow::DataTypeToEnum<Input>::value;
-  se::blas::DataType blas_dtype = se::blas::ToDataType<Input>::value;
 
   int device_id = stream->parent()->device_ordinal();
 
@@ -225,8 +224,8 @@ static Status DoGemmLt(
 
   TF_ASSIGN_OR_RETURN(
       const se::blas::PlanAndAlgorithms *plan_and_algorithms,
-      GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, blas_dtype,
-                           dtype, lhs_matrix, rhs_matrix, output_matrix));
+      GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, dtype,
+                           lhs_matrix, rhs_matrix, output_matrix));
 
   const std::unique_ptr<se::blas::IBlasLtMatmulPlan> &plan =
       plan_and_algorithms->plan;
@@ -408,9 +407,8 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   double beta = backend_config.beta();
 
   // The BlasLtMatmul routines are only supported from CUDA 11.0 onward.
-  absl::flat_hash_set<PrimitiveType> enabled_types = {F16, F32, F64, C64, C128};
   if (gemm_config.use_cublaslt && stream->parent()->SupportsBlasPlans() &&
-      enabled_types.contains(output_shape.element_type())) {
+      BlasPlansCompatibleType(output_shape.element_type())) {
     se::blas::IBlasLtMatmulAlgorithm *best_algorithm = nullptr;
     if (algorithm_being_profiled) {
       best_algorithm = algorithm_being_profiled;

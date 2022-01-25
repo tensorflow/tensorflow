@@ -922,6 +922,7 @@ cc_library(
         ":ir_emission_utils",
         ":stream_executor_util",
         "@com_google_absl//absl/types:optional",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",

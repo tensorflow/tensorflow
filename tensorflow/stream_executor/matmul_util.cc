@@ -35,9 +35,8 @@ int64_t GetWorkspaceLimit(const string& envvar_in_mb,
 
 port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
-    blas::DataType blas_dtype, tensorflow::DataType dtype,
-    blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
-    blas::MatrixDescriptor output_matrix) {
+    tensorflow::DataType dtype, blas::MatrixDescriptor lhs_matrix,
+    blas::MatrixDescriptor rhs_matrix, blas::MatrixDescriptor output_matrix) {
   static const int64_t max_scratch_size = GetBlasWorkspaceLimit(
       "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
   static const int64_t max_autotune_algorithm_count =
@@ -45,10 +44,9 @@ port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
   const blas::PlanAndAlgorithms* plan_and_algorithms =
       BatchMatmulPlanMapSingleton::GetInstance()->Find(matmul_parameters);
   if (!plan_and_algorithms) {
-    TF_ASSIGN_OR_RETURN(
-        blas::BlasLtMatmulPlanParams plan_params,
-        CreatePlanParams(batch_size, blas_dtype, dtype, lhs_matrix, rhs_matrix,
-                         output_matrix));
+    TF_ASSIGN_OR_RETURN(blas::BlasLtMatmulPlanParams plan_params,
+                        CreatePlanParams(batch_size, dtype, lhs_matrix,
+                                         rhs_matrix, output_matrix));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<blas::IBlasLtMatmulPlan> plan,
                         stream->parent()->CreateBlasLtMatmulPlan(plan_params));
     TF_ASSIGN_OR_RETURN(
@@ -64,7 +62,7 @@ port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
 }
 
 port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
-    int64_t batch_size, blas::DataType blas_dtype, tensorflow::DataType dtype,
+    int64_t batch_size, tensorflow::DataType dtype,
     blas::MatrixDescriptor lhs_matrix, blas::MatrixDescriptor rhs_matrix,
     blas::MatrixDescriptor output_matrix) {
   blas::BlasLtMatmulPlanParams plan_params;
@@ -72,11 +70,30 @@ port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
   int64_t n = output_matrix.num_cols;
   int64_t k = lhs_matrix.reduced_dim();
 
+  blas::DataType blas_dtype;
+  switch (dtype) {
+    case tensorflow::DT_HALF:
+      blas_dtype = blas::ToDataType<Eigen::half>::value;
+      break;
+    case tensorflow::DT_FLOAT:
+      blas_dtype = blas::ToDataType<float>::value;
+      break;
+    case tensorflow::DT_DOUBLE:
+      blas_dtype = blas::ToDataType<double>::value;
+      break;
+    case tensorflow::DT_COMPLEX64:
+      blas_dtype = blas::ToDataType<tensorflow::complex64>::value;
+      break;
+    case tensorflow::DT_COMPLEX128:
+      blas_dtype = blas::ToDataType<tensorflow::complex128>::value;
+      break;
+  }
+
   plan_params.ab_type = blas_dtype;
   plan_params.c_type = blas_dtype;
   bool allow_tf32 = tensorflow::tensor_float_32_execution_enabled();
-  blas::ComputationType computation_type;
-  TF_CHECK_OK(GetBlasComputationType(dtype, allow_tf32, &computation_type));
+  TF_ASSIGN_OR_RETURN(blas::ComputationType computation_type,
+                      GetBlasComputationType(dtype, allow_tf32));
 
   plan_params.computation_type = computation_type;
 
