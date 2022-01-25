@@ -412,6 +412,13 @@ java_test_with_tflite(
         "src/test/java/org/tensorflow/lite/TestInit.java",
     ],
     javacopts = JAVACOPTS,
+    # We want to ensure that every test case in the test also verifies that the
+    # native libraries get loaded.  But Java doesn't provide a way to unload
+    # native libraries: there's no System.unloadLibrary().  So instead, we just
+    # run every test case in this test in a separate shard, which ensures that
+    # they run in a separate process that doesn't have the native libraries
+    # loaded yet.
+    shard_count = 3,
     tags = [
         "v1only",
     ],
