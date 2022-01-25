@@ -8136,5 +8136,20 @@ TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {
               GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, GTETupleShardingLoss) {
+  // Verify the gte(tuple) folding does not happen if it loses sharding info.
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0), sharding={devices=[2]0,1}
+      t = (s32[10]) tuple(p0)
+      ROOT %gte = s32[10] get-tuple-element(t), index=0, sharding={replicated}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
 }  // namespace
 }  // namespace xla

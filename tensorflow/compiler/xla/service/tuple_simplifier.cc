@@ -60,8 +60,9 @@ StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
     }
   }
   if (can_simplify && top_tuple != nullptr) {
-    changed = true;
-    TF_RETURN_IF_ERROR(tuple->parent()->ReplaceInstruction(tuple, top_tuple));
+    TF_ASSIGN_OR_RETURN(changed,
+                        tuple->parent()->ReplaceInstruction(
+                            tuple, top_tuple, /*preserve_sharding=*/true));
   }
   return changed;
 }
@@ -101,16 +102,19 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
         // if only a subset of tuple's elements are used, this transform
         // optimizes them one at a time, and after the last use is optimized,
         // the Tuple will also be deleted.
+        HloInstruction* replacement = nullptr;
         if (ShapeUtil::Compatible(ancestor.first->shape(),
                                   instruction->shape())) {
-          changed = true;
-          TF_RETURN_IF_ERROR(
-              computation->ReplaceInstruction(instruction, ancestor.first));
+          replacement = ancestor.first;
         } else if (ancestor.first->opcode() == HloOpcode::kTuple) {
-          changed = true;
-          TF_RETURN_IF_ERROR(computation->ReplaceInstruction(
-              instruction,
-              ancestor.first->mutable_operand(ancestor.second[0])));
+          replacement = ancestor.first->mutable_operand(ancestor.second[0]);
+        }
+
+        if (replacement) {
+          TF_ASSIGN_OR_RETURN(bool replaced, computation->ReplaceInstruction(
+                                                 instruction, replacement,
+                                                 /*preserve_sharding=*/true));
+          changed |= replaced;
         }
       }
     }

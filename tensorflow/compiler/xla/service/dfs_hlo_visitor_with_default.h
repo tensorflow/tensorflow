@@ -326,14 +326,25 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   // Replaces the existing HLO instruction old_instruction, with
   // new_instruction, and marks the optimizer status as changed.
   // Returns the Status representing the result of the replace operation.
-  Status ReplaceInstruction(HloInstruction* old_instruction,
-                            HloInstruction* new_instruction) {
+  StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
+                                    HloInstruction* new_instruction,
+                                    bool preserve_sharding) {
     VLOG(3) << "Replacing instruction:";
     VLOG(3) << "  old: " << old_instruction->ToString();
     VLOG(3) << "  new: " << new_instruction->ToString();
-    TF_RETURN_IF_ERROR(old_instruction->parent()->ReplaceInstruction(
-        old_instruction, new_instruction));
-    changed_ = true;
+    TF_ASSIGN_OR_RETURN(
+        bool changed, old_instruction->parent()->ReplaceInstruction(
+                          old_instruction, new_instruction, preserve_sharding));
+    changed_ |= changed;
+    return changed;
+  }
+
+  Status ReplaceInstruction(HloInstruction* old_instruction,
+                            HloInstruction* new_instruction) {
+    TF_ASSIGN_OR_RETURN(bool changed,
+                        ReplaceInstruction(old_instruction, new_instruction,
+                                           /*preserve_sharding=*/false));
+    DCHECK(changed);
     return Status::OK();
   }
 

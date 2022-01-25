@@ -361,12 +361,25 @@ class HloComputation {
   // Replace old instruction with new instruction.  Updates uses and root
   // instruction. Removes old instruction from computation. Precondition:
   // old_instruction and new_instruction must have the compatible shapes.
-  // If |new_instruction| doesn't have any sharding information it will
-  // receive the sharding information of |old_instruction|.
+  // If preserve_sharding is true, the replacement will fail if both new and old
+  // instruction have sharding that is not compatible, and the function will
+  // return false. Otherwise, when the replacement happens, if |new_instruction|
+  // doesn't have any sharding information it will receive the sharding
+  // information of |old_instruction|, and function will return true.
+  StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
+                                    HloInstruction* new_instruction,
+                                    bool preserve_sharding);
+
+  // Same as above, with preserve_sharding=false. Since this replacement always
+  // happens, it returns just a Status as opposed to StatusOr<bool>
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
 
-  // As ReplaceInstruction, but the new instruction can have a different shape.
+  // Same as ReplaceInstruction, but the new instruction can have a different
+  // shape.
+  StatusOr<bool> ReplaceInstructionWithDifferentShape(
+      HloInstruction* old_instruction, HloInstruction* new_instruction,
+      bool preserve_sharding);
   Status ReplaceInstructionWithDifferentShape(HloInstruction* old_instruction,
                                               HloInstruction* new_instruction);
 
