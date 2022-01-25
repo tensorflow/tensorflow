@@ -413,10 +413,14 @@ tf_py_test(
         ":graph_to_function_def",
         ":op_def_library",
         ":ops",
+        ":tensor_shape",
+        ":tensor_spec",
         ":test_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:function",
     ],
 )
 
