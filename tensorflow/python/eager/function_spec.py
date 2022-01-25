@@ -434,7 +434,7 @@ class FunctionSpec(object):
 
     self._validate_inputs(flat_inputs)
 
-    return inputs, kwargs, flat_inputs, filtered_flat_inputs
+    return inputs, kwargs, filtered_flat_inputs
 
 
 def _to_tensor_or_tensor_spec(x):

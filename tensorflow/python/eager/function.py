@@ -95,23 +95,25 @@ _graph_building_time_counter = monitoring.Counter(
 
 
 def _type_spec_for(x):
-  """Returns a TypeSpec for `x`, or `None` if `x` doesn't have a TensorSpec."""
+  """Returns a TypeSpec for `x`, or `x` if `x` doesn't have a TensorSpec."""
   if isinstance(x, ops.Tensor):
-    return tensor_spec.TensorSpec.from_tensor(x)
+    # We intentionally leave out the name of x from the TensorSpec here,
+    # because the name of a TensorSpec will override arg_name
+    # in the '_get_defun_inputs' method in func_graph.py.
+    return tensor_spec.TensorSpec(x.shape, x.dtype)
   elif isinstance(x, type_spec.TypeSpec):
     return x
   elif isinstance(x, composite_tensor.CompositeTensor):
     return x._type_spec  # pylint: disable=protected-access
   else:
-    return None
+    return x
 
 
 def _is_type_subset(a, b):
-  """Returns true if TypeSpec `b` is a subset of type `a` (or if a is None.)"""
-  if a is None:
-    return True
-  else:
+  """Returns true if `b` is a subset of type `a` (or if a is not a TypeSpec.)"""
+  if isinstance(a, type_spec.TypeSpec):
     return a.most_specific_compatible_type(b) == a
+  return True
 
 
 def _shape_relaxed_type_for_composite_tensor(x):
@@ -1683,8 +1685,8 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       TypeError: if `args` and `kwargs` do not match the structured signature
         of this `ConcreteFunction`.
     """
-    args, kwargs, _, filtered_flat_args = \
-        self._function_spec.canonicalize_function_inputs(*args, **kwargs)
+    args, kwargs, filtered_flat_args = (
+        self._function_spec.canonicalize_function_inputs(*args, **kwargs))
     self._structured_signature_check_missing_args(args, kwargs)
     self._structured_signature_check_unexpected_args(args, kwargs)
     self._structured_signature_check_arg_types(args, kwargs)
@@ -2598,7 +2600,7 @@ class Function(object):
     # Return the cached `Function` for the instance
     return self._descriptor_cache[instance]
 
-  def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
+  def _create_graph_function(self, args, kwargs):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
     self.tracing_count += 1
 
@@ -2625,7 +2627,6 @@ class Function(object):
             autograph=self._autograph,
             autograph_options=self._autograph_options,
             arg_names=arg_names,
-            override_flat_arg_shapes=override_flat_arg_shapes,
             capture_by_value=self._capture_by_value),
         self._function_attributes,
         spec=self.function_spec,
@@ -2636,74 +2637,47 @@ class Function(object):
         shared_func_graph=False)
     return graph_function
 
-  def _define_function_with_shape_relaxation(self, args, kwargs, flat_args,
-                                             filtered_flat_args):
+  def _graph_function_with_shape_relaxation(self, args, kwargs):
     """Define a function, relaxing arg shapes to avoid unnecessary retracing."""
-    flat_no_comp = nest.flatten((args, kwargs), expand_composites=False)
-
-    any_composite_args = any(
-        isinstance(x, composite_tensor.CompositeTensor) for x in flat_no_comp)
-
+    # For the rank-only cache key, replace any composite tensors with
+    # shape-relaxed TypeSpecs.
+    all_args = (args, kwargs)
+    all_args_relaxed = nest.map_structure(
+        _shape_relaxed_type_for_composite_tensor, all_args)
     # Build a cache key where TensorShapes include only rank information (and
     # not information about the size of each dimension).
-    if not any_composite_args:
-      rank_only_cache_key, _ = function_cache.make_cache_key(
-          (args, kwargs), include_tensor_ranks_only=True)
-    else:
-      # For the rank-only cache key, replace any composite tensors with
-      # shape-relaxed TypeSpecs.
-      relaxed_args = nest.map_structure(
-          _shape_relaxed_type_for_composite_tensor, (args, kwargs))
-      rank_only_cache_key, _ = function_cache.make_cache_key(
-          relaxed_args, include_tensor_ranks_only=True)
+    rank_only_cache_key, _ = function_cache.make_cache_key(
+        all_args_relaxed, include_tensor_ranks_only=True)
 
-    arg_specs = [_type_spec_for(x) for x in flat_no_comp]
-    relaxed_arg_specs = self._function_cache.arg_relaxed_specs.get(
+    flat_all_arg_specs = [_type_spec_for(x) for x in nest.flatten(all_args)]
+    flat_all_arg_specs_relaxed = self._function_cache.arg_relaxed_specs.get(
         rank_only_cache_key, None)
-    relaxed_arg_function = self._function_cache.arg_relaxed.get(
+    arg_relaxed_function = self._function_cache.arg_relaxed.get(
         rank_only_cache_key, None)
 
-    if (relaxed_arg_function is not None
+    if (arg_relaxed_function is not None
         and all(_is_type_subset(x, y) for (x, y) in
-                zip(relaxed_arg_specs, arg_specs))):
-      return relaxed_arg_function, filtered_flat_args
+                zip(flat_all_arg_specs_relaxed, flat_all_arg_specs))):
+      return arg_relaxed_function
 
-    if relaxed_arg_specs is None:
-      relaxed_arg_specs = arg_specs
+    if flat_all_arg_specs_relaxed is None:
+      flat_all_arg_specs_relaxed = flat_all_arg_specs
     else:
-      if len(arg_specs) != len(relaxed_arg_specs):
-        raise RuntimeError("Expected arg_specs len to match relaxed_arg_specs "
-                           f"len: {len(arg_specs):d} vs. "
-                           f"{len(relaxed_arg_specs):d}.")
-      relaxed_arg_specs = [
-          x if x is None else x.most_specific_compatible_type(y)
-          for (x, y) in zip(arg_specs, relaxed_arg_specs)]
+      if len(flat_all_arg_specs) != len(flat_all_arg_specs_relaxed):
+        raise RuntimeError("Expected arg_specs len to match arg_specs_relaxed "
+                           f"len: {len(flat_all_arg_specs):d} vs. "
+                           f"{len(flat_all_arg_specs_relaxed):d}.")
+      flat_all_arg_specs_relaxed = [
+          x.most_specific_compatible_type(y)
+          if isinstance(x, type_spec.TypeSpec) else x
+          for (x, y) in zip(flat_all_arg_specs, flat_all_arg_specs_relaxed)]
     self._function_cache.arg_relaxed_specs[rank_only_cache_key] = (
-        relaxed_arg_specs)
-    relaxed_arg_shapes = [
-        x if x is None else x.shape
-        for x in nest.flatten(relaxed_arg_specs, expand_composites=True)]
-
-    if any_composite_args:
-      # Rebuild composite tensors with the relaxed TypeSpecs.  For example,
-      # if a tf.data iterator is passed as an argument, then we need to relax
-      # the TensorShapes in its element_spec.
-      (relaxed_arg_specs, relaxed_kwarg_specs) = nest.pack_sequence_as(
-          (args, kwargs), relaxed_arg_specs, expand_composites=False)
-      (args, kwargs) = nest.pack_sequence_as(
-          (relaxed_arg_specs, relaxed_kwarg_specs),
-          flat_args,
-          expand_composites=True)
-
-    graph_function = self._create_graph_function(
-        args, kwargs, override_flat_arg_shapes=relaxed_arg_shapes)
+        flat_all_arg_specs_relaxed)
+    all_arg_specs_relaxed = nest.pack_sequence_as(all_args,
+                                                  flat_all_arg_specs_relaxed)
+    graph_function = self._create_graph_function(*all_arg_specs_relaxed)
     self._function_cache.arg_relaxed[rank_only_cache_key] = graph_function
-
-    return (graph_function, [
-        t for t in nest.flatten((args, kwargs), expand_composites=True)
-        if isinstance(t, (ops.Tensor,
-                          resource_variable_ops.BaseResourceVariable))
-    ])
+    return graph_function
 
   def _maybe_define_function(self, args, kwargs):
     """Gets a function for these inputs, defining it if necessary.
@@ -2729,10 +2703,10 @@ class Function(object):
         shape relaxation retracing.
     """
     if self.input_signature is None or args is not None or kwargs is not None:
-      args, kwargs, flat_args, filtered_flat_args = \
-          self._function_spec.canonicalize_function_inputs(*args, **kwargs)
+      args, kwargs, filtered_flat_args = (
+          self._function_spec.canonicalize_function_inputs(*args, **kwargs))
     else:
-      flat_args, filtered_flat_args = [None], []
+      filtered_flat_args = []
 
     if self.input_signature is None:
       cache_key, cache_key_deletion_observer = function_cache.make_cache_key(
@@ -2774,8 +2748,8 @@ class Function(object):
           if (self._experimental_relax_shapes and
               self.input_signature is None and
               self._function_cache.has_call_context(cache_key.call_context)):
-            return self._define_function_with_shape_relaxation(
-                args, kwargs, flat_args, filtered_flat_args)
+            return (self._graph_function_with_shape_relaxation(args, kwargs),
+                    filtered_flat_args)
 
           self._function_cache.add_call_context(cache_key.call_context)
           graph_function = self._create_graph_function(args, kwargs)
