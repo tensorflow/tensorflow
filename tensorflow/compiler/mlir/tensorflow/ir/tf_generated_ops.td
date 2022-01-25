@@ -16985,15 +16985,15 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
 
   let arguments = (ins
     TF_Tensor:$input,
-    Arg<TF_I32OrI64Tensor, [{`begin[k]` specifies the offset into the `k`th range specification.
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{`begin[k]` specifies the offset into the `k`th range specification.
 The exact dimension this corresponds to will be determined by context.
 Out-of-bounds values will be silently clamped. If the `k`th bit of
 `begin_mask` then `begin[k]` is ignored and the full range of the
 appropriate dimension is used instead. Negative values causes indexing
 to start from the highest element e.g. If `foo==[1,2,3]` then `foo[-1]==3`.}]>:$begin,
-    Arg<TF_I32OrI64Tensor, [{`end[i]` is like `begin` with the exception that `end_mask` is
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{`end[i]` is like `begin` with the exception that `end_mask` is
 used to determine full ranges.}]>:$end,
-    Arg<TF_I32OrI64Tensor, [{`strides[i]` specifies the increment in the `i`th specification
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{`strides[i]` specifies the increment in the `i`th specification
 after extracting a given element. Negative indices will reverse
 the original order. Out or range values are
 clamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`}]>:$strides,

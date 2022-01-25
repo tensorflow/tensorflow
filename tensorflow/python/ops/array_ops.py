@@ -887,8 +887,8 @@ _SLICE_TYPE_ERROR = (
     "tf.newaxis (`None`) and scalar tf.int32/tf.int64 tensors are valid "
     "indices")
 
-_SUPPORTED_SLICE_DTYPES = (dtypes.int32, dtypes.int32_ref, dtypes.int64,
-                           dtypes.int64_ref)
+_SUPPORTED_SLICE_DTYPES = (dtypes.int16, dtypes.int32, dtypes.int32_ref,
+                           dtypes.int64, dtypes.int64_ref)
 
 
 def _check_index(idx):
@@ -1045,6 +1045,8 @@ def _slice_helper(tensor, slice_spec, var=None):
     if begin:
       packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
                                                   stack(strides))
+      # TODO(mdan): Instead of implicitly casting, it's better to enforce the
+      # same dtypes.
       if (packed_begin.dtype == dtypes.int64 or
           packed_end.dtype == dtypes.int64 or
           packed_strides.dtype == dtypes.int64):
@@ -1054,6 +1056,15 @@ def _slice_helper(tensor, slice_spec, var=None):
           packed_end = gen_math_ops.cast(packed_end, dtypes.int64)
         if packed_strides.dtype != dtypes.int64:
           packed_strides = gen_math_ops.cast(packed_strides, dtypes.int64)
+      elif (packed_begin.dtype == dtypes.int16 and
+            packed_end.dtype == dtypes.int16 and
+            packed_strides.dtype == dtypes.int16):
+        if packed_begin.dtype != dtypes.int16:
+          packed_begin = gen_math_ops.cast(packed_begin, dtypes.int16)
+        if packed_end.dtype != dtypes.int16:
+          packed_end = gen_math_ops.cast(packed_end, dtypes.int16)
+        if packed_strides.dtype != dtypes.int16:
+          packed_strides = gen_math_ops.cast(packed_strides, dtypes.int16)
     else:
       var_empty = constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = var_empty

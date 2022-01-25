@@ -839,6 +839,30 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker2[mask]
       _ = checker2[ops.convert_to_tensor(mask)]
 
+  def test_int16_indices(self):
+
+    def _int16(i):
+      return constant_op.constant(i, dtype=dtypes.int16)
+
+    for tensor_type in STRIDED_SLICE_TYPES:
+      with self.subTest(tensor_type=tensor_type, use_gpu=True):
+        checker = StridedSliceChecker(
+            self, StridedSliceChecker.REF_TENSOR, tensor_type=tensor_type)
+
+        with self.assertRaises(Exception):
+          _ = checker[::_int16(1), ::_int16(5), ::_int16(2)]
+
+        with self.assertRaises(Exception):
+          _ = checker[_int16(1)::1, :, :]
+
+        with self.assertRaises(Exception):
+          _ = checker[:, _int16(1):_int16(5):-1, :]
+
+        _ = checker[_int16(1):_int16(5):_int16(2), 1:2, :]
+        _ = checker[_int16(1):_int16(5):_int16(2),
+                    _int16(0):_int16(5):_int16(1),
+                    _int16(0):_int16(4):_int16(2)]
+
 
 class StridedSliceShapeTest(test_util.TensorFlowTestCase):
   """Test the shape inference of StridedSliceShapes."""
