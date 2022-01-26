@@ -1,3 +1,4 @@
+#
 # Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,35 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+include_directories(BEFORE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_subdirectory(IR)
-add_subdirectory(transforms)
+add_mlir_library(GmlStTilingInterface
+  tiling_interface.cc
+
+  LINK_LIBS PUBLIC
+  MLIRArithmetic
+  MLIRIR
+  MLIRSupport
+
+  DEPENDS
+  MLIRGmlStTilingInterfaceIncGen
+)
+
+add_mlir_library(GmlStPasses
+  greedy_tiling.cc
+
+  DEPENDS
+  MLIRGmlStPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  GmlStTilingInterface
+  MLIRIR
+  MLIRPass
+  MLIRSupport
+)
