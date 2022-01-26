@@ -1702,6 +1702,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:cuda_libdevice_path",
+        "@com_google_absl//absl/strings",
     ],
 )
 
