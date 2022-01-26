@@ -4,7 +4,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = ["//tensorflow/tools/tfg_graph_transforms:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -96,6 +96,7 @@ cc_library(
     srcs = [
         "tfg_graph_transforms_main.cc",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":export",
         ":import",
