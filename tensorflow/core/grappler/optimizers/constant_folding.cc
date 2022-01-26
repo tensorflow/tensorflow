@@ -1689,7 +1689,10 @@ Status ConstantFolding::IsSimplifiableReshape(
   if (!IsReshape(node)) {
     return errors::Internal("Node ", node.name(), " is not a Reshape node");
   }
-  CHECK_LE(2, node.input_size());
+    return errors::Internal("Node ", node.name(),
+                            " must have at most 2 inputs but has ",
+                            node.input_size());
+  }
   const NodeDef* new_shape = node_map_->GetNode(node.input(1));
   if (!IsReallyConstant(*new_shape)) {
     return errors::Internal("Node ", node.name(), " has shape ",
