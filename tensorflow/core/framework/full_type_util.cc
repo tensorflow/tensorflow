@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
@@ -102,7 +103,11 @@ StatusOr<FullTypeDef> SpecializeType(const AttrSlice& attrs,
       auto* arg = t->mutable_args(i);
       if (arg->type_id() == TFT_VAR) {
         const auto* attr = attrs.Find(arg->s());
-        DCHECK(attr != nullptr);
+        if (attr == nullptr) {
+          return Status(
+              error::INVALID_ARGUMENT,
+              absl::StrCat("Could not find an attribute for key ", arg->s()));
+        }
         if (attr->value_case() == AttrValue::kList) {
           const auto& attr_list = attr->list();
           arg->set_type_id(TFT_PRODUCT);
