@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -27,7 +30,9 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
@@ -66,6 +71,8 @@ namespace tfrt_stub {
 namespace {
 
 constexpr char kDeadlineExceededMessage[] = "Deadline exceeded.";
+constexpr char kTensorNameJoiningDelimiter[] = "-";
+constexpr char kArgumentTypeJoiningDelimiter[] = "^";
 
 }  // namespace
 
@@ -259,6 +266,269 @@ tensorflow::Status GraphExecutionRunOnFunction(
   }
 
   return status_group.as_summary_status();
+}
+
+std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
+    const tensorflow::tfrt_stub::Runtime& runtime,
+    tfrt::tpu::TpuModelResource* tpu_model_resource,
+    tensorflow::TfrtTpuInfraTarget tpu_target) {
+  auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  runtime.CreateRuntimeResources(resource_context.get());
+
+  // TODO(b/178227859): We should make TPU resource init code pluggable, as
+  // opposed to linking it in. We can do this by adding a callback with
+  // `Runtime::AddCreateRuntimeResourceFn`.
+  if (tpu_target == tensorflow::TfrtTpuInfraTarget::kTpurt) {
+    AddTpuResources(resource_context.get(), tpu_model_resource);
+  }
+  return resource_context;
+}
+
+StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
+    Options options, const FallbackState& fallback_state,
+    tfrt::tpu::TpuModelResource* tpu_model_resource,
+    const tensorflow::GraphDef& graph_def) {
+  if (options.runtime == nullptr) {
+    return errors::InvalidArgument("options.runtime must be non-null ");
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(
+          graph_def, fallback_state, options.run_placer_grappler_on_functions));
+  return std::make_unique<GraphExecutor>(std::move(options), fallback_state,
+                                         tpu_model_resource,
+                                         std::move(graph_execution_state));
+}
+
+namespace {
+
+// Sort the strings in `names` and store the results in `sorted_names`. In
+// addition, the original index in `names` for the item `sorted_names[i]` is
+// stored in `original_indices[i]`.
+void CreateSortedNamesAndOriginalIndices(absl::Span<const std::string> names,
+                                         std::vector<std::string>& sorted_names,
+                                         std::vector<int>& original_indices) {
+  DCHECK(sorted_names.empty());
+  DCHECK(original_indices.empty());
+
+  // Generate indices.
+  original_indices.resize(names.size());
+  std::iota(original_indices.begin(), original_indices.end(), 0);
+
+  // Sort indices by comparing the corresponding names.
+  std::sort(original_indices.begin(), original_indices.end(),
+            [&](int x, int y) { return names[x] < names[y]; });
+
+  // Use sorted indices to generate sorted names.
+  sorted_names.reserve(names.size());
+  for (int original_index : original_indices) {
+    DCHECK_LT(original_index, names.size());
+    sorted_names.push_back(names[original_index]);
+  }
+}
+
+}  // namespace
+
+tensorflow::Status GraphExecutor::Run(
+    const RunOptions& run_options,
+    absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
+    absl::Span<const std::string> output_tensor_names,
+    absl::Span<const std::string> target_tensor_names,
+    std::vector<tensorflow::Tensor>* outputs) {
+  // TODO(b/192498110): Validate input type.
+
+  // Sort the input/output names to have a stable order, so that the
+  // `joined_name`, which is used as the cache key, will be the same as long as
+  // the same set of inputs/outputs are specified.
+  std::vector<std::string> input_names;
+  input_names.reserve(inputs.size());
+  for (const auto& p : inputs) input_names.push_back(p.first);
+  std::vector<std::string> sorted_input_names;
+  std::vector<int> input_original_indices;
+  CreateSortedNamesAndOriginalIndices(input_names, sorted_input_names,
+                                      input_original_indices);
+  // We also need to create sorted input dtypes as they are needed for the
+  // compilation.
+  std::vector<tensorflow::DataType> sorted_input_dtypes;
+  sorted_input_dtypes.reserve(inputs.size());
+  for (int original_index : input_original_indices) {
+    sorted_input_dtypes.push_back(inputs.at(original_index).second.dtype());
+  }
+
+  std::vector<std::string> sorted_output_names;
+  std::vector<int> output_original_indices;
+  CreateSortedNamesAndOriginalIndices(output_tensor_names, sorted_output_names,
+                                      output_original_indices);
+
+  // For target node names, we only need to sort them. The original indices are
+  // not needed.
+  std::vector<std::string> sorted_target_node_names(target_tensor_names.begin(),
+                                                    target_tensor_names.end());
+  std::sort(sorted_target_node_names.begin(), sorted_target_node_names.end());
+
+  // Load the client graph.
+  TF_ASSIGN_OR_RETURN(const LoadedClientGraph& loaded_client_graph,
+                      GetOrCreateLoadedClientGraph(
+                          sorted_input_names, sorted_input_dtypes,
+                          sorted_output_names, sorted_target_node_names));
+
+  const auto* func = loaded_client_graph.bef_file->GetFunction(
+      tensorflow::kImportModelDefaultGraphFuncName);
+  DCHECK(func);
+
+  // Create the actual arguments to the compiled function, which are sorted
+  // according to the input tensor names.
+  std::vector<tensorflow::Tensor> flat_inputs;
+  flat_inputs.reserve(inputs.size());
+  for (int original_index : input_original_indices) {
+    flat_inputs.push_back(inputs.at(original_index).second);
+  }
+
+  std::vector<tensorflow::Tensor> flat_outputs;
+  TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
+      options_, run_options, loaded_client_graph.name, *func, flat_inputs,
+      /*captures=*/{}, &flat_outputs,
+      loaded_client_graph.resource_context.get(), runtime(), fallback_state_,
+      req_deadline_tracker_));
+
+  // Create the outputs from the actual function results, which are sorted
+  // according to the output tensor names.
+  auto flat_output_iter = flat_outputs.begin();
+  outputs->resize(flat_outputs.size());
+  for (int original_index : output_original_indices) {
+    (*outputs)[original_index] = std::move(*flat_output_iter);
+    ++flat_output_iter;
+  }
+
+  return tensorflow::Status::OK();
+}
+
+StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
+GraphExecutor::LoadClientGraph(const GraphExecutor::ClientGraph& client_graph) {
+  auto loaded_client_graph = std::make_unique<LoadedClientGraph>();
+  loaded_client_graph->name = client_graph.name;
+  loaded_client_graph->resource_context = CreateResourceContext(
+      runtime(), tpu_model_resource_, options_.compile_options.tpu_target);
+
+  // Step 1: Import the client graph from proto to an MLIR module.
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(auto module,
+                      ImportClientGraphToMlirModule(client_graph, &context));
+
+  // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
+  TF_ASSIGN_OR_RETURN(loaded_client_graph->bef,
+                      CompileMlirModuleToBef(module.get()));
+
+  // Step 3: Initialize runtime states using special BEF functions.
+  TF_ASSIGN_OR_RETURN(
+      loaded_client_graph->bef_file,
+      tfrt::CreateBefFileFromBefBuffer(runtime(), loaded_client_graph->bef));
+  TF_RETURN_IF_ERROR(InitBef(loaded_client_graph->bef_file.get(),
+                             loaded_client_graph->resource_context.get()));
+
+  return loaded_client_graph;
+}
+
+tensorflow::StatusOr<mlir::OwningModuleRef>
+GraphExecutor::ImportClientGraphToMlirModule(
+    const GraphExecutor::ClientGraph& client_graph,
+    mlir::MLIRContext* context) const {
+  tensorflow::GraphImportConfig graph_import_config;
+  graph_import_config.prune_unused_nodes = true;
+  graph_import_config.enable_shape_inference = false;
+  graph_import_config.inputs = client_graph.input_nodes;
+  graph_import_config.outputs = client_graph.output_nodes;
+  graph_import_config.control_outputs = client_graph.target_nodes;
+
+  // Optimize the graph.
+  TF_ASSIGN_OR_RETURN(
+      auto optimized_graph,
+      graph_execution_state_->CreateOptimizedGraph(graph_import_config));
+
+  // Convert the optimized graph to an MLIR module.
+  return tensorflow::ConvertGraphToMlir(
+      *optimized_graph.graph, /*debug_info=*/{},
+      optimized_graph.graph->flib_def(), graph_import_config, context);
+}
+
+StatusOr<tfrt::BefBuffer> GraphExecutor::CompileMlirModuleToBef(
+    mlir::ModuleOp module) const {
+  tfrt::BefBuffer bef;
+  TF_RETURN_IF_ERROR(
+      tensorflow::ConvertTfMlirToBef(options_.compile_options, module, &bef));
+  return bef;
+}
+
+tensorflow::Status GraphExecutor::InitBef(
+    tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context) {
+  auto* host = runtime().core_runtime()->GetHostContext();
+  TF_ASSIGN_OR_RETURN(
+      auto request_info,
+      SetUpRequestContext(/*run_options=*/{}, /*model_metadata=*/{}, host,
+                          runtime().work_queue(), resource_context,
+                          fallback_state_));
+
+  tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
+
+  // Run "_tfrt_fallback_init" first to initialize fallback-specific states. It
+  // is the special function created by compiler, which calls a sequence of
+  // tfrt_fallback_async.createop to create all fallback ops used in this BEF.
+  TF_RETURN_IF_ERROR(
+      RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_fallback_init"));
+
+  // After we initialized all the resources in the original graph, we can run
+  // the "_tfrt_resource_init" function to set these resources in runtime
+  // states, so that later it can be efficiently retrieved without any locking.
+  TF_RETURN_IF_ERROR(
+      RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_resource_init"));
+
+  return tensorflow::Status::OK();
+}
+
+StatusOr<std::reference_wrapper<const GraphExecutor::LoadedClientGraph>>
+GraphExecutor::GetOrCreateLoadedClientGraph(
+    absl::Span<const std::string> input_tensor_names,
+    absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+    absl::Span<const std::string> output_tensor_names,
+    absl::Span<const std::string> target_tensor_names) {
+  // The format of the joined name is illustrated as in the following example:
+  // input1-input2^output1-output2^target1-target2
+  const auto joined_name = absl::StrCat(
+      absl::StrJoin(input_tensor_names, kTensorNameJoiningDelimiter),
+      kArgumentTypeJoiningDelimiter,
+      absl::StrJoin(output_tensor_names, kTensorNameJoiningDelimiter),
+      kArgumentTypeJoiningDelimiter,
+      absl::StrJoin(target_tensor_names, kTensorNameJoiningDelimiter));
+
+  tensorflow::mutex_lock l(loaded_client_graphs_mu_);
+
+  // Cache hit; return immediately.
+  const auto iter = loaded_client_graphs_.find(joined_name);
+  if (iter != loaded_client_graphs_.end()) return {*iter->second};
+
+  // Cache miss; populate a `ClientGraph` and load it.
+  tensorflow::GraphImportConfig::InputArrays input_nodes;
+  DCHECK_EQ(input_tensor_names.size(), input_tensor_dtypes.size());
+  for (int i = 0; i < input_tensor_names.size(); ++i) {
+    const auto& input_name = input_tensor_names[i];
+    auto input_dtype = input_tensor_dtypes[i];
+
+    tensorflow::ArrayInfo array_info;
+    array_info.imported_dtype = input_dtype;
+    array_info.shape.set_unknown_rank(true);
+    input_nodes[input_name] = array_info;
+  }
+  ClientGraph client_graph{
+      joined_name,
+      std::move(input_nodes),
+      {output_tensor_names.begin(), output_tensor_names.end()},
+      {target_tensor_names.begin(), target_tensor_names.end()}};
+  TF_ASSIGN_OR_RETURN(auto loaded_client_graph, LoadClientGraph(client_graph));
+
+  // Store the new loaded client graph in cache and return.
+  const auto* loaded_client_graph_ptr = loaded_client_graph.get();
+  loaded_client_graphs_[joined_name] = std::move(loaded_client_graph);
+  return {*loaded_client_graph_ptr};
 }
 
 }  // namespace tfrt_stub
