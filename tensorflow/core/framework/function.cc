@@ -181,7 +181,9 @@ class FunctionInstantiationHelper {
     DataTypeVector dtypes;
     TF_RETURN_IF_ERROR(
         ArgNumType(attr_values, arg_def, &is_type_list, &dtypes));
-    CHECK_GE(dtypes.size(), size_t{1});
+    if (dtypes.size() < size_t{1}) {
+      return errors::Internal("Expected a list of at least one dtype");
+    }
     int arg_index = result_.nodes.size();
     TF_RETURN_IF_ERROR(
         AddItem(arg_def.name(), {true, arg_index, 0, is_type_list, dtypes}));
