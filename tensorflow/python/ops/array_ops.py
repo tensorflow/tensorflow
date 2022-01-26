@@ -1002,23 +1002,44 @@ def _slice_helper(tensor, slice_spec, var=None):
   ellipsis_mask = 0
   for s in slice_spec:
     if isinstance(s, _BaseSlice):
+      # Finds the best dtype for begin, end, and strides.
+      dtype = None
+      for t in [s.start, s.stop, s.step]:
+        if t is None or not isinstance(t, ops.Tensor):
+          continue
+        if t.dtype == dtypes.int64:
+          dtype = dtypes.int64
+        elif t.dtype == dtypes.int32 and dtype != dtypes.int64:
+          dtype = dtypes.int32
+        elif t.dtype == dtypes.int16 and dtype is None:
+          dtype = dtypes.int16
+
       if s.start is not None and not _is_undefined_dimension(s.start):
         _check_index(s.start)
         begin.append(s.start)
       else:
-        begin.append(0)
+        if dtype is not None:
+          begin.append(constant_op.constant(0, dtype=dtype))
+        else:
+          begin.append(0)
         begin_mask |= (1 << index)
       if s.stop is not None and not _is_undefined_dimension(s.stop):
         _check_index(s.stop)
         end.append(s.stop)
       else:
-        end.append(0)
+        if dtype is not None:
+          end.append(constant_op.constant(0, dtype=dtype))
+        else:
+          end.append(0)
         end_mask |= (1 << index)
       if s.step is not None and not _is_undefined_dimension(s.step):
         _check_index(s.step)
         strides.append(s.step)
       else:
-        strides.append(1)
+        if dtype is not None:
+          strides.append(constant_op.constant(1, dtype=dtype))
+        else:
+          strides.append(1)
     elif s is Ellipsis:
       begin.append(0)
       end.append(0)
@@ -1033,7 +1054,10 @@ def _slice_helper(tensor, slice_spec, var=None):
       _check_index(s)
       begin.append(s)
       end.append(s + 1)
-      strides.append(1)
+      if isinstance(s, ops.Tensor):
+        strides.append(constant_op.constant(1, dtype=s.dtype))
+      else:
+        strides.append(1)
       shrink_axis_mask |= (1 << index)
     index += 1
 
