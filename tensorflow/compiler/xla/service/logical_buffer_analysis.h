@@ -74,21 +74,10 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   // A map from the buffer ID to the logical buffer
   std::vector<std::unique_ptr<LogicalBuffer>> logical_buffers_;
 
-  struct Hasher {
-    size_t operator()(
-        std::pair<const HloInstruction*, const ShapeIndex> p) const {
-      size_t inst_hash = tensorflow::hash<const HloInstruction*>()(p.first);
-      for (auto index = p.second.begin(); index != p.second.end(); ++index) {
-        inst_hash = tensorflow::Hash64Combine(*index, inst_hash);
-      }
-      return inst_hash;
-    }
-  };
-
   // A map from an hlo + shape index to the logical buffer representing
   // the appropriate output.
   absl::flat_hash_map<std::pair<const HloInstruction*, const ShapeIndex>,
-                      LogicalBuffer*, Hasher>
+                      LogicalBuffer*>
       output_buffers_;
 
   // The ID of the next logical buffer created.
