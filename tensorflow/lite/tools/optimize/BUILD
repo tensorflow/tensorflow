@@ -279,7 +279,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@flatbuffers",
-        "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_weights",
         "//tensorflow/lite:framework",
         # TODO(suharshs): Move the relevant quantization utils to a non-internal location.
         "//tensorflow/lite/kernels/internal:tensor_utils",
