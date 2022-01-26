@@ -6876,7 +6876,6 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@fft2d",
         "@gemmlowp",
-        "@icu//:common",
     ],
     alwayslink = 1,
 )
