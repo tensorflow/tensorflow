@@ -1665,10 +1665,9 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     if context.executing_eagerly():
       return
 
-    rt_a = ragged_factory_ops.constant_value([[3, 1, 3], [3]])
-    b = constant_op.constant(3, dtype=dtypes.int64)
-    rt_expected = ragged_factory_ops.constant_value([[True, False, True],
-                                                     [True]])
+    rt_a = ragged_factory_ops.constant([[3, 1, 3], [3]])
+    b = constant_op.constant(3)
+    rt_expected = ragged_factory_ops.constant([[True, False, True], [True]])
 
     result = ragged_shape.ragged_binary_elementwise_op_impl(
         math_ops.equal, rt_a, b)
