@@ -88,8 +88,18 @@ _GRAPH_BUILDING_OPTIMIZATION = os.getenv(
     "TF_FLAG_GRAPH_BUILDING_OPTIMIZATION") == "1"
 
 
+def enable_graph_building_optimization():
+  global _GRAPH_BUILDING_OPTIMIZATION
+  _GRAPH_BUILDING_OPTIMIZATION = True
+
+
 def graph_building_optimization_enabled():
   return _GRAPH_BUILDING_OPTIMIZATION
+
+
+def disable_graph_building_optimization():
+  global _GRAPH_BUILDING_OPTIMIZATION
+  _GRAPH_BUILDING_OPTIMIZATION = False
 
 
 # This method should only be called after the context has beein initialized.
