@@ -1545,7 +1545,13 @@ int64 OpLevelCostEstimator::CalculateTensorSize(
   int64 count = CalculateTensorElementCount(tensor, found_unknown_shapes);
   int size = DataTypeSize(BaseType(tensor.dtype()));
   VLOG(2) << "Count: " << count << " DataTypeSize: " << size;
-  return count * size;
+  int64_t tensor_size = MultiplyWithoutOverflow(count, size);
+  if (tensor_size < 0) {
+    VLOG(1) << "Overflow encountered when computing tensor size, multiplying "
+            << count << " with " << size;
+    return -1;
+  }
+  return tensor_size;
 }
 
 int64 OpLevelCostEstimator::CalculateInputSize(const OpInfo& op_info,
