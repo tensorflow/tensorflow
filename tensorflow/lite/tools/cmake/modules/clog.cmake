@@ -17,13 +17,15 @@ if(TARGET clog OR clog_POPULATED)
   return()
 endif()
 
+include(utils)
+get_dependency_tag("clog" "${TF_SOURCE_DIR}/../third_party/clog/workspace.bzl" CLOG_TAG)
+
 include(OverridableFetchContent)
 
 OverridableFetchContent_Declare(
   clog
   GIT_REPOSITORY https://github.com/pytorch/cpuinfo
-  # Sync with tensorflow/third_party/clog/workspace.bzl
-  GIT_TAG d5e37adf1406cf899d7d9ec1d317c47506ccb970
+  GIT_TAG ${CLOG_TAG}
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/clog"
 )

@@ -126,20 +126,21 @@ def _tf_toolchains():
 def _tf_repositories():
     """All external dependencies for TF builds."""
 
-    # To update any of the dependencies bellow:
+    # To update any of the dependencies below:
     # a) update URL and strip_prefix to the new git commit hash
     # b) get the sha256 hash of the commit by running:
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
 
-    # LINT.IfChange
+    # Attention: TensorFlow Lite CMake build uses this variable, update only the hash content. 
+    XNNPACK_COMMIT = "322055148b47dccb76bc03ad010f16c1e3a94817"
+
     tf_http_archive(
         name = "XNNPACK",
         sha256 = "3afae11087e3e1e31ebb9a9152b8fa9f410d49734fd942bbba3cfc02f4809cf4",
         strip_prefix = "XNNPACK-322055148b47dccb76bc03ad010f16c1e3a94817",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/322055148b47dccb76bc03ad010f16c1e3a94817.zip"),
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/{commit}.zip".format(commit = XNNPACK_COMMIT)),
     )
-    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     tf_http_archive(
         name = "FXdiv",
@@ -560,15 +561,17 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://zlib.net/zlib-1.2.11.tar.gz"),
     )
 
-    # LINT.IfChange
+    # Attention: TensorFlow Lite CMake build uses these variables, update only the URL and the checksum value.
+    FFT2D_URL = "https://github.com/petewarden/OouraFFT/archive/v1.0.tar.gz"
+    FFT2D_SHA256 = "5f4dabc2ae21e1f537425d58a49cdca1c49ea11db0d6271e2a4b27e9697548eb"
+
     tf_http_archive(
         name = "fft2d",
         build_file = "//third_party/fft2d:fft2d.BUILD",
-        sha256 = "5f4dabc2ae21e1f537425d58a49cdca1c49ea11db0d6271e2a4b27e9697548eb",
+        sha256 = FFT2D_SHA256,
         strip_prefix = "OouraFFT-1.0",
-        urls = tf_mirror_urls("https://github.com/petewarden/OouraFFT/archive/v1.0.tar.gz"),
+        urls = tf_mirror_urls(FFT2D_URL),
     )
-    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/fft2d.cmake)
 
     tf_http_archive(
         name = "snappy",
@@ -684,15 +687,18 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/cython/cython/archive/0.29.21.tar.gz"),
     )
 
-    # LINT.IfChange
+    # Attention: TensorFlow Lite CMake parser processes these lines
+    NEON2SSE_URL = "https://github.com/intel/ARM_NEON_2_x86_SSE/archive/1200fe90bb174a6224a525ee60148671a786a71f.tar.gz"
+    NEON2SSE_SHA256 = "213733991310b904b11b053ac224fee2d4e0179e46b52fe7f8735b8831e04dcc"
+
     tf_http_archive(
         name = "arm_neon_2_x86_sse",
         build_file = "//third_party:arm_neon_2_x86_sse.BUILD",
-        sha256 = "213733991310b904b11b053ac224fee2d4e0179e46b52fe7f8735b8831e04dcc",
+        sha256 = NEON2SSE_SHA256,
         strip_prefix = "ARM_NEON_2_x86_SSE-1200fe90bb174a6224a525ee60148671a786a71f",
-        urls = tf_mirror_urls("https://github.com/intel/ARM_NEON_2_x86_SSE/archive/1200fe90bb174a6224a525ee60148671a786a71f.tar.gz"),
+        urls = tf_mirror_urls(NEON2SSE_URL),
     )
-    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/neon2sse.cmake)
+
 
     tf_http_archive(
         name = "double_conversion",

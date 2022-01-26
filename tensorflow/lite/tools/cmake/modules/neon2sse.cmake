@@ -19,11 +19,13 @@ if(TARGET neon2sse OR neon2sse_POPULATED)
   return()
 endif()
 
+include(utils)
+get_dependency_archive("neon2sse" "${TF_SOURCE_DIR}/workspace2.bzl" NEON2SSE_URL NEON2SSE_CHECKSUM)
+
 OverridableFetchContent_Declare(
   neon2sse
-  URL https://storage.googleapis.com/mirror.tensorflow.org/github.com/intel/ARM_NEON_2_x86_SSE/archive/1200fe90bb174a6224a525ee60148671a786a71f.tar.gz
-  # Sync with tensorflow/workspace2.bzl
-  URL_HASH SHA256=213733991310b904b11b053ac224fee2d4e0179e46b52fe7f8735b8831e04dcc
+  URL ${NEON2SSE_URL}
+  URL_HASH SHA256=${NEON2SSE_CHECKSUM}
   SOURCE_DIR "${CMAKE_BINARY_DIR}/neon2sse"
 )
 
