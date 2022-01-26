@@ -144,8 +144,11 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
 void AllocateAndParseJitRtFlags() {
   jitrt_flags = new JitRtFlags;
   jitrt_flags->vectorize = false;
+  jitrt_flags->cost_driven_async_parallel_for = false;
   jitrt_flag_list = new std::vector<Flag>({
       Flag("vectorize", &jitrt_flags->vectorize, ""),
+      Flag("cost_driven_async_parallel_for",
+           &jitrt_flags->cost_driven_async_parallel_for, ""),
   });
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_JITRT_FLAGS", *jitrt_flag_list);
 }
