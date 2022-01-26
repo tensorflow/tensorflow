@@ -593,11 +593,9 @@ Status GpuCompiler::OptimizeHloModule(
     }
 
     if (debug_options.xla_gpu_enable_async_all_reduce()) {
-      pipeline.AddPass<AsyncCollectiveCreator>(
-          AsyncCollectiveCreator::CollectiveCreatorConfig{
-              /*convert_all_reduce=*/true,
-              /*convert_all_gather=*/false,
-              /*convert_collective_permute=*/false});
+      AsyncCollectiveCreator::CollectiveCreatorConfig config;
+      config.convert_all_reduce = [](const HloInstruction*) { return true; };
+      pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
     }
 
     pipeline.AddPass<CollectivesScheduleLinearizer>();
