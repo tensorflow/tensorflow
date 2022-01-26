@@ -21,21 +21,18 @@
 #include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
-#include "tfrt/gpu/kernels/kernels_detail.h"  // from @tf_runtime
-#include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
-#include "tfrt/support/error_util.h"  // from @tf_runtime
-
-#if BEF_THUNKS
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
+#include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
+#include "tfrt/gpu/kernels/kernels_detail.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
+#include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
+#include "tfrt/support/error_util.h"  // from @tf_runtime
 
 #if XLA_ENABLE_XCCL
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 #include "tfrt/gpu/wrapper/ccl_wrapper.h"  // from @tf_runtime
 #endif  // XLA_ENABLE_XCCL
-#endif  // BEF_THUNKS
 
 namespace xla {
 namespace gpu {
@@ -84,6 +81,8 @@ static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
   }
   return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
 }
+
+#endif  // BEF_THUNKS
 
 static llvm::Expected<DeviceAssignment::LogicalID> GetLogicalId(
     const tfrt::ExecutionContext& exec_ctx) {
@@ -313,7 +312,6 @@ static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
   return tfrt::MakeAvailableAsyncValueRef<tfrt::Chain>();
 }
 #endif  // XLA_ENABLE_XCCL
-#endif  // BEF_THUNKS
 
 static llvm::Error CustomCall(
     const tfrt::gpu::GpuStream& stream,
@@ -370,6 +368,7 @@ static void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
                         TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
 #if BEF_THUNKS
   kernel_reg->AddKernel("xlir.module.load", TFRT_KERNEL(ModuleLoad));
+#endif  // BEF_THUNKS
   kernel_reg->AddKernel("xlir.replica_id",
                         TFRT_KERNEL_WITH_CHAIN_RESULT(ReplicaId));
   kernel_reg->AddKernel("xlir.partition_id",
@@ -379,7 +378,6 @@ static void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
   kernel_reg->AddKernel("xlir.ccl.collective_permute",
                         TFRT_KERNEL(CclCollectivePermute));
 #endif  // XLA_ENABLE_XCCL
-#endif  // BEF_THUNKS
 }
 
 TFRT_STATIC_KERNEL_REGISTRATION(RegisterXlirKernels);

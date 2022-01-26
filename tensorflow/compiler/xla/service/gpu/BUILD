@@ -62,6 +62,8 @@ check_deps(
         ":is_bef_thunk_enabled": [],
         ":is_bef_executable_enabled": [],
         "//conditions:default": [
+            ":xlir_kernels",
+            ":xlir_opdefs",
             "@tf_runtime//:basic_kernels_alwayslink",
             "@tf_runtime//:basic_kernels_opdefs",
             "@tf_runtime//:befexecutor",
@@ -459,6 +461,7 @@ cc_library(
         ":buffer_allocations",
         ":gpu_executable_run_options",
         "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
@@ -798,6 +801,7 @@ cc_library(
         ],
         ":is_bef_executable_enabled": [
             ":xlir_kernels",
+            ":xlir_opdefs",
             "@llvm-project//llvm:Support",
             "//tensorflow/compiler/mlir:name_utils",
             "//tensorflow/core/tfrt/runtime:work_queue_interface",

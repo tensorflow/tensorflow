@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
@@ -109,9 +110,10 @@ struct GpuExecutable::BefExecutable {
  private:
   explicit BefExecutable(OwnedBefBuffer buffer)
       : bef_buffer(std::move(buffer)),
-        host_ctx(tfrt::gpu::GetDiagHandler(&mlir_ctx),
-                 tfrt::CreateMallocAllocator(),
-                 tfrt::CreateSingleThreadedWorkQueue()) {
+        host_ctx(
+            tfrt::gpu::GetDiagHandler(&mlir_ctx), tfrt::CreateMallocAllocator(),
+            tfrt::CreateMultiThreadedWorkQueue(/*num_threads=*/1,
+                                               /*num_blocking_threads=*/16)) {
     tfrt::RegisterStaticKernels(host_ctx.GetMutableRegistry());
   }
 
@@ -339,20 +341,9 @@ Status ExecuteThunks(const std::string& module_name,
     TF_RET_CHECK(async_comms_stream.ok() || !NeedsAsyncCommsStream(*thunk))
         << "`run_options` must have a stream borrower for async thunks.";
 
-    const GpuExecutableRunOptions* gpu_options =
-        run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
-        &buffer_allocations,
-        stream,
-        async_comms_stream.ok() ? async_comms_stream->get() : nullptr,
-        run_options->run_options().run_id(),
-        run_options->run_options().device_assignment(),
-        gpu_options && gpu_options->gpu_global_device_ids()
-            ? &*gpu_options->gpu_global_device_ids()
-            : nullptr,
-        gpu_options && gpu_options->nccl_unique_id_callback()
-            ? &gpu_options->nccl_unique_id_callback()
-            : nullptr};
+        *run_options, buffer_allocations, stream,
+        async_comms_stream.ok() ? async_comms_stream->get() : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     if (thunk_schedule.Depended(thunk.get())) {
       auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
@@ -576,6 +567,24 @@ static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
       std::move(*buffer));
 }
 
+// TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc.
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
+    const Thunk::ExecuteParams& params,
+    tfrt::RequestContextBuilder request_context_builder) {
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
+  request_context_builder.context_data().emplace<XlaGpuParams>(XlaGpuParams{
+      params.run_id, params.device_assn, params.gpu_global_device_ids,
+      params.nccl_unique_id_callback, global_device_id});
+
+  auto expected_req_ctx = std::move(request_context_builder).build();
+  if (!expected_req_ctx) {
+    auto error = expected_req_ctx.takeError();
+    return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+  }
+  return std::make_unique<tfrt::ExecutionContext>(std::move(*expected_req_ctx));
+}
+
 static Status ExecuteBef(const std::string& module_name,
                          GpuExecutable::BefExecutable* bef_executable,
                          const ServiceExecutableRunOptions* run_options,
@@ -604,13 +613,13 @@ static Status ExecuteBef(const std::string& module_name,
       tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream->gpu_stream());
 
   // Create execution context.
-  auto req_ctx =
-      tfrt::RequestContextBuilder(&bef_executable->host_ctx, gpu_context.second)
-          .build();
-  if (!req_ctx) {
-    return tensorflow::errors::Internal(toString(req_ctx.takeError()));
-  }
-  tfrt::ExecutionContext exec_ctx(*req_ctx);
+  Thunk::ExecuteParams params(*run_options, buffer_allocations,
+                              run_options->stream(), nullptr);
+  tfrt::RequestContextBuilder request_context_builder(&bef_executable->host_ctx,
+                                                      gpu_context.second);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<tfrt::ExecutionContext> exec_ctx,
+      CreateExecutionContext(params, std::move(request_context_builder)));
 
   // Create owning handles for arguments and add pointer to them to 'args'.
   const tfrt::Function* function = bef_executable->function;
@@ -641,10 +650,10 @@ static Status ExecuteBef(const std::string& module_name,
                                            diag_os);
 
   // Execute the function.
-  function->Execute(exec_ctx, args, {result});
+  function->Execute(*exec_ctx, args, {result});
 
   // Wait for async execution to complete.
-  tfrt::Await(exec_ctx, llvm::makeArrayRef(result));
+  tfrt::Await(*exec_ctx, llvm::makeArrayRef(result));
 
   // Report error if any, from handler and result.
   if (diag_os.tell()) return tensorflow::errors::Internal(diag_os.str());
