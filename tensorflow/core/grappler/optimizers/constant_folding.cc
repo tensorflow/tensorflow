@@ -1709,14 +1709,16 @@ bool ConstantFolding::IsSimplifiableReshape(
       int32 dim = outputs[0]->flat<int32>()(i);
       shp.push_back(dim);
     }
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+    s = TensorShapeUtils::MakeShape(shp, &new_dims);
+    if (!s.ok()) return s;
   } else {
     std::vector<int64> shp;
     for (int i = 0; i < outputs[0]->NumElements(); ++i) {
       int64 dim = outputs[0]->flat<int64>()(i);
       shp.push_back(dim);
     }
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+    s = TensorShapeUtils::MakeShape(shp, &new_dims);
+    if (!s.ok()) return s;
   }
 
   return shape.IsCompatibleWith(new_dims);
