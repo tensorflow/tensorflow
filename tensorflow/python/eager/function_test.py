@@ -205,6 +205,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(AttributeError, 'no attribute'):
       add(c)
 
+  def testVariableMultiFunction(self):
+    @def_function.function
+    def second(dup_var, dup_var_2, some_const):
+      return dup_var + dup_var_2 + some_const
+
+    @def_function.function
+    def first(dup_var, some_const):
+      return second(dup_var, dup_var, some_const)
+
+    my_const = constant_op.constant(1)
+    my_var = variables.Variable(2, dtype=dtypes.int32)
+    self.assertEqual(second(my_var, my_var, my_const).numpy(), 5)
+    self.assertEqual(first(my_var, my_const).numpy(), 5)
+
   @test_util.disable_tfrt('Packed tensor is not supported in tfrt yet.')
   def testPackedVariable(self):
     with ops.device('/cpu:0'):
@@ -3528,7 +3542,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def g():
       f_concrete(constant_op.constant([1., 2.]))
 
-    with self.assertRaisesRegex(ValueError, 'argument_name'):
+    with self.assertRaisesRegex(ValueError, 'is not compatible with the shape'):
       g()
 
   @test_util.run_in_graph_and_eager_modes
