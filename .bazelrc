@@ -526,8 +526,8 @@ build:rbe_linux_py3_base --python_path="/usr/local/bin/python3.9"
 build:rbe_linux_py3_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="@tf_toolchains//toolchains/win/tf_win_01242022:toolchain"
-build:rbe_win --extra_toolchains="@tf_toolchains//toolchains/win/tf_win_01242022:cc-toolchain-x64_windows"
+build:rbe_win --crosstool_top="@tf_toolchains//toolchains/win/tf_win_01252022:toolchain"
+build:rbe_win --extra_toolchains="@tf_toolchains//toolchains/win/tf_win_01252022:cc-toolchain-x64_windows"
 build:rbe_win --host_javabase="@tf_toolchains//toolchains/win:windows_jdk8"
 build:rbe_win --javabase="@tf_toolchains//toolchains/win:windows_jdk8"
 build:rbe_win --extra_execution_platforms="@tf_toolchains//toolchains/win:rbe_windows_ltsc2019"
