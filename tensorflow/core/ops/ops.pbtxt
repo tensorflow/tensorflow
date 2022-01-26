@@ -2318,6 +2318,7 @@ op {
     }
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -2331,6 +2332,7 @@ op {
     }
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
