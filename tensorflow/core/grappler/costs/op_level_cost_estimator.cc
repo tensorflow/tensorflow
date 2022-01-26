@@ -1545,7 +1545,14 @@ int64_t OpLevelCostEstimator::CalculateTensorElementCount(
   auto tensor_shape =
       MaybeGetMinimumShape(tensor.shape(), num_dims, found_unknown_shapes);
   for (const auto& dim : tensor_shape.dim()) {
-    tensor_size *= dim.size();
+    int64_t new_tensor_size = MultiplyWithoutOverflow(tensor_size, dim.size());
+    if (new_tensor_size < 0) {
+      VLOG(1) << "Overflow encountered when computing element count of a "
+                 "tensor, multiplying "
+              << tensor_size << " with " << dim.size();
+      return -1;
+    }
+    tensor_size = new_tensor_size;
   }
   return tensor_size;
 }
