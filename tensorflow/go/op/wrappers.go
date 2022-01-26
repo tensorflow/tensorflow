@@ -1092,7 +1092,7 @@ func ArgMaxOutputType(value tf.DataType) ArgMaxAttr {
 //
 // Arguments:
 //
-//	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+//	dimension: int16, int32 or int64, must be in the range `[-rank(input), rank(input))`.
 // Describes which dimension of the input Tensor to reduce across. For vectors,
 // use dimension = 0.
 func ArgMax(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMaxAttr) (output tf.Output) {
