@@ -12068,17 +12068,17 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) Dyn
 // the corresponding feature.
 //
 // Arguments:
-//	sample_indices_or_row_lengths: A list of rank 2 Tensors specifying the training example to which the
+//	sample_indices_or_row_splits: A list of rank 2 Tensors specifying the training example to which the
 // corresponding embedding_indices and aggregation_weights values belong.
 // If the size of its first dimension is 0, we assume each embedding_indices
 // belongs to a different sample. Both int32 and int64 are allowed and will
 // be converted to int32 internally.
 //
-// Or a list of rank 1 Tensors specifying the row lengths for splitting
+// Or a list of rank 1 Tensors specifying the row splits for splitting
 // embedding_indices and aggregation_weights into rows. It corresponds to
-// ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
+// ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. When
 // enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
-// the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+// the row splits is 1-D dense tensor. When empty, we assume a dense tensor is
 // passed to the op Both int32 and int64 are allowed and will be converted to
 // int32 internally.
 //	embedding_indices: A list of rank 1 Tensors, indices into the embedding
@@ -12095,7 +12095,7 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) Dyn
 // of TPU cores in the task on which the node is placed.
 //
 // Returns the created operation.
-func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_lengths []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, device_ordinal tf.Output, optional ...DynamicEnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
+func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_splits []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, device_ordinal tf.Output, optional ...DynamicEnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
@@ -12106,7 +12106,7 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices
 	opspec := tf.OpSpec{
 		Type: "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch",
 		Input: []tf.Input{
-			tf.OutputList(sample_indices_or_row_lengths), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override, device_ordinal,
+			tf.OutputList(sample_indices_or_row_splits), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override, device_ordinal,
 		},
 		Attrs: attrs,
 	}
@@ -13081,17 +13081,17 @@ func EnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) EnqueueTPU
 // the corresponding feature.
 //
 // Arguments:
-//	sample_indices_or_row_lengths: A list of rank 2 Tensors specifying the training example to which the
+//	sample_indices_or_row_splits: A list of rank 2 Tensors specifying the training example to which the
 // corresponding embedding_indices and aggregation_weights values belong.
 // If the size of its first dimension is 0, we assume each embedding_indices
 // belongs to a different sample. Both int32 and int64 are allowed and will
 // be converted to int32 internally.
 //
-// Or a list of rank 1 Tensors specifying the row lengths for splitting
+// Or a list of rank 1 Tensors specifying the row splits for splitting
 // embedding_indices and aggregation_weights into rows. It corresponds to
-// ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
+// ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. When
 // enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
-// the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+// the row splits is 1-D dense tensor. When empty, we assume a dense tensor is
 // passed to the op Both int32 and int64 are allowed and will be converted to
 // int32 internally.
 //	embedding_indices: A list of rank 1 Tensors, indices into the embedding
@@ -13106,7 +13106,7 @@ func EnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) EnqueueTPU
 // in TPUEmbeddingConfiguration is used, otherwise mode_override is used.
 //
 // Returns the created operation.
-func EnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_lengths []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, optional ...EnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
+func EnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_splits []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, optional ...EnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
@@ -13117,7 +13117,7 @@ func EnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row
 	opspec := tf.OpSpec{
 		Type: "EnqueueTPUEmbeddingArbitraryTensorBatch",
 		Input: []tf.Input{
-			tf.OutputList(sample_indices_or_row_lengths), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override,
+			tf.OutputList(sample_indices_or_row_splits), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override,
 		},
 		Attrs: attrs,
 	}
