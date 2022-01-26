@@ -1741,7 +1741,8 @@ Status ConstantFolding::IsSimplifiableReshape(
       int32_t dim = outputs[0]->flat<int32>()(i);
       shp.push_back(dim);
     }
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+    s = TensorShapeUtils::MakeShape(shp, &new_dims);
+    if (!s.ok()) return s;
   } else {
     std::vector<int64_t> shp;
     for (int i = 0; i < outputs[0]->NumElements(); ++i) {

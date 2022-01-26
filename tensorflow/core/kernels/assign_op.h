@@ -50,6 +50,12 @@ class AssignOp : public OpKernel {
     // We always return the input ref.
     context->forward_ref_input_to_ref_output(0, 0);
 
+    // Prevent copying uninitialized data, to solve harder to debug undefined
+    // behaviors that cannot be traced back to the original tensor.
+    OP_REQUIRES(
+        context, rhs.IsInitialized(),
+        errors::Internal("Right hand side of AssignOp is not initialized"));
+
     // We can't always know how this value will be used downstream, so make
     // conservative assumptions in specifying constraints on the memory
     // allocation attributes, unless the Grappler graph analysis determined that
