@@ -119,7 +119,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["random_gamma_test.py"],
     shard_count = 4,
-    tags = ["nozapfhahn"],
+    tags = [
+        "nomsan",  # b/216320808
+        "nozapfhahn",
+    ],
     xla_tags = [
         "no_cuda_asan",  # times out
         "nomsan",  # b/216320808
