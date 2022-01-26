@@ -345,15 +345,18 @@ class DecodeImageV2Op : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    Status status;
     // By the existing API, we support decoding PNG with `DecodeGif` op.
     // We need to make sure to return 4-D shapes when using `DecodeGif`.
     if (op_type_ == "DecodeGif") {
-      status = context->allocate_output(
-          0, TensorShape({1, height, width, decode.channels}), &output);
+      OP_REQUIRES_OK(
+          context,
+          context->allocate_output(
+              0, TensorShape({1, height, width, decode.channels}), &output));
     } else {
-      status = context->allocate_output(
-          0, TensorShape({height, width, decode.channels}), &output);
+      OP_REQUIRES_OK(
+          context,
+          context->allocate_output(
+              0, TensorShape({height, width, decode.channels}), &output));
     }
 
     if (op_type_ == "DecodeBmp") {
@@ -372,9 +375,6 @@ class DecodeImageV2Op : public OpKernel {
                       "DecodeAndCropJpeg operation can run on JPEG only, but "
                       "detected PNG."));
     }
-
-    if (!status.ok()) png::CommonFreeDecode(&decode);
-    OP_REQUIRES_OK(context, status);
 
     if (data_type_ == DataType::DT_UINT8) {
       OP_REQUIRES(
