@@ -1689,6 +1689,7 @@ Status ConstantFolding::IsSimplifiableReshape(
   if (!IsReshape(node)) {
     return errors::Internal("Node ", node.name(), " is not a Reshape node");
   }
+  if (2 > node.input_size()) {
     return errors::Internal("Node ", node.name(),
                             " must have at most 2 inputs but has ",
                             node.input_size());
