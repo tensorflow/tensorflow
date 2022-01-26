@@ -1711,7 +1711,11 @@ Status ConstantFolding::IsSimplifiableReshape(
   if (!s.ok()) {
     return errors::Internal("Could not evaluate node ", node.name());
   }
-  CHECK_EQ(1, outputs.size());
+  if (outputs.size() != 1) {
+    return errors::Internal("Node ", node.name(),
+                            " must have exactly 1 output but has ",
+                            outputs.size());
+  }
 
   const std::vector<OpInfo::TensorProperties>& props =
       properties.GetInputProperties(node.name());
