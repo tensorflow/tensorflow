@@ -287,6 +287,7 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
+
   // Save proto state before optimizations if we want a snapshot.
   if (DumpingEnabledForHloModule(*hlo_module)) {
     hlo_proto_ = absl::make_unique<HloProto>();
@@ -444,9 +445,11 @@ Status GpuCompiler::OptimizeHloModule(
       // bitcast(bitcast) with one bitcast. This leads to having to
       // linearize and then delinearize the index.
       options.set_replace_transpose_with_bitcast(false);
-#if TENSORFLOW_USE_ROCM
-      options.set_enable_conv_operand_swap(false);
-#endif
+      const se::Platform *platform = stream_exec->platform();
+      if (platform->Name() == "ROCM") {
+	//SwapConvOperands does not yet work on ROCM
+        options.set_enable_conv_operand_swap(false);
+      }
       pipeline.AddPass<AlgebraicSimplifier>(options);
       pipeline.AddPass<BitcastDtypesExpander>();
       // AlgebraicSimplifier may add contracting dimensions to a dot.
