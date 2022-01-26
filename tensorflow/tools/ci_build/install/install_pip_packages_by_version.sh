@@ -73,6 +73,6 @@ PACKAGES=(
 if [[ ${PYTHON_VERSION} -eq 10 ]]; then
   "${PIP_INSTALL[@]}" "numpy==1.21.3"
 else
-  "${PIP_INSTALL[@]}" "numpy==1.18"
+  "${PIP_INSTALL[@]}" "numpy==1.19"
 fi
 
