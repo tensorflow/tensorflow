@@ -99,12 +99,12 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
 
   if (cache_ == nullptr) {
     rm_ = ctx->resource_manager();
-    rm_->LookupOrCreate<XlaConstantOutputResource>(
+    TF_RETURN_IF_ERROR(rm_->LookupOrCreate<XlaConstantOutputResource>(
         def().name(), def().name(), &cache_,
         [](XlaConstantOutputResource** ret) {
           *ret = new XlaConstantOutputResource();
           return Status::OK();
-        });
+        }));
   }
   // Create a cache for each executable .
   XlaConstOutputCache& const_output_cache =

@@ -324,12 +324,12 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   if (cache_ == nullptr) {
     rm_ = ctx->resource_manager();
-    rm_->LookupOrCreate<XlaConstantOutputResource>(
+    OP_REQUIRES_OK(ctx, rm_->LookupOrCreate<XlaConstantOutputResource>(
         def().name(), def().name(), &cache_,
         [](XlaConstantOutputResource** ret) {
           *ret = new XlaConstantOutputResource();
           return Status::OK();
-        });
+        }));
   }
   // Create a cache for each executable .
   XlaConstOutputCache& const_output_cache =
@@ -608,12 +608,12 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
 
   if (cache_ == nullptr) {
     rm_ = ctx->resource_manager();
-    rm_->LookupOrCreate<XlaConstantOutputResource>(
+    OP_REQUIRES_OK(ctx, rm_->LookupOrCreate<XlaConstantOutputResource>(
         def().name(), def().name(), &cache_,
         [](XlaConstantOutputResource** ret) {
           *ret = new XlaConstantOutputResource();
           return Status::OK();
-        });
+        }));
   }
   // Create a cache for each executable .
   XlaConstOutputCache& const_output_cache =
