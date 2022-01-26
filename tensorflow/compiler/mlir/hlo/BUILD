@@ -1915,6 +1915,7 @@ cc_library(
     deps = [
         ":gml_st",
         ":hlo",
+        ":map_mhlo_to_scalar_op",
         ":tiling_interface_inc_gen",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",

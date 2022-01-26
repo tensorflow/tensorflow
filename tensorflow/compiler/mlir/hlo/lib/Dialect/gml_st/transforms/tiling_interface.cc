@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.cc.inc"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -25,20 +26,23 @@ namespace mlir {
 namespace gml_st {
 
 namespace {
+template <typename OpTy>
 struct ElementWiseTilingInterface
-    : public TilingInterface::ExternalModel<ElementWiseTilingInterface,
-                                            mlir::mhlo::AddOp> {
+    : public TilingInterface::ExternalModel<ElementWiseTilingInterface<OpTy>,
+                                            OpTy> {
   Value tile(Operation* op, MaterializeOp materialize,
              OpBuilder& builder) const {
     if (materialize.subset().getType().isa<PointType>()) {
       Location loc = materialize.getLoc();
       // Push the materialize to the arguments and replace op by scalar version.
-      auto addOp = cast<mhlo::AddOp>(op);
-      auto newLhs =
-          builder.create<MaterializeOp>(loc, addOp.lhs(), materialize.subset());
-      auto newRhs =
-          builder.create<MaterializeOp>(loc, addOp.rhs(), materialize.subset());
-      return builder.create<arith::AddFOp>(loc, newLhs, newRhs);
+      auto elementwiseOp = cast<OpTy>(op);
+      auto newLhs = builder.create<MaterializeOp>(loc, elementwiseOp.lhs(),
+                                                  materialize.subset());
+      auto newRhs = builder.create<MaterializeOp>(loc, elementwiseOp.rhs(),
+                                                  materialize.subset());
+      return mhlo::MhloOpToStdScalarOp::map<OpTy>(
+          elementwiseOp, materialize.getType(),
+          llvm::ArrayRef<Value>{newLhs, newRhs}, &builder);
     }
     return {};
   }
@@ -48,7 +52,10 @@ struct ElementWiseTilingInterface
 
 void registerTilingInterfaceExternalModels(DialectRegistry& registry) {
   registry.insert<mhlo::MhloDialect>();
-  registry.addOpInterface<mhlo::AddOp, ElementWiseTilingInterface>();
+  registry
+      .addOpInterface<mhlo::AddOp, ElementWiseTilingInterface<mhlo::AddOp>>();
+  registry
+      .addOpInterface<mhlo::SubOp, ElementWiseTilingInterface<mhlo::SubOp>>();
 }
 
 }  // namespace gml_st
