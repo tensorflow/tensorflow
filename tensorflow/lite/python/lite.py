@@ -524,7 +524,7 @@ class TFLiteConverterBase(object):
     self.allow_custom_ops = False
     self.experimental_new_converter = True
     self.experimental_new_quantizer = True
-    self.experimental_enable_resource_variables = False
+    self.experimental_enable_resource_variables = True
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
     self._experimental_disable_per_channel = False
@@ -668,6 +668,8 @@ class TFLiteConverterBase(object):
             self._experimental_default_to_single_batch_in_tensor_list_ops,
         "tf_quantization_mode":
             self._experimental_tf_quantization_mode,
+        "experimental_enable_resource_variables":
+            self.experimental_enable_resource_variables,
     }
 
     if self.saved_model_dir:
@@ -1653,7 +1655,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       (default True)
     experimental_enable_resource_variables: Experimental flag, subject to
       change. Enables resource variables to be converted by this converter. This
-      is only allowed if from_saved_model interface is used. (default False)
+      is only allowed if from_saved_model interface is used. (default True)
 
   Example usage:
 
