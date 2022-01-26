@@ -287,7 +287,6 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
-
   // Save proto state before optimizations if we want a snapshot.
   if (DumpingEnabledForHloModule(*hlo_module)) {
     hlo_proto_ = absl::make_unique<HloProto>();
