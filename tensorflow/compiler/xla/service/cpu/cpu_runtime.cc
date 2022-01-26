@@ -20,7 +20,10 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <string>
+#include <utility>
 
+#include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -35,9 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -246,7 +247,7 @@ int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options) {
 
 extern "C" {
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
     const char* format, ...) {
   VLOG(3) << "__xla_cpu_runtime_PrintfToStderr " << format;
   va_list args;
@@ -256,14 +257,14 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
   return result;
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY int64_t __xla_cpu_runtime_TracingStart(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int64_t __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
     const char* name) {
   VLOG(3) << "TracingStart " << name;
   return tensorflow::profiler::TraceMe::ActivityStart(name);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int64_t id) {
   VLOG(3) << "TracingEnd " << id;
   tensorflow::profiler::TraceMe::ActivityEnd(id);
@@ -271,7 +272,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(
 
 }  // extern "C"
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void*
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void*
 __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
     const xla::ExecutableRunOptions* run_options, int32_t buffer_length,
     const void* shape, int32_t shape_length) {
@@ -294,7 +295,7 @@ __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
   return buffer->data();
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
     const xla::ExecutableRunOptions* run_options, int32_t buffer_length,
     void* buffer_ptr, const void* shape_ptr, int32_t shape_length) {
@@ -312,7 +313,7 @@ __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
                                         std::move(shape));
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void*
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void*
 __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
     const xla::ExecutableRunOptions* run_options, int32_t buffer_length,
     const void* shape_ptr, int32_t shape_length) {
@@ -335,7 +336,7 @@ __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
   return buffer->data();
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
     const xla::ExecutableRunOptions* run_options, int32_t buffer_length,
     void* buffer_ptr, const void* shape_ptr, int32_t shape_length) {
@@ -662,7 +663,7 @@ xla::RendezvousKey GetRendezvousKey(
 
 }  // namespace
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
     const xla::ExecutableRunOptions* run_options, int32_t channel_id_present,
     int64_t op_id, const void* replica_groups_str,
     int32_t replica_groups_str_size, int32_t num_buffers, int64_t buffer_size,
@@ -703,7 +704,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
                   .status());
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
     const xla::ExecutableRunOptions* run_options,
     const void* replica_groups_str, int32_t replica_groups_str_size,
     int32_t channel_id_present, int64_t op_id, int32_t reduction_kind,
@@ -753,7 +754,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
                   .status());
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ReplicaId(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ReplicaId(
     const xla::ExecutableRunOptions* run_options, void* output_buffer) {
   int device_ordinal = GetDeviceOrdinal(run_options);
   int32_t replica_id =
@@ -763,7 +764,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ReplicaId(
   std::memcpy(output_buffer, &replica_id, 4);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
     const xla::ExecutableRunOptions* run_options, int32_t channel_id_present,
     int64_t op_id, int32_t byte_size, void* input_buffer, void* output_buffer,
     const void* source_target_pairs, int32_t source_target_pairs_size) {

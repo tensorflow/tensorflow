@@ -95,7 +95,8 @@ StatusOr<GpuSolverContext*> GetContext(se::Stream* stream) {
   // at the same address).  It also leaks memory!
   static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
   static auto contexts =
-      new absl::flat_hash_map<se::Stream*, GpuSolverContext> TF_GUARDED_BY(mu);
+      new absl::flat_hash_map<se::Stream*, GpuSolverContext> ABSL_GUARDED_BY(
+          mu);
 
   tensorflow::mutex_lock lock(mu);
   auto result = contexts->emplace(stream, GpuSolverContext());
@@ -118,7 +119,7 @@ StatusOr<SetPotrfBatchedPointersKernel*> GetSetPotrfBatchedPointersKernel(
   static auto kernels =
       new absl::flat_hash_map<se::StreamExecutor*,
                               std::unique_ptr<SetPotrfBatchedPointersKernel>>
-          TF_GUARDED_BY(mu);
+          ABSL_GUARDED_BY(mu);
 
   tensorflow::mutex_lock lock(mu);
   auto result = kernels->emplace(executor, nullptr);
@@ -181,9 +182,9 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "type=" << PrimitiveType_Name(type_)
           << " uplo=" << se::blas::UpperLowerString(uplo_)
           << " batch_size=" << batch_size_ << " n=" << n_
-       << " a=" << a_buffer_.ToString()
-       << " workspace=" << workspace_buffer_.ToString()
-       << " info=" << info_buffer_.ToString();
+          << " a=" << a_buffer_.ToString()
+          << " workspace=" << workspace_buffer_.ToString()
+          << " info=" << info_buffer_.ToString();
 
   TF_ASSIGN_OR_RETURN(GpuSolverContext * context, GetContext(params.stream));
   if (context->SupportsPotrfBatched()) {

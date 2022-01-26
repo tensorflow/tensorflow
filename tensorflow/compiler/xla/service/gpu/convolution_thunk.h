@@ -64,7 +64,7 @@ class ConvolutionThunk : public Thunk {
   tensorflow::mutex mu_;
   absl::flat_hash_map<const stream_executor::Stream*,
                       std::unique_ptr<MaybeFusedConvRunner>>
-      runner_cache_ TF_GUARDED_BY(mu_);
+      runner_cache_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

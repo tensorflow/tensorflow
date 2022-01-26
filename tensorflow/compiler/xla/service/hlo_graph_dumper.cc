@@ -1731,7 +1731,7 @@ std::string WrapDotInHtml(absl::string_view dot) {
 
 tensorflow::mutex url_renderer_mu(tensorflow::LINKER_INITIALIZED);
 std::function<StatusOr<std::string>(absl::string_view)>* url_renderer
-    TF_GUARDED_BY(url_renderer_mu) = nullptr;
+    ABSL_GUARDED_BY(url_renderer_mu) = nullptr;
 
 // Storage for fusion visualization: (module_id, computation_id) -> sequence of
 // fusion states.
@@ -1790,7 +1790,7 @@ static std::string EscapeJSTemplateString(absl::string_view s) {
 StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
                                       absl::string_view dot,
                                       RenderedGraphFormat format)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
   switch (format) {
     case RenderedGraphFormat::kUrl:
       CHECK(url_renderer != nullptr)

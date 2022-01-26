@@ -84,7 +84,7 @@ class KernelThunk : public Thunk {
   // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
   // values.
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
-      kernel_cache_ TF_GUARDED_BY(mutex_);
+      kernel_cache_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

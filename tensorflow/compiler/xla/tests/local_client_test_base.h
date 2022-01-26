@@ -66,12 +66,13 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
   mutable tensorflow::mutex count_mutex_;
 
   // Global counts of allocations and deallocations.
-  int64_t allocation_count_ TF_GUARDED_BY(count_mutex_) = 0;
-  int64_t deallocation_count_ TF_GUARDED_BY(count_mutex_) = 0;
+  int64_t allocation_count_ ABSL_GUARDED_BY(count_mutex_) = 0;
+  int64_t deallocation_count_ ABSL_GUARDED_BY(count_mutex_) = 0;
 
   // Per-device counts of allocations and deallocations.
-  std::map<int, int64_t> device_allocation_count_ TF_GUARDED_BY(count_mutex_);
-  std::map<int, int64_t> device_deallocation_count_ TF_GUARDED_BY(count_mutex_);
+  std::map<int, int64_t> device_allocation_count_ ABSL_GUARDED_BY(count_mutex_);
+  std::map<int, int64_t> device_deallocation_count_
+      ABSL_GUARDED_BY(count_mutex_);
 };
 
 // A base class for tests which exercise the LocalClient interface.
