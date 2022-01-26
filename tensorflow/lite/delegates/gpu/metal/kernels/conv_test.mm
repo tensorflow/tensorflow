@@ -18,7 +18,9 @@ limitations under the License.
 #import <XCTest/XCTest.h>
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -258,7 +260,7 @@ absl::Status Winograd4x4To6x6Test(TestExecutionEnvironment* env) {
     src_tensor.data[i] = sin(i);
   }
 
-  for (auto storage : {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
+  for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-4f : 0.4f;
 
@@ -405,6 +407,11 @@ absl::Status ConvolutionGroupedTest(TestExecutionEnvironment* env) {
 
 - (void)testConvPowerVR {
   const auto status = ConvPowerVRTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvPowerVRGrouped {
+  const auto status = ConvPowerVRGroupedTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

@@ -178,7 +178,23 @@ ConvPowerVR::ConvPowerVR(const OperationDef& definition,
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h, 1, 1),
       dilation_(attr.dilations.w, attr.dilations.h, 1, 1),
-      conv_params_(GuessBestParams(gpu_info, definition, attr, dst_shape)) {}
+      conv_params_(GuessBestParams(gpu_info, definition, attr, dst_shape)) {
+  const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
+  if (attr.groups != 1) {
+    conv_params_.groups_support = true;
+    const int dst_group_slices = dst_slices / attr.groups;
+    if (dst_group_slices % conv_params_.block_size.w != 0) {
+      if (conv_params_.block_size.w == 4 && dst_group_slices % 2 == 0) {
+        conv_params_.block_size.w = 2;
+      } else {
+        conv_params_.block_size.w = 1;
+      }
+    }
+    args_.AddInt("src_group_size", src_slices);
+    args_.AddInt("dst_group_size", dst_slices / attr.groups);
+  }
+}
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
                          const Convolution2DAttributes& attr,
@@ -522,6 +538,18 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     c += "    return;\n";
     c += "  }\n";
   }
+  if (conv_params.groups_support) {
+    c += "      int conv_group_id = DST_S / args.dst_group_size;\n";
+    c += "      int src_start_slice = conv_group_id * args.src_group_size;\n";
+    c += "      int src_end_slice = src_start_slice + args.src_group_size;\n";
+  }
+  const std::string src_group_start_slice =
+      conv_params.groups_support ? "src_start_slice" : "0";
+  const std::string src_group_end_slice =
+      conv_params.groups_support ? "src_end_slice" : "args.src_tensor.Slices()";
+  const std::string src_group_slices = conv_params.groups_support
+                                           ? "args.src_group_size"
+                                           : "args.src_tensor.Slices()";
   if (conv_params.weights_upload_type ==
       ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
     if (conv_params.linear_spatial) {
@@ -639,7 +667,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       if (src_def.HasAxis(Axis::DEPTH) && !conv_params_.z_kernel_is_1) {
         kernel_spatial_offset += " * args.kernel_size_z";
       }
-      offset = "DST_S * 4 * args.src_tensor.Slices()" + kernel_spatial_offset;
+      offset = "DST_S * 4 * " + src_group_slices + kernel_spatial_offset;
     }
     if (gpu_info.SupportsPointersInKernels()) {
       c += "  " + weights_global_ptr +
@@ -714,8 +742,8 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
           coords += ", " + zc;
         }
         if (src_def.IsLinear()) {
-          c += "  args.src_tensor.GetAddress(addr" + id + ", " + coords +
-               ", 0);\n";
+          c += "  args.src_tensor.GetAddress(addr" + id + ", " + coords + ", " +
+               src_group_start_slice + ");\n";
           if (need_multiple_slice_strides) {
             const std::string check = generate_check(xind, yind, zind);
             c += "  addr" + id + " = select(-1, addr" + id + ", (" + check +
@@ -917,7 +945,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
     }
   };
 
-  c += "  int s = 0;\n";
+  c += "  int s = " + src_group_start_slice + ";\n";
   c += "  do {\n";
   declare_src();
   const int total_work_items =
@@ -968,6 +996,9 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
   } else {  // TEXTURES_MEM
     for (int dst_s = 0; dst_s < block_size.w; ++dst_s) {
       std::string f_y = trivial_kernel_size ? "s" : "filter_offset";
+      if (trivial_kernel_size && conv_params.groups_support) {
+        f_y = "s - src_start_slice";
+      }
       if (conv_params.different_weights_for_height) {
         f_y = "DST_Y * args.src_tensor.Slices() + s";
       }
@@ -1003,7 +1034,7 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
       c += "    filters_offset += " + std::to_string(local_mem_size) + ";\n";
     }
   }
-  c += "  } while (s < args.src_tensor.Slices());\n";
+  c += "  } while (s < " + src_group_end_slice + ");\n";
   if (!conv_params.x_kernel_is_1) {
     c += "  };\n";
   }
