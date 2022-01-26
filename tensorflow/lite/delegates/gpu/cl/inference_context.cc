@@ -434,7 +434,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
   OffsetsAssignment offset_assignment;
   if (CanUseSubBuffer(gpu_info)) {
     RETURN_IF_ERROR(AssignOffsetsToTensors(
-        buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
+        buffer_usage_records, MemoryStrategy::EQUALITY,
         &offset_assignment, base_align_bytes));
     if (offset_assignment.total_size < TotalSize(buffer_assignment) &&
         offset_assignment.total_size <= gpu_info.GetMaxBufferSize()) {

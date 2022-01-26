@@ -218,6 +218,9 @@ endif()
 if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_android\\.cc$")
 endif()
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_default\\.cc$")
+endif()
 if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_ios\\.cc$")
 endif()
@@ -496,6 +499,13 @@ target_include_directories(tensorflow-lite
   PUBLIC
     ${TFLITE_INCLUDE_DIRS}
 )
+
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+  list(APPEND TFLITE_TARGET_DEPENDENCIES
+    log
+  )
+endif()
+
 target_link_libraries(tensorflow-lite
   PUBLIC
     Eigen3::Eigen
