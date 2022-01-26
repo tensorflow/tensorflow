@@ -1748,7 +1748,7 @@ Status ConstantFolding::IsSimplifiableReshape(
       int64_t dim = outputs[0]->flat<int64_t>()(i);
       shp.push_back(dim);
     }
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+    if (!s.ok()) return s;
   }
 
   if (!shape.IsCompatibleWith(new_dims)) {
