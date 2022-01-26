@@ -39,6 +39,9 @@ cuda_py_test(
     srcs = ["multiplex_2_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":multiplex_2_op",
         "//tensorflow:tensorflow_py",

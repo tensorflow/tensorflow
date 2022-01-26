@@ -46,6 +46,9 @@ tf_py_test(
     srcs = ["simple_hash_table_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":simple_hash_table",
         "//tensorflow:tensorflow_py",

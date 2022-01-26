@@ -35,6 +35,9 @@ tf_py_test(
     srcs = ["multiplex_3_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":multiplex_3_op",
         "//tensorflow:tensorflow_py",
