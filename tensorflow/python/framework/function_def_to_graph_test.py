@@ -98,7 +98,8 @@ class FunctionDefToGraphTest(test.TestCase):
           fdef, input_shapes=[tensor_shape.TensorShape([5, 7])])
 
   def testResourceHandleInputShapes(self):
-    # Test that shape inference with resource handles work as expected.
+    # Test that shape inference and validation with resource handles works as
+    # expected.
 
     # Create a graph to generate the input and handle shape attributes in the
     # FunctionDef.
@@ -108,14 +109,19 @@ class FunctionDefToGraphTest(test.TestCase):
       @def_function.function(
           input_signature=[tensor_spec.TensorSpec((None, 2, 2), dtypes.int32)])
       def lookup(inp):
-        return array_ops.gather_nd(v, inp)
+        return {
+            # gather_nd expects a nonscalar shape for `v`, otherwise raises
+            # error when doing shape inference.
+            "shape inference": array_ops.gather_nd(v, inp),
+            # Triggers output shape validation. Expected shape must be [].
+            "handle": v.handle}
 
       lookup.get_concrete_function().add_to_graph()
       fdef = g.as_graph_def(add_shapes=True).library.function[0]
 
     fg = function_def_to_graph.function_def_to_graph(fdef)
     self.assertSequenceEqual(fg.inputs[0].shape.as_list(), [None, 2, 2])
-    self.assertSequenceEqual(fg.inputs[1].shape.dims, [2, 3])
+    self.assertSequenceEqual(fg.inputs[1].shape.as_list(), [])
 
 
 class FunctionDefToGraphDefTest(test.TestCase):
