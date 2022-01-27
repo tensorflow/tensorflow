@@ -636,6 +636,47 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8NoBias) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(22, 22, 22, 56, 56, 56));
 }
 
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedOutputShape3DInt8) {
+  QuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_INT8, {2, 2, 5}, -63.5, 64},
+      /*output=*/{TensorType_INT8, {}, -127, 128}, /*keep_num_dims=*/true,
+      /*bias_tensor_optional=*/false,
+      /*activation_func=*/ActivationFunctionType_RELU,
+      /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+      /*add_bias_for_quantized=*/true, /*input_size=*/5);
+
+  // input_product_scale < output_scale was not true.
+  m.SetWeights<int8_t>({
+      1, 2, 3, 4, 5,  // u = 0
+      1, 2, 3, 4, 5,  // u = 1
+      1, 2, 3, 4, 5,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput<int8_t>({
+      1, 2,  3,  4,  -5,  // b = 0, i = 0
+      1, 2,  3,  -4, 5,   // b = 0, i = 1
+      1, 2,  -3, 4,  5,   // b = 1, i = 0
+      1, -2, 3,  4,  5,   // b = 1, i = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  6, 7, 8,     // b = 0, i = 0
+                  24, 25, 26,  // b = 0, i = 1
+                  38, 39, 40,  // b = 1, i = 0
+                  48, 49, 50   // b = 1, i = 1
+              })));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(5, 6, 7,     // b = 0, i = 0
+                                                 23, 24, 25,  // b = 0, i = 1
+                                                 37, 38, 39,  // b = 1, i = 0
+                                                 47, 48, 49   // b = 1, i = 1
+                                                 ));
+}
+
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedOutputShape3DInt16) {
   const float scale = 128.0 / 65536;
   QuantizedFullyConnectedOpModel m(
