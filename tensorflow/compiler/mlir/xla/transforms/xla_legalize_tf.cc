@@ -195,6 +195,14 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::InfeedDequeueTupleOp>(),
     TypeID::get<TF::OutfeedEnqueueTupleOp>(),
     TypeID::get<TF::XlaShardingOp>(),
+
+    // These ops have undetermined bugs, may not be legalizable with XlaOpKernel
+    // legalization in TF2XLA fallback. By legalization with MLIR, we can fix
+    // the bug. b/195583695 describes the motivation of this change.
+    // See b/216355804 how to reproduce the bug regarding tf.RandomUniform Op
+    // See b/216353817 how to reproduce the bug regarding tf.StridedSlice Op
+    TypeID::get<TF::RandomUniformOp>(),
+    TypeID::get<TF::StridedSliceOp>(),
   };
   // clang-format on
   return *ops;
