@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace text {
