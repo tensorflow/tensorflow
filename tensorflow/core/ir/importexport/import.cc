@@ -588,6 +588,7 @@ Status GraphImporter::ConvertNode(const Node& node) {
                       StringAttr::get(context_, node.name()));
   for (const auto& namedAttr : node.attrs()) {
     const std::string& name = namedAttr.first;
+    if (name.empty()) return InvalidArgument("empty attr name");
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
                         ConvertAttributeValue(tf_attr, builder_, dialect_));
