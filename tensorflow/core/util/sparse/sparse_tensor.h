@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/dim_comparator.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace sparse {
