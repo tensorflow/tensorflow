@@ -355,7 +355,7 @@ struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
   }
 };
 
-void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void PackOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
   results.insert<ConvertPackToReshape>(context);
 }
@@ -509,7 +509,7 @@ OpFoldResult PowOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 void QuantizeAndDequantizeV2Op::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+    RewritePatternSet &results, MLIRContext *context) {
   results.insert<QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4>(context);
 }
 
@@ -539,8 +539,8 @@ static LogicalResult Verify(QrOp op) {
 // ReadVariableOp
 //===----------------------------------------------------------------------===//
 
-void ReadVariableOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void ReadVariableOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                 MLIRContext *context) {
   results.insert<ReadVariableOfCast>(context);
 }
 
@@ -701,7 +701,7 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 // RealDivOp
 //===----------------------------------------------------------------------===//
 
-void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void RealDivOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
   results.insert<RealDivWithSqrtDivisor, RealDivWithConstDivisor>(context);
 }
@@ -853,7 +853,7 @@ void ReshapeOp::build(OpBuilder &builder, OperationState &result, Value tensor,
   return ReshapeOp::build(builder, result, output_ty, tensor, shape);
 }
 
-void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
   results.insert<RedundantReshape, ReshapeToSelfShape>(context);
 }
@@ -1147,7 +1147,7 @@ class ShapeNToShape : public OpRewritePattern<ShapeNOp> {
 };
 }  // namespace
 
-void ShapeNOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void ShapeNOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   results.insert<ShapeNToShape, ShapeNPartialStaticInputShape>(context);
 }
@@ -1585,7 +1585,7 @@ static LogicalResult Verify(SplitVOp op) {
 // SquareOp
 //===----------------------------------------------------------------------===//
 
-void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void SquareOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   results.insert<SquareOfSub>(context);
 }
@@ -1617,7 +1617,7 @@ static LogicalResult Verify(SqueezeOp op) {
 // SubOp
 //===----------------------------------------------------------------------===//
 
-void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void SubOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
   results.insert<SubOfNeg>(context);
 }
@@ -2476,7 +2476,7 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
 };
 }  // namespace
 
-void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void ToBoolOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   results.insert<ToBoolOfRankedTensor>(context);
 }
@@ -2629,8 +2629,8 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 // TruncateDivOp
 //===----------------------------------------------------------------------===//
 
-void TruncateDivOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void TruncateDivOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                MLIRContext *context) {
   results.insert<TruncateDivWithSqrtDivisor>(context);
 }
 
@@ -2669,7 +2669,7 @@ class NMSV3ToNMSV4Op : public OpRewritePattern<NonMaxSuppressionV3Op> {
 }  // namespace.
 
 void NonMaxSuppressionV3Op::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+    RewritePatternSet &results, MLIRContext *context) {
   results.insert<NMSV3ToNMSV4Op>(context);
 }
 
@@ -2703,8 +2703,8 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
 };
 }  // namespace.
 
-void FusedBatchNormOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void FusedBatchNormOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                   MLIRContext *context) {
   results.insert<ConvertFusedBatchNorm>(context);
 }
 
@@ -2795,7 +2795,7 @@ LogicalResult HoistCwiseUnaryOutOfUnpack::matchAndRewrite(
 
 }  // namespace
 
-void UnpackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void UnpackOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   results.insert<HoistCwiseUnaryOutOfUnpack>(context);
 }
@@ -2879,7 +2879,7 @@ struct EraseDeadVarIsInitializedOp
 }  // end anonymous namespace.
 
 void VarIsInitializedOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &patterns, MLIRContext *context) {
+    RewritePatternSet &patterns, MLIRContext *context) {
   patterns.insert<EraseDeadVarIsInitializedOp>(context);
 }
 
@@ -2887,7 +2887,7 @@ void VarIsInitializedOp::getCanonicalizationPatterns(
 // VariableOp
 //===----------------------------------------------------------------------===//
 
-void VariableOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void VariableOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.insert<VariableToVariableV2>(context);
 }
@@ -3169,8 +3169,8 @@ struct WhileRegionEliminatePassThrough
 
 }  // anonymous namespace
 
-void WhileRegionOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void WhileRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                MLIRContext *context) {
   results.insert<WhileRegionEliminatePassThrough>(context);
 }
 
@@ -3178,7 +3178,7 @@ void WhileRegionOp::getCanonicalizationPatterns(
 // XdivyOp
 //===----------------------------------------------------------------------===//
 
-void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
   results.insert<XdivyWithSqrtDivisor>(context);
 }
@@ -3331,7 +3331,7 @@ class XlaReduceToXlaVariadicReduceV2
   };
 };
 
-void XlaReduceOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void XlaReduceOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
   results.insert<XlaReduceToXlaVariadicReduceV2>(context);
 }
@@ -3506,7 +3506,7 @@ class XlaVariadicReduceToV2 : public OpRewritePattern<TF::XlaVariadicReduceOp> {
 };
 
 void XlaVariadicReduceOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+    RewritePatternSet &results, MLIRContext *context) {
   results.insert<XlaVariadicReduceToV2>(context);
 }
 

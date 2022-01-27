@@ -754,7 +754,7 @@ static LogicalResult EliminatePassThroughResults(ClusterOp op,
 }
 }  // anonymous namespace
 
-void ClusterOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ClusterOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
   results.insert(EliminatePassThroughResults);
 }
@@ -783,7 +783,7 @@ struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
 };
 }  // anonymous namespace
 
-void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void LaunchOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
   results.insert<DropEmptyLaunch>(context);
 }

@@ -150,7 +150,7 @@ void UpdateArgAttributes(mlir::FuncOp func) {
 
 LogicalResult RewriteCommunicationOps(ModuleOp module) {
   MLIRContext* ctx = module.getContext();
-  mlir::OwningRewritePatternList patterns(ctx);
+  mlir::RewritePatternSet patterns(ctx);
   patterns.insert<RewriteXlaHostComputeMlir>(ctx);
   if (failed(mlir::applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
     return module.emitError("failed to apply tf export preparation patterns");

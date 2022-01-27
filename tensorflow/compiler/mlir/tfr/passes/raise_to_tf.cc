@@ -494,7 +494,7 @@ void RaiseToTFOpsPass::runOnFunction() {
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs_);
 
   populateCanonicalizationPatterns(func, patterns);

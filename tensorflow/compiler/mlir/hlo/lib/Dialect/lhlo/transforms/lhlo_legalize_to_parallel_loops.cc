@@ -716,7 +716,7 @@ struct LhloLegalizeToParallelLoopsPass
   void runOnOperation() override {
     auto func = getOperation();
 
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     // clang-format off
     patterns.insert<
         ReduceOpConverter,

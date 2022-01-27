@@ -120,7 +120,7 @@ struct VectorizeTiledOpsPass
     if (failed(runPipeline(dynamicPM2, funcOp))) return signalPassFailure();
 
     // Vectorize padding.
-    mlir::OwningRewritePatternList patterns(funcOp.getContext());
+    mlir::RewritePatternSet patterns(funcOp.getContext());
     mlir::linalg::populatePadOpVectorizationPatterns(patterns);
     mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(
         patterns);

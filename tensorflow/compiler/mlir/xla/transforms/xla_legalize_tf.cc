@@ -211,10 +211,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
 // Patterns whose root op is in the set `include_ops` are moved from the set
 // `from` to the returned set. This is used to partition patterns by op so they
 // can be cleanly migrated from the old bridge to the MLIR bridge.
-OwningRewritePatternList PatternsIncludeOps(
-    OwningRewritePatternList &from,
-    const llvm::DenseSet<mlir::TypeID> &include_ops) {
-  OwningRewritePatternList to(from.getContext());
+RewritePatternSet PatternsIncludeOps(
+    RewritePatternSet &from, const llvm::DenseSet<mlir::TypeID> &include_ops) {
+  RewritePatternSet to(from.getContext());
   // Filter NativePatterns.
   for (auto &pattern : from.getNativePatterns()) {
     Optional<OperationName> pat_op_name = pattern->getRootKind();
@@ -241,7 +240,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
                          llvm::Optional<StringRef> tf2xla_fallback_device_type,
                          bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList legalize_lower_patterns(context);
+  RewritePatternSet legalize_lower_patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
   // 1) Ascending legalization depth (i.e., minimum number of patterns necessary
   //    to arrive at conversion target). This requires relevant patterns to
@@ -250,7 +249,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   //    cases.
   // 2) Descending pattern benefit.
   // 3) Op specific patterns over patterns with MatchAnyOpTypeTag.
-  // 4) Order of patterns in `OwningRewritePatternList`.
+  // 4) Order of patterns in `RewritePatternSet`.
 
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &legalize_lower_patterns);
@@ -271,7 +270,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
   // Set patterns to legalize_lower_patters, where in the prefer_tf2xla case
   // only patterns whose ops are in the set MlirPreferredOps are kept.
-  OwningRewritePatternList patterns =
+  RewritePatternSet patterns =
       (tf2xla_fallback_device_type && prefer_tf2xla)
           ? PatternsIncludeOps(legalize_lower_patterns, MlirPreferredOps())
           : std::move(legalize_lower_patterns);

@@ -418,7 +418,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 
   void runOnOperation() override {
     auto& context = getContext();
-    OwningRewritePatternList patterns(&context);
+    RewritePatternSet patterns(&context);
     ConversionTarget target(context);
     target.addLegalDialect<
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
@@ -468,7 +468,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 // Simply lowers all mhlo ops to their lmhlo counterparts.
 void populateDynamicHLOToLHLOConversionPattern(
     MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
-    OwningRewritePatternList* patterns) {
+    RewritePatternSet* patterns) {
   // clang-format off
   patterns->insert<HloToLhloOpConverter<mhlo::DynamicBroadcastInDimOp>,
                    HloToLhloOpConverter<mhlo::DynamicGatherOp>,
@@ -482,7 +482,7 @@ void populateDynamicHLOToLHLOConversionPattern(
 
 void populateHLOToLHLOConversionPattern(
     MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
-    OwningRewritePatternList* patterns) {
+    RewritePatternSet* patterns) {
   populateDynamicHLOToLHLOConversionPattern(context, converter, patterns);
 
   // clang-format off

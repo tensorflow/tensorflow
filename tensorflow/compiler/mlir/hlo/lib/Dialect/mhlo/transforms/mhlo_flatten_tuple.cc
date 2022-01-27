@@ -210,7 +210,7 @@ struct FlattenWhileOp : public RewritePattern {
 
 template <typename T>
 void ApplyFlatteningTuplePatterns(T target, MLIRContext *context) {
-  OwningRewritePatternList patterns(context);
+  RewritePatternSet patterns(context);
   patterns.insert<FlattenWhileOp>(context);
   (void)applyPatternsAndFoldGreedily(target, std::move(patterns));
 }

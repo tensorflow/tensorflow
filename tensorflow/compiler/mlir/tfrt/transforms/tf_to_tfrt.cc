@@ -1480,7 +1480,7 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
 
 // Helper function for inserting TFRT JitRt dialect conversions.
 void PopulateJitRtConversionPatterns(MLIRContext *context,
-                                     OwningRewritePatternList *patterns,
+                                     RewritePatternSet *patterns,
                                      CoreRTConverter *corert_converter) {
   // Lower jitrt.call to the pair of compile and execute operations.
   patterns->insert<JitRtCallToJitRtCompileAndExecuteConversion>(context);
@@ -1489,7 +1489,7 @@ void PopulateJitRtConversionPatterns(MLIRContext *context,
 // Helper function for inserting TF dialect to TFRT dialect op conversion
 // patterns.
 void PopulateTFToTFRTConversionPatterns(
-    mlir::MLIRContext *context, mlir::OwningRewritePatternList *patterns,
+    mlir::MLIRContext *context, mlir::RewritePatternSet *patterns,
     CoreRTConverter *corert_converter,
     tfrt_compiler::FallbackConverter *fallback_converter,
     mlir::SymbolTable *symbol_table,
@@ -1630,7 +1630,7 @@ class TfToTfrtConversionPass
       mlir::SymbolTable &symbol_table) {
     auto &context = getContext();
     mlir::ConversionTarget target(context);
-    mlir::OwningRewritePatternList patterns(&getContext());
+    mlir::RewritePatternSet patterns(&getContext());
     CoreRTConverter corert_converter(&context, &side_effect_analysis);
     tfrt_compiler::CostAnalysis cost_analysis(func);
 

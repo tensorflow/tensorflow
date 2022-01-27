@@ -2753,7 +2753,7 @@ struct HloLegalizeToLinalgPass
 
   void runOnOperation() override {
     MLIRContext& ctx = getContext();
-    OwningRewritePatternList patterns(&ctx);
+    RewritePatternSet patterns(&ctx);
     ConversionTarget target(ctx);
     target.addLegalDialect<arith::ArithmeticDialect, complex::ComplexDialect,
                            linalg::LinalgDialect, math::MathDialect,
@@ -2777,7 +2777,7 @@ namespace mhlo {
 
 void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           TypeConverter& type_converter,
-                                          OwningRewritePatternList* patterns) {
+                                          RewritePatternSet* patterns) {
   // clang-format off
   patterns->insert<
       BroadcastConverter<mhlo::BroadcastOp>, ConcatenateConverter,
