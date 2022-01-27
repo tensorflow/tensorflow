@@ -282,8 +282,8 @@ ParseResult SetReplicateOpOperands(
     llvm::ArrayRef<OpAsmParser::OperandType> packed_inputs,
     llvm::ArrayRef<Type> region_arg_types, int32_t* n) {
   for (const auto& attr : state->attributes)
-    if (attr.first.strref() == "n")
-      if (auto n_attr = attr.second.dyn_cast<IntegerAttr>())
+    if (attr.getName().strref() == "n")
+      if (auto n_attr = attr.getValue().dyn_cast<IntegerAttr>())
         *n = n_attr.getInt();
 
   if (*n < 2)
@@ -409,6 +409,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   // lengths.
   p->printOptionalAttrDict(op->getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
                                kOperandSegmentSizesAttr});
+  *p << ' ';
   p->printRegion(op.body(), /*printEntryBlockArgs=*/false);
 }
 
@@ -428,7 +429,7 @@ LogicalResult Verify(ReplicateOp op) {
   // Check number of devices, if set, matches `n`.
   if (op.devices().hasValue()) {
     for (auto device_attr : op.devices().getValue().getValue()) {
-      auto device_list = device_attr.second.dyn_cast_or_null<ArrayAttr>();
+      auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
       if (!device_list)
         return op.emitError()
                << "expects 'devices' to be a map alias and device name list.";
@@ -451,9 +452,9 @@ LogicalResult Verify(ReplicateOp op) {
 
   auto operand_segment_sizes = op.operand_segment_sizes();
   const int32_t num_replicated_inputs =
-      operand_segment_sizes.getValue<IntegerAttr>({0}).getInt();
+      operand_segment_sizes.getValues<APInt>()[0].getSExtValue();
   const int32_t num_packed_inputs =
-      operand_segment_sizes.getValue<IntegerAttr>({1}).getInt();
+      operand_segment_sizes.getValues<APInt>()[1].getSExtValue();
 
   if (num_replicated_inputs % n != 0)
     return op.emitOpError()
@@ -535,12 +536,12 @@ void BuildReplicateOp(
           VerifyCompatibleTypes(input.getType(), replicated_input.second)));
       state->addOperands(input);
     }
-    block.addArgument(replicated_input.second);
+    block.addArgument(replicated_input.second, state->location);
   }
 
   for (auto packed_input : packed_inputs) {
     state->addOperands(packed_input);
-    block.addArgument(packed_input.getType());
+    block.addArgument(packed_input.getType(), state->location);
   }
 
   // Add derived `operand_segment_sizes` attribute.

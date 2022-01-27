@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_utils.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <queue>
@@ -866,6 +867,13 @@ bool ShouldApplyOptimizations(
           !optimizations_enabled.empty() || !optimizations_default.empty());
 }
 
+int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
+  if (GetExperiments().contains("initial_parallelism_value")) {
+    return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
+  }
+  return ctx->runner_threadpool_size();
+}
+
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
                                          int64_t rollout_pct) {
@@ -881,10 +889,12 @@ absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
 
 namespace {
 
+REGISTER_DATASET_EXPERIMENT("initial_parallelism_value", 50);
+REGISTER_DATASET_EXPERIMENT("enable_bufferedio_v2", 100);
+REGISTER_DATASET_EXPERIMENT("inject_prefetch", 50);
 REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
-REGISTER_DATASET_EXPERIMENT("max_parallelism_v2", 5);
+REGISTER_DATASET_EXPERIMENT("max_parallelism_v2", 0);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", 5);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

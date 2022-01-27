@@ -12,6 +12,7 @@ package_group(
     packages = [
         # Authorized users go here.
         "//platforms/xla/tests/gpu/...",
+        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/compiler/xla/service/gpu/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/...",
@@ -56,7 +57,6 @@ cc_library(
     hdrs = ["work_queue_interface.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
@@ -84,12 +84,12 @@ cc_library(
     hdrs = ["tf_threadpool_concurrent_work_queue.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":work_queue_interface",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_interface",
-        "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],
@@ -102,6 +102,7 @@ tf_cc_test(
         ":tf_threadpool_concurrent_work_queue",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status_matchers",

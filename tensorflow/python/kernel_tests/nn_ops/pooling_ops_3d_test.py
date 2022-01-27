@@ -44,6 +44,7 @@ def GetTestConfigs():
 
 
 # TODO(mjanusz): Add microbenchmarks for 3d pooling.
+@test_util.with_eager_op_as_function
 class PoolingTest(test.TestCase):
 
   def _VerifyOneTest(self, pool_func, input_sizes, window, strides, padding,
@@ -519,6 +520,7 @@ class PoolingTest(test.TestCase):
           pool_3d = f(input_tensor, ksize=[2, 2, 0], strides=1, padding="VALID")
           self.evaluate(pool_3d)
 
+  @test_util.disable_xla("b/205634417")  # XLA does not raise these errors.
   def testMaxPoolGradEagerShapeErrors(self):
     with context.eager_mode():
       orig_in = array_ops.ones((1, 1, 1, 1, 1))

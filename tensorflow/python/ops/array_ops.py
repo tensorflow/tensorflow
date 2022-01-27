@@ -18,10 +18,13 @@
 import numbers
 import numpy as np
 
+from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -32,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.framework.constant_op import constant
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 # go/tf-wildcard-import
@@ -41,10 +45,14 @@ from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint:
 from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
+
+math_ops = lazy_loader.LazyLoader(
+    "math_ops", globals(), "tensorflow.python.ops.math_ops")
 
 # Used for slicing to specify a new 1 size dimension
 newaxis = None
@@ -879,8 +887,8 @@ _SLICE_TYPE_ERROR = (
     "tf.newaxis (`None`) and scalar tf.int32/tf.int64 tensors are valid "
     "indices")
 
-_SUPPORTED_SLICE_DTYPES = (dtypes.int32, dtypes.int32_ref, dtypes.int64,
-                           dtypes.int64_ref)
+_SUPPORTED_SLICE_DTYPES = (dtypes.int16, dtypes.int32, dtypes.int32_ref,
+                           dtypes.int64, dtypes.int64_ref)
 
 
 def _check_index(idx):
@@ -1037,6 +1045,8 @@ def _slice_helper(tensor, slice_spec, var=None):
     if begin:
       packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
                                                   stack(strides))
+      # TODO(mdan): Instead of implicitly casting, it's better to enforce the
+      # same dtypes.
       if (packed_begin.dtype == dtypes.int64 or
           packed_end.dtype == dtypes.int64 or
           packed_strides.dtype == dtypes.int64):
@@ -1046,6 +1056,15 @@ def _slice_helper(tensor, slice_spec, var=None):
           packed_end = gen_math_ops.cast(packed_end, dtypes.int64)
         if packed_strides.dtype != dtypes.int64:
           packed_strides = gen_math_ops.cast(packed_strides, dtypes.int64)
+      elif (packed_begin.dtype == dtypes.int16 and
+            packed_end.dtype == dtypes.int16 and
+            packed_strides.dtype == dtypes.int16):
+        if packed_begin.dtype != dtypes.int16:
+          packed_begin = gen_math_ops.cast(packed_begin, dtypes.int16)
+        if packed_end.dtype != dtypes.int16:
+          packed_end = gen_math_ops.cast(packed_end, dtypes.int16)
+        if packed_strides.dtype != dtypes.int16:
+          packed_strides = gen_math_ops.cast(packed_strides, dtypes.int16)
     else:
       var_empty = constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = var_empty
@@ -1422,7 +1441,7 @@ def stack(values, axis=0, name="stack"):
     try:
       # If the input is a constant list, it can be converted to a constant op
       return ops.convert_to_tensor(values, name=name)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, NotImplementedError):
       pass  # Input list contains non-constant tensors
 
   value_shape = ops.convert_to_tensor(values[0], name=name)._shape_tuple()  # pylint: disable=protected-access
@@ -2085,7 +2104,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   See also `tf.unstack`.
 
-  If `num_or_size_splits` is an integer,  then `value` is split along the
+  If `num_or_size_splits` is an `int`,  then it splits `value` along the
   dimension `axis` into `num_or_size_splits` smaller tensors. This requires that
   `value.shape[axis]` is divisible by `num_or_size_splits`.
 
@@ -2114,25 +2133,27 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   Args:
     value: The `Tensor` to split.
-    num_or_size_splits: Either an integer indicating the number of splits along
-      `axis` or a 1-D integer `Tensor` or Python list containing the sizes of
-      each output tensor along `axis`. If a scalar, then it must evenly divide
-      `value.shape[axis]`; otherwise the sum of sizes along the split axis
-      must match that of the `value`.
-    axis: An integer or scalar `int32` `Tensor`. The dimension along which to
-      split. Must be in the range `[-rank(value), rank(value))`. Defaults to 0.
-    num: Optional, used to specify the number of outputs when it cannot be
-      inferred from the shape of `size_splits`.
+    num_or_size_splits: Either an `int` indicating the number of splits
+      along `axis` or a 1-D integer `Tensor` or Python list containing the sizes
+      of each output tensor along `axis`. If an `int`, then it must evenly
+      divide `value.shape[axis]`; otherwise the sum of sizes along the split
+      axis must match that of the `value`.
+    axis: An `int` or scalar `int32` `Tensor`. The dimension along which
+      to split. Must be in the range `[-rank(value), rank(value))`. Defaults to
+      0.
+    num: Optional, an `int`, used to specify the number of outputs when it
+      cannot be inferred from the shape of `size_splits`.
     name: A name for the operation (optional).
 
   Returns:
-    if `num_or_size_splits` is a scalar returns a list of `num_or_size_splits`
-    `Tensor` objects; if `num_or_size_splits` is a 1-D Tensor returns
-    `num_or_size_splits.get_shape[0]` `Tensor` objects resulting from splitting
-    `value`.
+    if `num_or_size_splits` is an `int` returns a list of
+    `num_or_size_splits` `Tensor` objects; if `num_or_size_splits` is a 1-D
+    list or 1-D `Tensor` returns `num_or_size_splits.get_shape[0]`
+    `Tensor` objects resulting from splitting `value`.
 
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
+    ValueError: If `num_or_size_splits` is a scalar `Tensor`.
   """
   if isinstance(num_or_size_splits,
                 (numbers.Integral, tensor_shape.Dimension)):
@@ -2152,7 +2173,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
       num = size_splits_shape[0]
     if num is None:
       raise ValueError(
-          "Cannot infer argument `num` from shape {num_or_size_splits}")
+          f"Cannot infer argument `num` from shape {num_or_size_splits}")
 
   return gen_array_ops.split_v(
       value=value, size_splits=size_splits, axis=axis, num_split=num, name=name)
@@ -4676,79 +4697,152 @@ def where(condition, x=None, y=None, name=None):
 @tf_export("where", v1=["where_v2"])
 @dispatch.add_dispatch_support
 def where_v2(condition, x=None, y=None, name=None):
-  """Return the elements where `condition` is `True` (multiplexing `x` and `y`).
+  """Returns the indices of non-zero elements, or multiplexes `x` and `y`.
 
-  This operator has two modes: in one mode both `x` and `y` are provided, in
-  another mode neither are provided. `condition` is always expected to be a
-  `tf.Tensor` of type `bool`.
+  This operation has two modes:
 
-  #### Retrieving indices of `True` elements
+  1. **Return the indices of non-zero elements** - When only
+     `condition` is provided the result is an `int64` tensor where each row is
+     the index of a non-zero element of `condition`. The result's shape
+     is `[tf.math.count_nonzero(condition), tf.rank(condition)]`.
+  2. **Multiplex `x` and `y`** - When both `x` and `y` are provided the
+     result has the shape of `x`, `y`, and `condition` broadcast together. The
+     result is taken from `x` where `condition` is non-zero
+     or `y` where `condition` is zero.
+
+  #### 1. Return the indices of non-zero elements
+
+  Note: In this mode `condition` can have a dtype of `bool` or any numeric
+  dtype.
 
   If `x` and `y` are not provided (both are None):
 
-  `tf.where` will return the indices of `condition` that are `True`, in
-  the form of a 2-D tensor with shape (n, d).
-  (Where n is the number of matching indices in `condition`,
-  and d is the number of dimensions in `condition`).
+  `tf.where` will return the indices of `condition` that are non-zero,
+  in the form of a 2-D tensor with shape `[n, d]`, where `n` is the number of
+  non-zero elements in `condition` (`tf.count_nonzero(condition)`), and `d` is
+  the number of axes of `condition` (`tf.rank(condition)`).
 
-  Indices are output in row-major order.
+  Indices are output in row-major order. The `condition` can have a `dtype` of
+  `tf.bool`, or any numeric `dtype`.
 
-  >>> tf.where([True, False, False, True])
-  <tf.Tensor: shape=(2, 1), dtype=int64, numpy=
+  Here `condition` is a 1-axis `bool` tensor with 2 `True` values. The result
+  has a shape of `[2,1]`
+
+  >>> tf.where([True, False, False, True]).numpy()
   array([[0],
-         [3]])>
+         [3]])
 
-  >>> tf.where([[True, False], [False, True]])
-  <tf.Tensor: shape=(2, 2), dtype=int64, numpy=
+  Here `condition` is a 2-axis integer tensor, with 3 non-zero values. The
+  result has a shape of `[3, 2]`.
+
+  >>> tf.where([[1, 0, 0], [1, 0, 1]]).numpy()
   array([[0, 0],
-         [1, 1]])>
+         [1, 0],
+         [1, 2]])
 
-  >>> tf.where([[[True, False], [False, True], [True, True]]])
-  <tf.Tensor: shape=(4, 3), dtype=int64, numpy=
+  Here `condition` is a 3-axis float tensor, with 5 non-zero values. The output
+  shape is `[5, 3]`.
+
+  >>> float_tensor = [[[0.1, 0], [0, 2.2], [3.5, 1e6]],
+  ...                 [[0,   0], [0,   0], [99,    0]]]
+  >>> tf.where(float_tensor).numpy()
   array([[0, 0, 0],
          [0, 1, 1],
          [0, 2, 0],
-         [0, 2, 1]])>
+         [0, 2, 1],
+         [1, 2, 0]])
 
-  #### Multiplexing between `x` and `y`
+  These indices are the same that `tf.sparse.SparseTensor` would use to
+  represent the condition tensor:
 
-  If `x` and `y` are provided (both have non-None values):
+  >>> sparse = tf.sparse.from_dense(float_tensor)
+  >>> sparse.indices.numpy()
+  array([[0, 0, 0],
+         [0, 1, 1],
+         [0, 2, 0],
+         [0, 2, 1],
+         [1, 2, 0]])
 
-  `tf.where` will choose an output shape from the shapes of `condition`, `x`,
-  and `y` that all three shapes are
-  [broadcastable](https://docs.scipy.org/doc/numpy/reference/ufuncs.html) to.
+  A complex number is considered non-zero if either the real or imaginary
+  component is non-zero:
 
-  The `condition` tensor acts as a mask that chooses whether the corresponding
-  element / row in the output should be taken from `x`
-  (if the element in `condition` is True) or `y` (if it is false).
+  >>> tf.where([complex(0.), complex(1.), 0+1j, 1+1j]).numpy()
+  array([[1],
+         [2],
+         [3]])
 
-  >>> tf.where([True, False, False, True], [1,2,3,4], [100,200,300,400])
-  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 200, 300,   4],
-  dtype=int32)>
-  >>> tf.where([True, False, False, True], [1,2,3,4], [100])
-  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   4],
-  dtype=int32)>
-  >>> tf.where([True, False, False, True], [1,2,3,4], 100)
-  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   4],
-  dtype=int32)>
-  >>> tf.where([True, False, False, True], 1, 100)
-  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([  1, 100, 100,   1],
-  dtype=int32)>
+  #### 2. Multiplex `x` and `y`
 
-  >>> tf.where(True, [1,2,3,4], 100)
-  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([1, 2, 3, 4],
-  dtype=int32)>
-  >>> tf.where(False, [1,2,3,4], 100)
-  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([100, 100, 100, 100],
-  dtype=int32)>
+  Note: In this mode `condition` must have a dtype of `bool`.
 
-  Note that if the gradient of either branch of the tf.where generates
-  a NaN, then the gradient of the entire tf.where will be NaN. This is because
-  the gradient calculation for tf.where combines the two branches, for
+  If `x` and `y` are also provided (both have non-None values) the `condition`
+  tensor acts as a mask that chooses whether the corresponding
+  element / row in the output should be taken from `x` (if the element in
+  `condition` is `True`) or `y` (if it is `False`).
+
+  The shape of the result is formed by
+  [broadcasting](https://docs.scipy.org/doc/numpy/reference/ufuncs.html)
+  together the shapes of `condition`, `x`, and `y`.
+
+  When all three inputs have the same size, each is handled element-wise.
+
+  >>> tf.where([True, False, False, True],
+  ...          [1, 2, 3, 4],
+  ...          [100, 200, 300, 400]).numpy()
+  array([  1, 200, 300,   4], dtype=int32)
+
+  There are two main rules for broadcasting:
+
+  1. If a tensor has fewer axes than the others, length-1 axes are added to the
+     left of the shape.
+  2. Axes with length-1 are streched to match the coresponding axes of the other
+     tensors.
+
+  A length-1 vector is streched to match the other vectors:
+
+  >>> tf.where([True, False, False, True], [1, 2, 3, 4], [100]).numpy()
+  array([  1, 100, 100,   4], dtype=int32)
+
+  A scalar is expanded to match the other arguments:
+
+  >>> tf.where([[True, False], [False, True]], [[1, 2], [3, 4]], 100).numpy()
+  array([[  1, 100], [100,   4]], dtype=int32)
+  >>> tf.where([[True, False], [False, True]], 1, 100).numpy()
+  array([[  1, 100], [100,   1]], dtype=int32)
+
+  A scalar `condition` returns the complete `x` or `y` tensor, with
+  broadcasting applied.
+
+  >>> tf.where(True, [1, 2, 3, 4], 100).numpy()
+  array([1, 2, 3, 4], dtype=int32)
+  >>> tf.where(False, [1, 2, 3, 4], 100).numpy()
+  array([100, 100, 100, 100], dtype=int32)
+
+  For a non-trivial example of broadcasting, here `condition` has a shape of
+  `[3]`, `x` has a shape of `[3,3]`, and `y` has a shape of `[3,1]`.
+  Broadcasting first expands the shape of `condition` to `[1,3]`. The final
+  broadcast shape is `[3,3]`. `condition` will select columns from `x` and `y`.
+  Since `y` only has one column, all columns from `y` will be identical.
+
+  >>> tf.where([True, False, True],
+  ...          x=[[1, 2, 3],
+  ...             [4, 5, 6],
+  ...             [7, 8, 9]],
+  ...          y=[[100],
+  ...             [200],
+  ...             [300]]
+  ... ).numpy()
+  array([[ 1, 100, 3],
+         [ 4, 200, 6],
+         [ 7, 300, 9]], dtype=int32)
+
+  Note that if the gradient of either branch of the `tf.where` generates
+  a `NaN`, then the gradient of the entire `tf.where` will be `NaN`. This is
+  because the gradient calculation for `tf.where` combines the two branches, for
   performance reasons.
 
-  A workaround is to use an inner tf.where to ensure the function has
-  no asymptote, and to avoid computing a value whose gradient is NaN by
+  A workaround is to use an inner `tf.where` to ensure the function has
+  no asymptote, and to avoid computing a value whose gradient is `NaN` by
   replacing dangerous inputs with safe inputs.
 
   Instead of this,
@@ -4760,8 +4854,8 @@ def where_v2(condition, x=None, y=None, name=None):
   >>> print(tape.gradient(y, x))
   tf.Tensor(nan, shape=(), dtype=float32)
 
-  Although, the `1. / x` values are never used, its gradient is a NaN when x =
-  0. Instead, we should guard that with another `tf.where`
+  Although, the `1. / x` values are never used, its gradient is a `NaN` when
+  `x = 0`. Instead, we should guard that with another `tf.where`
 
   >>> x = tf.constant(0., dtype=tf.float32)
   >>> with tf.GradientTape() as tape:
@@ -4771,8 +4865,19 @@ def where_v2(condition, x=None, y=None, name=None):
   >>> print(tape.gradient(y, x))
   tf.Tensor(0.0, shape=(), dtype=float32)
 
+  See also:
+
+  * `tf.sparse` - The indices returned by the first form of `tf.where` can be
+     useful in `tf.sparse.SparseTensor` objects.
+  * `tf.gather_nd`, `tf.scatter_nd`, and related ops - Given the
+    list of indices returned from `tf.where` the `scatter` and `gather` family
+    of ops can be used fetch values or insert values at those indices.
+  * `tf.strings.length` - `tf.string` is not an allowed dtype for the
+    `condition`. Use the string length instead.
+
   Args:
-    condition: A `tf.Tensor` of type `bool`
+    condition: A `tf.Tensor` of dtype bool, or any numeric dtype. `condition`
+      must have dtype `bool` when `x` and `y` are provided.
     x: If provided, a Tensor which is of the same type as `y`, and has a shape
       broadcastable with `condition` and `y`.
     y: If provided, a Tensor which is of the same type as `x`, and has a shape
@@ -4783,7 +4888,8 @@ def where_v2(condition, x=None, y=None, name=None):
     If `x` and `y` are provided:
       A `Tensor` with the same type as `x` and `y`, and shape that
       is broadcast from `condition`, `x`, and `y`.
-    Otherwise, a `Tensor` with shape `(num_true, dim_size(condition))`.
+    Otherwise, a `Tensor` with shape `[tf.math.count_nonzero(condition),
+    tf.rank(condition)]`.
 
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None, or the shapes
@@ -5055,7 +5161,7 @@ def gather(params,
          [3, 4],
          [5, 6]], dtype=int32)
 
-  This is is equivalent to:
+  This is equivalent to:
 
   >>> def manually_batched_gather(params, indices, axis):
   ...   batch_dims=1
@@ -5164,7 +5270,7 @@ gather_v2.__doc__ = gather.__doc__
 @dispatch.add_dispatch_support
 @deprecation.deprecated(
     "2017-10-25", "`tf.batch_gather` is deprecated, please use `tf.gather` "
-    "with `batch_dims=-1` instead.")  # pylint: disable=missing-docstring
+    "with `batch_dims=tf.rank(indices) - 1` instead.")  # pylint: disable=missing-docstring
 def batch_gather(params, indices, name=None):
   """Gather slices from params according to indices with leading batch dims."""
   with ops.name_scope(name, "BatchGather", [params, indices]):
@@ -5652,7 +5758,7 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     v1=["tensor_scatter_nd_update", "tensor_scatter_update"])
 @dispatch.add_dispatch_support
 def tensor_scatter_nd_update(tensor, indices, updates, name=None):
-  """"Scatter `updates` into an existing tensor according to `indices`.
+  """Scatter `updates` into an existing tensor according to `indices`.
 
   This operation creates a new tensor by applying sparse `updates` to the
   input `tensor`. This is similar to an index assignment.
@@ -6529,9 +6635,11 @@ def fingerprint(data, method="farmhash64", name=None):
 
 def convert_to_int_tensor(tensor, name, dtype=dtypes.int32):
   """Converts the given value to an integer Tensor."""
-  tensor = ops.convert_to_tensor(tensor, name=name, preferred_dtype=dtype)
+  tensor = ops.convert_to_tensor(
+      tensor, name=name, preferred_dtype=dtype or dtypes.int32)
   if tensor.dtype.is_integer:
-    tensor = gen_math_ops.cast(tensor, dtype)
+    if dtype is not None:
+      tensor = gen_math_ops.cast(tensor, dtype)
   else:
     raise TypeError(f"Argument `tensor` (name: {name}) must be of type integer."
                     f" Received `tensor` = {tensor} of dtype: {tensor.dtype}")
@@ -6623,12 +6731,17 @@ def repeat_with_axis(data, repeats, axis, name=None):
 
   with ops.name_scope(name, "Repeat", [data, repeats]):
     data = ops.convert_to_tensor(data, name="data")
-    repeats = convert_to_int_tensor(repeats, name="repeats")
+    # Note: We pass dtype=None so that the existing type is maintained instead
+    # of force-casting to int32.
+    if forward_compat.forward_compatible(2022, 3, 30):
+      repeats = convert_to_int_tensor(repeats, name="repeats", dtype=None)
+    else:
+      repeats = convert_to_int_tensor(repeats, name="repeats")
     repeats.shape.with_rank_at_most(1)
 
     # If `data` is a scalar, then upgrade it to a vector.
     data = _with_nonzero_rank(data)
-    data_shape = shape(data)
+    data_shape = shape(data, out_type=repeats.dtype)
 
     # If `axis` is negative, then convert it to a positive value.
     axis = get_positive_axis(axis, data.shape.rank, ndims_name="rank(data)")
@@ -6650,52 +6763,79 @@ def repeat_with_axis(data, repeats, axis, name=None):
       data.shape.dims[axis].assert_is_compatible_with(repeats.shape[0])
 
     repeats = broadcast_to(repeats, [data_shape[axis]])
-    repeats_original = repeats
 
-    # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.
-    if repeats.shape.ndims != axis + 1:
-      repeats_shape = shape(repeats)
-      repeats_ndims = rank(repeats)
-      broadcast_shape = concat(
-          [data_shape[:axis + 1 - repeats_ndims], repeats_shape], axis=0)
-      repeats = broadcast_to(repeats, broadcast_shape)
-      repeats.set_shape([None] * (axis + 1))
+    # The implementation on the else branch has better performance. However, it
+    # does not work on the XLA path since it relies on the range op with a
+    # shape that is not a compile-time constant.
+    if (control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
+        config.get_optimizer_jit() or
+        pywrap_tf_session.TF_GetXlaAutoJitEnabled() or
+        not forward_compat.forward_compatible(2022, 3, 30)):
+      repeats_original = repeats
 
-    # Create a "sequence mask" based on `repeats`, where slices across `axis`
-    # contain one `True` value for each repetition.  E.g., if
-    # `repeats = [3, 1, 2]`, then `mask = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]`.
-    max_repeat = gen_math_ops.maximum(
-        0, gen_math_ops._max(repeats, _all_dimensions(repeats)))
-    mask = sequence_mask(repeats, max_repeat)
+      # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.
+      if repeats.shape.ndims != axis + 1:
+        repeats_shape = shape(repeats)
+        repeats_ndims = rank(repeats)
+        broadcast_shape = concat(
+            [data_shape[:axis + 1 - repeats_ndims], repeats_shape], axis=0)
+        repeats = broadcast_to(repeats, broadcast_shape)
+        repeats.set_shape([None] * (axis + 1))
 
-    # Add a new dimension around each value that needs to be repeated, and
-    # then tile that new dimension to match the maximum number of repetitions.
-    expanded = expand_dims(data, axis + 1)
-    tiled = tile_one_dimension(expanded, axis + 1, max_repeat)
+      # Create a "sequence mask" based on `repeats`, where slices across `axis`
+      # contain one `True` value for each repetition.  E.g., if
+      # `repeats = [3, 1, 2]`, then `mask = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]`.
+      max_repeat = gen_math_ops._max(repeats, _all_dimensions(repeats))
+      max_repeat = gen_math_ops.maximum(
+          ops.convert_to_tensor(0, name="zero", dtype=max_repeat.dtype),
+          max_repeat)
 
-    # Use `boolean_mask` to discard the extra repeated values.  This also
-    # flattens all dimensions up through `axis`.
-    masked = boolean_mask(tiled, mask)
+      mask = sequence_mask(repeats, max_repeat)
 
-    # Reshape the output tensor to add the outer dimensions back.
-    if axis == 0:
-      result = masked
+      # Add a new dimension around each value that needs to be repeated, and
+      # then tile that new dimension to match the maximum number of repetitions.
+      expanded = expand_dims(data, axis + 1)
+      tiled = tile_one_dimension(expanded, axis + 1, max_repeat)
+
+      # Use `boolean_mask` to discard the extra repeated values.  This also
+      # flattens all dimensions up through `axis`.
+      masked = boolean_mask(tiled, mask)
+
+      # Reshape the output tensor to add the outer dimensions back.
+      if axis == 0:
+        result = masked
+      else:
+        repeated_dim_size = gen_math_ops._sum(
+            repeats_original,
+            axis=gen_math_ops._range(0, rank(repeats_original), 1))
+        result_shape = concat(
+            [data_shape[:axis], [repeated_dim_size], data_shape[axis + 1:]],
+            axis=0)
+        result = reshape(masked, result_shape)
+
+      # Preserve shape information.
+      if data.shape.ndims is not None:
+        new_axis_size = 0 if repeats.shape[0] == 0 else None
+        result.set_shape(data.shape[:axis].concatenate(
+            [new_axis_size]).concatenate(data.shape[axis + 1:]))
+
+      return result
+
     else:
-      repeated_dim_size = gen_math_ops._sum(
-          repeats_original,
-          axis=gen_math_ops._range(0, rank(repeats_original), 1))
-      result_shape = concat(
-          [data_shape[:axis], [repeated_dim_size], data_shape[axis + 1:]],
-          axis=0)
-      result = reshape(masked, result_shape)
-
-    # Preserve shape information.
-    if data.shape.ndims is not None:
-      new_axis_size = 0 if repeats.shape[0] == 0 else None
-      result.set_shape(data.shape[:axis].concatenate(
-          [new_axis_size]).concatenate(data.shape[axis + 1:]))
-
-    return result
+      # Non-XLA path implementation
+      # E.g., repeats = [3, 4, 0, 2, 1].
+      # E.g., repeats_scan = [3, 7, 7, 9, 10].
+      repeats_scan = math_ops.cumsum(repeats)
+      # This concat just prepends 0 to handle the case when repeats is empty.
+      # E.g., output_size = [0, 3, 7, 7, 9, 10][-1] = 10.
+      output_size = concat([zeros(1, dtype=repeats_scan.dtype), repeats_scan],
+                           axis=0)[-1]
+      # E.g., output_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].
+      output_indices = math_ops.range(output_size, dtype=repeats.dtype)
+      # E.g., gather_indices = [0, 0, 0, 1, 1, 1, 1, 3, 3, 4].
+      gather_indices = searchsorted(
+          repeats_scan, output_indices, side="right", out_type=repeats.dtype)
+      return gather(data, gather_indices, axis=axis)
 
 
 def tile_one_dimension(data, axis, multiple):

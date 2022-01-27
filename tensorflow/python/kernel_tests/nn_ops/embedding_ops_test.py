@@ -18,7 +18,6 @@ import itertools
 import math
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -558,7 +557,7 @@ class EmbeddingLookupTest(test.TestCase):
           for procs in 1, 2, 3:
             stride = procs * math_ops.range(params.shape[0] // procs)
             split_params = [
-                array_ops.gather(params, stride + p) for p in xrange(procs)
+                array_ops.gather(params, stride + p) for p in range(procs)
             ]
             sharded = embedding_ops.embedding_lookup(split_params, ids)
             self.assertAllEqual(simple, sharded)
@@ -591,7 +590,7 @@ class EmbeddingLookupTest(test.TestCase):
           for procs in 1, 2, 3:
             stride = procs * math_ops.range(params.shape[0] // procs)
             split_params = [
-                array_ops.gather(params, stride + p) for p in xrange(procs)
+                array_ops.gather(params, stride + p) for p in range(procs)
             ]
             sharded = embedding_ops.embedding_lookup(
                 split_params, ids, max_norm=1.0)
@@ -627,7 +626,7 @@ class EmbeddingLookupTest(test.TestCase):
         for procs in 1, 2, 3:
           stride = procs * math_ops.range(params.shape[0] // procs)
           split_params = [
-              array_ops.gather(params, stride + p) for p in xrange(procs)
+              array_ops.gather(params, stride + p) for p in range(procs)
           ]
           sharded = embedding_ops._embedding_lookup_and_transform(
               split_params, ids, max_norm=l2_norm, transform_fn=transform)

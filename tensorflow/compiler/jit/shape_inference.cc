@@ -141,10 +141,7 @@ Status PropagateShapes(Graph* graph,
             }
           }
 
-          Status s;
-          Node* const_node = graph->AddNode(const_def, &s);
-          TF_RETURN_IF_ERROR(s);
-
+          TF_ASSIGN_OR_RETURN(Node * const_node, graph->AddNode(const_def));
           graph->AddControlEdge(var_node, const_node);
           std::vector<const Edge*> out_edges(n->out_edges().begin(),
                                              n->out_edges().end());

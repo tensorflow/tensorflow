@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
@@ -121,7 +120,7 @@ class ShapedBuffer {
   // Set all device memory pointers in the object to null.
   void clear();
 
-  string ToString() const;
+  std::string ToString() const;
 
  protected:
   Shape on_host_shape_;
@@ -193,7 +192,7 @@ class ScopedShapedBuffer : public ShapedBuffer {
   // this ScopedShapedBuffer, without freeing any of the associated memory.
   //
   // It's the caller's job to ensure that the memory contained therein is freed.
-  TF_MUST_USE_RESULT ShapedBuffer release();
+  ABSL_MUST_USE_RESULT ShapedBuffer release();
 
   // Extracts the sub-tree rooted at 'index' and returns a ScopedShapedBuffer
   // that holds ownership of the subtree. Sets the buffers corresponding to the

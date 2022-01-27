@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 
 #include <algorithm>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>
 
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -51,18 +53,47 @@ TEST(Cancellation, SimpleCancel) {
   delete manager;
 }
 
+TEST(Cancellation, StartCancelTriggersAllCallbacks) {
+  bool is_cancelled_1 = false;
+  bool is_cancelled_2 = false;
+  auto manager = std::make_unique<CancellationManager>();
+  auto token_1 = manager->get_cancellation_token();
+  EXPECT_TRUE(manager->RegisterCallbackWithErrorLogging(
+      token_1, [&is_cancelled_1]() { is_cancelled_1 = true; }, "TestCallback"));
+  auto token_2 = manager->get_cancellation_token();
+  EXPECT_TRUE(manager->RegisterCallback(
+      token_2, [&is_cancelled_2]() { is_cancelled_2 = true; }));
+  manager->StartCancel();
+  EXPECT_TRUE(is_cancelled_1);
+  EXPECT_TRUE(is_cancelled_2);
+}
+
+TEST(Cancellation, StartCancelWithStatusTriggersAllCallbacks) {
+  bool is_cancelled_1 = false;
+  bool is_cancelled_2 = false;
+  auto manager = std::make_unique<CancellationManager>();
+  auto token_1 = manager->get_cancellation_token();
+  EXPECT_TRUE(manager->RegisterCallbackWithErrorLogging(
+      token_1, [&is_cancelled_1]() { is_cancelled_1 = true; }, "TestCallback"));
+  auto token_2 = manager->get_cancellation_token();
+  EXPECT_TRUE(manager->RegisterCallback(
+      token_2, [&is_cancelled_2]() { is_cancelled_2 = true; }));
+  manager->StartCancelWithStatus(Status::OK());
+  EXPECT_TRUE(is_cancelled_1);
+  EXPECT_TRUE(is_cancelled_2);
+}
+
 TEST(Cancellation, CancelBeforeRegister) {
-  CancellationManager* manager = new CancellationManager();
+  auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   manager->StartCancel();
   bool registered = manager->RegisterCallback(token, nullptr);
   EXPECT_FALSE(registered);
-  delete manager;
 }
 
 TEST(Cancellation, DeregisterAfterCancel) {
   bool is_cancelled = false;
-  CancellationManager* manager = new CancellationManager();
+  auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(
       token, [&is_cancelled]() { is_cancelled = true; });
@@ -71,12 +102,11 @@ TEST(Cancellation, DeregisterAfterCancel) {
   EXPECT_TRUE(is_cancelled);
   bool deregistered = manager->DeregisterCallback(token);
   EXPECT_FALSE(deregistered);
-  delete manager;
 }
 
 TEST(Cancellation, CancelMultiple) {
   bool is_cancelled_1 = false, is_cancelled_2 = false, is_cancelled_3 = false;
-  CancellationManager* manager = new CancellationManager();
+  auto manager = std::make_unique<CancellationManager>();
   auto token_1 = manager->get_cancellation_token();
   bool registered_1 = manager->RegisterCallback(
       token_1, [&is_cancelled_1]() { is_cancelled_1 = true; });
@@ -96,16 +126,15 @@ TEST(Cancellation, CancelMultiple) {
       token_3, [&is_cancelled_3]() { is_cancelled_3 = true; });
   EXPECT_FALSE(registered_3);
   EXPECT_FALSE(is_cancelled_3);
-  delete manager;
 }
 
 TEST(Cancellation, IsCancelled) {
-  CancellationManager* cm = new CancellationManager();
+  auto cm = std::make_unique<CancellationManager>();
   thread::ThreadPool w(Env::Default(), "test", 4);
   std::vector<Notification> done(8);
   for (size_t i = 0; i < done.size(); ++i) {
     Notification* n = &done[i];
-    w.Schedule([n, cm]() {
+    w.Schedule([n, &cm]() {
       while (!cm->IsCancelled()) {
       }
       ASSERT_FALSE(cm->IsCancelling());
@@ -117,7 +146,6 @@ TEST(Cancellation, IsCancelled) {
   for (size_t i = 0; i < done.size(); ++i) {
     done[i].WaitForNotification();
   }
-  delete cm;
 }
 
 TEST(Cancellation, IsCancelling) {
@@ -146,20 +174,19 @@ TEST(Cancellation, IsCancelling) {
 
 TEST(Cancellation, TryDeregisterWithoutCancel) {
   bool is_cancelled = false;
-  CancellationManager* manager = new CancellationManager();
+  auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(
       token, [&is_cancelled]() { is_cancelled = true; });
   EXPECT_TRUE(registered);
   bool deregistered = manager->TryDeregisterCallback(token);
   EXPECT_TRUE(deregistered);
-  delete manager;
   EXPECT_FALSE(is_cancelled);
 }
 
 TEST(Cancellation, TryDeregisterAfterCancel) {
   bool is_cancelled = false;
-  CancellationManager* manager = new CancellationManager();
+  auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(
       token, [&is_cancelled]() { is_cancelled = true; });
@@ -168,12 +195,11 @@ TEST(Cancellation, TryDeregisterAfterCancel) {
   EXPECT_TRUE(is_cancelled);
   bool deregistered = manager->TryDeregisterCallback(token);
   EXPECT_FALSE(deregistered);
-  delete manager;
 }
 
 TEST(Cancellation, TryDeregisterDuringCancel) {
   Notification cancel_started, finish_callback, cancel_complete;
-  CancellationManager* manager = new CancellationManager();
+  auto manager = std::make_unique<CancellationManager>();
   auto token = manager->get_cancellation_token();
   bool registered = manager->RegisterCallback(token, [&]() {
     cancel_started.Notify();
@@ -193,7 +219,6 @@ TEST(Cancellation, TryDeregisterDuringCancel) {
 
   finish_callback.Notify();
   cancel_complete.WaitForNotification();
-  delete manager;
 }
 
 TEST(Cancellation, Parent_CancelManyChildren) {

@@ -466,7 +466,6 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  Value output;
   if (output_is_qtype) {
     ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
     auto input_lhs_qtype = input_lhs_type.getElementType()
@@ -814,7 +813,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     int32_t block_shape_val =
         rewriter
             .getI32IntegerAttr(
-                block_shape_elems.getValue<IntegerAttr>(i).getInt())
+                block_shape_elems.getValues<IntegerAttr>()[i].getInt())
             .getInt();
     a2_shape[1 + i * 2 + 0] = padded_shape[1 + i] / block_shape_val;
     a2_shape[1 + i * 2 + 1] = block_shape_val;
@@ -883,7 +882,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     int32_t block_shape_val =
         rewriter
             .getI32IntegerAttr(
-                block_shape_elems.getValue<IntegerAttr>(i).getInt())
+                block_shape_elems.getValues<IntegerAttr>()[i].getInt())
             .getInt();
     a4_reshape_shape[i + 1] = padded_shape[i + 1] / block_shape_val;
   }
@@ -1007,7 +1006,7 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
     int block_shape_val =
         rewriter
             .getI32IntegerAttr(
-                block_shape_elems.getValue<IntegerAttr>(i).getInt())
+                block_shape_elems.getValues<IntegerAttr>()[i].getInt())
             .getInt();
     block_num_elems *= block_shape_val;
     block_shape[i] = block_shape_val;
@@ -1166,7 +1165,7 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
     op->emitOpError("ExpandDims: expected single dimension to expand");
     return llvm::None;
   }
-  int32_t dim = dim_elem.getValue<IntegerAttr>({0}).getInt();
+  int32_t dim = dim_elem.getValues<IntegerAttr>()[0].getInt();
   int32_t input_size = input_shape.size();
   SmallVector<int64_t> reshape_dims;
   if (dim >= input_size) {  // add dim at end of tensor
@@ -2251,6 +2250,9 @@ llvm::Optional<Value> convertStridedSliceOp(
     a1_begin[i] = begin[i];
     a1_size[i] = end[i] - begin[i];
 
+    // Shrink axis mask means we know the size is 1.
+    if (shrink_axis_mask & (1 << i)) a1_size[i] = 1;
+
     a2_shape[i * 2 + 0] = a1_size[i] / abs(strides[i]);
     a2_shape[i * 2 + 1] = abs(strides[i]);
 
@@ -2280,8 +2282,12 @@ llvm::Optional<Value> convertStridedSliceOp(
       rewriter.getI64ArrayAttr(a1_begin), rewriter.getI64ArrayAttr(a1_size));
 
   if (all_strides_one) {
-    return reverseNegativeStride(rewriter, op, a1_slice_op.getResult(),
-                                 strides);
+    auto reversed =
+        reverseNegativeStride(rewriter, op, a1_slice_op.getResult(), strides);
+    return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(),
+                                             result_type, reversed,
+                                             rewriter.getI64ArrayAttr(a4_shape))
+        .getResult();
   }
 
   // Step 2: reshape the sliced array
@@ -2477,13 +2483,59 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
   return llvm::None;
 }
 
+template <typename T>
+static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
+                                    Value input, Type input_etype,
+                                    Type reduce_etype,
+                                    ArrayRef<int64_t> input_shape,
+                                    ArrayRef<int64_t> axes) {
+  Location loc = op->getLoc();
+  int64_t input_rank = input_shape.size();
+  llvm::SmallVector<int32_t> perms;
+  llvm::SmallVector<int64_t> reshape_shape;
+  perms.reserve(input_rank);
+  reshape_shape.resize(2, 1);
+
+  // First insert all non-reduction axes.
+  for (int i = 0; i < input_rank; i++) {
+    auto it = std::find(axes.begin(), axes.end(), i);
+    if (it == axes.end()) {
+      perms.push_back(i);
+      reshape_shape[0] *= input_shape[i];
+    }
+  }
+
+  // Then insert all reduction matrices.
+  for (auto axis : axes) {
+    perms.push_back(axis);
+    reshape_shape[1] *= input_shape[axis];
+  }
+
+  Value perms_value =
+      getConstTensor<int32_t>(rewriter, op, perms,
+                              {static_cast<int64_t>(perms.size())})
+          .getValue();
+
+  auto transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, loc, UnrankedTensorType::get(rewriter.getI32Type()), input,
+      perms_value);
+
+  auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, loc, RankedTensorType::get(reshape_shape, input_etype),
+      transpose_op, rewriter.getI64ArrayAttr(reshape_shape));
+
+  return CreateOpAndInfer<T>(rewriter, loc,
+                             UnrankedTensorType::get(reduce_etype), reshape_op,
+                             rewriter.getI64IntegerAttr(1));
+}
+
 // Common function for lowering reduce operations to TOSA ops.
 template <typename T>
 llvm::Optional<Value> convertReduceOpCommon(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims,
-    Type reduce_element_type, bool is_quantized, double input_scale,
-    int64_t input_zp, double output_scale, int64_t output_zp) {
+    Value input_value, ElementsAttr axes_elems, Type reduce_element_type,
+    bool is_quantized, double input_scale, int64_t input_zp,
+    double output_scale, int64_t output_zp) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
@@ -2491,13 +2543,32 @@ llvm::Optional<Value> convertReduceOpCommon(
   ArrayRef<int64_t> input_shape = input_type.getShape();
   ArrayRef<int64_t> output_shape = output_type.getShape();
   auto input_rank = input_shape.size();
-  Value val = input_value;
+  Location loc = op->getLoc();
 
   if (axes_elems.getNumElements() == 0) {
     // No axes means return the original tensor.
     auto identity_op = CreateOpAndInfer<tosa::IdentityOp>(
-        rewriter, op->getLoc(), output_type, val);
-    val = identity_op.getResult();
+        rewriter, loc, output_type, input_value);
+    return identity_op.getResult();
+  }
+
+  // Handle negative axis and guarantee in increasing order.
+  llvm::SmallVector<int64_t> axes;
+  for (auto axis : axes_elems.getValues<IntegerAttr>()) {
+    auto axis_val = axis.getInt();
+    if (axis_val < 0) axis_val += input_rank;
+    axes.push_back(axis_val);
+  }
+
+  // Reduction operations are limited to 4D tensors, restructure to obey this
+  // restriction. We transpose all reduction axis to the RHS, then reshape
+  // such that all reduction and non-reduction values are grouped. This forms a
+  // 2D matrix in all cases.
+  Value val = input_value;
+  if (input_rank > 4) {
+    val = convertGenericReduceOp<T>(rewriter, op, val,
+                                    input_type.getElementType(),
+                                    reduce_element_type, input_shape, axes);
   } else {
     // Reduce along each axis
     SmallVector<int64_t> shape_vec(input_shape.begin(), input_shape.end());
@@ -2506,8 +2577,7 @@ llvm::Optional<Value> convertReduceOpCommon(
       val = buildRescaleToInt32(rewriter, op, val, input_scale, input_zp);
     }
 
-    for (int i = 0; i < axes_elems.getNumElements(); i++) {
-      int64_t axis_val = axes_elems.getValue<IntegerAttr>(i).getInt();
+    for (auto axis_val : axes) {
       if (axis_val < 0) axis_val += input_rank;
       auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
 
@@ -2520,82 +2590,88 @@ llvm::Optional<Value> convertReduceOpCommon(
 
       val = reduce_op.getResult();
     }
-
-    if (is_quantized) {
-      RankedTensorType output_rescale_type =
-          RankedTensorType::get(shape_vec, output_type.getElementType());
-      val = buildRescale(rewriter, op, output_rescale_type, val, output_scale,
-                         0, output_zp, false, true);
-    }
-
-    // Optionally squeeze out the reduced axes.
-    if (!keep_dims) {
-      auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
-          rewriter, op->getLoc(), output_type, val,
-          rewriter.getI64ArrayAttr(output_shape));
-      val = reshape_op.getResult();
-    }
   }
 
-  return val;
+  if (is_quantized) {
+    UnrankedTensorType output_rescale_type =
+        UnrankedTensorType::get(output_type.getElementType());
+    val = buildRescale(rewriter, op, output_rescale_type, val, output_scale, 0,
+                       output_zp, false, true);
+  }
+
+  // Squeeze out the reduced axes.
+  auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
+      rewriter, op->getLoc(), output_type, val,
+      rewriter.getI64ArrayAttr(output_shape));
+  return reshape_op.getResult();
 }
 
 // Lowers ReduceAll to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceAllOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims) {
+llvm::Optional<Value> convertReduceAllOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   return convertReduceOpCommon<tosa::ReduceAllOp>(
-      rewriter, op, output_type, input_value, axes_elems, keep_dims,
+      rewriter, op, output_type, input_value, axes_elems,
       output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
 }
 
 // Lowers ReduceAny to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceAnyOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims) {
+llvm::Optional<Value> convertReduceAnyOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   return convertReduceOpCommon<tosa::ReduceAnyOp>(
-      rewriter, op, output_type, input_value, axes_elems, keep_dims,
+      rewriter, op, output_type, input_value, axes_elems,
       output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
 }
 
 // Lowers ReduceMin to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceMinOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims) {
+llvm::Optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   return convertReduceOpCommon<tosa::ReduceMinOp>(
-      rewriter, op, output_type, input_value, axes_elems, keep_dims,
+      rewriter, op, output_type, input_value, axes_elems,
       output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
 }
 
 // Lowers ReduceMax to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceMaxOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims) {
+llvm::Optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   return convertReduceOpCommon<tosa::ReduceMaxOp>(
-      rewriter, op, output_type, input_value, axes_elems, keep_dims,
+      rewriter, op, output_type, input_value, axes_elems,
       output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
 }
 
 // Lowers ReduceProd to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceProdOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims) {
+llvm::Optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
+                                          Operation* op,
+                                          RankedTensorType output_type,
+                                          Value input_value,
+                                          ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
@@ -2613,14 +2689,16 @@ llvm::Optional<Value> convertReduceProdOp(
   }
 
   return convertReduceOpCommon<tosa::ReduceProdOp>(
-      rewriter, op, output_type, input_value, axes_elems, keep_dims,
+      rewriter, op, output_type, input_value, axes_elems,
       output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
 }
 
 // Lowers ReduceSum to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceSumOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims) {
+llvm::Optional<Value> convertReduceSumOp(PatternRewriter& rewriter,
+                                         Operation* op,
+                                         RankedTensorType output_type,
+                                         Value input_value,
+                                         ElementsAttr axes_elems) {
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
@@ -2662,15 +2740,16 @@ llvm::Optional<Value> convertReduceSumOp(
   }
 
   return convertReduceOpCommon<tosa::ReduceSumOp>(
-      rewriter, op, output_type, input_value, axes_elems, keep_dims,
-      reduce_element_type, input_is_qtype, input_scale, input_zp, output_scale,
-      output_zp);
+      rewriter, op, output_type, input_value, axes_elems, reduce_element_type,
+      input_is_qtype, input_scale, input_zp, output_scale, output_zp);
 }
 
 // Lowers ReduceMean to a sequence of TOSA ops.
-llvm::Optional<Value> convertReduceMeanOp(
-    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
-    Value input_value, ElementsAttr axes_elems, bool keep_dims) {
+llvm::Optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
+                                          Operation* op,
+                                          RankedTensorType output_type,
+                                          Value input_value,
+                                          ElementsAttr axes_elems) {
   // reduce_mean is lowered as followed:
   // op1 = reduce_sum(input)
   // op2 = mul(op1, 1.0 / num_elements_on_reduced_axis)
@@ -2702,7 +2781,7 @@ llvm::Optional<Value> convertReduceMeanOp(
   int64_t input_rank = input_type.getRank();
   int64_t num_elems_on_reduced_axis = 1;
   for (int i = 0; i < axes_elems.getNumElements(); i++) {
-    int64_t axis_val = axes_elems.getValue<IntegerAttr>(i).getInt();
+    int64_t axis_val = axes_elems.getValues<IntegerAttr>()[i].getInt();
     if (axis_val < 0) axis_val += input_rank;
     num_elems_on_reduced_axis *= input_type.getShape()[axis_val];
   }
@@ -2729,9 +2808,8 @@ llvm::Optional<Value> convertReduceMeanOp(
   }
 
   auto val = convertReduceOpCommon<tosa::ReduceSumOp>(
-      rewriter, op, output_type, input_value, axes_elems, keep_dims,
-      reduce_element_type, input_is_qtype, input_scale, input_zp, output_scale,
-      output_zp);
+      rewriter, op, output_type, input_value, axes_elems, reduce_element_type,
+      input_is_qtype, input_scale, input_zp, output_scale, output_zp);
 
   if (!val.hasValue()) return llvm::None;
 

@@ -17,7 +17,6 @@
 import unittest
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -292,7 +291,8 @@ class DynamicPartitionTest(test.TestCase):
   @test_util.run_deprecated_v1
   @test_util.no_xla_auto_jit("xla doesn't raise out-of-range exceptions")
   def testErrorIndexOutOfRange(self):
-    with self.cached_session():
+    # GPU kernels don't throw exceptions.
+    with self.cached_session(use_gpu=False):
       data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                                    [12, 13, 14]])
       indices = constant_op.constant([0, 2, 99, 2, 2])
@@ -322,8 +322,8 @@ class DynamicPartitionTest(test.TestCase):
       data = np.zeros(shape + (5,))
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=7)
-      for i in xrange(2):
-        for j in xrange(3):
+      for i in range(2):
+        for j in range(3):
           bad = np.zeros(shape, dtype=np.int32)
           bad[i, j] = 17
           with self.assertRaisesOpError(

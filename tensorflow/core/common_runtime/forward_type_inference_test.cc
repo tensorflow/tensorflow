@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/forward_type_inference.h"
 
-#include <gmock/gmock.h>
+#include <functional>
+
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -207,8 +208,7 @@ REGISTER_OP("TestMergeOp")
           return t;
         });
 
-TEST(ForwardTypeInferenceTest,
-     BinaryNodeWithUnbalancedPathsFromCommonAncestor) {
+TEST(ForwardTypeInferenceTest, TernaryNodeWithIgnoredInputs) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Scope root = Scope::NewRootScope().ExitOnError();
@@ -244,6 +244,65 @@ TEST(ForwardTypeInferenceTest,
                    .Finalize(root.graph(), &m));
 
   TF_ASSERT_OK(root.ToGraph(graph.get()));
+  TF_ASSERT_OK(Rewrite(&graph));
+
+  for (const auto& node : graph->nodes()) {
+    if (node->name() == "m") {
+      const auto& t = node->def().experimental_type();
+      ASSERT_EQ(t.type_id(), TFT_PRODUCT) << node->def().DebugString();
+      // We want complete type info (ARRAY), not incomplete one (TENSOR).
+      EXPECT_EQ(t.args(0).type_id(), TFT_ARRAY) << node->def().DebugString();
+    }
+  }
+}
+
+TEST(ForwardTypeInferenceTest, BinaryNodeWithUnorderedInputs) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Node* s;
+  TF_ASSERT_OK(NodeBuilder("s", "TestSourceOp", &root.graph()->flib_def())
+                   .Finalize(root.graph(), &s));
+
+  Node* tn;
+  TF_ASSERT_OK(NodeBuilder("tn", "TestTensorUnaryOp", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(s)})
+                   .Finalize(root.graph(), &tn));
+
+  Node* an;
+  TF_ASSERT_OK(NodeBuilder("an", "TestArrayUnaryOp", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(s)})
+                   .Finalize(root.graph(), &an));
+
+  Node* m;
+  // These edges are temporary, and will be updated below.
+  TF_ASSERT_OK(NodeBuilder("m", "TestMergeOp", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(s)})
+                   .Input({NodeBuilder::NodeOut(s)})
+                   .Finalize(root.graph(), &m));
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  // Rewire the inputs of "m", in a way that causes the second edge to appear
+  // first when iterating over the node's in_edges.
+  // Warning: this is highly implementation-specific. Changes to infra code
+  // may break this logic.
+  Node* m_copy = nullptr;
+  Node* tn_copy = nullptr;
+  Node* an_copy = nullptr;
+  for (const auto& node : graph->nodes()) {
+    if (node->name() == "m") {
+      m_copy = node;
+    } else if (node->name() == "tn") {
+      tn_copy = node;
+    } else if (node->name() == "an") {
+      an_copy = node;
+    }
+  }
+  TF_ASSERT_OK(graph->UpdateEdge(an_copy, 0, m_copy, 1));
+  TF_ASSERT_OK(graph->UpdateEdge(tn_copy, 0, m_copy, 0));
+
   TF_ASSERT_OK(Rewrite(&graph));
 
   for (const auto& node : graph->nodes()) {
@@ -327,7 +386,46 @@ TEST(ForwardTypeInferenceTest, BinaryNodeWithCycleInput) {
   // at least once after both its inputs have been resolved, so the graph always
   // has complete type information.
   EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("expected identical input types"));
+              ::testing::HasSubstr("expected compatible input types"));
+}
+
+TEST(WeakForwardTypeInferenceTest, AlwaysSucceeds) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  auto cond = ops::Placeholder(root.WithOpName("cond"), DT_BOOL);
+
+  Node* s;
+  TF_ASSERT_OK(NodeBuilder("s", "TestSourceOp", &root.graph()->flib_def())
+                   .Finalize(root.graph(), &s));
+
+  Node* an;
+  TF_ASSERT_OK(NodeBuilder("an", "TestArrayUnaryOp", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(s)})
+                   .Finalize(root.graph(), &an));
+
+  Node* tn;
+  TF_ASSERT_OK(NodeBuilder("tn", "TestTensorUnaryOp", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(s)})
+                   .Finalize(root.graph(), &tn));
+
+  Node* merge;
+  TF_ASSERT_OK(NodeBuilder("merge", "Merge", &root.graph()->flib_def())
+                   .Input({NodeBuilder::NodeOut(an), NodeBuilder::NodeOut(tn)})
+                   .Finalize(root.graph(), &merge));
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  FunctionLibraryDefinition flib_def(graph->flib_def());
+  GraphOptimizationPassOptions opt_options;
+  SessionOptions session_options;
+  opt_options.session_options = &session_options;
+  opt_options.graph = &graph;
+  opt_options.flib_def = &flib_def;
+  WeakForwardTypeInferencePass pass;
+
+  TF_ASSERT_OK(pass.Run(opt_options));
 }
 
 }  // namespace

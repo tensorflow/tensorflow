@@ -706,74 +706,6 @@ class TrainingTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
 
   @keras_parameterized.run_all_keras_modes
-  def test_that_trainable_disables_updates(self):
-    val_a = np.random.random((10, 4))
-    val_out = np.random.random((10, 4))
-
-    a = layers_module.Input(shape=(4,))
-    layer = layers_module.BatchNormalization(input_shape=(4,))
-    b = layer(a)
-    model = training_module.Model(a, b)
-
-    model.trainable = False
-    if not ops.executing_eagerly_outside_functions():
-      self.assertEmpty(model.updates)
-
-    model.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-    if not ops.executing_eagerly_outside_functions():
-      self.assertEmpty(model.updates)
-
-    x1 = model.predict(val_a)
-    model.train_on_batch(val_a, val_out)
-    x2 = model.predict(val_a)
-    self.assertAllClose(x1, x2, atol=1e-7)
-
-    model.trainable = True
-    model.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-    if not ops.executing_eagerly_outside_functions():
-      self.assertAllGreater(len(model.updates), 0)
-
-    model.train_on_batch(val_a, val_out)
-    x2 = model.predict(val_a)
-    assert np.abs(np.sum(x1 - x2)) > 1e-5
-
-    layer.trainable = False
-    model.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-    if not ops.executing_eagerly_outside_functions():
-      self.assertEmpty(model.updates)
-
-    x1 = model.predict(val_a)
-    model.train_on_batch(val_a, val_out)
-    x2 = model.predict(val_a)
-    self.assertAllClose(x1, x2, atol=1e-7)
-
-  def test_weight_deduplication_in_methods(self):
-    inp = layers_module.Input(shape=(1,))
-    bn = layers_module.BatchNormalization()
-    d = layers_module.Dense(1)
-
-    m0 = training_module.Model(inp, d(bn(inp)))
-    m1 = training_module.Model(inp, d(bn(inp)))
-
-    x0 = m0(inp)
-    x1 = m1(inp)
-    x = layers_module.Add()([x0, x1])
-
-    model = training_module.Model(inp, x)
-    self.assertLen(model.trainable_weights, 4)
-    self.assertLen(model.non_trainable_weights, 2)
-    self.assertLen(model.weights, 6)
-
-  @keras_parameterized.run_all_keras_modes
   def test_weight_deduplication(self):
 
     class WatchingLayer(layers_module.Layer):
@@ -1812,98 +1744,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
     # self.assertLess(score[0], ref_score[0])
 
   @keras_parameterized.run_all_keras_modes
-  def test_temporal_sample_weights(self):
-    num_classes = 5
-    batch_size = 5
-    epochs = 10
-    weighted_class = 3
-    weight = 10.
-    train_samples = 1000
-    test_samples = 1000
-    input_dim = 5
-    timesteps = 3
-    learning_rate = 0.001
-
-    with self.cached_session():
-      model = sequential.Sequential()
-      model.add(
-          layers_module.TimeDistributed(
-              layers_module.Dense(num_classes),
-              input_shape=(timesteps, input_dim)))
-      model.add(layers_module.Activation('softmax'))
-
-      np.random.seed(1337)
-      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-          train_samples=train_samples,
-          test_samples=test_samples,
-          input_shape=(input_dim,),
-          num_classes=num_classes)
-      int_y_test = y_test.copy()
-      int_y_train = y_train.copy()
-      # convert class vectors to binary class matrices
-      y_train = np_utils.to_categorical(y_train, num_classes)
-      y_test = np_utils.to_categorical(y_test, num_classes)
-      test_ids = np.where(int_y_test == np.array(weighted_class))[0]
-
-      sample_weight = np.ones((y_train.shape[0]))
-      sample_weight[int_y_train == weighted_class] = weight
-
-      temporal_x_train = np.reshape(x_train, (len(x_train), 1,
-                                              x_train.shape[1]))
-      temporal_x_train = np.repeat(temporal_x_train, timesteps, axis=1)
-      temporal_x_test = np.reshape(x_test, (len(x_test), 1, x_test.shape[1]))
-      temporal_x_test = np.repeat(temporal_x_test, timesteps, axis=1)
-
-      temporal_y_train = np.reshape(y_train, (len(y_train), 1,
-                                              y_train.shape[1]))
-      temporal_y_train = np.repeat(temporal_y_train, timesteps, axis=1)
-      temporal_y_test = np.reshape(y_test, (len(y_test), 1, y_test.shape[1]))
-      temporal_y_test = np.repeat(temporal_y_test, timesteps, axis=1)
-
-      temporal_sample_weight = np.reshape(sample_weight, (len(sample_weight),
-                                                          1))
-      temporal_sample_weight = np.repeat(
-          temporal_sample_weight, timesteps, axis=1)
-
-      model.compile(
-          RMSPropOptimizer(learning_rate=learning_rate),
-          loss='categorical_crossentropy',
-          metrics=['acc', metrics_module.CategoricalAccuracy()],
-          weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
-          sample_weight_mode='temporal',
-          run_eagerly=testing_utils.should_run_eagerly())
-
-      model.fit(
-          temporal_x_train,
-          temporal_y_train,
-          batch_size=batch_size,
-          epochs=epochs // 3,
-          verbose=0,
-          sample_weight=temporal_sample_weight)
-      model.fit(
-          temporal_x_train,
-          temporal_y_train,
-          batch_size=batch_size,
-          epochs=epochs // 3,
-          verbose=0,
-          sample_weight=temporal_sample_weight,
-          validation_split=0.1)
-
-      model.train_on_batch(
-          temporal_x_train[:batch_size],
-          temporal_y_train[:batch_size],
-          sample_weight=temporal_sample_weight[:batch_size])
-      model.test_on_batch(
-          temporal_x_train[:batch_size],
-          temporal_y_train[:batch_size],
-          sample_weight=temporal_sample_weight[:batch_size])
-      ref_score = model.evaluate(temporal_x_test, temporal_y_test, verbose=0)
-      if not context.executing_eagerly():
-        score = model.evaluate(
-            temporal_x_test[test_ids], temporal_y_test[test_ids], verbose=0)
-        self.assertLess(score[0], ref_score[0])
-
-  @keras_parameterized.run_all_keras_modes
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   def test_fit_with_incorrect_weights(self):
     input_a = layers_module.Input(shape=(3,), name='input_a')
@@ -1927,73 +1767,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
 
     with self.assertRaises(ValueError):
       model.fit([x, x], [y, y], epochs=1, class_weight={'unknown': 1})
-
-  @keras_parameterized.run_all_keras_modes
-  def test_default_sample_weight(self):
-    """Verifies that fit works without having to set sample_weight."""
-    num_classes = 5
-    input_dim = 5
-    timesteps = 3
-    learning_rate = 0.001
-
-    with self.cached_session():
-      model = sequential.Sequential()
-      model.add(
-          layers_module.TimeDistributed(
-              layers_module.Dense(num_classes),
-              input_shape=(timesteps, input_dim)))
-
-      x = np.random.random((10, timesteps, input_dim))
-      y = np.random.random((10, timesteps, num_classes))
-      optimizer = RMSPropOptimizer(learning_rate=learning_rate)
-
-      # sample_weight_mode is a list and mode value is None
-      model.compile(
-          optimizer,
-          loss='mse',
-          sample_weight_mode=[None],
-          run_eagerly=testing_utils.should_run_eagerly())
-      model.fit(x, y, epochs=1, batch_size=10)
-
-      # sample_weight_mode is a list and mode value is `temporal`
-      model.compile(
-          optimizer,
-          loss='mse',
-          sample_weight_mode=['temporal'],
-          run_eagerly=testing_utils.should_run_eagerly())
-      model.fit(x, y, epochs=1, batch_size=10)
-
-      # sample_weight_mode is a dict and mode value is None
-      model.compile(
-          optimizer,
-          loss='mse',
-          sample_weight_mode={'time_distributed': None},
-          run_eagerly=testing_utils.should_run_eagerly())
-      model.fit(x, y, epochs=1, batch_size=10)
-
-      # sample_weight_mode is a dict and mode value is `temporal`
-      model.compile(
-          optimizer,
-          loss='mse',
-          sample_weight_mode={'time_distributed': 'temporal'},
-          run_eagerly=testing_utils.should_run_eagerly())
-      model.fit(x, y, epochs=1, batch_size=10)
-
-      # sample_weight_mode is a not a list/dict and mode value is None
-      model.compile(
-          optimizer,
-          loss='mse',
-          sample_weight_mode=None,
-          run_eagerly=testing_utils.should_run_eagerly())
-      model.fit(x, y, epochs=1, batch_size=10)
-
-      # sample_weight_mode is a not a list/dict and mode value is `temporal`
-      model.compile(
-          optimizer,
-          loss='mse',
-          sample_weight_mode='temporal',
-          run_eagerly=testing_utils.should_run_eagerly())
-      model.fit(x, y, epochs=1, batch_size=10)
 
   def test_sample_weight_tensor(self):
     """Tests that sample weight may be defined as a tensor in the graph."""
@@ -2027,35 +1800,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
 
 @keras_parameterized.run_all_keras_modes
 class MaskingTest(keras_parameterized.TestCase):
-
-  def _get_model(self, input_shape=None):
-    layers = [
-        layers_module.Masking(mask_value=0),
-        layers_module.TimeDistributed(
-            layers_module.Dense(1, kernel_initializer='one'))
-    ]
-    model = testing_utils.get_model_from_layers(layers, input_shape)
-    model.compile(
-        loss='mse',
-        optimizer=RMSPropOptimizer(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly())
-    return model
-
-  @keras_parameterized.run_with_all_model_types
-  def test_masking(self):
-    model = self._get_model(input_shape=(2, 1))
-    x = np.array([[[1], [1]], [[0], [0]]])
-    y = np.array([[[1], [1]], [[1], [1]]])
-    loss = model.train_on_batch(x, y)
-    self.assertEqual(loss, 0)
-
-  @keras_parameterized.run_with_all_model_types(exclude_models='functional')
-  def test_masking_deferred(self):
-    model = self._get_model()
-    x = np.array([[[1], [1]], [[0], [0]]])
-    y = np.array([[[1], [1]], [[1], [1]]])
-    loss = model.train_on_batch(x, y)
-    self.assertEqual(loss, 0)
 
   def test_mask_argument_in_layer(self):
     # Test that the mask argument gets correctly passed to a layer in the
@@ -2235,39 +1979,6 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     inner_model.trainable = True
     inner_model.layers[-1].trainable = False
     self.assertListEqual(outer_model.trainable_weights, [])
-
-  def test_gan_workflow(self):
-    shared_layer = layers_module.BatchNormalization()
-
-    inputs1 = input_layer.Input(10)
-    outputs1 = shared_layer(inputs1)
-    model1 = training_module.Model(inputs1, outputs1)
-    shared_layer.trainable = False
-    model1.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-
-    inputs2 = input_layer.Input(10)
-    outputs2 = shared_layer(inputs2)
-    model2 = training_module.Model(inputs2, outputs2)
-    shared_layer.trainable = True
-    model2.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-
-    x, y = np.ones((10, 10)), np.ones((10, 10))
-
-    out1_0 = model1.predict_on_batch(x)
-    model1.train_on_batch(x, y)
-    out1_1 = model1.predict_on_batch(x)
-    self.assertAllClose(out1_0, out1_1)
-
-    out2_0 = model2.predict_on_batch(x)
-    model2.train_on_batch(x, y)
-    out2_1 = model2.predict_on_batch(x)
-    self.assertNotAllClose(out2_0, out2_1)
 
   def test_toggle_value(self):
     input_0 = layers_module.Input(shape=(1,))
@@ -2936,31 +2647,6 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
             ],
         },
         run_eagerly=testing_utils.should_run_eagerly())
-
-  @keras_parameterized.run_all_keras_modes
-  def test_metrics_masking(self):
-    np.random.seed(1337)
-    model = sequential.Sequential()
-    model.add(layers_module.Masking(mask_value=0, input_shape=(2, 1)))
-    model.add(
-        layers_module.TimeDistributed(
-            layers_module.Dense(1, kernel_initializer='ones')))
-    model.compile(
-        RMSPropOptimizer(learning_rate=0.001),
-        loss='mse',
-        weighted_metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly())
-
-    # verify that masking is applied.
-    x = np.array([[[1], [1]], [[1], [1]], [[0], [0]]])
-    y = np.array([[[1], [1]], [[0], [1]], [[1], [1]]])
-    scores = model.train_on_batch(x, y)
-    self.assertArrayNear(scores, [0.25, 0.75], 0.1)
-
-    # verify that masking is combined with sample weights.
-    w = np.array([3, 2, 4])
-    scores = model.train_on_batch(x, y, sample_weight=w)
-    self.assertArrayNear(scores, [0.3328, 0.8], 0.001)
 
   @keras_parameterized.run_all_keras_modes
   def test_add_metric_with_tensor_on_model(self):
@@ -3707,21 +3393,6 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     y = layer(np.ones((10, 10)))
     self.evaluate(y)
     self.assertEqual(self.evaluate(layer.counter), 1)
-
-  @keras_parameterized.run_with_all_model_types
-  def test_batchnorm_trainable_false(self):
-    bn = layers_module.BatchNormalization()
-    model = testing_utils.get_model_from_layers([bn, layers_module.Dense(1)],
-                                                input_shape=(10,))
-    bn.trainable = False
-    model.compile(
-        'sgd',
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
-    x, y = np.ones((10, 10)), np.ones((10, 1))
-    model.fit(x, y, batch_size=2, epochs=1)
-    self.assertAllEqual(self.evaluate(bn.moving_mean), np.zeros((10,)))
-    self.assertAllEqual(self.evaluate(bn.moving_variance), np.ones((10,)))
 
 
 class TestFunctionTracing(keras_parameterized.TestCase):

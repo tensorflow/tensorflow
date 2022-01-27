@@ -541,6 +541,7 @@ tf_py_test(
         "feature_column_v2_test.py",
     ],
     main = "feature_column_v2_test.py",
+    tags = ["no_oss"],  # Due to the usage of keras component.
     deps = [
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
@@ -601,6 +602,7 @@ tpu_py_test(
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
+    tags = ["no_oss"],  # TODO(b/213215029): Reenable in OSS when the timeout issue is fixed.
     deps = [
         ":tpu_embedding",
         ":tpu_embedding_v2",
@@ -633,6 +635,7 @@ tpu_py_test(
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
+    tags = ["no_oss"],  # TODO(b/213215029): Reenable in OSS when the timeout issue is fixed.
     deps = [
         ":tpu_embedding",
         ":tpu_embedding_v2",

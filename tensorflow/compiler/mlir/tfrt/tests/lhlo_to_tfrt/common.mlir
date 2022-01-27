@@ -49,7 +49,7 @@ func @reinterpret_cast(%lhs: memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2
   // CHECK-NOT: async.execute
   // CHECK-NOT: memref.reinterpret_cast
 
-  %cast = memref.reinterpret_cast %lhs to offset: [0], sizes: [5, 4], strides: [5, 4] : memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2)>> to memref<5x4xf32>
+  %cast = memref.reinterpret_cast %lhs to offset: [0], sizes: [5, 4], strides: [4, 1] : memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2)>> to memref<5x4xf32>
 
   // CHECK: tfrt_gpu.blas.gemm
   "lmhlo_gpu.gemm"(%cast, %rhs, %output) {

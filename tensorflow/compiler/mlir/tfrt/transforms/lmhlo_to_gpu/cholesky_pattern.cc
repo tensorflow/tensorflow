@@ -34,11 +34,12 @@ struct CholeskyRewritePattern
   FailureOr<Value> matchAndRewriteOp(
       lmhlo_gpu::CholeskyOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
+    Location loc = op->getLoc();
     chain = rewriter.create<tfrt::gpu::MemCopyOp>(
-        op.getLoc(), adaptor.output(), adaptor.input(), stream, chain);
+        loc, adaptor.output(), adaptor.input(), stream, chain);
 
-    auto handle =
-        rewriter.create<tfrt::gpu::SolverCreateOp>(op.getLoc(), stream);
+    Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
+    auto handle = rewriter.create<tfrt::gpu::SolverCreateOp>(loc, context);
 
     cublasFillMode_t fill_mode =
         op.is_lower() ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
@@ -51,16 +52,16 @@ struct CholeskyRewritePattern
     int rank = shape.dimensions_size();
     assert(rank >= 2);
     auto n = rewriter.create<tfrt::compiler::ConstantI32Op>(
-        op.getLoc(), shape.dimensions(rank - 1));
+        loc, shape.dimensions(rank - 1));
 
     const auto& dims = shape.dimensions();
     int64_t batch_size = std::accumulate(
         dims.begin(), dims.end() - 2, int64_t{1}, std::multiplies<int64_t>());
     auto batch =
-        rewriter.create<tfrt::compiler::ConstantI32Op>(op.getLoc(), batch_size);
+        rewriter.create<tfrt::compiler::ConstantI32Op>(loc, batch_size);
 
     chain = rewriter.create<tfrt::gpu::SolverPotrfBatchOp>(
-        op.getLoc(), handle, fill_mode, n, data_type, adaptor.output(), n,
+        loc, handle, stream, fill_mode, n, data_type, adaptor.output(), n,
         adaptor.info(), batch, chain);
     rewriter.eraseOp(op);
     return chain;

@@ -68,8 +68,8 @@ builtin.module {
 // CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func @CopyWithWrite(
 // CHECK-SAME:              %[[LHS:.*]]: memref<?xi16>, %[[RHS:.*]]: memref<?xi16>) {
-// CHECK: %[[C0:.*]] = arith.constant 0 : index
-// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
 // CHECK: %[[SIZE:.*]] = memref.dim %[[RHS]], %[[C0]] : memref<?xi16>
 // CHECK: %[[LHS_CASTED:.*]] = memref.reinterpret_cast %[[LHS]] to offset: [0], sizes: [%[[SIZE]]], strides: [%[[C0]]] : memref<?xi16> to memref<?xi16, #[[$MAP0]]>
 // CHECK: %[[RHS_CASTED:.*]] = memref.reinterpret_cast %[[RHS]] to offset: [0], sizes: [%[[SIZE]]], strides: [%[[C1]]] : memref<?xi16> to memref<?xi16, #[[$MAP0]]>
@@ -113,8 +113,8 @@ builtin.module {
 // CHECK: #[[$MAP1:.*]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL:   func @CopyWithMutation(
 // CHECK-SAME:              %[[LHS:.*]]: memref<?xi16>, %[[RHS:.*]]: memref<?xi16>) {
-// CHECK: %[[C0:.*]] = arith.constant 0 : index
-// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
 // CHECK: %[[SIZE:.*]] = memref.dim %[[RHS]], %[[C0]] : memref<?xi16>
 // CHECK: %[[LHS_CASTED:.*]] = memref.reinterpret_cast %[[LHS]] to offset: [0], sizes: [%[[SIZE]]], strides: [%[[C0]]] : memref<?xi16> to memref<?xi16, #[[$MAP0]]>
 // CHECK: %[[LHS_ALLOC:.*]] = memref.alloc(%0) : memref<?xi16>
@@ -135,7 +135,7 @@ builtin.module  {
   func @testCopyAfterLinalg(%arg2: memref<4xi32>, %arg3: memref<4xi32>, %arg4: memref<4xi32>) {
     %0 = memref.alloc() : memref<4xi32>
     linalg.generic {indexing_maps = [#map0, #map0, #map0], iterator_types = ["parallel"]} ins(%arg2, %arg3 : memref<4xi32>, memref<4xi32>) outs(%0 : memref<4xi32>) {
-    ^bb0(%arg5: i32, %arg6: i32, %arg7: i32):  // no predecessors
+    ^bb0(%arg5: i32, %arg6: i32, %arg7: i32):
       %1 = arith.addi %arg5, %arg6 : i32
       linalg.yield %1 : i32
     }
@@ -148,7 +148,7 @@ builtin.module  {
 // CHECK-LABEL:func @testCopyAfterLinalg(
 // CHECK-SAME: %[[ARG0:.*]]: memref<4xi32>, %[[ARG1:.*]]: memref<4xi32>, %[[ARG2:.*]]: memref<4xi32>) {
 // CHECK: linalg.generic {indexing_maps = [#[[$MAP0]], #[[$MAP0]], #[[$MAP0]]], iterator_types = ["parallel"]} ins(%[[ARG0]], %[[ARG1]] : memref<4xi32>, memref<4xi32>) outs(%[[ARG2]] : memref<4xi32>) {
-// CHECK: ^bb0(%[[ARG3:.*]]: i32, %[[ARG4:.*]]: i32, %[[ARG5:.*]]: i32):  // no predecessors
+// CHECK: ^bb0(%[[ARG3:.*]]: i32, %[[ARG4:.*]]: i32, %[[ARG5:.*]]: i32):
 // CHECK:   %[[R1:.*]] = arith.addi %[[ARG3]], %[[ARG4]] : i32
 // CHECK:   linalg.yield %[[R1]] : i32
 // CHECK: }
@@ -164,7 +164,7 @@ builtin.module  {
     %c42 = arith.constant 42 : i32
     %0 = memref.alloc() : memref<4xi32>
     linalg.generic {indexing_maps = [#map0, #map0, #map0], iterator_types = ["parallel"]} ins(%arg2, %arg3 : memref<4xi32>, memref<4xi32>) outs(%0 : memref<4xi32>) {
-    ^bb0(%arg5: i32, %arg6: i32, %arg7: i32):  // no predecessors
+    ^bb0(%arg5: i32, %arg6: i32, %arg7: i32):
       %1 = arith.addi %arg5, %arg6 : i32
       linalg.yield %1 : i32
     }
@@ -179,7 +179,7 @@ builtin.module  {
 // CHECK-SAME: %[[ARG0:.*]]: memref<4xi32>, %[[ARG1:.*]]: memref<4xi32>, %[[ARG2:.*]]: memref<4xi32>) {
 // CHECK: %[[ALLOC:.*]] = memref.alloc() : memref<4xi32>
 // CHECK: linalg.generic {indexing_maps = [#[[$MAP0]], #[[$MAP0]], #[[$MAP0]]], iterator_types = ["parallel"]} ins(%[[ARG0]], %[[ARG1]] : memref<4xi32>, memref<4xi32>) outs(%[[ALLOC]] : memref<4xi32>) {
-// CHECK: ^bb0(%[[ARG3:.*]]: i32, %[[ARG4:.*]]: i32, %[[ARG5:.*]]: i32):  // no predecessors
+// CHECK: ^bb0(%[[ARG3:.*]]: i32, %[[ARG4:.*]]: i32, %[[ARG5:.*]]: i32):
 // CHECK:   %[[R1:.*]] = arith.addi %[[ARG3]], %[[ARG4]] : i32
 // CHECK:   linalg.yield %[[R1]] : i32
 // CHECK: }

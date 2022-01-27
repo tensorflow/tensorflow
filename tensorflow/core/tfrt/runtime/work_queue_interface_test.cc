@@ -125,8 +125,10 @@ TEST(DefaultWorkQueueWrapperTest, IntraOpThreadPool) {
       WrapDefaultWorkQueue(std::move(work_queue), &intra_op_thread_pool);
 
   thread::ThreadPoolInterface* got_intra_op_threadpool;
-  TF_ASSERT_OK(work_queue_wrapper->InitializeRequest(
-      /*request_context_builder=*/nullptr, &got_intra_op_threadpool));
+  auto statusor_queue = work_queue_wrapper->InitializeRequest(
+      /*request_context_builder=*/nullptr, &got_intra_op_threadpool);
+  TF_ASSERT_OK(statusor_queue.status());
+  EXPECT_EQ(statusor_queue.ValueOrDie(), nullptr);
 
   EXPECT_EQ(got_intra_op_threadpool, &intra_op_thread_pool);
 }

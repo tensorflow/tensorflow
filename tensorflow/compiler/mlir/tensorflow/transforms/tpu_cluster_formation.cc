@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -101,7 +100,7 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
       return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
 
     // Remove `name` attribute.
-    attrs.erase(Identifier::get(kNameAttr, metadata_op.getContext()));
+    attrs.erase(StringAttr::get(metadata_op.getContext(), kNameAttr));
 
     auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
                                         std::move(attrs));

@@ -191,7 +191,6 @@ tf_cuda_library(
         "//conditions:default": [
             "//tensorflow/core/distributed_runtime/coordination:coordination_service",
             "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-            "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent_impl",
             "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",

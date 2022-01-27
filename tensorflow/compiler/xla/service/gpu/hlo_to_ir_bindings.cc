@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
@@ -196,8 +195,8 @@ void HloToIrBindings::UnbindAllLocalIrValues() {
   }
 }
 
-string HloToIrBindings::ToString() const {
-  string s = StrCat("** HloToIrBindings **\n");
+std::string HloToIrBindings::ToString() const {
+  std::string s = StrCat("** HloToIrBindings **\n");
   StrAppend(&s, "  is_nested_=", is_nested_, "\n");
   StrAppend(&s,
             "  temp_buffer_base_=", llvm_ir::DumpToString(*temp_buffer_base_),

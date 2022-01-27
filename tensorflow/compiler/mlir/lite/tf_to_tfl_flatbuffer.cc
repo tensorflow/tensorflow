@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -133,7 +134,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
         specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
         /*graph_as_function=*/false, specs.upgrade_legacy,
         /*enable_shape_inference=*/false,
-        /*unconditionally_use_set_output_shapes=*/false, context);
+        /*unconditionally_use_set_output_shapes=*/true, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
@@ -141,7 +142,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
       specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
       /*graph_as_function=*/false, specs.upgrade_legacy,
       /*enable_shape_inference=*/false,
-      /*unconditionally_use_set_output_shapes=*/false, context);
+      /*unconditionally_use_set_output_shapes=*/true, context);
 }
 
 // Applying post-training dynamic range quantization from the old TOCO quantizer
@@ -210,6 +211,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   mlir::PassManager pass_manager(module.getContext());
+  mlir::registerPassManagerCLOptions();
   mlir::applyPassManagerCLOptions(pass_manager);
   pass_manager.addInstrumentation(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
@@ -317,12 +319,14 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
 
   if (saved_model_version == 2) {
     auto module_or = tensorflow::SavedModelObjectGraphToMlirImport(
-        input_filename, tags, exported_names, context);
+        input_filename, tags, exported_names, context,
+        /*unconditionally_use_set_output_shapes=*/true);
     if (!module_or.status().ok()) return module_or.status();
     return module_or.ConsumeValueOrDie();
   } else if (saved_model_version == 1) {
     MLIRImportOptions options;
     options.upgrade_legacy = specs.upgrade_legacy;
+    options.unconditionally_use_set_output_shapes = true;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
         input_filename, tags, exported_names, context, options,
         enable_variable_lifting, saved_model_bundle);

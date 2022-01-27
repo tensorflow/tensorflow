@@ -576,10 +576,16 @@ class StridedSliceChecker(object):
       except (AttributeError, TypeError, ValueError):
         return x
 
+    def casts_to_bool_nparray(x):
+      try:
+        return np.asarray(x).dtype == bool
+      except NotImplementedError:
+        return False
+
     if isinstance(spec, bool) or \
       (isinstance(spec, ops.Tensor) and spec.dtype == dtypes.bool) or \
       (isinstance(spec, np.ndarray) and spec.dtype == bool) or \
-      (isinstance(spec, (list, tuple)) and np.asarray(spec).dtype == bool):
+      (isinstance(spec, (list, tuple)) and casts_to_bool_nparray(spec)):
       tensor = self.test.evaluate(op)
       np_spec = eval_if_tensor(spec)
       self.test.assertAllEqual(self.x_np[np_spec], tensor)
@@ -833,6 +839,30 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker2[mask]
       _ = checker2[ops.convert_to_tensor(mask)]
 
+  def test_int16_indices(self):
+
+    def _int16(i):
+      return constant_op.constant(i, dtype=dtypes.int16)
+
+    for tensor_type in STRIDED_SLICE_TYPES:
+      with self.subTest(tensor_type=tensor_type, use_gpu=True):
+        checker = StridedSliceChecker(
+            self, StridedSliceChecker.REF_TENSOR, tensor_type=tensor_type)
+
+        with self.assertRaises(Exception):
+          _ = checker[::_int16(1), ::_int16(5), ::_int16(2)]
+
+        with self.assertRaises(Exception):
+          _ = checker[_int16(1)::1, :, :]
+
+        with self.assertRaises(Exception):
+          _ = checker[:, _int16(1):_int16(5):-1, :]
+
+        _ = checker[_int16(1):_int16(5):_int16(2), 1:2, :]
+        _ = checker[_int16(1):_int16(5):_int16(2),
+                    _int16(0):_int16(5):_int16(1),
+                    _int16(0):_int16(4):_int16(2)]
+
 
 class StridedSliceShapeTest(test_util.TensorFlowTestCase):
   """Test the shape inference of StridedSliceShapes."""
@@ -1033,6 +1063,9 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase,
   """Test that strided slice's custom gradient produces correct gradients."""
 
   @parameterized.parameters(set((True, context.executing_eagerly())))
+  @test_util.disable_xla(
+      "b/210077724: Auto-clustering with where op isn't supported. Has loose "
+      "output shape bounds")
   def testGradient(self, use_tape):
     with test_util.device(use_gpu=True):
       var = variables.Variable(
@@ -1580,6 +1613,20 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
           dims = constant_op.constant([3, 0], dtype=dtype)
           self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
 
+  def testUnravelIndexIntegerOverflow(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            r"Input dims product is causing integer overflow"):
+          indices = constant_op.constant(-0x100000, dtype=dtype)
+          if dtype == dtypes.int32:
+            value = 0x10000000
+          else:
+            value = 0x7FFFFFFFFFFFFFFF
+          dims = constant_op.constant([value, value], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
 
 class GuaranteeConstOpTest(test_util.TensorFlowTestCase):
 
@@ -1703,6 +1750,21 @@ class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
             range_given=True)
       output_grad = gradient_checker_v2.compute_gradient(f, [input_tensor])
       self.assertAllClose(output_grad[0], np.zeros([1, 4, 4]))
+
+  def testOutOfBoundAxis(self):
+    input_tensor = constant_op.constant([1., 1.])
+    input_min = [0]
+    input_max = [1]
+    q_input, _, _ = array_ops.quantize(input_tensor, 0, 1, dtypes.qint32)
+    error = (errors.InvalidArgumentError, ValueError)
+    with self.assertRaisesRegex(error,
+                                r".*Axis must be less than input dimension.*"):
+      self.evaluate(
+          gen_array_ops.dequantize(
+              input=q_input,
+              min_range=input_min,
+              max_range=input_max,
+              axis=2**31 - 1))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -2160,6 +2222,7 @@ class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (np.ones([0, 4]), 0, 1),
       (np.ones([1, 2]), [2], None),
   )
+  @test_util.with_forward_compatibility_horizons(None, [2052, 2, 7])
   def testRepeat(self, array, repeats, axis):
     array = np.array(array)
 
@@ -2174,6 +2237,66 @@ class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v_np = np.repeat(array, repeats, axis)
     self.assertAllEqual(v_tf, v_np)
     self.assertAllEqual(v_tf_fn, v_np)
+
+
+class RepeatBenchmark(test_lib.Benchmark):
+  """Benchmark the repeat implementation."""
+
+  def run_and_time(self, op, iters=100, warmup_iters=10):
+    self.evaluate(variables.global_variables_initializer())
+    for _ in range(warmup_iters):
+      _ = self.evaluate(op)
+    t0 = time.time()
+    for _ in range(iters):
+      self.evaluate(op)
+    t1 = time.time()
+    self.report_benchmark(iters=iters, wall_time=(t1 - t0) / float(iters))
+
+  def make_variable(self, shape, dtype=dtypes.float32):
+    items = 1
+    for dim in shape:
+      items *= dim
+    var = variables.Variable(
+        array_ops.reshape(math_ops.linspace(1., float(items), items), shape),
+        dtype=dtype)
+    return var
+
+  def run_benchmark(self, shape, max_repeats, axis=None):
+    with session.Session():
+      var = self.make_variable(shape)
+      if axis is None:
+        axis_size = 1
+        for dim in shape:
+          axis_size *= dim
+      else:
+        axis_size = shape[axis]
+      repeats = constant_op.constant(
+          np.random.randint(max_repeats, size=[axis_size]), dtype=dtypes.int64)
+      repeat_op = array_ops.repeat(var, repeats, axis=axis)
+      # Return a scalar to reduce the device-to-host memcopy overhead.
+      repeat_op = repeat_op[(0,) * len(shape)]
+      self.run_and_time(repeat_op)
+
+  def benchmark_repeat_few_1d(self):
+    self.run_benchmark(shape=[1024 * 1024], max_repeats=8, axis=0)
+
+  def benchmark_repeat_many_1d(self):
+    self.run_benchmark(shape=[8 * 1024], max_repeats=1024, axis=0)
+
+  def benchmark_repeat_few_2d_axis0(self):
+    self.run_benchmark(shape=[8, 128 * 1024], max_repeats=8, axis=0)
+
+  def benchmark_repeat_many_2d_axis0(self):
+    self.run_benchmark(shape=[8, 1024], max_repeats=1024, axis=0)
+
+  def benchmark_repeat_many_2d_axis0_big(self):
+    self.run_benchmark(shape=[1024, 32], max_repeats=1024, axis=0)
+
+  def benchmark_repeat_few_2d_axis1(self):
+    self.run_benchmark(shape=[8, 128 * 1024], max_repeats=8, axis=1)
+
+  def benchmark_repeat_many_2d_axis1(self):
+    self.run_benchmark(shape=[8, 1024], max_repeats=1024, axis=1)
 
 
 @test_util.run_all_in_graph_and_eager_modes

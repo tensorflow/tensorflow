@@ -36,9 +36,6 @@ from tensorflow.python.keras.layers import noise
 from tensorflow.python.keras.layers import pooling
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
-from tensorflow.python.keras.layers import wrappers
-from tensorflow.python.keras.layers.normalization import batch_normalization
-from tensorflow.python.keras.layers.normalization import layer_normalization
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.platform import test
 
@@ -118,11 +115,6 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
       ('GaussianNoise', lambda: noise.GaussianNoise(0.5), (2, 2)),
       ('GaussianDropout', lambda: noise.GaussianDropout(0.5), (2, 2)),
       ('AlphaDropout', lambda: noise.AlphaDropout(0.5), (2, 2)),
-      ('BatchNormalization', batch_normalization.BatchNormalization,
-       (2, 2), 1e-2, 1e-2),
-      ('LayerNormalization', layer_normalization.LayerNormalization, (2, 2)),
-      ('LayerNormalizationUnfused',
-       lambda: layer_normalization.LayerNormalization(axis=1), (2, 2, 2)),
       ('MaxPooling2D', pooling.MaxPooling2D, (2, 2, 2, 1)),
       ('AveragePooling2D', pooling.AveragePooling2D, (2, 2, 2, 1)),
       ('GlobalMaxPooling2D', pooling.GlobalMaxPooling2D, (2, 2, 2, 1)),
@@ -133,10 +125,6 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
       ('LSTM', lambda: recurrent.LSTM(units=4), (4, 4, 4)),
       ('GRUV2', lambda: recurrent_v2.GRU(units=4), (4, 4, 4)),
       ('LSTMV2', lambda: recurrent_v2.LSTM(units=4), (4, 4, 4)),
-      ('TimeDistributed', lambda: wrappers.TimeDistributed(core.Dense(2)),
-       (2, 2, 2)),
-      ('Bidirectional',
-       lambda: wrappers.Bidirectional(recurrent.SimpleRNN(units=4)), (2, 2, 2)),
       ('AttentionLayerCausal', lambda: dense_attention.Attention(causal=True), [
           (2, 2, 3), (2, 3, 3), (2, 3, 3)
       ]),

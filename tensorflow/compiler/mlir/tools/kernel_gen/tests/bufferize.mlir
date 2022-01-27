@@ -22,11 +22,11 @@ func @tensor.from_elements(%a : f32) -> f32 {
   // CHECK-DAG: %[[C:.*]] = arith.constant 2.3
   // ALLOC: %[[MEM:.*]] = memref.alloc() : memref<3xf32>
   // ALLOCA: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
   // CHECK: store %[[A]], %[[MEM]][%[[C0]]] : memref<3xf32>
-  // CHECK: %[[C1:.*]] = arith.constant 1 : index
   // CHECK: store %[[B]], %[[MEM]][%[[C1]]] : memref<3xf32>
-  // CHECK: %[[C2:.*]] = arith.constant 2 : index
   // CHECK: store %[[C]], %[[MEM]][%[[C2]]] : memref<3xf32>
   %b = arith.constant 1.2 : f32
   %c = arith.constant 2.3 : f32
@@ -39,7 +39,7 @@ func @tensor.from_elements(%a : f32) -> f32 {
 // CHECK-LABEL: @tensor.generate
 // CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> index
 func @tensor.generate(%arg : tensor<*xf32>) -> index {
-  // CHECK: %[[SIZE:.*]] = rank %[[ARG]] : memref<*xf32>
+  // CHECK: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
   // ALLOC: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) : memref<?xindex>
   // ALLOCA: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
@@ -49,7 +49,7 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
   // CHECK:   scf.yield
   // CHECK: }
-  %size = rank %arg : tensor<*xf32>
+  %size = tensor.rank %arg : tensor<*xf32>
   %tfe = tensor.generate %size {
   ^bb0(%i : index):
     %elem = tensor.dim %arg, %i : tensor<*xf32>
@@ -71,7 +71,7 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[ASSUMING_RESULT]] : memref<?xf32>
   %assuming_result = shape.assuming %witness -> (tensor<?xf32>) {
-    %result = memref.tensor_load %arg : memref<?xf32>
+    %result = bufferization.to_tensor %arg : memref<?xf32>
     shape.assuming_yield %result : tensor<?xf32>
   }
   return %assuming_result : tensor<?xf32>
@@ -249,7 +249,7 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
 // CHECK-SAME: (%[[T:.*]]: memref<1x2x2xf32>)
 func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
   // CHECK: memref.collapse_shape %[[T]] {{.*}} : memref<1x2x2xf32> into memref<4xf32>
-  %result = linalg.tensor_collapse_shape %t [[0, 1, 2]] : tensor<1x2x2xf32> into tensor<4xf32>
+  %result = tensor.collapse_shape %t [[0, 1, 2]] : tensor<1x2x2xf32> into tensor<4xf32>
   return %result : tensor<4xf32>
 }
 
@@ -269,4 +269,10 @@ func @jit_execute(%f : !tf_framework.jit_callable, %arg : tensor<*xf32>)
   // CHECK: return %[[RES]] : memref<*xf32>
   %0 = tf_framework.jit_execute %f(%arg) : tensor<*xf32> -> tensor<*xf32>
   return %0 : tensor<*xf32>
+}
+
+func @dynamic_broadcast_return(%t : tensor<?x?xf32>, %shape : tensor<2xi32>) -> tensor<?x?xf32> {
+  // CHECK: memref.copy
+  %bcast = "mhlo.dynamic_broadcast_in_dim"(%t, %shape) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  return %bcast : tensor<?x?xf32>
 }

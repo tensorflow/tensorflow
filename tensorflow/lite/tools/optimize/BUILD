@@ -400,6 +400,7 @@ tf_cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
+        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -129,6 +129,17 @@ TfLitePadding ConvertPadding(Padding padding) {
       return kTfLitePaddingValid;
   }
   return kTfLitePaddingUnknown;
+}
+
+// Converts the flatbuffer mirror padding enum to what is used at runtime.
+TfLiteMirrorPaddingMode ConvertMirrorPadding(MirrorPadMode padding) {
+  switch (padding) {
+    case MirrorPadMode_REFLECT:
+      return kTfLiteMirrorPaddingReflect;
+    case MirrorPadMode_SYMMETRIC:
+      return kTfLiteMirrorPaddingSymmetric;
+  }
+  return kTfLiteMirrorPaddingUnknown;
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
@@ -331,6 +342,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
 
     case BuiltinOperator_MAX_POOL_2D: {
       return ParsePool(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_MIRROR_PAD: {
+      return ParseMirrorPad(op, error_reporter, allocator, builtin_data);
     }
 
     case BuiltinOperator_MEAN: {
@@ -696,19 +711,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
-    case BuiltinOperator_MIRROR_PAD: {
-      auto params = safe_allocator.Allocate<TfLiteMirrorPaddingParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      const auto* mirror_pad_params = op->builtin_options_as_MirrorPadOptions();
-      if (mirror_pad_params != nullptr) {
-        params->mode =
-            mirror_pad_params->mode() == tflite::MirrorPadMode_REFLECT
-                ? TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingReflect
-                : TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingSymmetric;
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     case BuiltinOperator_UNIQUE: {
       auto params = safe_allocator.Allocate<TfLiteUniqueParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -786,6 +788,17 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_MULTINOMIAL: {
+      auto params = safe_allocator.Allocate<TfLiteRandomParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* multinomial_params =
+              op->builtin_options_as_RandomOptions()) {
+        params->seed = multinomial_params->seed();
+        params->seed2 = multinomial_params->seed2();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     case BuiltinOperator_RANDOM_STANDARD_NORMAL: {
       auto params = safe_allocator.Allocate<TfLiteRandomParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -829,6 +842,15 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_RandomOptions()) {
         params->seed = random_uniform_params->seed();
         params->seed2 = random_uniform_params->seed2();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_GELU: {
+      auto params = safe_allocator.Allocate<TfLiteGeluParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* gelu_params = op->builtin_options_as_GeluOptions()) {
+        params->approximate = gelu_params->approximate();
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -1596,6 +1618,32 @@ TfLiteStatus ParseMaximum(const Operator*, ErrorReporter*,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseMinimum(const Operator*, ErrorReporter*,
                           BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseMirrorPad(const Operator* op, ErrorReporter* error_reporter,
+                            BuiltinDataAllocator* allocator,
+                            void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteMirrorPaddingParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteMirrorPaddingParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const MirrorPadOptions* schema_params =
+      op->builtin_options_as_MirrorPadOptions();
+
+  if (schema_params != nullptr) {
+    params->mode = ConvertMirrorPadding(schema_params->mode());
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
   return kTfLiteOk;
 }
 

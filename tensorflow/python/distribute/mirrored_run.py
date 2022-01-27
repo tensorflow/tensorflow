@@ -33,6 +33,7 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
+from tensorflow.python.util import traceback_utils
 
 
 def _is_gpu_device(device):
@@ -129,6 +130,14 @@ class _RequestedStop(Exception):  # pylint: disable=g-bad-exception-name
   pass
 
 
+def _get_thread_local_configuration_callable():
+  if traceback_utils.is_traceback_filtering_enabled():
+    thread_local_callables = {traceback_utils.enable_traceback_filtering}
+  else:
+    thread_local_callables = {traceback_utils.disable_traceback_filtering}
+  return thread_local_callables
+
+
 def _call_for_each_replica(distribution, fn, args, kwargs):
   """Run `fn` in separate threads, once per replica/worker device.
 
@@ -157,6 +166,8 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
   shared_variable_store = {}
   devices = distribution.extended.worker_devices
 
+  thread_local_callables = _get_thread_local_configuration_callable()
+
   # TODO(isaprykin): Create these threads once instead of during every call.
   threads = []
   for index in range(len(devices)):
@@ -166,7 +177,8 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
                                variable_creator_fn, fn,
                                distribute_utils.caching_scope_local,
                                distribute_utils.select_replica(index, args),
-                               distribute_utils.select_replica(index, kwargs))
+                               distribute_utils.select_replica(index, kwargs),
+                               thread_local_callables)
     threads.append(t)
 
   for t in threads:
@@ -248,7 +260,7 @@ class _MirroredReplicaThread(threading.Thread):
   """A thread that runs() a function on a device."""
 
   def __init__(self, dist, coord, replica_id, devices, variable_creator_fn, fn,
-               caching_scope, args, kwargs):
+               caching_scope, args, kwargs, thread_local_callables=None):
     super(_MirroredReplicaThread, self).__init__()
     self.coord = coord
     self.distribution = dist
@@ -314,6 +326,8 @@ class _MirroredReplicaThread(threading.Thread):
         self._name_scope = ""
       self._name_scope += "replica_%d/" % self.replica_id
 
+    self._thread_local_callables = thread_local_callables
+
   def run(self):
     self.should_run.wait()
     self.should_run.clear()
@@ -321,6 +335,7 @@ class _MirroredReplicaThread(threading.Thread):
       if self.coord.should_stop():
         return
       self.restore_thread_local_summary_state()
+      self.restore_thread_local_callable()
       self.restore_thread_local_eager_context_state()
       if (self.caching_scope_entered is not None and
           self.caching_scope_exited is not None):
@@ -375,6 +390,11 @@ class _MirroredReplicaThread(threading.Thread):
     eager_context_state = ctx._thread_local_data  # pylint: disable=protected-access
     eager_context_state.op_callbacks = self._eager_context_op_callbacks
     # TODO(b/125892694): record other fields in EagerContext.
+
+  def restore_thread_local_callable(self):
+    if self._thread_local_callables:
+      for fn in self._thread_local_callables:
+        fn()
 
 
 class _MirroredReplicaContext(distribute_lib.ReplicaContext):

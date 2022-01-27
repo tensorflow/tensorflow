@@ -1356,11 +1356,11 @@ Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
       return status;
     }
 
+    workers[i].request.mutable_server_def()->set_protocol("grpc");
+    workers[i].request.mutable_server_def()->set_job_name(name.job);
+    workers[i].request.mutable_server_def()->set_task_index(name.task);
     if (!cluster_def.job().empty()) {
       *workers[i].request.mutable_server_def()->mutable_cluster() = cluster_def;
-      workers[i].request.mutable_server_def()->set_protocol("grpc");
-      workers[i].request.mutable_server_def()->set_job_name(name.job);
-      workers[i].request.mutable_server_def()->set_task_index(name.task);
       // Session state is always isolated when ClusterSpec propagation
       // is in use.
       workers[i].request.set_isolate_session_state(true);

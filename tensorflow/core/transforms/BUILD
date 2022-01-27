@@ -5,7 +5,10 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     default_compatible_with = get_compatible_with_cloud(),
-    default_visibility = [":__subpackages__"],
+    default_visibility = [
+        ":__subpackages__",
+        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -25,6 +28,19 @@ gentbl_cc_library(
     td_file = "passes.td",
     deps = [
         "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "DropUnregisteredAttributeOutputShapesPass",
+    srcs = ["drop_unregistered_attribute/output_shapes.cc"],
+    hdrs = ["drop_unregistered_attribute/output_shapes.h"],
+    deps = [
+        ":PassIncGen",
+        "//tensorflow/core/ir:Dialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
 )
 
@@ -76,6 +92,7 @@ cc_library(
     name = "PassRegistration",
     hdrs = ["pass_registration.h"],
     deps = [
+        ":DropUnregisteredAttributeOutputShapesPass",
         ":GraphToFuncPass",
         ":PassIncGen",
         ":TopoSortPass",

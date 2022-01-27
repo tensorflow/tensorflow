@@ -27,8 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -412,7 +410,8 @@ class ShapeInference {
       const Shape& smaller_shape, const Shape& larger_shape,
       absl::Span<const int64_t> broadcast_dimensions);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeInference);
+  ShapeInference(const ShapeInference&) = delete;
+  ShapeInference& operator=(const ShapeInference&) = delete;
 };
 
 }  // namespace xla

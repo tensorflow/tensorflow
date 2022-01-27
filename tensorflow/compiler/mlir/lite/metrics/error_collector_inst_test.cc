@@ -125,7 +125,7 @@ TEST(ErrorCollectorTest, TessFailurePass) {
   MLIRContext context;
   const std::string input_file =
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir";
-  auto input_file_id = Identifier::get(input_file, &context);
+  auto input_file_id = StringAttr::get(&context, input_file);
 
   context.allowUnregisteredDialects();
   context.enableMultithreading();

@@ -133,7 +133,7 @@ struct AssertOpConverter : public OpConversionPattern<AssertOp> {
     if (!ctx) return failure();
     rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.getArg(),
                                             ErrorCode::INVALID_ARGUMENT,
-                                            adaptor.getMsg().getValue());
+                                            adaptor.getMsg());
     return success();
   }
 };

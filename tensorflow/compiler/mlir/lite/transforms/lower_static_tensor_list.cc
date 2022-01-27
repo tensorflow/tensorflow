@@ -35,7 +35,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -546,7 +546,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
       int64_t leading_dim_v = -1;
       ElementsAttr element_attr;
       if (matchPattern(leading_dim, m_Constant(&element_attr))) {
-        leading_dim_v = element_attr.getValue<IntegerAttr>(0).getInt();
+        leading_dim_v = element_attr.getValues<APInt>()[0].getSExtValue();
       }
       SmallVector<int64_t, 4> result_shape = {leading_dim_v};
       ArrayRef<int64_t> shape = element_type.getShape();
@@ -759,9 +759,10 @@ struct ConvertTensorListResize
                             Type result_type, FuncOp branch_func,
                             ConversionPatternRewriter *rewriter) const {
     auto guard = OpBuilder::InsertionGuard(*rewriter);
-    Block *block =
-        rewriter->createBlock(&branch_func.getBody(), branch_func.begin(),
-                              branch_func.getType().getInputs());
+    auto inputs = branch_func.getType().getInputs();
+    Block *block = rewriter->createBlock(
+        &branch_func.getBody(), branch_func.begin(), inputs,
+        SmallVector<Location>(inputs.size(), branch_func.getLoc()));
 
     auto input_shape = block->getArgument(1);
     auto size_diff = block->getArgument(2);
@@ -799,9 +800,10 @@ struct ConvertTensorListResize
     // size, the else branch is executed.
     // Slice the first 'size' rows from the input tensorlist.
     auto guard = OpBuilder::InsertionGuard(*rewriter);
-    Block *block =
-        rewriter->createBlock(&branch_func.getBody(), branch_func.begin(),
-                              branch_func.getType().getInputs());
+    auto inputs = branch_func.getType().getInputs();
+    Block *block = rewriter->createBlock(
+        &branch_func.getBody(), branch_func.begin(), inputs,
+        SmallVector<Location>(inputs.size(), branch_func.getLoc()));
 
     Value scalar_zero = CreateI32SplatConst(loc, rewriter, {}, 0);
     Value vector_one = CreateI32SplatConst(loc, rewriter, {1}, 1);

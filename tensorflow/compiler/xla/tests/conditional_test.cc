@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <random>
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -76,7 +77,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     return CreateFloorComputation(r1s2f32_);
   }
 
-  XlaComputation CreateTupleCeilComputation(const string& computation_name,
+  XlaComputation CreateTupleCeilComputation(const std::string& computation_name,
                                             const Shape& tuple_shape) {
     XlaBuilder builder(computation_name);
     auto tuple = Parameter(&builder, 0, tuple_shape, "tuple");
@@ -98,8 +99,8 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     return CreateTupleCeilComputation("CeilR1", tuple_2_r1s2f32_);
   }
 
-  XlaComputation CreateTupleFloorComputation(const string& computation_name,
-                                             const Shape& tuple_shape) {
+  XlaComputation CreateTupleFloorComputation(
+      const std::string& computation_name, const Shape& tuple_shape) {
     XlaBuilder builder(computation_name);
     auto tuple = Parameter(&builder, 0, tuple_shape, "tuple");
     auto x = GetTupleElement(tuple, 0);
@@ -120,7 +121,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     return CreateTupleFloorComputation("FloorR1", tuple_2_r1s2f32_);
   }
 
-  XlaComputation CreateTupleAddComputation(const string& computation_name,
+  XlaComputation CreateTupleAddComputation(const std::string& computation_name,
                                            const Shape& tuple_shape) {
     XlaBuilder builder(computation_name);
     auto tuple = Parameter(&builder, 0, tuple_shape, "tuple");
@@ -140,7 +141,7 @@ class ConditionalOpTest : public ClientLibraryTestBase {
     return CreateTupleAddComputation("AddR1", tuple_2_r1s2f32_);
   }
 
-  XlaComputation CreateTupleSubComputation(const string& computation_name,
+  XlaComputation CreateTupleSubComputation(const std::string& computation_name,
                                            const Shape& tuple_shape) {
     XlaBuilder builder(computation_name);
     auto tuple = Parameter(&builder, 0, tuple_shape, "tuple");
@@ -195,8 +196,8 @@ XLA_TEST_P(CaseOpTest, Parameters0) {
     SCOPED_TRACE(bi);
     XlaBuilder builder(TestName());
     XlaOp branch_index;
-    auto branch_index_arg = CreateR0Parameter<int32>(bi, 0, "branch_index_arg",
-                                                     &builder, &branch_index);
+    auto branch_index_arg = CreateR0Parameter<int32_t>(
+        bi, 0, "branch_index_arg", &builder, &branch_index);
     auto operand = Tuple(&builder, {});
 
     std::vector<XlaOp> operands(num_branches, operand);
@@ -238,8 +239,8 @@ XLA_TEST_P(CaseOpTest, Parameters1) {
     SCOPED_TRACE(bi);
     XlaBuilder builder(TestName());
     XlaOp branch_index;
-    auto branch_index_arg = CreateR0Parameter<int32>(bi, 0, "branch_index_arg",
-                                                     &builder, &branch_index);
+    auto branch_index_arg = CreateR0Parameter<int32_t>(
+        bi, 0, "branch_index_arg", &builder, &branch_index);
 
     auto make_branch = [&builder, this](int i) {
       auto sb = builder.CreateSubBuilder(absl::StrCat("branch_", i));
@@ -414,7 +415,7 @@ XLA_TEST_P(CaseOpTest, Parameters2Array) {
     XlaBuilder builder(TestName());
     XlaOp branch_index;
     auto branch_index_arg =
-        CreateR0Parameter<int32>(bi, 0, "pred", &builder, &branch_index);
+        CreateR0Parameter<int32_t>(bi, 0, "pred", &builder, &branch_index);
     auto operand1 = ConstantR1<float>(&builder, {24.0f, 56.0f});
     auto operand2 = ConstantR1<float>(&builder, {10.0f, 11.0f});
     auto operands = Tuple(&builder, {operand1, operand2});
@@ -780,9 +781,9 @@ XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
   {
     // Pred is true case.
     std::vector<Literal> args;
-    args.push_back(
-        LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR0<int32>(123),
-                                          LiteralUtil::CreateR0<int32>(-42)}));
+    args.push_back(LiteralUtil::MakeTupleFromSlices(
+        {LiteralUtil::CreateR0<int32_t>(123),
+         LiteralUtil::CreateR0<int32_t>(-42)}));
     args.push_back(LiteralUtil::CreateR0<bool>(true));
     XlaBuilder builder(TestName() + ".main");
     auto p = Parameter(&builder, 0, tuple2, "p0");
@@ -793,9 +794,9 @@ XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
   {
     // Pred is false case.
     std::vector<Literal> args;
-    args.push_back(
-        LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR0<int32>(123),
-                                          LiteralUtil::CreateR0<int32>(-42)}));
+    args.push_back(LiteralUtil::MakeTupleFromSlices(
+        {LiteralUtil::CreateR0<int32_t>(123),
+         LiteralUtil::CreateR0<int32_t>(-42)}));
     args.push_back(LiteralUtil::CreateR0<bool>(false));
     XlaBuilder builder(TestName() + ".main");
     auto p = Parameter(&builder, 0, tuple2, "p0");

@@ -26,9 +26,9 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -419,6 +419,7 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       output_layer_norm_coefficients_, builder_.getStringAttr("TANH"),
       builder_.getF32FloatAttr(10.0), builder_.getF32FloatAttr(0.0),
       builder_.getStringAttr("FULL"),
+      /*asymmetric_quantize_inputs=*/mlir::BoolAttr(),
       /*input_to_input_intermediate=*/mlir::TypeAttr(),
       /*input_to_forget_intermediate=*/mlir::TypeAttr(),
       /*input_to_cell_intermediate=*/mlir::TypeAttr(),
@@ -744,9 +745,12 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       /*input_layer_norm_coefficients=*/none,
       /*forget_layer_norm_coefficients=*/none,
       /*cell_layer_norm_coefficients=*/none,
-      /*output_layer_norm_coefficients=*/none, builder->getStringAttr("TANH"),
-      builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
-      builder->getBoolAttr(time_majored),
+      /*output_layer_norm_coefficients=*/none,
+      /*fused_activation_function*/ builder->getStringAttr("TANH"),
+      /*cell_clip*/ builder->getF32FloatAttr(10.0),
+      /*proj_clip*/ builder->getF32FloatAttr(0.0),
+      /*time_major*/ builder->getBoolAttr(time_majored),
+      /*asymmetric_quantize_inputs=*/mlir::BoolAttr(),
       /*input_to_input_intermediate=*/mlir::TypeAttr(),
       /*input_to_forget_intermediate=*/mlir::TypeAttr(),
       /*input_to_cell_intermediate=*/mlir::TypeAttr(),

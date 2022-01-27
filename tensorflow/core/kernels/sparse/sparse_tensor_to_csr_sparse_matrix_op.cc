@@ -76,10 +76,18 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t total_nnz = values.NumElements();
 
     // Allocate output Tensors.
-    Tensor batch_ptr(cpu_allocator(), DT_INT32, TensorShape({batch_size + 1}));
-    Tensor csr_col_ind(cpu_allocator(), DT_INT32, TensorShape({total_nnz}));
-    Tensor csr_row_ptr(cpu_allocator(), DT_INT32,
-                       TensorShape({(num_rows + 1) * batch_size}));
+    TensorShape batch_ptr_shape;
+    OP_REQUIRES_OK(
+        ctx, TensorShape::BuildTensorShape({batch_size + 1}, &batch_ptr_shape));
+    Tensor batch_ptr(cpu_allocator(), DT_INT32, batch_ptr_shape);
+    TensorShape csr_col_ind_shape;
+    OP_REQUIRES_OK(
+        ctx, TensorShape::BuildTensorShape({total_nnz}, &csr_col_ind_shape));
+    Tensor csr_col_ind(cpu_allocator(), DT_INT32, csr_col_ind_shape);
+    TensorShape csr_row_ind_shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(
+                            {(num_rows + 1) * batch_size}, &csr_row_ind_shape));
+    Tensor csr_row_ptr(cpu_allocator(), DT_INT32, csr_row_ind_shape);
 
     // Fill the row pointers with zeros.
     functor::SetZeroFunctor<CPUDevice, int32> set_zero;

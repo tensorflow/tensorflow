@@ -20,6 +20,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_plugin.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
@@ -5404,6 +5406,155 @@ TEST(NNAPIDelegate, LeakyReluQuantized) {
                                      1.0f, -0.5f, -1.0f,  // Row 2
                                  },
                                  kQuantizedTolerance)));
+}
+}  // namespace
+
+namespace ops {
+namespace builtin {
+TfLiteRegistration* Register_FLOOR();
+}  // namespace builtin
+}  // namespace ops
+
+namespace {
+// The "nnapi-custom-op" is just float32 floor.
+static const char kTestCustomOp[] = "nnapi-custom-op";
+class NnapiTestVendorPlugin : public NnapiDelegateVendorPlugin {
+ public:
+  NnapiTestVendorPlugin() {
+    ValidateNode = DoValidateNode;
+    MapNode = DoMapNode;
+    ConfigureCompilationHints = DoConfigureCompilationHints;
+    ConfigureExecutionHints = DoConfigureExecutionHints;
+  }
+
+  static bool DoValidateNode(const TfLiteContext* context,
+                             const TfLiteRegistration* registration,
+                             const TfLiteNode* node) {
+    if (strcmp(kTestCustomOp, registration->custom_name) != 0) {
+      return false;
+    }
+    if (node->inputs->size != 1 || node->outputs->size != 1) {
+      return false;
+    }
+    if (context->tensors[node->inputs->data[(0)]].type != kTfLiteFloat32 ||
+        context->tensors[node->outputs->data[(0)]].type != kTfLiteFloat32) {
+      return false;
+    }
+    return true;
+  }
+
+  static TfLiteStatus AddFloat32Tensor(const TfLiteContext* context,
+                                       int tensor_index,
+                                       NnapiMappingUtilCInterface* mapping,
+                                       std::vector<uint32_t>* indices,
+                                       ANeuralNetworksModel* model) {
+    int ann_tensor_index = mapping->TfLiteIndexToNnIndex(mapping, tensor_index);
+    if (ann_tensor_index != -1) {
+      indices->push_back(ann_tensor_index);
+      return kTfLiteOk;
+    }
+    // Allocate a new tensor index
+    ann_tensor_index = mapping->AddNewNnTensorIndex(mapping, tensor_index);
+    TfLiteTensor* tensor = &context->tensors[tensor_index];
+    ANeuralNetworksOperandType operand_type{
+        .type = ANEURALNETWORKS_TENSOR_FLOAT32,
+        .dimensionCount = static_cast<uint32_t>(tensor->dims->size),
+        .dimensions = reinterpret_cast<uint32_t*>(tensor->dims->data),
+        .scale = 0.0f,
+        .zeroPoint = 0,
+    };
+    EXPECT_EQ(NnApiImplementation()->ANeuralNetworksModel_addOperand(
+                  model, &operand_type),
+              ANEURALNETWORKS_NO_ERROR);
+    if (tensor->allocation_type == kTfLiteMmapRo) {
+      EXPECT_EQ(NnApiImplementation()->ANeuralNetworksModel_setOperandValue(
+                    model, ann_tensor_index, tensor->data.data, tensor->bytes),
+                ANEURALNETWORKS_NO_ERROR);
+    }
+    indices->push_back(ann_tensor_index);
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus DoMapNode(const TfLiteContext* context,
+                                const TfLiteNode* node, int node_index,
+                                NnapiMappingUtilCInterface* mapping,
+                                ANeuralNetworksModel* model) {
+    std::vector<uint32_t> input_indices;
+    std::vector<uint32_t> output_indices;
+    for (int input_pos = 0; input_pos < node->inputs->size; ++input_pos) {
+      const auto input_index = node->inputs->data[input_pos];
+      EXPECT_EQ(AddFloat32Tensor(context, input_index, mapping, &input_indices,
+                                 model),
+                kTfLiteOk);
+    }
+    for (int output_pos = 0; output_pos < node->outputs->size; ++output_pos) {
+      const auto output_index = node->outputs->data[output_pos];
+      EXPECT_EQ(AddFloat32Tensor(context, output_index, mapping,
+                                 &output_indices, model),
+                kTfLiteOk);
+    }
+    EXPECT_EQ(
+        NnApiImplementation()->ANeuralNetworksModel_addOperation(
+            model, ANEURALNETWORKS_FLOOR,
+            static_cast<uint32_t>(input_indices.size()), input_indices.data(),
+            static_cast<uint32_t>(output_indices.size()),
+            output_indices.data()),
+        ANEURALNETWORKS_NO_ERROR);
+    mapping->AddNnapiToTfliteOpMapping(mapping, node_index);
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus DoConfigureCompilationHints(
+      const char* compilation_hints, ANeuralNetworksCompilation* compilation) {
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus DoConfigureExecutionHints(
+      const char* execution_hints, ANeuralNetworksExecution* execution) {
+    return kTfLiteOk;
+  }
+};
+
+class CustomFloorOpModel : public SingleOpModelWithNNAPI {
+ public:
+  CustomFloorOpModel(const StatefulNnApiDelegate::Options& options,
+                     const TensorData& input, const TensorData& output,
+                     bool allow_fp32_relax_to_fp16 = false)
+      : SingleOpModelWithNNAPI(options) {
+    Init(input, output, allow_fp32_relax_to_fp16);
+  }
+
+  int input() { return input_; }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ protected:
+  int input_;
+  int output_;
+
+ private:
+  // Performs initialization logic shared across all constructors.
+  void Init(const TensorData& input, const TensorData& output,
+            bool allow_fp32_relax_to_fp16 = false) {
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+    SetCustomOp(kTestCustomOp, {}, tflite::ops::builtin::Register_FLOOR);
+    BuildInterpreterWithNNAPI({GetShape(input_)}, allow_fp32_relax_to_fp16);
+  }
+};
+
+TEST(NNAPIDelegate, CustomFloorVendorExtension) {
+  NnapiTestVendorPlugin* vendor_plugin = new NnapiTestVendorPlugin();
+  StatefulNnApiDelegate::Options options;
+  options.accelerator_name = "nnapi-reference";
+  options.vendor_plugin = vendor_plugin;
+
+  CustomFloorOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                       {TensorType_FLOAT32, {1, 2, 2, 1}});
+  m.PopulateTensor<float>(m.input(), {0, 0.2, 1.7, 2.8});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 0.0, 1.0, 2.0}));
+  delete vendor_plugin;
 }
 
 }  // namespace

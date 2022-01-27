@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -30,7 +30,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -79,8 +79,8 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   // Match only when the lower bound is zero and the step is constant.
   // TODO(TPOPP): Requiring constant steps and lower bound simplifies things
   // but isn't necesarilly needed
-  auto lower_bound_op =
-      llvm::dyn_cast<arith::ConstantOp>(scf_for.lowerBound().getDefiningOp());
+  auto lower_bound_op = llvm::dyn_cast<arith::ConstantOp>(
+      scf_for.getLowerBound().getDefiningOp());
   if (!lower_bound_op) {
     return;
   }
@@ -90,7 +90,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   }
 
   auto step_bound_op =
-      llvm::dyn_cast<arith::ConstantOp>(scf_for.step().getDefiningOp());
+      llvm::dyn_cast<arith::ConstantOp>(scf_for.getStep().getDefiningOp());
   if (!step_bound_op) {
     return;
   }
@@ -115,14 +115,14 @@ void SplitSCFForOp(scf::ForOp scf_for) {
       }
       if (i == b.getAffineSymbolExpr(0) - b.getAffineDimExpr(0) &&
           min_op.getDimOperands().front() == iv &&
-          min_op.getSymbolOperands().front() == scf_for.upperBound())
+          min_op.getSymbolOperands().front() == scf_for.getUpperBound())
         continue;
       if (i == b.getAffineDimExpr(0) - b.getAffineDimExpr(1) &&
           min_op.getDimOperands().drop_front().front() == iv &&
-          min_op.getDimOperands().front() == scf_for.upperBound())
+          min_op.getDimOperands().front() == scf_for.getUpperBound())
         continue;
       if (auto idx_op =
-              scf_for.upperBound().getDefiningOp<arith::ConstantIndexOp>()) {
+              scf_for.getUpperBound().getDefiningOp<arith::ConstantIndexOp>()) {
         auto val = idx_op.value();
         if (i == b.getAffineConstantExpr(val) - b.getAffineDimExpr(0) &&
             min_op.getDimOperands().front() == iv)
@@ -147,10 +147,10 @@ void SplitSCFForOp(scf::ForOp scf_for) {
   // Split the loop just before a possible last iteration.
   b.setInsertionPoint(scf_for);
   Value split_point = b.create<arith::SubIOp>(
-      scf_for.upperBound(),
-      b.create<arith::RemUIOp>(
-          b.create<arith::SubIOp>(scf_for.upperBound(), scf_for.lowerBound()),
-          scf_for.step()));
+      scf_for.getUpperBound(),
+      b.create<arith::RemUIOp>(b.create<arith::SubIOp>(scf_for.getUpperBound(),
+                                                       scf_for.getLowerBound()),
+                               scf_for.getStep()));
 
   // New primary loop with relevant min ops replaced with their constant value
   BlockAndValueMapping mapper;
@@ -159,16 +159,17 @@ void SplitSCFForOp(scf::ForOp scf_for) {
 
   new_loop->walk([&](AffineMinOp min_op) {
     if (is_op_of_interest(min_op, new_loop.getInductionVar()))
-      min_op->replaceAllUsesWith(llvm::makeArrayRef(scf_for.step()));
+      min_op->replaceAllUsesWith(llvm::makeArrayRef(scf_for.getStep()));
   });
 
   // Peeled loop iteration (or nothing if perfectly aligned data and step sizes)
   BlockAndValueMapping tail_mapper;
-  tail_mapper.map(scf_for.getRegionIterArgs(), new_loop.results());
+  tail_mapper.map(scf_for.getRegionIterArgs(), new_loop.getResults());
   tail_mapper.map(scf_for.getInductionVar(), split_point);
   auto tail_if = b.create<scf::IfOp>(
       scf_for.getResultTypes(),
-      b.create<arith::CmpIOp>(arith::CmpIPredicate::ult, split_point, scf_for.upperBound()),
+      b.create<arith::CmpIOp>(arith::CmpIPredicate::ult, split_point,
+                              scf_for.getUpperBound()),
       [&](OpBuilder &then_b, Location loc) {
         for (auto &op : *scf_for.getBody()) {
           then_b.clone(op, tail_mapper);
@@ -245,7 +246,7 @@ void SplitSCFForOp(scf::ForOp scf_for) {
     min_op->replaceAllUsesWith(llvm::makeArrayRef(new_min));
   });
 
-  scf_for->replaceAllUsesWith(tail_if.results());
+  scf_for->replaceAllUsesWith(tail_if.getResults());
   scf_for.erase();
 }
 

@@ -38,7 +38,6 @@ from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
-from tensorflow.python.eager import function_cache
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -97,10 +96,7 @@ except ImportError:
 
 
 def total_function_cache(defined):
-  # pylint: disable=protected-access
-  return (set(defined._function_cache.primary)
-          | set(defined._function_cache.arg_relaxed))
-  # pylint: enable=protected-access
+  return defined._list_all_concrete_functions()  # pylint: disable=protected-access
 
 
 def _example_indexed_slices_with_dense_shape():
@@ -209,6 +205,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(AttributeError, 'no attribute'):
       add(c)
 
+  def testVariableMultiFunction(self):
+    @def_function.function
+    def second(dup_var, dup_var_2, some_const):
+      return dup_var + dup_var_2 + some_const
+
+    @def_function.function
+    def first(dup_var, some_const):
+      return second(dup_var, dup_var, some_const)
+
+    my_const = constant_op.constant(1)
+    my_var = variables.Variable(2, dtype=dtypes.int32)
+    self.assertEqual(second(my_var, my_var, my_const).numpy(), 5)
+    self.assertEqual(first(my_var, my_const).numpy(), 5)
+
   @test_util.disable_tfrt('Packed tensor is not supported in tfrt yet.')
   def testPackedVariable(self):
     with ops.device('/cpu:0'):
@@ -283,8 +293,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       z = array_ops.zeros(0)
       v = def_function.function(
           experimental_implements='func')(lambda x, y: x + y + z)
-      a = array_ops.ones((1.0,))
-      b = array_ops.ones((1.0,))
+      a = array_ops.ones((1,))
+      b = array_ops.ones((1,))
       with self.assertRaisesRegex(AssertionError,
                                   'variables are always captured'):
         v(a, b)
@@ -667,15 +677,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    # TODO(b/201533914): Remove this flag.
-    if function_cache.USE_FULL_TRACE_TYPE:
-      expected_error = errors.InvalidArgumentError
-      expected_message = r'could not be represented through the generic tracing'
-    else:
-      expected_error = ValueError
-      expected_message = r'got.*set'
-
-    with self.assertRaisesRegex(expected_error, expected_message):
+    with self.assertRaisesRegex(
+        TypeError,
+        r'could not be represented through the generic tracing'):
       f(set([]))
 
   def testFuncName(self):
@@ -1952,14 +1956,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return 42
 
     def func(foo):
-      del foo
-      return
+      return constant_op.constant([id(foo)])
 
     defined = function.defun(func)
-    defined(Foo())
+    foo_1 = Foo()
+    defined(foo_1)
     self.assertLen(total_function_cache(defined), 1)
 
-    defined(Foo())
+    foo_2 = Foo()
+    defined(foo_2)
     self.assertLen(total_function_cache(defined), 2)
 
   def testCacheTensorDtypeCollision(self):
@@ -3185,10 +3190,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(total_function_cache(defined), 1)
 
   def _total_function_cache_def_func(self, defined):
-    # pylint: disable=protected-access
-    return (set(defined._stateful_fn._function_cache.primary)
-            | set(defined._stateful_fn._function_cache.arg_relaxed))
-    # pylint: enable=protected-access
+    return defined._list_all_concrete_functions()  # pylint: disable=protected-access
 
   def testVariableRetracingOnDtypeChanges(self):
 
@@ -3540,7 +3542,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def g():
       f_concrete(constant_op.constant([1., 2.]))
 
-    with self.assertRaisesRegex(ValueError, 'argument_name'):
+    with self.assertRaisesRegex(ValueError, 'is not compatible with the shape'):
       g()
 
   @test_util.run_in_graph_and_eager_modes

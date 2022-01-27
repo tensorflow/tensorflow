@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
@@ -225,6 +226,12 @@ StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
   int idx_no_scratch = -1;
   for (int i = 0; i < results.size(); i++) {
     if (!results[i].has_failure()) {
+      if (OpDeterminismRequired()) {
+        // When determinism is enabled, choose first working algorithm, and
+        // don't choose a no_scratch algorithm.
+        idx = i;
+        break;
+      }
       if (idx == -1 || compare_run_times(results[i], results[idx])) {
         idx = i;
       }
@@ -258,16 +265,16 @@ StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
                       BestCudnnConvAlgorithmIndices(results));
   VLOG(2) << "fastest algorithm: "
           << proto_utils::FromDurationProto(results[idx].run_time())
-          << " with algo " << results[idx].conv().algorithm()
+          << " with algo " << results[idx].algorithm().algo_id()
           << ", workspace bytes " << results[idx].scratch_bytes();
 
-  se::dnn::AlgorithmConfig result({results[idx].conv().algorithm(),
-                                   results[idx].conv().tensor_ops_enabled()},
-                                  results[idx].scratch_bytes());
+  se::dnn::AlgorithmConfig result(
+      se::dnn::AlgorithmDesc(results[idx].algorithm()),
+      results[idx].scratch_bytes());
+
   if (idx_no_scratch != -1) {
     result.set_algorithm_no_scratch(
-        {results[idx_no_scratch].conv().algorithm(),
-         results[idx_no_scratch].conv().tensor_ops_enabled()});
+        se::dnn::AlgorithmDesc(results[idx_no_scratch].algorithm()));
   }
   return result;
 }

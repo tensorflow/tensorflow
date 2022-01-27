@@ -23,3 +23,12 @@ RUN apt-get install -y --no-install-recommends --allow-downgrades --allow-change
       libcudnn8-dev=8.0.5.39-1+cuda11.1
 RUN rm -f /usr/local/cuda
 RUN ln -s /usr/local/cuda-11.4 /usr/local/cuda
+
+# Install TensorRT.
+RUN apt-get update && \
+    apt-get install -y \
+        libnvinfer-dev=8.0.1-1+cuda11.3 \
+        libnvinfer8=8.0.1-1+cuda11.3 \
+        libnvinfer-plugin-dev=8.0.1-1+cuda11.3 \
+        libnvinfer-plugin8=8.0.1-1+cuda11.3 && \
+    rm -rf /var/lib/apt/lists/*

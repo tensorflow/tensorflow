@@ -538,8 +538,12 @@ renames = {
         'tf.compat.v1.keras.models.LinearModel',
     'tf.keras.models.WideDeepModel':
         'tf.compat.v1.keras.models.WideDeepModel',
+    'tf.keras.utils.DeterministicRandomTestTool':
+        'tf.compat.v1.keras.utils.DeterministicRandomTestTool',
     'tf.keras.utils.track_tf1_style_variables':
         'tf.compat.v1.keras.utils.track_tf1_style_variables',
+    'tf.keras.utils.get_or_create_layer':
+        'tf.compat.v1.keras.utils.get_or_create_layer',
     'tf.layers.AveragePooling1D':
         'tf.compat.v1.layers.AveragePooling1D',
     'tf.layers.AveragePooling2D':

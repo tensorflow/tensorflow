@@ -515,10 +515,10 @@ Node* Arg(Graph* g, int64_t index, DataType type) {
   return ret;
 }
 
-Node* Retval(Graph* g, int64_t index, Node* in) {
+Node* Retval(Graph* g, int64_t index, Node* in, int64_t in_index) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Retval")
-                  .Input(in)
+                  .Input(in, in_index)
                   .Attr("index", index)
                   .Finalize(g, &ret));
   return ret;

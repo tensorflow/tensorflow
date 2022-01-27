@@ -909,10 +909,10 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
         matchPattern(op.paddings(), m_Constant(&paddings))) {
       for (uint64_t i = 0; i < block_rank; i++) {
         int64_t paddings_sum =
-            paddings.getValue({i, 0}).cast<IntegerAttr>().getInt() +
-            paddings.getValue({i, 1}).cast<IntegerAttr>().getInt();
+            paddings.getValues<APInt>()[{i, 0}].getSExtValue() +
+            paddings.getValues<APInt>()[{i, 1}].getSExtValue();
         int64_t block_shape_i =
-            block_shape.getValue({i}).cast<IntegerAttr>().getInt();
+            block_shape.getValues<APInt>()[i].getSExtValue();
         padded_shape[i + 1] = (paddings_sum + input_shape[i + 1]);
         block_shape_ints.push_back(block_shape_i);
       }
@@ -1570,9 +1570,9 @@ struct LowerRollOp : public RewritePattern {
     int input_rank = input_shape.size();
     SmallVector<int32_t, 4> shift_map(input_rank, 0);
     for (int i = 0; i < axis_attr.getNumElements(); ++i) {
-      int32_t axis_i = axis_attr.getValue<int32_t>(i);
+      int32_t axis_i = axis_attr.getValues<int32_t>()[i];
       if (axis_i < 0) axis_i += input_rank;
-      int32_t shift_i = shift_attr.getValue<int32_t>(i);
+      int32_t shift_i = shift_attr.getValues<int32_t>()[i];
       shift_map[axis_i] += shift_i;
     }
 
@@ -1761,6 +1761,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerSquaredDifferenceOpOnRealTensors,
       LowerSquaredDifferenceOpOneComplexTensors,
       LowerTanhGradOp,
+      LowerTruncateDivOp,
       LowerXdivyOp,
       LowerXlog1pyOp,
       LowerXlogyOp>(context);

@@ -111,7 +111,7 @@ StatusOr<StreamPool::Ptr> Backend::BorrowStream(int device_ordinal) {
 }
 
 StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor) {
-  tensorflow::mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   if (!stream_pools_.contains(executor)) {
     stream_pools_.emplace(executor, absl::make_unique<StreamPool>());
   }

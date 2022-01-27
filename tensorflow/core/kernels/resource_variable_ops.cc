@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"
+#include "tensorflow/core/kernels/resource_variable_util.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
@@ -560,12 +561,8 @@ class AssignUpdateVariableOp : public OpKernel {
     // ADD if value's refcount was 1.
     mutex_lock ml(*variable->mu());
     Tensor* var_tensor = variable->tensor();
-    OP_REQUIRES(context, var_tensor->shape().IsSameSize(value.shape()),
-                errors::InvalidArgument("Cannot update variable with shape ",
-                                        var_tensor->shape().DebugString(),
-                                        " using a Tensor with shape ",
-                                        value.shape().DebugString(),
-                                        ", shapes must be equal."));
+    OP_REQUIRES_OK(context, ValidateAssignUpdateVariableOpShapes(
+                                var_tensor->shape(), value.shape()));
     OP_REQUIRES_OK(
         context, PrepareToUpdateVariable<Device, T>(
                      context, var_tensor, variable->copy_on_read_mode.load()));

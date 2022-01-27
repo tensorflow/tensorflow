@@ -435,10 +435,7 @@ class _PastaEditVisitor(ast.NodeVisitor):
       if not isinstance(parent, ast.Call):
         # ast.Call's constructor is really picky about how many arguments it
         # wants, and also, it changed between Py2 and Py3.
-        if six.PY2:
-          new_node = ast.Call(node, [], [], None, None)
-        else:
-          new_node = ast.Call(node, [], [])
+        new_node = ast.Call(node, [], [])
         pasta.ast_utils.replace_child(parent, node, new_node)
         ast.copy_location(new_node, node)
         self.add_log(INFO, node.lineno, node.col_offset,

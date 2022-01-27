@@ -530,11 +530,11 @@ func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
     indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
     iterator_types = ["parallel"]
   } ins(%3 : memref<?xf32>) outs(%9 : memref<?xf32>) {
-  ^bb0(%arg1: f32, %arg2: f32):  // no predecessors
+  ^bb0(%arg1: f32, %arg2: f32):
     %12 = math.abs %arg1 : f32
     linalg.yield %12 : f32
   }
-  %10 = memref.buffer_cast %0 : memref<?xindex>
+  %10 = bufferization.to_memref %0 : memref<?xindex>
   %11 = memref.reshape %9(%10)
       : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
   return %11 : memref<*xf32>

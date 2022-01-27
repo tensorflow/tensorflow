@@ -321,8 +321,8 @@ class CollectiveReplicaLauncher(object):
       return self._collective_keys.get_instance_key(self._group_key,
                                                     self._device)
 
-  def _get_ordering_token(self, communication_hint):
-    if self._use_ordering_token() and communication_hint == 'NCCL':
+  def _get_ordering_token(self):
+    if self._use_ordering_token():
       return self._ordering_token.handle
 
   def can_order_nccl(self):
@@ -348,7 +348,7 @@ class CollectiveReplicaLauncher(object):
     """
     instance_key = self._next_instance_key()
     options = self._options.merge(options)
-    ordering_token = self._get_ordering_token(options.implementation)
+    ordering_token = self._get_ordering_token()
     with ops.device(self._device), \
          self._control_input(control_input):
       return collective_ops.all_reduce_v2(
@@ -374,7 +374,7 @@ class CollectiveReplicaLauncher(object):
     """
     instance_key = self._next_instance_key()
     options = self._options.merge(options)
-    ordering_token = self._get_ordering_token(options.implementation)
+    ordering_token = self._get_ordering_token()
     with ops.device(self._device):
       return collective_ops.all_gather_v2(
           input_tensor,

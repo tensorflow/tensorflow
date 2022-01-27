@@ -620,6 +620,7 @@ py_strict_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:function_spec",
         "@absl_py//absl/logging",
     ],
 )

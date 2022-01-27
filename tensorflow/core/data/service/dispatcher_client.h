@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -97,12 +98,12 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // stored in `workers`.
   Status GetWorkers(std::vector<WorkerInfo>& workers);
 
-  // Returns element spec for the registered dataset.
-  Status GetElementSpec(int64_t dataset_id, std::string& element_spec);
-
   // Returns data service metadata for the registered dataset.
   Status GetDataServiceMetadata(int64_t dataset_id,
                                 DataServiceMetadata& metadata);
+
+  // Returns data service config of the data service cluster.
+  Status GetDataServiceConfig(DataServiceConfig& config);
 
  protected:
   Status EnsureInitialized() override;

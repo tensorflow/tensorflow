@@ -94,6 +94,13 @@ function test_tf_imports() {
 
   RESULT=$?
 
+  # TODO(b/210940071): Debug import order. Ignore returned errors.
+  set +e
+  python -m pip install google-cloud-bigquery
+  $(python -c "from google.cloud.bigquery_v2 import types; import tensorflow")
+  $(python -c "import tensorflow; from google.cloud.bigquery_v2 import types")
+  set -e
+
   popd
   return $RESULT
 }

@@ -18,8 +18,6 @@ import collections
 import functools
 import uuid
 
-import six
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -40,6 +38,7 @@ from tensorflow.python.saved_model import registration
 from tensorflow.python.training.saver import BaseSaverBuilder
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable_base
+from tensorflow.python.training.tracking import resource
 from tensorflow.python.training.tracking import tracking as trackable
 from tensorflow.python.util import compat as compat_util
 from tensorflow.python.util.deprecation import deprecated
@@ -125,7 +124,7 @@ def check_table_dtypes(table, key_dtype, value_dtype):
                     f"{table.value_dtype} but got {value_dtype}.")
 
 
-class LookupInterface(trackable.TrackableResource):
+class LookupInterface(resource.TrackableResource):
   """Represent a lookup table that persists across different steps."""
 
   def __init__(self, key_dtype, value_dtype):
@@ -396,22 +395,15 @@ class StaticHashTable(InitializableLookupTableBase):
       self._track_trackable(value, name)  # pylint:disable=protected-access
 
   @classmethod
-  def _deserialize_from_proto(cls, proto, **unused_kwargs):
+  def _deserialize_from_proto(cls, **kwargs):
 
-    from tensorflow.python.saved_model import load  # pylint: disable=g-import-not-at-top
-
-    class _RestoredStaticHashTable(load._RestoredResource):  # pylint: disable=protected-access
+    class _RestoredStaticHashTable(resource.RestoredResource):  # pylint: disable=protected-access
 
       @classmethod
       def _resource_type(cls):
         return "RestoredStaticHashTable"
 
-      def _add_trackable_child(self, name, value):
-        setattr(self, name, value)
-        if isinstance(value, trackable_base.Trackable):
-          self._track_trackable(value, name)  # pylint:disable=protected-access
-
-    return _RestoredStaticHashTable()
+    return _RestoredStaticHashTable._deserialize_from_proto(**kwargs)  # pylint: disable=protected-access
 
 
 @tf_export(v1=["lookup.StaticHashTable"])
@@ -588,7 +580,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
 
 
 @tf_export("lookup.TextFileIndex")
-class TextFileIndex(object):
+class TextFileIndex:
   """The key and value content to get from each line.
 
   This class defines the key and value used for `tf.lookup.TextFileInitializer`.
@@ -1265,7 +1257,8 @@ class StaticVocabularyTable(LookupInterface):
       initializer: A `TableInitializerBase` object that contains the data used
         to initialize the table. If None, then we only use out-of-vocab buckets.
       num_oov_buckets: Number of buckets to use for out-of-vocabulary keys. Must
-        be greater than zero.
+        be greater than zero. If out-of-vocab buckets are not required, use
+        `StaticHashTable` instead.
       lookup_key_dtype: Data type of keys passed to `lookup`. Defaults to
         `initializer.key_dtype` if `initializer` is specified, otherwise
         `tf.string`. Must be string or integer, and must be castable to
@@ -1284,7 +1277,7 @@ class StaticVocabularyTable(LookupInterface):
         integer or string. Also when initializer.value_dtype != int64.
     """
     if num_oov_buckets <= 0:
-      raise ValueError("`num_oov_buckets` must be > 0.")
+      raise ValueError("`num_oov_buckets` must be > 0; use StaticHashTable.")
     # If a name ends with a '/' it is a "name scope", remove all trailing '/'
     # characters to use as table name.
     if name:
@@ -1495,8 +1488,8 @@ def index_table_from_file(vocabulary_file=None,
     ValueError: If `num_oov_buckets` is negative or `vocab_size` is not greater
       than zero.
   """
-  if vocabulary_file is None or (isinstance(vocabulary_file, six.string_types)
-                                 and not vocabulary_file):
+  if vocabulary_file is None or (isinstance(vocabulary_file, str) and
+                                 not vocabulary_file):
     raise ValueError(
         "`vocabulary_file` must be specified and must not be empty.")
   if num_oov_buckets < 0:
@@ -1706,8 +1699,8 @@ def index_to_string_table_from_file(vocabulary_file,
     ValueError: when `vocabulary_file` is empty.
     ValueError: when `vocab_size` is invalid.
   """
-  if vocabulary_file is None or (isinstance(vocabulary_file, six.string_types)
-                                 and not vocabulary_file):
+  if vocabulary_file is None or (isinstance(vocabulary_file, str) and
+                                 not vocabulary_file):
     raise ValueError(
         "`vocabulary_file` must be specified and must not be empty.")
 

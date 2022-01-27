@@ -76,7 +76,6 @@ def ConvertPlaceholderWithDefault : Pat<(TF_PlaceholderWithDefaultOp $arg), (TF_
 //===----------------------------------------------------------------------===//
 // Op removal patterns.
 //===----------------------------------------------------------------------===//
-def RemoveIdentity : Pat<(TF_IdentityOp $arg), (replaceWithValue $arg)>;
 def RemoveIdentityN : Pat<(TF_IdentityNOp $arg), (replaceWithValue $arg)>;
 
 //===----------------------------------------------------------------------===//

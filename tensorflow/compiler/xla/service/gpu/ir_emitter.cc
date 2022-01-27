@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 
-#include <string>
-#include <unordered_map>
-#include <utility>
-
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/algorithm/container.h"
@@ -30,14 +26,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
@@ -96,57 +89,6 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
       *hlo, GpuElementalIrEmitter(hlo_module_config_, module_, &b_,
                                   GetNestedComputer())
                 .MakeElementGenerator(hlo, operand_to_generator));
-}
-
-Status IrEmitter::EmitConstants(const HloComputation& computation) {
-  for (HloInstruction* instr : computation.instructions()) {
-    if (instr->opcode() != HloOpcode::kConstant) {
-      continue;
-    }
-    Literal& literal = *Cast<HloConstantInstruction>(instr)->mutable_literal();
-    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
-    llvm::ArrayType* global_type =
-        llvm::ArrayType::get(b_.getInt8Ty(), literal.size_bytes());
-    llvm::Constant* initializer =
-        should_emit_initializer
-            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
-            : llvm::ConstantAggregateZero::get(global_type);
-    if (should_emit_initializer) {
-      VLOG(3) << "Emitted initializer for constant with shape "
-              << ShapeUtil::HumanString(literal.shape());
-    }
-
-    // These globals will be looked up by name by GpuExecutable so we need to
-    // give them an external linkage.  Not all of their uses are visible in
-    // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
-    // merely preserves their names (like available_externally), we also need
-    // to ensure that they stick around even if they're "unused".
-    //
-    // We may have to be more clever here in the future if we notice that we're
-    // keeping around too many globals because of their linkage.
-    std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
-
-    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-        global_type, /*isConstant=*/should_emit_initializer,
-        llvm::GlobalValue::ExternalLinkage,
-        /*Initializer=*/initializer, global_name,
-        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/0,
-        /*isExternallyInitialized=*/false);
-    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
-        global_for_const);
-
-    GpuExecutable::ConstantInfo info;
-    info.symbol_name = global_name;
-
-    if (!should_emit_initializer) {
-      auto base = static_cast<const uint8*>(literal.untyped_data());
-      info.content.assign(base, base + literal.size_bytes());
-    }
-    ir_emitter_context_->constants().push_back(std::move(info));
-  }
-  return Status::OK();
 }
 
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
@@ -341,13 +283,14 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 // On Nvidia GPUs, atomicCAS can only operate on 32 bit and 64 bit integers. If
 // the element type of the binary operation is 32 bits or 64 bits, the integer
 // type of the same size is used for the atomicCAS operation. On the other hand,
-// if the element type is smaller than 32 bits, int32 is used for the atomicCAS
-// operation. In this case, atomicCAS reads and writes 32 bit values from
-// the memory, which is larger than the memory size required by the original
-// atomic binary operation. We mask off the last two bits of the output_address
-// and use the result as an address to read the 32 bit values from the memory.
-// This can avoid out of bound memory accesses if tensor buffers are 4 byte
-// aligned and have a size of 4N, an assumption that the runtime can guarantee.
+// if the element type is smaller than 32 bits, int32_t is used for the
+// atomicCAS operation. In this case, atomicCAS reads and writes 32 bit values
+// from the memory, which is larger than the memory size required by the
+// original atomic binary operation. We mask off the last two bits of the
+// output_address and use the result as an address to read the 32 bit values
+// from the memory. This can avoid out of bound memory accesses if tensor
+// buffers are 4 byte aligned and have a size of 4N, an assumption that the
+// runtime can guarantee.
 //
 // The pseudo code is shown below. Variables *_address are pointers to a memory
 // region with a size equal to the size of the atomicCAS operation, with the
@@ -359,7 +302,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //   cas_new_output_address = alloca(atomic_size);
 //   cas_old_output_address = alloca(atomic_size);
 //   if (atomic_size != element_size) {
-//     atomic_address = output_address & ((int64)(-4));
+//     atomic_address = output_address & ((int64_t)(-4));
 //     new_output_address = cas_new_output_address + (output_address & 3);
 //   } else {
 //     atomic_address = output_address;
@@ -608,23 +551,20 @@ Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormInference directly.  It "
       "should be lowered before IR emission to HLO-soup using "
-      "BatchNormRewriter or to a cudnn CustomCall using "
-      "CudnnBatchNormRewriter.");
+      "BatchNormRewriter.");
 }
 
 Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormTraining directly.  It "
       "should be lowered before IR emission to HLO-soup using "
-      "BatchNormRewriter or to a cudnn CustomCall using "
-      "CudnnBatchNormRewriter.");
+      "BatchNormRewriter.");
 }
 
 Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormGrad directly.  It should "
-      "be lowered before IR emission to HLO-soup (using BatchNormRewriter) or "
-      "to a cudnn CustomCall using CudnnBatchNormRewriter.");
+      "be lowered before IR emission to HLO-soup using BatchNormRewriter.");
 }
 
 StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElement(

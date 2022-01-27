@@ -95,6 +95,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality(options);
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return Status::OK();
@@ -102,6 +106,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    return input_->Get(ctx, index, out_tensors);
   }
 
  protected:

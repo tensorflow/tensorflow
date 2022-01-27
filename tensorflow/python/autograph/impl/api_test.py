@@ -54,7 +54,6 @@ from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
-
 global_n = 2
 
 DEFAULT_RECURSIVE = converter.ConversionOptions(recursive=True)
@@ -332,6 +331,7 @@ class ApiTest(test.TestCase):
 
   @test_util.run_v1_only('b/120545219')
   def test_converted_call_functools_partial_kwarg_mutation(self):
+
     def test_fn(x, y, z):
       if x < 0:
         return -x, -y, -z
@@ -550,8 +550,8 @@ class ApiTest(test.TestCase):
         return self.__private
 
     tc = TestClass()
-    with self.assertRaisesRegex(
-        errors.UnsupportedLanguageElementError, 'mangled names'):
+    with self.assertRaisesRegex(errors.UnsupportedLanguageElementError,
+                                'mangled names'):
       api.converted_call(tc.test_method, (), None, options=DEFAULT_RECURSIVE)
 
     # TODO(mdan): Refactor to avoid this use of global state.
@@ -1117,17 +1117,15 @@ class ApiTest(test.TestCase):
   def test_tf_convert_overrides_current_context(self):
 
     def f(expect_converted):
-      self.assertEqual(
-          converter_testing.is_inside_generated_code(), expect_converted)
+      self.assertEqual(converter_testing.is_inside_generated_code(),
+                       expect_converted)
 
     @api.do_not_convert
     def test_fn(ctx, expect_converted):
       return api.tf_convert(f, ctx)(expect_converted)
 
-    test_fn(
-        ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED), True)
-    test_fn(
-        ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED), False)
+    test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED), True)
+    test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED), False)
 
   def test_tf_convert_unspecified_not_converted_by_default(self):
 
@@ -1143,9 +1141,6 @@ class ApiTest(test.TestCase):
     test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED))
 
   def test_tf_convert_allowlisted_method(self):
-
-    if six.PY2:
-      self.skipTest('Test bank not comptible with Python 2.')
 
     class TestClass(object):
 
@@ -1315,6 +1310,7 @@ class ApiTest(test.TestCase):
                                     'AutoGraph did convert this function'):
           test_func(2)
       warning_log_mock.called_once_with('AutoGraph could not transform')
+
 
 if __name__ == '__main__':
   os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '1'

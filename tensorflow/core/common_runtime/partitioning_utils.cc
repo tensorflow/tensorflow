@@ -73,10 +73,10 @@ Status PartitionFunctionGraph(
 }
 
 Status UpdateArgAndRetvalMetadata(
-    Graph* graph, const string& device_type,
-    std::vector<FunctionArgIndex>* arg_indices, std::vector<int>* ret_indices,
+    Graph* graph, std::vector<FunctionArgIndex>* arg_indices,
+    std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
-    std::vector<AllocatorAttributes>* ret_alloc_attrs) {
+    std::vector<AllocatorAttributes>* ret_alloc_attrs, bool ints_on_device) {
   std::vector<std::pair<Node*, FunctionArgIndex>> arg_nodes;
   std::vector<std::pair<Node*, int>> ret_nodes;
   const AttrValue* attr_value;
@@ -126,10 +126,8 @@ Status UpdateArgAndRetvalMetadata(
     if (arg_alloc_attrs != nullptr) {
       AllocatorAttributes alloc_attr;
       DataType type = attr_value->type();
-      MemoryType mtype = (device_type == "TPU" || device_type == "XLA_CPU" ||
-                          device_type == "XLA_GPU")
-                             ? MTypeFromDTypeIntsOnDevice(type)
-                             : MTypeFromDType(type);
+      MemoryType mtype = ints_on_device ? MTypeFromDTypeIntsOnDevice(type)
+                                        : MTypeFromDType(type);
       if (mtype == HOST_MEMORY) {
         alloc_attr.set_on_host(true);
       }
@@ -143,10 +141,8 @@ Status UpdateArgAndRetvalMetadata(
     if (ret_alloc_attrs) {
       AllocatorAttributes alloc_attr;
       DataType type = attr_value->type();
-      MemoryType mtype = (device_type == "TPU" || device_type == "XLA_CPU" ||
-                          device_type == "XLA_GPU")
-                             ? MTypeFromDTypeIntsOnDevice(type)
-                             : MTypeFromDType(type);
+      MemoryType mtype = ints_on_device ? MTypeFromDTypeIntsOnDevice(type)
+                                        : MTypeFromDType(type);
       if (mtype == HOST_MEMORY) {
         alloc_attr.set_on_host(true);
       }

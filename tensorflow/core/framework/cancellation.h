@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -62,6 +64,11 @@ class CancellationManager {
 
   // Run all callbacks associated with this manager.
   void StartCancel();
+
+  // Run all callbacks associated with this manager with a status.
+  // Currently the status is for logging purpose only. See also
+  // CancellationManager::RegisterCallbackWithErrorLogging.
+  void StartCancelWithStatus(const Status& status);
 
   // Returns true iff StartCancel() has been called.
   bool IsCancelled() { return is_cancelled_.load(std::memory_order_acquire); }
@@ -123,6 +130,14 @@ class CancellationManager {
   // hold any mutexes that are required by `callback`.
   bool RegisterCallback(CancellationToken token, CancelCallback callback);
 
+  // Similar to RegisterCallback, but if the cancellation manager starts a
+  // cancellation with an error status, it will log the error status before
+  // invoking the callback. `callback_name` is a human-readable name of the
+  // callback, which will be displayed on the log.
+  bool RegisterCallbackWithErrorLogging(CancellationToken token,
+                                        CancelCallback callback,
+                                        tensorflow::StringPiece callback_name);
+
   // Deregister the callback that, when registered, was associated
   // with the given cancellation token. Returns true iff the callback
   // was deregistered and will not be invoked; otherwise returns false
@@ -147,14 +162,23 @@ class CancellationManager {
   bool IsCancelling();
 
  private:
+  struct CallbackConfiguration {
+    CancelCallback callback;
+    std::string name;
+    bool log_error = false;
+  };
+
   struct State {
     Notification cancelled_notification;
-    gtl::FlatMap<CancellationToken, CancelCallback> callbacks;
+    gtl::FlatMap<CancellationToken, CallbackConfiguration> callbacks;
 
     // If this CancellationManager has any children, this member points to the
     // head of a doubly-linked list of its children.
     CancellationManager* first_child = nullptr;  // Not owned.
   };
+
+  bool RegisterCallbackConfig(CancellationToken token,
+                              CallbackConfiguration config);
 
   bool RegisterChild(CancellationManager* child);
   void DeregisterChild(CancellationManager* child);

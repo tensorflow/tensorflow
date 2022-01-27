@@ -20,7 +20,6 @@ import re
 
 import numpy as np
 from six.moves import queue
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
@@ -281,7 +280,7 @@ class PyFuncTest(PyFuncTestBase):
       x = array_ops.zeros([1000000], dtype=np.float32)
       y = script_ops.py_func(lambda x: x + 1, [x], [dtypes.float32])
       z = script_ops.py_func(lambda x: x * 2, [x], [dtypes.float32])
-      for _ in xrange(100):
+      for _ in range(100):
         sess.run([y[0].op, z[0].op])
 
   def testNoInput(self):
@@ -486,7 +485,7 @@ class PyFuncAndEagerPyFuncTest(PyFuncTestBase):
     gc.collect()
     initial_size = script_ops._py_funcs.size()
 
-    for _ in xrange(1000):
+    for _ in range(1000):
       make_graph()
 
     ops.reset_default_graph()

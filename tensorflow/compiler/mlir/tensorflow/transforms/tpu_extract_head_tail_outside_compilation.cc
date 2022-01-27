@@ -120,6 +120,7 @@ tf_device::LaunchOp CreateLaunchForBlock(OpBuilder* builder, Operation* op,
 bool IsEmbeddingOp(Operation* op) {
   return isa<TF::EnqueueTPUEmbeddingRaggedTensorBatchOp,
              TF::EnqueueTPUEmbeddingSparseTensorBatchOp,
+             TF::EnqueueTPUEmbeddingArbitraryTensorBatchOp,
              TF::RecvTPUEmbeddingActivationsOp,
              TF::SendTPUEmbeddingGradientsOp>(op);
 }

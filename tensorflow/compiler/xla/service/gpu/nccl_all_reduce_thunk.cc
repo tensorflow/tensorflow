@@ -32,6 +32,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
+#if XLA_ENABLE_XCCL
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#endif
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -46,8 +50,7 @@ Status RunAllReduce(const NcclAllReduceConfig& config,
 
   ncclRedOp_t reduce_op = ToNcclReduction(config.reduction_kind);
 
-  cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
-      stream.implementation()->GpuStreamMemberHack());
+  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
   for (size_t i = 0; i < buffers.size(); ++i) {
@@ -67,11 +70,11 @@ Status RunAllReduce(const NcclAllReduceConfig& config,
         "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
         "comm=%p, stream=%p)",
         send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
-        cu_stream);
+        gpu_stream);
 
     XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
                                            element_count, dtype, reduce_op,
-                                           comm, *cu_stream));
+                                           comm, gpu_stream));
   }
   return XLA_CUDA_STATUS(ncclGroupEnd());
 #else   // XLA_ENABLE_XCCL
@@ -357,8 +360,8 @@ Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
 
   ncclRedOp_t reduce_op = ToNcclReduction(config_.reduction_kind);
 
-  cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
-      params.stream->implementation()->GpuStreamMemberHack());
+  se::gpu::GpuStreamHandle gpu_stream =
+      se::gpu::AsGpuStreamValue(params.stream);
 
   int num_participants = 0;
   XLA_CUDA_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
@@ -391,10 +394,10 @@ Status NcclReduceScatterThunk::RunNcclCollective(const ExecuteParams& params,
         "recvcount=%d, "
         "comm=%p, stream=%p)",
         send_buffer, recv_buffer, recv_count, static_cast<const void*>(comm),
-        cu_stream);
+        gpu_stream);
     XLA_CUDA_RETURN_IF_ERROR(ncclReduceScatter(send_buffer, recv_buffer,
                                                recv_count, dtype, reduce_op,
-                                               comm, *cu_stream));
+                                               comm, gpu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 

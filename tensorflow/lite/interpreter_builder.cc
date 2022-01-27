@@ -749,10 +749,12 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
 
   interpreter->reset(new Interpreter(error_reporter_));
-  (*interpreter)->SetNumThreads(num_threads_);
   if (subgraphs->size() > 1) {
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
+
+  // Set num threads after all the subgraphs are added.
+  (*interpreter)->SetNumThreads(num_threads_);
 
   if (preserve_all_tensors_) {
     (*interpreter)->PreserveAllTensorsExperimental();
@@ -776,7 +778,6 @@ TfLiteStatus InterpreterBuilder::operator()(
     if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {
       return cleanup_and_error();
     }
-    // Set num threads
     // Parse inputs/outputs
     modified_subgraph->SetInputs(
         FlatBufferIntArrayToVector(subgraph->inputs()));

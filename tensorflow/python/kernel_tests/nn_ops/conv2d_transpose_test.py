@@ -15,7 +15,6 @@
 """Tests for convolution related functionality in tensorflow.ops.nn."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -57,10 +56,10 @@ class Conv2DTransposeTest(test.TestCase):
         # At the borders, #cells=ceil(kernel_height/2)*kernel_width or
         #                        kernel_height * ceil(kernel_width/2)
 
-        for n in xrange(x_shape[0]):
-          for k in xrange(f_shape[2]):
-            for w in xrange(y_shape[2]):
-              for h in xrange(y_shape[1]):
+        for n in range(x_shape[0]):
+          for k in range(f_shape[2]):
+            for w in range(y_shape[2]):
+              for h in range(y_shape[1]):
                 target = 4 * 3
                 h_in = h > 0 and h < y_shape[1] - 1
                 w_in = w > 0 and w < y_shape[2] - 1
@@ -91,10 +90,10 @@ class Conv2DTransposeTest(test.TestCase):
             x, f, y_shape, strides=strides, padding="SAME")
         value = self.evaluate(output)
 
-        for n in xrange(x_shape[0]):
-          for k in xrange(f_shape[2]):
-            for w in xrange(y_shape[2]):
-              for h in xrange(y_shape[1]):
+        for n in range(x_shape[0]):
+          for k in range(f_shape[2]):
+            for w in range(y_shape[2]):
+              for h in range(y_shape[1]):
                 target = 3
                 # We add a case for locations divisible by the stride.
                 h_in = h % strides[1] == 0 and h > 0 and h < y_shape[1] - 1
@@ -132,10 +131,10 @@ class Conv2DTransposeTest(test.TestCase):
         # The amount of padding added
         pad = 1
 
-        for n in xrange(x_shape[0]):
-          for k in xrange(f_shape[2]):
-            for w in xrange(pad, y_shape[2] - pad):
-              for h in xrange(pad, y_shape[1] - pad):
+        for n in range(x_shape[0]):
+          for k in range(f_shape[2]):
+            for w in range(pad, y_shape[2] - pad):
+              for h in range(pad, y_shape[1] - pad):
                 target = 3
                 # We add a case for locations divisible by the stride.
                 h_in = h % strides[1] == 0 and h > pad and h < y_shape[
@@ -176,7 +175,7 @@ class Conv2DTransposeTest(test.TestCase):
       err = gradient_checker.compute_gradient_error([x, f], [x_shape, f_shape],
                                                     output, y_shape)
     print("conv2d_transpose gradient err = %g " % err)
-    err_tolerance = 0.0005
+    err_tolerance = 0.0006
     self.assertLess(err, err_tolerance)
 
   def testConv2DTransposeSingleStrideNCHW(self):
@@ -201,10 +200,10 @@ class Conv2DTransposeTest(test.TestCase):
             x, f, y_shape, strides=strides, padding="SAME", data_format="NCHW")
 
         value = self.evaluate(output)
-        for n in xrange(x_shape[0]):
-          for k in xrange(f_shape[2]):
-            for w in xrange(y_shape[3]):
-              for h in xrange(y_shape[2]):
+        for n in range(x_shape[0]):
+          for k in range(f_shape[2]):
+            for w in range(y_shape[3]):
+              for h in range(y_shape[2]):
                 target = 4 * 3.0
                 h_in = h > 0 and h < y_shape[2] - 1
                 w_in = w > 0 and w < y_shape[3] - 1
@@ -236,10 +235,10 @@ class Conv2DTransposeTest(test.TestCase):
             x, f, y_shape, strides=strides, padding="SAME", data_format="NCHW")
 
         value = self.evaluate(output)
-        for n in xrange(x_shape[0]):
-          for k in xrange(f_shape[2]):
-            for w in xrange(y_shape[3]):
-              for h in xrange(y_shape[2]):
+        for n in range(x_shape[0]):
+          for k in range(f_shape[2]):
+            for w in range(y_shape[3]):
+              for h in range(y_shape[2]):
                 target = 3.0
                 # We add a case for locations divisible by the stride.
                 h_in = h % strides[2] == 0 and h > 0 and h < y_shape[2] - 1
@@ -274,10 +273,10 @@ class Conv2DTransposeTest(test.TestCase):
         cache_values = np.zeros(y_shape, dtype=np.float32)
         # The amount of padding added
         pad = 1
-        for n in xrange(x_shape[0]):
-          for k in xrange(f_shape[2]):
-            for w in xrange(pad, y_shape[3] - pad):
-              for h in xrange(pad, y_shape[2] - pad):
+        for n in range(x_shape[0]):
+          for k in range(f_shape[2]):
+            for w in range(pad, y_shape[3] - pad):
+              for h in range(pad, y_shape[2] - pad):
                 target = 3.0
                 # We add a case for locations divisible by the stride.
                 h_in = h % strides[2] == 0 and h > pad and h < y_shape[

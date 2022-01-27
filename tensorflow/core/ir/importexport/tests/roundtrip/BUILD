@@ -10,6 +10,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//tensorflow/tools/tfg_graph_transforms/tests",
     ],
 )
 

@@ -25,14 +25,32 @@ package(
 )
 
 cc_library(
+    name = "eager_context",
+    srcs = [
+        "eager_context.cc",
+    ],
+    hdrs = [
+        "eager_context.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/c/eager:c_api",
+    ],
+)
+
+cc_library(
     name = "pywrap_tfe_lib",
     srcs = [
+        "eager_context.cc",
         "pywrap_gradient_exclusions.cc",
         "pywrap_tensor.cc",
         "pywrap_tensor_conversion.cc",
         "pywrap_tfe_src.cc",
     ],
     hdrs = [
+        "eager_context.h",
         "pywrap_gradient_exclusions.h",
         "pywrap_tensor.h",
         "pywrap_tensor_conversion.h",
@@ -118,6 +136,7 @@ cuda_py_test(
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
+        "eager_context.h",
         "pywrap_tensor.h",
         "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
@@ -425,7 +444,9 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
-    tags = ["notsan"],  # TODO(b/183962087)
+    tags = [
+        "notsan",  # TODO(b/183962087)
+    ],
     deps = [
         ":context",
         ":core",
@@ -533,29 +554,15 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "function_trace_type_test",
+    name = "function_cache_test",
     size = "medium",
-    srcs = ["function_trace_type_test.py"],
+    srcs = ["function_cache_test.py"],
     python_version = "PY3",
     deps = [
-        ":function",
-        ":function_trace_type",
+        ":function_cache",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/framework:combinations",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -629,35 +636,39 @@ py_library(
 )
 
 py_library(
-    name = "function_trace_type",
-    srcs = ["function_trace_type.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/types",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
     name = "function_cache",
     srcs = ["function_cache.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        ":function_trace_type",
+        "//tensorflow/core/function/polymorphism:type_dispatch",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
+    ],
+)
+
+py_library(
+    name = "function_spec",
+    srcs = ["function_spec.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_decorator",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -672,6 +683,8 @@ py_library(
         ":execute",
         ":forwardprop_util",
         ":function_cache",
+        ":function_saved_model_utils",
+        ":function_spec",
         ":graph_only_ops",
         ":tape",
         "//tensorflow/python:dtypes",
@@ -687,6 +700,13 @@ py_library(
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
+)
+
+py_library(
+    name = "function_saved_model_utils",
+    srcs = ["function_saved_model_utils.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
 )
 
 pybind_extension(
@@ -794,6 +814,9 @@ cuda_py_test(
     name = "run_eager_op_as_function_test",
     srcs = ["run_eager_op_as_function_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_windows",  # b/207695287
+    ],
     deps = [
         ":benchmarks_test_base",
         ":context",
@@ -947,6 +970,7 @@ py_library(
     deps = [
         ":context",
         ":function",
+        ":function_spec",
         ":lift_to_graph",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",

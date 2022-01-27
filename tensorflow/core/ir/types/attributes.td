@@ -16,16 +16,21 @@ limitations under the License.
 #ifndef TF_TYPE_ATTRIBUTES
 #define TF_TYPE_ATTRIBUTES
 
+include "mlir/IR/SubElementInterfaces.td"
 include "tensorflow/core/ir/types/dialect.td"
 
 // Base class for TFType dialect attributes.
-class TFType_Attr<string name> : AttrDef<TFTypeDialect, name>;
+class TFType_Attr<string name, list<Trait> traits = []>
+    : AttrDef<TFTypeDialect, name, traits>;
 
 //===----------------------------------------------------------------------===//
 // FuncAttr
 //===----------------------------------------------------------------------===//
 
-def TFType_FuncAttr : TFType_Attr<"Func"> {
+def TFType_FuncAttr : TFType_Attr<"Func", [
+    DeclareAttrInterfaceMethods<SubElementAttrInterface,
+        ["replaceImmediateSubAttribute"]>
+  ]> {
   let mnemonic = "func";
   let summary = "Models the `AttrValue.value.func` proto attribute value as a "
     "pair of SymbolRef and DictionaryAttr";
@@ -39,7 +44,11 @@ def TFType_FuncAttr : TFType_Attr<"Func"> {
 
     where the first element is the `SymbolRefAttr` and the second element is the
     `DictionaryAttr`.
-    }];
+
+    So that the symbol reference and any symbol references nested in the
+    `DictionaryAttr` are visible to symbol tables, this attribute implements the
+    `SubElementAttrInterface`.
+  }];
 
   let parameters = (ins
     "SymbolRefAttr":$name,
@@ -69,6 +78,12 @@ def TFType_PlaceholderAttr : TFType_Attr<"Placeholder"> {
   );
 }
 
+def TFGraph_TypeOrPlaceholder
+    : Attr<Or<[TypeAttr.predicate, TFType_PlaceholderAttr.predicate]>,
+          "a type or placeholder attribute"> {
+  let returnType = "::mlir::Attribute";
+  let convertFromStorage = "$_self";
+}
 
 //===----------------------------------------------------------------------===//
 // ShapeAttr
@@ -116,6 +131,9 @@ def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
   }];
 }
 
+// An array of TF shapes.
+def TFGraph_ShapesAttr
+    : TypedArrayAttrBase<TFType_ShapeAttrDef, "An array of shapes.">;
 
 //===----------------------------------------------------------------------===//
 // VersionAttr

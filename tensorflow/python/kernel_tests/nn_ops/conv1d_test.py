@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests for convolution related functionality in tensorflow.ops.nn."""
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -101,9 +100,9 @@ class Conv1DTest(test.TestCase):
       # The amount of padding added
       pad = 1
 
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[1]):
-          for w in xrange(pad, y_shape[1] - pad):
+      for n in range(x_shape[0]):
+        for k in range(f_shape[1]):
+          for w in range(pad, y_shape[1] - pad):
             target = 3.0
             # We add a case for locations divisible by the stride.
             w_in = w % stride == 0 and w > pad and w < y_shape[1] - 1 - pad
