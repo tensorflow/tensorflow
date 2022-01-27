@@ -13,8 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-"""Contains the normalization layer classes and their functional aliases.
-"""
+"""Contains the normalization layer classes and their functional aliases."""
 
 from tensorflow.python.util import lazy_loader
 
