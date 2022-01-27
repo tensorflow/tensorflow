@@ -340,6 +340,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/util:overflow",
+        "//tensorflow/core/platform:statusor",
     ] + tf_protos_grappler(),
 )
 
