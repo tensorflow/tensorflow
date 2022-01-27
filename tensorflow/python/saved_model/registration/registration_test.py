@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Trackable class registration tests.
+"""Tests the registration functions.
 
-For integrated tests, see registration_saving_test.py.
+For integration tests that use save and load functions, see
+registration_saving_test.py.
 """
 
 from absl.testing import parameterized

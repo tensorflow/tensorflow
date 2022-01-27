@@ -15,6 +15,9 @@
 """Serialization Registration for SavedModel.
 
 revived_types registration will be migrated to this infrastructure.
+
+See the Advanced saving section in go/savedmodel-configurability.
+This API is approved for TF internal use only.
 """
 import collections
 import re
@@ -114,6 +117,8 @@ class _PredicateRegistry(object):
       raise LookupError(f"The {self.name} registry does not have name "
                         f"'{registered_name}' registered.")
 
+  def get_registrations(self):
+    return self._registered_predicates
 
 _class_registry = _PredicateRegistry("serializable class")
 _saver_registry = _PredicateRegistry("checkpoint saver")
