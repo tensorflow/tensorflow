@@ -38,8 +38,7 @@ class SparseSplitOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(input_axis.shape()),
                     errors::InvalidArgument(
                         "Input axis should be a scalar but received shape ",
-                        input_axis.shape().DebugString()),
-                    done);
+                        input_axis.shape().DebugString()));
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices.shape()),
                 errors::InvalidArgument(
                     "Input indices should be a matrix but received shape ",
