@@ -340,6 +340,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/util:overflow",
+        "//tensorflow/core/platform:statusor",
     ] + tf_protos_grappler(),
 )
 
@@ -354,6 +355,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
     ],
 )
 

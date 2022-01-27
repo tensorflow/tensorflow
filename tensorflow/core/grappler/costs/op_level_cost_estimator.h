@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/op_context.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
