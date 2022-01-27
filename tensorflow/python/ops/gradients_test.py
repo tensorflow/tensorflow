@@ -1123,7 +1123,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testCustomGradientClass(self):
 
-    class Model(object):
+    class Model:
 
       @custom_gradient.custom_gradient
       def Multiply(self, x1, x2):

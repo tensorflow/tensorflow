@@ -56,7 +56,7 @@ T ConstAttrToTypeAttr(ElementsAttr value_attr) {
   if (T type_attr = value_attr.dyn_cast<T>()) {
     return type_attr;
   } else if (auto v = value_attr.dyn_cast<SplatElementsAttr>()) {
-    return v.getSplatValue().dyn_cast<T>();
+    return v.getSplatValue<Attribute>().dyn_cast<T>();
   }
   return T(nullptr);
 }
@@ -101,7 +101,7 @@ struct ConstOpConversion : public mlir::OpConversionPattern<TF::ConstOp> {
       : OpConversionPattern<TF::ConstOp>(context) {}
 
   LogicalResult matchAndRewrite(
-      TF::ConstOp op, ArrayRef<Value> operands,
+      TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     if (isIntScalar(op.getType(), 64)) {
       return ReplaceConst<tfrt::compiler::ConstantI64Op>(op, rewriter,
@@ -121,9 +121,10 @@ struct ReturnOpConversion : public mlir::OpConversionPattern<mlir::ReturnOp> {
       : OpConversionPattern<mlir::ReturnOp>(context) {}
 
   LogicalResult matchAndRewrite(
-      mlir::ReturnOp op, ArrayRef<Value> operands,
+      mlir::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<tfrt::compiler::ReturnOp>(op, operands);
+    rewriter.replaceOpWithNewOp<tfrt::compiler::ReturnOp>(
+        op, adaptor.getOperands());
     return success();
   }
 };
@@ -249,7 +250,8 @@ class TFToTFRTDataRewritePass
     mlir::OwningRewritePatternList patterns(&getContext());
     patterns.insert<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
                     ConstOpConversion, ReturnOpConversion>(context);
-    mlir::populateFuncOpTypeConversionPattern(patterns, data_converter);
+    mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
+        patterns, data_converter);
 
     auto result =
         mlir::applyPartialConversion(module, target, std::move(patterns));

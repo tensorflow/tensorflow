@@ -889,7 +889,8 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
 
     ResourceHandle resource_handle =
         MakeResourceHandle<CollectiveGroupResource>(
-            c, "collective_op_group", absl::StrFormat("%d", group_key));
+            c, "collective_op_group",
+            absl::StrFormat("%d:r%04d", group_key, rank));
 
     Tensor* output_handle = nullptr;
     OP_REQUIRES_OK_ASYNC(

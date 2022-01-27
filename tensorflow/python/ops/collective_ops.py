@@ -77,7 +77,8 @@ def all_reduce_v2(t,
                   communication_hint='auto',
                   timeout=0,
                   ordering_token=None,
-                  max_subdivs_per_device=-1):
+                  max_subdivs_per_device=-1,
+                  name=None):
   """Reduces tensors collectively, across devices.
 
   Args:
@@ -97,20 +98,26 @@ def all_reduce_v2(t,
     timeout: a float. If set to a non zero, set a completion timeout to detect
       staleness.  If the timer goes off, a DeadlineExceededError is raised.  The
       timeout value in seconds. This feature is experimental.
-    ordering_token: an optional resource tensor to pass to the op as inputs.
-      They aren't used by the kernel but allow AutoControlDependency to order
-      the collectives with control dependencies.
+    ordering_token: a resource tensor on the same device as the op to order
+      the collectives in a per-device manner by auto control dependency.
+      This argument can be omited when there is one collective Op per
+      `tf.function`, or when explicit control dependency is used instead of
+      auto control dependency.
     max_subdivs_per_device: int specifying the maximum number of subdivisions a
       tensor on a device can be divided into. The runtime uses this contraint to
       parallelize processing of each per-device tensor. Setting to -1 disables
       subdivision and reverts to previous behavior of not sub-dividing tensor.
       Setting to 0 uses sytem defaults.
+    name: name of the Op.
 
   Returns:
     An Op implementing the distributed reduction.
   """
   if ordering_token is not None:
     ordering_token = [ordering_token]
+  else:
+    ordering_token = []
+
   return gen_collective_ops.collective_reduce_v2(
       t,
       group_size=group_size,
@@ -120,8 +127,9 @@ def all_reduce_v2(t,
       final_op=final_op,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
-      ordering_token=ordering_token or [],
-      max_subdivs_per_device=max_subdivs_per_device)
+      ordering_token=ordering_token,
+      max_subdivs_per_device=max_subdivs_per_device,
+      name=name)
 
 
 def all_gather(t,
@@ -170,7 +178,8 @@ def all_gather_v2(t,
                   instance_key,
                   communication_hint='auto',
                   timeout=0,
-                  ordering_token=None):
+                  ordering_token=None,
+                  name=None):
   """Accumulates tensors collectively, across devices, along first dimension.
 
   Args:
@@ -186,15 +195,21 @@ def all_gather_v2(t,
     timeout: a float. If set to a non zero, set a completion timeout to detect
       staleness. If the timer goes off, a DeadlineExceededError is raised. The
       timeout value in seconds. This feature is experimental.
-    ordering_token: an optional resource tensor to pass to the op as inputs.
-      They aren't used by the kernel but allow AutoControlDependency to order
-      the collectives with control dependencies.
+    ordering_token: a resource tensor on the same device as the op to order
+      the collectives in a per-device manner by auto control dependency.
+      This argument can be omited when there is one collective Op per
+      `tf.function`, or when explicit control dependency is used instead of
+      auto control dependency.
+    name: name of the Op.
 
   Returns:
     An Op implementing the distributed operation.
   """
   if ordering_token is not None:
     ordering_token = [ordering_token]
+  else:
+    ordering_token = []
+
   return gen_collective_ops.collective_gather_v2(
       t,
       group_size=group_size,
@@ -202,7 +217,8 @@ def all_gather_v2(t,
       instance_key=instance_key,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
-      ordering_token=ordering_token or [])
+      ordering_token=ordering_token,
+      name=name)
 
 
 def broadcast_send(t,

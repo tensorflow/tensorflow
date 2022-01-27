@@ -716,7 +716,7 @@ TEST_F(MultiOutputFusionTest, PreferFuseProducerIntoFusionConsumer) {
 // Check that we limit the number of operands to fusions we create.
 TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   constexpr int64_t kNumParams = 200;
-  ASSERT_GT(kNumParams, kMaxOperandsAndOutputsPerFusion);
+  ASSERT_GT(kNumParams, MaxOperandsAndOutputsPerFusion());
 
   // Compute
   //   p0 * p1,
@@ -761,7 +761,7 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   SCOPED_TRACE(module->ToString());
   for (const HloInstruction* instr : computation->instructions()) {
     EXPECT_LE(instr->operand_count() + ShapeUtil::SubshapeCount(instr->shape()),
-              kMaxOperandsAndOutputsPerFusion)
+              MaxOperandsAndOutputsPerFusion())
         << instr->ToString();
   }
 }

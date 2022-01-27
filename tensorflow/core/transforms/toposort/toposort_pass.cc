@@ -28,6 +28,8 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/core/transforms/passes.h.inc"
 
+}  // end namespace
+
 void SortTopologically(Block *block) {
   if (block->empty() || llvm::hasSingleElement(*block)) return;
 
@@ -92,7 +94,6 @@ struct TopoSortPass : TopoSortBase<TopoSortPass> {
   }
 };
 
-}  // end namespace
 }  // namespace tfg
 }  // namespace mlir
 

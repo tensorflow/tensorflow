@@ -289,7 +289,7 @@ void FindCalleesRecursive(const mlir::SymbolTable &symbol_table,
   func.walk([&](mlir::Operation *op) {
     for (const auto &named_attr : op->getAttrs()) {
       if (auto symbol_attr =
-              named_attr.second.dyn_cast<mlir::FlatSymbolRefAttr>()) {
+              named_attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
         auto symbol = symbol_attr.getValue();
         if (!callees.contains(symbol)) {
           callees.insert(symbol);
@@ -461,9 +461,9 @@ class LowerTFSavedModelPass
     module->removeAttr("tf_saved_model.semantics");
 
     mlir::OpBuilder builder(&getContext());
-    auto resource_id = builder.getIdentifier("tf.resource_name");
-    auto bound_id = builder.getIdentifier("tf_saved_model.bound_input");
-    auto path_id = builder.getIdentifier("tf_saved_model.index_path");
+    auto resource_id = builder.getStringAttr("tf.resource_name");
+    auto bound_id = builder.getStringAttr("tf_saved_model.bound_input");
+    auto path_id = builder.getStringAttr("tf_saved_model.index_path");
 
     module.walk([resource_id, bound_id, path_id,
                  &builder](mlir::Operation *op) mutable {

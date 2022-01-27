@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_PARALLEL_TASK_ASSIGNMENT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_PARALLEL_TASK_ASSIGNMENT_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -82,7 +83,8 @@ class ParallelTaskAssigner : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  using HloToParallelTasks = std::unordered_map<const HloInstruction*, int64_t>;
+  using HloToParallelTasks =
+      absl::flat_hash_map<const HloInstruction*, int64_t>;
 
   // Assigns target parallel tasks from 'hlo_to_parallel_tasks' to HLOs in
   // 'module'.

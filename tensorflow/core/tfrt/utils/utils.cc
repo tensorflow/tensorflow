@@ -29,6 +29,8 @@ limitations under the License.
 
 namespace tfrt {
 
+using ::tensorflow::StatusOr;
+
 Expected<const char*> ConvertTfDeviceNameToTfrt(
     const char* device_name, tensorflow::EagerContext* eager_context) {
   // NOTE(fishx): We need to get tf_device first because DeviceMgr in current TF
@@ -114,6 +116,11 @@ StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
                     host_context->diag_handler(), host_context->allocator());
   TF_RET_CHECK(bef_file) << "failed to open BEF";
   return bef_file;
+}
+
+int64_t GetUniqueInt() {
+  static std::atomic<int64_t> id(0);
+  return id.fetch_add(1, std::memory_order_relaxed);
 }
 
 }  // namespace tfrt

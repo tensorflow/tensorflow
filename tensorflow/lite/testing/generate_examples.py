@@ -25,29 +25,50 @@ To more easily debug failures use (or override) the --save_graphdefs flag to
 place text proto graphdefs into the generated zip files.
 """
 
-import tensorflow.compat.v1 as tf
 import argparse
 import os
 import sys
-from tensorflow.lite.testing import generate_examples_lib
-from tensorflow.lite.testing import toco_convert
 
-# TODO(aselle): Disable GPU for now
+import tensorflow.compat.v1 as tf
+
+from tensorflow.lite.testing import generate_examples_lib
+from tensorflow.lite.testing import mlir_convert
+
+MLIR_CONVERTER_KNOWN_BUGS = {
+    # We need to support dynamic_rnn case.
+    r"unidirectional_sequence_rnn.*is_dynamic_rnn=True": "128997102",
+    r"unidirectional_sequence_lstm.*is_dynamic_rnn=True": "128997102",
+    # TODO(b/124314620): Test cases work with tf_tfl_translate binary
+    # but not TFLiteConverter interface.
+    # Concat & SpaceToDepth with uint8 doesn't work.
+    r"concat.*type=tf\.uint8": "124314620",
+    r"space_to_depth.*type=tf\.uint8": "124314620",
+    r"l2norm.*fully_quantize=True": "134594898",
+    # Below are not really a converter bug, but our kernels doesn't support
+    # int64.
+    r"div.*dtype=tf\.int64": "119126484",
+    r"floor_div.*dtype=tf\.int64": "119126484",
+    r"relu.*dtype=tf\.int64": "119126484",
+    r"squared_difference.*dtype=tf\.int64": "119126484",
+    # Post-training quantization support missing for below op in mlir.
+    r"prelu.*fully_quantize=True": "156112683",
+    # ResizeBilinear op kernel supports only float32 and quantized 8-bit
+    # integers.
+    r"resize_bilinear.*dtype=tf\.int32": "156569626",
+}
+
+# Disable GPU for now since we are just testing in TF against CPU reference
+# value and creating non-device-specific graphs to export.
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-
 parser = argparse.ArgumentParser(description="Script to generate TFLite tests.")
-parser.add_argument("output_path",
-                    help="Directory where the outputs will be go.")
+parser.add_argument(
+    "output_path", help="Directory where the outputs will be go.")
 parser.add_argument(
     "--zip_to_output",
     type=str,
     help="Particular zip to output.",
     required=True)
-parser.add_argument("--toco",
-                    type=str,
-                    help="Path to toco tool.",
-                    required=True)
 parser.add_argument(
     "--known_bugs_are_errors",
     action="store_true",
@@ -70,6 +91,14 @@ parser.add_argument(
     action="store_true",
     help="Whether to generate test cases for edgetpu.")
 parser.add_argument(
+    "--make_tf_ptq_tests",
+    action="store_true",
+    help="Whether to generate test cases for TF post-training quantization.")
+parser.add_argument(
+    "--hlo_aware_conversion",
+    action="store_true",
+    help="For TF Quantization only: whether conversion for HLO target.")
+parser.add_argument(
     "--make_forward_compat_test",
     action="store_true",
     help="Make tests by setting TF forward compatibility horizon to the future")
@@ -77,10 +106,6 @@ parser.add_argument(
     "--no_tests_limit",
     action="store_true",
     help="Remove the limit of the number of tests.")
-parser.add_argument(
-    "--no_conversion_report",
-    action="store_true",
-    help="Do not create conversion report.")
 parser.add_argument(
     "--test_sets",
     type=str,
@@ -91,32 +116,29 @@ parser.add_argument(
     "--mlir_quantizer",
     action="store_true",
     help=("Whether the new MLIR quantizer is being used."))
-
-
-# Toco binary path provided by the generate rule.
-bin_path = None
+parser.add_argument(
+    "--skip_high_dimension_inputs",
+    action="store_true",
+    help=("Whether to skip generating tests with high dimension input shape."))
 
 
 def main(unused_args):
-  # Eager execution is enabled by default in TF 2.0, but generated example
-  # tests are still using non-eager features (e.g. `tf.placeholder`).
-  tf.compat.v1.disable_eager_execution()
-
   options = generate_examples_lib.Options()
 
   options.output_path = FLAGS.output_path
   options.zip_to_output = FLAGS.zip_to_output
-  options.toco = FLAGS.toco
   options.known_bugs_are_errors = FLAGS.known_bugs_are_errors
   options.ignore_converter_errors = FLAGS.ignore_converter_errors
   options.save_graphdefs = FLAGS.save_graphdefs
   options.run_with_flex = FLAGS.run_with_flex
   options.make_edgetpu_tests = FLAGS.make_edgetpu_tests
+  options.make_tf_ptq_tests = FLAGS.make_tf_ptq_tests
+  options.tflite_convert_function = mlir_convert.mlir_convert
+  options.known_bugs = MLIR_CONVERTER_KNOWN_BUGS
   options.make_forward_compat_test = FLAGS.make_forward_compat_test
-  options.tflite_convert_function = toco_convert.toco_convert
   options.no_tests_limit = FLAGS.no_tests_limit
-  options.no_conversion_report = FLAGS.no_conversion_report
   options.mlir_quantizer = FLAGS.mlir_quantizer
+  options.skip_high_dimension_inputs = FLAGS.skip_high_dimension_inputs
 
   if FLAGS.test_sets:
     test_sets = FLAGS.test_sets.split(",")
@@ -129,8 +151,8 @@ if __name__ == "__main__":
   FLAGS, unparsed = parser.parse_known_args()
 
   if unparsed:
-    parser.print_usage()
-    print("\nGot the following unparsed args, %r please fix.\n" % unparsed)
+    print("\nGot the following unparsed args, %r please fix.\n" % unparsed +
+          "Usage: %s <path out> <zip file to generate>")
     exit(1)
   else:
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

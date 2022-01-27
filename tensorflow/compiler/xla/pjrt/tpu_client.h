@@ -57,6 +57,7 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
   PjRtTpuClient(LocalClient* client,
                 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
                 int process_index);
+  ~PjRtTpuClient() override;
 
   absl::string_view platform_version() const override {
     return platform_version_;

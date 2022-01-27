@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -112,14 +113,12 @@ class XlaCompilationCache : public ResourceBase {
   struct Signature {
     string name;
 
-    // List of Tensor types & shapes for compile-time constant arguments to the
-    // compilation, ordered by argument number.
-    absl::InlinedVector<std::pair<DataType, absl::InlinedVector<int64_t, 4>>, 4>
-        arg_shapes;
-
-    // List of Tensor values for compile-time constant arguments to the
-    // compilation, ordered by argument number. Tensors must be in host memory.
-    absl::InlinedVector<Tensor, 4> arg_values;
+    // List of args (either as a TensorTypeAndShape or as a Tensor value)
+    // for compile-time constant arguments to the compilation, ordered by
+    // argument number. Tensors must be in host memory.
+    using TensorTypeAndShape =
+        std::pair<DataType, absl::InlinedVector<int64_t, 4>>;
+    absl::InlinedVector<absl::variant<Tensor, TensorTypeAndShape>, 8> args;
 
     bool operator==(const Signature& other) const;
 

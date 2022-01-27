@@ -108,7 +108,7 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
   FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), cluster_op, symbol_table, builder);
   cluster_op->setAttr(
-      builder->getIdentifier(kFuncAttr),
+      builder->getStringAttr(kFuncAttr),
       mlir::SymbolRefAttr::get(builder->getContext(), outlined_func.getName()));
 
   builder->setInsertionPoint(cluster_op);
@@ -131,7 +131,7 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
   FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), launch_op, symbol_table, builder);
   launch_op->setAttr(
-      builder->getIdentifier(kFuncAttr),
+      builder->getStringAttr(kFuncAttr),
       mlir::SymbolRefAttr::get(builder->getContext(), outlined_func.getName()));
 
   builder->setInsertionPoint(launch_op);

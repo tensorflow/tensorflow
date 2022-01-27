@@ -1,5 +1,4 @@
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -19,6 +18,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -117,7 +118,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
   return Status::OK();
 }
 
-/*static*/ float HloCostAnalysis::GetProperty(const string& key,
+/*static*/ float HloCostAnalysis::GetProperty(const std::string& key,
                                               const Properties& properties,
                                               const float default_value) {
   auto key_value = properties.find(key);
@@ -125,7 +126,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
 }
 
 /*static*/ float HloCostAnalysis::GetPropertyForHlo(
-    const HloInstruction& hlo, const string& key,
+    const HloInstruction& hlo, const std::string& key,
     const HloToProperties& hlo_to_properties) {
   auto it = hlo_to_properties.find(&hlo);
   if (it == hlo_to_properties.end()) {
@@ -320,19 +321,22 @@ Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
-  const Shape& lhs_shape = dot->operand(0)->shape();
-  const Shape& dot_shape = dot->shape();
-  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  // Count of elements along the reduction dimension (last dimension for the
-  // rhs).
+/* static */
+int64_t HloCostAnalysis::GetDotFlops(const Shape& lhs_shape,
+                                     const Shape& result_shape,
+                                     const DotDimensionNumbers& dnums) {
+  // Count of elements along the reduction dimensions.
   int64_t reduction_width = 1;
   for (auto dim : dnums.lhs_contracting_dimensions()) {
     reduction_width *= lhs_shape.dimensions(dim);
   }
   // Each output element requires reduction_width FMA operations.
-  current_properties_[kFlopsKey] =
-      kFmaFlops * ShapeUtil::ElementsIn(dot_shape) * reduction_width;
+  return kFmaFlops * ShapeUtil::ElementsIn(result_shape) * reduction_width;
+}
+
+Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
+  current_properties_[kFlopsKey] = GetDotFlops(
+      dot->operand(0)->shape(), dot->shape(), dot->dot_dimension_numbers());
   return Status::OK();
 }
 
@@ -567,13 +571,23 @@ Status HloCostAnalysis::HandleAddDependency(
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
+/* static */
+int64_t HloCostAnalysis::GetConvolutionFlops(
+    const HloInstruction* convolution) {
   auto lhs = convolution->operand(0);
   auto rhs = convolution->operand(1);
   Window window = convolution->window();
-  const auto& result_shape = convolution->shape();
   const Shape& lhs_shape = lhs->shape();
   const Shape& rhs_shape = rhs->shape();
+  const Shape& result_shape = [&]() -> const Shape& {
+    // convolution custom-calls return a tuple of (actual_result, temp_buffer).
+    const Shape& shape = convolution->shape();
+    if (gpu::IsCustomCallToDnnConvolution(*convolution) &&
+        convolution->shape().IsTuple()) {
+      return shape.tuple_shapes(0);
+    }
+    return shape;
+  }();
 
   const auto& dnums = convolution->convolution_dimension_numbers();
 
@@ -688,7 +702,11 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
       (input_feature / convolution->feature_group_count()) * output_feature *
       (batch / convolution->batch_group_count()) *
       Product(valid_position_counts);
-  current_properties_[kFlopsKey] = fma_count * kFmaFlops;
+  return fma_count * kFmaFlops;
+}
+
+Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
+  current_properties_[kFlopsKey] = GetConvolutionFlops(convolution);
   return Status::OK();
 }
 
@@ -739,6 +757,11 @@ Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
   int64_t elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
   elems *= ShapeUtil::ElementsIn(a_shape);
   current_properties_[kFlopsKey] = elems / 3;
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleOptimizationBarrier(
+    const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 
@@ -963,10 +986,65 @@ Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
 }
 
 Status HloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
-  // Mark applicable fields as "unknown", since we don't know what CustomCall
-  // does.  This is better than returning an error, which would stop iteration,
-  // and therefore would prevent us from getting *any* stats for a computation
-  // which contains a CustomCall.
+  if (custom_call->custom_call_target() == gpu::kGemmCallTarget) {
+    // The naming conventions and meanings of gemm parameters are documented
+    // here:
+    // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm
+    TF_ASSIGN_OR_RETURN(auto gemm_config,
+                        custom_call->backend_config<gpu::GemmBackendConfig>());
+
+    // Technically, in addition to the dot product (A * B), cuBLAS gemm also
+    // performs additional scaling (by factor 'alpha') and addition with a
+    // scaled third matrix (beta * C), which will introduce additional
+    // multiplications and additions. But total FLOPS will be dominated by the
+    // dot product, so we don't include these extra multiplications and
+    // additions in the FLOPS calculation.
+
+    // Also, this calculation assumes that the strides for the gemm are
+    // properly set such that none of the inputs in a batch overlap with any
+    // other batches. If they do, this will undercount the FLOPS, because it
+    // assumes that the strides are implicit in the sizes of the batch
+    // dimensions.
+
+    // Finally, this is technically incorrect if the element type of this
+    // gemm is an integer type, because in that case no floating point
+    // operations are involved at all! But we still calculate FLOPS because the
+    // number is sometimes required for ad-hoc calculations.
+    current_properties_[kFlopsKey] =
+        GetDotFlops(custom_call->operand(0)->shape(), custom_call->shape(),
+                    gemm_config.dot_dimension_numbers());
+    return Status::OK();
+  }
+
+  if (gpu::IsCustomCallToDnnConvolution(*custom_call)) {
+    // As with dots, this flops calculation has the following inaccuracies.
+    //
+    //  - We may have a fused conv which does additional ops (multiplying by a
+    //    scalar `alpha`, adding a bias or side-input, doing a relu, etc).  But
+    //    we can safely ignore this because the overall computation is dominated
+    //    by the convolution itself.
+    //
+    //  - cudnn may use complex conv algorithms that do fewer (or more!) flops
+    //    than we calculate.
+    //
+    //  - for int8_t convs, these aren't *fl*ops, but we fudge it.
+    current_properties_[kFlopsKey] = GetConvolutionFlops(custom_call);
+
+    // conv custom-calls return a tuple (real_output, temp_bytes).  Count just
+    // the real_output in output bytes accessed.  The main purpose of
+    // hlo_cost_analysis is to figure out if ops are running "as fast as
+    // possible", and if we were to include temp memory in here, we'd
+    // essentially be *rewarding* convs that use additional temp memory!
+    if (custom_call->shape().IsTuple()) {
+      SetOutputBytesAccessed(shape_size_(custom_call->shape().tuple_shapes(0)));
+    }
+    return Status::OK();
+  }
+
+  // Mark applicable fields as "unknown", since we don't know what this
+  // CustomCall does.  This is better than returning an error, which would stop
+  // iteration, and therefore would prevent us from getting *any* stats for a
+  // computation which contains a CustomCall.
   current_properties_[kOptimalSecondsKey] = -1;
   current_properties_[kBytesAccessedKey] = -1;
   SetOutputBytesAccessed(-1);

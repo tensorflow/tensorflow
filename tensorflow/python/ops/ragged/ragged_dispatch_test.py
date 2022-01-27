@@ -26,6 +26,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import image_ops_impl
@@ -520,6 +521,40 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     result = x + y
     self.assertAllEqual(result, expected)
 
+  @parameterized.parameters([
+      dict(
+          x=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]],
+                                              row_splits_dtype=dtypes.int64),
+          y=[1],
+          expected=[[2, 3, 4], [5, 6]],
+          expected_row_splits_dtype=dtypes.int64),
+      dict(
+          x=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]],
+                                              row_splits_dtype=dtypes.int32),
+          y=[1],
+          expected=[[2, 3, 4], [5, 6]],
+          expected_row_splits_dtype=dtypes.int32),
+      dict(
+          x=[1],
+          y=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]],
+                                              row_splits_dtype=dtypes.int64),
+          expected=[[2, 3, 4], [5, 6]],
+          expected_row_splits_dtype=dtypes.int64),
+      dict(
+          x=[1],
+          y=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]],
+                                              row_splits_dtype=dtypes.int32),
+          expected=[[2, 3, 4], [5, 6]],
+          expected_row_splits_dtype=dtypes.int32),
+  ])
+  def testElementwiseOpBroadcastTensorAndRaggedTensor(
+      self, x, y, expected, expected_row_splits_dtype):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
+    y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
+    result = x + y
+    self.assertAllEqual(result, expected)
+    self.assertEqual(result.row_splits.dtype, expected_row_splits_dtype)
+
   def testElementwiseOpShapeMismatch(self):
     x = ragged_factory_ops.constant([[1, 2, 3], [4, 5]])
     y = ragged_factory_ops.constant([[1, 2, 3], [4, 5, 6]])
@@ -687,7 +722,9 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               'num_segments':
                   2
           },
-          expected=[7.0, 2.0]),
+          expected=[7.0, 2.0],
+          rtol=1e-12,
+      ),
       dict(
           op=math_ops.reduce_sum,
           kwargs={
@@ -867,8 +904,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                   np.exp(5) / (np.exp(4) + np.exp(5)),
               ],
           ]),
-          rtol=1e-6,
-      ),
+          rtol=1e-6),
   ])
   def testRaggedDispatch(self,
                          op,
@@ -999,6 +1035,13 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(math_ops.add(x, v), [[11, 12], [13, 14, 15]])
+
+  def testAssertType(self):
+    x = ragged_factory_ops.constant([[1., 2.], [3.]])
+    with ops.control_dependencies(
+        [check_ops.assert_type(x, dtypes.float32)]):
+      y = array_ops.identity(x)
+    self.assertAllEqual(x, y)
 
 
 if __name__ == '__main__':

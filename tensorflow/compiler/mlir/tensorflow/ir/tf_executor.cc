@@ -214,6 +214,7 @@ LogicalResult Verify(GraphOp graph) {
 }
 
 void Print(GraphOp graph, OpAsmPrinter &p) {
+  p << ' ';
   p.printRegion(graph.getOperation()->getRegion(0));
   p.printOptionalAttrDict(graph->getAttrs());
 }
@@ -335,6 +336,7 @@ void Print(IslandOp op, OpAsmPrinter &p) {
       return;
     }
   }
+  p << ' ';
   p.printRegion(op.getOperation()->getRegion(0));
   p.printOptionalAttrDict(op->getAttrs());
 }

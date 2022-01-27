@@ -17,7 +17,6 @@
 import os
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -316,7 +315,7 @@ class PartitionedVariablesTestCase(test.TestCase):
 
   def _TestSaveSpec(self, slices, expected_specs):
     self.assertEqual(len(expected_specs), len(slices))
-    for i in xrange(len(expected_specs)):
+    for i in range(len(expected_specs)):
       self.assertEqual(expected_specs[i], slices[i]._save_slice_info.spec)
 
   def testVecConstantInit(self):
@@ -429,7 +428,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       var_lists = [
           partitioned_variables.create_partitioned_variables(
               rnd.get_shape(), [1, i], rnd.initialized_value())
-          for i in xrange(1, 10)
+          for i in range(1, 10)
       ]
       self.evaluate(variables.global_variables_initializer())
       rnd_val = self.evaluate(rnd)

@@ -30,6 +30,21 @@ def TopoSort : Pass<"tfg-toposort"> {
   let constructor = "CreateTopoSortPass()";
 }
 
+def DropOutputShapesAttr : Pass<"tfg-drop-unregistered-output-shapes"> {
+  let summary = "Drop _output_shapes attribute";
+  let description = [{
+    Drop the unregistered `_output_shapes` attribute from all ops unless
+    member of skipped set.
+  }];
+
+  let options = [
+   ListOption<"skip_", "skip", "std::string",
+              "Comma separated list of ops that will be skipped.",
+              "llvm::cl::MiscFlags::CommaSeparated">,
+  ];
+  let constructor = "CreateDropOutputShapesAttrPass()";
+}
+
 def GraphToFunc : Pass<"tfg-lift-graph-to-func", "ModuleOp"> {
   let summary = "Turns a graph into a function.";
   let description = [{

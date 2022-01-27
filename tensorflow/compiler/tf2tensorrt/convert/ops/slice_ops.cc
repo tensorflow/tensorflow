@@ -56,30 +56,29 @@ Status ConvertStridedSliceHelper(
     absl::optional<StridedSliceShapeSpec> strided_slice_spec) {
   const auto& node_def = params->node_def;
 
-  nvinfer1::Dims begin_dims, stride_dims, end_dims;
-  TF_RETURN_IF_ERROR(
-      ContainerToTrtDims(begin, &begin_dims, params->use_implicit_batch));
-  TF_RETURN_IF_ERROR(
-      ContainerToTrtDims(stride, &stride_dims, params->use_implicit_batch));
-  TF_RETURN_IF_ERROR(
-      ContainerToTrtDims(end, &end_dims, params->use_implicit_batch));
+  auto begin_dims = DimsAdapter::Create(begin, params->use_implicit_batch);
+  auto stride_dims = DimsAdapter::Create(stride, params->use_implicit_batch);
+  auto end_dims = DimsAdapter::Create(end, params->use_implicit_batch);
+  TRT_ENSURE_OK(begin_dims);
+  TRT_ENSURE_OK(stride_dims);
+  TRT_ENSURE_OK(end_dims);
 
   // For each dimension, gather information about static vs dynamic dimension
   // and slice size.
-  nvinfer1::Dims size_dims = begin_dims;
+  nvinfer1::Dims size_dims = begin_dims->AsTrtDims();
   absl::InlinedVector<int64, 4> static_input_size_indices;
   absl::InlinedVector<int64, 4> dynamic_input_size_indices;
-  for (int i = 0; i < begin_dims.nbDims; i++) {
-    size_dims.d[i] = (std::abs(end_dims.d[i] - begin_dims.d[i]) +
-                      std::abs(stride_dims.d[i]) - 1) /
-                     std::abs(stride_dims.d[i]);
+  for (int i = 0; i < begin_dims->NumDims(); i++) {
+    size_dims.d[i] = (std::abs(end_dims->dim(i) - begin_dims->dim(i)) +
+                      std::abs(stride_dims->dim(i)) - 1) /
+                     std::abs(stride_dims->dim(i));
 
     if (input_dims.dim_size(i) < 0) {
       // end_dims and begin_dims do not have valid information yet.
       dynamic_input_size_indices.push_back(i);
     } else {
       static_input_size_indices.push_back(i);
-      if (end_dims.d[i] < begin_dims.d[i] && stride_dims.d[i] > 0) {
+      if (end_dims->dim(i) < begin_dims->dim(i) && stride_dims->dim(i) > 0) {
         return errors::InvalidArgument(
             "\"size\" cannot be negative for StridedSlice");
       }
@@ -97,17 +96,19 @@ Status ConvertStridedSliceHelper(
       params->converter->network(), params->weight_store);
   TRT_ENSURE_OK(builder);
 
-  VLOG(2) << "strided slice helper:"
-          << " begin:" << DebugString(begin_dims)
-          << "\n stride: " << DebugString(stride_dims)
-          << "\n end: " << DebugString(end_dims)
-          << "\n size: " << DebugString(size_dims)
-          << "\n Dynamic indices: " << DebugString(dynamic_input_size_indices)
-          << "\n Static indices: " << DebugString(static_input_size_indices);
+  // VLOG(2) << "strided slice helper:"
+  //         << " begin:" << DebugString(begin_dims)
+  //         << "\n stride: " << DebugString(stride_dims)
+  //         << "\n end: " << DebugString(end_dims)
+  //         << "\n size: " << DebugString(size_dims)
+  //         << "\n Dynamic indices: " <<
+  //         DebugString(dynamic_input_size_indices)
+  //         << "\n Static indices: " << DebugString(static_input_size_indices);
   // Create the slice operation. For dynamic dims, the inputs of the operations
   // may be reassigned later.
-  StatusOr<nvinfer1::ISliceLayer*> slice = builder->Slice(
-      input.tensor()->trt_tensor(), begin_dims, size_dims, stride_dims);
+  StatusOr<nvinfer1::ISliceLayer*> slice =
+      builder->Slice(input.tensor()->trt_tensor(), begin_dims->AsTrtDims(),
+                     size_dims, stride_dims->AsTrtDims());
   TRT_ENSURE_PTR_OK(slice);
 
   // Handle dynamic input shapes.
@@ -115,7 +116,8 @@ Status ConvertStridedSliceHelper(
     TRT_ENSURE(strided_slice_spec != absl::nullopt);
     TF_RETURN_IF_ERROR(HandleDynamicStridedSliceInput(
         &*builder, *slice, *strided_slice_spec, dynamic_input_size_indices,
-        begin_dims, stride_dims, end_dims));
+        begin_dims->AsTrtDims(), stride_dims->AsTrtDims(),
+        end_dims->AsTrtDims()));
   }
 
   params->converter->SetLayerName(*slice, params->node_def, "slice",
@@ -177,8 +179,8 @@ Status HandleDynamicStridedSliceInput(
     }
   }
 
-  VLOG(2) << " Dynamic begin indices: " << DebugString(dynamic_begin_indices)
-          << " Dynamic end indices: " << DebugString(dynamic_end_indices);
+  // VLOG(2) << " Dynamic begin indices: " << DebugString(dynamic_begin_indices)
+  //         << " Dynamic end indices: " << DebugString(dynamic_end_indices);
 
   // Create ITensors for each of the begin/stride/end constants.
   StatusOr<nvinfer1::IConstantLayer*> begin_const = builder->Constant(

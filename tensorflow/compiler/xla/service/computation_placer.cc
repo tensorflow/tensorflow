@@ -109,9 +109,9 @@ DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
   return std::move(assignment);
 }
 
-string DeviceAssignment::ToString() const {
-  string output = StrCat("Computations: ", computation_count(),
-                         " Replicas: ", replica_count(), "\n");
+std::string DeviceAssignment::ToString() const {
+  std::string output = StrCat("Computations: ", computation_count(),
+                              " Replicas: ", replica_count(), "\n");
   for (int computation = 0; computation < computation_count(); ++computation) {
     StrAppend(&output, "Computation ", computation, ": ");
     for (int replica = 0; replica < replica_count(); ++replica) {
@@ -148,8 +148,7 @@ StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
 /* static */ void ComputationPlacer::RegisterComputationPlacer(
     se::Platform::Id platform_id,
     ComputationPlacerCreationFunction creation_function) {
-  tensorflow::mutex_lock lock(
-      ComputationPlacer::platform_computation_placer_mutex_);
+  absl::MutexLock lock(&ComputationPlacer::platform_computation_placer_mutex_);
   auto* computation_placers = GetPlatformComputationPlacers();
   CHECK(computation_placers->find(platform_id) == computation_placers->end());
   (*computation_placers)[platform_id].creation_function = creation_function;
@@ -157,8 +156,7 @@ StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
 
 /* static */ StatusOr<ComputationPlacer*> ComputationPlacer::GetForPlatform(
     const se::Platform* platform) {
-  tensorflow::mutex_lock lock(
-      ComputationPlacer::platform_computation_placer_mutex_);
+  absl::MutexLock lock(&ComputationPlacer::platform_computation_placer_mutex_);
   auto* computation_placers = GetPlatformComputationPlacers();
 
   auto it = computation_placers->find(platform->id());
@@ -177,9 +175,8 @@ StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
   return it->second.placer.get();
 }
 
-/* static */ tensorflow::mutex
-    ComputationPlacer::platform_computation_placer_mutex_(
-        tensorflow::LINKER_INITIALIZED);
+/* static */ absl::Mutex ComputationPlacer::platform_computation_placer_mutex_(
+    absl::kConstInit);
 
 /* static */ std::map<se::Platform::Id, ComputationPlacer::State>*
 ComputationPlacer::GetPlatformComputationPlacers() {

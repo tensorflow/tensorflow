@@ -19,6 +19,7 @@ import itertools
 import uuid
 from absl.testing import parameterized
 
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import strategy_combinations
@@ -66,6 +67,8 @@ def strategy_with_var_policy():
   return combinations.combine(
       distribution=[
           strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.multi_worker_mirrored_2x1_cpu,
+          strategy_combinations.multi_worker_mirrored_2x1_gpu,
           strategy_combinations.tpu_strategy,
           strategy_combinations.tpu_strategy_packed_var,
       ],
@@ -85,8 +88,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       else:
         if experimental_run_tf_function:
           update_fn = def_function.function(update_fn)
-        return distribution.experimental_local_results(
-            distribution.run(update_fn))
+        return test_util.gather(distribution, distribution.run(update_fn))
 
     updates = [("assign", 1.), ("assign_add", 1.), ("assign_sub", -1.)]
     aggregations = [
@@ -131,8 +133,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       else:
         if experimental_run_tf_function:
           update_fn = def_function.function(update_fn)
-        return distribution.experimental_local_results(
-            distribution.run(update_fn))
+        return test_util.gather(distribution, distribution.run(update_fn))
 
     updates = [("assign", v_to_assign), ("assign_add", v_to_assign),
                ("assign_sub", v_to_assign_sub)]
@@ -182,8 +183,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       else:
         if experimental_run_tf_function:
           update_fn = def_function.function(update_fn)
-        return distribution.experimental_local_results(
-            distribution.run(update_fn))
+        return test_util.gather(distribution, distribution.run(update_fn))
 
     updates = [("assign", per_replica_value), ("assign_add", per_replica_value),
                ("assign_sub", per_replica_sub_value)]
@@ -220,6 +220,10 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(strategy_with_var_policy())
   def testValueInReplicaContext(self, distribution):
+    if isinstance(distribution.extended,
+                  collective_all_reduce_strategy.CollectiveAllReduceExtended):
+      self.skipTest("b/162916064 direct value assignment fails for MWMS."
+                    "Re-enable the test after the it's fixed.")
     with distribution.scope():
       v = variables_lib.Variable(
           1., aggregation=variables_lib.VariableAggregation.MEAN)
@@ -231,8 +235,26 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
           return v.value()
 
       results = self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(f)))
+          test_util.gather(distribution, distribution.run(f)))
+      for value in results:
+        self.assertEqual(2., value)
+
+  @combinations.generate(strategy_with_var_policy())
+  def testValueInReplicaContextAssignDirectValue(self, distribution,
+                                                 use_var_policy):
+    self.skipTest("Test to reproduce b/162916064.")
+    with distribution.scope():
+      v = variables_lib.Variable(
+          1., aggregation=variables_lib.VariableAggregation.MEAN)
+      self.evaluate(variables_lib.global_variables_initializer())
+
+      @def_function.function
+      def f():
+        with ops.control_dependencies([v.assign_add(1)]):
+          return v.value()
+
+      results = self.evaluate(
+          test_util.gather(distribution, distribution.run(f)))
       for value in results:
         self.assertEqual(2., value)
 
@@ -256,8 +278,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       else:
         read_var_fn = v.read_value
       results = self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(read_var_fn)))
+          test_util.gather(distribution, distribution.run(read_var_fn)))
       for component, value in zip(v._values, results):
         self.assertAllEqual(self.evaluate(component.read_value()), value)
 
@@ -299,6 +320,9 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
   @combinations.generate(strategy_with_var_policy())
   def testInitializedToSameValueInsideEagerRun(self, distribution):
     if not context.executing_eagerly(): self.skipTest("eager only test")
+    if isinstance(distribution.extended,
+                  collective_all_reduce_strategy.CollectiveAllReduceExtended):
+      self.skipTest("Test for more than 1 device per worker only.")
     v = [None]
 
     @def_function.function
@@ -317,6 +341,9 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(strategy_with_var_policy())
   def testAggregationOnlyFirstReplica(self, distribution):
+    if isinstance(distribution.extended,
+                  collective_all_reduce_strategy.CollectiveAllReduceExtended):
+      self.skipTest("b/212945803")
     with distribution.scope():
       v = variable_scope.variable(
           15.,
@@ -329,8 +356,9 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       ctx = ds_context.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       return v.assign(math_ops.cast(replica_id, dtypes.float32))
-    per_replica_results = self.evaluate(distribution.experimental_local_results(
-        distribution.run(assign)))
+
+    per_replica_results = self.evaluate(
+        test_util.gather(distribution, distribution.run(assign)))
     # The per-replica values should always match the first replicas value.
     self.assertAllEqual(
         array_ops.zeros(distribution.num_replicas_in_sync, dtypes.float32),
@@ -338,6 +366,10 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(strategy_with_var_policy())
   def testInitScope(self, distribution):
+    if isinstance(distribution.extended,
+                  collective_all_reduce_strategy.CollectiveAllReduceExtended):
+      self.skipTest("b/162916064 direct value assignment fails for MWMS."
+                    "Re-enable the test after the it's fixed.")
     if not context.executing_eagerly(): self.skipTest("eager only")
 
     class C(object):
@@ -361,11 +393,16 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       return obj.v.assign_add(2.)
 
     per_replica_results = self.evaluate(
-        distribution.experimental_local_results(distribution.run(assign)))
+        test_util.gather(distribution, distribution.run(assign)))
     self.assertAllEqual([2., 2.], per_replica_results)
 
   @combinations.generate(strategy_with_var_policy())
   def testOperatorOverride(self, distribution):
+
+    if not context.executing_eagerly() and isinstance(
+        distribution.extended,
+        collective_all_reduce_strategy.CollectiveAllReduceExtended):
+      self.skipTest("b/212954197")
 
     with distribution.scope():
       v = variable_scope.variable(
@@ -379,7 +416,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       return v + 1
 
     per_replica_results = self.evaluate(
-        distribution.experimental_local_results(distribution.run(add)))
+        test_util.gather(distribution, distribution.run(add)))
     self.assertAllEqual([2, 2], per_replica_results)
 
   @combinations.generate(
@@ -490,8 +527,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
       return v.scatter_add(value)
 
     per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_add)))
+        test_util.gather(distribution, distribution.run(scatter_add)))
     self.assertAllEqual([[0, 2, 2], [0, 2, 2]], per_replica_results)
 
   @combinations.generate(ms_combination)
@@ -512,8 +548,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
       return v.scatter_div(value)
 
     per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_div)))
+        test_util.gather(distribution, distribution.run(scatter_div)))
     self.assertAllEqual([[0, 2, 1], [0, 2, 1]], per_replica_results)
 
   @combinations.generate(ms_combination)
@@ -535,8 +570,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
       return v.scatter_mul(value)
 
     per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_mul)))
+        test_util.gather(distribution, distribution.run(scatter_mul)))
     self.assertAllClose([[2., 1.5, 1.], [2., 1.5, 1.]], per_replica_results)
 
   @combinations.generate(ms_combination)
@@ -559,12 +593,12 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(NotImplementedError, "scatter_min.*"):
       self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(scatter_min, args=(v1,))))
+          test_util.gather(distribution,
+                           distribution.run(scatter_min, args=(v1,))))
 
     per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_min, args=(v2,))))
+        test_util.gather(distribution,
+                         distribution.run(scatter_min, args=(v2,))))
     self.assertAllClose([[0, 1, 0], [0, 1, 0]], per_replica_results)
 
   @combinations.generate(ms_combination)
@@ -587,12 +621,12 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(NotImplementedError, "scatter_max.*"):
       self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(scatter_max, args=(v1,))))
+          test_util.gather(distribution,
+                           distribution.run(scatter_max, args=(v1,))))
 
     per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_max, args=(v2,))))
+        test_util.gather(distribution,
+                         distribution.run(scatter_max, args=(v2,))))
     self.assertAllClose([[1, 0, 0], [1, 0, 0]], per_replica_results)
 
   @combinations.generate(ms_combination)
@@ -615,12 +649,12 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(NotImplementedError, "scatter_update.*"):
       self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(scatter_update, args=(v1,))))
+          test_util.gather(distribution,
+                           distribution.run(scatter_update, args=(v1,))))
 
     per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_update, args=(v2,))))
+        test_util.gather(distribution,
+                         distribution.run(scatter_update, args=(v2,))))
     self.assertAllClose([[0, 3, 0], [0, 3, 0]], per_replica_results)
 
   @combinations.generate(ms_combination + tpu_combination)
@@ -688,8 +722,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       else:
         if experimental_run_tf_function:
           update_fn = def_function.function(update_fn)
-        return distribution.experimental_local_results(
-            distribution.run(update_fn))
+        return test_util.gather(distribution, distribution.run(update_fn))
 
     updates = [("assign", 1.), ("assign_add", 1.), ("assign_sub", -1.)]
     aggregations = [
@@ -736,8 +769,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       else:
         if experimental_run_tf_function:
           update_fn = def_function.function(update_fn)
-        return distribution.experimental_local_results(
-            distribution.run(update_fn))
+        return test_util.gather(distribution, distribution.run(update_fn))
 
     updates = [("assign", v_to_assign), ("assign_add", v_to_assign),
                ("assign_sub", v_to_assign_sub)]
@@ -804,8 +836,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       else:
         if experimental_run_tf_function:
           update_fn = def_function.function(update_fn)
-        return distribution.experimental_local_results(
-            distribution.run(update_fn))
+        return test_util.gather(distribution, distribution.run(update_fn))
 
     updates = [("assign", per_replica_value)]
     # We don't support assigning PerReplica valus to vars in replica context
@@ -848,8 +879,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       else:
         if experimental_run_tf_function:
           update_fn = def_function.function(update_fn)
-        return distribution.experimental_local_results(
-            distribution.run(update_fn))
+        return test_util.gather(distribution, distribution.run(update_fn))
 
     updates = [("assign", 1), ("assign_add", 1), ("assign_sub", -1)]
     aggregations = [
@@ -929,8 +959,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       else:
         read_var_fn = v.read_value
       results = self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(read_var_fn)))
+          test_util.gather(distribution, distribution.run(read_var_fn)))
       for component, value in zip(v._values, results):
         self.assertAllEqual(self.evaluate(component.read_value()), value)
 
@@ -961,8 +990,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       if experimental_run_tf_function:
         assign = def_function.function(assign)
 
-      self.evaluate(
-          distribution.experimental_local_results(distribution.run(assign)))
+      self.evaluate(test_util.gather(distribution, distribution.run(assign)))
       num_replicas = distribution.num_replicas_in_sync
       sum_of_replica_values = num_replicas * (num_replicas - 1) / 2.
       if aggregation == variables_lib.VariableAggregation.SUM:
@@ -999,7 +1027,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       all_reduce = def_function.function(all_reduce)
 
     per_replica_results = self.evaluate(
-        distribution.experimental_local_results(distribution.run(all_reduce)))
+        test_util.gather(distribution, distribution.run(all_reduce)))
     expected_result = []
     for i in range(distribution.num_replicas_in_sync):
       expected_result.append(2.0 * distribution.num_replicas_in_sync +
@@ -1031,11 +1059,11 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
         assign = def_function.function(assign)
 
       per_replica_results = self.evaluate(
-          distribution.experimental_local_results(distribution.run(assign)))
+          test_util.gather(distribution, distribution.run(assign)))
       expected_result = []
       for i in range(distribution.num_replicas_in_sync):
         expected_result.append(1.0 * i)
-      self.assertEqual(per_replica_results, tuple(expected_result))
+      self.assertAllEqual(per_replica_results, tuple(expected_result))
 
   @combinations.generate(strategy_with_var_policy())
   def testReadValueWithAggregationNoneInCrossReplicaContext(self, distribution):
@@ -1052,6 +1080,9 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(strategy_with_var_policy())
   def testInitializedToSameValueInsideEagerRun(self, distribution):
     if not context.executing_eagerly(): self.skipTest("eager only")
+    if isinstance(distribution.extended,
+                  collective_all_reduce_strategy.CollectiveAllReduceExtended):
+      self.skipTest("Test for more than 1 device per worker only.")
 
     v = [None]
     @def_function.function
@@ -1086,8 +1117,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
         return v.assign(math_ops.cast(replica_id, dtypes.float32))
 
       # Assign different replicas with different values.
-      self.evaluate(distribution.experimental_local_results(
-          distribution.run(assign)))
+      self.evaluate(test_util.gather(distribution, distribution.run(assign)))
       self.assertEqual(1.5, self.evaluate(v + 1))
 
       @def_function.function
@@ -1095,7 +1125,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
         return v + 1
 
       per_replica_results = self.evaluate(
-          distribution.experimental_local_results(distribution.run(add)))
+          test_util.gather(distribution, distribution.run(add)))
       self.assertAllEqual([1, 2], per_replica_results)
 
   @combinations.generate(
@@ -1170,6 +1200,8 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
     combinations.combine(
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
         ],
         aggregation=[
             variables_lib.VariableAggregation.MEAN,

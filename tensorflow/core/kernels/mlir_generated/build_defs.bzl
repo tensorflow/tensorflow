@@ -210,7 +210,6 @@ _gen_kernel_bin_rule = rule(
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
     },
     fragments = ["cpp"],
-    incompatible_use_toolchain_transition = True,
     outputs = {"kernel": "%{name}_kernel.o"},
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
     implementation = _gen_kernel_bin_impl,
@@ -274,10 +273,8 @@ def _gen_kernel_library(
     true_jits = [True for i in range(len(jit_types))]
     all_jit_kernels = zip(jit_types, output_jit_types, true_jits)
     false_jits = [False for i in range(len(types))]
-    all_precomp_kernels = zip(types, output_types, false_jits)
-    all_kernels = all_precomp_kernels
-    if if_mlir_generated_experimental_kernels_enabled(True, False):
-        all_kernels += all_jit_kernels
+    all_aot_kernels = zip(types, output_types, false_jits)
+    all_kernels = all_aot_kernels + all_jit_kernels
 
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
         for (type, output_type, jit) in all_kernels:

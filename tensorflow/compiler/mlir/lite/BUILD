@@ -11,8 +11,8 @@ package(
     default_visibility = [
         # TODO(jpienaar): Make the visibility more restrictive.
         ":friends",
-        "//tensorflow/lite/experimental/mlir:__subpackages__",
         "//tensorflow/lite/experimental/tf_runtime:__subpackages__",
+        "//tensorflow/lite/testing:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -26,6 +26,7 @@ package_group(
         "//third_party/iree/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/lite/python/...",
+        "//waymo/ml/compiler/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//research/language_modeling/sentence_explorer/ondevice/...",
@@ -273,6 +274,7 @@ cc_library(
         ":cost_estimators",
         ":tensorflow_lite_ops_inc_gen",
         ":tensorflow_lite_structs_inc_gen",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
@@ -334,7 +336,6 @@ cc_library(
     hdrs = [
         "utils/constant_utils.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
@@ -354,7 +355,6 @@ cc_library(
     hdrs = [
         "utils/lstm_utils.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -393,7 +393,6 @@ cc_library(
     hdrs = [
         "utils/nms_utils.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -415,7 +414,6 @@ cc_library(
     hdrs = [
         "utils/tftext_utils.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -449,7 +447,6 @@ cc_library(
     hdrs = [
         "utils/perception_ops_utils.h",
     ],
-    copts = ["-std=c++14"],
     deps = [
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -559,6 +556,7 @@ cc_library(
         ":variables_utils",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
@@ -585,6 +583,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/numeric:bits",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineAnalysis",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
@@ -611,6 +610,7 @@ cc_library(
         ":convert_type",
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:verification_utils",
@@ -654,6 +654,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:operator_property",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -679,6 +680,7 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1013,6 +1015,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -1104,6 +1107,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:expand_hlo_tuples",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
+        "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -1173,6 +1177,7 @@ cc_library(
         "//tensorflow/lite/experimental/mlir:__subpackages__",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
     ],

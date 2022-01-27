@@ -41,6 +41,9 @@ transitive_hdrs(
         "//tensorflow/c/experimental/grappler:grappler_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:ops_hdrs",
+        # TODO(mihaimaruseac): Revisit these after cc_shared_library everywhere
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:cc_ops",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
         # reserves the right to change APIs and other header-level interfaces.  If your custom
         # op uses these headers, it may break when users upgrade their version of tensorflow.
@@ -56,7 +59,6 @@ transitive_hdrs(
         "//tensorflow/python/lib/core:py_func_lib",
         "//tensorflow/python/lib/core:py_seq_tensor",
         "//tensorflow/python/lib/core:py_util",
-        "//tensorflow/python/lib/io:py_record_reader_lib",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/framework:python_op_gen",
@@ -140,7 +142,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/sparse_ops:sparse_xent_op_test_base",
-    "//tensorflow/python/profiler:traceme",
+    "//tensorflow/python/profiler:trace",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
@@ -182,13 +184,17 @@ filegroup(
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/icu/data:LICENSE",
-        "@ruy//:LICENSE",
+        "@FP16//:LICENSE",
+        "@FXdiv//:LICENSE",
+        "@XNNPACK//:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
         "@astunparse_archive//:LICENSE",
         "@boringssl//:LICENSE",
+        "@clog//:LICENSE",
         "@com_google_absl//:LICENSE",
         "@com_google_protobuf//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
+        "@cpuinfo//:LICENSE",
         "@curl//:COPYING",
         "@dill_archive//:LICENSE",
         "@dlpack//:LICENSE",
@@ -213,6 +219,8 @@ filegroup(
         "@opt_einsum_archive//:LICENSE",
         "@pasta//:LICENSE",
         "@png//:LICENSE",
+        "@pthreadpool//:LICENSE",
+        "@ruy//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@sobol_data//:LICENSE",
@@ -220,8 +228,6 @@ filegroup(
         "@termcolor_archive//:COPYING.txt",
         "@typing_extensions_archive//:LICENSE",
         "@zlib//:zlib.h",
-        "@clog//:LICENSE",
-        "@cpuinfo//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -256,7 +262,6 @@ filegroup(
         "absl_py",
         [
             "@absl_py//:LICENSE",
-            "@absl_py//absl/third_party/unittest3_backport:LICENSE",
         ],
     ) + if_not_system_lib(
         "com_github_grpc_grpc",

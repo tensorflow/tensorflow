@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -31,6 +32,36 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
+
+void ParseQualcommOpenClCompilerVersion(
+    const std::string& cl_driver_version,
+    AdrenoInfo::OpenClCompilerVersion* result) {
+  // Searching this part: "Compiler E031.**.**.**" where * is digit
+  const std::string start = "Compiler E031.";
+  size_t position = cl_driver_version.find(start);
+  if (position == std::string::npos) {
+    return;
+  }
+  const size_t main_part_length = 8;  // main part is **.**.**
+  if (position + start.length() + main_part_length >
+      cl_driver_version.length()) {
+    return;
+  }
+
+  const std::string main_part =
+      cl_driver_version.substr(position + start.length(), main_part_length);
+  if (!absl::ascii_isdigit(main_part[0]) ||
+      !absl::ascii_isdigit(main_part[1]) || main_part[2] != '.' ||
+      !absl::ascii_isdigit(main_part[3]) ||
+      !absl::ascii_isdigit(main_part[4]) || main_part[5] != '.' ||
+      !absl::ascii_isdigit(main_part[6]) ||
+      !absl::ascii_isdigit(main_part[7])) {
+    return;
+  }
+  result->major = (main_part[0] - '0') * 10 + (main_part[1] - '0');
+  result->minor = (main_part[3] - '0') * 10 + (main_part[4] - '0');
+  result->patch = (main_part[6] - '0') * 10 + (main_part[7] - '0');
+}
 
 template <>
 std::string GetDeviceInfo<std::string>(cl_device_id id, cl_device_info info) {
@@ -139,6 +170,8 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
       GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
   info.opencl_info.opencl_c_version =
       GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
+  info.opencl_info.driver_version =
+      GetDeviceInfo<std::string>(id, CL_DRIVER_VERSION);
   const std::string gpu_description = absl::StrCat(
       info.opencl_info.device_name, " ", info.opencl_info.vendor_name, " ",
       info.opencl_info.opencl_c_version);
@@ -262,6 +295,10 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
         }
       }
     }
+  }
+  if (info.IsAdreno()) {
+    ParseQualcommOpenClCompilerVersion(info.opencl_info.driver_version,
+                                       &info.adreno_info.cl_compiler_version);
   }
   return info;
 }

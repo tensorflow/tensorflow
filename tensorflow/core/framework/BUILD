@@ -734,7 +734,10 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:intrusive_ptr",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
@@ -811,7 +814,7 @@ tf_cuda_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
-        "//tensorflow/core/tfrt/utils:__subpackages__",
+        "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/core/util:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
@@ -934,6 +937,7 @@ cc_library(
         "//tensorflow/core/lib/hash",
         "//tensorflow/core/lib/strings:proto_serialization",
         "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:protobuf",
         "@com_google_absl//absl/strings",
     ],
@@ -1048,6 +1052,13 @@ cc_library(
         "full_type_inference_util.h",
         "full_type_util.h",
     ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+        # Necessary for calling REGISTER_OP with SetTypeConstructor
+        # http://yaqs/4779722181477138432
+        "//intelligence/brella/sql/tensorflow:__pkg__",
+    ],
     deps = [
         ":attr_value_proto_cc",
         ":full_type_proto_cc",
@@ -1056,9 +1067,10 @@ cc_library(
         ":op_def_builder",
         ":op_def_proto_cc",
         ":tensor",
-        ":types_proto_cc",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -1231,6 +1243,19 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "framework_resource_var_test",
+    size = "small",
+    srcs = ["resource_var_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "op_kernel_test_base",
     testonly = True,
@@ -1273,6 +1298,7 @@ tf_cc_tests(
         "device_base_test.cc",
         "disable_jit_test.cc",
         "full_type_inference_util_test.cc",
+        "full_type_util_test.cc",
         "function_test.cc",
         "graph_def_util_test.cc",
         "graph_to_functiondef_test.cc",

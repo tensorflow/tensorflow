@@ -41,7 +41,35 @@ llvm::cl::opt<bool> optimize_xla_hlo(
     "optimize-xla-hlo",
     llvm::cl::desc("Enable optimizations when translating XLA HLO -> LHLO"),
     llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> legalize_node_names(
+    "legalize-node-names",
+    llvm::cl::desc("Legalize nodes names when translating MHLO->XLA HLO"),
+    llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> with_layouts(
+    "with-layouts",
+    llvm::cl::desc("Propagate layouts when translating MHLO->XLA HLO"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> print_layouts(
+    "print-layouts", llvm::cl::desc("Print layouts in the generated HLO text"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> via_builder(
+    "via-builder", llvm::cl::desc("Translate MHLO->XLA HLO via XLA Builder"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> import_all_computations(
+    "hlo-import-all-computations",
+    llvm::cl::desc("Enable importing unreachable computations."));
 }  // namespace
+
 namespace xla {
 
 static mlir::LogicalResult MlirHloToHloTranslateFunction(
@@ -107,14 +135,14 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
   return Status::OK();
 }
 
-static mlir::LogicalResult MlirHloToHloTextTranslateFunctionImpl(
-    mlir::ModuleOp module, llvm::raw_ostream& output, bool with_layouts,
-    bool via_builder) {
+static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
+    mlir::ModuleOp module, llvm::raw_ostream& output) {
   if (!module) return mlir::failure();
 
   HloProto hloProto;
   mlir::MlirToHloConversionOptions options;
   options.propagate_layouts = with_layouts;
+  options.legalize_node_names = legalize_node_names;
   Status status =
       via_builder
           ? ConvertMlirHloToHloViaBuilder(module, &hloProto, options)
@@ -137,7 +165,7 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunctionImpl(
   HloModule* hlo_module = statusOrHloModule.ValueOrDie().get();
 
   output << hlo_module->ToString(
-      HloPrintOptions().set_include_layout_in_shapes(with_layouts));
+      HloPrintOptions().set_include_layout_in_shapes(print_layouts));
 
   // Output alias information as comments in the HLO text.
   hlo_module->input_output_alias_config().ForEachAlias(
@@ -151,38 +179,11 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunctionImpl(
   return mlir::success();
 }
 
-static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
-    mlir::ModuleOp module, llvm::raw_ostream& output) {
-  return MlirHloToHloTextTranslateFunctionImpl(module, output,
-                                               /*with_layouts=*/false,
-                                               /*via_builder=*/false);
-}
-
-static mlir::LogicalResult MlirHloToHloTextWithLayoutsTranslateFunction(
-    mlir::ModuleOp module, llvm::raw_ostream& output) {
-  return MlirHloToHloTextTranslateFunctionImpl(module, output,
-                                               /*with_layouts=*/true,
-                                               /*via_builder=*/false);
-}
-
-// This converts MlirHlo to Hlo by first converting to XlaBuilder.
-// This is useful for testing conversion to XlaBuilder.
-static mlir::LogicalResult MlirHloToHloTextViaBuilderTranslateFunction(
-    mlir::ModuleOp module, llvm::raw_ostream& output) {
-  return MlirHloToHloTextTranslateFunctionImpl(module, output,
-                                               /*with_layouts=*/false,
-                                               /*via_builder=*/true);
-}
-
 }  // namespace xla
 
 //----------------------------------------------------------------------------//
 // Hooks for tf-mlir-translate
 //----------------------------------------------------------------------------/
-
-static llvm::cl::opt<bool> import_all_computations(
-    "hlo-import-all-computations",
-    llvm::cl::desc("Enable importing unreachable computations."));
 
 static mlir::OwningModuleRef HloToMlirHloTranslate(llvm::StringRef input,
                                                    mlir::MLIRContext* context) {
@@ -208,14 +209,6 @@ static mlir::TranslateFromMLIRRegistration MlirHloToHloTranslate(
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTextTranslate(
     "mlir-hlo-to-hlo-text", xla::MlirHloToHloTextTranslateFunction,
     RegisterInputDialects);
-
-static mlir::TranslateFromMLIRRegistration MlirHloToHloTextWithLayoutsTranslate(
-    "mlir-hlo-to-hlo-text-with-layouts",
-    xla::MlirHloToHloTextWithLayoutsTranslateFunction, RegisterInputDialects);
-
-static mlir::TranslateFromMLIRRegistration MlirHloToHloTextViaBuilderTranslate(
-    "mlir-hlo-to-hlo-text-via-builder",
-    xla::MlirHloToHloTextViaBuilderTranslateFunction, RegisterInputDialects);
 
 static mlir::TranslateToMLIRRegistration HloToHloMlirTranslate(
     "hlo-to-mlir-hlo", HloToMlirHloTranslate);

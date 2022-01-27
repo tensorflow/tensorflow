@@ -41,7 +41,6 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
@@ -124,7 +123,6 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
@@ -152,10 +150,12 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -196,6 +196,7 @@ cc_library(
         ":event_pool",
         ":local_device_state",
         ":metrics",
+        ":mlir_to_hlo",
         ":pjrt_client",
         ":tracked_device_buffer",
         ":transpose",
@@ -304,6 +305,7 @@ cc_library(
     name = "cpu_device",
     srcs = ["cpu_device.cc"],
     hdrs = ["cpu_device.h"],
+    compatible_with = [],
     visibility = [":friends"],
     deps = [
         ":pjrt_stream_executor_client",
@@ -378,6 +380,27 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "mlir_to_hlo",
+    srcs = ["mlir_to_hlo.cc"],
+    hdrs = ["mlir_to_hlo.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
     name = "tracked_tfrt_cpu_device_buffer",
     srcs = ["tracked_tfrt_cpu_device_buffer.cc"],
     hdrs = ["tracked_tfrt_cpu_device_buffer.h"],
@@ -396,7 +419,9 @@ cc_library(
     name = "tfrt_cpu_pjrt_client",
     srcs = ["tfrt_cpu_pjrt_client.cc"],
     hdrs = ["tfrt_cpu_pjrt_client.h"],
+    compatible_with = [],
     deps = [
+        ":mlir_to_hlo",
         ":pjrt_client",
         ":semaphore",
         ":tracked_tfrt_cpu_device_buffer",

@@ -100,7 +100,7 @@ class IrEmitterUnnested : public IrEmitter {
     // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
     llvm::Value* thread_id_y;
 
-    // Lane id: `thread_id % kWarpSize`
+    // Lane id: `thread_id % WarpSize`
     llvm::Value* lane_id;
 
     // Block id.
@@ -176,7 +176,6 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitConditional(mlir::Operation* op);
   Status EmitConvolutionThunk(mlir::Operation* op);
   Status EmitGemmThunk(mlir::Operation* op);
-  Status EmitBatchNormThunk(mlir::Operation* op);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -367,13 +366,13 @@ class IrEmitterUnnested : public IrEmitter {
   //      accum += in[i];
   //    }
   //    accum = warp_reduce(accum);
-  //    if (threadIdx.x % kWarpSize == 0) {
-  //      cache[threadIdx.x / kWarpSize] = accum;
+  //    if (threadIdx.x % WarpSize == 0) {
+  //      cache[threadIdx.x / WarpSize] = accum;
   //    }
   //    __syncthreads();
-  //    if (threadIdx.x / kWarpSize == 0) {
-  //      bool warp_exists = threadIdx.x < (blockDim.x / kWarpSize);
-  //      float block_accum = warp_exists ? cache[threadIdx.x % kWarpSize] : 0;
+  //    if (threadIdx.x / WarpSize == 0) {
+  //      bool warp_exists = threadIdx.x < (blockDim.x / WarpSize);
+  //      float block_accum = warp_exists ? cache[threadIdx.x % WarpSize] : 0;
   //      block_accum = warp_reduce(accum);
   //      if (threadIdx.x == 0) {
   //        out += block_accum;
@@ -506,7 +505,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Emits a kernel for the hlo instruction using the given kernel mapping
   // scheme.
-  TilingKernelInfo EmitTilingKernel(
+  StatusOr<TilingKernelInfo> EmitTilingKernel(
       const TilingScheme& tiling_scheme, llvm::Type* index_ty,
       const TileElementGenerator& tile_element_generator);
 
@@ -593,13 +592,13 @@ class IrEmitterUnnested : public IrEmitter {
       const HloReduceInstruction* reduction, int partial_result_idx);
 
   // Emits code for reductions in the output_instructions.
-  void EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
-                          absl::Span<HloInstruction* const> instr_index_group,
-                          HloComputation* fused_computation,
-                          FusedIrEmitter* fused_emitter,
-                          const ReductionOutputMap& result_ir_arrays,
-                          const ReductionCodegenInfo& reduction_info,
-                          const Shape& input_shape);
+  Status EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
+                            absl::Span<HloInstruction* const> instr_index_group,
+                            HloComputation* fused_computation,
+                            FusedIrEmitter* fused_emitter,
+                            const ReductionOutputMap& result_ir_arrays,
+                            const ReductionCodegenInfo& reduction_info,
+                            const Shape& input_shape);
 
   // Generate a single element of the tile (update the accumulator state) for a
   // given reducer of index `i`.
@@ -647,7 +646,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
   std::unique_ptr<Thunk> BuildConstantInitializerThunk(
-      absl::Span<const uint8> init_value, const BufferAllocation::Slice& dest,
+      absl::Span<const uint8_t> init_value, const BufferAllocation::Slice& dest,
       const Shape& output_shape);
 
   StatusOr<std::unique_ptr<Thunk>> TryBuildConstantInitializerThunk(
@@ -656,6 +655,8 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(mlir::Operation* op,
                                                          mlir::Value init_value,
                                                          mlir::Value dest);
+  StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
+      mlir::lmhlo::FusionOp fusion, int output_index);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
@@ -682,8 +683,8 @@ class IrEmitterUnnested : public IrEmitter {
   // In the presence of thread scaling in tiling scheme may return early if the
   // combination of thread_id/block_id does not correspond to a real block.
   // Assumes the current function returns void.
-  ThreadIdInfo EmitThreadIdInfo(const TilingScheme& tiling_scheme,
-                                llvm::Type* index_ty);
+  StatusOr<ThreadIdInfo> EmitThreadIdInfo(const TilingScheme& tiling_scheme,
+                                          llvm::Type* index_ty);
   // Emit __syncthreads(), synchronization barrier for all threads in a block.
   llvm::CallInst* EmitSyncThreads();
 
@@ -693,7 +694,7 @@ class IrEmitterUnnested : public IrEmitter {
   llvm::Value* EmitThreadId(int64_t threads_per_block, llvm::Type* index_ty);
 
   // Emits current block id.
-  llvm::Value* EmitBlockId(int64_t num_blocks, llvm::Type* index_ty);
+  llvm::Value* EmitBlockId(int32_t num_blocks, llvm::Type* index_ty);
 
   // Prints a given format string with the given arguments, prefixed with
   // thread id and block id, and postfixed with a newline.
@@ -711,7 +712,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns the last generated thunk.
   Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
 
-  Status AssertNonDeterminismIsOkay(const string& op_name);
+  Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
@@ -724,6 +725,10 @@ class IrEmitterUnnested : public IrEmitter {
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
       scratch_nested_computations_;
   // End optional members for XLA HLO -> LMHLO.
+
+  // __shared__ memory uses a different address space, so we cast it to
+  // global address space before writing or reading.
+  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Twine name = "");
 };
 
 }  // namespace gpu

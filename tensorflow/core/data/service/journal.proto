@@ -23,21 +23,23 @@ message Update {
     ClientHeartbeatUpdate client_heartbeat = 10;
     CreateTaskUpdate create_task = 3;
     FinishTaskUpdate finish_task = 4;
-    SetElementSpecUpdate set_element_spec = 13;
   }
-}
-
-// Next tag: 3
-message RegisterDatasetUpdate {
-  int64 dataset_id = 1;
-  uint64 fingerprint = 2;
+  reserved 13;
 }
 
 // Next tag: 4
+message RegisterDatasetUpdate {
+  int64 dataset_id = 1;
+  uint64 fingerprint = 2;
+  DataServiceMetadata metadata = 3;
+}
+
+// Next tag: 5
 message RegisterWorkerUpdate {
   string worker_address = 1;
   string transfer_address = 2;
   repeated string worker_tags = 3;
+  int64 worker_uid = 4;
 }
 
 // Next tag: 3
@@ -112,17 +114,18 @@ message ClientHeartbeatUpdate {
   TaskRejected task_rejected = 3;
 }
 
-// Next tag: 7
+// Next tag: 8
 message CreatePendingTaskUpdate {
   int64 task_id = 1;
   int64 job_id = 2;
   string worker_address = 3;
   string transfer_address = 4;
   repeated string worker_tags = 6;
+  int64 worker_uid = 7;
   int64 starting_round = 5;
 }
 
-// Next tag: 8
+// Next tag: 9
 message CreateTaskUpdate {
   reserved 3, 5;
   int64 task_id = 1;
@@ -130,14 +133,10 @@ message CreateTaskUpdate {
   string worker_address = 4;
   string transfer_address = 6;
   repeated string worker_tags = 7;
+  int64 worker_uid = 8;
 }
 
 // Next tag: 2
 message FinishTaskUpdate {
   int64 task_id = 1;
-}
-
-message SetElementSpecUpdate {
-  int64 dataset_id = 1;
-  bytes element_spec = 2;
 }

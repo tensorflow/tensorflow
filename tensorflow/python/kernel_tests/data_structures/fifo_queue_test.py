@@ -19,7 +19,6 @@ import random
 import time
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
@@ -186,7 +185,7 @@ class FIFOQueueTest(test.TestCase):
     for x in elems:
       self.evaluate(q.enqueue((x,)))
 
-    for i in xrange(len(elems)):
+    for i in range(len(elems)):
       vals = self.evaluate(q.dequeue())
       self.assertEqual([elems[i]], vals)
 
@@ -197,7 +196,7 @@ class FIFOQueueTest(test.TestCase):
     for x in elems:
       self.evaluate(q.enqueue((x,)))
 
-    for i in xrange(len(elems)):
+    for i in range(len(elems)):
       vals = self.evaluate(q.dequeue())
       self.assertEqual([elems[i]], vals)
 
@@ -208,7 +207,7 @@ class FIFOQueueTest(test.TestCase):
     for x in elems:
       self.evaluate(q.enqueue(x))
 
-    for i in xrange(len(elems)):
+    for i in range(len(elems)):
       x_val, y_val = self.evaluate(q.dequeue())
       x, y = elems[i]
       self.assertEqual([x], x_val)
@@ -418,7 +417,7 @@ class GPUCompatibleFIFOQueueTests(test.TestCase):
       for x in elems:
         self.evaluate(q.enqueue((x,)))
 
-      for i in xrange(len(elems)):
+      for i in range(len(elems)):
         dequeued_tensor = q.dequeue()
         self.assertEqual(elems[0].device, dequeued_tensor.device)
         vals = self.evaluate(dequeued_tensor)
@@ -562,10 +561,10 @@ class UnconvertedFIFOQueueTests(test.TestCase):
     with self.cached_session():
       num_queues = 10
       qlist = []
-      for _ in xrange(num_queues):
+      for _ in range(num_queues):
         qlist.append(data_flow_ops.FIFOQueue(10, dtypes_lib.float32))
       # Enqueue/Dequeue into a dynamically selected queue
-      for _ in xrange(20):
+      for _ in range(20):
         index = np.random.randint(num_queues)
         q = data_flow_ops.FIFOQueue.from_list(index, qlist)
         q.enqueue((10.,)).run()
@@ -793,7 +792,7 @@ class FIFOQueueParallelTests(test.TestCase):
 
       # Dequeue every element using a single thread.
       results = []
-      for _ in xrange(len(elems)):
+      for _ in range(len(elems)):
         results.append(self.evaluate(dequeued_t))
       self.assertItemsEqual(elems, results)
 
@@ -844,7 +843,7 @@ class FIFOQueueParallelTests(test.TestCase):
       results = []
 
       def dequeue():
-        for _ in xrange(len(elems)):
+        for _ in range(len(elems)):
           results.append(self.evaluate(dequeued_t))
 
       enqueue_thread = self.checkedThread(target=enqueue)
@@ -1470,11 +1469,11 @@ class FIFOQueueParallelTests(test.TestCase):
       dequeued_t = q.dequeue()
 
       def enqueue():
-        for _ in xrange(100):
+        for _ in range(100):
           self.evaluate(enqueue_op)
 
       def dequeue():
-        for _ in xrange(100):
+        for _ in range(100):
           self.assertTrue(self.evaluate(dequeued_t) in (10.0, 20.0))
 
       enqueue_threads = [self.checkedThread(target=enqueue) for _ in range(10)]
@@ -1506,7 +1505,7 @@ class FIFOQueueParallelTests(test.TestCase):
       close_op = q.close()
 
       def dequeue():
-        for i in xrange(250):
+        for i in range(250):
           self.assertEqual(i, self.evaluate(dequeued_t))
 
       dequeue_thread = self.checkedThread(target=dequeue)

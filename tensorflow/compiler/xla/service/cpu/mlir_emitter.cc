@@ -47,7 +47,7 @@ std::unique_ptr<llvm::Module> MakeLLVMModule(mlir::OwningModuleRef module,
   manager.addPass(mlir::createLowerAffinePass());
   manager.addPass(mlir::createLowerToCFGPass());
   manager.addPass(mlir::createConvertVectorToLLVMPass(
-      mlir::LowerVectorToLLVMOptions().setReassociateFPReductions(
+      mlir::LowerVectorToLLVMOptions().enableReassociateFPReductions(
           kReassociateFPReductions)));
   CHECK(succeeded(manager.run(*module)));
   return mlir::translateModuleToLLVMIR(*module, *context);

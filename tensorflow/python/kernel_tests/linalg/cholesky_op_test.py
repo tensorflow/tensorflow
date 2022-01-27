@@ -15,7 +15,6 @@
 """Tests for tensorflow.ops.tf.Cholesky."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -128,14 +127,14 @@ class CholeskyOpTest(test.TestCase):
 
     # Generate random positive-definite matrices.
     matrices = np.random.rand(10, 5, 5)
-    for i in xrange(10):
+    for i in range(10):
       with self.subTest(i=i):
         matrices[i] = np.dot(matrices[i].T, matrices[i])
     self._verifyCholesky(matrices)
 
     # Generate random complex valued positive-definite matrices.
     matrices = np.random.rand(10, 5, 5) + 1j * np.random.rand(10, 5, 5)
-    for i in xrange(10):
+    for i in range(10):
       with self.subTest(i=i):
         matrices[i] = np.dot(matrices[i].T.conj(), matrices[i])
     self._verifyCholesky(matrices)

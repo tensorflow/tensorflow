@@ -70,7 +70,8 @@ class UnfoldLargeSplatConstant
  private:
   void MaybeUnfoldLargeSplatConstant(mlir::OpBuilder* op_builder,
                                      mlir::arith::ConstantOp const_op) const {
-    auto splat_elements_attr = const_op.value().dyn_cast<SplatElementsAttr>();
+    auto splat_elements_attr =
+        const_op.getValue().dyn_cast<SplatElementsAttr>();
     if (!splat_elements_attr) {
       return;
     }
@@ -99,7 +100,7 @@ class UnfoldLargeSplatConstant
             DenseElementsAttr::get(
                 RankedTensorType::get(
                     {}, splat_elements_attr.getType().getElementType()),
-                splat_elements_attr.getSplatValue()));
+                splat_elements_attr.getSplatValue<Attribute>()));
     TFL::FillOp fill = op_builder->create<TFL::FillOp>(
         const_op->getLoc(), splat_elements_attr.getType(), fill_shape,
         fill_value);

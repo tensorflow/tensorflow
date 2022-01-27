@@ -71,6 +71,8 @@ enum MinibenchmarkStatus {
   kMinibenchmarkCouldntChmodTemporaryFile = 508,
   kMinibenchmarkPopenFailed = 509,
   kMinibenchmarkCommandFailed = 510,
+  kMiniBenchmarkCannotLoadSupportLibrary = 511,
+  kMiniBenchmarkInvalidSupportLibraryConfiguration = 512,
   // Validator status codes.
   kMinibenchmarkDelegateNotSupported = 1000,
   kMinibenchmarkDelegatePluginNotFound = 1001,

@@ -15,7 +15,7 @@
 import TensorFlowLiteC
 
 /// A delegate that the `Interpreter` uses to perform TensorFlow Lite model computations.
-public protocol Delegate: class {
+public protocol Delegate: AnyObject {
   /// The `TfLiteDelegate` C pointer type.
   typealias CDelegate = UnsafeMutablePointer<TfLiteDelegate>
 

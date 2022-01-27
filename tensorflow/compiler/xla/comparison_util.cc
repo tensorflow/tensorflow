@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/comparison_util.h"
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -41,7 +42,7 @@ std::string ComparisonDirectionToString(Comparison::Direction direction) {
 StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction_name) {
   static auto* direction_map =
-      new absl::flat_hash_map<string, Comparison::Direction>({
+      new absl::flat_hash_map<std::string, Comparison::Direction>({
           {"EQ", Comparison::Direction::kEq},
           {"NE", Comparison::Direction::kNe},
           {"GE", Comparison::Direction::kGe},
@@ -58,12 +59,13 @@ StatusOr<Comparison::Direction> StringToComparisonDirection(
 
 StatusOr<Comparison::Type> StringToComparisonType(
     absl::string_view compare_type_name) {
-  static auto* type_map = new absl::flat_hash_map<string, Comparison::Type>({
-      {"FLOAT", Comparison::Type::kFloat},
-      {"TOTALORDER", Comparison::Type::kFloatTotalOrder},
-      {"SIGNED", Comparison::Type::kSigned},
-      {"UNSIGNED", Comparison::Type::kUnsigned},
-  });
+  static auto* type_map =
+      new absl::flat_hash_map<std::string, Comparison::Type>({
+          {"FLOAT", Comparison::Type::kFloat},
+          {"TOTALORDER", Comparison::Type::kFloatTotalOrder},
+          {"SIGNED", Comparison::Type::kSigned},
+          {"UNSIGNED", Comparison::Type::kUnsigned},
+      });
   auto it = type_map->find(compare_type_name);
   if (it == type_map->end()) {
     return InvalidArgument("Unknown comparison type: %s", compare_type_name);
@@ -110,8 +112,8 @@ Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
     case C128:
       return Type::kFloat;
     default:
-      LOG(FATAL) << "Unsupported comparison mode."
-                 << PrimitiveType_Name(type) << "\n";
+      LOG(FATAL) << "Unsupported comparison mode." << PrimitiveType_Name(type)
+                 << "\n";
   }
 }
 

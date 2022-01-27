@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <type_traits>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/framework/types.h"
@@ -222,24 +223,23 @@ class TRTNetworkBuilder {
   // Adds a Constant layer whose output is a TensorRT shape tensor. The shape
   // tensor's size and values correspond to dim's nbDims and d[], respectively.
   StatusOr<nvinfer1::IConstantLayer*> ConstantShape(
-      const nvinfer1::Dims& shape_data) noexcept {
-    TRT_ENSURE(shape_data.nbDims > 0);
+      const DimsAdapter& shape_data) noexcept {
+    TRT_ENSURE(shape_data.NumDims() > 0);
     nvinfer1::Dims shape_dims;
     shape_dims.nbDims = 1;
-    shape_dims.d[0] = shape_data.nbDims;
-    TRT_ShapedWeights const_weights =
+    shape_dims.d[0] = shape_data.NumDims();
+    StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(nvinfer1::DataType::kINT32, shape_dims);
-    int32* values = const_weights.GetPointer<int32>();
-    for (int i = 0; i < shape_data.nbDims; i++) {
-      values[i] = static_cast<int32>(shape_data.d[i]);
-    }
-    nvinfer1::IConstantLayer* const_layer = network_->addConstant(
-        const_weights.shape_, const_weights.GetTrtWeights());
+    TRT_ENSURE_OK(const_weights);
+    absl::c_copy(shape_data, const_weights->GetPointer<int32>());
+    StatusOr<nvinfer1::Dims> trt_dims = const_weights->Shape().AsTrtDims();
+    TRT_ENSURE_OK(trt_dims);
+    nvinfer1::IConstantLayer* const_layer =
+        network_->addConstant(*trt_dims, const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     nvinfer1::ITensor* output = const_layer->getOutput(0);
     TRT_ENSURE(output);
     TRT_ENSURE(output->getType() == nvinfer1::DataType::kINT32);
-    TRT_ENSURE(const_layer);
     return const_layer;
   }
 
@@ -250,14 +250,17 @@ class TRTNetworkBuilder {
     nvinfer1::Dims shape_dims;
     shape_dims.nbDims = 1;
     shape_dims.d[0] = data.size();
-    TRT_ShapedWeights const_weights =
+    StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(nvinfer1::DataType::kINT32, shape_dims);
-    int32* values = const_weights.GetPointer<int32>();
+    TRT_ENSURE_OK(const_weights);
+    int32* values = const_weights->GetPointer<int32>();
     for (int i = 0; i < data.size(); i++) {
       values[i] = static_cast<int32>(data[i]);
     }
-    nvinfer1::IConstantLayer* const_layer = network_->addConstant(
-        const_weights.shape_, const_weights.GetTrtWeights());
+    StatusOr<nvinfer1::Dims> trt_dims = const_weights->Shape().AsTrtDims();
+    TRT_ENSURE_OK(trt_dims);
+    nvinfer1::IConstantLayer* const_layer =
+        network_->addConstant(*trt_dims, const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     nvinfer1::ITensor* output = const_layer->getOutput(0);
     TRT_ENSURE(output);
@@ -282,13 +285,48 @@ class TRTNetworkBuilder {
     nvinfer1::Dims zero_shape;
     zero_shape.nbDims = nb_dims;
     std::fill_n(zero_shape.d, nb_dims, 1);
-    TRT_ShapedWeights const_weights =
+    StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(data_type, zero_shape);
-    const_weights.GetPointer<T>()[0] = scalar;
+    TRT_ENSURE_OK(const_weights);
+    const_weights->GetPointer<T>()[0] = scalar;
     nvinfer1::IConstantLayer* const_layer =
-        network_->addConstant(zero_shape, const_weights.GetTrtWeights());
+        network_->addConstant(zero_shape, const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     return const_layer;
+  };
+
+  // Adds a Constant layer from a TRT_ShapedWeights object.
+  StatusOr<nvinfer1::IConstantLayer*> WeightsToConstant(
+      const nvinfer1::Weights& weights, const DimsAdapter& dims) noexcept {
+    StatusOr<int64_t> vol = dims.Volume();
+    TRT_ENSURE_OK(vol);
+    TRT_ENSURE(*vol == weights.count);
+    StatusOr<nvinfer1::Dims> trt_dims = dims.AsTrtDims();
+    TRT_ENSURE_OK(trt_dims);
+    nvinfer1::IConstantLayer* const_layer =
+        network_->addConstant(*trt_dims, weights);
+    TRT_ENSURE(const_layer);
+    return const_layer;
+  };
+
+  // Creates a nvinfer1::Weights object containing a single scalar.
+  template <typename T,
+            typename std::enable_if<std::is_pod<T>::value>::type* = nullptr>
+  StatusOr<nvinfer1::Weights> ScalarWeights(const T scalar,
+                                            const int nb_dims) noexcept {
+    TRT_ENSURE(nb_dims <= nvinfer1::Dims::MAX_DIMS);
+    auto data_type = nvinfer1::DataType::kINT32;
+    if (std::is_floating_point<T>::value) {
+      data_type = nvinfer1::DataType::kFLOAT;
+    }
+    nvinfer1::Dims weights_shape;
+    weights_shape.nbDims = nb_dims;
+    std::fill_n(weights_shape.d, nb_dims, 1);
+    StatusOr<TRT_ShapedWeights> const_weights =
+        weight_store_->GetTempWeights(data_type, weights_shape);
+    TRT_ENSURE_OK(const_weights);
+    const_weights->GetPointer<T>()[0] = scalar;
+    return const_weights->GetTrtWeights();
   };
 
   // Adds a TensorRT Slice operation to the network.
@@ -366,7 +404,147 @@ class TRTNetworkBuilder {
         network_->addGather(*gather_input, *gather_indices, 0);
     TRT_ENSURE(gather);
     return gather;
-  };
+  }
+
+  // Adds a scale layer that uniformly scales the input tensor by the specified
+  // amount.
+  StatusOr<nvinfer1::IScaleLayer*> AddUniformScale(nvinfer1::ITensor* input,
+                                                   float scale,
+                                                   const std::string& name) {
+    TRT_ENSURE(input);
+    TRT_ENSURE(!name.empty());
+    StatusOr<nvinfer1::Weights> weight = this->ScalarWeights<float>(scale, 1);
+    TRT_ENSURE_OK(weight);
+    const nvinfer1::Weights empty_weights =
+        nvinfer1::Weights{nvinfer1::DataType::kFLOAT, nullptr, 0};
+    nvinfer1::IScaleLayer* scale_layer =
+        network_->addScale(*input, nvinfer1::ScaleMode::kUNIFORM, empty_weights,
+                           (*weight), empty_weights);
+    TRT_ENSURE(scale_layer != nullptr);
+    scale_layer->setName(name.c_str());
+    TRT_ENSURE((*scale_layer).getPower().count == 0);
+    TRT_ENSURE((*scale_layer).getShift().count == 0);
+    TRT_ENSURE((*scale_layer).getScale().count == 1);
+    return scale_layer;
+  }
+
+  // Adds a quantization layer that uniformly scales the input tensor
+  // by the given multiplicative "scaling_factor", then rounds
+  // (round-to-nearest-ties-to-even) to the nearest integer and clamps in the
+  // range of [-128, 127].
+  StatusOr<nvinfer1::ILayer*> Quantize(nvinfer1::ITensor* input,
+                                       const float scaling_factor,
+                                       const std::string& name) {
+    TRT_ENSURE(input);
+    TRT_ENSURE(!name.empty());
+    // Preprocessor usage here is unavoidable because TRT8 API is new.
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+    // The TensorRT IQuantizeLayer divides by the scale factor rather than
+    // multiplies. To be consistent, in this function we expect a multiplicative
+    // scale factor, so we take the reciprical.
+    StatusOr<nvinfer1::IConstantLayer*> scaling_const =
+        this->Constant<float>(1.0f / scaling_factor, 1);
+    TRT_ENSURE_PTR_OK(scaling_const);
+    (*scaling_const)->setDimensions(nvinfer1::Dims{0, {}});
+    nvinfer1::IQuantizeLayer* quant_layer =
+        network_->addQuantize(*input, *(*scaling_const)->getOutput(0));
+    TRT_ENSURE(quant_layer);
+    quant_layer->setAxis(1);
+    return quant_layer;
+#else
+    StatusOr<nvinfer1::IScaleLayer*> result =
+        this->AddUniformScale(input, scaling_factor, name);
+    TRT_ENSURE_PTR_OK(result);
+    (*result)->setOutputType(0, nvinfer1::DataType::kINT8);
+    (*result)->setPrecision(nvinfer1::DataType::kFLOAT);
+    return result;
+#endif
+  }
+
+  // Adds a dequantize layer that casts the input tensor to TensorRT float type
+  // and scales it uniformly by the given multiplicative "scaling_factor".
+  StatusOr<nvinfer1::ILayer*> Dequantize(nvinfer1::ITensor* input,
+                                         const float scaling_factor,
+                                         const std::string& name) {
+    TRT_ENSURE(input);
+    TRT_ENSURE(!name.empty());
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+    StatusOr<nvinfer1::IConstantLayer*> scaling_const =
+        this->Constant<float>(scaling_factor, 1);
+    TRT_ENSURE_PTR_OK(scaling_const);
+    (*scaling_const)->setDimensions(nvinfer1::Dims{0, {}});
+    nvinfer1::IDequantizeLayer* dequant_layer =
+        network_->addDequantize(*input, *(*scaling_const)->getOutput(0));
+    dequant_layer->setAxis(1);
+    TRT_ENSURE(dequant_layer);
+    return dequant_layer;
+#else
+    StatusOr<nvinfer1::IScaleLayer*> result =
+        this->AddUniformScale(input, scaling_factor, name);
+    TRT_ENSURE_PTR_OK(result);
+    (*result)->setOutputType(0, nvinfer1::DataType::kFLOAT);
+    (*result)->setPrecision(nvinfer1::DataType::kINT8);
+    return result;
+#endif
+  }
+
+  // Adds TensorRT Q/DQ operations. This is for explicit precision mode.
+  StatusOr<nvinfer1::ILayer*> UniformQuantizeDequantizeExplicit(
+      nvinfer1::ITensor* input, float quantize_scale, float dequantize_scale,
+      const std::string& name) {
+    TRT_ENSURE(input);
+    if (!IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+      TRT_ENSURE(network_->hasExplicitPrecision());
+    }
+    TRT_ENSURE(IS_TRT_VERSION_GE(7, 1, 0, 0));
+
+    static int count = 0;
+    TRT_ENSURE(input->getType() == nvinfer1::DataType::kFLOAT);
+    std::string quant_name = absl::StrCat(input->getName(), "_quant_", count);
+
+    StatusOr<nvinfer1::ILayer*> quant =
+        this->Quantize(input, quantize_scale, quant_name);
+    TRT_ENSURE_PTR_OK(quant);
+
+    std::string dequant_name =
+        absl::StrCat(input->getName(), "_dequant_", count);
+    StatusOr<nvinfer1::ILayer*> dequant = this->Dequantize(
+        (*quant)->getOutput(0), dequantize_scale, dequant_name);
+    TRT_ENSURE_PTR_OK(dequant);
+
+    count++;
+    return dequant;
+  }
+
+  StatusOr<nvinfer1::IShuffleLayer*> Reshape(nvinfer1::ITensor* input,
+                                             const nvinfer1::Dims& new_shape) {
+    TRT_ENSURE(input);
+    nvinfer1::IShuffleLayer* layer = network_->addShuffle(*input);
+    TRT_ENSURE(layer);
+    layer->setReshapeDimensions(new_shape);
+    return layer;
+  }
+
+  StatusOr<nvinfer1::ILayer*> FindProducerOf(const nvinfer1::ITensor* tensor) {
+    const char* name = tensor->getName();
+    const int num_layers = network_->getNbLayers();
+    for (int i = 0; i < num_layers; i++) {
+      nvinfer1::ILayer* layer = network_->getLayer(i);
+      const int num_outputs = layer->getNbOutputs();
+      for (int j = 0; j < num_outputs; j++) {
+        nvinfer1::ITensor* t = layer->getOutput(j);
+        if (std::string(t->getName()) == name) {
+          return layer;
+        }
+      }
+    }
+    return errors::NotFound("could not find producing layer of ", name);
+  }
+
+  StatusOr<nvinfer1::ILayer*> UniqueParentOf(const nvinfer1::ILayer* layer,
+                                             int input_idx = 0) {
+    return FindProducerOf(layer->getInput(input_idx));
+  }
 
  private:
   nvinfer1::INetworkDefinition* const network_;

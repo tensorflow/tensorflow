@@ -66,7 +66,18 @@ def function_def_to_graph(fdef,
   if input_shapes is None:
     input_shapes_attr = fdef.attr.get("_input_shapes", None)
     if input_shapes_attr is not None:
-      input_shapes = input_shapes_attr.list.shape
+      raw_input_shapes = input_shapes_attr.list.shape
+
+      # Replace resource handle shapes, since they are always stored as a scalar
+      # shape in the _input_shapes attribute.
+      input_shapes = []
+      for input_shape, arg_def in zip(raw_input_shapes,
+                                      fdef.signature.input_arg):
+        if arg_def.type == types_pb2.DT_RESOURCE and arg_def.handle_data:
+          input_shapes.append(arg_def.handle_data[0].shape)
+        else:
+          input_shapes.append(input_shape)
+
   graph_def, nested_to_flat_tensor_name = function_def_to_graph_def(
       fdef, input_shapes)
 

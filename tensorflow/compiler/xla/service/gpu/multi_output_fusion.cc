@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
@@ -50,8 +51,8 @@ bool IsProfitableOperand(HloInstruction* instr) {
   return true;
 }
 
-bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
-                 FusionInfoCache* fusion_info_cache) {
+FusionDecision LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
+                           FusionInfoCache* fusion_info_cache) {
   // If we're fusing fusions only do it if the fusion kind matches. Loop fusions
   // merge into bigger loop fusions and input (reduce) fusions become fusions
   // with multiple reduce outputs. We could fuse reduce and loop fusions
@@ -63,7 +64,7 @@ bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
        instr1->fusion_kind() != instr2->fusion_kind()) ||
       (IsReductionFromOrToContiguousDimensions(*instr2) &&
        instr1->IsLoopFusion())) {
-    return false;
+    return "Can't merge fusions of two different types";
   }
   // The emitter only supports in-place DUS for fusions with a single DUS at the
   // root. Don't sibling fuse DUS for now.
@@ -74,12 +75,13 @@ bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
       (instr2->opcode() == HloOpcode::kFusion &&
        instr2->fused_expression_root()->opcode() ==
            HloOpcode::kDynamicUpdateSlice)) {
-    return false;
+    return "Can't fuse multiple DUSs";
   }
+
   // Do this check last, as it may be expensive.
-  return !FusionWouldBeTooLarge(*instr1, *instr2,
-                                /*is_consumer_producer_fusion=*/false,
-                                fusion_info_cache);
+  return FusionFitsInBudget(*instr1, *instr2,
+                            /*is_consumer_producer_fusion=*/false,
+                            fusion_info_cache);
 }
 
 // We prefer multi-output fusions over other fusions over unfused ops, because
@@ -149,9 +151,9 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
       VLOG(3) << producer->name() << " would introduce a cycle when fused.";
       continue;
     }
-    if (FusionWouldBeTooLarge(*producer, *consumer,
-                              /*is_consumer_producer_fusion=*/false,
-                              fusion_info_cache)) {
+    if (!FusionFitsInBudget(*producer, *consumer,
+                            /*is_consumer_producer_fusion=*/false,
+                            fusion_info_cache)) {
       VLOG(3) << producer->name() << " and " << consumer->name()
               << " would be too large of a fusion.";
       continue;
@@ -200,6 +202,7 @@ void GpuMultiOutputFusion::RecomputeReachability() {
 bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
                                         FusionInfoCache* fusion_info_cache) {
   if (!IsProfitableOperand(parent)) {
+    VLOG(3) << "Operand " << parent->ToShortString() << " is not profitable";
     return false;
   }
   bool changed = false;
@@ -210,10 +213,9 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
                       [](const HloInstruction* a, const HloInstruction* b) {
                         return FusionPriority(a) > FusionPriority(b);
                       });
-  for (auto i = siblings.begin(); i != siblings.end();) {
+  for (auto i = siblings.begin(); i != siblings.end(); ++i) {
     VLOG(3) << "Considering " << (*i)->name();
     if ((*i)->opcode() != HloOpcode::kFusion || !IsSiblingFusionCandidate(*i)) {
-      ++i;
       continue;
     }
     for (auto j = i + 1; j != siblings.end();) {
@@ -247,7 +249,6 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
       siblings.erase(j);
       RecomputeReachability();
     }
-    ++i;
   }
   return changed;
 }
@@ -258,13 +259,13 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
 
-  auto dump_fusion_state = [&] {
+  auto dump_fusion_state = [&](const HloInstruction& consumer,
+                               absl::string_view label) {
     if (computation_->parent()
             ->config()
             .debug_options()
             .xla_dump_fusion_visualization()) {
-      TF_RETURN_IF_ERROR(
-          RegisterFusionState(*computation_, "GpuMultiOutputFusion"));
+      RegisterFusionState(*computation_, label, consumer);
     }
     return Status::OK();
   };
@@ -274,6 +275,9 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     // Traverse the HLO in uses-before-defs order by removing instruction from
     // the back of the vector.
     HloInstruction* producer = defs_before_uses.back();
+
+    // Copy on purpose: to use after removing the producer.
+    std::string producer_name = producer->name();
     defs_before_uses.pop_back();
     // Never multi-output fuse constants.  To the extent that we want to fuse
     // constants, that should be handled by the regular fusion pass.
@@ -316,7 +320,10 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
         TF_CHECK_OK(computation_->RemoveInstruction(producer));
       }
 
-      TF_RETURN_IF_ERROR(dump_fusion_state());
+      TF_RETURN_IF_ERROR(dump_fusion_state(
+          *consumer_for_fusion,
+          absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
+                       consumer_for_fusion->name(), "| inside MOF-fusion")));
       RecomputeReachability();
       continue;
     }
@@ -337,7 +344,10 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
       TF_CHECK_OK(computation_->RemoveInstruction(producer));
     }
 
-    TF_RETURN_IF_ERROR(dump_fusion_state());
+    TF_RETURN_IF_ERROR(dump_fusion_state(
+        *input_fusion,
+        absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
+                     input_fusion->name(), "| inside MOF-fusion")));
     RecomputeReachability();
   }
   return changed;

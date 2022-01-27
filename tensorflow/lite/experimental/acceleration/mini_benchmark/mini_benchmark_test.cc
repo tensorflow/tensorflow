@@ -29,8 +29,11 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/proto_to_flatbuffer.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_float_validation_model.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_nnapi_sl_fake_impl.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/nnapi_sl_fake_impl.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 
 namespace tflite {
 namespace acceleration {
@@ -65,10 +68,16 @@ class MiniBenchmarkTest : public ::testing::Test {
   }
 
   void SetupBenchmark(proto::Delegate delegate, const std::string& model_path,
-                      bool reset_storage = true) {
+                      bool reset_storage = true,
+                      const nnapi::NnApiSupportLibrary* nnapi_sl = nullptr) {
     proto::MinibenchmarkSettings settings;
     proto::TFLiteSettings* tflite_settings = settings.add_settings_to_test();
     tflite_settings->set_delegate(delegate);
+    if ((delegate == proto::Delegate::NNAPI) && nnapi_sl) {
+      std::cerr << "Using NNAPI SL\n";
+      tflite_settings->mutable_nnapi_settings()->set_support_library_handle(
+          reinterpret_cast<int64_t>(nnapi_sl));
+    }
     proto::ModelFile* file = settings.mutable_model_file();
     file->set_filename(model_path);
     proto::BenchmarkStoragePaths* paths = settings.mutable_storage_paths();
@@ -86,8 +95,9 @@ class MiniBenchmarkTest : public ::testing::Test {
   }
 
   void TriggerBenchmark(proto::Delegate delegate, const std::string& model_path,
-                        bool reset_storage = true) {
-    SetupBenchmark(delegate, model_path, reset_storage);
+                        bool reset_storage = true,
+                        const nnapi::NnApiSupportLibrary* nnapi_sl = nullptr) {
+    SetupBenchmark(delegate, model_path, reset_storage, nnapi_sl);
     mb_->TriggerMiniBenchmark();
   }
 
@@ -265,6 +275,25 @@ TEST_F(MiniBenchmarkTest, DelegatePluginNotSupported) {
     }
   }
   EXPECT_TRUE(is_found);
+}
+
+TEST_F(MiniBenchmarkTest, UseNnApiSl) {
+  if (!should_perform_test_) return;
+
+  std::string nnapi_sl_path_ = MiniBenchmarkTestHelper::DumpToTempFile(
+      "libnnapi_fake.so", g_nnapi_sl_fake_impl, g_nnapi_sl_fake_impl_len);
+
+  std::unique_ptr<const ::tflite::nnapi::NnApiSupportLibrary> nnapi_sl =
+      ::tflite::nnapi::loadNnApiSupportLibrary(nnapi_sl_path_);
+
+  ASSERT_TRUE(nnapi_sl);
+
+  TriggerBenchmark(proto::Delegate::NNAPI, mobilenet_model_path_,
+                   /*reset_storage=*/true, nnapi_sl.get());
+
+  WaitForValidationCompletion();
+
+  EXPECT_TRUE(tflite::acceleration::WasNnApiSlInvoked());
 }
 
 }  // namespace

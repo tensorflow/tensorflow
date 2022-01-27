@@ -249,16 +249,13 @@ class ResourceMgr {
       return (x.second == y.second) && (x.first == y.first);
     }
   };
-  typedef absl::variant<core::RefCountPtr<ResourceBase>,
-                        core::WeakPtr<ResourceBase>>
-      StrongOrWeakResourcePtr;
-
   struct ResourceAndName {
-    StrongOrWeakResourcePtr resource;
-    std::unique_ptr<string> name;
+    absl::variant<core::RefCountPtr<ResourceBase>, core::WeakPtr<ResourceBase>>
+        resource;
+    std::unique_ptr<std::string> name;
 
     ResourceAndName();
-    ResourceAndName(StrongOrWeakResourcePtr&& resource, std::string name);
+    explicit ResourceAndName(const string& name);
     ResourceAndName(ResourceAndName&& other) noexcept;
     ~ResourceAndName();
 

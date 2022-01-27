@@ -144,7 +144,7 @@ mlir::LogicalResult PromoteVarHandlesToArguments(
       auto resource_type = var_handle_op.resource().getType();
       func_arg_types.push_back(resource_type);
       var_handle_op.resource().replaceAllUsesWith(
-          block.addArgument(resource_type));
+          block.addArgument(resource_type, var_handle_op.getLoc()));
     } else {
       var_handle_op.resource().replaceAllUsesWith(
           block.getArgument(it.first->getSecond()));

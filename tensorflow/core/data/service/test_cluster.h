@@ -171,7 +171,7 @@ template <class T>
 StatusOr<int64_t> DatasetClient<T>::RegisterDataset(const DatasetDef& dataset) {
   int64 dataset_id = 0;
   TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-      dataset, /*element_spec=*/absl::nullopt, dataset_id));
+      dataset, DataServiceMetadata(), dataset_id));
   return dataset_id;
 }
 

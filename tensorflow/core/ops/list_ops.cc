@@ -61,7 +61,8 @@ REGISTER_OP("EmptyTensorList")
     .Output("handle: variant")
     .Attr("element_dtype: type")
     .Attr("shape_type: {int32, int64}")
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       DataType element_dtype;
@@ -81,7 +82,8 @@ REGISTER_OP("TensorListPushBack")
     .Input("tensor: element_dtype")
     .Output("output_handle: variant")
     .Attr("element_dtype: type")
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       DataType element_dtype;
@@ -121,7 +123,8 @@ REGISTER_OP("TensorListPushBackBatch")
     .Output("output_handles: variant")
     .Attr("element_dtype: type")
     // TODO(mdan): Also support for inferring from an input type as well.
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle input_handles;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &input_handles));
@@ -332,7 +335,8 @@ REGISTER_OP("TensorListSplit")
     .Output("output_handle: variant")
     .Attr("element_dtype: type")
     .Attr("shape_type: {int32, int64}")
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       DataType element_dtype;
@@ -368,7 +372,9 @@ REGISTER_OP("TensorListFromTensor")
     .Output("output_handle: variant")
     .Attr("element_dtype: type")
     .Attr("shape_type: {int32, int64}")
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
+    .SetForwardTypeFn(full_type::UnaryContainerCreate(TFT_ARRAY, 0))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       DataType element_dtype;
@@ -416,7 +422,8 @@ REGISTER_OP("TensorListReserve")
     .Output("handle: variant")
     .Attr("element_dtype: type")
     .Attr("shape_type: {int32, int64}")
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       shape_inference::ShapeHandle element_shape;
@@ -485,7 +492,12 @@ REGISTER_OP("TensorListSetItem")
     .Input("item: element_dtype")
     .Output("output_handle: variant")
     .Attr("element_dtype: type")
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
+    .SetForwardTypeFn(full_type::UnaryContainerAdd(TFT_ARRAY,
+                                                   /*container_idx=*/0,
+                                                   /*element_idx=*/2,
+                                                   /*homogeneous=*/true))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       DataType element_dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
@@ -547,7 +559,8 @@ REGISTER_OP("TensorListScatter")
     .Output("output_handle: variant")
     .Attr("element_dtype: type")
     .Attr("shape_type: {int32, int64}")
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       DataType element_dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
@@ -570,7 +583,8 @@ REGISTER_OP("TensorListScatterV2")
     .Output("output_handle: variant")
     .Attr("element_dtype: type")
     .Attr("shape_type: {int32, int64}")
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       DataType element_dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
@@ -591,7 +605,8 @@ REGISTER_OP("TensorListScatterIntoExistingList")
     .Input("indices: int32")
     .Output("output_handle: variant")
     .Attr("element_dtype: type")
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle ignored;
       // Check that tensor is at least a vector.
@@ -621,7 +636,8 @@ REGISTER_OP("TensorListConcatLists")
     .Input("input_b: variant")
     .Attr("element_dtype: type")
     .Output("output: variant")
-    .SetTypeConstructor(full_type::Unary(TFT_ARRAY, "element_dtype"))
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
+                                                        "element_dtype"))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       auto input_a = c->input(0);
       auto input_b = c->input(1);

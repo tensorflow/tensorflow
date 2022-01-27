@@ -72,7 +72,7 @@ using FusionPlan = std::vector<FusionPattern>;
 // To support using EquivalenceClasses for Value
 class ValueWrapper {
  public:
-  explicit ValueWrapper(Value value) : value_(std::move(value)) {}
+  explicit ValueWrapper(Value value) : value_(value) {}
 
   Value getValue() const { return value_; }
 
@@ -85,14 +85,14 @@ class ValueWrapper {
 };
 
 bool operator<(const ValueWrapper& lhs, const ValueWrapper& rhs) {
-  auto lhs_value = lhs.getValue().getAsOpaquePointer();
-  auto rhs_value = rhs.getValue().getAsOpaquePointer();
+  auto* lhs_value = lhs.getValue().getAsOpaquePointer();
+  auto* rhs_value = rhs.getValue().getAsOpaquePointer();
   return lhs_value < rhs_value;
 }
 
 bool IsMhlo(Operation* op) {
   Dialect* dialect = op->getDialect();
-  return dialect && isa<MhloDialect>(dialect);
+  return isa_and_nonnull<MhloDialect>(dialect);
 }
 
 bool IsFusibleWithOperand(Operation* op) {
@@ -107,7 +107,7 @@ bool IsFusibleWithConsumer(Operation* op) {
 
 Value InferEffectiveWorkloadShape(Value v) {
   Operation* op = v.getDefiningOp();
-  return op && isa<ReduceOp>(op) ? op->getOperand(0) : v;
+  return isa_and_nonnull<ReduceOp>(op) ? op->getOperand(0) : v;
 }
 
 bool IsFusible(Operation* op) {
@@ -483,8 +483,8 @@ class FusionPlanner {
 };
 
 struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
-  void runOnFunction() override {
-    FuncOp func = getFunction();
+  void runOnOperation() override {
+    FuncOp func = getOperation();
     if (!IsTargetFunc(func)) {
       return;
     }
@@ -564,7 +564,7 @@ struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
           // fused op's consumer or consumer's consumer
           bool is_consumer = llvm::any_of(
               cur_op.getOperands(), [&fused_set, &consumers_set](Value v) {
-                auto op = v.getDefiningOp();
+                auto* op = v.getDefiningOp();
                 return fused_set.contains(op) || consumers_set.contains(op);
               });
           if (is_consumer) {
@@ -573,7 +573,7 @@ struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
           }
         }
       }
-      for (auto op : llvm::reverse(consumers_vec)) {
+      for (auto* op : llvm::reverse(consumers_vec)) {
         op->moveAfter(pattern.back());
       }
 

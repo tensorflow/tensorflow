@@ -70,6 +70,10 @@ CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 CreateFuseTpuCompileAndExecutePass();
 
+// Create a pass to optimize TF dialect for TFRT workflow.
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateOptimizeTfForTfrtPass();
+
 }  // namespace tfrt_compiler
 
 class CoreRTConverter;

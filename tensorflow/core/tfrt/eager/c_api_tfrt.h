@@ -216,7 +216,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   CoreRuntime* GetCoreRuntime();
   tensorflow::Status BuildFunctionRequestContext(
-      tensorflow::tfd::OpKernelRunnerTable* runner_table,
+      tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
       RCReference<tfrt::RequestContext>* request_context);
   tensorflow::Status BuildOpRequestContext(
       RCReference<tfrt::RequestContext>* request_context);
@@ -598,7 +598,7 @@ class OperationInterface : public tensorflow::ImmediateExecutionOperation {
   const tensorflow::OpDef* op_def_;  // op definition from protobuf
   OpAttrs attrs_;
   OpAttrsInterface op_attrs_;
-  SmallVector<
+  llvm::SmallVector<
       tensorflow::core::RefCountPtr<tensorflow::ImmediateExecutionTensorHandle>,
       8>
       args_;

@@ -18,29 +18,37 @@ limitations under the License.
 
 #include <memory>
 
-namespace mlir {
+#include "mlir/Pass/Pass.h"
 
-class FunctionPass;
+namespace mlir {
 
 //===----------------------------------------------------------------------===//
 // Passes
 //===----------------------------------------------------------------------===//
 
 /// Creates a pass that reuses buffers which are already allocated.
-std::unique_ptr<FunctionPass> createBufferReusePass();
+std::unique_ptr<OperationPass<FuncOp>> createBufferReusePass();
 
 /// Creates a pass that tries to simplify dynamic reshapes.
-std::unique_ptr<FunctionPass> createReshapeSimplifierPass();
+std::unique_ptr<OperationPass<FuncOp>> createReshapeSimplifierPass();
+
+/// Creates a pass that merges smaller buffer into bigger buffer to optimize
+/// memory consumption.
+std::unique_ptr<OperationPass<FuncOp>> createBufferPackingPass(
+    unsigned window_size = 5);
 
 /// Creates a pass that tests the useranges of the UserangeAnalysis.
-std::unique_ptr<FunctionPass> createTestUserangePass();
+std::unique_ptr<OperationPass<FuncOp>> createTestUserangePass();
 
 /// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
-std::unique_ptr<FunctionPass> createTestShapeComponentAnalysisPass();
+std::unique_ptr<OperationPass<FuncOp>> createTestShapeComponentAnalysisPass();
 
 /// Creates a pass that removes redundant operations that implement a
 /// CopyOpInterface.
-std::unique_ptr<FunctionPass> createCopyRemovalPass();
+std::unique_ptr<OperationPass<FuncOp>> createCopyRemovalPass();
+
+/// Creates a pass that computes the allocated memory.
+std::unique_ptr<OperationPass<FuncOp>> createMemoryCountPass();
 
 }  // namespace mlir
 

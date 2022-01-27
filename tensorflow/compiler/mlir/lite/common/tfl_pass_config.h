@@ -17,9 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_COMMON_TFL_PASS_CONFIG_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 
 namespace mlir {
@@ -85,6 +88,31 @@ struct PassConfig {
   // Whether to enable the hlo to tf conversion.
   bool enable_hlo_to_tf_conversion;
 };
+
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                     const PassConfig& pass_config) {
+  return os << "emit_builtin_tflite_ops: "
+            << pass_config.emit_builtin_tflite_ops
+            << "\nlower_tensor_list_ops: " << pass_config.lower_tensor_list_ops
+            << "\ntrim_functions_allowlist: "
+            << absl::StrJoin(pass_config.trim_functions_allowlist.vec(), ",")
+            << "\nform_clusters: " << pass_config.form_clusters
+            << "\nunfold_batch_matmul: " << pass_config.unfold_batch_matmul
+            << "\nlegalize_tf_while: " << pass_config.legalize_tf_while
+            << "\noutline_tf_while: " << pass_config.outline_tf_while
+            << "\nshape_inference: " << pass_config.shape_inference
+            << "\nruntime_verification: " << pass_config.runtime_verification
+            << "\nenable_tflite_variables: "
+            << pass_config.enable_tflite_variables
+            << "\ndisable_variable_freezing: "
+            << pass_config.disable_variable_freezing
+            << "\nunfold_large_splat_constant: "
+            << pass_config.unfold_large_splat_constant
+            << "\nguarantee_all_funcs_one_use: "
+            << pass_config.guarantee_all_funcs_one_use
+            << "\nenable_hlo_to_tf_conversion: "
+            << pass_config.enable_hlo_to_tf_conversion << "\n";
+}
 
 }  // namespace TFL
 }  // namespace mlir

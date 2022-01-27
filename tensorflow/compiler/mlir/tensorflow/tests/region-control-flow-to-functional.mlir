@@ -138,7 +138,7 @@ func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
 func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.If"({{.+}}) {{.*}} else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
-  %0 = "tf.IfRegion"(%arg0) ( {
+  %0 = "tf.IfRegion"(%arg0) ({
     %1 = call @testIf1Then(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%1) : (tensor<*xf32>) -> ()
   },  {
@@ -156,7 +156,7 @@ func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
 func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: "tf.If"({{.+}}) {{.*}} else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
-  %0 = "tf.IfRegion"(%arg0) ( {
+  %0 = "tf.IfRegion"(%arg0) ({
     %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xf32>) -> tensor<*xf32>
     %2 = call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
@@ -176,7 +176,7 @@ func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
 func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: "tf.If"({{.+}}) {{.*}} else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
-  %0 = "tf.IfRegion"(%arg0) ( {
+  %0 = "tf.IfRegion"(%arg0) ({
     %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xf32>) -> tensor<?xf32>
     %2 = "tf.Cast"(%1) {Truncate = false} : (tensor<?xf32>) -> tensor<*xf32>
     %3 = call @testIf1Then(%2) : (tensor<*xf32>) -> tensor<*xf32>
@@ -200,7 +200,7 @@ func @testIfExternIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: ten
   // CHECK: %[[CAST:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
   // CHECK: "tf.If"(%arg0, %[[CAST]]) {{.*}} else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
   %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
-  %0 = "tf.IfRegion"(%arg0) ( {
+  %0 = "tf.IfRegion"(%arg0) ({
     %2 = call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   },  {
@@ -222,7 +222,7 @@ func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
 func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 func @testIfIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2xi64>) -> tensor<2xf32> {
   // CHECK: "tf.If"(%arg0, %arg1) {{.*}} else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then}
-  %0 = "tf.IfRegion"(%arg0) ( {
+  %0 = "tf.IfRegion"(%arg0) ({
     %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
     %2 = call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
@@ -764,7 +764,7 @@ func @testIfRegionDevice(%arg0: tensor<i1>) {
 // Test tf.WhileRegion device is preserved.
 // CHECK-LABEL: func @testWhileRegionDevice
 func @testWhileRegionDevice() {
-  "tf.WhileRegion"() ( {
+  "tf.WhileRegion"() ({
     %0 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
     "tf.Yield"(%0) : (tensor<i1>) -> ()
   }, {

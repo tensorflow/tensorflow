@@ -420,7 +420,6 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:handle_data_util",
-        "//tensorflow/python:lib",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
@@ -621,6 +620,7 @@ py_strict_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:function_spec",
         "@absl_py//absl/logging",
     ],
 )
@@ -657,17 +657,6 @@ py_strict_library(
 tf_py_test(
     name = "nested_structure_coder_test",
     srcs = ["nested_structure_coder_test.py"],
-    deps = [
-        ":nested_structure_coder",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
-tf_py_test(
-    name = "nested_structure_coder_class_test",
-    srcs = ["nested_structure_coder_class_test.py"],
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",

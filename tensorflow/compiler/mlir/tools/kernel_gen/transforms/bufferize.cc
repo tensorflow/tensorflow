@@ -15,9 +15,9 @@ limitations under the License.
 
 // This file implements logic for translating mixed IR to buffer form.
 
-#include "mlir/Transforms/Bufferize.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -35,8 +35,7 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-class BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
- public:
+struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
   using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
@@ -51,12 +50,12 @@ class BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
 
     auto memref_type =
         MemRefType::get(result_type.getShape(), result_type.getElementType());
-    auto elements_attr = op.value().cast<DenseElementsAttr>();
+    auto elements_attr = op.getValue().cast<DenseElementsAttr>();
 
     if (result_rank == 0) {
       Value buffer = rewriter.create<memref::AllocOp>(loc, memref_type);
-      Value constant =
-          rewriter.create<arith::ConstantOp>(loc, elements_attr.getValue({}));
+      Value constant = rewriter.create<arith::ConstantOp>(
+          loc, elements_attr.getValues<Attribute>()[0]);
       rewriter.create<memref::StoreOp>(loc, constant, buffer);
       rewriter.replaceOp(op, {buffer});
       return success();
@@ -67,9 +66,9 @@ class BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
     bool all_same_elems = elements_attr.isSplat();
     Value value;
     if (all_same_elems)
-      value = rewriter.create<arith::ConstantOp>(loc,
-                                                 elements_attr.getSplatValue());
-    for (auto en : llvm::enumerate(elements_attr.getValues<Attribute>())) {
+      value = rewriter.create<arith::ConstantOp>(
+          loc, elements_attr.getSplatValue<mlir::Attribute>());
+    for (auto &en : llvm::enumerate(elements_attr.getValues<Attribute>())) {
       if (!all_same_elems)
         value = rewriter.create<arith::ConstantOp>(loc, en.value());
       Value index = rewriter.create<arith::ConstantIndexOp>(loc, en.index());
@@ -80,21 +79,8 @@ class BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
   }
 };
 
-class BufferizeDimOp : public OpConversionPattern<tensor::DimOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      tensor::DimOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<memref::DimOp>(op, adaptor.source(),
-                                               adaptor.index());
-    return success();
-  }
-};
-
-class BufferizeAndConvertMinimumBroadcastShapesOp
+struct BufferizeAndConvertMinimumBroadcastShapesOp
     : public OpConversionPattern<chlo::MinimumBroadcastShapesOp> {
- public:
   using OpConversionPattern<
       chlo::MinimumBroadcastShapesOp>::OpConversionPattern;
 
@@ -371,7 +357,7 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
           b.create<scf::YieldOp>(l,
                                  ValueRange{all_ones, number_of_leading_ones});
         });
-    return leading_ones_loop.results()[1];
+    return leading_ones_loop.getResults()[1];
   }
 
   Value RemoveLeadingOnesFrom1DMemref(ImplicitLocOpBuilder &lb,
@@ -421,29 +407,17 @@ struct BufferizeJITExecuteOp
   }
 };
 
-class BufferizeRankOp : public OpConversionPattern<RankOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      RankOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<RankOp>(op, adaptor.memrefOrTensor());
-    return success();
-  }
-};
-
 }  // namespace
 
-void populateExtraBufferizePatterns(MLIRContext *context,
-                                    BufferizeTypeConverter *converter,
-                                    RewritePatternSet *patterns) {
+void populateExtraBufferizePatterns(
+    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
+    RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
       BufferizeAndConvertMinimumBroadcastShapesOp,
       BufferizeConstantOp,
-      BufferizeDimOp,
-      BufferizeJITExecuteOp,
-      BufferizeRankOp>(*converter, context);
+      BufferizeJITExecuteOp
+  >(*converter, context);
   // clang-format on
 }
 

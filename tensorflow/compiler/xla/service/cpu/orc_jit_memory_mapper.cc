@@ -14,25 +14,26 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
+
+#include "absl/base/thread_annotations.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 namespace cpu {
 namespace orc_jit_memory_mapper {
 
-static tensorflow::mutex mapper_instance_mutex(tensorflow::LINKER_INITIALIZED);
+static absl::Mutex mapper_instance_mutex(absl::kConstInit);
 static llvm::SectionMemoryManager::MemoryMapper* mapper_instance
-    TF_GUARDED_BY(mapper_instance_mutex) = nullptr;
+    ABSL_GUARDED_BY(mapper_instance_mutex) = nullptr;
 
 llvm::SectionMemoryManager::MemoryMapper* GetInstance() {
-  tensorflow::mutex_lock lock(mapper_instance_mutex);
+  absl::MutexLock lock(&mapper_instance_mutex);
   return mapper_instance;
 }
 
 Registrar::Registrar(
     std::unique_ptr<llvm::SectionMemoryManager::MemoryMapper> mapper) {
-  tensorflow::mutex_lock lock(mapper_instance_mutex);
+  absl::MutexLock lock(&mapper_instance_mutex);
   mapper_instance = mapper.release();
 }
 }  // namespace orc_jit_memory_mapper

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -93,6 +94,12 @@ REGISTER_OP("IsResourceHandleRefCounting")
     .Input("handle: resource")
     .Output("result: bool")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("MakeWeakResourceHandle")
+    .Input("handle: resource")
+    .Output("dup: resource")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
 REGISTER_OP("TestStringOutput")
     .Input("input: float")
@@ -277,6 +284,30 @@ class IsResourceHandleRefCountingOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("IsResourceHandleRefCounting").Device(DEVICE_CPU),
                         IsResourceHandleRefCountingOp);
+
+// Duplicates a ResourceHandle as a weak ResourceHandle.
+class MakeWeakResourceHandleOp : public OpKernel {
+ public:
+  explicit MakeWeakResourceHandleOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor tensor;
+    ResourceHandleProto proto;
+    HandleFromInput(ctx, 0).AsProto(&proto);
+
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &tensor, attr));
+    tensor.scalar<ResourceHandle>()() = ResourceHandle{proto};
+    ctx->set_output(0, tensor);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("MakeWeakResourceHandle").Device(DEVICE_CPU),
+                        MakeWeakResourceHandleOp);
+REGISTER_KERNEL_BUILDER(Name("MakeWeakResourceHandle").Device(DEVICE_GPU),
+                        MakeWeakResourceHandleOp);
 
 class TestAttrOp : public OpKernel {
  public:

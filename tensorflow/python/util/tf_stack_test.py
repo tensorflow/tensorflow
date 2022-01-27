@@ -65,10 +65,5 @@ class TFStackTest(test.TestCase):
     self.assertRegex(frames[-2].line, "# CALLSITE")
 
 
-def extract_stack(limit=None):
-  # Both defined on the same line to produce identical stacks.
-  return tf_stack.extract_stack(limit), traceback.extract_stack(limit)  # pylint: disable=too-many-function-args
-
-
 if __name__ == "__main__":
   test.main()

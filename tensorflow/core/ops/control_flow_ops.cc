@@ -151,7 +151,7 @@ REGISTER_OP("Merge")
     .Output("value_index: int32")
     .Attr("T: type")
     .Attr("N: int >= 1")
-    .SetForwardTypeFn(full_type::ReplicateIdenticalInputs())
+    .SetForwardTypeFn(full_type::Merge())
     .SetShapeFn(MergeShape);
 
 REGISTER_OP("RefMerge")

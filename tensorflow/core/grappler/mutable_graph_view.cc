@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -68,6 +69,9 @@ bool IsIdentityConsumingSwitch(const MutableGraphView& graph,
     }
 
     NodeDef* input_node = graph.GetNode(tensor_id.node());
+    if (input_node == nullptr) {
+      return false;
+    }
     return IsSwitch(*input_node);
   }
   return false;
@@ -334,6 +338,24 @@ string GeneratedNameForIdentityConsumingSwitch(
       kMutableGraphViewCtrl);
 }
 
+string PrintInTextFormat(const protobuf::MessageLite& message) {
+  // Unfortunately proto2::TextFormat::Printer::PrintToString does not have
+  // a overload for MessageLite so here we have to use
+  // MessageLite::ShortDebugString.
+  return message.ShortDebugString();
+}
+
+string PrintInTextFormat(const protobuf::Message& message) {
+  string message_text;
+  ::tensorflow::protobuf::TextFormat::Printer printer;
+  printer.SetSingleLineMode(true);
+  printer.PrintToString(message, &message_text);
+  if (!message_text.empty() && message_text[message_text.size() - 1] == ' ') {
+    message_text.resize(message_text.size() - 1);
+  }
+  return message_text;
+}
+
 }  // namespace
 
 void MutableGraphView::AddAndDedupFanouts(NodeDef* node) {
@@ -498,7 +520,7 @@ Status MutableGraphView::UpdateNode(
     attr_strs.reserve(attrs.size());
     for (const auto& attr : attrs) {
       string attr_str = absl::Substitute("('$0', $1)", attr.first,
-                                         attr.second.ShortDebugString());
+                                         PrintInTextFormat(attr.second));
       attr_strs.push_back(attr_str);
     }
     string params =

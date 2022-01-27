@@ -59,8 +59,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/random/philox_random.h"
-#include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace mlir {
@@ -184,55 +182,10 @@ DECL_CONVERT_OP(Pack);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(Unpack);
-DECL_CONVERT_OP(RandomUniform);
 DECL_CONVERT_OP(Conv3D);
 DECL_CONVERT_OP(Conv3DBackpropInputV2);
 
 #undef DECL_CONVERT_OP
-
-LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto random_uniform_op = cast<TF::RandomUniformOp>(op);
-  if (random_uniform_op.seed() == 0 && random_uniform_op.seed2() == 0) {
-    return failure();
-  }
-  if (!random_uniform_op.dtype().isF32()) {
-    return failure();
-  }
-  typedef tensorflow::random::UniformDistribution<
-      tensorflow::random::PhiloxRandom, float>
-      Distribution;
-
-  tensorflow::random::PhiloxRandom generator(random_uniform_op.seed(),
-                                             random_uniform_op.seed2());
-  Distribution dist;
-  size_t num_elements = 0;
-  if (auto output_type =
-          random_uniform_op.output().getType().dyn_cast_or_null<ShapedType>()) {
-    if (auto ranked_output = output_type.dyn_cast_or_null<RankedTensorType>()) {
-      if (!ranked_output.hasRank() || ranked_output.getNumDynamicDims() != 0) {
-        return failure();
-      }
-      num_elements = output_type.getNumElements();
-      size_t offset = 0;
-      size_t num_samples = Distribution::kResultElementCount;
-      llvm::SmallVector<float, 32> data;
-      data.resize(num_elements);
-      while (offset < num_elements) {
-        const typename Distribution::ResultType samples = dist(&generator);
-        std::copy(&samples[0],
-                  &samples[0] + std::min(num_samples, data.size() - offset),
-                  &data[0] + offset);
-        offset += num_samples;
-      }
-      auto output_data = DenseFPElementsAttr::get(output_type, data);
-      rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, output_type,
-                                                     output_data);
-      return success();
-    }
-  }
-  return failure();
-}
 
 // Converts any IntegerAttr to an IntegerAttr of an i32 type.
 // The value won't change in the new attribute, but if the value is out of
@@ -314,9 +267,12 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   auto no_input = rewriter.create<ConstantOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
   auto fc_op = rewriter.create<FullyConnectedOp>(
-      op->getLoc(), ArrayRef<Type>{output_type}, lhs, rhs, no_input,
-      rewriter.getStringAttr("NONE"), rewriter.getStringAttr("DEFAULT"),
-      rewriter.getBoolAttr(false));
+      op->getLoc(), ArrayRef<Type>{output_type},
+      /*input=*/lhs, /*filter=*/rhs, /*bias=*/no_input,
+      /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
+      /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+      /*keep_num_dims=*/rewriter.getBoolAttr(false),
+      /*asymmetric_quantize_inputs=*/mlir::BoolAttr());
   rewriter.replaceOp(op, {fc_op.getResult(0)});
   return success();
 }
@@ -495,13 +451,28 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
     return false;
   if (ExtractSingleElementAsInteger(num_cols).getInt() != -1) return false;
 
-  // Verify padding_value is an integer tensor with all 0s.
-  ElementsAttr padding_value;
-  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.padding_value(),
-                    m_Constant(&padding_value)))
+  // Verify padding_value is a tensor with all 0s.
+  mlir::Value padding_value = tf_matrix_diag_v2_or_v3_op.padding_value();
+  mlir::Type element_type =
+      padding_value.getType().cast<ShapedType>().getElementType();
+  if (element_type.isa<FloatType>()) {
+    DenseFPElementsAttr padding_attr;
+    if (!matchPattern(padding_value, m_Constant(&padding_attr)) ||
+        !padding_attr.isSplat() ||
+        !padding_attr.getSplatValue<APFloat>().isZero()) {
+      return false;
+    }
+  } else if (element_type.isa<IntegerType>()) {
+    DenseIntElementsAttr padding_attr;
+    if (!matchPattern(padding_value, m_Constant(&padding_attr)) ||
+        !padding_attr.isSplat() ||
+        !padding_attr.getSplatValue<APInt>().isZero()) {
+      return false;
+    }
+  } else {
+    // If the padding value is neither float nor int, conservatively assume it
+    // contains nonzeros.
     return false;
-  for (const auto& value : padding_value.getValues<APInt>()) {
-    if (value != 0) return false;
   }
 
   rewriter->replaceOpWithNewOp<MatrixDiagOp>(op, output_type, input);
@@ -940,15 +911,14 @@ void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
               ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFAssertOp,
-              ConvertTFRandomUniformOp, ConvertTFConv3DOp,
-              ConvertTFConv3DBackpropInputV2Op>(context);
+              ConvertTFConv3DOp, ConvertTFConv3DBackpropInputV2Op>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
                   LegalizeUnidirectionalSequenceRnn>(context);
 }
 
-void applyPatterns(FuncOp func, ConversionTarget& target,
+bool applyPatterns(FuncOp func, ConversionTarget& target,
                    FrozenRewritePatternSet& frozenPatterns) {
   // Keep trying to convert.
   // TODO(karimnosseir): This is similar to what apply greedy patterns does.
@@ -957,9 +927,10 @@ void applyPatterns(FuncOp func, ConversionTarget& target,
   const int max_iterations = 15;
   for (int i = 0; i < max_iterations; ++i) {
     if (failed(applyPartialConversion(func, target, frozenPatterns))) {
-      return;
+      return false;
     }
   }
+  return true;
 }
 
 void LegalizeTF::runOnFunction() {
@@ -973,36 +944,26 @@ void LegalizeTF::runOnFunction() {
   target.addLegalOp<mlir::arith::ConstantOp>();
   target.addLegalOp<mlir::ConstantOp>();
   target.addLegalOp<ConstOp>();
+  target.addLegalOp<DequantizeOp>();
+  target.addLegalOp<QConstOp>();
   if (run_tfl_runtime_verification_) {
     target.addDynamicallyLegalDialect<TensorFlowLiteDialect>([](Operation* op) {
       auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
       if (!tfl_op) return false;
-      return succeeded(tfl_op.VerifyTflRuntimeConstraints(op));
+      return succeeded(tfl_op.VerifyTflRuntimeConstraints(
+          op, /*emit_error_on_verify_fail=*/false));
     });
   } else {
     target.addLegalDialect<TensorFlowLiteDialect>();
   }
-
-  // Ignore transient errors by registering an no-op handler.
-  // Applying legalization patterns will emit unwanted, transient errors when
-  // the replaced TFLite ops do not meet the sanity checks. In order to ignore
-  // the transient errors, the following lines override a diagnostic handler
-  // with an no-op handler only while this pass runs.
-  uint64_t current_thread_id = llvm::get_threadid();
-  ScopedDiagnosticHandler scoped_diag_handler(
-      context, [&current_thread_id](Diagnostic&) -> LogicalResult {
-        // Consume only errors that are coming from the same thread in order not
-        // to ignore errors from other passes that are running. Things running
-        // in the pass manager can be multi-threaded.
-        return success(current_thread_id == llvm::get_threadid());
-      });
 
   OwningRewritePatternList stage1Patterns(&getContext());
 
   addPatterns(context, stage1Patterns);
 
   FrozenRewritePatternSet stage1FrozenPatterns(std::move(stage1Patterns));
-  applyPatterns(func, target, stage1FrozenPatterns);
+  if (!applyPatterns(func, target, stage1FrozenPatterns))
+    return signalPassFailure();
 
   // Explict BroadcastTo addition for left-over broadcast-able ops.
   // The following pattern matchings should be done after the other legalization
@@ -1032,7 +993,8 @@ void LegalizeTF::runOnFunction() {
                         ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
 
   FrozenRewritePatternSet stage2FrozenPatterns(std::move(stage2Patterns));
-  applyPatterns(func, target, stage2FrozenPatterns);
+  if (!applyPatterns(func, target, stage2FrozenPatterns))
+    return signalPassFailure();
 }
 
 }  // namespace

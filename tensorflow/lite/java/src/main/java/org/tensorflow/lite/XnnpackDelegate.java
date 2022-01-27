@@ -15,8 +15,11 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
+import org.tensorflow.lite.annotations.UsedByReflection;
+
 /** Wrapper for a native TensorFlow Lite XNNPACK Delegate. */
 class XnnpackDelegate implements Delegate, AutoCloseable {
+  @UsedByReflection("nativeinterpreterwrapper_jni.cc")
   XnnpackDelegate(long nativeHandle, long deleteFunction) {
     this.nativeHandle = nativeHandle;
     this.deleteFunction = deleteFunction;
@@ -35,6 +38,6 @@ class XnnpackDelegate implements Delegate, AutoCloseable {
   // Apply deleteFunction to nativeHandle.
   private static native void applyDeleteFunction(long deleteFunction, long nativeHandle);
 
-  private long nativeHandle; // C/C++ type: "TFLiteDelegate *", i.e. pointer to TFLiteDelegate.
-  private long deleteFunction; // C/C++ type: "void (*)(TFLiteDelegate*)": pointer to function.
+  private long nativeHandle; // C/C++ type: "TfLiteOpaqueDelegate *".
+  private long deleteFunction; // C/C++ type: "void (*)(TFLiteOpaqueDelegate *)": pointer to func.
 }

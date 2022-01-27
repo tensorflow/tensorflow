@@ -26,7 +26,7 @@ namespace xla {
 
 // TODO(b/196924174): Potentially change to max<int> (no limit) since
 // a separate outer loop truncation is now supported. See #23.
-static constexpr int kDefaultMaxGetLoopBound = 1000;
+inline constexpr int DefaultMaxGetLoopBound() { return 1000; }
 
 // An HLO pass that replaces while loop conditionals to execute a known constant
 // number of iterations and remove operations that are difficult to run in
@@ -38,7 +38,7 @@ class HloControlFlowFlattening : public HloModulePass {
   explicit HloControlFlowFlattening(
       int while_execution_count,
       int max_outer_loop_count = std::numeric_limits<int>::max(),
-      int max_loop_count = kDefaultMaxGetLoopBound,
+      int max_loop_count = DefaultMaxGetLoopBound(),
       bool remove_infeed_outfeed = true, bool flatten_while_loop = true,
       bool remove_comm = true)
       : while_execution_count_(while_execution_count),
@@ -87,7 +87,7 @@ class HloControlFlowFlattening : public HloModulePass {
 // ComputeWhileLoopTripCount in the while loop analysis as it may return a
 // constant found in a compare expression when it is not an actual bound.
 int GetLoopBound(const HloInstruction& while_hlo, const int default_loop_count,
-                 const int max_loop_count = kDefaultMaxGetLoopBound);
+                 const int max_loop_count = DefaultMaxGetLoopBound());
 
 }  // namespace xla
 

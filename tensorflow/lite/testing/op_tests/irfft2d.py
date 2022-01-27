@@ -17,7 +17,7 @@ import numpy as np
 import tensorflow.compat.v1 as tf
 
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
-from tensorflow.lite.testing.zip_test_utils import ExtraTocoOptions
+from tensorflow.lite.testing.zip_test_utils import ExtraConvertOptions
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
@@ -58,7 +58,7 @@ def make_irfft2d_tests(options):
     return [rfft_result], sess.run(
         outputs, feed_dict=dict(zip(inputs, [rfft_result])))
 
-  extra_toco_options = ExtraTocoOptions()
-  extra_toco_options.allow_custom_ops = True
+  extra_convert_options = ExtraConvertOptions()
+  extra_convert_options.allow_custom_ops = True
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs,
-                    extra_toco_options)
+                    extra_convert_options)

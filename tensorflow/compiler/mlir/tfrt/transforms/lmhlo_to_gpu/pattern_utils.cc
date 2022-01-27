@@ -32,12 +32,66 @@ cudaDataType_t MlirTypeToCudaDataType(mlir::Type type) {
 }
 
 cublasComputeType_t MlirTypeToCublasComputeType(mlir::Type type) {
-  if (auto complexType = type.dyn_cast<mlir::ComplexType>())
-    return MlirTypeToCublasComputeType(complexType.getElementType());
   if (type.isF16()) return CUBLAS_COMPUTE_16F;
   if (type.isF32()) return CUBLAS_COMPUTE_32F;
   if (type.isF64()) return CUBLAS_COMPUTE_64F;
   llvm_unreachable("unsupported type");
+}
+
+cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type) {
+  if (type.isF16()) return CUDNN_DATA_HALF;
+  if (type.isBF16()) return CUDNN_DATA_BFLOAT16;
+  if (type.isF32()) return CUDNN_DATA_FLOAT;
+  if (type.isF64()) return CUDNN_DATA_DOUBLE;
+  if (type.isSignlessInteger(/*width=*/8)) return CUDNN_DATA_INT8;
+  if (type.isSignlessInteger(/*width=*/32)) return CUDNN_DATA_INT32;
+  if (type.isSignlessInteger(/*width=*/64)) return CUDNN_DATA_INT64;
+  if (type.isUnsignedInteger(/*width=*/8)) return CUDNN_DATA_UINT8;
+  llvm_unreachable("unsupported type");
+}
+
+cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type,
+                                        se::dnn::DataLayout data_layout) {
+  switch (data_layout) {
+    case se::dnn::DataLayout::kBatchDepthYX4:
+      if (type.isSignlessInteger(/*width=*/8)) {
+        return CUDNN_DATA_INT8x4;
+      }
+      if (type.isUnsignedInteger(/*width=*/8)) {
+        return CUDNN_DATA_UINT8x4;
+      }
+      break;
+    case se::dnn::DataLayout::kBatchDepthYX32:
+      if (type.isSignlessInteger(/*width=*/32)) {
+        return CUDNN_DATA_INT8x32;
+      }
+      break;
+    default:
+      break;
+  }
+  return MlirTypeToCudnnDataType(type);
+}
+
+cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type,
+                                        se::dnn::FilterLayout filter_layout) {
+  switch (filter_layout) {
+    case se::dnn::FilterLayout::kOutputInputYX4:
+      if (type.isSignlessInteger(/*width=*/8)) {
+        return CUDNN_DATA_INT8x4;
+      }
+      if (type.isUnsignedInteger(/*width=*/8)) {
+        return CUDNN_DATA_UINT8x4;
+      }
+      break;
+    case se::dnn::FilterLayout::kOutputInputYX32:
+      if (type.isSignlessInteger(/*width=*/8)) {
+        return CUDNN_DATA_INT8x32;
+      }
+      break;
+    default:
+      break;
+  }
+  return MlirTypeToCudnnDataType(type);
 }
 
 mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,

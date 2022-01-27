@@ -22,8 +22,6 @@ import os
 import re
 import threading
 
-import six
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -177,6 +175,11 @@ def record_if(condition):
     _summary_state.is_recording = old
 
 
+def has_default_writer():
+  """Returns a boolean indicating whether a default summary writer exists."""
+  return _summary_state.writer is not None
+
+
 # TODO(apassos) consider how to handle local step here.
 def record_summaries_every_n_global_steps(n, global_step=None):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""
@@ -230,8 +233,7 @@ def set_step(step):
 
 
 @tf_export("summary.SummaryWriter", v1=[])
-@six.add_metaclass(abc.ABCMeta)
-class SummaryWriter(object):
+class SummaryWriter(metaclass=abc.ABCMeta):
   """Interface representing a stateful summary writer object."""
 
   def set_as_default(self, step=None):
@@ -616,7 +618,7 @@ def create_noop_writer():
 
 
 def _cleanse_string(name, pattern, value):
-  if isinstance(value, six.string_types) and pattern.search(value) is None:
+  if isinstance(value, str) and pattern.search(value) is None:
     raise ValueError(f"{name} ({value}) must match {pattern.pattern}")
   return ops.convert_to_tensor(value, dtypes.string)
 

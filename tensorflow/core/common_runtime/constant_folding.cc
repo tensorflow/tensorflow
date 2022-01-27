@@ -374,11 +374,6 @@ void FindConstantFoldableNodes(
 
 typedef std::pair<Node*, int> NodeAndOutput;
 
-int64_t UniqueConstantId() {
-  static std::atomic_int_fast64_t unique_constant_id;
-  return unique_constant_id.fetch_add(1);
-}
-
 // Adds n to constant_graph which is being built up for subsequent evaluation of
 // constant propagation. node_map is the mapping of nodes in the original graph
 // to nodes in the constant graph. The value of an entry in node_map is a vector
@@ -599,11 +594,13 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
   port::ScopedSetRound round(FE_TONEAREST);
 
   DumpGraph("Before", graph);
+
   ConstantFoldNameGenerator generate_new_name = opts.generate_new_name;
+  std::atomic_int_fast64_t constant_unique_id{0};
   if (generate_new_name == nullptr) {
-    generate_new_name = [](Graph* graph, string old_name) {
+    generate_new_name = [&constant_unique_id](Graph* graph, string old_name) {
       return strings::StrCat(graph->NewName(old_name), "__cf__",
-                             UniqueConstantId());
+                             constant_unique_id.fetch_add(1));
     };
   }
 

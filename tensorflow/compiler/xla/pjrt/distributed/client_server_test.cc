@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+
 #include "absl/synchronization/barrier.h"
 #include "absl/time/time.h"
 #include "grpcpp/grpcpp.h"
@@ -48,7 +50,7 @@ TEST(ClientServerTest, ConnectAndShutdownAreBarriers) {
   auto thread_fn = [&](int node_id) -> xla::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.node_id = node_id;
-    DistributedRuntimeClient client(
+    auto client = GetDistributedRuntimeClient(
         server->InProcessChannel(::grpc::ChannelArguments()), client_options);
     GlobalTopologyProto topology;
 
@@ -62,7 +64,7 @@ TEST(ClientServerTest, ConnectAndShutdownAreBarriers) {
       mu.Await(absl::Condition(&my_connect_turn));
       ++connect_count;
     }
-    TF_RETURN_IF_ERROR(client.Connect());
+    TF_RETURN_IF_ERROR(client->Connect());
     // Verify that all of the threads have called Connect() by the time we get
     // here.
     {
@@ -80,7 +82,7 @@ TEST(ClientServerTest, ConnectAndShutdownAreBarriers) {
       mu.Await(absl::Condition(&my_shutdown_turn));
       ++shutdown_count;
     }
-    TF_RETURN_IF_ERROR(client.Shutdown());
+    TF_RETURN_IF_ERROR(client->Shutdown());
     {
       absl::MutexLock lock(&mu);
       TF_RET_CHECK(shutdown_count == num_nodes);
@@ -135,37 +137,37 @@ TEST(ClientServerTest, ConnectAndEnumerateDevices) {
   auto thread0_fn = [&]() -> xla::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.node_id = 0;
-    DistributedRuntimeClient client(
+    auto client = GetDistributedRuntimeClient(
         server->InProcessChannel(::grpc::ChannelArguments()), client_options);
     GlobalTopologyProto topology;
-    TF_RETURN_IF_ERROR(client.Connect());
-    TF_RETURN_IF_ERROR(client.EnumerateDevices(locals[0], &topology));
+    TF_RETURN_IF_ERROR(client->Connect());
+    TF_RETURN_IF_ERROR(client->EnumerateDevices(locals[0], &topology));
     TF_RET_CHECK(
         xla::protobuf_util::ProtobufEquals(topology, expected_topology))
         << topology.DebugString();
-    TF_RETURN_IF_ERROR(client.KeyValueSet("key1", "value1"));
+    TF_RETURN_IF_ERROR(client->KeyValueSet("key1", "value1"));
     TF_ASSIGN_OR_RETURN(
         std::string value,
-        client.BlockingKeyValueGet("key2", absl::InfiniteDuration()));
+        client->BlockingKeyValueGet("key2", absl::InfiniteDuration()));
     TF_RET_CHECK(value == "value2");
     return xla::Status::OK();
   };
   auto thread1_fn = [&]() -> xla::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.node_id = 1;
-    DistributedRuntimeClient client(
+    auto client = GetDistributedRuntimeClient(
         server->InProcessChannel(::grpc::ChannelArguments()), client_options);
     GlobalTopologyProto topology;
-    TF_RETURN_IF_ERROR(client.Connect());
-    TF_RETURN_IF_ERROR(client.EnumerateDevices(locals[1], &topology));
+    TF_RETURN_IF_ERROR(client->Connect());
+    TF_RETURN_IF_ERROR(client->EnumerateDevices(locals[1], &topology));
     TF_RET_CHECK(
         xla::protobuf_util::ProtobufEquals(topology, expected_topology))
         << topology.DebugString();
     TF_ASSIGN_OR_RETURN(
         std::string value,
-        client.BlockingKeyValueGet("key1", absl::InfiniteDuration()));
+        client->BlockingKeyValueGet("key1", absl::InfiniteDuration()));
     TF_RET_CHECK(value == "value1");
-    TF_RETURN_IF_ERROR(client.KeyValueSet("key2", "value2"));
+    TF_RETURN_IF_ERROR(client->KeyValueSet("key2", "value2"));
     return xla::Status::OK();
   };
 
@@ -202,11 +204,11 @@ TEST(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
     client_options.shutdown_on_destruction = false;
     client_options.missed_heartbeat_callback =
         [&](xla::Status status, bool coordinator_initiated) {};
-    DistributedRuntimeClient client(
+    auto client = GetDistributedRuntimeClient(
         server->InProcessChannel(::grpc::ChannelArguments()), client_options);
     GlobalTopologyProto topology;
 
-    TF_RETURN_IF_ERROR(client.Connect());
+    TF_RETURN_IF_ERROR(client->Connect());
 
     if (node_id == 0) {
       return xla::Status::OK();
@@ -214,7 +216,7 @@ TEST(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
 
     // The call to Shutdown() should be interrupted if a worker stops issuing
     // heartbeats.
-    TF_RETURN_IF_ERROR(client.Shutdown());
+    TF_RETURN_IF_ERROR(client->Shutdown());
     return xla::Status::OK();
   };
 
@@ -254,11 +256,11 @@ TEST(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
                                                    bool coordinator_initiated) {
       shutdown.Notify();
     };
-    DistributedRuntimeClient client(
+    auto client = GetDistributedRuntimeClient(
         server->InProcessChannel(::grpc::ChannelArguments()), client_options);
     GlobalTopologyProto topology;
 
-    TF_RETURN_IF_ERROR(client.Connect());
+    TF_RETURN_IF_ERROR(client->Connect());
 
     if (node_id == 0) {
       return xla::Status::OK();
@@ -314,8 +316,7 @@ TEST(ClientServerTest, DISABLED_ClientsTerminateIfServiceGoesAway) {
         ::grpc::InsecureChannelCredentials();
     std::shared_ptr<::grpc::Channel> channel =
         ::grpc::CreateChannel(absl::StrCat("dns:///localhost:", port), creds);
-    auto client =
-        std::make_unique<DistributedRuntimeClient>(channel, client_options);
+    auto client = GetDistributedRuntimeClient(channel, client_options);
     GlobalTopologyProto topology;
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -360,14 +361,14 @@ TEST(ClientServerTest, LateClientsAreOk) {
     client_options.node_id = node_id;
     client_options.init_timeout = absl::Milliseconds(20000);
     client_options.rpc_timeout = absl::Milliseconds(200);
-    DistributedRuntimeClient client(
+    auto client = GetDistributedRuntimeClient(
         server->InProcessChannel(::grpc::ChannelArguments()), client_options);
     GlobalTopologyProto topology;
 
     barrier.Block();
     absl::SleepFor(absl::Milliseconds(200) * node_id);
-    TF_RETURN_IF_ERROR(client.Connect());
-    TF_RETURN_IF_ERROR(client.Shutdown());
+    TF_RETURN_IF_ERROR(client->Connect());
+    TF_RETURN_IF_ERROR(client->Shutdown());
     return xla::Status::OK();
   };
 
@@ -399,12 +400,12 @@ TEST(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
     client_options.node_id = node_id;
     client_options.init_timeout = absl::Milliseconds(500);
     client_options.rpc_timeout = absl::Milliseconds(200);
-    DistributedRuntimeClient client(
+    auto client = GetDistributedRuntimeClient(
         server->InProcessChannel(::grpc::ChannelArguments()), client_options);
     GlobalTopologyProto topology;
 
-    TF_RETURN_IF_ERROR(client.Connect());
-    TF_RETURN_IF_ERROR(client.Shutdown());
+    TF_RETURN_IF_ERROR(client->Connect());
+    TF_RETURN_IF_ERROR(client->Shutdown());
     return xla::Status::OK();
   };
 

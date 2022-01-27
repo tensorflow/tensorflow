@@ -25,7 +25,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"

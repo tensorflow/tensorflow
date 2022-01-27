@@ -23,11 +23,11 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -141,7 +140,7 @@ class HloDataflowAnalysis {
   // Returns the call graph used for computing the dataflow.
   const CallGraph& call_graph() const { return *call_graph_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns true if 'user' cannot possibly use the buffer at 'index' in
   // 'operand'. Returns false otherwise.
@@ -276,10 +275,10 @@ class HloDataflowAnalysis {
   // The map of all HloValues in the module. We pass around pointers to the
   // mapped HloValues, so the underlying container must keep them valid despite
   // mutations touching other map entries.
-  std::unordered_map<HloValue::Id, HloValue> values_;
+  absl::node_hash_map<HloValue::Id, HloValue> values_;
 
   // A map from instruction to InstructionValueSet.
-  std::unordered_map<const HloInstruction*, InstructionValueSet> value_sets_;
+  absl::node_hash_map<const HloInstruction*, InstructionValueSet> value_sets_;
 
   // Values marked for deletion during construction. We don't delete them
   // immediately because references to them may remain in ValueSets temporarily

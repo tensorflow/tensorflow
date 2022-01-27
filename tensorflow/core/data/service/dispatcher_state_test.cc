@@ -57,16 +57,6 @@ Status RegisterDataset(int64_t id, DispatcherState& state) {
   return RegisterDataset(id, /*fingerprint=*/1, state);
 }
 
-Status SetElementSpec(int64_t dataset_id, const std::string& element_spec,
-                      DispatcherState& state) {
-  Update update;
-  SetElementSpecUpdate* set_element_spec = update.mutable_set_element_spec();
-  set_element_spec->set_dataset_id(dataset_id);
-  set_element_spec->set_element_spec(element_spec);
-  TF_RETURN_IF_ERROR(state.Apply(update));
-  return Status::OK();
-}
-
 Status RegisterWorker(std::string worker_address, DispatcherState& state) {
   Update update;
   update.mutable_register_worker()->set_worker_address(worker_address);
@@ -143,23 +133,6 @@ Status FinishTask(int64_t task_id, DispatcherState& state) {
 }
 }  // namespace
 
-TEST(DispatcherState, SetElementSpec) {
-  int64_t dataset_id = 325;
-  DispatcherState state;
-  std::string element_spec = "test_element_spec";
-  TF_EXPECT_OK(SetElementSpec(dataset_id, element_spec, state));
-  std::string result;
-  TF_EXPECT_OK(state.GetElementSpec(dataset_id, result));
-  EXPECT_EQ(element_spec, result);
-}
-
-TEST(DispatcherState, MissingElementSpec) {
-  DispatcherState state;
-  std::string element_spec;
-  Status s = state.GetElementSpec(31414, element_spec);
-  EXPECT_EQ(s.code(), error::NOT_FOUND);
-}
-
 TEST(DispatcherState, RegisterDataset) {
   uint64 fingerprint = 20;
   DispatcherState state;
@@ -171,11 +144,51 @@ TEST(DispatcherState, RegisterDataset) {
     std::shared_ptr<const Dataset> dataset;
     TF_EXPECT_OK(state.DatasetFromFingerprint(fingerprint, dataset));
     EXPECT_EQ(dataset->dataset_id, id);
+    EXPECT_TRUE(dataset->metadata.element_spec().empty());
+    EXPECT_EQ(dataset->metadata.compression(),
+              DataServiceMetadata::COMPRESSION_UNSPECIFIED);
   }
   {
     std::shared_ptr<const Dataset> dataset;
     TF_EXPECT_OK(state.DatasetFromId(id, dataset));
     EXPECT_EQ(dataset->fingerprint, fingerprint);
+    EXPECT_TRUE(dataset->metadata.element_spec().empty());
+    EXPECT_EQ(dataset->metadata.compression(),
+              DataServiceMetadata::COMPRESSION_UNSPECIFIED);
+  }
+}
+
+TEST(DispatcherState, RegisterDatasetCompression) {
+  DispatcherState state;
+  const int64_t dataset_id = state.NextAvailableDatasetId();
+  Update update;
+  RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
+  register_dataset->set_dataset_id(dataset_id);
+  register_dataset->mutable_metadata()->set_compression(
+      DataServiceMetadata::COMPRESSION_SNAPPY);
+  TF_ASSERT_OK(state.Apply(update));
+  {
+    std::shared_ptr<const Dataset> dataset;
+    TF_EXPECT_OK(state.DatasetFromId(dataset_id, dataset));
+    EXPECT_EQ(dataset->metadata.compression(),
+              DataServiceMetadata::COMPRESSION_SNAPPY);
+  }
+}
+
+TEST(DispatcherState, RegisterDatasetElementSpec) {
+  DispatcherState state;
+  const int64_t dataset_id = state.NextAvailableDatasetId();
+  Update update;
+  RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
+  register_dataset->set_dataset_id(dataset_id);
+  register_dataset->set_fingerprint(20);
+  register_dataset->mutable_metadata()->set_element_spec(
+      "encoded_element_spec");
+  TF_ASSERT_OK(state.Apply(update));
+  {
+    std::shared_ptr<const Dataset> dataset;
+    TF_EXPECT_OK(state.DatasetFromId(dataset_id, dataset));
+    EXPECT_EQ(dataset->metadata.element_spec(), "encoded_element_spec");
   }
 }
 

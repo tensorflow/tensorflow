@@ -80,6 +80,10 @@ struct MarkForCompilationPassFlags {
   // variable concurrency semantics.  This is unsound in general, but can be
   // used as a debugging aid.
   bool tf_xla_disable_resource_variable_safety_checks_for_debugging;
+
+  // If true names of clustered operations will be computed deterministically
+  // so that they remain stable from run to run of auto clusteing.
+  bool tf_xla_deterministic_cluster_names;
 };
 
 // Flags associated with the XLA bridge's xla_device module.
@@ -146,6 +150,12 @@ struct MlirCommonFlags {
   bool tf_mlir_enable_convert_control_to_data_outputs_pass;
 };
 
+// Flags for the JitRt pipeline -- see tf_jitrt_pipeline.h for details.
+struct JitRtFlags {
+  bool vectorize;
+  bool cost_driven_async_parallel_for;
+};
+
 // Return a pointer to the DumpGraphFlags struct;
 // repeated calls return the same pointer.
 // This should be called only after Flags::Parse() has returned.
@@ -162,7 +172,10 @@ const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
-void ResetMlirCommonFlags();
+
+void ResetJitCompilerFlags();
+
+const JitRtFlags& GetJitRtFlags();
 
 // Returns the effective MLIR bridge rollout state based on the flags and the
 // optional configuration.

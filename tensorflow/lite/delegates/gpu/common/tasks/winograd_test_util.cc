@@ -200,8 +200,7 @@ absl::Status Winograd4x4To36Test(TestExecutionEnvironment* env) {
     }
   }
 
-  for (auto storage :
-       {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
+  for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
       float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
@@ -271,8 +270,7 @@ absl::Status Winograd36To4x4Test(TestExecutionEnvironment* env) {
     }
   }
 
-  for (auto storage :
-       {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
+  for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
       float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       if (!env->GetGpuInfo().IsRoundToNearestSupported()) {

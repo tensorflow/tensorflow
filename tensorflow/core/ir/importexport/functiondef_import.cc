@@ -65,12 +65,18 @@ class ValueMapManager {
         placeholder_ty_(placeholder_ty),
         control_ty_(control_ty) {}
 
-  void DefineOperation(Operation* op, StringRef node_name) {
+  Status DefineOperation(Operation* op, StringRef node_name) {
     llvm::StringMap<SmallVector<Value, 1>>& op_info = values_map_[node_name];
     SmallVector<Value, 1>& base_operation = op_info["^"];
     // Replace placeholders.
     if (!base_operation.empty()) {
       Operation* placeholder = base_operation[0].getDefiningOp();
+      if (!placeholder ||
+          placeholder->getName().getStringRef() != "tfg.__mlir_placeholder")
+        return InvalidArgument(absl::StrCat(
+            "Duplicated node (or function argument) with the same name: `",
+            node_name.str(), "`"));
+
       op->moveBefore(placeholder);
       placeholder->replaceAllUsesWith(op);
       placeholder->erase();
@@ -78,6 +84,7 @@ class ValueMapManager {
     }
     base_operation.push_back(op->getResult(1));
     base_operation.push_back(op->getResult(0));
+    return Status::OK();
   }
 
   Value GetValueOrCreatePlaceholder(StringRef full_name) {
@@ -153,11 +160,12 @@ Status ImportNodes(ValueMapManager value_manager,
   Type control_ty = ControlType::get(context);
   TFGraphDialect* tfgDialect =
       cast<TFGraphDialect>(context->getLoadedDialect("tfg"));
-  Identifier device_attr = tfgDialect->getDeviceAttrIdentifier();
-  Identifier name_attr = tfgDialect->getNameAttrIdentifier();
+  StringAttr device_attr = tfgDialect->getDeviceAttrIdentifier();
+  StringAttr name_attr = tfgDialect->getNameAttrIdentifier();
   // Process every node and create a matching MLIR operation
   for (const NodeDef& node : nodes) {
     DVLOG(0) << "Processing node " << node.name() << "\n";
+    if (node.op().empty()) return InvalidArgument("empty op type");
     OperationState state(unknown_loc, absl::StrCat("tfg.", node.op()));
     // Fetch the inputs, creating placeholder if an input hasn't been visited.
     for (const std::string& input : node.input())
@@ -186,7 +194,7 @@ Status ImportNodes(ValueMapManager value_manager,
       if (colon_sep != StringRef::npos)
         node_name = node_name.take_front(colon_sep);
     }
-    value_manager.DefineOperation(op, node_name);
+    TF_RETURN_IF_ERROR(value_manager.DefineOperation(op, node_name));
   }
   // We don't expect any placeholder left at this point, fail if any.
   for (Operation& op : *builder.getInsertionBlock()) {
@@ -248,6 +256,8 @@ Status ImportGenericFunction(
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   NamedAttrList attrs;
   DictionaryAttr func_attrs = builder.getDictionaryAttr({});
+  if (signature.name().empty())
+    return InvalidArgument("generic function without a name");
   attrs.append("sym_name", builder.getStringAttr(signature.name()));
   attrs.append("generic", builder.getUnitAttr());
   if (!signature.description().empty())
@@ -354,8 +364,9 @@ Status ImportGenericFunction(
     args_attrs.push_back(NamedAttrList{}.getDictionary(context));
     arg_num++;
   }
-  attrs.push_back(builder.getNamedAttr(function_like_impl::getArgDictAttrName(),
-                                       builder.getArrayAttr(args_attrs)));
+  attrs.push_back(
+      builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
+                           builder.getArrayAttr(args_attrs)));
 
   // Process the results attributes now.
   int res_num = 0;
@@ -373,7 +384,7 @@ Status ImportGenericFunction(
     ++res_num;
   }
   attrs.push_back(
-      builder.getNamedAttr(function_like_impl::getResultDictAttrName(),
+      builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
                            builder.getArrayAttr(res_attrs)));
 
   values_map.clear();
@@ -383,10 +394,10 @@ Status ImportGenericFunction(
   // Create the block arguments and populate the `values_map` with the matching
   // input names.
   for (auto type_and_name : llvm::zip(arg_types, arg_names)) {
-    Value arg = body->addArgument(std::get<0>(type_and_name));
+    Value arg = body->addArgument(std::get<0>(type_and_name), unknown_loc);
     llvm::StringMap<SmallVector<Value, 1>>& values =
         values_map[std::get<1>(type_and_name)];
-    Value ctl = body->addArgument(control_ty);
+    Value ctl = body->addArgument(control_ty, unknown_loc);
     values[""].push_back(arg);
     values["^"].push_back(ctl);
   }
@@ -403,7 +414,9 @@ Status ImportGenericFunction(
   // Import the function body here, after this we have a function with all
   // the nodes, and the nodes_map contains the mapping from node_name to actual
   // MLIR Operations.
-  TF_RETURN_IF_ERROR(ImportNodes(value_manager, func.node_def(), body_builder));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      ImportNodes(value_manager, func.node_def(), body_builder),
+      " when importing function ", func.signature().name());
 
   // After the body, the final part is to setup the return. It comes in two
   // parts: the `ret` field from the FunctionDef for the regular output and the

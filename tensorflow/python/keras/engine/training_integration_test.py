@@ -60,12 +60,6 @@ _LAYERS_TO_TEST = [
         ('activation', ['relu'])]), None),
     (keras.layers.Dropout, (16,), (False,), collections.OrderedDict([
         ('rate', [0.25])]), None),
-    (keras.layers.BatchNormalization, (8, 8, 3), (True, True, False),
-     collections.OrderedDict([
-         ('axis', [3]),
-         ('center', [True, False]),
-         ('scale', [True, False])
-     ]), None),
     (keras.layers.Conv1D, (8, 8), (False, False), collections.OrderedDict([
         ('filters', [1]),
         ('kernel_size', [1, 3]),

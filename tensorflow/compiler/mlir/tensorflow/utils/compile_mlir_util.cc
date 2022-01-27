@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/adjust_layout.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
@@ -79,6 +80,23 @@ StatusOr<TensorShape> GetTensorShapeFromXlaArgument(const XlaArgument& arg) {
   } else {
     return absl::get<TensorShape>(arg.shape);
   }
+}
+
+Status MaybeRewriteLayoutWithShardedShape(
+    mlir::StringAttr sharding,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    xla::Shape* shape) {
+  if (!sharding) return Status::OK();
+
+  xla::OpSharding op_sharding;
+  if (!op_sharding.ParseFromString(sharding.getValue().str()))
+    return errors::InvalidArgument("failed to parse sharding '",
+                                   sharding.getValue().str(), "'");
+  absl::optional<xla::HloSharding> hlo_sharding;
+  TF_ASSIGN_OR_RETURN(hlo_sharding, xla::HloSharding::FromProto(op_sharding));
+  TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
+      hlo_sharding, /*use_fast_memory=*/false, shape_representation_fn, shape));
+  return Status::OK();
 }
 
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
@@ -107,23 +125,13 @@ Status GetXlaInputShapes(
     TF_ASSIGN_OR_RETURN(
         xla_shape, shape_representation_fn(arg_shapes[i].shape, dtype,
                                            /*use_fast_memory=*/false,
-                                           TpuLayoutPreference::kNoPreference));
+                                           XlaLayoutPreference::kNoPreference));
 
     // Rewrite layout with sharding, if sharding is set.
     auto sharding =
         main_func.getArgAttrOfType<mlir::StringAttr>(i, "mhlo.sharding");
-    if (!sharding) continue;
-
-    absl::optional<xla::HloSharding> arg_sharding;
-    xla::OpSharding op_sharding;
-    if (!op_sharding.ParseFromString(sharding.getValue().str()))
-      return errors::InvalidArgument("failed to parse argument sharding ", i,
-                                     " '", sharding.getValue().str(), "'");
-
-    TF_ASSIGN_OR_RETURN(arg_sharding, xla::HloSharding::FromProto(op_sharding));
-    TF_RETURN_IF_ERROR(
-        RewriteLayoutWithShardedShape(arg_sharding, /*use_fast_memory=*/false,
-                                      shape_representation_fn, &xla_shape));
+    TF_RETURN_IF_ERROR(MaybeRewriteLayoutWithShardedShape(
+        sharding, shape_representation_fn, &xla_shape));
   }
   if (use_tuple_args) {
     xla_input_shapes->push_back(
@@ -145,7 +153,7 @@ Status GetOutputInfo(
   auto shape_representation_fn_no_fast_memory =
       [shape_representation_fn](const TensorShape& shape, DataType dtype) {
         return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false,
-                                       TpuLayoutPreference::kNoPreference);
+                                       XlaLayoutPreference::kNoPreference);
       };
 
   mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
@@ -170,6 +178,12 @@ Status GetOutputInfo(
         xla::Shape shape,
         xla::TypeToShape(type_and_idx.value(),
                          shape_representation_fn_no_fast_memory));
+
+    auto sharding = main_func.getResultAttrOfType<mlir::StringAttr>(
+        type_and_idx.index(), "mhlo.sharding");
+    TF_RETURN_IF_ERROR(MaybeRewriteLayoutWithShardedShape(
+        sharding, shape_representation_fn, &shape));
+
     auto tensor_type = type_and_idx.value().dyn_cast<mlir::RankedTensorType>();
     shapes.push_back(shape);
 
@@ -336,6 +350,7 @@ void CreateConvertMlirToXlaHloPipeline(
   }
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
+  pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // Run shape inference pass to propagate shapes through tensor_cast operations
   // from static to dynamic shapes. This could be generated if the shape
@@ -662,8 +677,11 @@ Status BuildHloFromModule(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
   llvm::SmallVector<TensorOrResourceShape, 4> arg_shapes;
   TF_RETURN_IF_ERROR(
       CompileGraphSetup(module_op, args, &remaining_params, arg_shapes));
-  return BuildHloFromTf(module_op, builder, xla_params, returns, arg_shapes,
-                        device_type, custom_legalization_passes);
+  // Passing down only remaining (non-constant) xla_params.
+  llvm::SmallVector<xla::XlaOp, 2> remaining_xla_params;
+  for (auto i : remaining_params) remaining_xla_params.push_back(xla_params[i]);
+  return BuildHloFromTf(module_op, builder, remaining_xla_params, returns,
+                        arg_shapes, device_type, custom_legalization_passes);
 }
 
 Status CompileGraphToXlaHlo(

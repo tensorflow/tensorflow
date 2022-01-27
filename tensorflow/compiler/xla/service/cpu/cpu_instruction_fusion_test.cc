@@ -167,7 +167,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_ElementReuse) {
 }
 
 TEST_F(InstructionFusionTest, DotOperationFusion_TransposeFusion_RHS) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule DotOperationFusion_TransposeFusion
 
 ENTRY DotOperationFusion_TransposeFusion {
@@ -197,7 +197,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 }
 
 TEST_F(InstructionFusionTest, DotOperationFusion_TransposeFusion_LHS) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule DotOperationFusion_TransposeFusion
 
 ENTRY DotOperationFusion_TransposeFusion {
@@ -228,7 +228,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 
 TEST_F(InstructionFusionTest,
        DotOperationFusion_TransposeFusion_LHS_NonDefault) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule DotOperationFusion_TransposeFusion
 
 ENTRY DotOperationFusion_TransposeFusion {
@@ -629,7 +629,7 @@ TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
        HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
-void CreateComputationForDotAddOutputFusionTest(const string& test_name,
+void CreateComputationForDotAddOutputFusionTest(const std::string& test_name,
                                                 HloModule* module, int m, int k,
                                                 int n,
                                                 bool add_extra_use_for_dot) {
@@ -742,10 +742,10 @@ ENTRY main {
 }
 
 struct GatherLoopFusionTestSpec {
-  string test_name;
-  string hlo_computation_text;
+  std::string test_name;
+  std::string hlo_computation_text;
 
-  static string Name(
+  static std::string Name(
       const ::testing::TestParamInfo<GatherLoopFusionTestSpec>& info) {
     return info.param.test_name;
   }
@@ -757,8 +757,8 @@ class GatherLoopFusionTest
 
 TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
   const GatherLoopFusionTestSpec& spec = GetParam();
-  string hlo_string = absl::StrCat("HloModule ", spec.test_name, "\n\n",
-                                   spec.hlo_computation_text);
+  std::string hlo_string = absl::StrCat("HloModule ", spec.test_name, "\n\n",
+                                        spec.hlo_computation_text);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 

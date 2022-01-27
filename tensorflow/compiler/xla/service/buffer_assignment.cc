@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
+#include "tensorflow/compiler/xla/service/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -204,7 +206,7 @@ Status GatherComputationsByAllocationType(
   return Status::OK();
 }
 
-string BufferAllocation::Slice::ToString() const {
+std::string BufferAllocation::Slice::ToString() const {
   return absl::StrCat("{index:", index(), ", offset:", offset_,
                       ", size:", size_, "}");
 }
@@ -313,8 +315,8 @@ static const HloInstruction* GetOutputInstruction(
   return nullptr;
 }
 
-string BufferAllocation::ToString() const {
-  string output;
+std::string BufferAllocation::ToString() const {
+  std::string output;
   StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
   if (color() != 0) {
     StrAppend(&output, ", color ", color());
@@ -636,8 +638,7 @@ void BufferAssignment::CombineTempAllocations() {
       // The offset of each buffer in the combined allocation is computed from
       // the base offset of the allocation.
       int64_t alignment = color_alignment_(color);
-      const int64_t base =
-          RoundUpToNearest(combined_allocation->size(), alignment);
+      const int64_t base = RoundUpTo(combined_allocation->size(), alignment);
       combined_allocation->set_size(base + temp_allocation.size());
       for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
         const HloValue* value = buffer_offset_size.first;
@@ -724,8 +725,8 @@ Status BufferAssignment::ComputeSummaryStats() {
   return Status::OK();
 }
 
-string BufferAssignment::Stats::ToString() const {
-  string s;
+std::string BufferAssignment::Stats::ToString() const {
+  std::string s;
   StrAppendFormat(&s, "BufferAssignment stats:\n");
   StrAppendFormat(&s, "             parameter allocation: %10s\n",
                   HumanReadableNumBytes(parameter_allocation_bytes));
@@ -753,8 +754,8 @@ string BufferAssignment::Stats::ToString() const {
   return s;
 }
 
-string BufferAssignment::ToString() const {
-  string output;
+std::string BufferAssignment::ToString() const {
+  std::string output;
   absl::StrAppend(&output, "BufferAssignment:\n");
   std::vector<const HloValue*> used_values;
   int64_t total_size = 0;
@@ -775,23 +776,74 @@ string BufferAssignment::ToString() const {
   return output;
 }
 
-string BufferAssignment::ToVerboseString() const {
-  string output =
-      absl::StrCat("BufferAssignment OOM Debugging.\n", stats_.ToString());
-  for (const BufferAllocation& allocation : allocations_) {
-    std::vector<string> buf_strs;
-    buf_strs.reserve(allocation.assigned_buffers().size());
-    for (const auto& instruction_and_offset : allocation.assigned_buffers()) {
-      buf_strs.push_back(instruction_and_offset.first->ToString());
+// Returns the largest k buffers present at the point of peak memory usage
+// across allocations as a vector of pairs with their corresponding sizes.
+std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
+    uint64_t k, const std::vector<BufferAllocation> allocations) {
+  absl::btree_multimap<int64_t, const HloValue*> topk;
+  for (const BufferAllocation& allocation : allocations) {
+    for (const HloValue* value : allocation.PeakMemoryLogicalBuffers()) {
+      int64_t size = allocation.assigned_buffers().at(value).size;
+      if (topk.size() < k) {
+        topk.insert({size, value});
+      } else {
+        auto it = topk.begin();
+        if (size > it->first) {
+          topk.erase(it);
+          topk.insert({size, value});
+        }
+      }
     }
-    absl::StrAppend(&output, "\n", allocation.ToString(),
-                    "contains:", absl::StrJoin(buf_strs, ","));
   }
+
+  // map will iterate smallest first, so reverse it.
+  std::vector<std::pair<int64_t, const HloValue*>> topk_descending;
+  topk_descending.reserve(topk.size());
+  absl::c_reverse_copy(topk, std::back_inserter(topk_descending));
+  return topk_descending;
+}
+
+std::string BufferAssignment::ToVerboseString() const {
+  // TODO(loreno): make this tunable via flag.
+  const size_t kMaxBuffersToShow = 15;
+  std::string output =
+      absl::StrCat("BufferAssignment OOM Debugging.\n", stats_.ToString());
+
+  std::vector<std::pair<int64_t, const HloValue*>> peak_buffers =
+      TopKPeakBuffers(kMaxBuffersToShow, allocations_);
+  std::vector<std::string> buf_strs;
+  for (size_t i = 0; i < std::min(kMaxBuffersToShow, peak_buffers.size());
+       ++i) {
+    const HloValue* value = peak_buffers[i].second;
+    const HloInstruction* instr = value->instruction();
+    int64_t size = peak_buffers[i].first;
+    buf_strs.push_back(absl::StrCat("\n\tBuffer ", i + 1, ":\n\t\tSize: ",
+                                    xla::HumanReadableNumBytes(size)));
+    if (!instr->metadata().op_name().empty()) {
+      buf_strs.push_back(absl::StrCat(
+          "\n\t\tOperator: ", xla::OpMetadataToString(instr->metadata())));
+    }
+    if (instr->opcode() == HloOpcode::kParameter &&
+        (instr->parent() == instr->parent()->parent()->entry_computation())) {
+      // Special case on entry parameters as they sometimes have hundreds of
+      // indices in their shapes, and overwhelm the output.
+      buf_strs.push_back(absl::StrCat(
+          "\n\t\tEntry Parameter Subshape: ",
+          ShapeUtil::GetSubshape(instr->shape(), value->index()).ToString()));
+    } else {
+      // TODO(loreno): change this to a truncated string of the instruction.
+      buf_strs.push_back(
+          absl::StrCat("\n\t\tXLA Label: ", HloOpcodeString(instr->opcode()),
+                       "\n\t\tShape: ", value->shape().ToString()));
+    }
+    buf_strs.push_back("\n\t\t==========================\n");
+  }
+  absl::StrAppend(&output, "Peak buffers:", absl::StrJoin(buf_strs, ""));
   return output;
 }
 
-string BufferAssignment::BufferInfoString() const {
-  string binfo;
+std::string BufferAssignment::BufferInfoString() const {
+  std::string binfo;
   // Columns in buffer information:
   // buffer_id: int. This value can be used to match the allocation in
   // allocation information.
@@ -906,7 +958,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allocate_buffers_for_constants, BufferAssigner::Colorer colorer,
-    const absl::flat_hash_set<HloOpcode>& must_not_live_out,
+    absl::optional<BufferAssigner::MustNotLiveOut> must_not_live_out,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
     std::unique_ptr<PresetAssignments> preset_assignments) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
@@ -1012,12 +1064,12 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     return false;
   }
 
-  if (!must_not_live_out_.empty()) {
+  if (must_not_live_out_.has_value()) {
     if (allocation->maybe_live_out()) {
-      // If a buffer maybe live out, the allocation cannot contain any node from
-      // the "must_not_live_out_" set.
+      // If a buffer maybe live out, the allocation cannot contain any node
+      // where must_not_live_out_ returns true.
       for (const HloValue* value : hlo_buffer.values()) {
-        if (must_not_live_out_.count(value->instruction()->opcode()) > 0) {
+        if ((*must_not_live_out_)(value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << value->instruction()->ToString()
                   << " cannot live out of the module";
           return false;
@@ -1025,14 +1077,14 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
       }
     }
     // The above check is not enough -- There could be the case where an
-    // allocation can be not live out and contains an instruction with opcode
-    // from the "must_not_live_out_" set, but assigning a live out buffer to
-    // that allocation makes the allocation live out and also contains
-    // instruction from the "must_not_live_out_" set.
+    // allocation can be not live out and contains an instruction where
+    // must_not_live_out_ returns true, but assigning a live out buffer to
+    // that allocation makes the allocation live out and also contain an
+    // instruction where ust_not_live_out_ returns true.
     if (assignment->alias_analysis().BufferLivesOut(hlo_buffer)) {
       for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
-        if (must_not_live_out_.count(
-                buffer_offset_size.first->instruction()->opcode()) > 0) {
+        const HloValue* value = buffer_offset_size.first;
+        if ((*must_not_live_out_)(value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << buffer_offset_size.first->instruction()
                   << " cannot live out of the module";
           return false;

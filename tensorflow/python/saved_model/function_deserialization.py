@@ -22,6 +22,7 @@ from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import op_def_registry
@@ -42,7 +43,7 @@ def _is_tensor(t):
   return isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
 
 
-# TODO(edloper): Update this to just use ConcreteFunction.__call__ with the
+# TODO(b/205016027): Update this to just use ConcreteFunction.__call__ with the
 # structured signature.
 def _call_concrete_function(function, inputs):
   """Calls a restored Function with structured inputs.
@@ -152,13 +153,14 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto):
       saved_object_graph_pb2.FunctionSpec.JitCompile.OFF: False,
   }.get(function_spec_proto.jit_compile)
 
-  return function_lib.FunctionSpec(fullargspec=fullargspec,
-                                   is_method=False,
-                                   input_signature=input_signature,
-                                   jit_compile=jit_compile)
+  return function_spec_lib.FunctionSpec(
+      fullargspec=fullargspec,
+      is_method=False,
+      input_signature=input_signature,
+      jit_compile=jit_compile)
 
 
-# TODO(allenl): The fact that we can't derive ConcreteFunction calling
+# TODO(b/205016761): The fact that we can't derive ConcreteFunction calling
 # conventions from the serialized input spec right now is unfortunate. Merging
 # these would be good, maybe by adding TensorSpec names to cache keys so renamed
 # keyword arguments would yield different ConcreteFunctions.
@@ -188,7 +190,7 @@ class RestoredFunction(def_function.Function):
   """
 
   def __init__(self, python_function, name, function_spec, concrete_functions):
-    # TODO(mdan): We may enable autograph once exceptions are supported.
+    # TODO(b/205016819): We may enable autograph once exceptions are supported.
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False,
         jit_compile=function_spec.jit_compile)
@@ -234,7 +236,7 @@ def recreate_function(saved_function, concrete_functions):
   Returns:
     A `Function`.
   """
-  # TODO(andresp): Construct a `Function` with the cache populated
+  # TODO(b/205017389): Construct a `Function` with the cache populated
   # instead of creating a new `Function` backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
   # serialization cycle.
@@ -343,8 +345,8 @@ def load_function_def_library(library,
   # the global default graph when executing eagerly, we create a temporary
   # Graph.
   #
-  # TODO(allenl): Make this Graph creation unnecessary when executing eagerly by
-  # fixing function_def_to_graph_def.
+  # TODO(b/205023033): Make this Graph creation unnecessary when executing
+  # eagerly by fixing function_def_to_graph_def.
   if ops.executing_eagerly_outside_functions():
     graph = ops.Graph()
   else:
@@ -465,7 +467,7 @@ def _restore_gradient_functions(func_graph, renamed_functions,
                                 loaded_gradients):
   """Populate function op's _gradient_function with default gradient."""
   for op in func_graph.get_operations():
-    # TODO(andresp): This code assumes that the gradient registered for this
+    # TODO(b/205024208): This code assumes that the gradient registered for this
     # function call is the default gradient for the function and not a custom
     # one.
     if op.type in ["StatefulPartitionedCall", "PartitionedCall"]:
@@ -606,8 +608,8 @@ def _fix_fdef(orig_fdef, functions, shared_name_suffix, new_gradient_op_types):
 
 def _list_function_deps(fdef, library_function_names, library_gradient_names):
   """Find functions referenced in `fdef`."""
-  # TODO(andresp): Recurse into list attributes and into NameAttrList attrs both
-  # when listing deps and when fixing them. `function_def_to_graph` also
+  # TODO(b/205023953): Recurse into list attributes and into NameAttrList attrs
+  # both when listing deps and when fixing them. `function_def_to_graph` also
   # requires fixes.
   deps = set()
   for node_def in fdef.node_def:

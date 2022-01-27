@@ -118,7 +118,7 @@ tf_gen_op_libs(
         "xrt_execute_op",
     ],
     deps = [
-        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/jit:common",
         "//tensorflow/core:lib",
     ],
 )

@@ -18,7 +18,6 @@ import random
 import time
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
@@ -116,7 +115,7 @@ class RandomShuffleQueueTest(test.TestCase):
 
       # Dequeue every element using a single thread.
       results = []
-      for _ in xrange(len(elems)):
+      for _ in range(len(elems)):
         results.append(dequeued_t.eval())
       self.assertItemsEqual(elems, results)
 
@@ -154,7 +153,7 @@ class RandomShuffleQueueTest(test.TestCase):
       for enqueue_op in enqueue_ops:
         enqueue_op.run()
 
-      vals = [dequeued_t.eval() for _ in xrange(len(elems))]
+      vals = [dequeued_t.eval() for _ in range(len(elems))]
       self.assertItemsEqual(elems, vals)
 
   def testEnqueueAndBlockingDequeue(self):
@@ -174,7 +173,7 @@ class RandomShuffleQueueTest(test.TestCase):
       results = []
 
       def dequeue():
-        for _ in xrange(len(elems)):
+        for _ in range(len(elems)):
           results.append(self.evaluate(dequeued_t))
 
       enqueue_thread = self.checkedThread(target=enqueue)
@@ -198,7 +197,7 @@ class RandomShuffleQueueTest(test.TestCase):
         enqueue_op.run()
 
       results = []
-      for _ in xrange(len(elems)):
+      for _ in range(len(elems)):
         x, y = self.evaluate(dequeued_t)
         results.append((x, y))
       self.assertItemsEqual(elems, results)
@@ -502,12 +501,12 @@ class RandomShuffleQueueTest(test.TestCase):
 
   def testParallelDequeueUpToRandomPartition(self):
     with self.cached_session() as sess:
-      dequeue_sizes = [random.randint(50, 150) for _ in xrange(10)]
+      dequeue_sizes = [random.randint(50, 150) for _ in range(10)]
       total_elements = sum(dequeue_sizes)
       q = data_flow_ops.RandomShuffleQueue(
           total_elements, 0, dtypes_lib.float32, shapes=())
 
-      elems = [10.0 * x for x in xrange(total_elements)]
+      elems = [10.0 * x for x in range(total_elements)]
       enqueue_op = q.enqueue_many((elems,))
       dequeue_ops = [q.dequeue_up_to(size) for size in dequeue_sizes]
 
@@ -1198,11 +1197,11 @@ class RandomShuffleQueueTest(test.TestCase):
     with self.cached_session():
       num_queues = 10
       qlist = []
-      for _ in xrange(num_queues):
+      for _ in range(num_queues):
         qlist.append(
             data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32))
       # Enqueue/Dequeue into a dynamically selected queue
-      for _ in xrange(20):
+      for _ in range(20):
         index = np.random.randint(num_queues)
         q = data_flow_ops.RandomShuffleQueue.from_list(index, qlist)
         q.enqueue((10.,)).run()
