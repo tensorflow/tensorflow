@@ -198,7 +198,7 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
 
     # Optimal stepsize for central difference is O(epsilon^{1/3}).
     epsilon = np.finfo(np_dtype).eps
-    delta = 0.1 * epsilon**(1.0 / 3.0)
+    delta = 0.08 * epsilon**(1.0 / 3.0)
     # tolerance obtained by looking at actual differences using
     # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
     # after discarding one random input sample
