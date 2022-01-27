@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
@@ -104,7 +103,7 @@ class ComputationPlacer {
 
  private:
   // The mutex that guards the platform-to-computation placer map.
-  static tensorflow::mutex platform_computation_placer_mutex_;
+  static absl::Mutex platform_computation_placer_mutex_;
 
   // State kept for each kind of ComputationPlacer. Registration functions set
   // up creation_function, and then we use that to lazily create "placer" the

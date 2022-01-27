@@ -256,7 +256,7 @@ class GpuExecutable : public Executable {
 
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.
-  tensorflow::mutex module_handle_mutex_;
+  absl::Mutex module_handle_mutex_;
   std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
       module_handles_ ABSL_GUARDED_BY(module_handle_mutex_);
   std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>

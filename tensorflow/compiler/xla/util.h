@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
@@ -106,7 +105,7 @@ using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
       &XLA_TimerStats##counter);
 
 struct TimerStats {
-  tensorflow::mutex stats_mutex;
+  absl::Mutex stats_mutex;
   double cumulative_secs ABSL_GUARDED_BY(stats_mutex) = 0;
   double max_secs ABSL_GUARDED_BY(stats_mutex) = 0;
   uint64_t times_called ABSL_GUARDED_BY(stats_mutex) = 0;

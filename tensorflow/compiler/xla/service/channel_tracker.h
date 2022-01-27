@@ -25,8 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 
@@ -75,7 +73,7 @@ class ChannelTracker {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
 
   // Guards the channel mapping.
-  tensorflow::mutex channel_mutex_;
+  absl::Mutex channel_mutex_;
 
   // The next sequence number to assign to a channel.
   int64_t next_channel_ ABSL_GUARDED_BY(channel_mutex_);

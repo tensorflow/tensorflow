@@ -27,9 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 
@@ -91,7 +89,7 @@ class ExecutionTracker {
   std::map<int64_t, std::unique_ptr<AsyncExecution>> handle_to_execution_
       ABSL_GUARDED_BY(execution_mutex_);
 
-  tensorflow::mutex execution_mutex_;  // Guards the execution mapping.
+  absl::Mutex execution_mutex_;  // Guards the execution mapping.
 
   ExecutionTracker(const ExecutionTracker&) = delete;
   ExecutionTracker& operator=(const ExecutionTracker&) = delete;

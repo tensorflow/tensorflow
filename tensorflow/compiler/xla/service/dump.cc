@@ -354,7 +354,6 @@ static std::vector<std::string> DumpHloModuleImpl(
                             render_graph(RenderedGraphFormat::kHtml), opts));
   }
 
-
   if (opts.dump_fusion_visualization) {
     for (const HloComputation* computation :
          module.MakeNonfusionComputations()) {
@@ -414,7 +413,7 @@ static void DumpHloModuleMetadata(
   }
 }
 
-static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+static absl::Mutex mu(absl::kConstInit);
 
 // Maps a module's unique ID to a counter indicating how many times we've dumped
 // this module during the compilation pipeline.  This lets us keep the filenames
@@ -439,7 +438,7 @@ static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64_t, uint64_t>();
 
 int64_t StepNumberForModule(const HloModule& module) {
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
 
@@ -451,7 +450,7 @@ std::string TimestampFor(const HloModule& module) {
   if (!module.config().debug_options().xla_dump_include_timestamp()) {
     return "";
   }
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   auto timestamp_emplace = module_id_to_timestamp.try_emplace(
       module.unique_id(), tensorflow::Env::Default()->NowMicros());
   return std::to_string(timestamp_emplace.first->second);
@@ -651,7 +650,7 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   {
     static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64_t, int64_t>();
-    tensorflow::mutex_lock lock(mu);
+    absl::MutexLock lock(&mu);
     execution_count = module_id_to_execution_count[module.unique_id()]++;
     auto timestamp_emplace = module_id_to_timestamp.try_emplace(
         module.unique_id(), tensorflow::Env::Default()->NowMicros());
@@ -688,7 +687,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
   {
     static auto& module_name_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<std::string, int64_t>();
-    tensorflow::mutex_lock lock(mu);
+    absl::MutexLock lock(&mu);
     execution_count = module_name_to_execution_count[name]++;
   }
   std::string filename = StrFormat("module_%s.execution_%04d.hlo_snapshot.pb",

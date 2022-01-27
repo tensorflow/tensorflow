@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 
+#include <functional>
 #include <string>
 #include <utility>
 
@@ -34,9 +35,8 @@ using absl::StrCat;
 
 namespace xla {
 
-/* static */ tensorflow::mutex
-    TransferManager::platform_transfer_manager_mutex_(
-        tensorflow::LINKER_INITIALIZED);
+/* static */ absl::Mutex TransferManager::platform_transfer_manager_mutex_(
+    absl::kConstInit);
 
 /* static */ absl::flat_hash_map<se::Platform::Id, TransferManager::State>*
 TransferManager::GetPlatformTransferManagers() {
@@ -255,8 +255,7 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
 /* static */ void TransferManager::RegisterTransferManager(
     se::Platform::Id platform_id,
     TransferManagerCreationFunction creation_function) {
-  tensorflow::mutex_lock lock(
-      TransferManager::platform_transfer_manager_mutex_);
+  absl::MutexLock lock(&TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
   CHECK(managers->find(platform_id) == managers->end());
   (*managers)[platform_id].creation_function = creation_function;
@@ -264,8 +263,7 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
 
 /* static */ StatusOr<TransferManager*> TransferManager::GetForPlatform(
     const se::Platform* platform) {
-  tensorflow::mutex_lock lock(
-      TransferManager::platform_transfer_manager_mutex_);
+  absl::MutexLock lock(&TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
 
   auto it = managers->find(platform->id());

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 namespace gpu {
@@ -61,7 +60,7 @@ class NVPTXCompiler : public GpuCompiler {
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules) override;
 
-  tensorflow::mutex mutex_;
+  absl::Mutex mutex_;
 
   // When compiling an HLO module, we need to find a path to the nvvm libdevice
   // files.  We search in the module's config.debug_options().cuda_data_dir()
@@ -118,8 +117,8 @@ class NVPTXCompiler : public GpuCompiler {
     bool compilation_done = false;
     std::vector<uint8_t> cubin_data;
     // mutex and condition variable to serialize compilation completing.
-    tensorflow::mutex mutex_;
-    tensorflow::condition_variable compilation_done_cv_;
+    absl::Mutex mutex;
+    absl::CondVar compilation_done_cv;
   };
 
   // Don't even think about switching this to flat_hash_map; iterator stability

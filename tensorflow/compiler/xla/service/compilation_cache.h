@@ -24,8 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 
@@ -45,7 +43,7 @@ class CompilationCache {
       const ExecutionHandle& handle) const;
 
  protected:
-  mutable tensorflow::mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   using CacheKey = int64_t;
 

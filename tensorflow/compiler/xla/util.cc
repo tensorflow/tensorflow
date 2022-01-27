@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
@@ -93,7 +92,7 @@ void ScopedLoggingTimer::StopAndLog() {
     double secs = (end_micros - start_micros_) / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
-    tensorflow::mutex_lock lock(stats.stats_mutex);
+    absl::MutexLock lock(&stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
       stats.max_secs = secs;
@@ -245,8 +244,8 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
 
   // Protect calls with a mutex so we don't interleave calls to LogLines from
   // multiple threads.
-  static tensorflow::mutex log_lines_mu(tensorflow::LINKER_INITIALIZED);
-  tensorflow::mutex_lock lock(log_lines_mu);
+  static absl::Mutex log_lines_mu(absl::kConstInit);
+  absl::MutexLock lock(&log_lines_mu);
 
   size_t cur = 0;
   while (cur < text.size()) {

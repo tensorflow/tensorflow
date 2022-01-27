@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -162,7 +165,7 @@ struct GpuExecutable::BefExecutable {
   tfrt::gpu::EntryPoint entry_point;
   // Signature: (chain, stream, inputs..., outputs...) -> (chain).
   const tfrt::Function* function;
-  tensorflow::mutex mutex;
+  absl::Mutex mutex;
   tfrt::gpu::GpuContextCache gpu_ctx_cache TF_GUARDED_BY(mutex);
 };
 #endif
@@ -241,7 +244,7 @@ GpuExecutable::~GpuExecutable() {
     //
     // We need for the host->device memcpies to finish they are concurrently
     // reading memory (xla::Literal's) owned by the HLO module.
-    tensorflow::mutex_lock lock(module_handle_mutex_);
+    absl::MutexLock lock(&module_handle_mutex_);
     for (const auto& pair : module_globals_) {
       CHECK(pair.first->SynchronizeAllActivity());
     }
@@ -394,7 +397,7 @@ StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>
 GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   se::StreamExecutor* executor = stream->parent();
 
-  tensorflow::mutex_lock lock(module_handle_mutex_);
+  absl::MutexLock lock(&module_handle_mutex_);
   auto it = module_globals_.find(executor);
   if (it != module_globals_.end()) {
     return &it->second;
@@ -605,7 +608,7 @@ static Status ExecuteBef(const std::string& module_name,
 
   se::gpu::GpuStream* stream = se::gpu::AsGpuStream(run_options->stream());
   auto gpu_context = [&] {
-    tensorflow::mutex_lock lock(bef_executable->mutex);
+    absl::MutexLock lock(&bef_executable->mutex);
     return bef_executable->gpu_ctx_cache.GetOrCreate(
         se::gpu::GpuDriver::GetContextHandle(stream->parent()->gpu_context()));
   }();
@@ -681,7 +684,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
   // computations to use the same GPU simultaneously.
-  auto gpu_lock = LockGpuShared(executor);
+  absl::ReaderMutexLock gpu_lock(&GetGpuMutex(executor));
 
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {

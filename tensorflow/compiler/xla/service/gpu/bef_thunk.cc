@@ -95,7 +95,7 @@ class BefThunk : public Thunk {
 
   // The module data will be set in the execution context for kernel thunk to
   // use during execution. The resource contexts cache the loaded modules.
-  tensorflow::mutex mutex_;
+  absl::Mutex mutex_;
   absl::optional<GpuModuleData> gpu_module_data_ ABSL_GUARDED_BY(mutex_);
   tfrt::gpu::GpuContextCache gpu_context_cache_ ABSL_GUARDED_BY(mutex_);
 };
@@ -439,7 +439,7 @@ Status BefThunk::Initialize(const GpuExecutable& executable,
                             se::StreamExecutor* executor) {
   // Save the module data for kernel thunk to use during execution.
   if (kind() == Thunk::kKernel) {
-    tensorflow::mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     if (!gpu_module_data_.has_value()) {
       GpuModuleData module_data;
       // The module data should be null-terminated, so the length of the
@@ -470,7 +470,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   // The ResourceContext holds the results of `tfrt.once @...(%context)`.
   se::gpu::GpuStream* stream = se::gpu::AsGpuStream(params.stream);
   auto gpu_context = [&] {
-    tensorflow::mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     return gpu_context_cache_.GetOrCreate(
         se::gpu::GpuDriver::GetContextHandle(stream->parent()->gpu_context()));
   }();
@@ -482,7 +482,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   tfrt::RequestContextBuilder request_context_builder(
       runtime_and_queue.core_runtime->GetHostContext(), gpu_context.second);
   if (kind() == Thunk::kKernel) {
-    tensorflow::mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     TF_RETURN_IF_ERROR(
         InsertKernelRequestContext(gpu_module_data_, &request_context_builder));
   }

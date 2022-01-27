@@ -90,7 +90,7 @@ class XlaDebugInfoManager {
   XlaDebugInfoManager() {}
 
   std::set<ModuleIdentifier> GetActiveModules() {
-    tensorflow::mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     std::set<ModuleIdentifier> active;
     for (const auto& id : active_modules_) {
       active.insert(id.first);
@@ -119,7 +119,7 @@ class XlaDebugInfoManager {
     std::vector<XlaModuleInstance> instances;
   };
 
-  tensorflow::mutex mutex_;
+  absl::Mutex mutex_;
   bool tracing_active_ ABSL_GUARDED_BY(mutex_) = false;
   // Active modules are those still tracked by us. There could be much more
   // active modules than running modules, we will try to reduce the trace size
