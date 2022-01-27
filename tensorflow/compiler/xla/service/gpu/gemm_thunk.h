@@ -116,8 +116,8 @@ MatrixDescs PopulateInputOutputMatrices(const GpuGemmConfig& gemm_config,
                                         se::DeviceMemoryBase output_buffer);
 
 inline bool BlasPlansCompatibleType(PrimitiveType type) {
-  absl::flat_hash_set<PrimitiveType> enabled_types = {F16, F32, F64, C64, C128};
-  return enabled_types.contains(type);
+  absl::flat_hash_set<PrimitiveType> compatible_types = {F16, F32, F64, C64, C128};
+  return compatible_types.contains(type);
 }
 
 }  // namespace gpu

@@ -29,37 +29,11 @@ DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
   return typed;
 }
 
-// A class to provide scratch-space allocator for Stream-Executor callbacks in
-// CUDA libraries (CUDNN etc.).
-// TensorFlow is responsible for releasing the temporary buffers after
-// the kernel finishes.
-class GpuScratchAllocator : public ScratchAllocator {
- public:
-  virtual ~GpuScratchAllocator() {}
-
-  GpuScratchAllocator(int64_t memory_limit,
-                      tensorflow::OpKernelContext* context);
-
-  int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
-
-  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
-
-  int64_t TotalByteSize() { return total_byte_size_; }
-
- private:
-  int64_t memory_limit_;
-  int64_t total_byte_size_;
-  tensorflow::OpKernelContext* context_;
-  std::vector<tensorflow::Tensor> allocated_tensors_;
-};
-
 // Get a workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
 int64_t GetWorkspaceLimit(const string& envvar_in_mb,
                           int64_t default_value_in_bytes);
-
-using BlasScratchAllocator = GpuScratchAllocator;
 
 static inline int64_t GetBlasWorkspaceLimit(const string& envvar_in_mb,
                                             int64_t default_value_in_bytes) {
@@ -168,14 +142,29 @@ static inline port::StatusOr<blas::ComputationType> GetBlasComputationType(
       return f32_type;
     case tensorflow::DT_DOUBLE:
       return ComputationType::kF64;
-      return port::Status::OK();
     case tensorflow::DT_COMPLEX64:
       return f32_type;
     case tensorflow::DT_COMPLEX128:
       return ComputationType::kComplexF64;
     default:
-      // Unsupported compute_type, return false.
-      return port::InternalError("Unsupported dtype for batched matmul 2");
+      return port::InternalError("Unsupported dtype for Blas Plans.");
+  }
+}
+
+static inline port::StatusOr<blas::DataType> GetBlasDataType(tensorflow::DataType dtype){
+  switch (dtype) {
+    case tensorflow::DT_HALF:
+      return blas::ToDataType<Eigen::half>::value;
+    case tensorflow::DT_FLOAT:
+      return blas::ToDataType<float>::value;
+    case tensorflow::DT_DOUBLE:
+      return blas::ToDataType<double>::value;
+    case tensorflow::DT_COMPLEX64:
+      return blas::ToDataType<tensorflow::complex64>::value;
+    case tensorflow::DT_COMPLEX128:
+      return blas::ToDataType<tensorflow::complex128>::value;
+    default:
+      return port::InternalError("Unsupported dtype for Blas Plans.");
   }
 }
 
@@ -205,7 +194,7 @@ class BlasLtMatmulPlanMap {
     }
   };
 
-  mutable tensorflow::mutex mu_;
+  tensorflow::mutex mu_;
   std::unordered_map<Parameters, blas::PlanAndAlgorithms, Hasher>
       params_plan_map_ GUARDED_BY(mu_);
 };

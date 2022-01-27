@@ -12,7 +12,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/matmul_util.h"
 
-#include "tensorflow/core/framework/op_kernel.h"
 
 namespace stream_executor {
 
@@ -70,25 +69,7 @@ port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
   int64_t n = output_matrix.num_cols;
   int64_t k = lhs_matrix.reduced_dim();
 
-  blas::DataType blas_dtype;
-  switch (dtype) {
-    case tensorflow::DT_HALF:
-      blas_dtype = blas::ToDataType<Eigen::half>::value;
-      break;
-    case tensorflow::DT_FLOAT:
-      blas_dtype = blas::ToDataType<float>::value;
-      break;
-    case tensorflow::DT_DOUBLE:
-      blas_dtype = blas::ToDataType<double>::value;
-      break;
-    case tensorflow::DT_COMPLEX64:
-      blas_dtype = blas::ToDataType<tensorflow::complex64>::value;
-      break;
-    case tensorflow::DT_COMPLEX128:
-      blas_dtype = blas::ToDataType<tensorflow::complex128>::value;
-      break;
-  }
-
+  TF_ASSIGN_OR_RETURN(blas::DataType blas_dtype, GetBlasDataType(dtype));
   plan_params.ab_type = blas_dtype;
   plan_params.c_type = blas_dtype;
   bool allow_tf32 = tensorflow::tensor_float_32_execution_enabled();
@@ -137,43 +118,5 @@ port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
   return plan_params;
 }
 
-GpuScratchAllocator::GpuScratchAllocator(int64_t memory_limit,
-                                         tensorflow::OpKernelContext* context)
-    : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-
-port::StatusOr<DeviceMemory<uint8>> GpuScratchAllocator::AllocateBytes(
-    int64_t byte_size) {
-  tensorflow::Tensor temporary_memory;
-  if (byte_size < 0) {
-    return port::Status{port::error::INVALID_ARGUMENT,
-                        "Requested negative byte size!"};
-  }
-  if (byte_size > memory_limit_) {
-    return port::Status{
-        port::error::UNAVAILABLE,
-        absl::StrCat("Requested memory size (", byte_size,
-                     ") exceeds the max memory limit (", memory_limit_, ").")};
-  }
-  tensorflow::AllocationAttributes allocation_attr;
-  allocation_attr.retry_on_failure = false;
-  tensorflow::Status allocation_status(context_->allocate_temp(
-      tensorflow::DT_UINT8, tensorflow::TensorShape({byte_size}),
-      &temporary_memory, tensorflow::AllocatorAttributes(), allocation_attr));
-  if (!allocation_status.ok()) {
-    return port::Status{
-        port::error::UNAVAILABLE,
-        absl::StrCat("Failed to allocate the requested memory size (",
-                     byte_size, ").")};
-  }
-  // Hold the reference of the allocated tensors until the end of the
-  // allocator.
-  // NOTE: We expect tensors to be deallocated when this allocator goes out of
-  // scope when allocated_tensors is destructed.
-  allocated_tensors_.push_back(temporary_memory);
-  total_byte_size_ += byte_size;
-  return port::StatusOr<DeviceMemory<uint8>>(
-      tensorflow::AsDeviceMemory(temporary_memory.flat<uint8>().data(),
-                                 temporary_memory.flat<uint8>().size()));
-}
 
 }  // namespace stream_executor
