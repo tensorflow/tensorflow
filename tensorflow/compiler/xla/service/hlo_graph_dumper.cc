@@ -421,7 +421,7 @@ class HloDotDumper {
   int64_t next_edge_id_ = 1;
   std::unordered_multimap<
       std::pair<const HloInstruction*, const HloInstruction*>, int64_t,
-      tensorflow::hash<std::pair<const HloInstruction*, const HloInstruction*>>>
+      absl::Hash<std::pair<const HloInstruction*, const HloInstruction*>>>
       edge_ids_;
 
   // Each HloComputation that's emitted gets a monotonically-increasing ID.

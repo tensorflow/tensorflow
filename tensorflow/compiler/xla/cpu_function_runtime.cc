@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 
-#include "tensorflow/core/platform/dynamic_annotations.h"
+#include "absl/base/dynamic_annotations.h"
 
 namespace xla {
 namespace {
@@ -81,7 +81,7 @@ void* MallocContiguousBuffers(const BufferInfo* buffer_infos, size_t n,
     if (annotate_initialized) {
       // Since the memory for temp buffers is written to by JITed code, msan has
       // no way of knowing the memory was initialized, so explicitly mark it.
-      TF_ANNOTATE_MEMORY_IS_INITIALIZED(contiguous, total);
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(contiguous, total);
     }
   }
   uintptr_t pos = reinterpret_cast<uintptr_t>(contiguous);

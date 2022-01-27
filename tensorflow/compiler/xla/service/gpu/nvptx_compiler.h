@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 namespace gpu {

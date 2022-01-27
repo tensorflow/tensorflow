@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 // A class to create all the logical buffers defined by the HLO ops in a module.

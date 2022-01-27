@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 
-#include "tensorflow/core/lib/hash/hash.h"
-
 namespace xla {
 
 HloModuleGroup::HloModuleGroup(std::unique_ptr<HloModule> module)
