@@ -36,18 +36,12 @@ struct BatchNorm {
     const int rest_size = input.size() / depth;
 
     Eigen::DSizes<int, 2> rest_by_depth(rest_size, depth);
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::DSizes<int, 2> rest_by_one(rest_size, 1);
-    Eigen::DSizes<int, 2> one_by_depth(1, depth);
-    Eigen::DSizes<int, 2> depth_by_one(depth, 1);
-#else
     Eigen::IndexList<int, Eigen::type2index<1> > rest_by_one;
     rest_by_one.set(0, rest_size);
     Eigen::IndexList<Eigen::type2index<1>, int> one_by_depth;
     one_by_depth.set(1, depth);
     Eigen::IndexList<int, Eigen::type2index<1> > depth_by_one;
     depth_by_one.set(0, depth);
-#endif
     if (scale_after_normalization) {
       output.reshape(rest_by_depth).device(d) =
           (input.reshape(rest_by_depth) -
@@ -88,18 +82,11 @@ struct BatchNormGrad {
     typedef typename TTypes<T>::ConstVec::Index Index;
 
     Eigen::DSizes<Index, 2> rest_by_depth(rest_size, depth);
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::DSizes<Index, 2> rest_by_one(rest_size, 1);
-    Eigen::DSizes<Index, 2> one_by_depth(1, depth);
-    Eigen::array<Index, 1> reduction_axis;
-    reduction_axis[0] = 0;  // Reduces on first dimension.
-#else
     Eigen::IndexList<Index, Eigen::type2index<1> > rest_by_one;
     rest_by_one.set(0, rest_size);
     Eigen::IndexList<Eigen::type2index<1>, Index> one_by_depth;
     one_by_depth.set(1, depth);
     Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
-#endif
 
     // db = out_backprop
     //
