@@ -730,6 +730,8 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                         ConvertAttributeValue(tf_attr, builder, tfgDialect));
     attrs.append(name, attr);
   }
+  if (signature.name().empty())
+    return InvalidArgument("function without a name");
   attrs.append("sym_name", builder.getStringAttr(name));
 
   if (!signature.description().empty())
