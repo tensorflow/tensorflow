@@ -135,6 +135,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/loop_schedule_linearizer.h"
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
+#include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_combiner.h"
@@ -617,6 +618,8 @@ Status GpuCompiler::OptimizeHloModule(
     options.set_minmax_propagate_nan(
         !debug_options.xla_gpu_enable_fast_min_max());
     pipeline.AddPass<AlgebraicSimplifier>(options);
+    pipeline.AddPass<OptimizationBarrierExpander>();
+    pipeline.AddPass<TupleSimplifier>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
