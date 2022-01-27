@@ -5155,7 +5155,7 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackward(
 // TODO(stevenireeves): Use autotune to choose between this mode and
 // NCHW when MIOpen has more optimized kernels. 
 bool UseNhwcLayoutForRocm() {
-#if TF_ROCM_VERSION >= 50000
+#if TF_ROCM_VERSION >= 50100
   static bool is_enabled = [] {
     bool is_enabled = false;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
