@@ -921,9 +921,10 @@ tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
   // Two entries: a type and a shape.
   SmallVector<Attribute> dtype_and_shape;
   for (const auto& handle : handle_data) {
+    if (handle.dtype() == tensorflow::DT_INVALID)
+      return InvalidArgument("Invalid dtype for handle_data");
     Type dtype;
-    if (handle.dtype() != tensorflow::DT_INVALID)
-      TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
+    TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
     TF_ASSIGN_OR_RETURN(
         Attribute shape,
         ConvertTensorShapeProto(handle.shape(), builder.getContext()));
