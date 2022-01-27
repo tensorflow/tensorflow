@@ -85,7 +85,6 @@ constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
 /// exceed the stack space.
 bool IsSmallAlloc(Value alloc) {
   constexpr unsigned kMaximumSizeInBytes = 64;
-  constexpr unsigned kBitwidthOfIndexType = 64;
   constexpr unsigned kMaxRankOfAllocatedMemRef = 1;
 
   auto type = alloc.getType().dyn_cast<mlir::ShapedType>();
@@ -110,10 +109,8 @@ bool IsSmallAlloc(Value alloc) {
     }
     return false;
   }
-  // For index types, use the provided size, as the type does not know.
-  unsigned int bitwidth = type.getElementType().isIndex()
-                              ? kBitwidthOfIndexType
-                              : type.getElementTypeBitWidth();
+  unsigned bitwidth = mlir::DataLayout::closest(alloc.getDefiningOp())
+                          .getTypeSizeInBits(type.getElementType());
   return type.getNumElements() * bitwidth <= kMaximumSizeInBytes * 8;
 }
 
