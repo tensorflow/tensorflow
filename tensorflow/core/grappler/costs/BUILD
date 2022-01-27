@@ -343,20 +343,6 @@ cc_library(
     ] + tf_protos_grappler(),
 )
 
-tf_cc_test(
-    name = "op_level_cost_estimator_test",
-    srcs = ["op_level_cost_estimator_test.cc"],
-    tags = ["no_oss"],  # b/163222310
-    deps = [
-        ":op_level_cost_estimator",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:status_matchers",
-    ],
-)
-
 cc_library(
     name = "analytical_cost_estimator",
     srcs = ["analytical_cost_estimator.cc"],
