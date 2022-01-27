@@ -1,11 +1,8 @@
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -53,19 +50,18 @@ namespace {
 template <typename T>
 using BaseOpConversion = OpConversionPattern<T>;
 
-Value InsertDynamicAlloc(Location loc, Type result_type, Operation* def_op, Value shape_operand,
+Value InsertDynamicAlloc(Location loc, Value result, Value shape_operand,
                          ConversionPatternRewriter* rewriter) {
-  auto result_tensor_type = result_type.dyn_cast<RankedTensorType>();
-  if (!result_tensor_type) {
-    def_op->emitOpError()
+  auto result_type = result.getType().dyn_cast<RankedTensorType>();
+  if (!result_type) {
+    result.getDefiningOp()->emitOpError()
         << "tensor to buffer conversion expects ranked results";
   }
   auto memref_type =
-      MemRefType::get(result_tensor_type.getShape(), result_tensor_type.getElementType());
+      MemRefType::get(result_type.getShape(), result_type.getElementType());
 
   // Extract the required element out of the vector.
   SmallVector<Value, 4> dynamic_operands;
-
   for (const auto& shape_element : llvm::enumerate(result_type.getShape())) {
     if (shape_element.value() != ShapedType::kDynamicSize) continue;
     Value index =
@@ -82,17 +78,17 @@ Value InsertDynamicAlloc(Location loc, Type result_type, Operation* def_op, Valu
   return rewriter->create<memref::AllocOp>(loc, memref_type, dynamic_operands);
 }
 
-Value InsertAlloc(Location loc, Type result_type, Operation* def_op,
+Value InsertAlloc(Location loc, OpResult result,
                   ConversionPatternRewriter* rewriter) {
-  auto result_tensor_type = result_type.dyn_cast<RankedTensorType>();
-  if (!result_tensor_type || !result_tensor_type.hasStaticShape()) {
-    def_op->emitOpError()
+  auto result_type = result.getType().dyn_cast<RankedTensorType>();
+  if (!result_type || !result_type.hasStaticShape()) {
+    result.getDefiningOp()->emitOpError()
         << "tensor to buffer conversion expects statically shaped results";
   }
   auto memref_type =
-      MemRefType::get(result_tensor_type.getShape(), result_tensor_type.getElementType());
+      MemRefType::get(result_type.getShape(), result_type.getElementType());
   OpBuilder::InsertionGuard guard(*rewriter);
-  rewriter->setInsertionPoint(def_op);
+  rewriter->setInsertionPoint(result.getDefiningOp());
   auto alloc = rewriter->create<memref::AllocOp>(loc, memref_type);
   return alloc;
 }
@@ -137,65 +133,6 @@ LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
   }
   return success();
 }
-#if 0
-LogicalResult ConvertResults(Operation* op, SmallVectorImpl<Value>& results,
-                             ConversionPatternRewriter& rewriter) {
-  size_t num_operands = results.size();
-  SmallVector<Value, 2> tensor_operands;
-<<<<<<< HEAD
-
-  auto convert_result = [&](Type result_ty, size_t index) {
-=======
-  for (const auto& result : llvm::enumerate(op->getResults())) {
->>>>>>> master
-    RankedTensorType resultType =
-        result_ty.dyn_cast<RankedTensorType>();
-
-    if (!resultType) return failure();
-
-    if (resultType.hasStaticShape()) {
-      results.push_back(InsertAlloc(op->getLoc(), resultType, op, &rewriter));
-      return success();
-    }
-    auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
-    if (!shape_type_op) return failure();
-
-    if (tensor_operands.empty()) {
-      for (auto operand : ArrayRef<Value>(results).take_front(num_operands)) {
-        auto operand_type = operand.getType().dyn_cast<MemRefType>();
-        if (!operand_type) return failure();
-        tensor_operands.push_back(rewriter.create<bufferization::ToTensorOp>(
-            op->getLoc(),
-            RankedTensorType::get(operand_type.getShape(),
-                                  operand_type.getElementType()),
-            operand));
-      }
-    }
-
-    SmallVector<Value, 1> results_shape;
-    auto status = shape_type_op.reifyReturnTypeShapes(rewriter, tensor_operands,
-                                                      results_shape);
-    if (failed(status)) return failure();
-    results.push_back(InsertDynamicAlloc(op->getLoc(), resultType, op,
-                                         results_shape[index],
-                                         &rewriter));
-    return success();
-  };
-
-  if (op->getNumResults() == 1 && op->getResult(0).getType().isa<TupleType>()) {
-    SmallVector<Type> flattenedTypes;
-    op->getResult(0).getType().cast<TupleType>().getFlattenedTypes(flattenedTypes);
-    for (auto result : llvm::enumerate(flattenedTypes)) {
-      if (failed(convert_result(result.value(), result.index()))) return failure();
-    }
-  } else {
-    for (auto result : llvm::enumerate(op->getResults())) {
-      if (failed(convert_result(result.value().getType(), result.index()))) return failure();
-    }
-  }
-  return success();
-}
-#endif
 
 template <typename HloOpTy>
 class HloToLhloOpConverter : public BaseOpConversion<HloOpTy> {
@@ -241,38 +178,6 @@ class HloToLhloOpConverter<mhlo::DotOp> : public BaseOpConversion<mhlo::DotOp> {
     dotOp.dot_dimension_numbersAttr(dimension_numbers);
     rewriter.replaceOp(
         op, ArrayRef<Value>(buffer_args).slice(adaptor.getOperands().size()));
-    return success();
-  }
-};
-
-template <typename HloOpTy>
-class HloTupleOutputToLhloOpConverter : public BaseOpConversion<HloOpTy> {
-public:
-  using BaseOpConversion<HloOpTy>::BaseOpConversion;
-
-  LogicalResult matchAndRewrite(
-    HloOpTy hloOp,  typename HloOpTy::Adaptor adaptor,
-    ConversionPatternRewriter& rewriter) const final {
-    Operation* op = hloOp.getOperation();
-    SmallVector<Operation*> allUsers;
-    for (auto* user : op->getUsers()) {
-      allUsers.push_back(user);
-      if (!isa<mhlo::GetTupleElementOp>(user)) {
-        return failure();
-      }
-    }
-    SmallVector<Value> buffer_args(adaptor.getOperands().begin(),
-                                   adaptor.getOperands().end());
-    if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
-    rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(op->getLoc(), llvm::None,
-      buffer_args, op->getAttrs());
-    for (auto* user : allUsers) {
-      auto getElementOp = cast<mhlo::GetTupleElementOp>(user);
-      unsigned index = op->getNumOperands() + getElementOp.index();
-      rewriter.replaceOp(getElementOp, {buffer_args[index]});
-    }
-
-    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -325,7 +230,7 @@ struct HloToLhloDotGeneralOpConverter
         adaptor.getOperands()[0], adaptor.getOperands()[1], {}};
 
     if (resultType.hasStaticShape()) {
-      bufferArgs[2] = InsertAlloc(op->getLoc(), resultType, op, &rewriter);
+      bufferArgs[2] = InsertAlloc(op->getLoc(), result, &rewriter);
     } else {
       SmallVector<Value, 1> results_shape;
       auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
@@ -333,7 +238,7 @@ struct HloToLhloDotGeneralOpConverter
               rewriter, adaptor.getOperands(), results_shape)))
         return failure();
 
-      bufferArgs[2] = InsertDynamicAlloc(op->getLoc(), resultType, op,
+      bufferArgs[2] = InsertDynamicAlloc(op->getLoc(), result,
                                          results_shape.front(), &rewriter);
     }
 
@@ -585,8 +490,8 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::AddOp>,
       HloToLhloOpConverter<mhlo::AndOp>,
       HloToLhloOpConverter<mhlo::Atan2Op>,
-      HloTupleOutputToLhloOpConverter<mhlo::BatchNormGradOp>,
-      HloTupleOutputToLhloOpConverter<mhlo::BatchNormTrainingOp>,
+      HloToLhloOpConverter<mhlo::BatchNormGradOp>,
+      HloToLhloOpConverter<mhlo::BatchNormTrainingOp>,
       HloToLhloOpConverter<mhlo::BroadcastInDimOp>,
       HloToLhloOpConverter<mhlo::CeilOp>,
       HloToLhloOpConverter<mhlo::CompareOp>,
