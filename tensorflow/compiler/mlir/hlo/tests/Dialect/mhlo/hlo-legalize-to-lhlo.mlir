@@ -670,7 +670,7 @@ func @clamp(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4xf32>) -> ten
 
 // -----
 
-// CHECK-LABEL: func @clamp
+// CHECK-LABEL: func @clamp_broadcast
 func @clamp_broadcast(%min: tensor<f32>, %value: tensor<4xf32>, %max: tensor<f32>) -> tensor<4xf32> {
   // CHECK: "lmhlo.clamp"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (memref<f32>, memref<4xf32>, memref<f32>, memref<4xf32>) -> ()
   %0 = "mhlo.clamp"(%min, %value, %max) : (tensor<f32>, tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
