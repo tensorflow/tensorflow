@@ -85,7 +85,7 @@ class GraphExecutor {
   static StatusOr<std::unique_ptr<GraphExecutor>> Create(
       Options options, const FallbackState& fallback_state,
       tfrt::tpu::TpuModelResource* tpu_model_resource,
-      const tensorflow::GraphDef& graph_def);
+      tensorflow::GraphDef graph_def);
 
   // Ctor. Public for `Create()`. Do not use directly.
   GraphExecutor(Options options, const FallbackState& fallback_state,

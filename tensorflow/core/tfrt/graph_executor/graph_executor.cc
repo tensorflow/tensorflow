@@ -287,14 +287,14 @@ std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
 StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     Options options, const FallbackState& fallback_state,
     tfrt::tpu::TpuModelResource* tpu_model_resource,
-    const tensorflow::GraphDef& graph_def) {
+    tensorflow::GraphDef graph_def) {
   if (options.runtime == nullptr) {
     return errors::InvalidArgument("options.runtime must be non-null ");
   }
-  TF_ASSIGN_OR_RETURN(
-      auto graph_execution_state,
-      TfrtGraphExecutionState::Create(
-          graph_def, fallback_state, options.run_placer_grappler_on_functions));
+  TF_ASSIGN_OR_RETURN(auto graph_execution_state,
+                      TfrtGraphExecutionState::Create(
+                          std::move(graph_def), fallback_state,
+                          options.run_placer_grappler_on_functions));
   return std::make_unique<GraphExecutor>(std::move(options), fallback_state,
                                          tpu_model_resource,
                                          std::move(graph_execution_state));
