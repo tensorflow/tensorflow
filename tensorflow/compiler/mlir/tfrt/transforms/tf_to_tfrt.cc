@@ -1932,6 +1932,7 @@ class OutlineJitRtClustersPass
   // Creates a nested module with a single function that will be compiled into
   // the kernel at runtime.
   CompiledModule CreateCompiledModule(tf_device::ClusterOp cluster,
+                                      int64_t max_arg_size,
                                       SymbolTable *symbol_table);
 
   // Update compiled module entrypoint signature with inferred operands
@@ -1941,6 +1942,7 @@ class OutlineJitRtClustersPass
   // Outlines cluster operation regions into compiled modules, and replaces
   // cluster operation with a jitrt.call operation.
   LogicalResult OutlineClusterOp(tf_device::ClusterOp cluster,
+                                 int64_t max_arg_size,
                                  SymbolTable *symbol_table);
 
   // Mapping from the outlined module string representation to the module itself
@@ -1951,6 +1953,7 @@ class OutlineJitRtClustersPass
 
 OutlineJitRtClustersPass::CompiledModule
 OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
+                                               int64_t max_arg_size,
                                                SymbolTable *symbol_table) {
   MLIRContext *ctx = cluster->getContext();
   Location loc = cluster.getLoc();
@@ -1959,6 +1962,9 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   // TODO(ezhulenev): Give better names to module and function.
   auto compiled_module = ModuleOp::create(loc, {"kernel"});
   compiled_module->setAttr("tfrt.compiled", UnitAttr::get(ctx));
+  compiled_module->setAttr(
+      "tfrt.max-arg-size",
+      IntegerAttr::get(IntegerType::get(ctx, 64), max_arg_size));
 
   SymbolTable compiled_module_symbol_table(compiled_module);
 
@@ -2053,11 +2059,13 @@ LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
 }
 
 LogicalResult OutlineJitRtClustersPass::OutlineClusterOp(
-    tf_device::ClusterOp cluster, SymbolTable *symbol_table) {
+    tf_device::ClusterOp cluster, int64_t max_arg_size,
+    SymbolTable *symbol_table) {
   Location loc = cluster->getLoc();
   OpBuilder builder(cluster);
 
-  CompiledModule compiled_module = CreateCompiledModule(cluster, symbol_table);
+  CompiledModule compiled_module =
+      CreateCompiledModule(cluster, max_arg_size, symbol_table);
   FuncOp compiled_func = compiled_module.entrypoint;
 
   // Add constraints to the entrypoint arguments.
@@ -2085,6 +2093,17 @@ void OutlineJitRtClustersPass::runOnOperation() {
   ModuleOp module = getOperation();
   SymbolTable symbol_table(module);
 
+  // Keep track of the maximum argument size for each function with tf_device
+  // cluster operations in the function body. We need to pass it to the compiled
+  // module to correctly compute its cost later.
+  llvm::DenseMap<mlir::FuncOp, int64_t> max_arg_size_map;
+
+  auto get_max_arg_size = [&](mlir::FuncOp func) -> int64_t {
+    auto it = max_arg_size_map.find(func);
+    if (it != max_arg_size_map.end()) return it->second;
+    return max_arg_size_map[func] = tf_jitrt::GetMaxArgSize(func);
+  };
+
   OpBuilder builder(module.getContext());
   auto result = module.walk([&](tf_device::ClusterOp cluster) -> WalkResult {
     // Ensure that cluster was formed for TFRT JIT compilation.
@@ -2092,7 +2111,11 @@ void OutlineJitRtClustersPass::runOnOperation() {
     if (!policy || policy.getValue() != "tfrt.auto-fusion")
       return WalkResult::advance();
 
-    if (failed(OutlineClusterOp(cluster, &symbol_table)))
+    // Get the maximum argument size of the parent function.
+    mlir::FuncOp parent_func = cluster->getParentOfType<mlir::FuncOp>();
+    int64_t max_arg_size = get_max_arg_size(parent_func);
+
+    if (failed(OutlineClusterOp(cluster, max_arg_size, &symbol_table)))
       return WalkResult::interrupt();
     return WalkResult::advance();
   });
