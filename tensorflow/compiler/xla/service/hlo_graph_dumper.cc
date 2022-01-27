@@ -334,11 +334,19 @@ class HloDotDumper {
 
   // Returns a CSS id assigned to the instruction, if that exists.
   absl::optional<std::string> CssIdForInstruction(const HloInstruction& instr) {
+    if (instr.opcode() == HloOpcode::kFusion) {
+      // For fusion we render it as a subcomputation.
+      auto it = cluster_ids_.find(instr.called_computations()[0]);
+      if (it == cluster_ids_.end()) {
+        return absl::nullopt;
+      }
+      return StrCat("#a_clust", it->second, " path");
+    }
     auto it = node_ids_.find(&instr);
     if (it == node_ids_.end()) {
       return absl::nullopt;
     }
-    return StrCat("node", it->second);
+    return StrCat("#node", it->second, " polygon");
   }
 
  private:
@@ -1949,7 +1957,7 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
       var panzoom = svgPanZoom(area.children[0], {
           zoomEnabled: true, controlIconsEnabled: true, });
       var to_highlight = frame[2].length ?
-        document.querySelector(`#${frame[2]} polygon`) : null;
+        document.querySelector(`${frame[2]}`) : null;
       if (to_highlight) {
         to_highlight.style.setProperty('fill', 'red');
       }
