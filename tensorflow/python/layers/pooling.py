@@ -13,10 +13,9 @@
 # limitations under the License.
 # =============================================================================
 
-"""Contains the pooling layer classes and their functional aliases.
-"""
-from tensorflow.python.keras.legacy_tf_layers import pooling
+"""Contains the pooling layer classes and their functional aliases."""
 
+from tensorflow.python.keras.legacy_tf_layers import pooling
 
 AveragePooling1D = pooling.AveragePooling1D
 average_pooling1d = pooling.average_pooling1d
