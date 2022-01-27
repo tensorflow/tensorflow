@@ -139,7 +139,7 @@ TF_CALL_int64(REGISTER_GPU_KERNEL);
 
 // Special case to execute int32 on the host with host output.
 REGISTER_KERNEL_BUILDER(Name("Range")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("start")
                             .HostMemory("limit")
                             .HostMemory("delta")
