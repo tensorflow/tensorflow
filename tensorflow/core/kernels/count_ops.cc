@@ -239,7 +239,6 @@ class SparseCount : public OpKernel {
     }
 
     bool is_1d = shape.NumElements() == 1;
-    auto shape_vector = shape.flat<int64>();
     int num_batches = is_1d ? 1 : shape_vector(0);
     OP_REQUIRES(
         context, 0 < num_batches && num_batches < kMaxBatches,
@@ -259,7 +258,6 @@ class SparseCount : public OpKernel {
                     "Got ", num_values,
                     " values, indices shape: ", indices.shape().DebugString()));
 
-    const auto indices_values = indices.matrix<int64>();
     const auto values_values = values.flat<T>();
     const auto weight_values = weights.flat<W>();
 
