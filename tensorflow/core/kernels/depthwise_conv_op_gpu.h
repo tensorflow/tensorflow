@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/determinism.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -1751,6 +1752,19 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   }
 }
 
+// By disabling this exception, we can discover if other determinism exceptions
+// are reached in the execution of a given model.
+bool DisableDepthwiseConvDeterminismExceptions() {
+  static bool cached_disable = [] {
+    bool disable = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_DISABLE_DEPTHWISE_CONV_DETERMINISM_EXCEPTIONS",
+        /*default_val*/false, &disable));
+    return disable;
+  }();
+  return cached_disable;
+}
+
 // A simple launch pad to launch the GPU kernel for depthwise convolution.
 template <typename T>
 void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
@@ -1759,7 +1773,8 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
   auto stream = ctx->op_device_context()->stream();
 
   OP_REQUIRES(
-      ctx, !OpDeterminismRequired(),
+      ctx,
+      !OpDeterminismRequired() || DisableDepthwiseConvDeterminismExceptions(),
       errors::Unimplemented(
           "A deterministic GPU implementation of DepthwiseConvBackpropFilter is"
           " not currently available."));
