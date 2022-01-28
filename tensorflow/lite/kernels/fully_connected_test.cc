@@ -681,28 +681,43 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedOutputShape3DInt16) {
   const float scale = 128.0 / 65536;
   QuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
-      /*input=*/{TensorType_INT16, {1, 2, 10}, 0, 0, scale, 0},
-      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0});
+      /*input=*/{TensorType_INT16, {2, 2, 5}, 0, 0, scale, 0},
+      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0}, /*keep_num_dims=*/true,
+      /*bias_tensor_optional=*/false,
+      /*activation_func=*/ActivationFunctionType_RELU,
+      /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+      /*add_bias_for_quantized=*/true, /*input_size=*/5);
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+      1, 2, 3, 4, 5,  // u = 0
+      1, 2, 3, 4, 5,  // u = 1
+      1, 2, 3, 4, 5,  // u = 2
   });
   m.SetBias64({1, 2, 3});
 
   m.SetInput<int16_t>({
-      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+      1, 2,  3,  4,  -5,  // b = 0, i = 0
+      1, 2,  3,  -4, 5,   // b = 0, i = 1
+      1, 2,  -3, 4,  5,   // b = 1, i = 0
+      1, -2, 3,  4,  5,   // b = 1, i = 1
   });
 
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
-              ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
+              ElementsAreArray(ArrayFloatNear({
+                  6, 7, 8,     // b = 0, i = 0
+                  24, 25, 26,  // b = 0, i = 1
+                  38, 39, 40,  // b = 1, i = 0
+                  48, 49, 50   // b = 1, i = 1
+              })));
   EXPECT_THAT(m.GetOutput<int16_t>(),
-              ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+              ElementsAre(3072, 3584, 4096,     // b = 0, i = 0
+                          12288, 12800, 13312,  // b = 0, i = 1
+                          19456, 19968, 20480,  // b = 1, i = 0
+                          24576, 25088, 25600   // b = 1, i = 1
+                          ));
 }
 // Test the GEMV path.
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestSingleBatchQuantizedInt8) {
