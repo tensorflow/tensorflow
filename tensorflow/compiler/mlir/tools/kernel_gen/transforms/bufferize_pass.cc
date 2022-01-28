@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/VectorOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -237,6 +239,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     registry.insert<AffineDialect, memref::MemRefDialect, scf::SCFDialect,
                     shape::ShapeDialect, tensor::TensorDialect,
                     tf_framework::TFFrameworkDialect, lmhlo::LmhloDialect>();
+    tensor::registerBufferizableOpInterfaceExternalModels(registry);
   }
 
  public:
@@ -268,9 +271,20 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
                                  tf_framework::JITExecuteOp>(typesAreLegal);
 
     RewritePatternSet patterns(&getContext());
+
+    // Bufferize ops using BufferizableOpInterface. This could be switched to
+    // One-Shot Bufferize in the future.
+    std::unique_ptr<bufferization::BufferizationOptions> options =
+        bufferization::getPartialBufferizationOptions();
+    // TODO(springerm): Add dialects to this filter as more and more
+    // `populate...BufferizePatterns` functions will disappear with recent
+    // changes to bufferization.
+    options
+        ->addToDialectFilter<arith::ArithmeticDialect, tensor::TensorDialect>();
+    bufferization::AlwaysCopyBufferizationState bufferizationState(*options);
+    bufferization::populateBufferizationPattern(bufferizationState, patterns);
+
     linalg::populateLinalgBufferizePatterns(converter, patterns);
-    populateTensorBufferizePatterns(converter, patterns);
-    arith::populateArithmeticBufferizePatterns(converter, patterns);
     populateStdBufferizePatterns(converter, patterns);
     populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
     populateExtraBufferizePatterns(&getContext(), &converter, &patterns);

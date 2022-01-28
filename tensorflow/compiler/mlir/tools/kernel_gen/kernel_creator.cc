@@ -344,7 +344,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // Expand memref_reshape to its ranked form so that we can propagate
   // scalars and avoid allocation.
   pm.addNestedPass<mlir::FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createStdExpandOpsPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::memref::createExpandOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   // Before bufferizing further, remove unused tensor_to_memref, so that we do

@@ -512,13 +512,13 @@ class SelectAndScatterOpConverter
         loc, s_and_s_op.source(), loop_over_src.getInductionVars());
 
     // Compute `out[selected_ivs]` = scatter(out[selected_ivs], src_element)`.
-    auto rmw = rewriter.create<GenericAtomicRMWOp>(loc, s_and_s_op.out(),
-                                                   selected_ivs);
+    auto rmw = rewriter.create<memref::GenericAtomicRMWOp>(
+        loc, s_and_s_op.out(), selected_ivs);
     OpBuilder rmw_builder = OpBuilder::atBlockEnd(rmw.getBody());
     auto acc_result =
         ApplySingleResultLhloCode(loc, {src_elem, rmw.getCurrentValue()},
                                   &s_and_s_op.scatter().front(), &rmw_builder);
-    rmw_builder.create<AtomicYieldOp>(loc, acc_result);
+    rmw_builder.create<memref::AtomicYieldOp>(loc, acc_result);
 
     rewriter.replaceOp(s_and_s_op, llvm::None);
     return success();
