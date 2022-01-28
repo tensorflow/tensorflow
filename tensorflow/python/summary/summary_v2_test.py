@@ -25,6 +25,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
+from tensorflow.python.training import training_util
 
 
 class SummaryV2Test(test.TestCase):
@@ -41,7 +42,7 @@ class SummaryV2Test(test.TestCase):
     # Returns empty string.
     self.assertEqual(tensor.numpy(), b'')
     self.assertEqual(tensor.dtype, dtypes.string)
-    mock_scalar_v2.assert_called_once_with('float', data=i)
+    mock_scalar_v2.assert_called_once_with('float', data=i, step=1)
 
   @test_util.run_v2_only
   def test_scalar_summary_v2__wo_writer(self):
@@ -77,7 +78,7 @@ class SummaryV2Test(test.TestCase):
     self.assertEqual(tensor.numpy(), b'')
     self.assertEqual(tensor.dtype, dtypes.string)
     mock_scalar_v2.assert_called_once_with(
-        'otter/otter/float', data=constant_op.constant(2.5))
+        'otter/otter/float', data=constant_op.constant(2.5), step=1)
 
   @test_util.run_v2_only
   def test_scalar_summary_v2__family_w_outer_scope(self):
@@ -93,7 +94,22 @@ class SummaryV2Test(test.TestCase):
     self.assertEqual(tensor.numpy(), b'')
     self.assertEqual(tensor.dtype, dtypes.string)
     mock_scalar_v2.assert_called_once_with(
-        'crabnet/sea/crabnet/float', data=constant_op.constant(3.5))
+        'crabnet/sea/crabnet/float', data=constant_op.constant(3.5), step=1)
+
+  @test_util.run_v2_only
+  def test_scalar_summary_v2__v1_set_step(self):
+    """Tests scalar v2 invocation when v1 step is set."""
+    global_step = training_util.create_global_step()
+    global_step.assign(1024)
+    with test.mock.patch.object(
+        summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
+      with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default():
+        i = constant_op.constant(2.5)
+        tensor = summary_lib.scalar('float', i)
+    # Returns empty string.
+    self.assertEqual(tensor.numpy(), b'')
+    self.assertEqual(tensor.dtype, dtypes.string)
+    mock_scalar_v2.assert_called_once_with('float', data=i, step=1024)
 
 
 if __name__ == '__main__':
