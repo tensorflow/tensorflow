@@ -1,3 +1,7 @@
+# Release 2.5.3
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.5.2
 
 This release introduces several vulnerability fixes:
