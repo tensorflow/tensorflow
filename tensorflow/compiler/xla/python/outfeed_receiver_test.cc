@@ -72,7 +72,7 @@ class Accumulator {
 
  private:
   absl::Mutex mutex_;
-  std::vector<Data> received_ TF_GUARDED_BY(mutex_);
+  std::vector<Data> received_ ABSL_GUARDED_BY(mutex_);
 };
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
@@ -99,7 +99,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
   devices.push_back(absl::make_unique<CpuDevice>(1, nullptr));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
-      kCpuName, client, std::move(devices), /*process_index=*/0,
+      CpuName(), client, std::move(devices), /*process_index=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr));

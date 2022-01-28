@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/floor_mod_test_common.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -25,31 +26,6 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAre;
-
-template <typename T>
-class FloorModModel : public SingleOpModel {
- public:
-  FloorModModel(const TensorData& input1, const TensorData& input2,
-                const TensorData& output) {
-    input1_ = AddInput(input1);
-    input2_ = AddInput(input2);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_FLOOR_MOD, BuiltinOptions_FloorModOptions,
-                 CreateFloorModOptions(builder_).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
-  }
-
-  int input1() { return input1_; }
-  int input2() { return input2_; }
-
-  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
-  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
-
- private:
-  int input1_;
-  int input2_;
-  int output_;
-};
 
 TEST(FloorModModel, Simple) {
   FloorModModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},

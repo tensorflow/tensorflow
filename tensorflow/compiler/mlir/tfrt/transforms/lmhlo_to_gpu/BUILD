@@ -27,9 +27,35 @@ cc_library(
     hdrs = ["pattern_utils.h"],
     tags = ["gpu"],
     deps = [
+        "//tensorflow/stream_executor:dnn",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@tf_runtime//:basic_kernels_opdefs",
+        "@tf_runtime//backends/gpu:gpu_wrapper",
+    ],
+)
+
+cc_library(
+    name = "pass_utils",
+    srcs = ["pass_utils.cc"],
+    hdrs = ["pass_utils.h"],
+    tags = ["gpu"],
+    visibility = if_google([
+        "//platforms/xla/tests/gpu:__pkg__",
+    ]) + [
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
+        "//tensorflow/compiler/xla/service/gpu:__pkg__",
+    ],
+    deps = [
+        ":lmhlo_to_gpu",
+        ":lmhlo_to_gpu_binary",
+        ":lmhlo_to_tfrt_gpu",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@tf_runtime//backends/gpu:gpu_passes",
         "@tf_runtime//backends/gpu:gpu_wrapper",
     ],
 )
@@ -39,9 +65,11 @@ cc_library(
     srcs = [
         "ccl_pattern.cc",
         "cholesky_pattern.cc",
+        "convolution_pattern.cc",
         "custom_call_pattern.cc",
         "gemm_pattern.cc",
         "lmhlo_to_gpu.cc",
+        "replica_and_partition_pattern.cc",
         "triangular_solve_pattern.cc",
     ],
     hdrs = [
@@ -67,9 +95,11 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "//tensorflow/compiler/xla/service/gpu:xlir_opdefs",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
@@ -85,6 +115,28 @@ cc_library(
         "@tf_runtime//backends/gpu:gpu_wrapper",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "lmhlo_to_tfrt_gpu",
+    srcs = ["lmhlo_to_tfrt_gpu.cc"],
+    hdrs = ["lmhlo_to_tfrt_gpu.h"],
+    tags = ["gpu"],
+    visibility = if_google([
+        "//platforms/xla/tests/gpu:__pkg__",
+    ]) + [
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
+        "//tensorflow/compiler/xla/service/gpu:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
+        "@llvm-project//mlir:GPUTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
+        "@tf_runtime//backends/gpu:gpu_opdefs",
+        "@tf_runtime//backends/gpu:gpu_passes",
+    ],
 )
 
 # The lmhlo-to-gpu-binary pass is a separate target to avoid a dependency cycle:

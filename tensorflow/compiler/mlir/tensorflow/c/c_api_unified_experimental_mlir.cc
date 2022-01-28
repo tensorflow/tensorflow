@@ -564,7 +564,8 @@ Status MlirFunctionContext::AddParameter(
   // resolved.
   Type type;
   TF_RETURN_IF_ERROR(ConvertDataTypeToTensor(dtype, builder_, &type));
-  *handle = new MlirTensor(func_.getBody().front().addArgument(type));
+  *handle =
+      new MlirTensor(func_.getBody().front().addArgument(type, func_.getLoc()));
   return Status::OK();
 }
 

@@ -57,9 +57,9 @@ def get_base_dirs_and_prefixes(code_url_prefix):
 
   if distutils.version.LooseVersion(tf.__version__) >= "2.6":
     if "dev" in tf.__version__:
-      keras_url_prefix = f"https://github.com/keras-team/keras/tree/master/keras",
+      keras_url_prefix = "https://github.com/keras-team/keras/tree/master/keras"
     else:
-      keras_url_prefix = f"https://github.com/keras-team/keras/tree/v{keras.__version__}/keras",
+      keras_url_prefix = f"https://github.com/keras-team/keras/tree/v{keras.__version__}/keras"
 
     code_url_prefixes = (
         code_url_prefix,

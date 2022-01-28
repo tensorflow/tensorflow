@@ -51,6 +51,7 @@ class ConvolutionMetal : public GPUOperation {
     bool different_weights_for_height = false;
     bool x_kernel_is_1;
     bool y_kernel_is_1;
+    bool groups_support = false;  // convolution groups
   };
 
   ConvolutionMetal() = default;

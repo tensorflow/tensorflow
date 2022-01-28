@@ -141,6 +141,16 @@ Status Env::RegisterFileSystem(const std::string& scheme,
 }
 
 Status Env::SetOption(const std::string& scheme, const std::string& key,
+                      const std::string& value) {
+  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  if (!file_system) {
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not found to set configuration");
+  }
+  return file_system->SetOption(key, value);
+}
+
+Status Env::SetOption(const std::string& scheme, const std::string& key,
                       const std::vector<string>& values) {
   FileSystem* file_system = file_system_registry_->Lookup(scheme);
   if (!file_system) {

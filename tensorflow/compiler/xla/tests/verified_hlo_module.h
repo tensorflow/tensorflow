@@ -32,7 +32,7 @@ namespace xla {
 // ADD_FAILURE.
 class VerifiedHloModule : public HloModule {
  public:
-  VerifiedHloModule(const string& name, const HloModuleConfig& config,
+  VerifiedHloModule(const std::string& name, const HloModuleConfig& config,
                     bool verifier_layout_sensitive,
                     bool allow_mixed_precision_in_hlo_verifier,
                     std::function<int64_t(const Shape&)> shape_size_function)

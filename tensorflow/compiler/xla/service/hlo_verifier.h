@@ -26,7 +26,6 @@ namespace xla {
 
 // Visitor which verifies that the output shape is correctly set. Verifies
 // against the inferred shape for the instruction.
-// TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
   ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
@@ -70,6 +69,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   Status HandleInfeed(HloInstruction*) override;
+  Status HandleOptimizationBarrier(HloInstruction* hlo) override;
   Status HandleOutfeed(HloInstruction*) override;
   Status HandleRng(HloInstruction*) override;
   Status HandleRngBitGenerator(HloInstruction*) override;
@@ -167,7 +167,7 @@ class ShapeVerifier : public DfsHloVisitor {
     return equal(a, b);
   }
 
-  string StringifyShape(const Shape& s) {
+  std::string StringifyShape(const Shape& s) {
     return layout_sensitive_ ? ShapeUtil::HumanStringWithLayout(s)
                              : ShapeUtil::HumanString(s);
   }

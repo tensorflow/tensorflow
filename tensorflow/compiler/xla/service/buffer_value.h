@@ -26,8 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -146,7 +144,7 @@ class BufferValue {
   bool operator==(const BufferValue& other) const { return id_ == other.id_; }
   bool operator!=(const BufferValue& other) const { return id_ != other.id_; }
 
-  virtual string ToString() const = 0;
+  virtual std::string ToString() const = 0;
 
   // TODO(lauj) rename LogicalBufferProto to BufferValueProto.
   LogicalBufferProto ToProto(const SizeFunction& size_fn) const;

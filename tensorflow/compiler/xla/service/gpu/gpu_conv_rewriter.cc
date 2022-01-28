@@ -17,13 +17,15 @@ limitations under the License.
 
 #include <cstdlib>
 #include <numeric>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -35,104 +37,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace {
-
-HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,
-                              HloInstruction* lhs, HloInstruction* rhs,
-                              const Window& window,
-                              const ConvolutionDimensionNumbers& dnums,
-                              int64_t feature_group_count,
-                              const OpMetadata& metadata) {
-  HloComputation* computation = lhs->parent();
-
-  // This call returns a tuple of (conv_result, scratch_memory), where
-  // conv_result is the actual result of the convolution, and scratch_memory is
-  // temporary memory used by cudnn.
-  //
-  // At the moment, we don't know how much scratch memory this conv is going to
-  // use, so we put u8[0] in this place.  Later on another pass will choose
-  // which conv algorithm to use, and at that point we'll modify the shape of
-  // this second tuple element.
-  Shape call_shape =
-      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
-
-  HloInstruction* custom_call = computation->AddInstruction(
-      HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
-  custom_call->set_window(window);
-  custom_call->set_convolution_dimension_numbers(dnums);
-  custom_call->set_feature_group_count(feature_group_count);
-  custom_call->set_metadata(metadata);
-
-  // Give the customcall a user-friendly name.
-  absl::optional<std::string> name;
-  if (call_target == kCudnnConvForwardCallTarget) {
-    name = "cudnn-conv";
-  } else if (call_target == kCudnnConvBackwardInputCallTarget) {
-    name = "cudnn-conv-bw-input";
-  } else if (call_target == kCudnnConvBackwardFilterCallTarget) {
-    name = "cudnn-conv-bw-filter";
-  } else if (call_target == kCudnnConvBiasActivationForwardCallTarget) {
-    name = "cudnn-conv-bias-activation";
-  }
-  if (name.has_value()) {
-    computation->parent()->SetAndUniquifyInstrName(custom_call, *name);
-  }
-
-  return custom_call;
-}
-
-HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
-    HloInstruction* conv) {
-  CHECK_EQ(conv->feature_group_count(), 1);
-  int64_t num_groups = conv->batch_group_count();
-  auto dim_numbers = conv->convolution_dimension_numbers();
-  auto lhs = conv->mutable_operand(0);
-  auto rhs = conv->mutable_operand(1);
-
-  int64_t input_batch_dimension = dim_numbers.input_batch_dimension();
-
-  Shape output_shape = conv->shape();
-  int64_t input_feature_dimension = dim_numbers.input_feature_dimension();
-  int64_t input_feature = lhs->shape().dimensions(input_feature_dimension);
-
-  HloComputation* computation = lhs->parent();
-  auto add = [&](std::unique_ptr<HloInstruction> inst) {
-    return computation->AddInstruction(std::move(inst));
-  };
-  // Reshape batch_dim N -> [G, N/G]
-  std::vector<int64_t> reshape_dims = SpanToVector(lhs->shape().dimensions());
-  reshape_dims[input_batch_dimension] =
-      reshape_dims[input_batch_dimension] / num_groups;
-  reshape_dims.insert(reshape_dims.begin() + input_batch_dimension, num_groups);
-  lhs = add(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(lhs->shape().element_type(), reshape_dims), lhs));
-
-  // Transpose G to the axis before C, For eg: [G, N/G, H, W, C ] -> [N/G, H,
-  // W, G, C]
-  std::vector<int64_t> transpose_dims(lhs->shape().dimensions_size());
-  std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
-  transpose_dims.erase(transpose_dims.begin() + input_batch_dimension);
-  transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,
-                        input_batch_dimension);
-  std::vector<int64_t> transpose_reshape_dims =
-      ComposePermutations(lhs->shape().dimensions(), transpose_dims);
-  lhs = add(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeShape(lhs->shape().element_type(), transpose_reshape_dims),
-      lhs, transpose_dims));
-
-  // Merge [G,C] -> [C*G]
-  Shape new_shape = lhs->shape();
-  new_shape.DeleteDimension(input_feature_dimension);
-  new_shape.set_dimensions(input_feature_dimension, input_feature * num_groups);
-  lhs = add(HloInstruction::CreateReshape(new_shape, lhs));
-
-  std::vector<HloInstruction*> new_operands = {lhs, rhs};
-  auto new_conv = conv->CloneWithNewOperands(output_shape, new_operands);
-  new_conv->set_feature_group_count(num_groups);
-  new_conv->set_batch_group_count(1);
-  new_conv->set_convolution_dimension_numbers(dim_numbers);
-  return computation->AddInstruction(std::move(new_conv));
-}
+namespace conv_matchers {
 
 bool CanImplementAsGpuForwardConv(HloInstruction* conv) {
   const ConvolutionDimensionNumbers& dnums =
@@ -567,12 +472,12 @@ MatchBackwardInput(HloInstruction* conv) {
       reverse_filter->IsConstant()) {
     // Create a double-reverse, which is a nop.
     HloComputation* c = conv->parent();
-    reverse_filter = c->AddInstruction(HloInstruction::CreateReverse(
-        reverse_filter->shape(), reverse_filter,
-        AsInt64Slice(dnums.kernel_spatial_dimensions())));
-    reverse_filter = c->AddInstruction(HloInstruction::CreateReverse(
-        reverse_filter->shape(), reverse_filter,
-        AsInt64Slice(dnums.kernel_spatial_dimensions())));
+    reverse_filter = c->AddInstruction(
+        HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
+                                      dnums.kernel_spatial_dimensions()));
+    reverse_filter = c->AddInstruction(
+        HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
+                                      dnums.kernel_spatial_dimensions()));
     TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_num=*/1, reverse_filter));
   }
 
@@ -648,6 +553,107 @@ MatchBackwardInput(HloInstruction* conv) {
   return std::make_tuple(true, new_window, dnums, rhs);
 }
 
+}  // namespace conv_matchers
+
+namespace {
+
+HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,
+                              HloInstruction* lhs, HloInstruction* rhs,
+                              const Window& window,
+                              const ConvolutionDimensionNumbers& dnums,
+                              int64_t feature_group_count,
+                              const OpMetadata& metadata) {
+  HloComputation* computation = lhs->parent();
+
+  // This call returns a tuple of (conv_result, scratch_memory), where
+  // conv_result is the actual result of the convolution, and scratch_memory is
+  // temporary memory used by cudnn.
+  //
+  // At the moment, we don't know how much scratch memory this conv is going to
+  // use, so we put u8[0] in this place.  Later on another pass will choose
+  // which conv algorithm to use, and at that point we'll modify the shape of
+  // this second tuple element.
+  Shape call_shape =
+      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
+
+  HloInstruction* custom_call = computation->AddInstruction(
+      HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
+  custom_call->set_window(window);
+  custom_call->set_convolution_dimension_numbers(dnums);
+  custom_call->set_feature_group_count(feature_group_count);
+  custom_call->set_metadata(metadata);
+
+  // Give the customcall a user-friendly name.
+  absl::optional<std::string> name;
+  if (call_target == kCudnnConvForwardCallTarget) {
+    name = "cudnn-conv";
+  } else if (call_target == kCudnnConvBackwardInputCallTarget) {
+    name = "cudnn-conv-bw-input";
+  } else if (call_target == kCudnnConvBackwardFilterCallTarget) {
+    name = "cudnn-conv-bw-filter";
+  } else if (call_target == kCudnnConvBiasActivationForwardCallTarget) {
+    name = "cudnn-conv-bias-activation";
+  }
+  if (name.has_value()) {
+    computation->parent()->SetAndUniquifyInstrName(custom_call, *name);
+  }
+
+  return custom_call;
+}
+
+HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
+    HloInstruction* conv) {
+  CHECK_EQ(conv->feature_group_count(), 1);
+  int64_t num_groups = conv->batch_group_count();
+  auto dim_numbers = conv->convolution_dimension_numbers();
+  auto lhs = conv->mutable_operand(0);
+  auto rhs = conv->mutable_operand(1);
+
+  int64_t input_batch_dimension = dim_numbers.input_batch_dimension();
+
+  Shape output_shape = conv->shape();
+  int64_t input_feature_dimension = dim_numbers.input_feature_dimension();
+  int64_t input_feature = lhs->shape().dimensions(input_feature_dimension);
+
+  HloComputation* computation = lhs->parent();
+  auto add = [&](std::unique_ptr<HloInstruction> inst) {
+    return computation->AddInstruction(std::move(inst));
+  };
+  // Reshape batch_dim N -> [G, N/G]
+  std::vector<int64_t> reshape_dims = SpanToVector(lhs->shape().dimensions());
+  reshape_dims[input_batch_dimension] =
+      reshape_dims[input_batch_dimension] / num_groups;
+  reshape_dims.insert(reshape_dims.begin() + input_batch_dimension, num_groups);
+  lhs = add(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(lhs->shape().element_type(), reshape_dims), lhs));
+
+  // Transpose G to the axis before C, For eg: [G, N/G, H, W, C ] -> [N/G, H,
+  // W, G, C]
+  std::vector<int64_t> transpose_dims(lhs->shape().dimensions_size());
+  std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
+  transpose_dims.erase(transpose_dims.begin() + input_batch_dimension);
+  transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,
+                        input_batch_dimension);
+  std::vector<int64_t> transpose_reshape_dims =
+      ComposePermutations(lhs->shape().dimensions(), transpose_dims);
+  lhs = add(HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(lhs->shape().element_type(), transpose_reshape_dims),
+      lhs, transpose_dims));
+
+  // Merge [G,C] -> [C*G]
+  Shape new_shape = lhs->shape();
+  new_shape.DeleteDimension(input_feature_dimension);
+  new_shape.set_dimensions(input_feature_dimension, input_feature * num_groups);
+  lhs = add(HloInstruction::CreateReshape(new_shape, lhs));
+
+  std::vector<HloInstruction*> new_operands = {lhs, rhs};
+  auto new_conv = conv->CloneWithNewOperands(output_shape, new_operands);
+  new_conv->set_feature_group_count(num_groups);
+  new_conv->set_batch_group_count(1);
+  new_conv->set_convolution_dimension_numbers(dim_numbers);
+  return computation->AddInstruction(std::move(new_conv));
+}
+
 CudnnConvBackendConfig GetDefaultBackendConfig() {
   CudnnConvBackendConfig config;
   config.set_conv_result_scale(1);
@@ -663,14 +669,15 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
   HloInstruction* rhs;
   HloInstruction* lhs;
 
-  std::tie(match, window, dnums, rhs) = MatchBackwardInput(conv);
+  std::tie(match, window, dnums, rhs) = conv_matchers::MatchBackwardInput(conv);
   if (match) {
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
                          conv->mutable_operand(0), rhs, window, dnums,
                          conv->feature_group_count(), conv->metadata());
   }
 
-  std::tie(match, window, dnums, lhs) = MatchBackwardFilter(conv);
+  std::tie(match, window, dnums, lhs) =
+      conv_matchers::MatchBackwardFilter(conv);
   if (match) {
     return CreateGpuConv(kCudnnConvBackwardFilterCallTarget, conv->shape(), lhs,
                          conv->mutable_operand(1), window, dnums,
@@ -678,46 +685,7 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
   }
 
   // If all else fails, try a forward convolution.
-  if (CanImplementAsGpuForwardConv(conv)) {
-    if (primitive_util::IsIntegralType(
-            conv->operand(0)->shape().element_type())) {
-      // In addition to replacing a convolution instruction with
-      // a custom call, integer convolutions must have this pattern to match
-      // CuDNN semantics:
-      // conv<InputT=int32, ResultT=int32>(
-      //   convert<int32>(int8_x), convert<int32>(int8_y))
-      // We transform it to:
-      // custom_call<int32>(int8_x, int8_y, target=cudnnConvolutionForward)
-      //
-      // We will error out, if the pattern is not found for integer
-      // convolution.
-      const auto is_int8_to_int32_cast =
-          [](const HloInstruction* instr) -> bool {
-        return (instr->opcode() == HloOpcode::kConvert &&
-                instr->operand(0)->shape().element_type() == S8 &&
-                instr->shape().element_type() == S32);
-      };
-      HloInstruction* input_convert = conv->mutable_operand(0);
-      HloInstruction* kernel_convert = conv->mutable_operand(1);
-      if (conv->shape().element_type() != S32 ||
-          !is_int8_to_int32_cast(input_convert) ||
-          !is_int8_to_int32_cast(kernel_convert)) {
-        return Unimplemented(
-            "Integer convolutions for CuDNN must have this pattern: "
-            "conv<InputT=int32, ResultT=int32>(convert<int32>(int8_x), "
-            "convert<int32>(int8_y))");
-      }
-      // Bypass the convert<int32> for both inputs.
-      TF_RETURN_IF_ERROR(conv->ReplaceOperandWithDifferentShape(
-          0, input_convert->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(
-          conv->parent()->RemoveInstructionAndUnusedOperands(input_convert));
-      TF_RETURN_IF_ERROR(conv->ReplaceOperandWithDifferentShape(
-          1, kernel_convert->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(
-          conv->parent()->RemoveInstructionAndUnusedOperands(kernel_convert));
-    }
-
+  if (conv_matchers::CanImplementAsGpuForwardConv(conv)) {
     if (conv->batch_group_count() > 1) {
       conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
     }

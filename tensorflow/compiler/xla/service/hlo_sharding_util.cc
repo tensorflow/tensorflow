@@ -54,6 +54,9 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
     }
     return is_better;
   }
+  if (lhs.IsManual() || rhs.IsManual()) {
+    return false;
+  }
   if (!rhs.IsTileMaximal()) {
     return lhs.NumTiles() > rhs.NumTiles();
   } else if (!rhs.IsReplicated()) {
@@ -1309,6 +1312,9 @@ HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
 
 HloSharding ReplicateAllDataDims(const HloSharding& sharding,
                                  int64_t data_rank) {
+  if (sharding.IsManual()) {
+    return sharding;
+  }
   if (sharding.subgroup_types().empty()) {
     return HloSharding::Replicate(sharding.metadata());
   }
@@ -1432,7 +1438,7 @@ absl::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota) {
   }
   if (maybe_iota->IsConstant()) {
     std::vector<bool> is_iota_dim(maybe_iota->shape().rank(), true);
-    maybe_iota->literal().EachCell<int32>(
+    maybe_iota->literal().EachCell<int32_t>(
         [&](absl::Span<const int64_t> indices, int32_t val) {
           for (int64_t i = 0; i < indices.size(); ++i) {
             if (val != indices[i]) {

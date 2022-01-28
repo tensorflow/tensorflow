@@ -502,13 +502,17 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
   }
 
   // Request the tensor associated with the rendezvous key.
-  // Note that we log the cancellation here but do not abort the current step.
-  // gRPC can generate cancellations in response to transient network failures,
-  // and aborting the step eliminates the opportunity for client side retries.
-  // Repeated client failures will eventually cause the step to be aborted by
-  // the client.
-  opts->SetCancelCallback(
-      [step_id]() { LOG(WARNING) << "RecvTensor cancelled for " << step_id; });
+  // Any time while waiting for the tensor to be produced, up until the start of
+  // execution of the callback lambda body below, an RPC cancellation should
+  // abort the rendezvous.
+  // Note that gRPC can generate cancellations in response to transient network
+  // failures, and the client might not observe any errors or cancellations but
+  // simply waits for the responses. Aborting the step would report an error to
+  // the client, and avoid permanent hanging in distributed function execution.
+  opts->SetCancelCallback([this, step_id]() {
+    LOG(WARNING) << "RecvTensor cancelled for " << step_id;
+    AbortStep(step_id);
+  });
   env_->rendezvous_mgr->RecvLocalAsync(
       step_id, parsed,
       [opts, rendezvous_done, src_dev, request](

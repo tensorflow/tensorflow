@@ -37,7 +37,7 @@ class MarkInitializedVariablesTestPass
   void runOnFunction() override {
     TF::test_util::FakeSession session;
     if (failed(mlir::tf_saved_model::MarkInitializedVariablesInFunction(
-            getFunction(), &session, &getContext())))
+            getFunction(), &session)))
       return signalPassFailure();
   }
 };
@@ -58,7 +58,7 @@ class MarkInitializedVariablesInvalidSessionTestPass
   void runOnFunction() override {
     // Pass an invalid session argument, which is a nullptr.
     if (failed(mlir::tf_saved_model::MarkInitializedVariablesInFunction(
-            getFunction(), /*session=*/nullptr, &getContext())))
+            getFunction(), /*session=*/nullptr)))
       return signalPassFailure();
   }
 };

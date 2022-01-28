@@ -208,6 +208,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -1851,7 +1852,7 @@ class Strategy(StrategyBase):
                                                        error_message)
     dst = device_util.current(
     ) or self._extended._default_device or "/device:CPU:0"
-    if isinstance(value, ops.IndexedSlices):
+    if isinstance(value, indexed_slices.IndexedSlices):
       raise NotImplementedError("gather does not support IndexedSlices")
     return self._extended._local_results(
         self._extended._gather_to(value, dst, axis))[0]
@@ -3234,7 +3235,7 @@ class ReplicaContextBase(object):
     has_indexed_slices = False
 
     for v in flattened_value:
-      if isinstance(v, ops.IndexedSlices):
+      if isinstance(v, indexed_slices.IndexedSlices):
         has_indexed_slices = True
 
     if isinstance(reduce_op, six.string_types):
@@ -3418,7 +3419,7 @@ class ReplicaContext(ReplicaContextBase):
        is the same as `value`.
     """
     for v in nest.flatten(value):
-      if isinstance(v, ops.IndexedSlices):
+      if isinstance(v, indexed_slices.IndexedSlices):
         raise NotImplementedError("all_gather does not support IndexedSlices")
 
     if options is None:

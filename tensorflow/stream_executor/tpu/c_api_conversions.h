@@ -35,57 +35,70 @@ limitations under the License.
 // XLA/StreamExecutor data structures.
 namespace ApiConverter {
 
+absl::Span<const float> MakeSpan(const FloatList& src_list);
+void CreateVector(const absl::Span<const float> src, FloatList* dst);
+void Destroy(FloatList* float_list);
+
 // se::DeviceMemoryBase
 SE_DeviceMemoryBase ToC(const stream_executor::DeviceMemoryBase& base);
 void ToC(const stream_executor::DeviceMemoryBase& base,
          SE_DeviceMemoryBase* se_base);
 stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base);
-void Free(SE_DeviceMemoryBase*);
+void Destroy(SE_DeviceMemoryBase*);
 
 // xla::Shape
 xla::Shape FromC(const XLA_Shape* c_shape);
 void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape);
-void Free(XLA_Shape* c_shape);
+void Destroy(XLA_Shape* c_shape);
 
 // xla::Layout
 xla::Layout FromC(const XLA_Layout* c_layout);
 void ToC(const xla::Layout& xla_layout, XLA_Layout* c_layout);
-void Free(XLA_Layout* c_layout);
+void Destroy(XLA_Layout* c_layout);
 
 // xla::Tile
 xla::Tile FromC(const XLA_Tile* c_tile);
 void ToC(const xla::Tile& xla_tile, XLA_Tile* c_tile);
-void Free(XLA_Tile* c_tile);
+void Destroy(XLA_Tile* c_tile);
 
 // xla::ShapeIndex
 XLA_ShapeIndex ToC(const xla::ShapeIndex& xla_shape);
 xla::ShapeIndex FromC(XLA_ShapeIndex* c_shape);
-void Free(XLA_ShapeIndex*);
+void Destroy(XLA_ShapeIndex*);
 
 // Literal
 void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal);
 xla::MutableBorrowingLiteral FromC(XLA_Literal* c_literal);
-void Free(XLA_Literal* c_literal);
+void Destroy(XLA_Literal* c_literal);
 
 // ShapedBuffer
 void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer);
 xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer);
-void Free(XLA_ShapedBuffer* c_buffer);
+void Destroy(XLA_ShapedBuffer* c_buffer);
 
 // se::DeviceMemoryBase
 SE_DeviceMemoryBase ToC(const stream_executor::DeviceMemoryBase& base);
 stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base);
-void Free(SE_DeviceMemoryBase*);
+void Destroy(SE_DeviceMemoryBase*);
 
 // Literal
 void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal);
 xla::MutableBorrowingLiteral FromC(XLA_Literal* c_literal);
-void Free(XLA_Literal* c_literal);
+void Destroy(XLA_Literal* c_literal);
 
 // ShapedBuffer
 void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer);
 xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer);
-void Free(XLA_ShapedBuffer* c_buffer);
+void Destroy(XLA_ShapedBuffer* c_buffer);
+
+// TpuEmbeddingEngineParametersData
+struct TpuEmbeddingEngineParametersData {
+  // Backing vector for struct
+  std::array<std::vector<FloatListRef*>, 8> vectors;
+  TpuEmbeddingEngineParameters c_params;
+};
+
+std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables);
 
 xla::MaybeOwningDeviceMemory FromC(
     SE_MaybeOwningDeviceMemory* se_mem,
@@ -105,12 +118,12 @@ SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem, bool aliased);
 XLA_HloModule ToC(const xla::HloModule& module);
 xla::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
     const XLA_HloModule& c_module);
-void Free(XLA_HloModule* c_module);
+void Destroy(XLA_HloModule* c_module);
 
 // HloModuleConfig
 XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config);
 xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config);
-void Free(XLA_HloModuleConfig* c_config);
+void Destroy(XLA_HloModuleConfig* c_config);
 
 // Helper for managing stack based C -> C++ conversions.
 template <class CType>
@@ -121,7 +134,7 @@ struct StackHelper {
   explicit StackHelper(const CppType& t) {
     ::ApiConverter::ToC(t, &value);
   }
-  ~StackHelper() { ::ApiConverter::Free(&value); }
+  ~StackHelper() { ::ApiConverter::Destroy(&value); }
 
   template <class CppType>
   CppType AsCpp() const {

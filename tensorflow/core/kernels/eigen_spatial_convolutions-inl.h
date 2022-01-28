@@ -1233,15 +1233,6 @@ struct gemm_pack_rhs<
     }
 
     // copy the remaining columns one at a time (nr==1)
-#if defined(EIGEN_VECTORIZE_ALTIVEC) || defined(EIGEN_VECTORIZE_VSX)
-    // remaining columns are handled different for PPC
-    for (Index k = 0; k < depth; k++) {
-      for (Index j2 = packet_cols4; j2 < cols; ++j2) {
-        *block = rhs(k, j2);
-        block += 1;
-      }
-    }
-#else
     for (Index j2 = packet_cols4; j2 < cols; ++j2) {
       const SubMapper dm0 = rhs.getLinearMapper(0, j2);
       for (Index k = 0; k < depth; k++) {
@@ -1249,7 +1240,6 @@ struct gemm_pack_rhs<
         block += 1;
       }
     }
-#endif
   }
 };
 

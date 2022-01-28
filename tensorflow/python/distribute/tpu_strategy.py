@@ -47,6 +47,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -1695,7 +1696,7 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
   def all_gather(self, value, axis, experimental_hints=None):
     del experimental_hints
     for v in nest.flatten(value):
-      if isinstance(v, ops.IndexedSlices):
+      if isinstance(v, indexed_slices.IndexedSlices):
         raise NotImplementedError("all_gather does not support IndexedSlices")
 
     def _all_gather_tensor(value, axis):

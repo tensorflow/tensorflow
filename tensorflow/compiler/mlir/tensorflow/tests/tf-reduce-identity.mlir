@@ -2,7 +2,7 @@
 
 // CHECK: @target_function
 func @target_function() -> tensor<i32> {
-  %0 = "tf_device.cluster"() ( {
+  %0 = "tf_device.cluster"() ({
     // CHECK: tf.UnsupportedOp
     %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     // CHECK: tf.Identity

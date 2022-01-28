@@ -76,17 +76,18 @@ class ExpandHloTuplesPass
         int argument_index = original_argument_index;
         SmallVector<Value, 4> flattened_operands;
         // insert the flattened tuples after the original tuple.
+        Location loc = func.body().getLoc();
         for (auto flattened_type : tuple_type.getTypes()) {
           expanded_input_types.push_back(flattened_type);
-          func.insertArgument(++argument_index, flattened_type, {});
+          func.insertArgument(++argument_index, flattened_type, {}, loc);
           flattened_operands.push_back(func.getArgument(argument_index));
         }
 
         // Construct a new tuple and rewire it.
         OpBuilder builder(func.body());
         builder.setInsertionPointToStart(&func.body().front());
-        auto new_tuple = builder.create<mhlo::TupleOp>(
-            func.body().getLoc(), tuple_type, flattened_operands);
+        auto new_tuple =
+            builder.create<mhlo::TupleOp>(loc, tuple_type, flattened_operands);
         func.getArgument(original_argument_index).replaceAllUsesWith(new_tuple);
 
         // Now the original argument has been rewired, we should be able to

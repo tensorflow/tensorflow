@@ -833,7 +833,6 @@ TEST_F(FunctionOptimizerTest,
 
   GraphDef optimized_graph;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
-  LOG(ERROR) << "IG: " << optimized_graph.DebugString();
 
   const string input_c_x = "Func/c/input/_0";
   const string input_c_y = "Func/c/input/_1";

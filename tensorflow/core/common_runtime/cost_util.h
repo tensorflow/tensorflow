@@ -21,10 +21,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Creates an instance of CostMeasurement. The type to create is determined by
-// env. Returns nullptr if the type is not specified in env, or the type of
-// CostMeasurement is unregistered.
-std::unique_ptr<CostMeasurement> CreateCostMeasurement();
+// Creates instances of CostMeasurement. The types to create are determined by
+// env.
+std::vector<std::unique_ptr<CostMeasurement>> CreateCostMeasurements();
 
 // Creates an instance of RequestCostAccessor. The type to create is determined
 // by env. Returns nullptr if the type is not specified in env, or the type of

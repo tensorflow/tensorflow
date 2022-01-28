@@ -688,6 +688,7 @@ TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {
   item.graph = test::function::GDef({NDef(
       "x", "_Arg", {},
       {{"T", DT_FLOAT}, {"index", 0}, {"_output_shapes", output_shapes}})});
+  item.feed.emplace_back("x", Tensor(DT_FLOAT));
 
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
@@ -699,6 +700,8 @@ TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {
   auto* arg = graph_view.GetNode("x");
   ASSERT_NE(arg, nullptr);
   EXPECT_TRUE(arg->HasAttr("_output_shapes"));
+  EXPECT_EQ(arg->GetAttr("_output_shapes")->DebugString(),
+            output_shapes.DebugString());
 }
 
 // TODO(yanzha): Add more complex Graph for test.

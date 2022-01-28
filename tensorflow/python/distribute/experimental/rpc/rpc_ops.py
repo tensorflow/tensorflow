@@ -24,6 +24,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as tf_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -36,15 +37,13 @@ from tensorflow.python.util.tf_export import tf_export
 def get_output_specs_from_function(func: tf_function.ConcreteFunction):
   output_specs = nest.map_structure(type_spec.type_spec_from_value,
                                     func.structured_outputs)
-  encoder = nested_structure_coder.StructureCoder()
-  output_specs_proto = encoder.encode_structure(output_specs)
+  output_specs_proto = nested_structure_coder.encode_structure(output_specs)
   return output_specs_proto.SerializeToString()
 
 
 def get_input_specs_from_function(func: tf_function.ConcreteFunction):
   arg_specs, _ = func.structured_input_signature
-  encoder = nested_structure_coder.StructureCoder()
-  arg_specs_proto = encoder.encode_structure(arg_specs)
+  arg_specs_proto = nested_structure_coder.encode_structure(arg_specs)
   return arg_specs_proto.SerializeToString()
 
 
@@ -147,6 +146,16 @@ class Client(object):
             available. Users can use client.multiply(..) to make RPC, instead of
             client.call("multiply", ...)
 
+            Both "call" and "multiply" methods are non-blocking i.e. they return
+            a StatusOrResult object which should be used to wait for getting
+            value or error.
+
+            Along with the above, blocking versions of the registered
+            methods are also dynamically added to client instance.
+            e.g. multiply_blocking(**args). These methods block till the RPC is
+            finished and return response for successful RPC. Otherwise raise
+            exception.
+
             These methods are not available when Client is created inside a
             tf.function.
 
@@ -190,6 +199,8 @@ class Client(object):
 
       >>> if result.is_ok():
       ...   result.get_value()
+
+      >>> value = client.addition_blocking(a, b)
     """
     if rpc_layer != "grpc":
       raise ValueError("Only GRPC backend is supported at the moment.")
@@ -340,14 +351,12 @@ class GrpcClient(Client):
       raise NotImplementedError(
           "Client creation is supported only in eager mode.")
     self._server_address = address
-    decoder = nested_structure_coder.StructureCoder()
     self._method_registry = {}
     for method in methods.numpy():
-
       m = rpc_pb2.RegisteredMethod()
       m.ParseFromString(method)
-      output_specs = decoder.decode_proto(m.output_specs)
-      input_specs = decoder.decode_proto(m.input_specs)
+      output_specs = nested_structure_coder.decode_proto(m.output_specs)
+      input_specs = nested_structure_coder.decode_proto(m.input_specs)
       self._method_registry[m.method] = output_specs
       # TODO(ishark): Perhaps doc string can also be taken as input during
       # function registration.
@@ -375,8 +384,26 @@ class GrpcClient(Client):
           timeout_in_ms=timeout_in_ms)
       return StatusOrResult(status_or, deleter, output_specs)
 
+    def call_blocking_wrapper(*args, timeout_in_ms=0):
+      status_or, deleter = gen_rpc_ops.rpc_call(
+          client_handle,
+          args=validate_and_get_flat_inputs(*args),
+          method_name=method_name,
+          timeout_in_ms=timeout_in_ms)
+      status_or = StatusOrResult(status_or, deleter, output_specs)
+      if status_or.is_ok():
+        return status_or.get_value()
+      else:
+        error_code, error_msg = status_or.get_error()
+        raise errors.exception_type_from_error_code(error_code.numpy())(
+            None, None, error_msg.numpy())
+
     setattr(self, method_name, call_wrapper)
-    setattr(getattr(self, method_name), "__doc__", doc_string)
+    call_wrapper.__doc__ = doc_string
+
+    blocking_method_name = method_name + "_blocking"
+    setattr(self, blocking_method_name, call_blocking_wrapper)
+    call_blocking_wrapper.__doc__ = doc_string
 
   def call(self,
            method_name: str,

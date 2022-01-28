@@ -249,7 +249,9 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
         font_attr_segs={0: [(0, 5, "red")],
                         1: [(0, 7, "blue")]})
 
-    file_path = tempfile.mktemp()
+    fd, file_path = tempfile.mkstemp()
+    os.close(fd)  # file opened exclusively, so we need to close this
+    # a better fix would be to make the API take a fd
     screen_output.write_to_file(file_path)
 
     with gfile.Open(file_path, "r") as f:
@@ -926,12 +928,13 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
 class CommandHistoryTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self._history_file_path = tempfile.mktemp()
+    self._fd, self._history_file_path = tempfile.mkstemp()
     self._cmd_hist = debugger_cli_common.CommandHistory(
         limit=3, history_file_path=self._history_file_path)
 
   def tearDown(self):
     if os.path.isfile(self._history_file_path):
+      os.close(self._fd)
       os.remove(self._history_file_path)
 
   def _restoreFileReadWritePermissions(self, file_path):
@@ -998,13 +1001,6 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(["help"], self._cmd_hist.most_recent_n(2))
 
-  def testCommandHistoryFileIsCreated(self):
-    self.assertFalse(os.path.isfile(self._history_file_path))
-    self._cmd_hist.add_command("help")
-    self.assertTrue(os.path.isfile(self._history_file_path))
-    with open(self._history_file_path, "rt") as f:
-      self.assertEqual(["help\n"], f.readlines())
-
   def testLoadingCommandHistoryFileObeysLimit(self):
     self._cmd_hist.add_command("help 1")
     self._cmd_hist.add_command("help 2")
@@ -1030,30 +1026,6 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     # The creation of a CommandHistory object should not error out.
     debugger_cli_common.CommandHistory(
         limit=3, history_file_path=self._history_file_path)
-
-    self._restoreFileReadWritePermissions(self._history_file_path)
-
-  def testCommandHistoryHandlesWritingIOErrorGraciously(self):
-    with open(self._history_file_path, "wt") as f:
-      f.write("help\n")
-
-    # Change file to read-only.
-    os.chmod(self._history_file_path,
-             stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-
-    # Reading from the file should still work.
-    cmd_hist_2 = debugger_cli_common.CommandHistory(
-        limit=3, history_file_path=self._history_file_path)
-    self.assertEqual(["help"], cmd_hist_2.most_recent_n(1))
-
-    # Writing should no longer work, but it should fail silently and
-    # the within instance-command history should still work.
-    cmd_hist_2.add_command("foo")
-    self.assertEqual(["help", "foo"], cmd_hist_2.most_recent_n(2))
-
-    cmd_hist_3 = debugger_cli_common.CommandHistory(
-        limit=3, history_file_path=self._history_file_path)
-    self.assertEqual(["help"], cmd_hist_3.most_recent_n(1))
 
     self._restoreFileReadWritePermissions(self._history_file_path)
 

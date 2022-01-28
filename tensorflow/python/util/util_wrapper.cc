@@ -225,18 +225,18 @@ PYBIND11_MODULE(_pywrap_utils, m) {
       Refer to `tf.nest.flatten`.
     )pbdoc");
   m.def(
-      "IsSequenceForData",
+      "IsNestedForData",
       [](const py::handle& o) {
-        bool result = tensorflow::swig::IsSequenceForData(o.ptr());
+        bool result = tensorflow::swig::IsNestedForData(o.ptr());
         if (PyErr_Occurred()) {
           throw py::error_already_set();
         }
         return result;
       },
       R"pbdoc(
-      Returns a true if `seq` is a Sequence or dict (except strings/lists).
+      Returns a true if `seq` is a nested structure for tf.data.
 
-      NOTE(mrry): This differs from `tensorflow.python.util.nest.is_sequence()`,
+      NOTE(mrry): This differs from `tensorflow.python.util.nest.is_nested()`,
       which *does* treat a Python list as a sequence. For ergonomic
       reasons, `tf.data` users would prefer to treat lists as
       implicit `tf.Tensor` objects, and dicts as (nested) sequences.

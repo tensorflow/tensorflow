@@ -567,8 +567,10 @@ LogicalResult RegionResourceHoister::HoistResourcesOutOfWhileRegion(
   // Patch the cond and body regions to have additional arguments, and replace
   // the remaining resource reads (which will be resource reads for written
   // resources) with these arguments.
+  Location loc = op.getLoc();
   for (Region* region : op.getRegions()) {
-    region->addArguments(new_result_types);
+    region->addArguments(new_result_types,
+                         SmallVector<Location>(new_result_types.size(), loc));
     // Point hoisted read for written resources to the region's arguments.
     for (auto& it : hoister.GetResources()) {
       if (!it.second.is_written) continue;

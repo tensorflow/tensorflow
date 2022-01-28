@@ -441,8 +441,8 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
     Consistent with tf.nest.assert_same_structure(), two namedtuple types
     are considered the same iff they agree in their class name (without
     qualification by module name) and in their sequence of field names.
-    This makes namedtuples recreated by StructureCoder compatible with their
-    original Python definition.
+    This makes namedtuples recreated by nested_structure_coder compatible with
+    their original Python definition.
 
     Args:
       a: a Python object.

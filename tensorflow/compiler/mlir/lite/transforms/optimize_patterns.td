@@ -778,8 +778,8 @@ def HasTwoUse : Constraint<CPred<
   "std::distance($0.use_begin(), $0.use_end()) == 2">>;
 def AxesIsLastDimension : Constraint<CPred<
   "$0.cast<DenseIntElementsAttr>().getNumElements() == 1 && "
-  "($0.cast<DenseIntElementsAttr>().getValue<APInt>({0}) == "
-  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<DenseIntElementsAttr>().getValue<int32_t>({0}) == -1)">>;
+  "($0.cast<DenseIntElementsAttr>().getValues<APInt>()[0] == "
+  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<DenseIntElementsAttr>().getValues<int32_t>()[0] == -1)">>;
 
 // Convert exp(x)/sum(exp(x)) into softmax.
 def OptimizeToSoftmax : Pat<
@@ -998,7 +998,8 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
     $bias,
     TFL_AF_None,
     TFL_FCWO_Default,
-    ConstBoolAttrFalse),
+    ConstBoolAttrFalse,
+    $asymmetric_quantize_inputs),
   (TFL_EmbeddingLookupOp
     $indices,
     (TFL_TransposeOp
@@ -1020,3 +1021,85 @@ def EliminateCumSumInclusive : Pat<
      $reverse),
   (replaceWithValue $input),
   [(AreInputDimensionsOneInAxes $input, $axis)]>;
+
+// Fusing raw computation of GELU op into one native tfl_gelu op.
+//
+// Requires constants to be exact match and only one use of all of the
+// intermediate results.
+//
+// For GeluApproximate, replaces
+//   0.5 * x * ( 1 + tanh( sqrt_2dPi  * ( x + 0.044715 * pow( x, 3 ) ) ) )
+def MatchGeluApproximate : Pat<
+  (TFL_MulOp
+   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
+   (TFL_AddOp:$add_out
+    (TFL_TanhOp:$tanh_out
+     (TFL_MulOp:$mul_out1
+      (TFL_AddOp:$add_out1 $arg0,
+       (TFL_MulOp:$mul_out2
+        (TFL_PowOp:$pow_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_3)),
+        (Arith_ConstantOp F32ElementsAttr:$Coeff), TFL_AF_None), TFL_AF_None),
+      (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_2dPi), TFL_AF_None)),
+    (Arith_ConstantOp F32ElementsAttr:$Cst_1), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrTrue),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"3"> $Cst_3),
+   (FloatValueEquals<"0.797884583"> $Cst_sqrt_2dPi),
+   (FloatValueEquals<"0.044715"> $Coeff),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $tanh_out),
+   (HasOneUse $mul_out1),
+   (HasOneUse $add_out1),
+   (HasOneUse $mul_out2),
+   (HasOneUse $pow_out),
+  ]>;
+
+// Alternate pattern for GeluApproximate (see different order for mul), replaces
+//   x * ( 0.5 * ( 1 + tanh( sqrt_2dPi  * ( x + 0.044715 * pow( x, 3 ) ) ) ) )
+def MatchGeluApproximate1 : Pat<
+  (TFL_MulOp $arg0,
+   (TFL_MulOp:$mul_out
+    (TFL_AddOp:$add_out
+     (TFL_TanhOp:$tanh_out
+      (TFL_MulOp:$mul_out1
+       (TFL_AddOp:$add_out1 $arg0,
+        (TFL_MulOp:$mul_out2
+         (TFL_PowOp:$pow_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_3)),
+         (Arith_ConstantOp F32ElementsAttr:$Coeff), TFL_AF_None), TFL_AF_None),
+       (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_2dPi), TFL_AF_None)),
+     (Arith_ConstantOp F32ElementsAttr:$Cst_1), TFL_AF_None), (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrTrue),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"3"> $Cst_3),
+   (FloatValueEquals<"0.797884583"> $Cst_sqrt_2dPi),
+   (FloatValueEquals<"0.044715"> $Coeff),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $tanh_out),
+   (HasOneUse $mul_out1),
+   (HasOneUse $add_out1),
+   (HasOneUse $mul_out2),
+   (HasOneUse $pow_out),
+  ]>;
+
+// For Gelu, replaces
+//   0.5 * x * ( 1 + erf( x * sqrt_1_2 ) )
+def MatchGelu : Pat<
+  (TFL_MulOp
+   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
+   (TFL_AddOp:$add_out
+    (TF_ErfOp:$erf_out
+     (TFL_MulOp:$mul_out1 $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_1_2), TFL_AF_None)),
+    (Arith_ConstantOp  F32ElementsAttr:$Cst_1), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrFalse),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"0.707106769"> $Cst_sqrt_1_2),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $erf_out),
+   (HasOneUse $mul_out1),
+  ]>;

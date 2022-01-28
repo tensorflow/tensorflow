@@ -132,8 +132,8 @@ class MlirHloBuilder : public XlaBuilder {
                                    bool lower) override;
 
   StatusOr<XlaOp> CustomCallInternal(
-      const string& call_target_name, absl::Span<const XlaOp> operands,
-      const Shape& shape, const string& opaque,
+      const std::string& call_target_name, absl::Span<const XlaOp> operands,
+      const Shape& shape, const std::string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
@@ -229,10 +229,10 @@ class MlirHloBuilder : public XlaBuilder {
 
   StatusOr<XlaOp> InfeedWithTokenInternal(const Shape& infeed_instruction_shape,
                                           XlaOp token,
-                                          const string& config) override;
+                                          const std::string& config) override;
   StatusOr<XlaOp> OutfeedWithTokenInternal(
       XlaOp operand, XlaOp token, const Shape& shape_with_layout,
-      const string& outfeed_config) override;
+      const std::string& outfeed_config) override;
 
   StatusOr<XlaOp> ConcatInDimInternal(const Shape& shape,
                                       absl::Span<const XlaOp> operands,
@@ -268,7 +268,8 @@ class MlirHloBuilder : public XlaBuilder {
       llvm::ArrayRef<mlir::NamedAttribute> attributes = {});
 
   Status ImportComputation(const HloModuleProto& computation,
-                           mlir::Region* region);
+                           mlir::Region* region,
+                           bool flatten_region_arg_tuple = false);
 
   mlir::OpBuilder builder_;
   mlir::Location loc_;

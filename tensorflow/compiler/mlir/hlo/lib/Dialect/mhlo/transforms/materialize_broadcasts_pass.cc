@@ -31,9 +31,9 @@ namespace {
 
 struct TestMaterializeBroadcastsPass
     : public TestMaterializeBroadcastsPassBase<TestMaterializeBroadcastsPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns(&getContext());
+    RewritePatternSet conversionPatterns(&getContext());
 
     // Consider the mhlo dialect legal for tests.
     conversionTarget.addLegalDialect<MhloDialect>();
@@ -44,7 +44,7 @@ struct TestMaterializeBroadcastsPass
     SetupMaterializeBroadcastsLegality(&getContext(), &conversionTarget);
     PopulateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);
 
-    if (failed(applyPartialConversion(getFunction(), conversionTarget,
+    if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {
       return signalPassFailure();
     }

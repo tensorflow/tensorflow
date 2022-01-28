@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -97,11 +98,19 @@ class _LinearOperatorTriDiagBase(object):
     ]
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorTriDiagCompactTest(
     _LinearOperatorTriDiagBase,
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
+
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
 
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
@@ -111,6 +120,7 @@ class LinearOperatorTriDiagCompactTest(
         ensure_self_adjoint_and_pd=ensure_self_adjoint_and_pd,
         diagonals_format='compact')
 
+  @test_util.disable_xla('Current implementation does not yet support pivoting')
   def test_tape_safe(self):
     diag = variables_module.Variable([[3., 6., 2.], [2., 4., 2.], [5., 1., 2.]])
     operator = linalg_lib.LinearOperatorTridiag(
@@ -118,11 +128,19 @@ class LinearOperatorTriDiagCompactTest(
     self.check_tape_safe(operator)
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorTriDiagSequenceTest(
     _LinearOperatorTriDiagBase,
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
+
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
 
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
@@ -132,6 +150,7 @@ class LinearOperatorTriDiagSequenceTest(
         ensure_self_adjoint_and_pd=ensure_self_adjoint_and_pd,
         diagonals_format='sequence')
 
+  @test_util.disable_xla('Current implementation does not yet support pivoting')
   def test_tape_safe(self):
     diagonals = [
         variables_module.Variable([3., 6., 2.]),
@@ -152,11 +171,19 @@ class LinearOperatorTriDiagSequenceTest(
         diagonals, diagonals_format='sequence')
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorTriDiagMatrixTest(
     _LinearOperatorTriDiagBase,
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
+
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
 
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
@@ -166,6 +193,7 @@ class LinearOperatorTriDiagMatrixTest(
         ensure_self_adjoint_and_pd=ensure_self_adjoint_and_pd,
         diagonals_format='matrix')
 
+  @test_util.disable_xla('Current implementation does not yet support pivoting')
   def test_tape_safe(self):
     matrix = variables_module.Variable([[3., 2., 0.], [1., 6., 4.], [0., 2, 2]])
     operator = linalg_lib.LinearOperatorTridiag(

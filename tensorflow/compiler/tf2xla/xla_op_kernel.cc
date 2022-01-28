@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -252,8 +253,8 @@ Status XlaOpKernelContext::ConstantInputAsFloatScalar(
 static Status LiteralToPredVector(const xla::LiteralSlice& literal,
                                   std::vector<bool>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D, rank: ",
-                                   literal.shape().rank());
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   literal.shape().DebugString());
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() != xla::PRED) {
@@ -353,8 +354,8 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
 static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                    std::vector<int64_t>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D, rank: ",
-                                   literal.shape().rank());
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   literal.shape().DebugString());
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {
@@ -541,8 +542,8 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   }
   if (variable->type() != type) {
     return errors::InvalidArgument(
-        "Type mismatch for read of variable ", variable->name(), ". Expected ",
-        DataTypeString(type), "; got ", DataTypeString(variable->type()));
+        "Trying to read variable with wrong dtype. Expected ",
+        DataTypeString(type), " got ", DataTypeString(variable->type()));
   }
   if (shape) {
     *shape = variable->shape();
@@ -554,11 +555,15 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
     *value = xla::ConstantLiteral(ctx->builder(), literal);
     return Status::OK();
   }
-
+  auto shape_determination_fns =
+      ctx->compiler()->options().shape_determination_fns;
+  XlaLayoutPreference layout_preference =
+      shape_determination_fns.layout_preference_fn(
+          variable->shape(), variable->type(), absl::nullopt);
   TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
-                      ctx->compiler()->options().shape_representation_fn(
+                      shape_determination_fns.shape_representation_fn(
                           variable->shape(), variable->type(),
-                          /*use_fast_memory=*/false));
+                          /*use_fast_memory=*/false, layout_preference));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       TensorShapeToXLAShape(variable->type(), variable->shape(), &xla_shape));
@@ -698,15 +703,18 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
 
   TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
 
+  auto shape_determination_fns =
+      ctx->compiler()->options().shape_determination_fns;
+  XlaLayoutPreference layout_preference =
+      shape_determination_fns.layout_preference_fn(shape, type, absl::nullopt);
   TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
-                      ctx->compiler()->options().shape_representation_fn(
+                      shape_determination_fns.shape_representation_fn(
                           shape, type,
-                          /*use_fast_memory=*/false));
+                          /*use_fast_memory=*/false, layout_preference));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
   if (!xla::ShapeUtil::Compatible(xla_shape, representation_shape)) {
-    handle = xla::Reshape(handle,
-                          xla::AsInt64Slice(representation_shape.dimensions()));
+    handle = xla::Reshape(handle, representation_shape.dimensions());
   }
   variable->SetRepresentationShape(representation_shape);
   return variable->SetValue(handle);

@@ -94,6 +94,9 @@ class Env {
                                     std::unique_ptr<FileSystem> filesystem);
 
   Status SetOption(const std::string& scheme, const std::string& key,
+                   const std::string& value);
+
+  Status SetOption(const std::string& scheme, const std::string& key,
                    const std::vector<string>& values);
 
   Status SetOption(const std::string& scheme, const std::string& key,

@@ -19,7 +19,6 @@ import math
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -367,7 +366,7 @@ class DropoutTest(test_lib.TestCase, parameterized.TestCase):
     dropout = dropout_fn(t, rate=(1 - keep_prob), noise_shape=noise_shape)
     final_count = 0
     self.assertEqual([x_dim, y_dim], dropout.get_shape())
-    for _ in xrange(0, num_iter):
+    for _ in range(0, num_iter):
       value = self.evaluate(dropout)
       final_count += np.count_nonzero(value)
       # Verifies that there are only two values: 0 and 1/keep_prob.
@@ -392,10 +391,10 @@ class DropoutTest(test_lib.TestCase, parameterized.TestCase):
     t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     dropout = dropout_fn(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
     self.assertEqual([x_dim, y_dim], dropout.get_shape())
-    for _ in xrange(0, num_iter):
+    for _ in range(0, num_iter):
       value = self.evaluate(dropout)
       # Verifies that each row has only one type of activation.
-      for i in xrange(x_dim):
+      for i in range(x_dim):
         sorted_value = np.unique(np.sort(value[i, :]))
         self.assertEqual(sorted_value.size, 1)
 
@@ -426,7 +425,7 @@ class DropoutTest(test_lib.TestCase, parameterized.TestCase):
         dropout = dropout_fn(t, rate=1 - keep_prob_placeholder)
       final_count = 0
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
-      for _ in xrange(0, num_iter):
+      for _ in range(0, num_iter):
         value = dropout.eval(feed_dict={keep_prob_placeholder: keep_prob})
         final_count += np.count_nonzero(value)
         # Verifies that there are only two values: 0 and 1/keep_prob.
@@ -737,9 +736,9 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       # First we need to find the hits in this random test run:
       labels_reshape = labels.reshape((batch_size, num_true))
       got_logits = self.evaluate(logits_tensor)
-      for row in xrange(batch_size):
+      for row in range(batch_size):
         row_labels = labels_reshape[row, :]
-        for col in xrange(len(sampled)):
+        for col in range(len(sampled)):
           if sampled[col] in row_labels:
             # We need to add the num_true_test offset into logits_*
             self.assertNear(
@@ -1082,9 +1081,9 @@ class GeluTest(test_lib.TestCase):
     self.assertAllClose(y, z)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SwishTest(test_lib.TestCase):
 
-  @test_util.run_deprecated_v1
   def testValues(self):
     np_values = np.array(
         [np.linspace(-7.0, 0.0, 100),
@@ -1099,16 +1098,45 @@ class SwishTest(test_lib.TestCase):
 
     self.assertAllClose(actual_outputs, expected_outputs)
 
-  @test_util.run_deprecated_v1
+  def testValuesWithBeta(self):
+    np_values = np.array(
+        [np.linspace(-7.0, 0.0, 100),
+         np.linspace(0.0, 7.0, 100)],
+        dtype=np.float32)
+    tf_values = constant_op.constant(np_values)
+    actual_tf_outputs = nn_impl.swish(tf_values, beta=0.5)
+    expected_tf_outputs = tf_values * math_ops.sigmoid(0.5 * tf_values)
+
+    actual_outputs, expected_outputs = self.evaluate(
+        [actual_tf_outputs, expected_tf_outputs])
+
+    self.assertAllClose(actual_outputs, expected_outputs)
+
   def testGradients(self):
     shape = [5, 3, 4]
     sigma = 5
     input_values = np.random.randn(*shape) * sigma
     x_tf = constant_op.constant(input_values)
-    y_tf = nn_impl.swish(x_tf)
     with self.cached_session():
-      err = gradient_checker.compute_gradient_error(x_tf, shape, y_tf, shape)
-    self.assertLess(err, 1e-4)
+      def f(x):  # pylint: disable=invalid-name
+        return nn_impl.swish(x)
+
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [x_tf])
+      self.assertAllClose(theoretical, numerical)
+
+  def testGradientsWithBeta(self):
+    shape = [5, 3, 4]
+    sigma = 5
+    input_values = np.random.randn(*shape) * sigma
+    x_tf = constant_op.constant(input_values)
+    with self.cached_session():
+      def f(x):  # pylint: disable=invalid-name
+        return nn_impl.swish(x, beta=0.5)
+
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          f, [x_tf])
+      self.assertAllClose(theoretical, numerical)
 
 
 class MomentsTest(test_lib.TestCase):

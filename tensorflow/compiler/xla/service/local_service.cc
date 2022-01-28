@@ -120,7 +120,7 @@ LocalService::CompileExecutables(
     if (!ShapeUtil::Compatible(argument_shape, program_shape.parameters(i))) {
       absl::optional<const OpMetadata*> metadata =
           ParameterMetadata(computation, /*parameter_number=*/i);
-      auto metadata_string = [&metadata]() -> string {
+      auto metadata_string = [&metadata]() -> std::string {
         if (!metadata.has_value()) {
           return "";
         }
@@ -205,7 +205,8 @@ StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
 }
 
 StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
-    std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag) {
+    std::vector<ScopedShapedBuffer> replicated_buffers,
+    const std::string& tag) {
   return allocation_tracker_.RegisterReplicatedBuffers(
       std::move(replicated_buffers), tag);
 }

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/metric_table_report.h"
@@ -29,8 +30,8 @@ using absl::StrFormat;
 using tensorflow::strings::HumanReadableElapsedTime;
 using tensorflow::strings::HumanReadableNumBytes;
 
-string HumanReadableProfileBuilder::ToString() const {
-  string s;
+std::string HumanReadableProfileBuilder::ToString() const {
+  std::string s;
 
   StrAppendFormat(&s, "Execution profile for %s: (%s @ f_nom)\n",
                   computation_name_,
@@ -46,8 +47,8 @@ string HumanReadableProfileBuilder::ToString() const {
       return;
     }
 
-    string bytes_per_sec;
-    string bytes_per_cycle;
+    std::string bytes_per_sec;
+    std::string bytes_per_cycle;
     if (op.cycles > 0 && op.bytes_accessed >= 0) {
       bytes_per_sec = StrCat(
           HumanReadableNumBytes(op.bytes_accessed / CyclesToSeconds(op.cycles)),
@@ -71,7 +72,7 @@ string HumanReadableProfileBuilder::ToString() const {
           cumulative_cycles / static_cast<double>(total_cycles_) * 100;
     }
 
-    string cycles_percent_str;
+    std::string cycles_percent_str;
     if (is_total) {
       // Leaving off the two trailing decimal points of "100.%" lets us save two
       // columns in the output.

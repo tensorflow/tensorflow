@@ -143,7 +143,7 @@ void BuildLaunchForCluster(const Cluster& c, OpBuilder* builder) {
   Block* block = &region.front();
   for (Operation* op : c.ops) {
     op->moveBefore(block, block->end());
-    op->removeAttr(builder->getIdentifier("device"));
+    op->removeAttr(builder->getStringAttr("device"));
   }
 
   // Get all escaped live-out values of region, they are used later to determine

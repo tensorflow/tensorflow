@@ -22,6 +22,8 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 
+static constexpr size_t kPaddingSize = 64;
+
 DenseIntElementsAttr getBroadcastDimensionsAttr(Builder* b, Value x, Value y,
                                                 bool allow_empty) {
   TensorType xType = x.getType().dyn_cast<RankedTensorType>();
@@ -60,15 +62,18 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   if (auto float_ty = ty.dyn_cast<FloatType>()) {
     APFloat value(float_ty.getFloatSemantics(), raw_value);
     return DenseElementsAttr::get(scalar_ty, value);
-  } else if (auto int_ty = ty.dyn_cast<IntegerType>()) {
+  }
+  if (auto int_ty = ty.dyn_cast<IntegerType>()) {
     APInt value(int_ty.getWidth(), static_cast<int64_t>(raw_value), true);
     return DenseElementsAttr::get(scalar_ty, value);
-  } else if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
+  }
+  if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
     Type complex_element_ty = complex_ty.getElementType();
     if (complex_element_ty.isF32()) {
       return DenseElementsAttr::get(
           scalar_ty, static_cast<std::complex<float>>(raw_value));
-    } else if (complex_element_ty.isF64()) {
+    }
+    if (complex_element_ty.isF64()) {
       return DenseElementsAttr::get(
           scalar_ty, static_cast<std::complex<double>>(raw_value));
     }
@@ -126,7 +131,8 @@ DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit) {
   if (auto float_ty = ty.dyn_cast<FloatType>()) {
     return DenseElementsAttr::get(scalar_ty,
                                   GetScalarLimitOfFloatType(float_ty, limit));
-  } else if (auto integer_ty = ty.dyn_cast<IntegerType>()) {
+  }
+  if (auto integer_ty = ty.dyn_cast<IntegerType>()) {
     return DenseElementsAttr::get(
         scalar_ty, GetScalarLimitOfIntegerType(integer_ty, limit));
   }
@@ -150,9 +156,10 @@ std::string LmhloToMhloOpName(llvm::StringRef op_name,
   return "";
 }
 
-bool IsSequenceStartingWith0(DenseIntElementsAttr attr) {
-  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
-    if (attr.getValue<IntegerAttr>(i).getInt() != i) return false;
+bool IsSequenceStartingWith0(Attribute attr) {
+  DenseIntElementsAttr denseAttr = attr.dyn_cast<DenseIntElementsAttr>();
+  for (int64_t i = 0, e = denseAttr.getNumElements(); i < e; ++i)
+    if (denseAttr.getValues<APInt>()[i].getSExtValue() != i) return false;
   return true;
 }
 
@@ -160,6 +167,21 @@ int64_t getArgumentIndex(mlir::FuncOp op, Value value) {
   BlockArgument arg = value.dyn_cast<BlockArgument>();
   if (!arg || arg.getOwner() != &op.front()) return -1;
   return arg.getArgNumber();
+}
+
+/// Computes the memory usage of the given allocations.
+std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs) {
+  size_t totalSize = 0;
+  size_t allocCounter = 0;
+  for (const Value alloc : allocs) {
+    auto shape = alloc.getType().cast<ShapedType>();
+    size_t shapeBytes = llvm::divideCeil(shape.getSizeInBits(), 8);
+    size_t alignFactor = llvm::divideCeil(shapeBytes, kPaddingSize);
+    size_t size = alignFactor * kPaddingSize;
+    totalSize += size;
+    allocCounter++;
+  }
+  return std::make_pair(totalSize, allocCounter);
 }
 
 }  // namespace hlo

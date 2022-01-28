@@ -18,9 +18,11 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_python_pip_deps python3.9
 # Update bazel
 install_bazelisk
+
+# Setup virtual environment and install dependencies
+setup_venv_ubuntu python3.9
 
 tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-no_oss_py39,-v1only"
 
@@ -31,7 +33,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 set +e
 bazel test \
   --config=release_cpu_linux \
-  --repo_env=PYTHON_BIN_PATH="$(which python3.9)" \
+  --repo_env=PYTHON_BIN_PATH="$(which python)" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" \
   --test_lang_filters=py \
@@ -39,3 +41,6 @@ bazel test \
   --local_test_jobs=8 \
   -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
 test_xml_summary_exit
+
+# Remove and cleanup virtual environment
+remove_venv_ubuntu

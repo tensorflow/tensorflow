@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
@@ -31,8 +32,9 @@ constexpr char kDatasetType[] = "Root";
 constexpr char kAlgorithm[] = "algorithm";
 constexpr char kCpuBudget[] = "cpu_budget";
 constexpr char kExperiments[] = "experiments";
-constexpr char kMemBandwidth[] = "mem_bw_used_megabytes_per_sec";
+constexpr char kInjectPrefetchEligibleOpt[] = "inject_prefetch_eligible";
 constexpr char kIntraOpParallelism[] = "intra_op_parallelism";
+constexpr char kMemBandwidth[] = "mem_bw_used_megabytes_per_sec";
 constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
 constexpr char kRamBudget[] = "ram_budget_megabytes";
 constexpr char kRamUsage[] = "ram_usage_megabytes";
@@ -46,7 +48,8 @@ inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
 }  // namespace
 
 // static
-Status RootDataset::FromOptions(DatasetBase* input, DatasetBase** output) {
+Status RootDataset::FromOptions(const DatasetBase* input,
+                                DatasetBase** output) {
   const Options& options = input->options();
   Params params;
   if (ShouldConfigureMaxIntraOpParallelism(options)) {
@@ -185,11 +188,15 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     mutex_lock l(mu_);
     if (!model_thread_) {
       model_thread_ = ctx->StartThread("tf_data_model", [this]() {
-        Status status =
-            model_->OptimizeLoop(dataset()->params_.autotune_algorithm,
-                                 dataset()->params_.autotune_cpu_budget,
-                                 dataset()->params_.autotune_ram_budget,
-                                 cancellation_manager_.get());
+        auto algorithm = dataset()->params_.autotune_algorithm;
+        if (algorithm == model::AutotuneAlgorithm::DEFAULT &&
+            GetExperiments().contains("max_parallelism_v2")) {
+          algorithm = model::AutotuneAlgorithm::MAX_PARALLELISM;
+        }
+        Status status = model_->OptimizeLoop(
+            algorithm, dataset()->params_.autotune_cpu_budget,
+            dataset()->params_.autotune_ram_budget,
+            cancellation_manager_.get());
         if (!status.ok()) {
           LOG(WARNING) << "Optimization loop failed: " << status.ToString();
         }
@@ -274,6 +281,17 @@ int64_t RootDataset::CardinalityInternal() const {
   return input_->Cardinality();
 }
 
+int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
+  return input_->Cardinality(options);
+}
+
+Status RootDataset::Get(OpKernelContext* ctx, int64 index,
+                        std::vector<Tensor>* out_tensors) const {
+  std::vector<const DatasetBase*> inputs;
+  TF_RETURN_IF_ERROR(this->InputDatasets(&inputs));
+  return inputs[0]->Get(ctx, index, out_tensors);
+}
+
 Status RootDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   inputs->push_back(input_);
@@ -291,7 +309,7 @@ Status RootDataset::AsGraphDefInternal(SerializationContext* ctx,
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
+Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
                        DatasetBase** output) {
   const Options& options = input->options();
   absl::flat_hash_set<tstring> optimizations_enabled;
@@ -301,6 +319,12 @@ Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
                    &optimizations_default);
   // Disable `enable_gradient_descent` as it assumes presence of ModelDatasetOp.
   optimizations_disabled.insert("enable_gradient_descent");
+  if (!port::JobName().empty()) {
+    // Enable kInjectPrefetchEligibleOpt that does not modify the graph and is
+    // used to check whether the `inject_prefetch` optimization would modify the
+    // graph.
+    optimizations_enabled.insert(kInjectPrefetchEligibleOpt);
+  }
 
   auto experiments = GetExperiments();
   LogAndRecordExperiments(experiments);
@@ -332,7 +356,7 @@ Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
   return Status::OK();
 }
 #else   // !IS_MOBILE_PLATFORM
-Status FinalizeDataset(OpKernelContext* ctx, DatasetBase* input,
+Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
                        DatasetBase** output) {
   return RootDataset::FromOptions(input, output);
 }

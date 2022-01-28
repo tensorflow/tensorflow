@@ -3,11 +3,11 @@
 # CHECK: tf_executor._SwitchN
 # CHECK-SAME: of 3 : tensor<*xi32>
 # CHECK-SAME: T = i32
-# CHECK-SAME: loc("Case/branch_index/_3")
+# CHECK-SAME: loc(fused["_SwitchN:", "Case/branch_index/_3"])
 # CHECK: tf_executor._SwitchN
 # CHECK-SAME: of 2 : tensor<*xf32>
 # CHECK-SAME: T = f32
-# CHECK-SAME: loc("Case/Case/input_0/_7")
+# CHECK-SAME: loc(fused["_SwitchN:", "Case/Case/input_0/_7"])
 
 node {
   name: "Case/branch_index"

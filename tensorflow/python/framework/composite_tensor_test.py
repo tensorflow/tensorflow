@@ -24,7 +24,7 @@ import numpy as np
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
@@ -374,12 +374,12 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters([
-      ('IndexedSlicesNoDenseShape', lambda: ops.IndexedSlices(
+      ('IndexedSlicesNoDenseShape', lambda: indexed_slices.IndexedSlices(
           constant_op.constant([1, 2, 3]), constant_op.constant([2, 8, 4]))),
-      ('IndexedSlicesInt32DenseShape', lambda: ops.IndexedSlices(
+      ('IndexedSlicesInt32DenseShape', lambda: indexed_slices.IndexedSlices(
           constant_op.constant([1, 2, 3]), constant_op.constant([2, 8, 4]),
           constant_op.constant([10], dtypes.int32))),
-      ('IndexedSlicesInt64DenseShape', lambda: ops.IndexedSlices(
+      ('IndexedSlicesInt64DenseShape', lambda: indexed_slices.IndexedSlices(
           constant_op.constant([[1, 2], [3, 4]]), constant_op.constant([2, 8]),
           constant_op.constant([10, 2], dtypes.int64))),
       ('RaggedTensorRaggedRank1',
@@ -390,7 +390,7 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        lambda: sparse_tensor.SparseTensor([[3], [7]], ['a', 'b'], [10])),
       ('Nested structure', lambda: {
           'a':
-              ops.IndexedSlices(
+              indexed_slices.IndexedSlices(
                   constant_op.constant([1, 2, 3]),
                   constant_op.constant([2, 8, 4])),
           'b': [

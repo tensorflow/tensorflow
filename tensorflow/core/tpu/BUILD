@@ -5,6 +5,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
     "if_windows",
+    "tf_cc_test",
 )
 
 package(
@@ -53,6 +54,41 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "tpu_embedding_configuration_proto_rewrite",
+    srcs = ["tpu_embedding_configuration_proto_rewrite.cc"],
+    hdrs = ["tpu_embedding_configuration_proto_rewrite.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core/lib/math:math_util",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_test(
+    name = "tpu_embedding_configuration_proto_rewrite_test",
+    srcs = ["tpu_embedding_configuration_proto_rewrite_test.cc"],
+    deps = [
+        ":tpu_embedding_configuration_proto_rewrite",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:test",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -222,6 +258,7 @@ cc_library(
         ":tpu_defs",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -303,6 +340,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_platform_id",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
@@ -322,11 +360,13 @@ cc_library(
 cc_library(
     name = "tpu_ops_c_api_hdrs",
     srcs = [],
-    hdrs = ["tpu_ops_c_api.h"],
+    hdrs = [
+        "tpu_ops_c_api.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/c:tf_tstring",
         "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "@com_google_absl//absl/types:optional",

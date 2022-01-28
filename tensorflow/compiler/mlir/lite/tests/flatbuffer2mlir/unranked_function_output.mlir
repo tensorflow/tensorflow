@@ -3,7 +3,7 @@
 // This test is to test for unranked function output from input, the output type should be compatible with input type.
 
 // CHECK: func @main(%arg0: tensor<1xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "arg0", outputs = "tfl.while"}} {
-// CHECK:   %0 = "tfl.while"(%arg0) ( {
+// CHECK:   %0 = "tfl.while"(%arg0) ({
 // CHECK:   ^bb0(%arg1: tensor<*xf32>):
 // CHECK:     %[[RES0:.*]] = call @cond(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
 // CHECK:     "tfl.yield"(%[[RES0]]) : (tensor<*xf32>) -> ()

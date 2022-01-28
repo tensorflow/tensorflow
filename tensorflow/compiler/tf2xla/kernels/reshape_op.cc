@@ -57,7 +57,7 @@ class ReshapeOp : public XlaOpKernel {
     int unknown_index = -1;
     bool shape_has_zero_dim = false;
     for (int d = 0; d < num_dims; ++d) {
-      const int32_t size = shape_input[d];
+      const int64_t size = shape_input[d];
       if (size == -1) {
         OP_REQUIRES(
             ctx, unknown_index == -1,

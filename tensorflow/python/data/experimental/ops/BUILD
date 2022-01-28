@@ -65,6 +65,7 @@ py_library(
         "//tensorflow/python/data/experimental/service:_pywrap_utils",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/data/ops:structured_function",
         "//tensorflow/python/data/util:nest",
     ],
 )

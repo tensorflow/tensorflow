@@ -57,12 +57,12 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU_KERNELS);
 #endif
 #undef REGISTER_GPU_KERNELS
 
-// A special GPU kernel for int32.
+// A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(
     Name("Sum")
-        .Device(DEVICE_GPU)
+        .Device(DEVICE_DEFAULT)
         .TypeConstraint<int32>("T")
         .TypeConstraint<int32>("Tidx")
         .HostMemory("input")
@@ -71,7 +71,7 @@ REGISTER_KERNEL_BUILDER(
     ReductionOp<CPUDevice, int32, int32, Eigen::internal::SumReducer<int32>>);
 REGISTER_KERNEL_BUILDER(
     Name("Sum")
-        .Device(DEVICE_GPU)
+        .Device(DEVICE_DEFAULT)
         .TypeConstraint<int32>("T")
         .TypeConstraint<int64_t>("Tidx")
         .HostMemory("input")
@@ -80,6 +80,5 @@ REGISTER_KERNEL_BUILDER(
     ReductionOp<CPUDevice, int32, int64, Eigen::internal::SumReducer<int32>>);
 
 #endif
-
 
 }  // namespace tensorflow

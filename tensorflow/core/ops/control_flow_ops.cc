@@ -69,7 +69,7 @@ REGISTER_OP("Switch")
     .Output("output_false: T")
     .Output("output_true: T")
     .Attr("T: type")
-    .SetForwardTypeFn(full_type::ReplicateInputs(2))
+    .SetForwardTypeFn(full_type::ReplicateInput(0, 2))
     .SetShapeFn(SwitchShape);
 
 REGISTER_OP("RefSwitch")
@@ -151,7 +151,7 @@ REGISTER_OP("Merge")
     .Output("value_index: int32")
     .Attr("T: type")
     .Attr("N: int >= 1")
-    .SetForwardTypeFn(full_type::ReplicateIdenticalInputs())
+    .SetForwardTypeFn(full_type::Merge())
     .SetShapeFn(MergeShape);
 
 REGISTER_OP("RefMerge")
@@ -170,6 +170,7 @@ REGISTER_OP("Enter")
     .Attr("frame_name: string")
     .Attr("is_constant: bool = false")
     .Attr("parallel_iterations: int = 10")
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
 
@@ -203,6 +204,7 @@ REGISTER_OP("Exit")
     .Input("data: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("RefExit")
@@ -216,6 +218,7 @@ REGISTER_OP("NextIteration")
     .Input("data: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("RefNextIteration")

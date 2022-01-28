@@ -66,14 +66,8 @@ struct Subgraph {
 };
 
 // This will exclude arguments & consts & quantize/dequantize ops.
-inline bool IsTFLNonConstQuatnizeOp(Operation* op) {
-  return IsTFLDialectNonConstOp(op) && IsTFLNonQuantDequantizeOp(op);
-}
-
-inline bool IsTFLNonConstQuatnizeOp(const Value& value) {
-  auto* op = value.getDefiningOp();
-  if (op == nullptr) return false;
-  return IsTFLNonConstQuatnizeOp(op);
+inline bool IsNonConstQuantizeOp(Operation* op) {
+  return IsNonConstOp(op) && NotTFLQuantDequantizeOp(op) && !IsTerminatorOp(op);
 }
 
 // This pass will group those ops (non-const TFL dialect ops) have the same
@@ -343,8 +337,8 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(Block* block,
   llvm::Optional<InferenceDeviceType> previous_device_type = llvm::None;
   int current_subgraph_id = -1;
   for (auto& op : *block) {
-    // We only care about TFL dialect.
-    if (IsTFLNonConstQuatnizeOp(&op)) {
+    if (IsNonConstQuantizeOp(&op) && !IsTerminatorOp(&op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op)) {
       auto current_device_type = GetInferenceDeviceTypeForOp(&op);
       if (!(current_device_type.hasValue() &&
             current_device_type == previous_device_type)) {

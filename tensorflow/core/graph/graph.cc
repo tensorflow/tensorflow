@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_properties.h"
@@ -182,17 +183,22 @@ void Node::ClearTypeInfo() {
 }
 
 void Node::RunForwardTypeInference() {
+  VLOG(4) << "Forward type inference: " << props_->node_def.DebugString();
+
   if (props_->fwd_type_fn == nullptr) {
     return;
   }
 
   std::vector<Node*> input_nodes(props_->input_types.size(), nullptr);
+  std::vector<int> input_idx(props_->input_types.size(), 0);
   for (const auto& edge : in_edges_) {
     if (edge->IsControlEdge()) {
       continue;
     }
     DCHECK(edge->dst_input() < input_nodes.size()) << DebugString();
-    input_nodes.at(edge->dst_input()) = edge->src();
+    int i = edge->dst_input();
+    input_nodes.at(i) = edge->src();
+    input_idx.at(i) = edge->src_output();
   }
 
   // Note: technically, we could use a very generic type when some of the inputs
@@ -207,10 +213,29 @@ void Node::RunForwardTypeInference() {
     }
   }
 
+  static FullTypeDef* no_type = new FullTypeDef();
+
   std::vector<std::reference_wrapper<const FullTypeDef>> input_types;
-  for (const auto* node : input_nodes) {
+  for (int i = 0; i < input_nodes.size(); i++) {
+    const auto* node = input_nodes[i];
     if (node->def().has_experimental_type()) {
-      input_types.emplace_back(node->def().experimental_type());
+      const auto& node_t = node->def().experimental_type();
+      if (node_t.type_id() != TFT_UNSET) {
+        int ix = input_idx[i];
+        if (ix >= node_t.args_size()) {
+          LOG(WARNING) << name() << " has bad type information: input " << i
+                       << " should have an output " << ix
+                       << " but instead only has " << node_t.args_size()
+                       << " outputs: " << node_t.DebugString()
+                       << "\nThis indicates either "
+                          "a bug in op registration or a corrupted graph.";
+          ClearTypeInfo();
+          return;
+        }
+        input_types.emplace_back(node_t.args(ix));
+      } else {
+        input_types.emplace_back(*no_type);
+      }
     } else {
       // Incomplete inputs, bail.
       ClearTypeInfo();
@@ -219,10 +244,25 @@ void Node::RunForwardTypeInference() {
   }
 
   const auto infer_type = props_->fwd_type_fn(input_types);
+  if (!infer_type.ok()) {
+    // TODO(mdan): Turn this into an error, once all offenders are clean.
+    LOG(WARNING) << name()
+                 << " failed type inference; this is likely caused by"
+                    " a graph in which inconsistent types went "
+                    "undetected. This will become an error in the "
+                    "future.\nNode information:\n"
+                 << props_->node_def.DebugString()
+                 << "\nType inference error:\n"
+                 << infer_type.status().ToString();
+    props_->node_def.clear_experimental_type();
+    return;
+  }
   const FullTypeDef infer_typedef = infer_type.ValueOrDie();
   if (infer_typedef.type_id() != TFT_UNSET) {
     MaybeCopyOnWrite();
     *(props_->node_def.mutable_experimental_type()) = infer_typedef;
+  } else {
+    props_->node_def.clear_experimental_type();
   }
 }
 
@@ -520,6 +560,13 @@ void Graph::Copy(const Graph& src) {
   }
 }
 
+StatusOr<Node*> Graph::AddNode(NodeDef node_def) {
+  Status s;
+  Node* out = AddNode(std::move(node_def), &s);
+  TF_RETURN_IF_ERROR(s);
+  return out;
+}
+
 Node* Graph::AddNode(NodeDef node_def, Status* status) {
   const OpRegistrationData* op_reg_data;
   status->Update(ops_.LookUp(node_def.op(), &op_reg_data));
@@ -539,12 +586,18 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
                                    : Node::GetNodeClassForOp(node_def.op());
 
   if (op_reg_data->type_ctor != nullptr) {
-    const auto ctor_type =
-        full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def);
-    const FullTypeDef ctor_typedef = ctor_type.ValueOrDie();
-    if (ctor_typedef.type_id() != TFT_UNSET) {
-      *(node_def.mutable_experimental_type()) = ctor_typedef;
+    VLOG(3) << "AddNode: found type constructor for " << node_def.name();
+    Status s =
+        full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def,
+                                  *(node_def.mutable_experimental_type()));
+    if (!s.ok()) {
+      *status = errors::InvalidArgument("type error: ", s.ToString());
+      VLOG(3) << "AddNode: type inference failed for " << node_def.name()
+              << ": " << s;
+      return nullptr;
     }
+  } else {
+    VLOG(3) << "AddNode: no type constructor for " << node_def.name();
   }
 
   Node* node = AllocateNode(std::make_shared<NodeProperties>(

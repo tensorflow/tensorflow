@@ -14,9 +14,9 @@
 # ==============================================================================
 
 """Gradients for operators defined in control_flow_ops.py."""
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
@@ -127,10 +127,12 @@ def _MergeGrad(op, grad, _):
     # pylint: enable=protected-access
   else:
     num_inputs = len(op.inputs)
-    cond = [math_ops.equal(op.outputs[1], i) for i in xrange(num_inputs)]
+    cond = [math_ops.equal(op.outputs[1], i) for i in range(num_inputs)]
     # pylint: disable=protected-access
-    return [control_flow_ops._SwitchRefOrTensor(grad, cond[i])[1]
-            for i in xrange(num_inputs)]
+    return [
+        control_flow_ops._SwitchRefOrTensor(grad, cond[i])[1]
+        for i in range(num_inputs)
+    ]
     # pylint: enable=protected-access
 
 
@@ -159,9 +161,10 @@ def _ExitGrad(op, grad):
   if isinstance(grad, ops.Tensor):
     grad_ctxt.AddName(grad.name)
   else:
-    if not isinstance(grad, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
+    if not isinstance(
+        grad, (indexed_slices.IndexedSlices, sparse_tensor.SparseTensor)):
       raise TypeError(f"Type {type(grad)} not supported, must be either"
-                      "`ops.IndexedSlices` or `SparseTensor`.")
+                      "`indexed_slices.IndexedSlices` or `SparseTensor`.")
     grad_ctxt.AddName(grad.values.name)
     grad_ctxt.AddName(grad.indices.name)
     dense_shape = grad.dense_shape
@@ -219,7 +222,7 @@ def _EnterGrad(op, grad):
     # Add a gradient accumulator for each loop invariant.
     if isinstance(grad, ops.Tensor):
       result = grad_ctxt.AddBackpropAccumulator(op, grad)
-    elif isinstance(grad, ops.IndexedSlices):
+    elif isinstance(grad, indexed_slices.IndexedSlices):
       result = grad_ctxt.AddBackpropIndexedSlicesAccumulator(op, grad)
     else:
       # TODO(yuanbyu, lukasr): Add support for SparseTensor.

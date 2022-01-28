@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -147,14 +145,14 @@ class ForLoop {
 
   // Creates a name for an LLVM construct, appending prefix_ and suffix_, if
   // they are set.
-  string GetQualifiedName(absl::string_view name);
+  std::string GetQualifiedName(absl::string_view name);
 
   // Return a list of metadata nodes that should be associated with the
   // llvm::Loop for this `ForLoop`.
   std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilder<>* b);
 
-  string prefix_;
-  string suffix_;
+  std::string prefix_;
+  std::string suffix_;
   llvm::Value* start_index_;
   llvm::Value* end_index_;
   llvm::Value* step_;
@@ -273,7 +271,7 @@ class ForLoopNest {
   }
 
   // Human-friendly name of the loop nest.
-  string name_;
+  std::string name_;
 
   // The preheader and exit basic block of the outermost loop, or nullptr if no
   // loop has been added yet.

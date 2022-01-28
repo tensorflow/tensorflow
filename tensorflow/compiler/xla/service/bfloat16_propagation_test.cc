@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
+
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -1047,7 +1048,7 @@ TEST_F(BFloat16PropagationTest, TupleDomainNoPropagation) {
 }
 
 TEST_F(BFloat16PropagationTest, ConditionalSeparateBranchOperands) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 true_branch {
@@ -1086,7 +1087,7 @@ ENTRY entry {
 }
 
 TEST_F(BFloat16PropagationTest, ConditionalSharedBranchOperands) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 true_branch {
@@ -1121,7 +1122,7 @@ ENTRY entry {
 }
 
 TEST_F(BFloat16PropagationTest, ConditionalAliasingOutputs) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 true_branch {
@@ -1160,7 +1161,7 @@ TEST_F(BFloat16PropagationTest, DynamicUpdateSlice) {
   // This test is crafted so that the DUS has an f32 input (due to parameter)
   // and bf16 output (due to dot). But we should enforce DUS operand 0 and
   // output to get the same precision since it's an in-place operation.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule Module
 
 ENTRY main {
@@ -1188,7 +1189,7 @@ ENTRY main {
 // aliasing is not resolved until after the gte0 variale is already processed,
 // triggering incorrect type for gte0 if not repeating the aliasing analysis.
 TEST_F(BFloat16PropagationTest, ConditionalGTEWithFusion) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 %add.0 (x: f32[4096,4096], y: f32[4096,4096]) -> f32[4096,4096] {

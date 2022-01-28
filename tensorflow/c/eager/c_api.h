@@ -119,7 +119,7 @@ TF_CAPI_EXPORT extern TFE_ContextDevicePlacementPolicy
 TFE_ContextGetDevicePlacementPolicy(TFE_Context* ctx);
 
 // A tensorflow.ServerDef specifies remote workers (in addition to the current
-// workers name). Operations created on this context can then be executed on
+// workers name). Operations created in this context can then be executed on
 // any of these remote workers by setting an appropriate device.
 //
 // If the following is set, all servers identified by the
@@ -134,7 +134,7 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
 //
 // Like a TF_Tensor, a TFE_TensorHandle refers to a tensor with a value, shape,
 // type etc. Unlike a TF_Tensor, a TFE_TensorHandle may refer to such tensors
-// placed in memory of different devices or remote address spaces.
+// placed in the memory of different devices or remote address spaces.
 typedef struct TFE_TensorHandle TFE_TensorHandle;
 
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandle(const TF_Tensor* t,
@@ -442,7 +442,7 @@ TF_CAPI_EXPORT extern void TFE_ContextStartStep(TFE_Context* ctx);
 
 // Ends a step. When there is no active step (that is, every started step has
 // been ended) step containers will be cleared. Note: it is not safe to call
-// TFE_ContextEndStep while ops which rely on the step container may be running.
+// TFE_ContextEndStep while ops that rely on the step container may be running.
 TF_CAPI_EXPORT extern void TFE_ContextEndStep(TFE_Context* ctx);
 
 #ifdef __cplusplus

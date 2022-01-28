@@ -38,6 +38,7 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -94,7 +95,7 @@ def _fake_mirrored(value, devices):
 
 def _make_indexed_slices(values, indices, dense_shape, device):
   with ops.device(device):
-    tensor = ops.IndexedSlices(
+    tensor = indexed_slices_lib.IndexedSlices(
         values=constant_op.constant(values),
         indices=constant_op.constant(indices),
         dense_shape=constant_op.constant(dense_shape))
@@ -115,8 +116,8 @@ _cpu_device = "/device:CPU:0"
 class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
 
   def _assert_indexed_slices_equal(self, left, right):
-    self.assertIsInstance(left, ops.IndexedSlices)
-    self.assertIsInstance(right, ops.IndexedSlices)
+    self.assertIsInstance(left, indexed_slices_lib.IndexedSlices)
+    self.assertIsInstance(right, indexed_slices_lib.IndexedSlices)
     self.assertEqual(
         device_util.resolve(left.device), device_util.resolve(right.device))
     self.assertAllEqual(

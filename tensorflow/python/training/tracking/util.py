@@ -16,6 +16,7 @@
 import abc
 import collections
 import functools
+import glob
 import os
 import threading
 import time
@@ -99,6 +100,17 @@ def get_session():
   return session
 
 
+def _get_checkpoint_size(prefix):
+  """Calculates filesize of checkpoint based on prefix."""
+  size = 0
+  # Gather all files beginning with prefix (.index plus sharded data files).
+  files = glob.glob("{}*".format(prefix))
+  for file in files:
+    # Use TensorFlow's C++ FileSystem API.
+    size += metrics.CalculateFileSize(file)
+  return size
+
+
 class ObjectGraphProtoPrettyPrinter(object):
   """Lazily traverses an object graph proto to pretty print names.
 
@@ -169,27 +181,33 @@ class _CheckpointRestoreCoordinatorDeleter(object):
       log_fn = print
     else:
       log_fn = logging.warning
-    printed_warning = False
+    unused_nodes_in_checkpoint = []
+    unrestored_attributes_in_object = []
     pretty_printer = ObjectGraphProtoPrettyPrinter(self.object_graph_proto)
-    for node_id in range(len(self.object_graph_proto.nodes)):
+    for node_id, node in enumerate(self.object_graph_proto.nodes):
+      if not node.attributes:
+        continue
       if node_id not in self.matched_proto_ids:
-        log_fn("Unresolved object in checkpoint: "
-               f"{pretty_printer.node_names[node_id]}")
-        printed_warning = True
+        unused_nodes_in_checkpoint.append(pretty_printer.node_names[node_id])
     for node_id, attribute_name in self.unused_attributes.items():
-      log_fn(f"Unused attribute in object {pretty_printer.node_names[node_id]}:"
-             f" {attribute_name}")
-      printed_warning = True
-    if printed_warning:
-      log_fn(
-          "A checkpoint was restored (e.g. tf.train.Checkpoint.restore or "
-          "tf.keras.Model.load_weights) but not all checkpointed values were "
-          "used. See above for specific issues. Use expect_partial() on the "
-          "load status object, e.g. "
-          "tf.train.Checkpoint.restore(...).expect_partial(), to silence these "
-          "warnings, or use assert_consumed() to make the check explicit. See "
-          "https://www.tensorflow.org/guide/checkpoint#loading_mechanics"
-          " for details.")
+      unrestored_attributes_in_object.append((
+          pretty_printer.node_names[node_id], attribute_name))
+    if unused_nodes_in_checkpoint or unrestored_attributes_in_object:
+      # pylint:disable=line-too-long
+      log_fn("Detecting that an object or model or tf.train.Checkpoint is being"
+             " deleted with unrestored values. See the following logs for the "
+             "specific values in question. To silence these warnings, use "
+             "`status.expect_partial()`. See "
+             "https://www.tensorflow.org/api_docs/python/tf/train/Checkpoint#restore"
+             "for details about the status object returned by the restore "
+             "function.")
+      # pylint:enable=line-too-long
+      for node_path in unused_nodes_in_checkpoint:
+        log_fn("Value in checkpoint could not be found in the restored object: "
+               f"{node_path}")
+      for node_path, attr in unrestored_attributes_in_object:
+        log_fn("An attribute in the restored object could not be found in the "
+               f"checkpoint. Object: {node_path}, attribute: {attr}")
 
 
 class _CheckpointRestoreCoordinator(object):
@@ -381,12 +399,8 @@ class _NameBasedRestoreCoordinator(object):
           # fails.
           saveable = saveable_factory()
         except TypeError:
-          # Even if we can't name this object, we should construct it and check
-          # whether it's optional to restore it. If it's optional we don't need
-          # to make assertions fail.
-          if not saveable_factory("").optional_restore:
-            self.unused_attributes.setdefault(trackable,
-                                              []).append(attribute_name)
+          self.unused_attributes.setdefault(trackable,
+                                            []).append(attribute_name)
           continue
       else:
         saveable = saveable_factory
@@ -749,8 +763,9 @@ class CheckpointLoadStatus(_LoadStatus):
   def __init__(self, checkpoint, feed_dict, graph_view):
     self._checkpoint = checkpoint
     self._feed_dict = feed_dict
-    self._graph_view = graph_view
-    # Keep a reference to the root, since graph_view might only have a weakref.
+    self._object_graph_view = graph_view
+    # Keep a reference to the root, since object_graph_view might only have a
+    # weakref.
     self._root = graph_view.root
 
   def assert_consumed(self):
@@ -819,12 +834,12 @@ class CheckpointLoadStatus(_LoadStatus):
           trackable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
         raise AssertionError(
             f"Object {node} not assigned a value from checkpoint.")
-    for trackable_object in self._graph_view.list_objects():
+    for trackable_object in self._object_graph_view.list_objects():
       # Remove data structures that do not contain any variables from
       # restoration checks.
       if (isinstance(trackable_object,
                      data_structures.TrackableDataStructure) and
-          not trackable_object._checkpoint_dependencies):
+          not trackable_object._trackable_children()):  # pylint: disable=protected-access
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
@@ -834,15 +849,20 @@ class CheckpointLoadStatus(_LoadStatus):
         object_identity.ObjectIdentitySet(
             self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
+      num_unused_python_objects = len(list(unused_python_objects))
+      # Display max number of 10 variables in error message.
+      num_variables_to_show = min(10, num_unused_python_objects)
       raise AssertionError(
-          "Some Python objects were not bound to checkpointed values, likely "
-          f"due to changes in the Python program: "
-          f"{list(unused_python_objects)}")
+          f"Found {num_unused_python_objects} Python objects that were "
+          "not bound to checkpointed values, likely due to changes in the "
+          f"Python program. Showing {num_variables_to_show} of "
+          f"{num_unused_python_objects} unmatched objects: "
+          f"{list(unused_python_objects)[:num_variables_to_show]}")
     return self
 
   def assert_nontrivial_match(self):
     """Raises an exception if only the root object matched."""
-    for trackable_object in self._graph_view.list_objects():
+    for trackable_object in self._object_graph_view.list_objects():
       self._checkpoint.all_python_objects.add(trackable_object)
     if len(self._checkpoint.object_by_proto_id) <= 1:
       unused_python_objects = (
@@ -859,7 +879,7 @@ class CheckpointLoadStatus(_LoadStatus):
       else:
         raise AssertionError(
             "Nothing to load. No dependencies have been added to "
-            f"{self._graph_view.root} yet.")
+            f"{self._object_graph_view.root} yet.")
     return self
 
   def run_restore_ops(self, session=None):
@@ -889,7 +909,7 @@ class CheckpointLoadStatus(_LoadStatus):
       return  # Initialization and restoration ops are run eagerly
     if session is None:
       session = get_session()
-    all_objects = self._graph_view.list_objects()
+    all_objects = self._object_graph_view.list_objects()
     already_initialized_objects = object_identity.ObjectIdentitySet(
         self._checkpoint.object_by_proto_id.values())
     initializers_for_non_restored_variables = [
@@ -917,11 +937,11 @@ class InitializationOnlyStatus(_LoadStatus):
   otherwise.
   """
 
-  def __init__(self, graph_view, restore_uid):
+  def __init__(self, object_graph_view, restore_uid):
     self._restore_uid = restore_uid
-    self._graph_view = graph_view
+    self._object_graph_view = object_graph_view
     # Keep a reference to the root, since graph_view might only have a weakref.
-    self._root = graph_view.root
+    self._root = object_graph_view.root
 
   def assert_consumed(self):
     """Assertion for consistency with `CheckpointLoadStatus`. Always fails."""
@@ -969,7 +989,7 @@ class InitializationOnlyStatus(_LoadStatus):
       return  # run eagerly
     if session is None:
       session = get_session()
-    trackable_objects = self._graph_view.list_objects()
+    trackable_objects = self._object_graph_view.list_objects()
     initializers = [
         c.initializer for c in trackable_objects
         if hasattr(c, "initializer") and c.initializer is not None
@@ -994,12 +1014,12 @@ class NameBasedSaverStatus(_LoadStatus):
   # interferes with isinstance checks.
   @deprecation.deprecated(
       date=None, instructions=_DEPRECATED_RESTORE_INSTRUCTIONS)
-  def __init__(self, checkpoint, graph_view):
+  def __init__(self, checkpoint, object_graph_view):
     self._checkpoint = checkpoint
-    self._graph_view = graph_view
+    self._object_graph_view = object_graph_view
     self._optionally_restored = []
     # Keep a reference to the root, since graph_view might only have a weakref.
-    self._root = graph_view.root
+    self._root = object_graph_view.root
 
   def add_to_optionally_restored(self, var):
     """Add a variable to the list of optionally restored variables.
@@ -1028,7 +1048,7 @@ class NameBasedSaverStatus(_LoadStatus):
       raise AssertionError(
           "Some objects had attributes which were not restored: "
           f"{unused_attribute_strings}")
-    for trackable in self._graph_view.list_objects():
+    for trackable in self._object_graph_view.list_objects():
       # pylint: disable=protected-access
       trackable._maybe_initialize_trackable()
       if trackable._update_uid < self._checkpoint.restore_uid:
@@ -1054,7 +1074,7 @@ class NameBasedSaverStatus(_LoadStatus):
 
   def _gather_saveable_objects(self):
     """Walk the object graph, using global names for SaveableObjects."""
-    objects = self._graph_view.list_objects()
+    objects = self._object_graph_view.list_objects()
     saveable_objects = []
     for trackable in objects:
       # pylint: disable=protected-access
@@ -1127,8 +1147,8 @@ class TrackableSaver(object):
     """Configure saving.
 
     Args:
-      graph_view: A `GraphView` object containing a description of the object
-        graph to save.
+      graph_view: An `ObjectGraphView` object containing a description of the
+        object graph to save.
     """
     # The file prefix placeholder is created lazily when graph building (and not
     # at all when executing eagerly) to avoid creating ops in the constructor
@@ -1241,11 +1261,13 @@ class TrackableSaver(object):
       feed_dict[file_prefix_tensor] = file_prefix
     else:
       with ops.device("/cpu:0"):
-        file_prefix_tensor = constant_op.constant(
+        file_prefix_tensor = ops.convert_to_tensor(
             file_prefix, dtype=dtypes.string)
       object_graph_tensor = None
 
-    file_io.recursive_create_dir(os.path.dirname(file_prefix))
+    if not tensor_util.is_tensor(file_prefix):
+      file_io.recursive_create_dir(os.path.dirname(file_prefix))
+
     save_path, new_feed_additions = self._save_cached_when_graph_building(
         file_prefix_tensor, object_graph_tensor, options)
     if new_feed_additions:
@@ -1277,9 +1299,9 @@ class TrackableSaver(object):
     saver.restore(path)
     ```
 
-    To ensure that loading is complete and no more assignments will take place
-    you can use the `assert_consumed()` method of the status object returned
-    by the `restore` call.
+    To ensure that loading is complete and no more deferred restorations will
+    take place, you can use the `assert_consumed()` method of the status object
+    returned by the `restore` call.
 
     The assert will raise an exception unless every object was matched and all
     checkpointed values have a matching variable object.
@@ -1351,7 +1373,7 @@ class TrackableSaver(object):
           # pylint: enable=protected-access
       return NameBasedSaverStatus(
           restore_coordinator,
-          graph_view=self._graph_view)
+          object_graph_view=self._graph_view)
 
     if graph_building:
       if self._file_prefix_placeholder is None:
@@ -1440,16 +1462,16 @@ def saver_with_op_caching(obj, attached_dependencies=None):
     saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
   return TrackableSaver(
       graph_view_lib.ObjectGraphView(
-          weakref.ref(obj), saveables_cache=saveables_cache,
+          obj, saveables_cache=saveables_cache,
           attached_dependencies=attached_dependencies))
 
 
-def _assert_trackable(obj):
+def _assert_trackable(obj, name):
   if not isinstance(
       obj, (base.Trackable, def_function.Function)):
     raise ValueError(
-        "`Checkpoint` was expecting a trackable object (an object "
-        f"derived from `Trackable`), got {obj}. If you believe this "
+        f"`Checkpoint` was expecting {name} to be a trackable object (an "
+        f"object derived from `Trackable`), got {obj}. If you believe this "
         "object should be trackable (i.e. it is part of the "
         "TensorFlow Python API and manages state), please open an issue.")
 
@@ -1646,14 +1668,16 @@ class CheckpointV1(tracking.AutoTrackable):
       _END_TIME_OF_LAST_WRITE = end_time
 
     if tensor_util.is_tf_type(output):
+      # Convert to numpy if not `tf.function` building.
       if context.executing_eagerly():
-        return compat.as_str(output.numpy())
-      else:
-        # Function building
-        return output
+        output = compat.as_str(output.numpy())
     else:
       # Graph + Session, so we already session.ran it.
-      return compat.as_str(output)
+      output = compat.as_str(output)
+
+    metrics.RecordCheckpointSize(
+        api_label=_CHECKPOINT_V1, filesize=_get_checkpoint_size(output))
+    return output
 
   @property
   def save_counter(self):
@@ -1746,9 +1770,9 @@ class CheckpointV1(tracking.AutoTrackable):
     checkpoint.restore(path)
     ```
 
-    To ensure that loading is complete and no more assignments will take place,
-    you can use the `assert_consumed()` method of the status object returned by
-    `restore`.
+    To ensure that loading is complete and no more deferred restorations will
+    take place, you can use the `assert_consumed()` method of the status object
+    returned by `restore`.
     The assert will raise an exception if any Python objects in the dependency
     graph were not found in the checkpoint, or if any checkpointed values do not
     have a matching Python object:
@@ -1768,6 +1792,10 @@ class CheckpointV1(tracking.AutoTrackable):
 
     If the checkpoint has not been consumed completely, then the list of restore
     ops will grow as more objects are added to the dependency graph.
+
+    To check that all variables in the Python object have restored values from
+    checkpoint, use `assert_existing_objects_matched()`. This assertion is
+    useful when called after the variables in your graph have been created.
 
     Name-based `tf.compat.v1.train.Saver` checkpoints can be loaded using this
     method. Names are used to match variables. No restore ops are created/run
@@ -1803,12 +1831,12 @@ class CheckpointV1(tracking.AutoTrackable):
           pass if values in the checkpoint have no corresponding Python
           objects. For example a `tf.keras.Layer` object which has not yet been
           built, and so has not created any variables, will pass this assertion
-          but fail `assert_consumed`. Useful when loading part of a larger
+          but will fail `assert_consumed`. Useful when loading part of a larger
           checkpoint into a new Python program, e.g. a training checkpoint with
           a `tf.compat.v1.train.Optimizer` was saved but only the state required
-          for
-          inference is being loaded. This method returns the status object, and
-          so may be chained with `initialize_or_restore` or `run_restore_ops`.
+          for inference is being loaded. This method returns the status object,
+          and so may be chained with `initialize_or_restore` or
+          `run_restore_ops`.
 
       * `assert_nontrivial_match()`: Asserts that something aside from the root
           object was matched. This is a very weak assertion, but is useful for
@@ -1978,7 +2006,7 @@ class Checkpoint(tracking.AutoTrackable):
     self._save_assign_op = None
 
     if root:
-      _assert_trackable(root)
+      _assert_trackable(root, "root")
       saver_root = root
       attached_dependencies = []
 
@@ -1997,13 +2025,14 @@ class Checkpoint(tracking.AutoTrackable):
       # Call getattr instead of directly using v because setattr converts
       # v to a Trackable data structure when v is a list/dict/tuple.
       converted_v = getattr(self, k)
-      _assert_trackable(converted_v)
+      _assert_trackable(converted_v, k)
 
       if root:
         # Make sure that root doesn't already have dependencies with these names
         child = root._lookup_dependency(k)
         if child is None:
-          attached_dependencies.append(base.TrackableReference(k, converted_v))
+          attached_dependencies.append(
+              base.WeakTrackableReference(k, converted_v))
         elif child != converted_v:
           raise ValueError(
               f"Cannot create a Checkpoint with keyword argument {k} if "
@@ -2029,6 +2058,10 @@ class Checkpoint(tracking.AutoTrackable):
                 trainable=False))
         if self._attached_dependencies is not None:
           self._attached_dependencies.append(
+              # Store a stronge reference to the `save_counter`, so that if the
+              # `Checkpoint` object is deleted, the `save_counter` does not get
+              # deleted immediately. (The LoadStatus object needs to indirectly
+              # reference the counter through the ObjectGraphView).
               base.TrackableReference("save_counter", self._save_counter))
           # When loading a checkpoint, the save counter is created after
           # the checkpoint has been loaded, so it must be handled in a deferred
@@ -2059,7 +2092,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.write("/tmp/ckpt")
 
     # Later, read the checkpoint with read()
-    checkpoint.read("/tmp/ckpt").assert_consumed()
+    checkpoint.read("/tmp/ckpt")
 
     # You can also pass options to write() and read(). For example this
     # runs the IO ops on the localhost:
@@ -2067,7 +2100,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.write("/tmp/ckpt", options=options)
 
     # Later, read the checkpoint with read()
-    checkpoint.read("/tmp/ckpt", options=options).assert_consumed()
+    checkpoint.read("/tmp/ckpt", options=options)
     ```
 
     Args:
@@ -2096,14 +2129,16 @@ class Checkpoint(tracking.AutoTrackable):
       _END_TIME_OF_LAST_WRITE = end_time
 
     if tensor_util.is_tf_type(output):
+      # Convert to numpy if not `tf.function` building.
       if context.executing_eagerly():
-        return compat.as_str(output.numpy())
-      else:
-        # Function building
-        return output
+        output = compat.as_str(output.numpy())
     else:
       # Graph + Session, so we already session.ran it.
-      return compat.as_str(output)
+      output = compat.as_str(output)
+
+    metrics.RecordCheckpointSize(
+        api_label=_CHECKPOINT_V2, filesize=_get_checkpoint_size(output))
+    return output
 
   @property
   def save_counter(self):
@@ -2137,7 +2172,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.save("/tmp/ckpt")
 
     # Later, read the checkpoint with restore()
-    checkpoint.restore("/tmp/ckpt").assert_consumed()
+    checkpoint.restore("/tmp/ckpt")
 
     # You can also pass options to save() and restore(). For example this
     # runs the IO ops on the localhost:
@@ -2145,7 +2180,7 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.save("/tmp/ckpt", options=options)
 
     # Later, read the checkpoint with restore()
-    checkpoint.restore("/tmp/ckpt", options=options).assert_consumed()
+    checkpoint.restore("/tmp/ckpt", options=options)
     ```
 
     Args:
@@ -2265,16 +2300,11 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint.restore(path, options=options)
     ```
 
-    To ensure that loading is complete and no more assignments will take place,
-    use the `assert_consumed()` method of the status object returned by
-    `restore()`:
+    To ensure that loading is complete and no more deferred restorations will
+    take place, use the `assert_consumed()` method of the status object returned
+    by `restore()`:
 
     ```python
-    checkpoint = tf.train.Checkpoint( ... )
-    checkpoint.restore(path).assert_consumed()
-
-    # You can additionally pass options to restore():
-    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
     checkpoint.restore(path, options=options).assert_consumed()
     ```
 

@@ -1,7 +1,7 @@
 path: "tensorflow.layers.Dropout"
 tf_class {
   is_instance: "<class \'keras.legacy_tf_layers.core.Dropout\'>"
-  is_instance: "<class \'keras.layers.core.dropout.Dropout\'>"
+  is_instance: "<class \'keras.layers.regularization.dropout.Dropout\'>"
   is_instance: "<class \'keras.engine.base_layer.BaseRandomLayer\'>"
   is_instance: "<class \'keras.legacy_tf_layers.base.Layer\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"

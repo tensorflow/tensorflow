@@ -91,7 +91,7 @@ void InitTextFileToImportTestPass::runOnOperation() {
         continue;
       }
 
-      op.valueAttr(DenseStringElementsAttr::get(shaped_type, {filename}));
+      op.setValueAttr(DenseStringElementsAttr::get(shaped_type, {filename}));
     }
   }
 

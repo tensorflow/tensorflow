@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/tfrt/utils/thread_pool.h"
@@ -28,8 +29,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
-
-using ::tensorflow::testing::IsOk;
 
 const int32_t kNumThreads = 2;
 
@@ -56,9 +55,10 @@ TEST_F(TfThreadpoolWorkQueueTest, InitializeRequestOk) {
   tfrt::RequestContextBuilder ctx_builder(/*host=*/nullptr,
                                           /*resource_context=*/nullptr);
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-  EXPECT_THAT(
-      tf_threadpool_cwq_.InitializeRequest(&ctx_builder, &intra_op_threadpool),
-      IsOk());
+  auto queue =
+      tf_threadpool_cwq_.InitializeRequest(&ctx_builder, &intra_op_threadpool);
+  TF_ASSERT_OK(queue.status());
+  EXPECT_EQ(*queue, nullptr);
   EXPECT_EQ(intra_op_threadpool, &intra_op_threadpool_);
 }
 

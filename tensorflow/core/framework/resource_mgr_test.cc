@@ -168,13 +168,9 @@ TEST(ResourceMgrTest, CreateUnowned) {
   HasError(FindErr<Resource>(rm, "foo", "xxx"), error::NOT_FOUND,
            "Resource foo/xxx");
 
-  // Delete foo/bar/Resource.
-  TF_CHECK_OK(rm.Delete<Resource>("foo", "bar"));
-  HasError(FindErr<Resource>(rm, "foo", "bar"), error::NOT_FOUND,
-           "Resource foo/bar");
-  // Deleting foo/bar/Resource a second time is not OK.
-  HasError(rm.Delete<Resource>("foo", "bar"), error::NOT_FOUND,
-           "Resource foo/bar");
+  // Deleting foo/bar/Resource is not OK because it is not owned by the manager.
+  HasError(rm.Delete<Resource>("foo", "bar"), error::INTERNAL,
+           "Cannot delete an unowned Resource foo/bar");
 
   TF_CHECK_OK(rm.CreateUnowned("foo", "bar", kitty.get()));
   EXPECT_TRUE(kitty->RefCountIsOne());

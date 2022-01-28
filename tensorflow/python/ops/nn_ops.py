@@ -282,7 +282,7 @@ def _non_atrous_convolution(
     return op(input, filter)
 
 
-class _NonAtrousConvolution(object):
+class _NonAtrousConvolution:
   """Helper class for _non_atrous_convolution.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -694,7 +694,7 @@ def with_space_to_batch(
   return new_op(input, None)
 
 
-class _WithSpaceToBatch(object):
+class _WithSpaceToBatch:
   """Helper class for with_space_to_batch.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -1032,7 +1032,7 @@ def convolution(
      num_input_channels,
      num_output_channels],
 
-  an optional `dilation_rate` tensor of shape [N] (defaulting to [1]*N)
+  an optional `dilation_rate` tensor of shape N (defaulting to [1]*N)
   specifying the filter upsampling/input downsampling rate, and an optional list
   of N `strides` (defaulting [1]*N), this computes for each N-D spatial output
   position (x[0], ..., x[N-1]):
@@ -1305,7 +1305,7 @@ def convolution_internal(
       return op(input, filters)
 
 
-class Convolution(object):
+class Convolution:
   """Helper class for convolution.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -3591,6 +3591,7 @@ crelu_v2.__doc__ = crelu.__doc__
 
 
 @tf_export("nn.relu6")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
@@ -3627,6 +3628,7 @@ def relu6(features, name=None):
 
 
 @tf_export("nn.leaky_relu")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
@@ -3661,6 +3663,7 @@ def leaky_relu(features, alpha=0.2, name=None):
 
 
 @tf_export("nn.gelu", v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def gelu(features, approximate=False, name=None):
   """Compute the Gaussian Error Linear Unit (GELU) activation function.
@@ -3828,9 +3831,10 @@ def softmax_v2(logits, axis=None, name=None):
   is 1.
 
   This function performs the equivalent of
-
-      softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
-
+  
+  ```
+  softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis, keepdims=True)
+  ```
   Example usage:
 
   >>> softmax = tf.nn.softmax([-1, 0., 1.])
@@ -3873,6 +3877,7 @@ softmax.__doc__ = softmax_v2.__doc__
 
 
 @tf_export(v1=["nn.log_softmax", "math.log_softmax"])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def log_softmax(logits, axis=None, name=None, dim=None):
@@ -4631,8 +4636,8 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
   window in `value`.
 
   Args:
-    input: A 5-D `Tensor` of shape `[batch, height, width, channels]` and type
-      `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+    input: A 5-D `Tensor` of shape `[batch, depth, height, width, channels]`
+      and type `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
     ksize: An int or list of `ints` that has length `1`, `3` or `5`. The size of
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `3` or `5`. The
@@ -6397,3 +6402,11 @@ def isotonic_regression(inputs, decreasing=True, axis=-1):
       return -output, segments
 
   return _wrap_2d_function(inputs, compute_on_matrix, axis)
+
+
+# Register elementwise ops that don't have Python wrappers.
+# Unary elementwise ops.
+dispatch.register_unary_elementwise_api(gen_nn_ops.elu)
+dispatch.register_unary_elementwise_api(gen_nn_ops.relu)
+dispatch.register_unary_elementwise_api(gen_nn_ops.selu)
+dispatch.register_unary_elementwise_api(gen_nn_ops.softsign)

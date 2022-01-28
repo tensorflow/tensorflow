@@ -666,30 +666,16 @@ class CudnnFilterDescriptor {
 //          "cudnn_version_end"   : -1
 //        }
 // ]})"
-// We skip eng0 in the static filter because they are too slow. Additionally,
-// users can specify an additional errata JSON file via
+// We skip a non-existing eng999 in the static filter as a placeholder.
+// Additionally, users can specify an additional errata JSON file via
 // CUDNN_ERRATA_JSON_FILE at runtime.
 const json* CudnnExecutionPlanEngineFilterStatic() {
   static absl::string_view filter_str = R"({
       "version" : 1,
         "rules"   : [
-          { "rule_id"             : "ConvFwd_eng0",
+          { "rule_id"             : "ConvFwd_eng999",
             "operation"           : "ConvFwd",
-            "engine"              : 0,
-            "knob"                : [],
-            "cudnn_version_start" : 8000,
-            "cudnn_version_end"   : -1
-          },
-          { "rule_id"             : "ConvBwdData_eng0",
-            "operation"           : "ConvBwdData",
-            "engine"              : 0,
-            "knob"                : [],
-            "cudnn_version_start" : 8000,
-            "cudnn_version_end"   : -1
-          },
-          { "rule_id"             : "ConvBwdFilter_eng0",
-            "operation"           : "ConvBwdFilter",
-            "engine"              : 0,
+            "engine"              : 999,
             "knob"                : [],
             "cudnn_version_start" : 8000,
             "cudnn_version_end"   : -1
@@ -2820,12 +2806,17 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
 
   // Query the size of the workspace and allocate it.
   size_t size_in_bytes;
-  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionForwardWorkspaceSize(
-      cudnn.handle(),
-      /*xDesc=*/input_nd.handle(),
-      /*wDesc=*/filter.handle(), /*convDesc=*/conv.handle(),
-      /*yDesc=*/output_nd.handle(), /*algo=*/ToConvForwardAlgo(algorithm_desc),
-      /*sizeInBytes=*/&size_in_bytes));
+  if (algorithm_desc.workspace_size()) {
+    size_in_bytes = *algorithm_desc.workspace_size();
+  } else {
+    RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionForwardWorkspaceSize(
+        cudnn.handle(),
+        /*xDesc=*/input_nd.handle(),
+        /*wDesc=*/filter.handle(), /*convDesc=*/conv.handle(),
+        /*yDesc=*/output_nd.handle(),
+        /*algo=*/ToConvForwardAlgo(algorithm_desc),
+        /*sizeInBytes=*/&size_in_bytes));
+  }
 
   int64_t size_in_bytes_int64_t = size_in_bytes;
 
@@ -2864,14 +2855,18 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
 
   // Query the size of the workspace and allocate it.
   size_t size_in_bytes;
-  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionBackwardDataWorkspaceSize(
-      cudnn.handle(),
-      /*wDesc=*/filter.handle(),
-      /*dyDesc=*/output_nd.handle(),
-      /*convDesc=*/conv.handle(),
-      /*dxDesc=*/input_nd.handle(),
-      /*algo=*/ToConvBackwardDataAlgo(algorithm_desc),
-      /*sizeInBytes=*/&size_in_bytes));
+  if (algorithm_desc.workspace_size()) {
+    size_in_bytes = *algorithm_desc.workspace_size();
+  } else {
+    RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionBackwardDataWorkspaceSize(
+        cudnn.handle(),
+        /*wDesc=*/filter.handle(),
+        /*dyDesc=*/output_nd.handle(),
+        /*convDesc=*/conv.handle(),
+        /*dxDesc=*/input_nd.handle(),
+        /*algo=*/ToConvBackwardDataAlgo(algorithm_desc),
+        /*sizeInBytes=*/&size_in_bytes));
+  }
 
   int64_t size_in_bytes_int64_t = size_in_bytes;
 
@@ -2910,14 +2905,18 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
 
   // Query the size of the workspace and allocate it.
   size_t size_in_bytes;
-  RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionBackwardFilterWorkspaceSize(
-      cudnn.handle(),
-      /*xDesc=*/input_nd.handle(),
-      /*dyDesc=*/output_nd.handle(),
-      /*convDesc=*/conv.handle(),
-      /*gradDesc=*/filter.handle(),
-      /*algo=*/ToConvBackwardFilterAlgo(algorithm_desc),
-      /*sizeInBytes=*/&size_in_bytes));
+  if (algorithm_desc.workspace_size()) {
+    size_in_bytes = *algorithm_desc.workspace_size();
+  } else {
+    RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionBackwardFilterWorkspaceSize(
+        cudnn.handle(),
+        /*xDesc=*/input_nd.handle(),
+        /*dyDesc=*/output_nd.handle(),
+        /*convDesc=*/conv.handle(),
+        /*gradDesc=*/filter.handle(),
+        /*algo=*/ToConvBackwardFilterAlgo(algorithm_desc),
+        /*sizeInBytes=*/&size_in_bytes));
+  }
 
   int64_t size_in_bytes_int64_t = size_in_bytes;
 
@@ -2957,6 +2956,9 @@ port::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
 
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
 dnn::DataType GetConvAccumulatorType(dnn::DataType data_type);
+#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+cudnnBackendHeurMode_t GetCudnnFrontendHeurMode();
+#endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     Stream* stream, const CudnnHandle& cudnn,
@@ -3324,6 +3326,16 @@ dnn::DataType GetConvAccumulatorType(dnn::DataType data_type) {
 }
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+cudnnBackendHeurMode_t GetCudnnFrontendHeurMode() {
+#if CUDNN_VERSION >= 8300
+  return CUDNN_HEUR_MODE_B;
+#else
+  return CUDNN_HEUR_MODE_INSTANT;
+#endif  // CUDNN_VERSION >= 8300
+}
+#endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
+
+#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 cudnnBackendDescriptorType_t GetCudnnConvolutionType(
     dnn::ConvolutionKind kind) {
   cudnnBackendDescriptorType_t conv_mode;
@@ -3405,7 +3417,7 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
 
   if (vector_size == 32) {
     return port::InternalError(
-        "cuDNN frontend doesn't support int8x32 at the moment.");
+        "cuDNN frontend doesn't support Tx32 at the moment.");
   }
 
   auto tensor_x = cudnn_frontend::TensorBuilder()
@@ -3546,8 +3558,7 @@ GetCudnnFusedOperationGraph(
 
   if (vector_size == 32) {
     return port::InternalError(
-        "cuDNN frontend doesn't support int8x32 at the "
-        "moment.");
+        "cuDNN frontend doesn't support Tx32 at the moment.");
   }
 
   auto tensor_x = cudnn_frontend::TensorBuilder()
@@ -3581,7 +3592,7 @@ GetCudnnFusedOperationGraph(
                       .setStrides(output_dims.size(), &output_strides[0])
                       .setId('z')
                       .setAlignment(32)
-                      .setDataType(cudnn_input_type)
+                      .setDataType(cudnn_output_type)
                       .setVectorCountAndDimension(vector_size, vector_dim)
                       .build();
   RETURN_MSG_IF_CUDNN_ERROR(tensor_z);
@@ -3802,7 +3813,7 @@ GetFirstWorkingExecutionPlan(
     ScratchAllocator* scratch_allocator) {
   auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
                         .setOperationGraph(*op_graph)
-                        .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
+                        .setHeurMode(GetCudnnFrontendHeurMode())
                         .build();
   RETURN_MSG_IF_CUDNN_ERROR(heuristics);
 
@@ -3990,13 +4001,11 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
  public:
   // Queries the workspace size and constructs a 'CudnnLegacyConvRunner'.
   static port::StatusOr<CudnnLegacyConvRunner> Create(
-      GpuExecutor* parent, CudnnAccess* cudnn, dnn::AlgorithmDesc algo,
-      dnn::DataType input_type, dnn::DataType output_type,
-      dnn::ConvolutionKind kind, CudnnTensorDescriptor input_nd,
-      CudnnTensorDescriptor output_nd, CudnnFilterDescriptor filter,
-      CudnnConvolutionDescriptor conv) {
-    auto handle = cudnn->GetHandle(parent, nullptr);
-
+      GpuExecutor* parent, Stream* stream, CudnnAccess* cudnn,
+      const dnn::AlgorithmDesc& algo, dnn::DataType input_type,
+      dnn::DataType output_type, dnn::ConvolutionKind kind,
+      CudnnTensorDescriptor input_nd, CudnnTensorDescriptor output_nd,
+      CudnnFilterDescriptor filter, CudnnConvolutionDescriptor conv) {
     size_t workspace_size;
     if (algo.workspace_size()) {
       workspace_size = *algo.workspace_size();
@@ -4004,6 +4013,8 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
       // For old AlgorithmProtos loaded from serialized autotune maps and for
       // AlgorithmDescs constructed by manually specifying an algorithm ID, we
       // need to compute the workspace size here.
+      auto handle = cudnn->GetHandle(parent, stream);
+
       switch (kind) {
         case dnn::ConvolutionKind::FORWARD:
           RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionForwardWorkspaceSize(
@@ -4260,10 +4271,10 @@ port::Status CudnnSupport::DoConvolve(
 
   SE_ASSIGN_OR_RETURN(
       auto runner,
-      CudnnLegacyConvRunner::Create(parent_, cudnn_.get(), algorithm_desc,
-                                    element_type, output_type, kind,
-                                    std::move(input_nd), std::move(output_nd),
-                                    std::move(filter_nd), std::move(conv)));
+      CudnnLegacyConvRunner::Create(
+          parent_, stream, cudnn_.get(), algorithm_desc, element_type,
+          output_type, kind, std::move(input_nd), std::move(output_nd),
+          std::move(filter_nd), std::move(conv)));
   return runner(stream, input_data, filter_data, output_data, scratch_memory,
                 output_profile_result);
 }
@@ -4554,10 +4565,37 @@ port::Status CudnnSupport::GetConvolveRunners(
     DeviceMemoryBase /*filter_data*/,
     const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase /*output_data*/,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     ScratchAllocator* /*scratch_allocator*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
-  if (!use_cudnn_frontend) {
+  // All current versions of the frontend API lack support for Tx32
+  // convolutions.
+  const bool is_unsupported_x32 =
+      input_descriptor.layout() == dnn::kBatchDepthYX32;
+
+  // cuDNN frontend support became sufficiently stable to use in 8.1.
+  // TODO(awpr): remove this condition once support for cuDNN 8.0 is dropped.
+  const bool is_pre_frontend_cudnn = CUDNN_VERSION < 8100;
+
+  const bool actually_use_cudnn_frontend =
+      use_cudnn_frontend && !is_pre_frontend_cudnn && !is_unsupported_x32;
+
+  if (use_cudnn_frontend && !actually_use_cudnn_frontend) {
+    // This will happen once per unique conv configuration/shape that gets
+    // affected (and not, for example, on every conv launch).  Confusion over
+    // whether this has happened or not has repeatedly wasted a lot of time
+    // debugging, so it's getting promoted to an error log.
+    LOG(ERROR) << "Disabling cuDNN frontend for the following convolution:\n"
+               << "  input: " << input_descriptor.ToString() << "\n"
+               << "  filter: " << filter_descriptor.ToString() << "\n"
+               << "  " << convolution_descriptor.ToString() << "\n"
+               << "  ... because "
+               << (is_unsupported_x32
+                       ? "Tx32 convolutions are unsupported."
+                       : "the current cuDNN version does not support it.");
+  }
+
+  if (!actually_use_cudnn_frontend) {
     auto cuda_compute_capability = stream->GetCudaComputeCapability();
     std::vector<dnn::AlgorithmDesc> algorithms;
     bool got_algos = false;
@@ -4585,7 +4623,7 @@ port::Status CudnnSupport::GetConvolveRunners(
 
     for (const auto& algo : algorithms) {
       auto runner_or = ConvolveRunnerFromDesc(
-          algo, kind, input_type, output_type, input_descriptor,
+          stream, algo, kind, input_type, output_type, input_descriptor,
           filter_descriptor, output_descriptor, convolution_descriptor);
       if (!runner_or.ok()) {
         // Failures here can result from trying to query the workspace size for
@@ -4613,31 +4651,6 @@ port::Status CudnnSupport::GetConvolveRunners(
                              filter_descriptor, output_descriptor,
                              convolution_descriptor, cudnn));
 
-  auto heur = cudnn_frontend::EngineHeuristicsBuilder()
-                  .setOperationGraph(*op_graph)
-                  .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
-                  .build();
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-
-  auto fallback = cudnn_frontend::EngineFallbackListBuilder()
-                      .setOperationGraph(*op_graph)
-                      .setOperation(GetCudnnConvolutionType(kind))
-                      .build();
-  RETURN_MSG_IF_CUDNN_ERROR(fallback);
-
-  // cuDNN frontend sneakily puts error messages on the object and returns
-  // partially-initialized results when there's an error; make sure to check
-  // them.
-  int64_t engine_count = heur.getEngineConfigCount();
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-  auto& heur_configs = heur.getEngineConfig(engine_count);
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-
-  auto& fallback_configs = fallback.getFallbackList();
-
-  VLOG(4) << "\nHeuristics engine configs size: " << heur_configs.size()
-          << "\nFallback engine configs size: " << fallback_configs.size();
-
   cudnn_frontend::EngineConfigList filtered_configs;
   auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
     return GenericEngineFilter(
@@ -4647,14 +4660,43 @@ port::Status CudnnSupport::GetConvolveRunners(
         /*disable_tensor_core*/ !IsTensorMathEnabled(stream, input_type));
   };
 
-  cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
-  cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
+  if (!use_fallback) {
+    auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
+                          .setOperationGraph(*op_graph)
+                          .setHeurMode(GetCudnnFrontendHeurMode())
+                          .build();
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+
+    // cuDNN frontend sneakily puts error messages on the object and returns
+    // partially-initialized results when there's an error; make sure to check
+    // them.
+    int64_t engine_count = heuristics.getEngineConfigCount();
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+    auto& heuristics_configs = heuristics.getEngineConfig(engine_count);
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+    VLOG(4) << "\nHeuristics engine configs size: "
+            << heuristics_configs.size();
+
+    cudnn_frontend::filter(heuristics_configs, filtered_configs,
+                           generic_filter_fn);
+  } else {
+    auto fallback = cudnn_frontend::EngineFallbackListBuilder()
+                        .setOperationGraph(*op_graph)
+                        .setOperation(GetCudnnConvolutionType(kind))
+                        .build();
+    RETURN_MSG_IF_CUDNN_ERROR(fallback);
+
+    auto& fallback_configs = fallback.getFallbackList();
+    VLOG(4) << "\nFallback engine configs size: " << fallback_configs.size();
+
+    cudnn_frontend::filter(fallback_configs, filtered_configs,
+                           generic_filter_fn);
+  }
+  VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   auto fn = []() { return true; };
   auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
   auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
-
-  VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
   for (int i = 0; i < filtered_configs.size(); i++) {
@@ -4712,9 +4754,9 @@ port::Status CudnnSupport::GetConvolveRunners(
 
 port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
 CudnnSupport::ConvolveRunnerFromDesc(
-    const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-    dnn::DataType input_type, dnn::DataType output_type,
-    const dnn::BatchDescriptor& input_descriptor,
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor) {
@@ -4727,8 +4769,8 @@ CudnnSupport::ConvolveRunnerFromDesc(
     SE_ASSIGN_OR_RETURN(
         auto runner,
         CudnnLegacyConvRunner::Create(
-            parent_, cudnn_.get(), algorithm_desc, input_type, output_type,
-            kind,
+            parent_, stream, cudnn_.get(), algorithm_desc, input_type,
+            output_type, kind,
             /* input_nd = */
             CudnnTensorDescriptor(
                 input_descriptor,
@@ -4736,7 +4778,7 @@ CudnnSupport::ConvolveRunnerFromDesc(
             /* output_nd = */
             CudnnTensorDescriptor(
                 output_descriptor,
-                ToCudnnDataType(input_type, output_descriptor.layout())),
+                ToCudnnDataType(output_type, output_descriptor.layout())),
             /* filter = */
             CudnnFilterDescriptor(
                 filter_descriptor,
@@ -4747,7 +4789,7 @@ CudnnSupport::ConvolveRunnerFromDesc(
   }
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
-  auto cudnn = cudnn_->GetHandle(parent_, nullptr);
+  auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   SE_ASSIGN_OR_RETURN(
       auto op_graph,
@@ -4862,18 +4904,19 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
  public:
   // Queries the workspace size and constructs a 'CudnnLegacyFusedConvRunner'.
   static port::StatusOr<CudnnLegacyFusedConvRunner> Create(
-      GpuExecutor* parent, CudnnAccess* cudnn, dnn::AlgorithmDesc algo,
-      dnn::DataType input_type, double conv_scale, double side_input_scale,
+      GpuExecutor* parent, Stream* stream, CudnnAccess* cudnn,
+      const dnn::AlgorithmDesc& algo, dnn::DataType input_type,
+      double conv_scale, double side_input_scale,
       CudnnTensorDescriptor input_nd, CudnnTensorDescriptor output_nd,
       CudnnFilterDescriptor filter, CudnnTensorDescriptor bias_nd,
       CudnnConvolutionDescriptor conv,
       CudnnActivationDescriptor activation_desc) {
-    auto handle = cudnn->GetHandle(parent, nullptr);
-
     size_t workspace_size;
     if (algo.workspace_size()) {
       workspace_size = *algo.workspace_size();
     } else {
+      auto handle = cudnn->GetHandle(parent, stream);
+
       RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionForwardWorkspaceSize(
           handle.handle(),
           /*xDesc=*/input_nd.handle(),
@@ -5044,10 +5087,10 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
 
 port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
 CudnnSupport::FusedConvolveRunnerFromDesc(
-    const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-    dnn::DataType input_type, dnn::DataType bias_type,
-    dnn::DataType output_type, double conv_scale, double side_input_scale,
-    const dnn::BatchDescriptor& input_descriptor,
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,
+    double side_input_scale, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
@@ -5083,15 +5126,15 @@ CudnnSupport::FusedConvolveRunnerFromDesc(
     SE_ASSIGN_OR_RETURN(
         auto runner,
         CudnnLegacyFusedConvRunner::Create(
-            parent_, cudnn_.get(), algorithm_desc, input_type, conv_scale,
-            side_input_scale, std::move(conv_input_nd), std::move(output_nd),
-            std::move(filter), std::move(bias_nd), std::move(conv),
-            std::move(activation_desc)));
+            parent_, stream, cudnn_.get(), algorithm_desc, input_type,
+            conv_scale, side_input_scale, std::move(conv_input_nd),
+            std::move(output_nd), std::move(filter), std::move(bias_nd),
+            std::move(conv), std::move(activation_desc)));
     return {std::make_unique<CudnnLegacyFusedConvRunner>(std::move(runner))};
   }
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
-  auto cudnn = cudnn_->GetHandle(parent_, nullptr);
+  auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   SE_ASSIGN_OR_RETURN(auto op_graph,
                       GetCudnnFusedOperationGraph(
@@ -5121,9 +5164,51 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     const dnn::ActivationMode activation_mode,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
+  // Fused convolutions with identity activations are broken in that they
+  // implicitly do ReLU on some engines, and we can't reliably detect which
+  // ones.
+  const bool is_broken_identity_fused_conv =
+#if CUDNN_VERSION < 8205
+      activation_mode == dnn::ActivationMode::kNone;
+#else
+      false;
+#endif
+
+  // All current versions of the frontend API lack support for Tx32
+  // convolutions.
+  const bool is_unsupported_x32 =
+      input_descriptor.layout() == dnn::kBatchDepthYX32;
+
+  // cuDNN frontend support became sufficiently stable to use in 8.1.
+  // TODO(awpr): remove this condition once support for cuDNN 8.0 is dropped.
+  const bool is_pre_frontend_cudnn = CUDNN_VERSION < 8100;
+
+  const bool actually_use_cudnn_frontend =
+      use_cudnn_frontend && !is_pre_frontend_cudnn &&
+      !is_broken_identity_fused_conv && !is_unsupported_x32;
+
+  if (use_cudnn_frontend && !actually_use_cudnn_frontend) {
+    const char* reason = "the current cuDNN version does not support it.";
+    if (is_unsupported_x32) {
+      reason = "Tx32 convolutions are unsupported.";
+    } else if (is_broken_identity_fused_conv) {
+      reason = "it uses an identity activation.";
+    }
+
+    // This will happen once per unique conv configuration/shape that gets
+    // affected (and not, for example, on every conv launch).  Confusion over
+    // whether this has happened or not has repeatedly wasted a lot of time
+    // debugging, so it's getting promoted to an error.
+    LOG(ERROR) << "Disabling cuDNN frontend for the following convolution:\n"
+               << "  input: " << input_descriptor.ToString() << "\n"
+               << "  filter: " << filter_descriptor.ToString() << "\n"
+               << "  " << convolution_descriptor.ToString() << "\n"
+               << "  ... because " << reason;
+  }
+
   if (input_type == dnn::DataType::kInt8 &&
       !stream->GetCudaComputeCapability().IsAtLeast(6, 1)) {
     return port::UnimplementedError(
@@ -5146,7 +5231,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
                         "Relu or None activation.");
   }
 
-  if (!use_cudnn_frontend) {
+  if (!actually_use_cudnn_frontend) {
     std::vector<dnn::AlgorithmDesc> algorithms;
 
     auto cuda_compute_capability = stream->GetCudaComputeCapability();
@@ -5164,7 +5249,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
         continue;
       }
       auto runner_or = FusedConvolveRunnerFromDesc(
-          algo, kind, input_type, bias_type, output_type, conv_scale,
+          stream, algo, kind, input_type, bias_type, output_type, conv_scale,
           side_input_scale, input_descriptor, filter_descriptor,
           bias_descriptor, output_descriptor, convolution_descriptor,
           activation_mode);
@@ -5192,32 +5277,6 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
   }
   auto op_graph = op_graph_status.ConsumeValueOrDie();
 
-  auto heur = cudnn_frontend::EngineHeuristicsBuilder()
-                  .setOperationGraph(*op_graph)
-                  .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
-                  .build();
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-
-  auto fallback =
-      cudnn_frontend::EngineFallbackListBuilder()
-          .setOperationGraph(*op_graph)
-          .setOperation(GetCudnnConvolutionType(dnn::ConvolutionKind::FORWARD))
-          .build();
-  RETURN_MSG_IF_CUDNN_ERROR(fallback);
-
-  // cuDNN frontend sneakily puts error messages on the object and returns
-  // partially-initialized results when there's an error; make sure to check
-  // them.
-  int64_t engine_count = heur.getEngineConfigCount();
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-  auto& heur_configs = heur.getEngineConfig(engine_count);
-  RETURN_MSG_IF_CUDNN_ERROR(heur);
-
-  auto& fallback_configs = fallback.getFallbackList();
-
-  VLOG(4) << "\nHeuristics engine configs size: " << heur_configs.size()
-          << "\nFallback engine configs size: " << fallback_configs.size();
-
   cudnn_frontend::EngineConfigList filtered_configs;
   auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
     return GenericEngineFilter(
@@ -5227,14 +5286,44 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
         /*disable_tensor_core*/ !IsTensorMathEnabled(stream, input_type));
   };
 
-  cudnn_frontend::filter(heur_configs, filtered_configs, generic_filter_fn);
-  cudnn_frontend::filter(fallback_configs, filtered_configs, generic_filter_fn);
+  if (!use_fallback) {
+    auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
+                          .setOperationGraph(*op_graph)
+                          .setHeurMode(GetCudnnFrontendHeurMode())
+                          .build();
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+
+    // cuDNN frontend sneakily puts error messages on the object and returns
+    // partially-initialized results when there's an error; make sure to check
+    // them.
+    int64_t engine_count = heuristics.getEngineConfigCount();
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+    auto& heuristics_configs = heuristics.getEngineConfig(engine_count);
+    RETURN_MSG_IF_CUDNN_ERROR(heuristics);
+    VLOG(4) << "\nHeuristics engine configs size: "
+            << heuristics_configs.size();
+
+    cudnn_frontend::filter(heuristics_configs, filtered_configs,
+                           generic_filter_fn);
+  } else {
+    auto fallback = cudnn_frontend::EngineFallbackListBuilder()
+                        .setOperationGraph(*op_graph)
+                        .setOperation(GetCudnnConvolutionType(
+                            dnn::ConvolutionKind::FORWARD))
+                        .build();
+    RETURN_MSG_IF_CUDNN_ERROR(fallback);
+
+    auto& fallback_configs = fallback.getFallbackList();
+    VLOG(4) << "\nFallback engine configs size: " << fallback_configs.size();
+
+    cudnn_frontend::filter(fallback_configs, filtered_configs,
+                           generic_filter_fn);
+  }
+  VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   auto fn = []() { return true; };
   auto maybe_json_handle_static = CudnnExecutionPlanEngineFilterStatic();
   auto maybe_json_handle_runtime = CudnnExecutionPlanEngineFilterRuntime();
-
-  VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();
 
   out_exec_plans->clear();
   for (int i = 0; i < filtered_configs.size(); i++) {
@@ -5861,10 +5950,10 @@ port::Status CudnnSupport::DoFusedConvolve(
   SE_ASSIGN_OR_RETURN(
       auto runner,
       CudnnLegacyFusedConvRunner::Create(
-          parent_, cudnn_.get(), algo_desc, input_type, conv_scale,
-          side_input_scale, std::move(conv_input_nd), std::move(output_nd),
-          std::move(filter), std::move(bias_nd), std::move(conv),
-          std::move(activation_desc)));
+          parent_, stream, cudnn_.get(), std::move(algo_desc), input_type,
+          conv_scale, side_input_scale, std::move(conv_input_nd),
+          std::move(output_nd), std::move(filter), std::move(bias_nd),
+          std::move(conv), std::move(activation_desc)));
 
   return runner(stream, conv_input_data, filter_data, side_input_data, biases,
                 output_data, scratch, output_profile_result);

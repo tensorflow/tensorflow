@@ -72,6 +72,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
     TfrtTpuCompileOptions tpu_compile_options;
     tpu_compile_options.move_resource_gather_to_host =
         options.tpu_move_resource_gather_to_host;
+    tpu_compile_options.gather_table_width_threshold_bytes =
+        options.tpu_gather_table_width_threshold_bytes;
 
     auto backward_compat_result =
         tensorflow::RunTPUBackwardCompatConversion(module, tpu_compile_options);
@@ -86,6 +88,13 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
     TF_RETURN_IF_ERROR(
         mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
+  } else if (options.tpu_target == TfrtTpuInfraTarget::kTfFallback) {
+    auto tpu_partitioned_call_fallback_compat_result =
+        tensorflow::RunTPUPartitionedCallFallbackCompatConversion(module);
+    if (mlir::failed(tpu_partitioned_call_fallback_compat_result)) {
+      return diag_handler.Combine(tensorflow::errors::Internal(
+          "Failed to process TPUPartitionedCallOp for fallback execution"));
+    }
   }
 
   if (VLOG_IS_ON(1)) {

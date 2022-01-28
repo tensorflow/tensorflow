@@ -32,10 +32,13 @@ namespace mlir {
 namespace TFL {
 
 namespace {
-// If sparsity level is below this threadshold, keep the tensor in dense format.
-const float kMinSparsityLevel = 0.3;
-// Heuristic to check if a block configuration is correct.
-const float kBlockOverRandomSparsityRatio = 0.9;
+// If sparsity level is below this threshold, keep the tensor in dense format.
+constexpr float kMinSparsityLevel = 0.3;
+// Heuristic to check if a block configuration is correct for float constants.
+constexpr float kBlockOverRandomSparsityRatio = 0.9;
+// After quantization, some non-zero values are set to 0.
+// Lower the ratio for identifying block configuration for quantized constants.
+constexpr float kBlockOverRandomSparsityRatioQuant = 0.8;
 
 Eigen::half APFloatToEigenHalf(const APFloat& val) {
   uint16_t raw_data = val.bitcastToAPInt().getZExtValue();
@@ -164,8 +167,8 @@ typedef struct InspectResult {
 } InspectResult;
 
 InspectResult InspectWeight(
-    Operation* inst,
-    const std::vector<std::vector<int>>& supported_block_size) {
+    Operation* inst, const std::vector<std::vector<int>>& supported_block_size,
+    const float ratio_threshold) {
   ElementsAttr attr;
   ShapedType type;
   InspectResult result = {};
@@ -201,7 +204,7 @@ InspectResult InspectWeight(
   result.needs_densify = true;
   for (const auto& block_size : supported_block_size) {
     curr_sparsity = CalculateBlockSparsity(attr, type, block_size);
-    if (curr_sparsity / random_sparsity > kBlockOverRandomSparsityRatio) {
+    if (curr_sparsity / random_sparsity > ratio_threshold) {
       selected_block_size = block_size;
       result.can_compress = true;
       result.needs_densify = false;
@@ -327,17 +330,20 @@ void DenseToSparse::runOnFunction() {
       }
 
       ShapedType type;
+      float ratio_threshold = kBlockOverRandomSparsityRatio;
       if (isa<ConstOp>(inst)) {
         supported_block_size = sparse_op.GetFloatBlockSize();
         type = dyn_cast<ConstOp>(inst).getType().cast<ShapedType>();
       } else if (isa<QConstOp>(inst)) {
         supported_block_size = sparse_op.GetQuantizedBlockSize();
         type = dyn_cast<QConstOp>(inst).getType().cast<ShapedType>();
+        ratio_threshold = kBlockOverRandomSparsityRatioQuant;
       } else {
         continue;
       }
 
-      InspectResult result = InspectWeight(inst, supported_block_size);
+      InspectResult result =
+          InspectWeight(inst, supported_block_size, ratio_threshold);
       if (!result.can_compress) {
         continue;
       }

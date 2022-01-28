@@ -283,6 +283,7 @@ tf_xla_py_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
@@ -842,7 +843,6 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform_test",
-        "@six_archive//:six",
     ],
 )
 
@@ -1151,7 +1151,7 @@ tf_xla_py_test(
     name = "reduce_window_test",
     size = "small",
     srcs = ["reduce_window_test.py"],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1549,7 +1549,6 @@ tf_xla_py_test(
     size = "small",
     srcs = ["cast_ops_test.py"],
     disabled_backends = ["cpu_ondemand"],
-    enable_mlir_bridge = False,  # TODO(b/200894060): Re-enable on MLIR bridge.
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2080,6 +2079,24 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "repeat_op_test",
+    size = "medium",
+    srcs = ["repeat_op_test.py"],
+    enable_mlir_bridge = True,
+    shard_count = 5,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
     name = "ensure_shape_op_test",
     size = "medium",
     srcs = ["ensure_shape_op_test.py"],
@@ -2101,16 +2118,13 @@ tf_xla_py_test(
     name = "where_op_test",
     size = "small",
     srcs = ["where_op_test.py"],
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
     enable_mlir_bridge = False,
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
@@ -2136,6 +2150,24 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/ops/risc:risc_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "const_arg_test",
+    size = "small",
+    srcs = ["const_arg_test.py"],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:is_mlir_bridge_test_false",
+        "//tensorflow/python:platform_test",
     ],
 )
 

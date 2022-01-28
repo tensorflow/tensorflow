@@ -24,12 +24,11 @@ namespace full_type {
 
 namespace {
 
-TEST(ReplicateInputs, Default) {
+TEST(ReplicateInput, Default) {
   FullTypeDef t;
-  t.set_type_id(TFT_PRODUCT);
-  t.add_args()->set_type_id(TFT_ARRAY);
+  t.set_type_id(TFT_ARRAY);
 
-  const auto ret = ReplicateInputs()({t});
+  const auto ret = ReplicateInput()({t});
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -38,12 +37,11 @@ TEST(ReplicateInputs, Default) {
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
 }
 
-TEST(ReplicateInputs, Duplicate) {
+TEST(ReplicateInput, Duplicate) {
   FullTypeDef t;
-  t.set_type_id(TFT_PRODUCT);
-  t.add_args()->set_type_id(TFT_ARRAY);
+  t.set_type_id(TFT_ARRAY);
 
-  const auto ret = ReplicateInputs(2)({t});
+  const auto ret = ReplicateInput(0, 2)({t});
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -53,67 +51,327 @@ TEST(ReplicateInputs, Duplicate) {
   EXPECT_EQ(rt.args(1).type_id(), TFT_ARRAY);
 }
 
-TEST(ReplicateInputs, Unset) {
-  FullTypeDef t;
-  t.set_type_id(TFT_UNSET);
-
-  const auto ret = ReplicateInputs()({t});
-  TF_EXPECT_OK(ret.status());
-
-  const FullTypeDef& rt = ret.ValueOrDie();
-  EXPECT_EQ(rt.type_id(), TFT_UNSET);
-}
-
-TEST(ReplicateIdenticalInputs, Single) {
-  FullTypeDef t;
-  t.set_type_id(TFT_PRODUCT);
-  t.add_args()->set_type_id(TFT_ARRAY);
-
-  const auto ret = ReplicateIdenticalInputs()({t});
-  TF_EXPECT_OK(ret.status());
-
-  const FullTypeDef& rt = ret.ValueOrDie();
-  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
-  ASSERT_EQ(rt.args_size(), 1);
-  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
-}
-
-TEST(ReplicateIdenticalInputs, Double) {
-  FullTypeDef t;
-  t.set_type_id(TFT_PRODUCT);
-  t.add_args()->set_type_id(TFT_ARRAY);
-
-  const auto ret = ReplicateIdenticalInputs()({t, t});
-  TF_EXPECT_OK(ret.status());
-
-  const FullTypeDef& rt = ret.ValueOrDie();
-  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
-  ASSERT_EQ(rt.args_size(), 1);
-  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
-}
-
-TEST(ReplicateIdenticalInputs, Unset) {
-  FullTypeDef t;
-  t.set_type_id(TFT_UNSET);
-
-  const auto ret = ReplicateIdenticalInputs()({t});
-  TF_EXPECT_OK(ret.status());
-
-  const FullTypeDef& rt = ret.ValueOrDie();
-  EXPECT_EQ(rt.type_id(), TFT_UNSET);
-}
-
-TEST(ReplicateIdenticalInputs, RejectsMismatched) {
+TEST(ReplicateInput, FirstOfMultipleArgs) {
   FullTypeDef t1;
-  t1.set_type_id(TFT_PRODUCT);
-  t1.add_args()->set_type_id(TFT_ARRAY);
-
+  t1.set_type_id(TFT_ARRAY);
   FullTypeDef t2;
-  t2.set_type_id(TFT_PRODUCT);
+  t2.set_type_id(TFT_TENSOR);
+
+  const auto ret = ReplicateInput(0, 2)({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 2);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  EXPECT_EQ(rt.args(1).type_id(), TFT_ARRAY);
+}
+
+TEST(ReplicateInput, SecondOfMultipleArgs) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_TENSOR);
+
+  const auto ret = ReplicateInput(1, 2)({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 2);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_TENSOR);
+  EXPECT_EQ(rt.args(1).type_id(), TFT_TENSOR);
+}
+
+TEST(ReplicateInput, Unset) {
+  FullTypeDef t;
+
+  const auto ret = ReplicateInput()({t});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_UNSET);
+}
+
+TEST(Merge, Single) {
+  FullTypeDef t;
+  t.set_type_id(TFT_ARRAY);
+
+  const auto ret = Merge()({t});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+}
+
+TEST(Merge, Double) {
+  FullTypeDef t;
+  t.set_type_id(TFT_ARRAY);
+
+  const auto ret = Merge()({t, t});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+}
+
+TEST(Merge, Unset) {
+  FullTypeDef t;
+  t.set_type_id(TFT_UNSET);
+
+  const auto ret = Merge()({t});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_UNSET);
+}
+
+TEST(Merge, UnsetComponents) {
+  FullTypeDef t1;
+  FullTypeDef t2;
+
+  const auto ret = Merge()({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_UNSET);
+}
+
+void ExpectInferredArrayOfTensor(StatusOr<FullTypeDef> ret) {
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_TENSOR);
+}
+
+TEST(Merge, RejectsMismatched) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_TENSOR);
+
+  const auto ret = Merge()({t1, t2});
+  EXPECT_THAT(ret.status().error_message(),
+              ::testing::HasSubstr("expected compatible input types"));
+}
+
+TEST(Merge, UsesPartialInfo) {
+  FullTypeDef t1;
+  FullTypeDef t2;
+  t2.set_type_id(TFT_ARRAY);
   t2.add_args()->set_type_id(TFT_TENSOR);
 
-  const auto ret = ReplicateIdenticalInputs()({t1, t2});
-  EXPECT_FALSE(ret.status().ok());
+  ExpectInferredArrayOfTensor(Merge()({t1, t2}));
+  ExpectInferredArrayOfTensor(Merge()({t2, t1}));
+}
+
+TEST(Merge, SelectsMostSpecificOfSubtypes) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  t1.add_args()->set_type_id(TFT_ANY);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_ARRAY);
+  t2.add_args()->set_type_id(TFT_TENSOR);
+
+  ExpectInferredArrayOfTensor(Merge()({t1, t2}));
+  ExpectInferredArrayOfTensor(Merge()({t2, t1}));
+}
+
+TEST(UnaryContainerCreate, Basic) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ANY);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_TENSOR);
+  FullTypeDef t3;
+  t3.set_type_id(TFT_ANY);
+
+  const auto ret = UnaryContainerCreate(TFT_ARRAY, 1)({t1, t2, t3});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_TENSOR);
+}
+
+TEST(UnaryContainerAdd, Basic) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ANY);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_TENSOR);
+  FullTypeDef t3;
+  t3.set_type_id(TFT_ARRAY);
+
+  const auto ret =
+      UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/2, /*element_idx=*/1,
+                        /*homogeneous=*/false)({t1, t2, t3});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_TENSOR);
+}
+
+TEST(UnaryContainerAdd, RejectsMismatchedContainerType) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_TENSOR);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_DATASET);
+
+  const auto ret =
+      UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/1, /*element_idx=*/0,
+                        /*homogeneous=*/false)({t1, t2});
+  EXPECT_THAT(ret.status().error_message(),
+              ::testing::HasSubstr("expected container type"));
+}
+
+TEST(UnaryContainerAdd, IgnoresUnsetContainerType) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_TENSOR);
+  FullTypeDef t2;
+
+  const auto ret =
+      UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/1, /*element_idx=*/0,
+                        /*homogeneous=*/false)({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_TENSOR);
+}
+
+TEST(UnaryContainerAdd, UnsetElementTypeRemainsUnset) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ANY);
+  FullTypeDef t2;
+  FullTypeDef t3;
+  t3.set_type_id(TFT_ARRAY);
+
+  const auto ret =
+      UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/2, /*element_idx=*/1,
+                        /*homogeneous=*/false)({t1, t2, t3});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  ASSERT_EQ(rt.args(0).args_size(), 0);
+}
+
+TEST(UnaryContainerAdd, UnsetElementTypeKeepsOriginalElementType) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  t1.add_args()->set_type_id(TFT_TENSOR);
+  FullTypeDef t2;
+
+  const auto ret =
+      UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
+                        /*homogeneous=*/false)({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_TENSOR);
+}
+
+TEST(UnaryContainerAdd, KeepsContainerTypeIfElementIsSubtype) {
+  // TODO(mdan): We may want to refine the type if homogeneous.
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  t1.add_args()->set_type_id(TFT_ANY);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_TENSOR);
+
+  const auto ret =
+      UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
+                        /*homogeneous=*/true)({t1, t2});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_ANY);
+}
+
+TEST(UnaryContainerAdd, RejectsMismatchedElementTypesHeterogenous) {
+  // TODO(mdan): Implement if needed (see full_type_inference_util.cc).
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  t1.add_args()->set_type_id(TFT_TENSOR);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_DATASET);
+
+  const auto ret =
+      UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
+                        /*homogeneous=*/false)({t1, t2});
+  EXPECT_THAT(ret.status().error_message(),
+              ::testing::HasSubstr("need union types"));
+}
+
+TEST(UnaryContainerAdd, RejectsMismatchedElementTypesHomogeneous) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  t1.add_args()->set_type_id(TFT_TENSOR);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_DATASET);
+
+  const auto ret =
+      UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
+                        /*homogeneous=*/true)({t1, t2});
+  EXPECT_THAT(ret.status().error_message(),
+              ::testing::HasSubstr("expected a subtype"));
+}
+
+TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHeterogeneous) {
+  // TODO(mdan): Implement if needed (see full_type_inference_util.cc).
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  t1.add_args()->set_type_id(TFT_TENSOR);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_ANY);
+
+  const auto ret =
+      UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
+                        /*homogeneous=*/false)({t1, t2});
+  EXPECT_THAT(ret.status().error_message(),
+              ::testing::HasSubstr("need union types"));
+}
+
+TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHomogeneous) {
+  // TODO(mdan): This might be acceptable.
+  FullTypeDef t1;
+  t1.set_type_id(TFT_ARRAY);
+  t1.add_args()->set_type_id(TFT_TENSOR);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_ANY);
+
+  const auto ret =
+      UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
+                        /*homogeneous=*/true)({t1, t2});
+  EXPECT_THAT(ret.status().error_message(),
+              ::testing::HasSubstr("expected a subtype"));
 }
 
 }  // namespace

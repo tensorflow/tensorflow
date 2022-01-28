@@ -96,16 +96,17 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
         # Create MatMul + BiasAdd + Gelu graph
         ops.reset_default_graph()
-        x = _input([m, k])
-        w = _weight([k, n])
-        b = _bias([n])
-        if precision == 'bfloat16':
-          x = math_ops.cast(x, dtypes.bfloat16)
-          w = math_ops.cast(w, dtypes.bfloat16)
-          b = math_ops.cast(b, dtypes.bfloat16)
-        y = math_ops.matmul(x, w)
-        z = nn.bias_add(y, b)
-        out = nn.gelu(z, approximate=approximate)
+        with ops.device('/device:CPU:0'):
+          x = _input([m, k])
+          w = _weight([k, n])
+          b = _bias([n])
+          if precision == 'bfloat16':
+            x = math_ops.cast(x, dtypes.bfloat16)
+            w = math_ops.cast(w, dtypes.bfloat16)
+            b = math_ops.cast(b, dtypes.bfloat16)
+          y = math_ops.matmul(x, w)
+          z = nn.bias_add(y, b)
+          out = nn.gelu(z, approximate=approximate)
 
         # Compute reference value.
         config = _get_config(remapping_on=False)

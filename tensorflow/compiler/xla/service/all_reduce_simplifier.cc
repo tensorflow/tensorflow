@@ -96,7 +96,7 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
         //   broadcast(convert_to_matching_type(s32 group size))
         auto multiplier =
             all_reduce->parent()->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<int32>(replica_group_size)));
+                LiteralUtil::CreateR0<int32_t>(replica_group_size)));
         if (all_reduce->shape().element_type() != S32) {
           multiplier = all_reduce->parent()->AddInstruction(
               HloInstruction::CreateConvert(

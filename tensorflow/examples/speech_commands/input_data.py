@@ -24,8 +24,7 @@ import sys
 import tarfile
 
 import numpy as np
-from six.moves import urllib
-from six.moves import xrange  # pylint: disable=redefined-builtin
+import urllib
 import tensorflow as tf
 
 from tensorflow.python.ops import gen_audio_ops as audio_ops
@@ -543,7 +542,7 @@ class AudioProcessor(object):
     pick_deterministically = (mode != 'training')
     # Use the processing graph we created earlier to repeatedly to generate the
     # final output sample data we'll use in training.
-    for i in xrange(offset, offset + sample_count):
+    for i in range(offset, offset + sample_count):
       # Pick which audio sample to use.
       if how_many == -1 or pick_deterministically:
         sample_index = i

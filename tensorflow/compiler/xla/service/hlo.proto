@@ -459,8 +459,15 @@ message HloModuleProto {
     LAYOUT = 3;
   }
 
-  // The optimization profiles that this module contains.
-  repeated ProfileType profile_type = 15;
+  // Information about the optimization profile that this module contains.
+  message ProfileInfo {
+    // The optimization profiles that this module contains.
+    ProfileType profile_type = 1;
+    // Speedup of tuned config compared to default config.
+    double relative_speedup = 2;
+  }
+
+  repeated ProfileInfo profile_info = 13;
 }
 
 // Serialization of LogicalBuffer.
@@ -653,4 +660,50 @@ message HloPassMetadata {
   // Timestamp before and after the pass is run. Note they may be equal.
   int64 start_timestamp_usec = 8;
   int64 end_timestamp_usec = 9;
+}
+
+// Encodes attributes for an entry function.
+message EntryFunctionAttributes {
+  // Acts as the underlying container for an xla::ShapeIndex.
+  message ShapeIndex {
+    repeated int64 indices = 1;
+  }
+
+  // Encodes attributes for a single buffer parameter.
+  message BufferParameterAttributes {
+    // Represents an lmhlo.params function argument attribute.
+    int64 lmhlo_params = 1;
+    // TODO(hanbinyoon): Deprecate when optional fields are available in proto3
+    // (Protocol Buffers v3.15.0).
+    bool lmhlo_params_present = 6;
+
+    // Represents an lmhlo.param_shape_index function argument attribute.
+    ShapeIndex lmhlo_param_shape_index = 2;
+
+    // Represents an lmhlo.constant_name function argument attribute.
+    string lmhlo_constant_name = 3;
+
+    // Represents an lmhlo.must_alias function argument attribute.
+    bool lmhlo_must_alias = 4;
+
+    // Represents an lmhlo.params function argument attribute.
+    ShapeIndex lmhlo_output_index = 5;
+  }
+
+  repeated BufferParameterAttributes buffers = 1;
+
+  // xla::Shape in string format.
+  string result_xla_shape = 2;
+}
+
+// Encodes the underlying BEF executable for GpuExecutable.
+message GpuBefExecutableProto {
+  HloModuleProto hlo_module_proto = 1;
+
+  // Executable serialized in Binary Executable Format:
+  // https://github.com/tensorflow/runtime/blob/master/documents/binary_executable_format.md
+  bytes bef = 2;
+
+  // XLA-specific attributes of the executable's (BEF) entry function.
+  EntryFunctionAttributes entry_func_attrs = 3;
 }

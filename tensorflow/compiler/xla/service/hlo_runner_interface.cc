@@ -63,7 +63,7 @@ HloRunnerInterface::ReadModuleFromTextProtoFile(
 /*static*/ StatusOr<std::unique_ptr<HloModule>>
 HloRunnerInterface::ReadModuleFromHloTextFile(
     const std::string& filename, const DebugOptions& debug_options) {
-  string hlo_string;
+  std::string hlo_string;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
                                                   filename, &hlo_string));
   HloModuleConfig config;

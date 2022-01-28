@@ -5,7 +5,7 @@
 // CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [2 x i32]*
 // CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_1]], i64 0
 // CHECK:         %[[VAL_4:.*]] = bitcast i8* %[[VAL_3]] to [2 x i32]*
-// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_6:.*]], i64 64
+// CHECK:         %[[VAL_5:.*]] = getelementptr inbounds i8, i8* %[[VAL_6:.*]], i64 128
 // CHECK:         %[[VAL_7:.*]] = bitcast i8* %[[VAL_5]] to [2 x i32]*
 // CHECK:         %[[VAL_8:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !8
 // CHECK:         %[[VAL_9:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !8
@@ -124,7 +124,7 @@
 // CHECK:         br label %[[VAL_100]]
 // CHECK:       entry:
 // CHECK:         %[[VAL_111:.*]] = alloca i32, align 4
-// CHECK:         %[[VAL_112:.*]] = getelementptr inbounds i8, i8* %[[VAL_113:.*]], i64 64
+// CHECK:         %[[VAL_112:.*]] = getelementptr inbounds i8, i8* %[[VAL_113:.*]], i64 128
 // CHECK:         %[[VAL_114:.*]] = bitcast i8* %[[VAL_112]] to [2 x i32]*
 // CHECK:         %[[VAL_115:.*]] = getelementptr inbounds i8, i8* %[[VAL_113]], i64 0
 // CHECK:         %[[VAL_116:.*]] = bitcast i8* %[[VAL_115]] to [2 x [3 x i32]]*

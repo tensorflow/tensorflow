@@ -34,7 +34,7 @@ class GetI64ScalarElementsAttr<int value> :
 class GetF32Scalar<int value> :
   NativeCodeCall<"GetF32Scalar(&$_builder, " # value # ")">;
 
-def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
+def TrueBoolAttr : AttrConstraint<CPred<"$_self.cast<::mlir::BoolAttr>().getValue()">>;
 
 def CreateTFShapeOp : NativeCodeCall<
     "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
@@ -213,6 +213,14 @@ class BinaryNoNanPat<Op FromOp, Op ToOp>
 def LowerDivNoNanOp : BinaryNoNanPat<TF_DivNoNanOp, TF_DivOp>;
 
 def LowerMulNoNanOp : BinaryNoNanPat<TF_MulNoNanOp, TF_MulOp>;
+
+//===----------------------------------------------------------------------===//
+// TruncateDiv op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerTruncateDivOp : Pat<
+  (TF_TruncateDivOp $lhs, $rhs),
+  (TF_DivOp $lhs, $rhs)>;
 
 //===----------------------------------------------------------------------===//
 // Fill op patterns.

@@ -97,9 +97,8 @@ TEST(NodeBuilderTest, TypeConstructorBasicType) {
   ASSERT_EQ(ft.args_size(), 1);
   auto ot = ft.args(0);
   ASSERT_EQ(ot.type_id(), TFT_ARRAY);
-  ASSERT_EQ(ot.args(0).type_id(), TFT_TENSOR);
-  ASSERT_EQ(ot.args(0).args(0).type_id(), TFT_FLOAT);
-  ASSERT_EQ(ot.args(0).args(0).args().size(), 0);
+  ASSERT_EQ(ot.args(0).type_id(), TFT_FLOAT);
+  ASSERT_EQ(ot.args(0).args().size(), 0);
 }
 
 REGISTER_OP("TypeInferenceOpTensorOutput")
@@ -127,14 +126,14 @@ REGISTER_OP("TypeInferenceOpBasicType")
     .SetForwardTypeFn(
         [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
                input_types) {
-          if (input_types[0].get().args(0).type_id() == TFT_TENSOR) {
-            return input_types[0].get();
+          FullTypeDef mock;
+          mock.set_type_id(TFT_PRODUCT);
+          if (input_types[0].get().type_id() == TFT_TENSOR) {
+            mock.add_args()->set_type_id(TFT_TENSOR);
           } else {
-            FullTypeDef mock;
-            mock.set_type_id(TFT_PRODUCT);
             mock.add_args()->set_type_id(TFT_ARRAY);
-            return mock;
           }
+          return mock;
         });
 
 TEST(NodeBuilderTest, FwdTypeInferenceBasicType) {
@@ -189,19 +188,10 @@ REGISTER_OP("FullTypeOpListType")
 TEST(NodeBuilderTest, TypeConstructorListType) {
   Graph graph(OpRegistry::Global());
   Node* node;
-  TF_EXPECT_OK(NodeBuilder("op", "FullTypeOpListType")
+  ASSERT_FALSE(NodeBuilder("op", "FullTypeOpListType")
                    .Attr("out_types", {DT_FLOAT, DT_INT32})
-                   .Finalize(&graph, &node));
-  ASSERT_TRUE(node->def().has_experimental_type());
-  const FullTypeDef& ft = node->def().experimental_type();
-  ASSERT_EQ(ft.type_id(), TFT_PRODUCT);
-  ASSERT_EQ(ft.args_size(), 1);
-  auto ot = ft.args(0);
-  ASSERT_EQ(ot.type_id(), TFT_ARRAY);
-  ASSERT_EQ(ot.args(0).type_id(), TFT_PRODUCT);
-  ASSERT_EQ(ot.args(0).args(0).type_id(), TFT_TENSOR);
-  ASSERT_EQ(ot.args(0).args(0).args(0).type_id(), TFT_FLOAT);
-  ASSERT_EQ(ot.args(0).args(0).args(0).args().size(), 0);
+                   .Finalize(&graph, &node)
+                   .ok());
 }
 
 }  // namespace

@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
@@ -331,6 +332,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
         request->transfer_address());
     *update.mutable_register_worker()->mutable_worker_tags() =
         request->worker_tags();
+    update.mutable_register_worker()->set_worker_uid(request->worker_uid());
     TF_RETURN_IF_ERROR(Apply(update));
     TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
     TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, assigned_tasks));
@@ -480,53 +482,49 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   }
 
   int64_t id;
-  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def, id));
-  if (!request->element_spec().empty()) {
-    TF_RETURN_IF_ERROR(SetElementSpec(id, request->element_spec()));
-  }
+  TF_RETURN_IF_ERROR(
+      RegisterDataset(fingerprint, dataset_def, request->metadata(), id));
 
   response->set_dataset_id(id);
   VLOG(3) << "Registered new dataset with id " << id;
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
-                                                  const DatasetDef& dataset,
-                                                  int64_t& dataset_id)
+Status DataServiceDispatcherImpl::RegisterDataset(
+    uint64 fingerprint, const DatasetDef& dataset,
+    const DataServiceMetadata& metadata, int64_t& dataset_id)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   dataset_id = state_.NextAvailableDatasetId();
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
   register_dataset->set_fingerprint(fingerprint);
+  *register_dataset->mutable_metadata() = metadata;
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));
   return Apply(update);
 }
 
-Status DataServiceDispatcherImpl::SetElementSpec(
-    int64_t dataset_id, const std::string& element_spec)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  Update update;
-  SetElementSpecUpdate* set_element_spec = update.mutable_set_element_spec();
-  set_element_spec->set_dataset_id(dataset_id);
-  set_element_spec->set_element_spec(element_spec);
-  TF_RETURN_IF_ERROR(Apply(update));
+Status DataServiceDispatcherImpl::GetDataServiceMetadata(
+    const GetDataServiceMetadataRequest* request,
+    GetDataServiceMetadataResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  int64_t dataset_id = request->dataset_id();
+  std::shared_ptr<const Dataset> dataset;
+
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
+  VLOG(3) << "Get the data service metadata for dataset id: " << dataset_id
+          << ".";
+  *response->mutable_metadata() = dataset->metadata;
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::GetElementSpec(
-    const GetElementSpecRequest* request, GetElementSpecResponse* response) {
+Status DataServiceDispatcherImpl::GetDataServiceConfig(
+    const GetDataServiceConfigRequest* request,
+    GetDataServiceConfigResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
-  VLOG(4) << "Read the element spec.";
-  int64_t dataset_id = request->dataset_id();
-
-  std::string element_spec;
-  TF_RETURN_IF_ERROR(state_.GetElementSpec(dataset_id, element_spec));
-  VLOG(3) << "Get the `element_spec` for registered dataset with dataset id: "
-          << dataset_id << ".";
-  *response->mutable_element_spec() = element_spec;
+  response->mutable_config()->set_deployment_mode(config_.deployment_mode());
   return Status::OK();
 }
 
@@ -684,13 +682,16 @@ Status DataServiceDispatcherImpl::CreateJob(
     key->set_name(request.job_key().job_name());
     key->set_index(request.job_key().job_name_index());
   }
-  if (request.optional_num_consumers_case() ==
-      GetOrCreateJobRequest::kNumConsumers) {
+  const bool is_coordinated_read = (request.optional_num_consumers_case() ==
+                                    GetOrCreateJobRequest::kNumConsumers);
+  if (is_coordinated_read) {
     create_job->set_num_consumers(request.num_consumers());
   }
   create_job->set_target_workers(request.target_workers());
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
+  tensorflow::metrics::RecordTFDataServiceJobsCreated(
+      request.processing_mode_def(), is_coordinated_read);
   return Status::OK();
 }
 
@@ -756,6 +757,7 @@ Status DataServiceDispatcherImpl::CreatePendingTask(
   create_task->set_transfer_address(worker->transfer_address);
   *create_task->mutable_worker_tags() = {worker->tags.begin(),
                                          worker->tags.end()};
+  create_task->set_worker_uid(worker->uid);
   TF_RETURN_IF_ERROR(Apply(update));
   return Status::OK();
 }
@@ -775,6 +777,7 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   create_task->set_transfer_address(worker->transfer_address);
   *create_task->mutable_worker_tags() = {worker->tags.begin(),
                                          worker->tags.end()};
+  create_task->set_worker_uid(worker->uid);
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
   return Status::OK();
@@ -925,9 +928,11 @@ Status DataServiceDispatcherImpl::ClientHeartbeat(
                                          task->worker_tags.end()};
     task_info->set_task_id(task->task_id);
     task_info->set_job_id(job->job_id);
+    task_info->set_worker_uid(task->worker_uid);
     task_info->set_starting_round(task->starting_round);
   }
   response->set_job_finished(job->finished);
+  response->set_deployment_mode(config_.deployment_mode());
   VLOG(4) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
   return Status::OK();

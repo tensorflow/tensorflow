@@ -17,15 +17,29 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_PASSES_H
 
 #include <memory>
+#include <string>
+#include <unordered_set>
 
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
 namespace tosa {
 
+void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
+void populateLegalizeTFLPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
+
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass();
 std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass();
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass();
+
+// `disabledPatterns` is a set of labels used to filter out input patterns with
+// a debug label or debug name in this set.
+// `enabledPatterns` is a set of labels used to filter out input patterns that
+//  do not have one of the labels in this set.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFLPass(
+    ArrayRef<std::string> disabled_patterns = llvm::None,
+    ArrayRef<std::string> enabled_patterns = llvm::None);
+
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFTFLPass();
 std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass();
 std::unique_ptr<OperationPass<FuncOp>> createStripQuantTypesPass();
 

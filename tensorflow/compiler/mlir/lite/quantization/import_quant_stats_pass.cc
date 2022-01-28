@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_info.pb.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/location_utils.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> quantize_stats(
@@ -221,7 +222,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateImportQuantStatsPass(
 std::unique_ptr<OperationPass<FuncOp>>
 CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
   auto get_name_func = [](Operation *op) {
-    Location loc = op->getLoc();
+    Location loc = tensorflow::GetLocationWithoutOpType(op->getLoc());
     if (auto name = loc.dyn_cast<NameLoc>()) {
       return name.getName().strref();
     } else if (auto fused_name = loc.dyn_cast<FusedLoc>()) {

@@ -256,12 +256,7 @@ class UniqueOp : public UniqueOpBase {
   }
 };
 
-// Only supports TPU for now as some tests (e.g.,
-// testMethodCompilationUnsupportedFunc) requires Unique to throw an
-// unimplemented error on XLA CPU & GPU.
-//
-// TODO(b/187993636): Enable this for CPU and GPU.
-REGISTER_XLA_OP(Name("Unique").Device(DEVICE_TPU_XLA_JIT), UniqueOp);
+REGISTER_XLA_OP(Name("Unique"), UniqueOp);
 
 class UniqueV2Op : public UniqueOpBase {
  public:

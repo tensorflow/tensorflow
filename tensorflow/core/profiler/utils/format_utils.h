@@ -41,6 +41,16 @@ inline std::string OneDigit(double d) {
   return internal::FormatDouble("%.1f", d);
 }
 
+// Formats d with 2 digits after the decimal point.
+inline std::string TwoDigits(double d) {
+  return internal::FormatDouble("%.2f", d);
+}
+
+// Formats d with 3 digits after the decimal point.
+inline std::string ThreeDigits(double d) {
+  return internal::FormatDouble("%.3f", d);
+}
+
 // Formats d with maximum precision to allow parsing the result back to the same
 // number.
 inline std::string MaxPrecision(double d) {

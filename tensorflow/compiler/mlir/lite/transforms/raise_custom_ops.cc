@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -85,15 +87,16 @@ void RaiseCustomOpsPass::runOnFunction() {
     // - the op is targeted explicitly, or
     // - the op isn't registered when there are no target list.
     if (target_op_names.contains(op_name) ||
-        (target_op_names.empty() && !op->getAbstractOperation())) {
+        (target_op_names.empty() && !op->isRegistered())) {
       custom_ops.push_back(op);
     }
   });
 
   for (auto *op : custom_ops) {
     builder.setInsertionPoint(op);
-    auto custom_op = builder.create<CustomTfOp>(
-        op->getLoc(), op->getResultTypes(), op->getOperands());
+    Location loc = op->getLoc();
+    auto custom_op = builder.create<CustomTfOp>(loc, op->getResultTypes(),
+                                                op->getOperands());
     Region region;
     Block *new_block = new Block;
     region.push_back(new_block);
@@ -101,12 +104,13 @@ void RaiseCustomOpsPass::runOnFunction() {
     builder.setInsertionPointToEnd(&region.front());
     Operation *inner_op = builder.clone(*op);
 
-    new_block->addArguments(op->getOperandTypes());
-    for (auto idx_args : llvm::enumerate(new_block->getArguments())) {
+    new_block->addArguments(op->getOperandTypes(),
+                            SmallVector<Location>(op->getNumOperands(), loc));
+    for (auto &idx_args : llvm::enumerate(new_block->getArguments())) {
       inner_op->setOperand(idx_args.index(), idx_args.value());
     }
     custom_op->setAttrs(inner_op->getAttrs());
-    builder.create<YieldOp>(op->getLoc(), inner_op->getResults());
+    builder.create<YieldOp>(loc, inner_op->getResults());
     custom_op.body().takeBody(region);
 
     op->replaceAllUsesWith(custom_op);

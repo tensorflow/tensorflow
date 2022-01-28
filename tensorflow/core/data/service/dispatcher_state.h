@@ -74,11 +74,15 @@ class DispatcherState {
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-    explicit Dataset(int64_t dataset_id, int64_t fingerprint)
-        : dataset_id(dataset_id), fingerprint(fingerprint) {}
+    explicit Dataset(int64_t dataset_id, int64_t fingerprint,
+                     const DataServiceMetadata& metadata)
+        : dataset_id(dataset_id),
+          fingerprint(fingerprint),
+          metadata(metadata) {}
 
     const int64_t dataset_id;
     const int64_t fingerprint;
+    const DataServiceMetadata metadata;
   };
 
   // A worker registered with the dispatcher.
@@ -87,11 +91,13 @@ class DispatcherState {
         : address(register_worker.worker_address()),
           transfer_address(register_worker.transfer_address()),
           tags(register_worker.worker_tags().begin(),
-               register_worker.worker_tags().end()) {}
+               register_worker.worker_tags().end()),
+          uid(register_worker.worker_uid()) {}
 
     const std::string address;
     const std::string transfer_address;
     const std::vector<std::string> tags;
+    const int64_t uid;
   };
 
   // A key for identifying a named job. The key contains a user-specified name,
@@ -193,13 +199,15 @@ class DispatcherState {
           worker_address(create_task_update.worker_address()),
           transfer_address(create_task_update.transfer_address()),
           worker_tags(create_task_update.worker_tags().begin(),
-                      create_task_update.worker_tags().end()) {}
+                      create_task_update.worker_tags().end()),
+          worker_uid(create_task_update.worker_uid()) {}
 
     const int64_t task_id;
     const std::shared_ptr<Job> job;
     const std::string worker_address;
     const std::string transfer_address;
     const std::vector<std::string> worker_tags;
+    const int64_t worker_uid;
     int64_t starting_round = 0;
     bool finished = false;
     bool removed = false;
@@ -209,8 +217,6 @@ class DispatcherState {
 
   // Returns the next available dataset id.
   int64_t NextAvailableDatasetId() const;
-  // Gets the element_spec by searching for the dataset_id key.
-  Status GetElementSpec(int64_t dataset_id, std::string& element_spec) const;
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
   Status DatasetFromId(int64_t id,
                        std::shared_ptr<const Dataset>& dataset) const;
@@ -278,7 +284,6 @@ class DispatcherState {
   void ClientHeartbeat(const ClientHeartbeatUpdate& client_heartbeat);
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
-  void SetElementSpec(const SetElementSpecUpdate& set_element_spec);
 
   int64_t next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
@@ -286,8 +291,6 @@ class DispatcherState {
   // Registered datasets, keyed by dataset fingerprints.
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>>
       datasets_by_fingerprint_;
-  // Saved element_spec, keyed by dataset ids.
-  absl::flat_hash_map<int64_t, std::string> id_element_spec_info_;
 
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;

@@ -68,9 +68,4 @@ from tensorflow.python.layers.pooling import max_pooling2d
 from tensorflow.python.layers.pooling import average_pooling3d
 from tensorflow.python.layers.pooling import max_pooling3d
 
-# Normalization layers.
-from tensorflow.python.layers.normalization import BatchNormalization
-
-from tensorflow.python.layers.normalization import batch_normalization
-
 # pylint: enable=g-bad-import-order,unused-import

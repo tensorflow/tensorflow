@@ -110,10 +110,14 @@ class BaseLayerTest(keras_parameterized.TestCase):
       model.compile(rmsprop.RMSprop(0.001), loss='mse')
       model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
     except errors_impl.OperatorNotAllowedInGraphError as e:
-      if 'iterating over `tf.Tensor` is not allowed' in str(e):
+      if 'iterating over `tf.Tensor`' in str(e):
+        raised_error = True
+      elif 'Iterating over a symbolic `tf.Tensor`' in str(e):
         raised_error = True
     except TypeError as e:
       if 'attempting to use Python control flow' in str(e):
+        raised_error = True
+      elif 'Attempting to use Python control flow' in str(e):
         raised_error = True
     self.assertTrue(raised_error)
 
@@ -1105,49 +1109,6 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class NestedTrackingTest(test.TestCase):
 
-  def test_nested_layer_variable_tracking(self):
-    # Test that variables from nested sublayers are
-    # being tracked by subclassed layers.
-
-    class MyLayer(base_layer.Layer):
-
-      def __init__(self):
-        super(MyLayer, self).__init__()
-        self.dense1 = layers.Dense(1)
-        self.dense2 = layers.BatchNormalization()
-
-      def build(self, input_shape):
-        self.v1 = self.add_weight('v1', shape=input_shape[1:].as_list())
-        self.v2 = variables.Variable(
-            name='v2',
-            initial_value=np.zeros(input_shape[1:].as_list(), dtype='float32'),
-            trainable=False)
-
-      def call(self, inputs):
-        x = self.dense1(inputs) + self.dense2(inputs)
-        return x + self.v1 + self.v2
-
-    layer = MyLayer()
-    inputs = input_layer.Input((1,))
-    _ = layer(inputs)
-
-    self.assertEqual(len(layer.weights), 8)
-    self.assertEqual(len(layer.trainable_weights), 5)
-    self.assertEqual(len(layer.non_trainable_weights), 3)
-
-    layer.dense1.trainable = False
-    self.assertEqual(len(layer.weights), 8)
-    self.assertEqual(len(layer.trainable_weights), 3)
-    self.assertEqual(len(layer.non_trainable_weights), 5)
-
-    layer.trainable = False
-    self.assertEqual(len(layer.weights), 8)
-    self.assertEqual(len(layer.trainable_weights), 0)
-    self.assertEqual(len(layer.non_trainable_weights), 8)
-    self.assertEqual(
-        {id(v) for v in [layer.dense1, layer.dense2, layer.v1, layer.v2]},
-        {id(v) for _, v in layer._checkpoint_dependencies})
-
   def test_nested_layer_updates_losses_tracking(self):
     # Test that updates and losses from nested sublayers are
     # being tracked by subclassed layers.
@@ -1549,37 +1510,6 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
 
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
-
-    if testing_utils.should_run_eagerly():
-      model.fit(x, y, epochs=2, batch_size=5)
-    else:
-      with self.assertRaisesRegex(ValueError, 'ActivityRegularizer'):
-        model.fit(x, y, epochs=2, batch_size=5)
-
-  def test_conditional_activity_regularizer_with_wrappers_in_call(self):
-
-    class TestModel(training_lib.Model):
-
-      def __init__(self):
-        super(TestModel, self).__init__(
-            name='test_model', dynamic=testing_utils.should_run_eagerly())
-        self.layer = layers.TimeDistributed(
-            layers.Dense(2, activity_regularizer='l2'), input_shape=(3, 4))
-
-      def call(self, x, training=None):
-        if math_ops.greater(math_ops.reduce_sum(x), 0.0):
-          return self.layer(x)
-        else:
-          return self.layer(x)
-
-    model = TestModel()
-    model.compile(
-        loss='mse',
-        optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly())
-
-    x = np.ones(shape=(10, 3, 4))
-    y = np.ones(shape=(10, 3, 2))
 
     if testing_utils.should_run_eagerly():
       model.fit(x, y, epochs=2, batch_size=5)

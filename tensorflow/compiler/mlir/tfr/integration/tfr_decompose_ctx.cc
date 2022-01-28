@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -147,7 +146,7 @@ StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
   for (const auto& attr : node_def.attr()) {
     TF_ASSIGN_OR_RETURN(auto mlir_attr,
                         ConvertAttributeValue(attr.second, &builder));
-    attrs.push_back({mlir::Identifier::get(attr.first, context), mlir_attr});
+    attrs.push_back({mlir::StringAttr::get(context, attr.first), mlir_attr});
   }
 
   mlir::Location loc = mlir::UnknownLoc::get(context);

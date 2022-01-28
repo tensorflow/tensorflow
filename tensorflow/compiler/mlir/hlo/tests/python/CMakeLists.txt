@@ -30,6 +30,7 @@ set_target_properties(${test_name}
 add_dependencies(check-mlir-hlo-python ${test_name})
 endfunction()
 
+add_mhlo_python_test(python-attributes attributes.py)
 add_mhlo_python_test(python-smoketest smoketest.py)
 add_mhlo_python_test(python-types types.py)
 

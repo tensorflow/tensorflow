@@ -258,13 +258,11 @@ cc_library(
     ]),
 )
 
-cc_library(name = "empty_lib")
-
 alias(
     name = "cublas_lt_lib",
     actual = select({
         "//tensorflow:oss": ":cublas_lt_stub",
-        "//conditions:default": ":empty_lib",
+        "//conditions:default": "@local_config_cuda//cuda:cublasLt",
     }),
     visibility = ["//visibility:public"],
 )

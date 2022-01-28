@@ -102,18 +102,18 @@ bool CompatibilityAnalysis::AnalyzeOpAttributes(mlir::Operation* op) {
 
   // TODO(chky): Derived attributes should be also analyzed here.
   for (auto attr : op->getAttrs()) {
-    if (attr.first.strref() == "_output_shapes") continue;
-    if (attr.first.strref() == "_class") continue;
+    if (attr.getName().strref() == "_output_shapes") continue;
+    if (attr.getName().strref() == "_class") continue;
 
     // Symbol attributes (eg. function names) is currently not supported.
     //
     // TODO(chky): CoreRT should ideally support function call operatoins.
     // Remove this condition once that is implemented.
-    if (attr.second.isa<mlir::FlatSymbolRefAttr>()) return true;
+    if (attr.getValue().isa<mlir::FlatSymbolRefAttr>()) return true;
 
     // Currently only tensors of simple dtypes (i1, i32, i64, f32, f64) are
     // supported.
-    if (auto elements_attr = attr.second.dyn_cast<mlir::ElementsAttr>()) {
+    if (auto elements_attr = attr.getValue().dyn_cast<mlir::ElementsAttr>()) {
       if (!elements_attr.isa<mlir::DenseElementsAttr>()) return true;
       auto element_type = elements_attr.getType().getElementType();
       if (element_type.isa<mlir::TF::TensorFlowType>()) return true;
@@ -121,7 +121,7 @@ bool CompatibilityAnalysis::AnalyzeOpAttributes(mlir::Operation* op) {
 
     // Currently only arrays of simple element types (i1, i32, i64, f32, f64)
     // are supported.
-    if (auto array_attr = attr.second.dyn_cast<mlir::ArrayAttr>()) {
+    if (auto array_attr = attr.getValue().dyn_cast<mlir::ArrayAttr>()) {
       if (!array_attr.empty()) {
         if (array_attr[0].isa<mlir::ElementsAttr>()) return true;
 

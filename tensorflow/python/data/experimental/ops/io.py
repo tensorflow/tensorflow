@@ -181,8 +181,7 @@ def _set_save_dataset_attributes(dataset, shard_func, path):
       input_structure=dataset.element_spec,
       add_to_graph=False)
 
-  coder = nested_structure_coder.StructureCoder()
-  encoded = coder.encode_structure(dataset.element_spec)
+  encoded = nested_structure_coder.encode_structure(dataset.element_spec)
   gfile.MakeDirs(path)
   with gfile.GFile(os.path.join(path, DATASET_SPEC_FILENAME), "wb") as f:
     f.write(encoded.SerializeToString())
@@ -217,8 +216,7 @@ class _LoadDataset(dataset_ops.DatasetSource):
         encoded_spec = f.read()
       struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
       struct_pb.ParseFromString(encoded_spec)
-      coder = nested_structure_coder.StructureCoder()
-      spec = coder.decode_proto(struct_pb)
+      spec = nested_structure_coder.decode_proto(struct_pb)
       self._element_spec = spec
     else:
       self._element_spec = element_spec

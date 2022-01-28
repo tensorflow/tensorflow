@@ -22,6 +22,7 @@ from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend
@@ -152,20 +153,23 @@ class _DynamicLossScaleState(trackable.Trackable):
     backend.track_variable(variable)
     return variable
 
-  @property
-  def _checkpoint_dependencies(self):
+  def _trackable_children(self,
+                          save_type=trackable.SaveType.CHECKPOINT,
+                          **kwargs):
     """From Trackable. Gather graph-specific weights to save."""
     if context.executing_eagerly():
       graph_key = None
     else:
       graph = ops.get_default_graph()
       graph_key = graph._graph_key  # pylint: disable=protected-access
-    weights = []
+    weights = {}
     for (name, g), v in sorted(self._weights.items(), key=lambda i: i[0][0]):
       if g == graph_key:
-        weights.append(trackable.TrackableReference(name=name, ref=v))
-    return (super(_DynamicLossScaleState, self)._checkpoint_dependencies +
-            weights)
+        weights[name] = v
+    weights.update(
+        super(_DynamicLossScaleState,
+              self)._trackable_children(save_type, **kwargs))
+    return weights
 
   def _lookup_dependency(self, name):
     """From Trackable. Find a weight in the current graph."""
@@ -1092,8 +1096,8 @@ mixed_precision.register_loss_scale_wrapper(optimizer_v2.OptimizerV2,
 def _multiply_gradient(gradient, scale):
   """Multiply a (possibly sparse) gradient by the given scale factor."""
   scale = math_ops.cast(scale, gradient.dtype)
-  if isinstance(gradient, ops.IndexedSlices):
-    return ops.IndexedSlices(
+  if isinstance(gradient, indexed_slices.IndexedSlices):
+    return indexed_slices.IndexedSlices(
         gradient.values * scale,
         gradient.indices,
         dense_shape=gradient.dense_shape)

@@ -23,6 +23,7 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
@@ -320,8 +321,8 @@ class CollectiveReplicaLauncher(object):
       return self._collective_keys.get_instance_key(self._group_key,
                                                     self._device)
 
-  def _get_ordering_token(self, communication_hint):
-    if self._use_ordering_token() and communication_hint == 'NCCL':
+  def _get_ordering_token(self):
+    if self._use_ordering_token():
       return self._ordering_token.handle
 
   def can_order_nccl(self):
@@ -347,7 +348,7 @@ class CollectiveReplicaLauncher(object):
     """
     instance_key = self._next_instance_key()
     options = self._options.merge(options)
-    ordering_token = self._get_ordering_token(options.implementation)
+    ordering_token = self._get_ordering_token()
     with ops.device(self._device), \
          self._control_input(control_input):
       return collective_ops.all_reduce_v2(
@@ -373,7 +374,7 @@ class CollectiveReplicaLauncher(object):
     """
     instance_key = self._next_instance_key()
     options = self._options.merge(options)
-    ordering_token = self._get_ordering_token(options.implementation)
+    ordering_token = self._get_ordering_token()
     with ops.device(self._device):
       return collective_ops.all_gather_v2(
           input_tensor,
@@ -495,8 +496,9 @@ class CollectiveReplicaLauncher(object):
 
   def all_reduce_indexed_slices(
       self,
-      input_slices: ops.IndexedSlices,
-      options: Optional[collective_util.Options] = None) -> ops.IndexedSlices:
+      input_slices: indexed_slices.IndexedSlices,
+      options: Optional[collective_util.Options] = None
+  ) -> indexed_slices.IndexedSlices:
     """All-reduce an IndexedSlices.
 
     This method must be called inside a tf.function.
@@ -529,7 +531,7 @@ class CollectiveReplicaLauncher(object):
       def all_gather_indexed_slices(
           all_gather_fn: Callable[
               [core.TensorLike, Optional[collective_util.Options]], core.Tensor]
-      ) -> ops.IndexedSlices:
+      ) -> indexed_slices.IndexedSlices:
         """Use all_gather_fn to aggregate `IndexedSlices`."""
         all_values = all_gather_fn(input_slices.values, options)
         # Add control dependency to order the all-gather.
@@ -540,7 +542,7 @@ class CollectiveReplicaLauncher(object):
           control = []
         with ops.control_dependencies(control):
           all_indices = all_gather_fn(input_slices.indices, options)
-        return ops.IndexedSlices(
+        return indexed_slices.IndexedSlices(
             values=all_values,
             indices=all_indices,
             dense_shape=input_slices.dense_shape)
@@ -572,17 +574,17 @@ class CollectiveReplicaLauncher(object):
 
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
   """Aggregate tensors using `accumulation_fn` and IndexedSlices via concat."""
-  if any(isinstance(v, ops.IndexedSlices) for v in values):
+  if any(isinstance(v, indexed_slices.IndexedSlices) for v in values):
     return backprop.aggregate_indexed_slices_gradients(values)
   else:
     return accumulation_fn(values)
 
 
 def divide_by_n_tensors_or_indexed_slices(value, n):
-  if isinstance(value, ops.IndexedSlices):
+  if isinstance(value, indexed_slices.IndexedSlices):
     value = backprop.flatten_nested_indexed_slices(value)
-    return ops.IndexedSlices(
-        value.values / n, value.indices, value.dense_shape)
+    return indexed_slices.IndexedSlices(value.values / n, value.indices,
+                                        value.dense_shape)
   else:
     return value / n
 
@@ -590,24 +592,26 @@ def divide_by_n_tensors_or_indexed_slices(value, n):
 def copy_tensor_or_indexed_slices_to_device(value, device):
   """Copies a tensor or IndexedSlices to a device."""
   with ops.device(device):
-    if isinstance(value, ops.IndexedSlices):
+    if isinstance(value, indexed_slices.IndexedSlices):
       copied_values = array_ops.identity(value.values)
       copied_indices = array_ops.identity(value.indices)
       if value.dense_shape is not None:
         copied_shape = array_ops.identity(value.dense_shape)
       else:
         copied_shape = None
-      result = ops.IndexedSlices(copied_values, copied_indices, copied_shape)
+      result = indexed_slices.IndexedSlices(copied_values, copied_indices,
+                                            copied_shape)
     else:
       result = array_ops.identity(value)
   return result
 
 
 def is_indexed_slices(value):
-  if isinstance(value, ops.IndexedSlices):
+  if isinstance(value, indexed_slices.IndexedSlices):
     return True
   if isinstance(value, value_lib.DistributedValues):
-    return all(isinstance(v, ops.IndexedSlices) for v in value.values)
+    return all(
+        isinstance(v, indexed_slices.IndexedSlices) for v in value.values)
   return False
 
 

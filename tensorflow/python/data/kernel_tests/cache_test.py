@@ -22,6 +22,7 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -636,6 +637,51 @@ class CacheCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         ds_fn, [], self.num_outputs, verify_exhausted=False)
     self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
+
+class CacheRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 3, 4])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3]).cache()
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheRangeDataset(self):
+    dataset = dataset_ops.Dataset.range(10).cache()
+    expected_elements = list(range(10))
+    self.verifyRandomAccess(dataset, expected_elements)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheOneDimensionalElements(self):
+    tensor = [1, 2, 3]
+    dataset = dataset_ops.Dataset.from_tensor_slices(tensor).cache()
+    self.verifyRandomAccess(dataset, tensor)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheTwoDimensionalElements(self):
+    tensor = [[1, 2], [3, 4]]
+    dataset = dataset_ops.Dataset.from_tensor_slices(tensor).cache()
+    self.verifyRandomAccess(dataset, tensor)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheThreeComponents(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        ([1, 2], [3, 4], [5, 6])).cache()
+    expected = [(1, 3, 5), (2, 4, 6)]
+    self.verifyRandomAccess(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheInputDatasetNotRandomlyAccessible(self):
+    dataset = dataset_ops.Dataset.range(10)
+    initial_state = constant_op.constant(0, dtypes.int64)
+    scan_func = lambda state, i: (state + i, state + i)
+    dataset = dataset.scan(
+        initial_state=initial_state, scan_func=scan_func).cache()
+    expected = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45]
+    self.verifyRandomAccess(dataset, expected)
 
 if __name__ == "__main__":
   test.main()

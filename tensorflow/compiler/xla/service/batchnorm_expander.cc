@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -106,7 +105,7 @@ class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
     auto elements_per_feature_s32 = add_instruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
 
     for (int64_t i = 0; i < operand->shape().rank(); ++i) {
       if (i == feature_index) {

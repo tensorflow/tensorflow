@@ -211,6 +211,27 @@ StatusOr<LocalClient*> GetGpuXlaClient() {
   return ClientLibrary::GetOrCreateLocalClient(options);
 }
 
+void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
+  for (int i = 0; i < executors.size(); ++i) {
+    for (int j = 0; j < executors.size(); ++j) {
+      if (i == j) {
+        continue;
+      }
+      se::StreamExecutor* from = executors[i];
+      se::StreamExecutor* to = executors[j];
+      if (from->CanEnablePeerAccessTo(to)) {
+        Status status = from->EnablePeerAccessTo(to);
+        if (!status.ok()) {
+          LOG(WARNING) << "Unable to enable peer access between GPUs " << i
+                       << " and " << j << "; status: " << status;
+        } else {
+          VLOG(2) << "Enabled peer access from GPU " << i << " to GPU " << j;
+        }
+      }
+    }
+  }
+}
+
 // Builds a LocalDeviceState for each GPU present.
 StatusOr<std::vector<std::unique_ptr<LocalDeviceState>>> BuildLocalDeviceStates(
     LocalClient* xla_client, bool asynchronous) {
@@ -487,6 +508,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
       BuildLocalDeviceStates(xla_client, asynchronous));
+  EnablePeerAccess(xla_client->backend().stream_executors());
   TF_ASSIGN_OR_RETURN(
       auto allocator,
       GetGpuDeviceAllocator(xla_client->platform(), allocator_config,
@@ -505,7 +527,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
   }
 
   return std::unique_ptr<PjRtClient>(std::make_unique<GpuClient>(
-      kGpuName, xla_client, std::move(devices),
+      GpuName(), xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator),
       /*should_stage_host_to_device_transfers=*/true,

@@ -23,18 +23,11 @@ def make_binary_op_tests(options,
                          binary_operator,
                          allow_fully_quantize=False,
                          expected_tf_failures=0,
-                         test_parameters=None,
-                         test_parameter_experimental_converter_only=False):
+                         test_parameters=None):
   """Make a set of tests to do binary ops with and without broadcast."""
 
   if test_parameters is None:
     test_parameters = []
-
-  # If the additional test parameters are experimental_converter only, we will
-  # clear the test parameters when it's not the experimental converter.
-  if test_parameter_experimental_converter_only:
-    if not options.use_experimental_converter:
-      test_parameters = []
 
   test_parameters = test_parameters + [
       # Avoid creating all combinations to keep the test size small.
@@ -74,22 +67,6 @@ def make_binary_op_tests(options,
           "dtype": [tf.float32],
           "input_shape_1": [[]],
           "input_shape_2": [[]],
-          "activation": [False],
-          "fully_quantize": [False],
-          "dynamic_range_quantize": [False],
-      },
-      {
-          "dtype": [tf.float32],
-          "input_shape_1": [[0]],
-          "input_shape_2": [[1]],
-          "activation": [False],
-          "fully_quantize": [False],
-          "dynamic_range_quantize": [False],
-      },
-      {
-          "dtype": [tf.float32],
-          "input_shape_1": [[1]],
-          "input_shape_2": [[0]],
           "activation": [False],
           "fully_quantize": [False],
           "dynamic_range_quantize": [False],
@@ -177,7 +154,7 @@ def make_binary_op_tests(options,
   ]
 
   # float64 types are supported via flex only.
-  if options.run_with_flex and options.use_experimental_converter:
+  if options.run_with_flex:
     test_parameters = test_parameters + [
         {
             "dtype": [tf.float64],
@@ -189,9 +166,10 @@ def make_binary_op_tests(options,
         },
     ]
 
-  if options.use_experimental_converter:
+  if not options.skip_high_dimension_inputs:
     test_parameters = test_parameters + [
         # High dimension broadcasting support in MLIR converter.
+        # Note(b/204360746): XNNPack delegate don't support high dimension.
         {
             "dtype": [tf.float32],
             "input_shape_1": [[8, 7, 6, 5, 4, 3, 2, 1],
@@ -201,17 +179,7 @@ def make_binary_op_tests(options,
             "fully_quantize": [False],
             "dynamic_range_quantize": [False],
             "dynamic_size_value": [4, 1],
-        },
-        # Zero in input shape.
-        {
-            "dtype": [tf.float32],
-            "input_shape_1": [[1, 0], [1, None]],
-            "input_shape_2": [[4, 3, 2, 1], [4, None, 2, 1]],
-            "activation": [False],
-            "fully_quantize": [False],
-            "dynamic_range_quantize": [False],
-            "dynamic_size_value": [0],
-        },
+        }
     ]
 
   # test_parameters include fully_quantize option only when
@@ -239,10 +207,8 @@ def make_binary_op_tests(options,
         name="input2",
         shape=parameters["input_shape_2"])
     out = binary_operator(input1, input2)
-    # TODO(karimnosseir): Update condition after moving to new converter.
-    if parameters["activation"] and (not options.use_experimental_converter or
-                                     (parameters["dtype"] != tf.int32 and
-                                      parameters["dtype"] != tf.int64)):
+    if parameters["activation"] and (parameters["dtype"] != tf.int32 and
+                                     parameters["dtype"] != tf.int64):
       out = tf.nn.relu(out)
     return [input1, input2], [out]
 
@@ -296,8 +262,7 @@ def make_add_tests(options):
       options,
       tf.add,
       allow_fully_quantize=True,
-      test_parameters=test_parameters,
-      test_parameter_experimental_converter_only=True)
+      test_parameters=test_parameters)
 
 
 @register_make_test_function()

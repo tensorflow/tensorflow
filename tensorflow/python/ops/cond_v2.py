@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -600,10 +601,11 @@ def _make_output_composite_tensors_match(op_type, branch_graphs):
   for output_idx, branch_outs in enumerate(zip(*branch_outputs)):
     if len(set(type(out) for out in branch_outs)) == 1:
       continue
-    if not any(isinstance(out, ops.IndexedSlices) for out in branch_outs):
+    if not any(
+        isinstance(out, indexed_slices.IndexedSlices) for out in branch_outs):
       continue
     for branch_idx, branch_out in enumerate(branch_outs):
-      if isinstance(branch_out, ops.IndexedSlices):
+      if isinstance(branch_out, indexed_slices.IndexedSlices):
         continue
       elif isinstance(branch_out, ops.Tensor):
         with branch_graphs[branch_idx].as_default():
@@ -642,16 +644,19 @@ def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
   # Store indices of IndexedSlices.indices in `indexed_slice_indices`.
   for output_idx, branch_outs in enumerate(
       zip(*branch_outputs_flat_with_composites)):
-    if len(set(isinstance(out, ops.IndexedSlices) for out in branch_outs)) != 1:
+    if len(
+        set(
+            isinstance(out, indexed_slices.IndexedSlices)
+            for out in branch_outs)) != 1:
       raise TypeError("Cannot reconcile tf.{op_name} {output_idx}-th outputs:\n"
                       "  branches returned: {outputs}".format(
                           op_name="cond" if op_type == _COND else "switch_case",
                           output_idx=output_idx,
                           outputs=branch_outs))
-    if isinstance(branch_outs[0], ops.IndexedSlices):
+    if isinstance(branch_outs[0], indexed_slices.IndexedSlices):
       # indices is the second component of the composite tensor.
       indexed_slice_indices.append(current_index + 1)
-    if nest.is_sequence_or_composite(branch_outs[0]):
+    if nest.is_nested_or_composite(branch_outs[0]):
       current_index += len(nest.flatten(branch_outs[0], expand_composites=True))
     elif branch_outs[0] is not None:
       # `FuncGraph.outputs` does not contain Nones so no need to update the

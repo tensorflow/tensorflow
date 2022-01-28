@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -37,7 +36,7 @@ namespace op = xla::testing::opcode_matchers;
 using AllGatherDecomposerTest = HloTestBase;
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAllGather) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 ENTRY entry {
@@ -59,7 +58,7 @@ ENTRY entry {
 }
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAndPartitionAllGather) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 ENTRY entry {
@@ -82,7 +81,7 @@ ENTRY entry {
 }
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAllGatherWithTrivialGroup) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 ENTRY entry {
@@ -105,7 +104,7 @@ ENTRY entry {
 }
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAllGatherWithSubgroups) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 ENTRY entry {
@@ -130,7 +129,7 @@ ENTRY entry {
 }
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAllGatherWithSubgroupsGlobalIds) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule module
 
 ENTRY entry {

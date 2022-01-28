@@ -105,10 +105,9 @@ def _get_element_from_tensor_info(tensor_info, graph):
         graph.get_tensor_by_name(
             tensor_info.coo_sparse.dense_shape_tensor_name))
   elif encoding == "composite_tensor":
-    struct_coder = nested_structure_coder.StructureCoder()
     spec_proto = struct_pb2.StructuredValue(
         type_spec_value=tensor_info.composite_tensor.type_spec)
-    spec = struct_coder.decode_proto(spec_proto)
+    spec = nested_structure_coder.decode_proto(spec_proto)
     components = [graph.get_tensor_by_name(component.name) for component in
                   tensor_info.composite_tensor.components]
     return spec._from_components(components)  # pylint: disable=protected-access

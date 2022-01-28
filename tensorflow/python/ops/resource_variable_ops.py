@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -249,7 +250,7 @@ def _handle_graph(handle):
       yield
 
 
-class EagerResourceDeleter(object):
+class EagerResourceDeleter:
   """An object which cleans up a resource handle.
 
   An alternative to defining a __del__ method on an object. The intended use is
@@ -477,7 +478,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       # ops.value_text when the handle is resolved, so we need to keep that
       # under the try...except if we want to suppress them.
       try:
-        value_text = ops.value_text(self.read_value(), is_repr=True)
+        with ops.device(self.device):
+          value_text = ops.value_text(self.read_value(), is_repr=True)
       except:  # pylint: disable=bare-except
         value_text = "numpy=<unavailable>"
 
@@ -487,19 +489,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
 
-  def __tf_function_cache_spec__(self):
-    res = f"d{self.dtype.as_datatype_enum}s"
-    for dim_size in self.shape:
-      res += f"{dim_size}-"
-
-    return res
-
-  def __tf_resource_id__(self):
-    return self._handle._id  # pylint:disable=protected-access
-
   def __tf_tracing_type__(self, tracing_context):
     return VariableType(self.dtype, self.shape,
-                        tracing_context.get_local_id(self.__tf_resource_id__()))
+                        tracing_context.get_local_id(self._handle._id))  # pylint:disable=protected-access
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -941,7 +933,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
              f"The variable shape {self._shape}, and the "
              f"assigned value shape {value_tensor.shape} are incompatible."))
       kwargs = {}
-      if forward_compat.forward_compatible(2021, 11, 15):
+      if forward_compat.forward_compatible(2022, 2, 23):
         # If the shape is fully defined, we do a runtime check with the shape of
         # value.
         validate_shape = self._shape.is_fully_defined()
@@ -977,7 +969,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1001,7 +993,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1026,7 +1018,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1051,7 +1043,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1075,7 +1067,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1099,7 +1091,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1123,7 +1115,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1177,7 +1169,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -2264,7 +2256,7 @@ def _GatherGrad(op, grad):
   values_shape = array_ops.concat([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
-  return (ops.IndexedSlices(values, indices, params_shape), None)
+  return (indexed_slices.IndexedSlices(values, indices, params_shape), None)
 
 
 def _to_proto_fn(v, export_scope=None):

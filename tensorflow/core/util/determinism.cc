@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/determinism.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -22,31 +23,42 @@ namespace tensorflow {
 
 namespace {
 
-enum class DeterminismState { DISABLED, ENABLED, NOT_SET };
-mutex* determinism_state_mutex = new mutex;
-DeterminismState determinism_state = DeterminismState::NOT_SET;
+class DeterminismState {
+ public:
+  explicit DeterminismState(absl::string_view env_var) : env_var_(env_var) {}
+  bool Required() {
+    mutex_lock l(*mutex_);
+
+    if (state_ == Value::NOT_SET) {
+      bool env_var_set = false;
+      TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(env_var_,
+                                                 /*default_val=*/false,
+                                                 &env_var_set));
+      state_ = env_var_set ? Value::ENABLED : Value::DISABLED;
+    }
+
+    return state_ == Value::ENABLED;
+  }
+  void Enable(bool enabled) {
+    mutex_lock l(*mutex_);
+    state_ = enabled ? Value::ENABLED : Value::DISABLED;
+  }
+
+ private:
+  absl::string_view env_var_;
+  enum class Value { DISABLED, ENABLED, NOT_SET };
+  mutex* mutex_ = new mutex;
+  Value state_ = Value::NOT_SET;
+};
 
 }  // namespace
 
-bool OpDeterminismRequired() {
-  mutex_lock l(*determinism_state_mutex);
+DeterminismState OpDeterminismState = DeterminismState("TF_DETERMINISTIC_OPS");
+DeterminismState OpOrderDeterminismState =
+    DeterminismState("TF_DETERMINISTIC_ORDER");
 
-  if (determinism_state == DeterminismState::NOT_SET) {
-    bool env_var_set = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &env_var_set));
-    determinism_state =
-        env_var_set ? DeterminismState::ENABLED : DeterminismState::DISABLED;
-  }
-
-  return determinism_state == DeterminismState::ENABLED;
-}
-
-void EnableOpDeterminism(bool enabled) {
-  mutex_lock l(*determinism_state_mutex);
-  determinism_state =
-      enabled ? DeterminismState::ENABLED : DeterminismState::DISABLED;
-}
+bool OpDeterminismRequired() { return OpDeterminismState.Required(); }
+void EnableOpDeterminism(bool enabled) { OpDeterminismState.Enable(enabled); }
+bool OpOrderDeterminismRequired() { return OpOrderDeterminismState.Required(); }
 
 }  // namespace tensorflow

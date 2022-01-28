@@ -45,7 +45,7 @@ class DynamicParameterBindingTest : public HloTestBase {
 TEST_F(DynamicParameterBindingTest, SimpleBinding) {
   // 'b' is a dynamic shape; 'a' represents the real size of b's first
   // dimension.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {
@@ -82,7 +82,7 @@ ENTRY main {
 TEST_F(DynamicParameterBindingTest, TupleBinding) {
   // 'gte2' is a dynamic shape; 'gte1' represents the real size of gte2's first
   // dimension.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {
@@ -121,7 +121,7 @@ ENTRY main {
 TEST_F(DynamicParameterBindingTest, TupleBindingWithMultiDimension) {
   // 'gte2' is a dynamic shape; 'gte1' represents the real size of gte2's both
   // dimensions.
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {

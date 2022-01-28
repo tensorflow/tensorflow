@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import adagrad
@@ -312,11 +313,11 @@ class AdagradOptimizerTest(test.TestCase, parameterized.TestCase):
         var0 = variables.Variable(var0_np)
         var1 = variables.Variable(var1_np)
         grads0_np_indices = np.array([0, 2], dtype=np.int32)
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant(grads0_np[grads0_np_indices]),
             constant_op.constant(grads0_np_indices), constant_op.constant([3]))
         grads1_np_indices = np.array([0, 2], dtype=np.int32)
-        grads1 = ops.IndexedSlices(
+        grads1 = indexed_slices.IndexedSlices(
             constant_op.constant(grads1_np[grads1_np_indices]),
             constant_op.constant(grads1_np_indices), constant_op.constant([3]))
         learning_rate = 3.0
@@ -354,7 +355,7 @@ class AdagradOptimizerTest(test.TestCase, parameterized.TestCase):
 
         var0 = variables.Variable(var0_np)
         grads0_np_indices = np.array([0], dtype=np.int32)
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant(grads0_np[grads0_np_indices]),
             constant_op.constant(grads0_np_indices), constant_op.constant([3]))
         learning_rate = 3.0
@@ -390,10 +391,10 @@ class AdagradOptimizerTest(test.TestCase, parameterized.TestCase):
             var_np, dtype=dtype)
         aggregated_update_var = variables.Variable(
             var_np, dtype=dtype)
-        grad_repeated_index = ops.IndexedSlices(
+        grad_repeated_index = indexed_slices.IndexedSlices(
             constant_op.constant([0.1, 0.1], shape=[2, 1], dtype=dtype),
             constant_op.constant([1, 1]), constant_op.constant([2, 1]))
-        grad_aggregated = ops.IndexedSlices(
+        grad_aggregated = indexed_slices.IndexedSlices(
             constant_op.constant([0.2], shape=[1, 1], dtype=dtype),
             constant_op.constant([1]), constant_op.constant([2, 1]))
         repeated_update = adagrad.Adagrad(3.0).apply_gradients([
@@ -450,7 +451,7 @@ class AdagradOptimizerTest(test.TestCase, parameterized.TestCase):
             -9.48906e-05
         ]],
                              dtype=dtype.as_numpy_dtype)
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant(grads0_np), constant_op.constant([0]),
             constant_op.constant(shape))
         ada_opt = adagrad.Adagrad(1.0)

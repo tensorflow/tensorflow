@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -44,7 +43,7 @@ class HloModuleDceTest : public HloTestBase {
   // 'computation' passes through its tuple element at 'tuple_index' from
   // parameter to root instruction.
   bool WhileBodyHasPassThroughTupleElement(const HloComputation* computation,
-                                           const string& while_name,
+                                           const std::string& while_name,
                                            const int64_t tuple_index) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile &&

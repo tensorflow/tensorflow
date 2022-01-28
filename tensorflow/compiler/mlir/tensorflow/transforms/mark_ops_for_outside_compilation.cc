@@ -58,9 +58,9 @@ struct MarkOpsForOutsideCompilation
 // TODO(b/161726307): Move or import the relevant patterns to LowerTF pass and
 // remove this.
 void AddCanonicalizationPatterns(MLIRContext* context,
-                                 OwningRewritePatternList* patterns) {
-  for (auto* op : context->getRegisteredOperations())
-    op->getCanonicalizationPatterns(*patterns, context);
+                                 RewritePatternSet* patterns) {
+  for (auto op : context->getRegisteredOperations())
+    op.getCanonicalizationPatterns(*patterns, context);
 }
 
 // Adds the list of ops that are supported on TPU through constant folding which
@@ -393,7 +393,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     getOperation().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();
   }
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
   TF::PopulateTFLoweringBeforeHLOPatterns(module.getContext(), &patterns);
   TF::PopulateLoweringQuantizedPatterns(module.getContext(), &patterns);
