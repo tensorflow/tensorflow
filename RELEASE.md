@@ -1,3 +1,7 @@
+# Release 2.6.3
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.6.2
 
 Fixes an issue where `keras`, `tensorflow_estimator` and `tensorboard` were missing proper upper bounds and resulted in broken installs after TF 2.7 release
