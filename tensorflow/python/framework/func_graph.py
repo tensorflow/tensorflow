@@ -47,7 +47,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 ALLOWLIST_COLLECTIONS = [
@@ -1141,8 +1140,8 @@ def func_graph_from_py_func(name,
       func_outputs = nest.map_structure(convert, func_outputs,
                                         expand_composites=True)
 
-      check_func_mutation(func_args_before, func_kwargs_before, func_args,
-                          func_kwargs, original_func)
+      check_mutation(func_args_before, func_args, original_func)
+      check_mutation(func_kwargs_before, func_kwargs, original_func)
     finally:
       current_scope.set_use_resource(default_use_resource)
 
@@ -1209,50 +1208,23 @@ def device_stack_has_callable(device_stack):
              for spec in device_stack.peek_objs())
 
 
-def has_mutation(n1, n2):
-  """Returns true if n1 and n2 are different (using `is` to compare leaves)."""
+def check_mutation(n1, n2, func):
+  """Check if two list of arguments are exactly the same."""
+  func_name = getattr(func, "__name__", func)
+
+  errmsg = ("{}() should not modify its Python input arguments."
+            " Check if it modifies any lists or dicts passed as"
+            " arguments. Modifying a copy is allowed.".format(func_name))
   try:
+    # TODO(mdan): Compare more robustly so that argument names can be reported.
     nest.assert_same_structure(n1, n2, expand_composites=True)
   except ValueError:
-    return True
+    raise ValueError(errmsg)
 
   for arg1, arg2 in zip(nest.flatten(n1, expand_composites=True),
                         nest.flatten(n2, expand_composites=True)):
     if arg1 is not arg2:
-      return True
-
-  return False
-
-
-def check_func_mutation(old_args, old_kwargs, new_args, new_kwargs, func):
-  """Checks that the arguments to a function are not modified."""
-  if not has_mutation((old_args, old_kwargs), (new_args, new_kwargs)):
-    return
-
-  # Mutation detected; construct a useful error message.
-  func_name = getattr(func, "__qualname__", getattr(func, "__name__", func))
-  signature = tf_inspect.signature(func)
-  try:
-    old_bound = signature.bind(*old_args, **old_kwargs).arguments
-    new_bound = signature.bind(*new_args, **new_kwargs).arguments
-  except TypeError as e:
-    # This occurs when the function is called with the (deprecated)
-    # "flat signature".  See ConcreteFunction._call_with_flat_signature.  In
-    # this case, we can't report which arguments were modified.
-    raise ValueError(
-        f"{func_name}{signature} should not modify its Python input "
-        f"arguments. Check if it modifies any lists or passed as arguments. "
-        f"Modifying a copy is allowed.") from e
-
-  assert set(old_bound) == set(new_bound)
-  modified_args = [
-      arg_name for arg_name in new_bound
-      if has_mutation(old_bound[arg_name], new_bound[arg_name])
-  ]
-  changes = ", ".join(modified_args)
-  raise ValueError(f"{func_name}{signature} should not modify its Python "
-                   f"input arguments. Modifying a copy is allowed. The "
-                   f"following parameter(s) were modified: {changes}")
+      raise ValueError(errmsg)
 
 
 # TODO(edloper): If TensorArray becomes a CompositeTensor, then delete this.
