@@ -26,6 +26,8 @@ def make_exp_tests(options):
   test_parameters = [{
       "input_dtype": [tf.float32],
       "input_shape": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+      "fully_quantize": [False, True],
+      "quant_16x8": [False, True],
   }]
 
   def build_graph(parameters):
