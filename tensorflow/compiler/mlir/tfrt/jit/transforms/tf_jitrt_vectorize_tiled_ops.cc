@@ -86,36 +86,27 @@ struct VectorizeTiledOpsPass
   void runOnFunction() override {
     auto funcOp = getFunction();
 
-    // Vector transfer options.
-    mlir::VectorTransferToSCFOptions vector_transfer_opts;
-
     // Vectorize linalg.fill and linalg.generic operations.
     mlir::OpPassManager dynamicPM("builtin.func");
     CodegenStrategy strategy;
-    strategy.vectorize(mlir::linalg::FillOp::getOperationName())
-        .vectorLowering(
-            mlir::linalg::LinalgVectorLoweringOptions()
-                .setVectorTransferToSCFOptions(vector_transfer_opts));
+    strategy.vectorize(mlir::linalg::FillOp::getOperationName());
+
     strategy.configurePassPipeline(dynamicPM, funcOp.getContext());
     if (failed(runPipeline(dynamicPM, funcOp))) return signalPassFailure();
 
     mlir::OpPassManager dynamicPM2("builtin.func");
     CodegenStrategy strategy2;
-    strategy2
-        .vectorize(GenericOp::getOperationName(),
-                   [](mlir::Operation *op) {
-                     auto generic = mlir::dyn_cast<GenericOp>(op);
-                     if (!generic) return failure();
+    strategy2.vectorize(GenericOp::getOperationName(), [](mlir::Operation *op) {
+      auto generic = mlir::dyn_cast<GenericOp>(op);
+      if (!generic) return failure();
 
-                     if (op->getParentOfType<TiledLoopOp>()) return success();
+      if (op->getParentOfType<TiledLoopOp>()) return success();
 
-                     // Allow vectorization of 1D reductions.
-                     return success(generic.getNumLoops() == 1 &&
-                                    generic.getNumReductionLoops() == 1);
-                   })
-        .vectorLowering(
-            mlir::linalg::LinalgVectorLoweringOptions()
-                .setVectorTransferToSCFOptions(vector_transfer_opts));
+      // Allow vectorization of 1D reductions.
+      return success(generic.getNumLoops() == 1 &&
+                     generic.getNumReductionLoops() == 1);
+    });
+
     strategy2.configurePassPipeline(dynamicPM2, funcOp.getContext());
     if (failed(runPipeline(dynamicPM2, funcOp))) return signalPassFailure();
 
