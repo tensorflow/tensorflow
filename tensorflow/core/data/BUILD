@@ -38,6 +38,8 @@ exports_files([
     "stats_utils.h",
     "unbounded_thread_pool.cc",
     "unbounded_thread_pool.h",
+    "utils.cc",
+    "utils.h",
 ])
 
 cc_library(
@@ -449,5 +451,14 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
     ],
 )

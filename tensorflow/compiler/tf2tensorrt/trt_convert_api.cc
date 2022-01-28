@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -81,9 +82,22 @@ Status ImportGraphDefToSession(Session* session, const GraphDef& graph_def,
 }
 
 Status GetTrtRewriterConfig(const TfTrtConversionParams& params,
+                            const GraphDef& frozen_graph_def,
                             RewriterConfig* opt_config) {
   opt_config->set_meta_optimizer_iterations(tensorflow::RewriterConfig::ONE);
   opt_config->set_min_graph_nodes(-1);  // do not skip small graphs
+
+  // Turn off remapping.
+  opt_config->set_remapping(RewriterConfig_Toggle::RewriterConfig_Toggle_OFF);
+
+  // If the graph has QDQ nodes, then we need to disable folding of the
+  // QDQ with constants. Otherwise, the conversion will not work corectly.
+  // Ideally, we do this after segmentation and outlining of TRT regions to
+  // functions, but we currently lack that capability. Disabling QDQ-const
+  // folding doesn't matter if you don't have QDQ nodes, so we always enable
+  // this.
+  opt_config->set_experimental_disable_folding_quantization_emulation(
+      IS_TRT_VERSION_GE(8, 0, 0, 0));
 
   // Initial transformations before TensorRTOptimizer is called
   opt_config->add_optimizers("function");
@@ -154,6 +168,10 @@ Status RunSession(Session* session, const std::vector<std::string>& input_names,
                   const std::vector<std::string>& output_names,
                   const std::vector<Tensor>& input_tensors,
                   string prefix = "") {
+  TRT_ENSURE(!input_names.empty());
+  TRT_ENSURE(!output_names.empty());
+  TRT_ENSURE(!input_tensors.empty());
+
   std::vector<std::pair<std::string, tensorflow::Tensor>> input_pairs;
   std::vector<std::string> prefixed_output_names;
   auto prefixed_name = [](std::string prefix, std::string name) {
@@ -323,6 +341,22 @@ Status ValidateConversionParams(const TfTrtConversionParams& p, int n_inputs) {
   }
   return Status::OK();
 }
+
+// Returns configuration used during the build step session run.
+tensorflow::SessionOptions GetSessionConfg() {
+  // We also need to disable constant folding because we already ran constant
+  // folding and may have prevented quantization operation folding on purpose.
+  tensorflow::SessionOptions opts;
+  auto* rewriter_opts =
+      opts.config.mutable_graph_options()->mutable_rewrite_options();
+  rewriter_opts->set_experimental_disable_folding_quantization_emulation(true);
+
+  // It seems  that we need to disable the optimizer entirely to prevent the
+  // folding.
+  rewriter_opts->set_disable_meta_optimizer(true);
+  return opts;
+}
+
 }  // namespace
 
 StatusOr<GraphDef> ConvertAndBuild(
@@ -335,7 +369,9 @@ StatusOr<GraphDef> ConvertAndBuild(
   meta_graph.mutable_graph_def()->CopyFrom(frozen_graph_def);
 
   RewriterConfig rewriter_config;
-  TF_RETURN_IF_ERROR(GetTrtRewriterConfig(conv_params, &rewriter_config));
+  TF_RETURN_IF_ERROR(
+      GetTrtRewriterConfig(conv_params, frozen_graph_def, &rewriter_config));
+
   GraphDef segmented_graph_def;
   TF_RETURN_IF_ERROR(RunTfTrt(meta_graph, input_names, output_names,
                               rewriter_config, &segmented_graph_def));
@@ -346,7 +382,7 @@ StatusOr<GraphDef> ConvertAndBuild(
     // The TRTOptimization pass has inserted placeholder TRTEngineOps. Here we
     // trigger conversion by inferring the graph.
     std::unique_ptr<tensorflow::Session> session(
-        tensorflow::NewSession(tensorflow::SessionOptions()));
+        tensorflow::NewSession(GetSessionConfg()));
     if (!session.get()) {
       return errors::Internal("Failed to create build session");
     }

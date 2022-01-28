@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 
 namespace mlir {
 class FuncOp;
@@ -45,7 +46,8 @@ std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization);
+    bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization,
+    bool use_fake_quant_num_bits = false);
 
 // Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 // pass.
@@ -54,6 +56,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
     bool default_to_single_batch = false);
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
+// Use quant_specs.ops_blocklist and quant_specs.nodes_blocklist if possible
+// as they are now structure variables of QuantizationSpecs.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
     const QuantizationSpecs& quant_specs, const StringSet& ops_blocklist = {},
     const StringSet& nodes_blocklist = {});
@@ -76,7 +80,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicRangeQuantizePass(
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
-    bool emit_quant_adaptor_ops);
+    bool emit_quant_adaptor_ops, const CustomOpMap& custom_op_map = {});
 
 // Creates an instance of the TensorFlow Lite pass that decomposes hybrid
 // quantization patterns to the same dense operation with tfl dequantization

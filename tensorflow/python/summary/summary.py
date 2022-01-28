@@ -19,10 +19,12 @@ See the [Summaries and
 TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard) guide.
 """
 
+import warnings
+
 from google.protobuf import json_format as _json_format
 
 # exports Summary, SummaryDescription, Event, TaggedRunMetadata, SessionLog
-# pylint: disable=unused-import
+# pylint: disable=unused-import, g-importing-member
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.framework.summary_pb2 import SummaryDescription
 from tensorflow.core.framework.summary_pb2 import SummaryMetadata as _SummaryMetadata  # pylint: enable=unused-import
@@ -39,6 +41,7 @@ from tensorflow.python.framework import ops as _ops
 from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 from tensorflow.python.ops import gen_summary_ops as _gen_summary_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import summary_op_util as _summary_op_util
+from tensorflow.python.ops import summary_ops_v2 as _summary_ops_v2
 
 # exports FileWriter, FileWriterCache
 # pylint: disable=unused-import
@@ -72,8 +75,19 @@ def scalar(name, tensor, collections=None, family=None):
     ValueError: If tensor has the wrong shape or type.
 
   @compatibility(TF2)
-  This API is not compatible with eager execution or `tf.function`. To migrate
-  to TF2, please use `tf.summary.scalar` instead. Please check
+  For compatibility purposes, when invoked in TF2 where the outermost context is
+  eager mode, this API will check if there is a suitable TF2 summary writer
+  context available, and if so will forward this call to that writer instead. A
+  "suitable" writer context means that the writer is set as the default writer,
+  and there is an associated non-empty value for `step` (see
+  `tf.summary.SummaryWriter.as_default`, or alternatively
+  `tf.summary.experimental.set_step`). For the forwarded call, the arguments
+  here will be passed to the TF2 implementation of `tf.summary.scalar`, and the
+  return value will be an empty bytestring tensor, to avoid duplicate summary
+  writing. This forwarding is best-effort and not all arguments will be
+  preserved.
+
+  To migrate to TF2, please use `tf.summary.scalar` instead. Please check
   [Migrating tf.summary usage to
   TF 2.0](https://www.tensorflow.org/tensorboard/migrate#in_tf_1x) for concrete
   steps for migration. `tf.summary.scalar` can also log training metrics in
@@ -98,6 +112,31 @@ def scalar(name, tensor, collections=None, family=None):
 
   @end_compatibility
   """
+  # Special case: invoke v2 op for TF2 users who have a v2 writer.
+  if _ops.executing_eagerly_outside_functions():
+    if not _summary_ops_v2.has_default_writer():
+      # A default summary writer needs to be present.
+      warnings.warn(
+          'Cannot activate TF2 compatibility support for TF1 summary ops: '
+          'default summary writer not found.')
+
+    elif _summary_ops_v2.get_step() is None:
+      # Users need to call `tf.summary.experimental.set_step` to invoke v2 API.
+      warnings.warn(
+          'Cannot activate TF2 compatibility support for TF1 summary ops: '
+          'global step not set. To set step for summary writer, '
+          'use `tf.summary.experimental.set_step`.')
+    else:
+      # Defer the import to happen inside the symbol to prevent breakage due to
+      # missing dependency.
+      from tensorboard.summary.v2 import scalar as scalar_v2  # pylint: disable=g-import-not-at-top
+      # TODO(b/210992280): Handle the family argument.
+      scalar_v2(name, data=tensor)
+      # Return an empty Tensor, which will be acceptable as an input to the
+      # `tf.compat.v1.summary.merge()` API.
+      return _constant_op.constant(b'')
+
+  # Fall back to legacy v1 scalar implementation.
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
   with _summary_op_util.summary_scope(

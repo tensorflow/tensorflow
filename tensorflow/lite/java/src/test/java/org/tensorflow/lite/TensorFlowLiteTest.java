@@ -17,6 +17,7 @@ package org.tensorflow.lite;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -24,6 +25,11 @@ import org.junit.runners.JUnit4;
 /** Unit tests for {@link org.tensorflow.lite.TensorFlowLite}. */
 @RunWith(JUnit4.class)
 public final class TensorFlowLiteTest {
+
+  @Before
+  public void setUp() {
+    TestInit.init();
+  }
 
   @Test
   @SuppressWarnings("deprecation")

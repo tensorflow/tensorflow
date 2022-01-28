@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/ops_util.h"
@@ -40,24 +41,16 @@ class WhereOp : public XlaOpKernel {
     xla::XlaOp condition = ctx->Input(0);
     StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(condition);
     OP_REQUIRES_OK(ctx, input_shape.status());
-    // Use S32 as indices first, then convert to S64 in the end if needed.
     auto iota_shape = input_shape.ValueOrDie();
     iota_shape.set_element_type(xla::S32);
 
     int64_t flattened_size = xla::Product(iota_shape.dimensions());
     xla::XlaOp reshaped_condition = xla::Reshape(condition, {flattened_size});
     xla::XlaOp zeros = xla::ZerosLike(reshaped_condition);
-    xla::XlaOp zeros_int = xla::ConvertElementType(zeros, xla::S32);
-    xla::XlaOp reshaped_condition_int =
-        xla::ConvertElementType(reshaped_condition, xla::S32);
-    xla::XlaOp compared = xla::ConvertElementType(
-        xla::Gt(reshaped_condition_int, zeros_int), xla::S32);
-    xla::XlaOp length = xla::ReduceAll(
-        compared, xla::Zero(ctx->builder(), xla::S32),
-        xla::CreateScalarAddComputation(xla::S32, ctx->builder()));
+    xla::XlaOp compared = xla::Ne(reshaped_condition, zeros);
 
-    std::vector<xla::XlaOp> to_sort = {reshaped_condition_int};
-    std::vector<xla::PrimitiveType> types_to_sort = {xla::S32};
+    std::vector<xla::XlaOp> to_sort = {compared};
+    std::vector<xla::PrimitiveType> types_to_sort = {xla::PRED};
     // Generate iota for each dimension, which after combining becomes
     // indices of each element.
     for (int64_t axis = 0; axis < iota_shape.rank(); ++axis) {
@@ -79,13 +72,26 @@ class WhereOp : public XlaOpKernel {
 
     xla::XlaOp result = xla::ConcatInDim(ctx->builder(), to_concat, 1);
     result = xla::ConvertElementType(result, ctx->output_xla_type(0));
+
     // Dynamic padder will handle the dynamic dimension.
-    xla::XlaOp result_padded = xla::SetDimensionSize(result, length, 0);
-    ctx->SetOutput(0, result_padded);
+    xla::XlaOp compared_int = xla::ConvertElementType(compared, xla::S32);
+    xla::XlaOp length = xla::ReduceAll(
+        compared_int, xla::Zero(ctx->builder(), xla::S32),
+        xla::CreateScalarAddComputation(xla::S32, ctx->builder()));
+    StatusOr<xla::XlaOp> rebounded_result = xla::SetDimensionSizeWithRebound(
+        &ctx->value_inference(), result, length, 0);
+    if (rebounded_result.ok()) {
+      ctx->SetOutput(0, *rebounded_result);
+      return;
+    }
+    // TODO(b/207187072): Remove special handling once dynamic reshape can also
+    // be handled.
+    xla::XlaOp bounded_result = xla::SetDimensionSize(result, length, 0);
+    ctx->SetOutput(0, bounded_result);
   }
 };
 
-REGISTER_XLA_OP(Name("Where").Device(DEVICE_TPU_XLA_JIT), WhereOp);
+REGISTER_XLA_OP(Name("Where"), WhereOp);
 
 }  // namespace
 }  // namespace tensorflow

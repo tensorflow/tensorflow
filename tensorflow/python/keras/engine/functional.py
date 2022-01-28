@@ -362,12 +362,12 @@ class Functional(training_lib.Model):
       dependencies['layer-%d' % layer_index] = layer
     return dependencies
 
-  @property
-  def _checkpoint_dependencies(self):
-    dependencies = [
-        trackable.TrackableReference(name=name, ref=layer)
-        for name, layer in self._layer_checkpoint_dependencies.items()]
-    dependencies.extend(super(Functional, self)._checkpoint_dependencies)
+  def _trackable_children(self,
+                          save_type=trackable.SaveType.CHECKPOINT,
+                          **kwargs):
+    dependencies = self._layer_checkpoint_dependencies
+    dependencies.update(
+        super(Functional, self)._trackable_children(save_type, **kwargs))
     return dependencies
 
   def _lookup_dependency(self, name):

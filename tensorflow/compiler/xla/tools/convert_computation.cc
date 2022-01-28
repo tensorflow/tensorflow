@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <stdio.h>
 #include <unistd.h>
+
 #include <string>
 
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -32,7 +33,7 @@ limitations under the License.
 namespace xla {
 namespace tools {
 
-void RealMain(const string& mode, const string& path) {
+void RealMain(const std::string& mode, const std::string& path) {
   HloSnapshot module;
   tensorflow::Env* env = tensorflow::Env::Default();
   if (mode == "txt2bin") {
@@ -40,7 +41,7 @@ void RealMain(const string& mode, const string& path) {
     TF_CHECK_OK(tensorflow::WriteBinaryProto(env, path, module));
   } else if (mode == "bin2txt") {
     TF_CHECK_OK(tensorflow::ReadBinaryProto(env, path, &module));
-    string out;
+    std::string out;
     tensorflow::protobuf::TextFormat::PrintToString(module, &out);
     fprintf(stdout, "%s", out.c_str());
   } else {

@@ -18,7 +18,6 @@ import abc
 import itertools
 
 import numpy as np
-import six
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -47,7 +46,7 @@ from tensorflow.python.saved_model import save as save_model
 from tensorflow.python.util import nest
 
 
-class OperatorShapesInfo(object):
+class OperatorShapesInfo:
   """Object encoding expected shape for a test.
 
   Encodes the expected shape of a matrix for a test. Also
@@ -59,7 +58,7 @@ class OperatorShapesInfo(object):
     self.__dict__.update(kwargs)
 
 
-class CheckTapeSafeSkipOptions(object):
+class CheckTapeSafeSkipOptions:
 
   # Skip checking this particular method.
   DETERMINANT = "determinant"
@@ -68,8 +67,7 @@ class CheckTapeSafeSkipOptions(object):
   TRACE = "trace"
 
 
-@six.add_metaclass(abc.ABCMeta)  # pylint: disable=no-init
-class LinearOperatorDerivedClassTest(test.TestCase):
+class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
   """Tests for derived classes.
 
   Subclasses should implement every abstractmethod, and this will enable all
@@ -856,8 +854,8 @@ def add_tests(test_cls):
                 use_placeholder, shape_info, dtype)))
 
 
-@six.add_metaclass(abc.ABCMeta)
-class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
+class SquareLinearOperatorDerivedClassTest(
+    LinearOperatorDerivedClassTest, metaclass=abc.ABCMeta):
   """Base test class appropriate for square operators.
 
   Sub-classes must still define all abstractmethods from
@@ -912,8 +910,8 @@ class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
       return 2
 
 
-@six.add_metaclass(abc.ABCMeta)
-class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
+class NonSquareLinearOperatorDerivedClassTest(
+    LinearOperatorDerivedClassTest, metaclass=abc.ABCMeta):
   """Base test class appropriate for generic rectangular operators.
 
   Square shapes are never tested by this class, so if you want to test your

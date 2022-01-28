@@ -49,7 +49,7 @@ struct HloCompareAdaptor {
 template <template <typename, typename, typename> class Pattern,
           typename... ConstructorArgs>
 void PopulateForBroadcastingBinaryOp(MLIRContext *context,
-                                     OwningRewritePatternList *patterns,
+                                     RewritePatternSet *patterns,
                                      ConstructorArgs &&...args) {
 #define POPULATE_BCAST(ChloOp, HloOp)                                    \
   patterns->insert<                                                      \

@@ -21,8 +21,6 @@ from tensorflow.python import tf2
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
-from tensorflow.python.keras.layers.normalization import batch_normalization as batchnorm_v2
-from tensorflow.python.keras.layers.normalization import batch_normalization_v1 as batchnorm_v1
 from tensorflow.python.platform import test
 
 
@@ -93,45 +91,6 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
                        keras.initializers.Ones)
     self.assertEqual(new_layer.units.__class__, SerializableInt)
     self.assertEqual(new_layer.units, 3)
-
-  @parameterized.parameters(
-      [batchnorm_v1.BatchNormalization, batchnorm_v2.BatchNormalization])
-  def test_serialize_deserialize_batchnorm(self, batchnorm_layer):
-    layer = batchnorm_layer(
-        momentum=0.9, beta_initializer='zeros', gamma_regularizer='l2')
-    config = keras.layers.serialize(layer)
-    self.assertEqual(config['class_name'], 'BatchNormalization')
-    new_layer = keras.layers.deserialize(config)
-    self.assertEqual(new_layer.momentum, 0.9)
-    if tf2.enabled():
-      self.assertIsInstance(new_layer, batchnorm_v2.BatchNormalization)
-      self.assertEqual(new_layer.beta_initializer.__class__,
-                       keras.initializers.ZerosV2)
-    else:
-      self.assertIsInstance(new_layer, batchnorm_v1.BatchNormalization)
-      self.assertEqual(new_layer.beta_initializer.__class__,
-                       keras.initializers.Zeros)
-    self.assertEqual(new_layer.gamma_regularizer.__class__,
-                     keras.regularizers.L2)
-
-  @parameterized.parameters(
-      [batchnorm_v1.BatchNormalization, batchnorm_v2.BatchNormalization])
-  def test_deserialize_batchnorm_backwards_compatibility(self, batchnorm_layer):
-    layer = batchnorm_layer(
-        momentum=0.9, beta_initializer='zeros', gamma_regularizer='l2')
-    config = keras.layers.serialize(layer)
-    new_layer = keras.layers.deserialize(config)
-    self.assertEqual(new_layer.momentum, 0.9)
-    if tf2.enabled():
-      self.assertIsInstance(new_layer, batchnorm_v2.BatchNormalization)
-      self.assertEqual(new_layer.beta_initializer.__class__,
-                       keras.initializers.ZerosV2)
-    else:
-      self.assertIsInstance(new_layer, batchnorm_v1.BatchNormalization)
-      self.assertEqual(new_layer.beta_initializer.__class__,
-                       keras.initializers.Zeros)
-    self.assertEqual(new_layer.gamma_regularizer.__class__,
-                     keras.regularizers.L2)
 
   @parameterized.parameters([rnn_v1.LSTM, rnn_v2.LSTM])
   def test_serialize_deserialize_lstm(self, layer):

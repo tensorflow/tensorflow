@@ -100,6 +100,21 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     return result;
   }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t result = kInfiniteCardinality;
+    for (const auto& input : inputs_) {
+      int64_t n = input->Cardinality(options);
+      if (n == kUnknownCardinality) {
+        return kUnknownCardinality;
+      }
+      if (n != kInfiniteCardinality &&
+          (result == kInfiniteCardinality || n < result)) {
+        result = n;
+      }
+    }
+    return result;
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     for (const auto& input : inputs_) {
       inputs->push_back(input);

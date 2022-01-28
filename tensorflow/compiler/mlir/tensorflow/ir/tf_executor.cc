@@ -214,6 +214,7 @@ LogicalResult Verify(GraphOp graph) {
 }
 
 void Print(GraphOp graph, OpAsmPrinter &p) {
+  p << ' ';
   p.printRegion(graph.getOperation()->getRegion(0));
   p.printOptionalAttrDict(graph->getAttrs());
 }
@@ -335,6 +336,7 @@ void Print(IslandOp op, OpAsmPrinter &p) {
       return;
     }
   }
+  p << ' ';
   p.printRegion(op.getOperation()->getRegion(0));
   p.printOptionalAttrDict(op->getAttrs());
 }
@@ -1016,7 +1018,7 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
 };
 }  // anonymous namespace
 
-void GraphOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void GraphOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
   results.insert<DropEmptyGraph, HoistInnerOpsSingleIslandGraph>(context);
 }
@@ -1074,7 +1076,7 @@ struct DropEmptyIslandNoOperandOneDataResult
 
 }  // anonymous namespace
 
-void IslandOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void IslandOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   results.insert<DropEmptyIslandNoOperandNoDataResult,
                  DropEmptyIslandNoOperandOneDataResult>(context);
@@ -1104,8 +1106,8 @@ struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
 };
 }  // anonymous namespace
 
-void ControlTriggerOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void ControlTriggerOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                   MLIRContext *context) {
   results.insert<DropEmptyControlTrigger>(context);
 }
 

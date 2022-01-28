@@ -79,14 +79,15 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
           gather, "offset_dims.size not operand rank minus index_vector_dim");
     }
 
-    for (auto it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
+    for (const auto &it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
       if ((it.index() + index_vector_dim) != it.value()) {
         return rewriter.notifyMatchFailure(
             gather, "offset_dims != [index_vector_dim, result.rank)");
       }
     }
 
-    for (auto it : llvm::enumerate(gather.slice_sizes().getValues<APInt>())) {
+    for (const auto &it :
+         llvm::enumerate(gather.slice_sizes().getValues<APInt>())) {
       // First shape value must be 1.
       if (it.index() == 0) {
         if (it.value().getSExtValue() != 1) {
@@ -131,22 +132,23 @@ struct LegalizeGatherToTorchIndexSelectPass
     : public LegalizeGatherToTorchIndexSelectPassBase<
           LegalizeGatherToTorchIndexSelectPass> {
   /// Perform the lowering of standard dialect operations to approximations.
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     PopulateGatherToTorchIndexSelectPatterns(&getContext(), &patterns);
     if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
+            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
 };
 }  // namespace
 
-void PopulateGatherToTorchIndexSelectPatterns(
-    mlir::MLIRContext *context, OwningRewritePatternList *patterns) {
+void PopulateGatherToTorchIndexSelectPatterns(mlir::MLIRContext *context,
+                                              RewritePatternSet *patterns) {
   patterns->insert<GatherIsTorchIndexSelect>(context);
 }
 
-std::unique_ptr<FunctionPass> createLegalizeGatherToTorchIndexSelectPass() {
+std::unique_ptr<OperationPass<FuncOp>>
+createLegalizeGatherToTorchIndexSelectPass() {
   return std::make_unique<LegalizeGatherToTorchIndexSelectPass>();
 }
 

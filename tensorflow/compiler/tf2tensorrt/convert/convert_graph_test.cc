@@ -150,9 +150,9 @@ class ConvertAfterShapesTest : public ::testing::Test {
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
     // Construct ConversionParams.
-    const std::vector<string> output_names{"output"};
+    const std::vector<string> input_output_names{"output"};
     ConversionParams params;
-    params.output_names = &output_names;
+    params.input_output_names = &input_output_names;
     params.max_batch_size = maximum_batch_size;
     params.max_workspace_size_bytes = 8 << 20;
     params.output_graph_def = output_graph_def;

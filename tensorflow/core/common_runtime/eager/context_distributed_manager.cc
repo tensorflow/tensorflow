@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 
+#include <algorithm>
+#include <numeric>
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -622,8 +627,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     LOG_AND_RETURN_IF_ERROR(server->Start());
   } else {
     sg.Update(server->worker_env()->session_mgr->UpdateSession(
-        session_name, server_def, base_request.cluster_device_attributes(),
-        /*isolate_session_state=*/true));
+        session_name, server_def, base_request.cluster_device_attributes()));
     sg.Update(context->UpdateRemoteMaster(context_id,
                                           std::move(remote_eager_workers),
                                           added_workers, removed_workers));
@@ -716,21 +720,28 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
       context_->SetWorkerEnv(server->worker_env(), worker_session);
 
       // Coordination agent: initialize, connect, wait for all tasks
+      std::vector<DeviceAttributes> local_devices;
+      server->worker_env()->device_mgr->ListDeviceAttributes(&local_devices);
+      CoordinationServiceDeviceInfo devices;
+      *devices.mutable_tf()->mutable_devices() = {
+          std::make_move_iterator(local_devices.begin()),
+          std::make_move_iterator(local_devices.end())};
       std::unique_ptr<CoordinationClientCache> agent_cache;
       LOG_AND_RETURN_IF_ERROR(
           worker_cache->GetCoordinationClientCache(&agent_cache));
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
-          server->worker_env(), server_def, std::move(agent_cache),
+          server->worker_env()->env, server_def, std::move(agent_cache),
           [this](Status s) {
             context_->GetCollectiveExecutorHandle()->get()->StartAbort(s);
           }));
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Connect());
-      LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->WaitForAllTasks());
+      LOG_AND_RETURN_IF_ERROR(
+          coordination_service_agent_->WaitForAllTasks(devices));
 
       // Add remote devices to eager context.
       std::vector<std::unique_ptr<Device>> remote_devices;
       for (const auto& d :
-           coordination_service_agent_->GetClusterDeviceAttributes()) {
+           coordination_service_agent_->GetClusterDeviceInfo().tf().devices()) {
         // Treat all devices as remote so that EagerContext::remote_device_mgr
         // maintains all the devices, including both local and remote.
         remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));
@@ -766,7 +777,7 @@ Status EagerContextDistributedManager::EnableCoordinationService(
   TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));
   coordination_service_ =
       CoordinationServiceInterface::EnableCoordinationService(
-          service_type, worker_env, server_def, std::move(client_cache));
+          service_type, worker_env->env, server_def, std::move(client_cache));
   return Status::OK();
 }
 

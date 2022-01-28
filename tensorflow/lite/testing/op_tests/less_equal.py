@@ -36,7 +36,8 @@ def make_less_equal_tests(options):
   }]
 
   # High dimension broadcasting support in MLIR converter.
-  if options.use_experimental_converter:
+  # Note(b/204360746): XNNPack delegate don't support high dimension.
+  if not options.skip_high_dimension_inputs:
     test_parameters = test_parameters + [
         {
             "input_dtype": [tf.float32, tf.int32],

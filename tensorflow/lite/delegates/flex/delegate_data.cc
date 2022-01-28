@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -151,7 +153,7 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
         const std::vector<std::unique_ptr<Subgraph>>&, std::set<std::string>*)>&
         select_subgraphs_to_register,
     tensorflow::ResourceMgr* resource_mgr,
-    tensorflow::EagerContext* eager_context) {
+    tensorflow::EagerContext* eager_context, TfLiteDelegate* flex_delegate) {
   std::vector<std::unique_ptr<Subgraph>>* subgraphs =
       main_subgraph.GetSubgraphs();
   if (!subgraphs) {
@@ -172,7 +174,8 @@ tensorflow::Status RegisterFunctionDefForSubgraphs(
     }
     // This is to ensure that we only register FunctionDefs for subgraphs that
     // are used by TF ops to invoke functions.
-    auto* subgraph_resource = new TFLiteSubgraphResource(*(subgraphs->at(i)));
+    auto* subgraph_resource =
+        new TFLiteSubgraphResource(*(subgraphs->at(i)), flex_delegate);
     TF_RETURN_IF_ERROR(resource_mgr->Create<TFLiteSubgraphResource>(
         "flex", subgraph_name, subgraph_resource));
     tensorflow::FunctionDef fdef;
@@ -194,10 +197,15 @@ DelegateData::~DelegateData() {
 }
 
 tensorflow::Status DelegateData::Prepare(
-    const tensorflow::SessionOptions& session_options,
-    Subgraph* main_subgraph) {
+    const tensorflow::SessionOptions& session_options, Subgraph* main_subgraph,
+    TfLiteDelegate* flex_delegate) {
   if (eager_context_) {
     return tensorflow::Status();
+  }
+  if (flex_delegate == nullptr && main_subgraph != nullptr) {
+    return tensorflow::Status(
+        tensorflow::error::FAILED_PRECONDITION,
+        "flex_delegate must be non-null when main_subgraph is provided.");
   }
 
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
@@ -219,7 +227,8 @@ tensorflow::Status DelegateData::Prepare(
   if (main_subgraph) {
     TF_RETURN_IF_ERROR(RegisterFunctionDefForSubgraphs(
         *main_subgraph, GetSubgraphNamesForFunctionExecution,
-        eager_context_->HostCPU()->resource_manager(), eager_context_));
+        eager_context_->HostCPU()->resource_manager(), eager_context_,
+        flex_delegate));
   }
   return tensorflow::Status();
 }

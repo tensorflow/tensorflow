@@ -75,6 +75,7 @@ cuda_py_tests(
         "reshape_transpose_test.py",
         "tf_function_test.py",
         "topk_test.py",
+        "trt_engine_op_shape_test.py",
         "trt_mode_test.py",
         "unary_test.py",
         "vgg_block_nchw_test.py",

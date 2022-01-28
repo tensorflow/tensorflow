@@ -49,7 +49,7 @@ void WrapOpInLaunch(Operation* op, llvm::StringRef device) {
       builder.create<tf_device::ReturnOp>(op->getLoc(), op->getResults())
           .getOperation();
   MLIRContext* context = launch_op.getContext();
-  op->removeAttr(Identifier::get(kDeviceAttr, context));
+  op->removeAttr(StringAttr::get(context, kDeviceAttr));
   op->moveBefore(return_op);
 }
 

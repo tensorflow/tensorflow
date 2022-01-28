@@ -88,13 +88,13 @@ void PopulateWithIntNext(Literal* literal);
 template <>
 void PopulateWithIntNext<half>(Literal* literal) {
   // Duplicates may be generated if we don't have enough bits.
-  uint16 next_value = 0;
+  uint16_t next_value = 0;
   for (half& value : literal->data<half>()) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
-    uint16 exponent_msb = next_value & 0x4000;
-    value = Eigen::numext::bit_cast<half, uint16>((next_value & 0xBFFF) |
-                                                  (exponent_msb << 1));
+    uint16_t exponent_msb = next_value & 0x4000;
+    value = Eigen::numext::bit_cast<half, uint16_t>((next_value & 0xBFFF) |
+                                                    (exponent_msb << 1));
     next_value++;
   }
 }
@@ -103,13 +103,13 @@ template <>
 void PopulateWithIntNext<bfloat16>(Literal* literal) {
   // Duplicates may be generated if we don't have enough bits.
   // Start at 0x80 rather than 0 to avoid denormals.
-  uint16 next_value = 0x80;
+  uint16_t next_value = 0x80;
   for (bfloat16& value : literal->data<bfloat16>()) {
     // Zero-out the MSB of the exponent to avoid Infs and NaNs, and put it into
     // the sign bit. We could be less wasteful, but this is best-effort anyway.
-    uint16 exponent_msb = next_value & 0x4000;
-    value = Eigen::numext::bit_cast<bfloat16, uint16>((next_value & 0xBFFF) |
-                                                      (exponent_msb << 1));
+    uint16_t exponent_msb = next_value & 0x4000;
+    value = Eigen::numext::bit_cast<bfloat16, uint16_t>((next_value & 0xBFFF) |
+                                                        (exponent_msb << 1));
     next_value++;
   }
 }
@@ -228,13 +228,13 @@ struct RngT {
 };
 
 template <>
-struct RngT<int8> {
-  using type = int16;
+struct RngT<int8_t> {
+  using type = int16_t;
 };
 
 template <>
-struct RngT<uint8> {
-  using type = uint16;
+struct RngT<uint8_t> {
+  using type = uint16_t;
 };
 
 template <typename IntT>
@@ -306,22 +306,22 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
                                             use_large_range);
       break;
     case S8:
-      PopulateWithRandomIntegralData<int8>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int8_t>(&literal, engine, no_duplicates);
       break;
     case U8:
-      PopulateWithRandomIntegralData<uint8>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint8_t>(&literal, engine, no_duplicates);
       break;
     case S16:
-      PopulateWithRandomIntegralData<int16>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int16_t>(&literal, engine, no_duplicates);
       break;
     case U16:
-      PopulateWithRandomIntegralData<uint16>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint16_t>(&literal, engine, no_duplicates);
       break;
     case S32:
-      PopulateWithRandomIntegralData<int32>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<int32_t>(&literal, engine, no_duplicates);
       break;
     case U32:
-      PopulateWithRandomIntegralData<uint32>(&literal, engine, no_duplicates);
+      PopulateWithRandomIntegralData<uint32_t>(&literal, engine, no_duplicates);
       break;
     case S64:
       PopulateWithRandomIntegralData<int64_t>(&literal, engine, no_duplicates);
@@ -394,45 +394,55 @@ StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
   Literal literal(new_shape);
   switch (shape.element_type()) {
     case S8:
-      PopulateWithRandomIntegralDataWithBounds<int8>(
-          &literal, engine, static_cast<int8>(min), static_cast<int8>(max));
+      PopulateWithRandomIntegralDataWithBounds<int8_t>(
+          &literal, engine, static_cast<int8_t>(min), static_cast<int8_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int8>().begin(), literal.data<int8>().end());
+        std::sort(literal.data<int8_t>().begin(), literal.data<int8_t>().end());
       }
       break;
     case U8:
-      PopulateWithRandomIntegralDataWithBounds<uint8>(
-          &literal, engine, static_cast<uint8>(min), static_cast<uint8>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint8_t>(
+          &literal, engine, static_cast<uint8_t>(min),
+          static_cast<uint8_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint8>().begin(), literal.data<uint8>().end());
+        std::sort(literal.data<uint8_t>().begin(),
+                  literal.data<uint8_t>().end());
       }
       break;
     case S16:
-      PopulateWithRandomIntegralDataWithBounds<int16>(
-          &literal, engine, static_cast<int16>(min), static_cast<int16>(max));
+      PopulateWithRandomIntegralDataWithBounds<int16_t>(
+          &literal, engine, static_cast<int16_t>(min),
+          static_cast<int16_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int16>().begin(), literal.data<int16>().end());
+        std::sort(literal.data<int16_t>().begin(),
+                  literal.data<int16_t>().end());
       }
       break;
     case U16:
-      PopulateWithRandomIntegralDataWithBounds<uint16>(
-          &literal, engine, static_cast<uint16>(min), static_cast<uint16>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint16_t>(
+          &literal, engine, static_cast<uint16_t>(min),
+          static_cast<uint16_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint16>().begin(), literal.data<uint16>().end());
+        std::sort(literal.data<uint16_t>().begin(),
+                  literal.data<uint16_t>().end());
       }
       break;
     case S32:
-      PopulateWithRandomIntegralDataWithBounds<int32>(
-          &literal, engine, static_cast<int32>(min), static_cast<int32>(max));
+      PopulateWithRandomIntegralDataWithBounds<int32_t>(
+          &literal, engine, static_cast<int32_t>(min),
+          static_cast<int32_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<int32>().begin(), literal.data<int32>().end());
+        std::sort(literal.data<int32_t>().begin(),
+                  literal.data<int32_t>().end());
       }
       break;
     case U32:
-      PopulateWithRandomIntegralDataWithBounds<uint32>(
-          &literal, engine, static_cast<uint32>(min), static_cast<uint32>(max));
+      PopulateWithRandomIntegralDataWithBounds<uint32_t>(
+          &literal, engine, static_cast<uint32_t>(min),
+          static_cast<uint32_t>(max));
       if (is_sorted) {
-        std::sort(literal.data<uint32>().begin(), literal.data<uint32>().end());
+        std::sort(literal.data<uint32_t>().begin(),
+                  literal.data<uint32_t>().end());
       }
       break;
     case S64:
@@ -499,8 +509,8 @@ bool NeedsInitValue(const HloUse& use) {
 // Generate random values that are constrained to the input_shape minus the
 // output_shape so as not to produce wrapping slices, for instance.
 Literal MakeRandomIndex(int64_t index_bound, std::minstd_rand0* engine) {
-  std::uniform_int_distribution<int32> generator(0, index_bound);
-  return LiteralUtil::CreateR0<int32>(generator(*engine));
+  std::uniform_int_distribution<int32_t> generator(0, index_bound);
+  return LiteralUtil::CreateR0<int32_t>(generator(*engine));
 }
 
 // Use dataflow analysis on each parameter to see if there are uses that would

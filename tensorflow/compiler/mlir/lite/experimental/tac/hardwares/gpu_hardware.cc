@@ -30,9 +30,9 @@ namespace {
 
 constexpr char GpuHardware::kId[];  // Define kId.
 
-mlir::OwningRewritePatternList GpuHardware::GetTransformations(
+mlir::RewritePatternSet GpuHardware::GetTransformations(
     MLIRContext* context) const {
-  mlir::OwningRewritePatternList patterns(context);
+  mlir::RewritePatternSet patterns(context);
 
   patterns.insert<LowerPackIntoConcatReshape, UnrollSplit, UnrollSplitV,
                   SubToAdd, EnsureBiasForConv2d, PadSlice, FullyConnectedToConv,

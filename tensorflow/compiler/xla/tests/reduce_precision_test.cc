@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -83,7 +82,7 @@ static const int f16_mantissa_sizes[] = {10, 7, 10, 7};
 // more readable manner, separating out the exponent and mantissa.
 #define F16VAL(EXPONENT, MANTISSA) ((EXPONENT << 10) + (MANTISSA))
 
-static const uint16 f16_test_values[][4] = {
+static const uint16_t f16_test_values[][4] = {
     // True zero.
     {
         F16VAL(0b00000, 0b0000000000),  // 0.0
@@ -128,7 +127,7 @@ static const int bf16_mantissa_sizes[] = {7, 5, 7, 5};
 // more readable manner, separating out the exponent and mantissa.
 #define BF16VAL(EXPONENT, MANTISSA) ((EXPONENT << 7) + (MANTISSA))
 
-static const uint16 bf16_test_values[][4] = {
+static const uint16_t bf16_test_values[][4] = {
     // True zero.
     {
         BF16VAL(0b00000, 0b0000000000),  // 0.0
@@ -172,7 +171,7 @@ static const int f32_mantissa_sizes[] = {23, 10, 23, 10};
 #define F32VAL(EXPONENT, HIGH_MANTISSA, LOW_MANTISSA) \
   ((EXPONENT << 23) + (HIGH_MANTISSA << 13) + (LOW_MANTISSA))
 
-static const uint32 f32_test_values[][4] = {
+static const uint32_t f32_test_values[][4] = {
     // True zero.
     {
         F32VAL(0b00000000, 0b0000000000, 0b0000000000000),  // 0.0
@@ -310,16 +309,16 @@ static const uint32 f32_test_values[][4] = {
 // Here the "high" mantissa bits are those retained with reduction to IEEE-f32
 // (the first 23 bits), and the "low" bits are those truncated with reduction to
 // IEEE-f32 (the remaining 29 bits).
-#define F64VAL(EXPONENT, HIGH_MANTISSA, LOW_MANTISSA)         \
-  ((uint64{EXPONENT} << 52) + (uint64{HIGH_MANTISSA} << 29) + \
-   uint64{LOW_MANTISSA})
+#define F64VAL(EXPONENT, HIGH_MANTISSA, LOW_MANTISSA)             \
+  ((uint64_t{EXPONENT} << 52) + (uint64_t{HIGH_MANTISSA} << 29) + \
+   uint64_t{LOW_MANTISSA})
 
 // We want to test IEEE-f64 (a no-op), IEEE-f32, and exponent-reduction-only and
 // mantissa-reduction-only variants of IEEE-f32.
 static const int f64_exponent_sizes[] = {11, 8, 8, 11};
 static const int f64_mantissa_sizes[] = {52, 23, 52, 23};
 
-static const uint64 f64_test_values[][4] = {
+static const uint64_t f64_test_values[][4] = {
     // True zero.
     {
         F64VAL(0b00000000000, 0x000000, 0x00000000),  // 0.0
@@ -465,23 +464,23 @@ class ReducedPrecisionAccuracyTest : public ClientLibraryTestBase,
 
 XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionHalf) {
   int operation_index = GetParam();
-  DoIt<Eigen::half, uint16>(f16_exponent_sizes[operation_index],
-                            f16_mantissa_sizes[operation_index],
-                            f16_test_values, operation_index);
+  DoIt<Eigen::half, uint16_t>(f16_exponent_sizes[operation_index],
+                              f16_mantissa_sizes[operation_index],
+                              f16_test_values, operation_index);
 }
 
 XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionBfloat16) {
   int operation_index = GetParam();
-  DoIt<bfloat16, uint16>(bf16_exponent_sizes[operation_index],
-                         bf16_mantissa_sizes[operation_index], bf16_test_values,
-                         operation_index);
+  DoIt<bfloat16, uint16_t>(bf16_exponent_sizes[operation_index],
+                           bf16_mantissa_sizes[operation_index],
+                           bf16_test_values, operation_index);
 }
 
 XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionFloat) {
   int operation_index = GetParam();
-  DoIt<float, uint32>(f32_exponent_sizes[operation_index],
-                      f32_mantissa_sizes[operation_index], f32_test_values,
-                      operation_index);
+  DoIt<float, uint32_t>(f32_exponent_sizes[operation_index],
+                        f32_mantissa_sizes[operation_index], f32_test_values,
+                        operation_index);
 }
 
 XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionDouble) {

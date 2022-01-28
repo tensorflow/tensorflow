@@ -446,7 +446,7 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 
   // Merge the attributes from the argument list to the derived ones.
   for (auto& attr : argument_attrs) {
-    derived_attrs.insert({attr.first, attr.second});
+    derived_attrs.insert({attr.getName(), attr.getValue()});
   }
 
   // Derive the output types by using the attributes attached to the tfr
@@ -494,7 +494,7 @@ void RaiseToTFOpsPass::runOnFunction() {
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs_);
 
   populateCanonicalizationPatterns(func, patterns);

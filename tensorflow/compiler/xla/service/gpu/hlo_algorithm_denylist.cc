@@ -77,7 +77,7 @@ absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
                     entry.cc().minor(), entry.cudnn_version().major(),
                     entry.cudnn_version().minor(),
                     entry.cudnn_version().patch(), entry.blas_version())]
-            .push_back({algo.id(), algo.tensor_ops()});
+            .push_back({algo.id(), algo.tensor_ops(), absl::nullopt});
       }
     }
     return list;

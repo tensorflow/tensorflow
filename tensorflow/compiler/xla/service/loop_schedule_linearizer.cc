@@ -40,7 +40,7 @@ struct ComputationInstructionOrdering {
     }
   }
 
-  int32 NodeIdForInstruction(const HloInstruction& instr) {
+  int32_t NodeIdForInstruction(const HloInstruction& instr) {
     int32_t instruction_id = instr.unique_id();
     auto it = node_id_to_graph_id.find(instruction_id);
 
@@ -60,7 +60,7 @@ struct ComputationInstructionOrdering {
     return graph_cycles.InsertEdge(source_id, dest_id);
   }
 
-  absl::flat_hash_map<int32, int32> node_id_to_graph_id;
+  absl::flat_hash_map<int32_t, int32_t> node_id_to_graph_id;
 
   tensorflow::GraphCycles graph_cycles;
 };

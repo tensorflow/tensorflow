@@ -21,9 +21,11 @@ limitations under the License.
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
 include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
@@ -39,6 +41,8 @@ def TFR_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::TFR";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 //===----------------------------------------------------------------------===//
@@ -382,7 +386,7 @@ def TFR_GetLengthOp : TFR_Op<"get_length", [NoSideEffect]> {
 
 def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
                                     DeclareOpInterfaceMethods<CallableOpInterface>,
-                                    FunctionLike,
+                                    FunctionOpInterface,
                                     IsolatedFromAbove, Symbol]> {
   let summary = "TFR Function defines a composition of other ops";
 
@@ -432,19 +436,25 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   ];
 
   let extraClassDeclaration = [{
-    // FunctionLike trait needs access to the functions below.
-    friend class OpTrait::FunctionLike<TFRFuncOp>;
+    /// Returns the type of this function.
+    /// FIXME: We should drive this via the ODS `type` param.
+    FunctionType getType() {
+      return getTypeAttr().getValue().cast<FunctionType>();
+    }
+    LogicalResult verifyType() { return success(); }
 
-    // Hooks for the input/output type enumeration in FunctionLike .
-    unsigned getNumFuncArguments() { return getType().getNumInputs(); }
-    unsigned getNumFuncResults() { return getType().getNumResults(); }
+    /// Returns the argument types of this function.
+    ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
+
+    /// Returns the result types of this function.
+    ArrayRef<Type> getResultTypes() { return getType().getResults(); }
 
     // Get the names of all defined attributes, including both derived and
     // non-derived ones.
     llvm::StringSet<> getDefinedAttributeNames() {
       llvm::StringSet<> all_attrs;
       for (auto& attr : (*this)->getAttrs()) {
-        all_attrs.insert(attr.first.strref());
+        all_attrs.insert(attr.getName().strref());
       }
       for (const auto& operand : llvm::enumerate(getType().getInputs())) {
         if (auto attr_name = getArgAttrOfType<StringAttr>(

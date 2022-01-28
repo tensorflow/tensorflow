@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 
+#include <atomic>
+#include <functional>
+#include <utility>
+
 #include "absl/base/casts.h"
+#include "absl/synchronization/mutex.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
@@ -31,8 +36,10 @@ TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
       on_delete_callback_(std::move(on_delete_callback)) {
   if (is_tuple) {
     size_t index_table_byte_size = buffers_.size() * sizeof(void*);
+    // We assume tuple table allocations will not fail.
     tuple_index_table_ =
-        MaybeOwningCpuMemory::AllocateShared(index_table_byte_size);
+        MaybeOwningCpuMemory::AllocateShared(index_table_byte_size)
+            .ValueOrDie();
     uintptr_t* index_table =
         reinterpret_cast<uintptr_t*>(tuple_index_table_->data());
     for (int i = 0; i < buffers_.size(); ++i) {
@@ -63,7 +70,21 @@ std::shared_ptr<MaybeOwningCpuMemory> TrackedTfrtCpuDeviceBuffer::Buffer(
 
 void TrackedTfrtCpuDeviceBuffer::AddUsageEvents(
     absl::Span<tfrt::AsyncValueRef<CpuEvent>> events) {
-  usage_events_.reserve(usage_events_.size() + events.size());
+  absl::MutexLock lock(&mu_);
+  // Periodically remove available usage events to prevent memory blowup.
+  if (usage_events_.size() >= 1024) {
+    int i = 0;
+    while (i < usage_events_.size()) {
+      auto& event = usage_events_.at(i);
+      if (event.IsAvailable()) {
+        using std::swap;
+        swap(event, usage_events_.back());
+        usage_events_.pop_back();
+        continue;
+      }
+      ++i;
+    }
+  }
   for (auto& ev : events) {
     usage_events_.push_back(std::move(ev));
   }
@@ -76,6 +97,7 @@ TrackedTfrtCpuDeviceBuffer::ConsumeBuffers() {
 
 absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4>
 TrackedTfrtCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
+  absl::MutexLock lock(&mu_);
   return std::move(usage_events_);
 }
 
@@ -83,7 +105,10 @@ void TrackedTfrtCpuDeviceBuffer::ReleaseDeviceMemory() {
   tuple_index_table_.reset();
   buffers_.clear();
   definition_events_.clear();
-  usage_events_.clear();
+  {
+    absl::MutexLock lock(&mu_);
+    usage_events_.clear();
+  }
 }
 
 }  // namespace xla

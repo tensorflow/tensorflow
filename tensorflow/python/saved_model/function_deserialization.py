@@ -22,6 +22,7 @@ from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import op_def_registry
@@ -152,10 +153,11 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto):
       saved_object_graph_pb2.FunctionSpec.JitCompile.OFF: False,
   }.get(function_spec_proto.jit_compile)
 
-  return function_lib.FunctionSpec(fullargspec=fullargspec,
-                                   is_method=False,
-                                   input_signature=input_signature,
-                                   jit_compile=jit_compile)
+  return function_spec_lib.FunctionSpec(
+      fullargspec=fullargspec,
+      is_method=False,
+      input_signature=input_signature,
+      jit_compile=jit_compile)
 
 
 # TODO(b/205016761): The fact that we can't derive ConcreteFunction calling

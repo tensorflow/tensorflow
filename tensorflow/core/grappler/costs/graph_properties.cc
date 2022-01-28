@@ -1303,14 +1303,15 @@ class SymbolicShapeRefiner {
     return true;
   }
 
-  Status AddFunction(const NodeDef* function_node, NameAttrList function) {
-    auto it = fun_to_grappler_function_item_.find(function.name());
+  Status AddFunction(const NodeDef* function_node,
+                     const std::string& function_name) {
+    auto it = fun_to_grappler_function_item_.find(function_name);
     if (it != fun_to_grappler_function_item_.end()) {
       return Status::OK();
     }
 
     const FunctionDef* function_def =
-        CHECK_NOTNULL(function_library_.Find(function.name()));
+        CHECK_NOTNULL(function_library_.Find(function_name));
     GrapplerFunctionItem grappler_function_item;
     Status function_instantiated =
         MakeGrapplerFunctionItem(*function_def, function_library_,
@@ -1358,7 +1359,7 @@ class SymbolicShapeRefiner {
         function_library_.LookUp(function.name(), &node_ctx.op_data));
 
     if (node_ctx.op_data->is_function_op) {
-      TF_RETURN_IF_ERROR(AddFunction(node, function));
+      TF_RETURN_IF_ERROR(AddFunction(node, function.name()));
     }
 
     TF_RETURN_IF_ERROR(InOutTypesForNode(*node, node_ctx.op_data->op_def,

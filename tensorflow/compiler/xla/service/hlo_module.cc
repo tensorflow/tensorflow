@@ -19,8 +19,6 @@ limitations under the License.
 #include <iterator>
 #include <set>
 #include <sstream>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -38,14 +36,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
-HloModule::HloModule(const string& name, HloModuleConfig config)
+HloModule::HloModule(const std::string& name, HloModuleConfig config)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(std::move(config)),
       unique_id_(next_unique_module_id_++),
@@ -237,7 +233,7 @@ void HloModule::ReplaceComputations(
   computations_ = std::move(new_computations);
 }
 
-string HloModule::ToString(const HloPrintOptions& options) const {
+std::string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
   // When print_ids() is false, exclude module's name because it includes and
   // leads to non-deterministic fingerprint.
@@ -321,9 +317,9 @@ HloModuleProto HloModule::ToProto() const {
 }
 
 Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
-  absl::flat_hash_set<string> computation_names;
+  absl::flat_hash_set<std::string> computation_names;
   absl::flat_hash_set<int> computation_ids;
-  absl::flat_hash_set<string> instruction_names;
+  absl::flat_hash_set<std::string> instruction_names;
   absl::flat_hash_set<int> instruction_ids;
 
   for (const HloComputation* computation : computations()) {
@@ -534,7 +530,7 @@ bool IsUsedOutsideSubcomputation(const HloInstruction& hlo,
 
 HloInstruction* HloModule::OutlineExpressionFromComputation(
     absl::Span<HloInstruction* const> instructions_to_outline,
-    const string& outlined_computation_name, HloComputation* computation) {
+    const std::string& outlined_computation_name, HloComputation* computation) {
   auto builder = HloComputation::Builder(outlined_computation_name);
 
   // A map from original instructions to their counterparts in the new outlined
@@ -587,7 +583,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   }
 
   if (outputs.size() != 1) {
-    string error_message =
+    std::string error_message =
         "The subcomputation to outline has multiple outputs:\n";
     for (HloInstruction* output : outputs) {
       absl::StrAppend(&error_message, output->ToString(), "\n");
@@ -708,8 +704,31 @@ bool CompareComputationsByContent(const HloComputation* a,
          b->ToString(HloPrintOptions::Fingerprint());
 }
 
+uint64_t GetFingerprint(
+    absl::flat_hash_map<const HloComputation*, uint64_t>& fingerprint_map,
+    const HloComputation* computation) {
+  auto it = fingerprint_map.find(computation);
+  if (it != fingerprint_map.end()) {
+    return it->second;
+  } else {
+    const uint64_t fingerprint = tensorflow::Fingerprint64(
+        computation->ToString(HloPrintOptions::Fingerprint()));
+    fingerprint_map[computation] = fingerprint;
+    return fingerprint;
+  }
+}
+
 void SortComputationsByContent(std::vector<HloComputation*>* computations) {
-  absl::c_sort(*computations, CompareComputationsByContent);
+  absl::flat_hash_map<const HloComputation*, uint64_t> fingerprint_map;
+  auto cmp = [&fingerprint_map](const HloComputation* a,
+                                const HloComputation* b) {
+    if (a->instruction_count() != b->instruction_count()) {
+      return a->instruction_count() < b->instruction_count();
+    }
+    return GetFingerprint(fingerprint_map, a) <
+           GetFingerprint(fingerprint_map, b);
+  };
+  absl::c_sort(*computations, cmp);
 }
 
 }  // anonymous namespace
@@ -740,12 +759,12 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted()
   return result;
 }
 
-std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
+std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
   return Clone(config(), suffix);
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
-                                            const string& suffix) const {
+                                            const std::string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = absl::make_unique<HloModule>(
       absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config);
@@ -817,8 +836,8 @@ HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,
   return new_computation;
 }
 
-uint64 HloModule::RandomNew64() const {
-  tensorflow::mutex_lock l(rng_mutex_);
+uint64_t HloModule::RandomNew64() const {
+  absl::MutexLock l(&rng_mutex_);
   return rng_();
 }
 
@@ -828,19 +847,6 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
-}
-
-uint64 HloModule::Hash() const {
-  uint64 result = entry_computation_layout().Hash();
-  // Use MakeComputationSorted() instead of MakeComputationPostOrder()
-  // because naming may affect the order of MakeComputationPostOrder() but not
-  // MakeComputationSorted().
-  for (auto* computation : MakeComputationSorted()) {
-    for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      result = tensorflow::Hash64Combine(result, instruction->Hash());
-    }
-  }
-  return result;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

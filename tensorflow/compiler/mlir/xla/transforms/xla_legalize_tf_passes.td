@@ -76,6 +76,7 @@ def LegalizeTFControlFlow : Pass<"xla-legalize-tf-control-flow", "ModuleOp"> {
   let summary = "Legalize from TF dialect's to HLO dialect's control flow.";
 
   let constructor = "mlir::mhlo::createLegalizeTFControlFlowPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
 }
 
 def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {

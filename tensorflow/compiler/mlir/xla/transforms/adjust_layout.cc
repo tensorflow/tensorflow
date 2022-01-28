@@ -66,8 +66,8 @@ class AdjustLayout : public PassWrapper<AdjustLayout, FunctionPass> {
     ApiConverter::ToC(old_shape, &old_shape_c);
     executor->TpuTransferManager_GetInfeedLayoutFn(&old_shape_c, &new_shape_c);
     xla::Shape new_shape = ApiConverter::FromC(&new_shape_c);
-    ApiConverter::Free(&old_shape_c);
-    ApiConverter::Free(&new_shape_c);
+    ApiConverter::Destroy(&old_shape_c);
+    ApiConverter::Destroy(&new_shape_c);
 
     auto minor_to_major = new_shape.layout().minor_to_major();
     return std::vector<int64_t>(minor_to_major.begin(), minor_to_major.end());

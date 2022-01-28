@@ -19,7 +19,6 @@
 import itertools
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.framework import dtypes
@@ -190,8 +189,7 @@ class InfeedQueue(object):
                        number_of_tuple_elements)
     # Make an empty sharding policy for each tuple element.
     self._sharding_policies = [
-        tpu_sharding.ShardingPolicy()
-        for _ in xrange(number_of_tuple_elements)
+        tpu_sharding.ShardingPolicy() for _ in range(number_of_tuple_elements)
     ]
     if tuple_types is not None:
       self.set_tuple_types(tuple_types)
@@ -424,15 +422,16 @@ class InfeedQueue(object):
                 str(input_tensors), self.number_of_tuple_elements))
     # Transpose the inputs to make a list of shard shapes for each tuple
     # element.
-    sharded_shapes = [[t[i].shape for t in input_tensors]
-                      for i in xrange(self.number_of_tuple_elements)]
+    sharded_shapes = [[t[i].shape
+                       for t in input_tensors]
+                      for i in range(self.number_of_tuple_elements)]
     # For each tuple, get the unsharded shape using that tuple's policy.
     unsharded_shapes = [
         policy.get_unsharded_shape(s)
         for (policy, s) in zip(self._sharding_policies, sharded_shapes)
     ]
     self.set_tuple_shapes(unsharded_shapes)
-    for i in xrange(1, self.number_of_shards):
+    for i in range(1, self.number_of_shards):
       for (t1, t2) in zip(input_tensors[0], input_tensors[i]):
         if t1.dtype != t2.dtype:
           raise TypeError(
@@ -489,7 +488,7 @@ class InfeedQueue(object):
       set; or if a dequeue op has already been generated.
     """
     self.freeze()
-    if self._generated_dequeue_op:
+    if self._generated_dequeue_op and not ops.inside_function():
       raise ValueError("Can't generate two dequeue Ops from the same queue")
     self._generated_dequeue_op = True
     full_name = "%s/dequeue" % self._name
@@ -546,7 +545,7 @@ class InfeedQueue(object):
     shapes = [t.shape for t in inputs]
     if device is None:
       devices = [t.device for t in inputs]
-      for i in xrange(1, self.number_of_tuple_elements):
+      for i in range(1, self.number_of_tuple_elements):
         if devices[0] != devices[i]:
           raise ValueError(
               "input devices for shard %d are %s, but should all be the same" %
@@ -611,7 +610,7 @@ class InfeedQueue(object):
     """
     self.set_configuration_from_sharded_input_tensors(sharded_inputs)
     self.freeze()
-    if self._generated_enqueue_ops:
+    if self._generated_enqueue_ops and not ops.inside_function():
       raise ValueError("Can't generate two enqueue Ops from the same queue")
     self._generated_enqueue_ops = True
     if tpu_ordinal_function is None:
@@ -624,7 +623,7 @@ class InfeedQueue(object):
             index,
             tpu_ordinal=tpu_ordinal_function(index),
             device=placement_function(index) if placement_function else None)
-        for (shard, index) in zip(sharded_inputs, xrange(self.number_of_shards))
+        for (shard, index) in zip(sharded_inputs, range(self.number_of_shards))
     ]
 
   # TODO(misard) Generalize this to the case of systems that don't
@@ -711,7 +710,7 @@ class InfeedQueue(object):
         tpu_ordinal_function = _ordinal_function_from_map
     self.set_configuration_from_input_tensors(inputs)
     self.freeze()
-    if self._generated_enqueue_ops:
+    if self._generated_enqueue_ops and not ops.inside_function():
       raise ValueError("Can't generate two enqueue Ops from the same queue")
     self._generated_enqueue_ops = True
     split_name_prefix = "%s/split" % self._name
@@ -730,10 +729,11 @@ class InfeedQueue(object):
               axis=policy.shard_dimension,
               name="%s/%d" % (split_name_prefix, index))
           for (inp, policy, index) in zip(inputs, self._sharding_policies,
-                                          xrange(self.number_of_tuple_elements))
+                                          range(self.number_of_tuple_elements))
       ]
-    sharded_inputs = [[shard[i] for shard in transposed_sharded_inputs]
-                      for i in xrange(self.number_of_shards)]
+    sharded_inputs = [[shard[i]
+                       for shard in transposed_sharded_inputs]
+                      for i in range(self.number_of_shards)]
     name_prefix = "%s/enqueue" % self._name
     return [
         self._generate_enqueue_op(
@@ -742,7 +742,7 @@ class InfeedQueue(object):
             index,
             device=placement_function(index),
             tpu_ordinal=tpu_ordinal_function(index))
-        for (shard, index) in zip(sharded_inputs, xrange(self.number_of_shards))
+        for (shard, index) in zip(sharded_inputs, range(self.number_of_shards))
     ]
 
 
@@ -796,7 +796,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
       set; or if a dequeue op has already been generated.
     """
     self.freeze()
-    if self._generated_dequeue_op:
+    if self._generated_dequeue_op and not ops.inside_function():
       raise ValueError("Can't generate two dequeue Ops from the same queue")
     self._generated_dequeue_op = True
     full_name = "%s/dequeue" % self._name
@@ -871,7 +871,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
       # input_fn).
       replica_id = self._device_assignment.lookup_replicas(
           task_id=self._host_id, logical_core=0)[replica_index]
-      for logical_core in xrange(self._device_assignment.num_cores_per_replica):
+      for logical_core in range(self._device_assignment.num_cores_per_replica):
         # Places different partitions to different logic cores.
         # Since there can be multiple hosts per replica, we need to find
         # the actual host (device) of this logical core.

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_CONV_TESTER_H_
-#define TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_CONV_TESTER_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_TRANSPOSE_CONV_TESTER_H_
+#define TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_TRANSPOSE_CONV_TESTER_H_
 
 #include <cstdint>
 #include <functional>
@@ -221,4 +221,4 @@ class QuantizedTransposeConvTester {
 }  // namespace xnnpack
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_CONV_TESTER_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_TRANSPOSE_CONV_TESTER_H_

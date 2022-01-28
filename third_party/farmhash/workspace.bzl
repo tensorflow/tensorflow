@@ -1,6 +1,6 @@
 """Provides the repository macro to import farmhash."""
 
-load("//third_party:repo.bzl", "tf_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
     """Imports farmhash."""
@@ -16,20 +16,14 @@ def repo():
         build_file = "//third_party/farmhash:farmhash.BUILD",
         sha256 = FARMHASH_SHA256,
         strip_prefix = "farmhash-{commit}".format(commit = FARMHASH_COMMIT),
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/farmhash/archive/{commit}.tar.gz".format(commit = FARMHASH_COMMIT),
-            "https://github.com/google/farmhash/archive/{commit}.tar.gz".format(commit = FARMHASH_COMMIT),
-        ],
+        urls = tf_mirror_urls("https://github.com/google/farmhash/archive/{commit}.tar.gz".format(commit = FARMHASH_COMMIT)),
     )
 
     tf_http_archive(
         name = "farmhash_gpu_archive",
         build_file = "//third_party/farmhash:farmhash_gpu.BUILD",
-        patch_file = "//third_party/farmhash:farmhash_support_cuda.patch",
+        patch_file = ["//third_party/farmhash:farmhash_support_cuda.patch"],
         sha256 = FARMHASH_SHA256,
         strip_prefix = "farmhash-{commit}".format(commit = FARMHASH_COMMIT),
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/farmhash/archive/{commit}.tar.gz".format(commit = FARMHASH_COMMIT),
-            "https://github.com/google/farmhash/archive/{commit}.tar.gz".format(commit = FARMHASH_COMMIT),
-        ],
+        urls = tf_mirror_urls("https://github.com/google/farmhash/archive/{commit}.tar.gz".format(commit = FARMHASH_COMMIT)),
     )

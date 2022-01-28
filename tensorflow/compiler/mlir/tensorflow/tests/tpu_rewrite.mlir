@@ -1346,7 +1346,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       // CHECK:    "tf.TPUExecute"
       // CHECK-NOT:"tf._TPUCompileMlirPlaceholderProgramKey"
       // CHECK:    "tf.E"(%[[COMPILE_OUTPUT]]#1
-      %3 = "tf_device.parallel_execute"() ( {
+      %3 = "tf_device.parallel_execute"() ({
          %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
         "tf.D"(%program) : (tensor<3x!tf_type.string>) -> ()
         tf_device.return

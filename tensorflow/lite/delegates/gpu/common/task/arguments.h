@@ -46,10 +46,10 @@ class ArgumentsBinder {
   virtual ~ArgumentsBinder() = default;
 };
 
-class Arguments {
+class Arguments : public ArgumentsBinder {
  public:
   Arguments() = default;
-  ~Arguments() = default;
+  ~Arguments() override = default;
 
   // Move only
   Arguments(Arguments&& args) = default;
@@ -60,6 +60,9 @@ class Arguments {
   void AddFloat(const std::string& name, float value = 0.0f);
   void AddHalf(const std::string& name, half value = half(0.0f));
   void AddInt(const std::string& name, int value = 0);
+  absl::Status SetInt(const std::string& name, int value) override;
+  absl::Status SetFloat(const std::string& name, float value) override;
+  absl::Status SetHalf(const std::string& name, half value) override;
   void AddObjectRef(const std::string& name, AccessType access_type,
                     GPUObjectDescriptorPtr&& descriptor_ptr);
   void AddObject(const std::string& name,
@@ -124,6 +127,10 @@ class Arguments {
     *result = std::move(object_refs_);
   }
 
+  absl::Status Compile(const GpuInfo& gpu_info,
+                       const std::map<std::string, std::string>& linkables,
+                       std::string* code);
+
   absl::Status ResolveSelectorsPass(
       const GpuInfo& gpu_info,
       const std::map<std::string, std::string>& linkables,
@@ -147,6 +154,9 @@ class Arguments {
       const Arguments& args, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const tflite::gpu::data::Arguments* fb_args,
                              Arguments* args);
+
+  absl::Status ResolveKernelGlobalSpaceBuffers(const GpuInfo& gpu_info,
+                                               std::string* code);
 
   friend class cl::CLArguments;
   friend class metal::MetalArguments;

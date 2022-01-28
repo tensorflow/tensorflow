@@ -588,7 +588,6 @@ exports_files(
     visibility = [":core_and_platform_packages"],
 )
 
-# TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
 # Turns off the error when linking the same target twice through two different cc_shared libraries.
 bool_flag(
     name = "incompatible_link_once",

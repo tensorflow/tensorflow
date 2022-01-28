@@ -2734,23 +2734,27 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def _trackable_saved_model_saver(self):
     return model_serialization.ModelSavedModelSaver(self)
 
-  def _list_functions_for_serialization(self, serialization_cache):
-    # SavedModel needs to ignore the execution functions.
-    train_function = self.train_function
-    test_function = self.test_function
-    predict_function = self.predict_function
-    train_tf_function = self.train_tf_function
-    self.train_function = None
-    self.test_function = None
-    self.predict_function = None
-    self.train_tf_function = None
-    functions = super(
-        Model, self)._list_functions_for_serialization(serialization_cache)
-    self.train_function = train_function
-    self.test_function = test_function
-    self.predict_function = predict_function
-    self.train_tf_function = train_tf_function
-    return functions
+  def _trackable_children(self, save_type='checkpoint', **kwargs):
+    if save_type == 'savedmodel':
+      # SavedModel needs to ignore the execution functions.
+      train_function = self.train_function
+      test_function = self.test_function
+      predict_function = self.predict_function
+      train_tf_function = self.train_tf_function
+      self.train_function = None
+      self.test_function = None
+      self.predict_function = None
+      self.train_tf_function = None
+
+    children = super(Model, self)._trackable_children(save_type, **kwargs)
+
+    if save_type == 'savedmodel':
+      self.train_function = train_function
+      self.test_function = test_function
+      self.predict_function = predict_function
+      self.train_tf_function = train_tf_function
+
+    return children
 
   def _should_eval(self, epoch, validation_freq):
     epoch = epoch + 1  # one-index the user-facing epoch.

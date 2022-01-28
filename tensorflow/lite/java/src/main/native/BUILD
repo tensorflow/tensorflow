@@ -50,12 +50,20 @@ filegroup(
 filegroup(
     name = "native_stable_srcs",
     srcs = [
+        "interpreter_factory_impl_jni.cc",
         "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
         "nativesignaturerunner_jni.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
         "xnnpackdelegate_jni.cc",
+    ],
+)
+
+filegroup(
+    name = "native_api_srcs",
+    srcs = [
+        "tensorflow_lite_jni.cc",
     ],
 )
 
@@ -69,10 +77,10 @@ cc_library_with_tflite(
         "-ldl",
     ],
     tflite_deps = [
+        "//tensorflow/lite/core/shims:c_api_without_op_resolver",
         "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:create_op_resolver_header",
         "//tensorflow/lite/core/shims:framework_stable",
-        "//tensorflow/lite/core/shims:jni_initialization",
         "//tensorflow/lite/core/shims:jni_utils",
     ],
     deps = [
@@ -117,7 +125,7 @@ cc_library_with_tflite(
     name = "native_stable",
     copts = tflite_copts(),
     tflite_deps = [
-        ":native_framework_only",
+        ":native_stable_framework_only",
         "//tensorflow/lite/core/shims:builtin_ops",
         "//tensorflow/lite/core/shims:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/core/shims:framework_stable",

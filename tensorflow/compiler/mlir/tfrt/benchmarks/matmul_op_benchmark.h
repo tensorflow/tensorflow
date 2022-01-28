@@ -33,13 +33,13 @@ using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::cpu::jit::Executable;
-using ::tfrt::cpu::jit::JitExecutable;
-using ::tfrt::cpu::jit::MemrefDesc;
-using ::tfrt::cpu::jit::ReturnValueConverter;
+using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::JitExecutable;
+using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::ReturnValueConverter;
 
 // -------------------------------------------------------------------------- //
-// Run benchmark by compiling MLIR function using TFRT CPURT API.
+// Run benchmark by compiling MLIR function using TFRT JitRt API.
 // -------------------------------------------------------------------------- //
 
 template <typename T>
@@ -53,10 +53,10 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   std::unique_ptr<HostContext> host = CreateSingleThreadedHostContext();
 
-  TfCpuRtPipelineOptions tf_cpurt_opts;
+  TfJitRtPipelineOptions tf_jitrt_opts;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
-                          /*lower_from_tensorflow=*/true, tf_cpurt_opts);
+                          /*lower_from_tensorflow=*/true, tf_jitrt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =

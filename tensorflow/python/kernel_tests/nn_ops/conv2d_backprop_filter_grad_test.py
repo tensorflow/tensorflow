@@ -26,6 +26,8 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Run Conv2D backprop without TF32 on GPU")
 class Conv2DBackpropFilterGradTest(test.TestCase):
 
   @test_util.run_deprecated_v1

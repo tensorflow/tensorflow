@@ -85,7 +85,7 @@ func @inline_simple_tf_device_region() -> tensor<2xi32> {
   // CHECK-NEXT: "tf_device.cluster"()
   // CHECK-NEXT: %[[CST:.*]] = "tf.Const"
   // CHECK-NEXT: tf_device.return %[[CST]]
-  %cluster_result = "tf_device.cluster"() ( {
+  %cluster_result = "tf_device.cluster"() ({
     %result = "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @simple_callee} : () -> tensor<2xi32>
     tf_device.return %result : tensor<2xi32>
   }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> (tensor<2xi32>)

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -1249,6 +1250,123 @@ TEST(ModelBuilderTest, GetOpsToReplace_AllowQuantOps) {
 
   TfLiteIntArrayFree(ops_to_replace);
   TfLiteIntArrayFree(ops_to_replace_without_quant);
+}
+
+InterpreterFp16* interpreter_fp16_split_op =
+    new InterpreterFp16(kTfLiteBuiltinSplit);
+
+TEST(ModelBuilderTest, GetOpsToReplaceAcceptsSplitOpCl) {
+  // Before pruning, the graph has three nodes:
+  //
+  //   t0 (FP16) -> DequantNode -> t1 (FP32) -> Split -> t4
+  //   t2 (FP16) -> DequantNode -> t3 (FP32) --/
+  //
+  // OpsToReplace should choose all three nodes for replacement, and
+  // the graph on the GPU will look like this (no Dequants):
+  //
+  //   t0 (FP16) --> Split -> t4
+  //   t2 (FP16) --/
+  //
+  TfLiteContext* context = interpreter_fp16_split_op->context();
+
+  // These functions are meant to be called inside delegates. Swap out
+  // for similar functions to permit direct calling of GetOpsToReplace.
+  context->GetExecutionPlan = [](struct TfLiteContext* context,
+                                 TfLiteIntArray** execution_plan) {
+    *execution_plan = interpreter_fp16_split_op->exec_plan();
+    return kTfLiteOk;
+  };
+  context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
+                                       TfLiteNode** node,
+                                       TfLiteRegistration** registration) {
+    *node = interpreter_fp16_split_op->node(node_index);
+    *registration = interpreter_fp16_split_op->registration(node_index);
+    return kTfLiteOk;
+  };
+  context->PreviewDelegatePartitioning =
+      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+         TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+        // The partitioner should accept only the Add op initially.
+        EXPECT_EQ(nodes_to_replace->size, 1);
+        // Single partition output.
+        auto params = interpreter_fp16_split_op->add_delegate_params();
+        params->nodes_to_replace = TfLiteIntArrayCreate(1);
+        params->nodes_to_replace->data[0] = 2;
+        params->input_tensors = TfLiteIntArrayCreate(2);
+        params->input_tensors->data[0] = 1;
+        params->input_tensors->data[1] = 3;
+        params->output_tensors = TfLiteIntArrayCreate(1);
+        params->output_tensors->data[0] = 4;
+
+        *partition_params_array = interpreter_fp16_split_op->delegate_params();
+        *num_partitions = interpreter_fp16_split_op->num_delegate_params();
+        return kTfLiteOk;
+      };
+
+  TfLiteIntArray* ops_to_replace = GetOpsToReplace(context);
+
+  // Ensure all nodes are delegated, and the SPLIT op has FP16 inputs.
+  EXPECT_EQ(ops_to_replace->size, 3);
+  TfLiteNode* node = nullptr;
+  TfLiteRegistration* registration = nullptr;
+  context->GetNodeAndRegistration(context, /**node_id**/ 2, &node,
+                                  &registration);
+  EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
+            TfLiteType::kTfLiteFloat16);
+  EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
+            TfLiteType::kTfLiteFloat16);
+  TfLiteIntArrayFree(ops_to_replace);
+}
+
+InterpreterFp16* interpreter_fp16_split_op2 =
+    new InterpreterFp16(kTfLiteBuiltinSplit);
+TEST(ModelBuilderTest, GetOpsToReplaceRejectsSplitOpGl) {
+  // Same graph as that in the test case `GetOpsToReplaceAcceptsSplitOpCl`,
+  // while OpenCL is not available when calling GetOpsToReplace.
+  // OpenGL does not support SPLIT op, so we don't choose any nodes.
+
+  TfLiteContext* context = interpreter_fp16_split_op2->context();
+  // These functions are meant to be called inside delegates. Swap out
+  // for similar functions to permit direct calling of GetOpsToReplace.
+  context->GetExecutionPlan = [](struct TfLiteContext* context,
+                                 TfLiteIntArray** execution_plan) {
+    *execution_plan = interpreter_fp16_split_op2->exec_plan();
+    return kTfLiteOk;
+  };
+  context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
+                                       TfLiteNode** node,
+                                       TfLiteRegistration** registration) {
+    *node = interpreter_fp16_split_op2->node(node_index);
+    *registration = interpreter_fp16_split_op2->registration(node_index);
+    return kTfLiteOk;
+  };
+  context->PreviewDelegatePartitioning =
+      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+         TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+        // No selected nodes.
+        EXPECT_EQ(nodes_to_replace->size, 0);
+        *partition_params_array = nullptr;
+        *num_partitions = 0;
+        return kTfLiteOk;
+      };
+  absl::flat_hash_set<TfLiteBuiltinOperator> excluded_ops = {
+      kTfLiteBuiltinSplit};
+  TfLiteIntArray* ops_to_replace =
+      GetOpsToReplace(context, /*allow_quant_ops=*/false,
+                      /*max_delegated_partitions=*/1, &excluded_ops);
+
+  // No nodes were found to replace.
+  EXPECT_EQ(ops_to_replace->size, 0);
+  // Inputs to Split op are still fp32.
+  TfLiteNode* node = nullptr;
+  TfLiteRegistration* registration = nullptr;
+  context->GetNodeAndRegistration(context, /**node_id**/ 2, &node,
+                                  &registration);
+  EXPECT_EQ(context->tensors[node->inputs->data[0]].type,
+            TfLiteType::kTfLiteFloat32);
+  EXPECT_EQ(context->tensors[node->inputs->data[1]].type,
+            TfLiteType::kTfLiteFloat32);
+  TfLiteIntArrayFree(ops_to_replace);
 }
 
 // StubTfLiteContext is a TfLiteContext which has 3 nodes as the followings.

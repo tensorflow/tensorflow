@@ -338,10 +338,14 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
       if (need_broadcast) {
         TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int16_t);
       } else {
-        reference_ops::Add(
-            op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
-            GetTensorShape(input2), GetTensorData<int16_t>(input2),
-            GetTensorShape(output), GetTensorData<int16_t>(output), false);
+        if (kernel_type == kReference) {
+          reference_ops::Add(
+              op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
+              GetTensorShape(input2), GetTensorData<int16_t>(input2),
+              GetTensorShape(output), GetTensorData<int16_t>(output), false);
+        } else {
+          TF_LITE_ADD(optimized_integer_ops, Add, int16_t);
+        }
       }
     } else {
       if (kernel_type == kReference) {

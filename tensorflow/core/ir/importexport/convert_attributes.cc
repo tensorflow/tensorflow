@@ -18,7 +18,6 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -49,7 +48,7 @@ Status ConvertLocation(Location inst_loc,
                        NodeDef::ExperimentalDebugInfo* debug_info) {
   if (auto call_site = inst_loc.dyn_cast<CallSiteLoc>()) {
     if (auto name_loc = call_site.getCallee().dyn_cast<NameLoc>()) {
-      debug_info->add_original_node_names(name_loc.getName().c_str());
+      debug_info->add_original_node_names(name_loc.getName().data());
     }
   } else if (auto fused = inst_loc.dyn_cast<FusedLoc>()) {
     auto locations = fused.getLocations();
@@ -245,8 +244,8 @@ Status ConvertAttributes(
     bool remove_ref_type, AttrValueMap* values) {
   AttrValueMap func_call_attrs;
   for (const NamedAttribute& named_attr : attrs) {
-    auto name_strref = named_attr.first.str();
-    auto attr = named_attr.second;
+    auto name_strref = named_attr.getName().str();
+    auto attr = named_attr.getValue();
     absl::string_view name(name_strref.data(), name_strref.size());
     if (name == "name" || name == "device" || attrs_to_ignore.contains(name)) {
       // The name, device spec of a TF op or function are not stored as
@@ -365,6 +364,8 @@ tensorflow::StatusOr<Attribute> ConvertNonFuncAttributeValue(
           TF_ASSIGN_OR_RETURN(
               auto attr,
               ConvertAttributeValue(subattr.second, builder, tfgDialect));
+          if (subattr.first.empty())
+            return InvalidArgument("empty func_attr name");
           subattrs.push_back(builder.getNamedAttr(subattr.first, attr));
         }
         attrs.push_back(FuncAttr::get(builder.getContext(), func_attr.name(),
@@ -389,6 +390,7 @@ tensorflow::StatusOr<Attribute> ConvertAttributeValue(
     case AttrValue::kFunc: {
       NamedAttrList attrs;
       for (const auto& func_attr : value.func().attr()) {
+        if (func_attr.first.empty()) return InvalidArgument("empty attr name");
         TF_ASSIGN_OR_RETURN(
             auto attr,
             ConvertAttributeValue(func_attr.second, builder, tfgDialect));

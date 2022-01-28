@@ -42,6 +42,7 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
 }
 
 Status HloModuleImporter::Import(const xla::HloModule& module) {
+  module_.setName(module.name());
   if (!import_all_computation_)
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.

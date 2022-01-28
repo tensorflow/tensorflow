@@ -83,9 +83,9 @@ class Asset(base.Trackable):
     return self._path
 
   @classmethod
-  def _deserialize_from_proto(cls, proto, export_dir, asset_file_def,
+  def _deserialize_from_proto(cls, object_proto, export_dir, asset_file_def,
                               **unused_kwargs):
-    proto = proto.asset
+    proto = object_proto.asset
     filename = file_io.join(
         saved_model_utils.get_assets_dir(export_dir),
         asset_file_def[proto.asset_file_def_index].filename)

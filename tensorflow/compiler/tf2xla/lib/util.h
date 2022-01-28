@@ -38,10 +38,6 @@ xla::XlaOp PrependZerosInMajorDims(xla::XlaOp x,
 xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
                           int64_t value);
 
-// Returns the concatenation of `xs` and `ys`.
-std::vector<int64_t> ConcatVectors(absl::Span<const int64_t> xs,
-                                   absl::Span<const int64_t> ys);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_LIB_UTIL_H_

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -54,7 +53,8 @@ class TextLiteralReader {
   // Owns the file being read
   std::unique_ptr<tensorflow::RandomAccessFile> file_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TextLiteralReader);
+  TextLiteralReader(const TextLiteralReader&) = delete;
+  TextLiteralReader& operator=(const TextLiteralReader&) = delete;
 };
 
 }  // namespace xla

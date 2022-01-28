@@ -8,7 +8,7 @@ func @single_op_launch() {
   tf_executor.graph {
     %0:5 = tf_executor.island {
       %a = "tf.opA"() : () -> tensor<i1>
-      %launch:2 = "tf_device.launch"() ( {
+      %launch:2 = "tf_device.launch"() ({
         %b:2 = "tf.opB"(%a) : (tensor<i1>) -> (tensor<i32>, tensor<f32>)
         tf_device.return %b#1, %b#0 : tensor<f32>, tensor<i32>
       }) {device = "CPU:0"} : () -> (tensor<f32>, tensor<i32>)
@@ -35,7 +35,7 @@ func @multi_op_launch() {
   tf_executor.graph {
     %0:5 = tf_executor.island {
       %a = "tf.opA"() : () -> tensor<i1>
-      %launch:2 = "tf_device.launch"() ( {
+      %launch:2 = "tf_device.launch"() ({
         %b = "tf.opB"(%a) : (tensor<i1>) -> tensor<i32>
         %c = "tf.opC"(%b) : (tensor<i32>) -> tensor<f32>
         tf_device.return %c, %b : tensor<f32>, tensor<i32>
@@ -63,7 +63,7 @@ func @multi_op_launch() {
 func @empty_device_op() {
   tf_executor.graph {
     %0:3 = tf_executor.island {
-      %launch:2 = "tf_device.launch"() ( {
+      %launch:2 = "tf_device.launch"() ({
         %a:2 = "tf.opA"() {device = ""} : () -> (tensor<i32>, tensor<f32>)
         tf_device.return %a#1, %a#0 : tensor<f32>, tensor<i32>
       }) {device = "CPU:0"} : () -> (tensor<f32>, tensor<i32>)
@@ -89,7 +89,7 @@ func @conflicting_device() {
   tf_executor.graph {
     %0 = tf_executor.island {
       // expected-error@+1 {{'tf_device.launch' op inner op has conflicting 'device' attribute, got 'GPU:0' but expected 'CPU:0'}}
-      "tf_device.launch"() ( {
+      "tf_device.launch"() ({
         "tf.opA"() {device = "GPU:0"} : () -> ()
         tf_device.return
       }) {device = "CPU:0"} : () -> ()
@@ -109,7 +109,7 @@ func @bad_tf_device_attr() {
   tf_executor.graph {
     %0 = tf_executor.island {
       // expected-error@+1 {{'tf_device.launch' op inner op has bad 'device' attribute}}
-      "tf_device.launch"() ( {
+      "tf_device.launch"() ({
         "tf.opA"() {device = 0 : i32} : () -> ()
         tf_device.return
       }) {device = "CPU:0"} : () -> ()

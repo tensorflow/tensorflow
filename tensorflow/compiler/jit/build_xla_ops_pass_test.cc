@@ -94,9 +94,8 @@ Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
   AddNodeAttr(kXlaCompiledKernelAttr, true, &call_node);
   AddNodeAttr(kXlaNumConstantArgsAttr, num_constant_args, &call_node);
   AddNodeAttr(kXlaNumResourceArgsAttr, num_resource_args, &call_node);
-  Status s;
-  *result = graph->AddNode(call_node, &s);
-  return s;
+  TF_ASSIGN_OR_RETURN(*result, graph->AddNode(call_node));
+  return Status::OK();
 }
 
 Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,

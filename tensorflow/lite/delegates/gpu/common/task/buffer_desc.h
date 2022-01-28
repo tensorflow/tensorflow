@@ -57,6 +57,8 @@ struct BufferDescriptor : public GPUObjectDescriptor {
       const std::vector<std::string>& template_args, std::string* result) const;
 
   void Release() override;
+
+  uint64_t GetSizeInBytes() const override { return data.size(); };
 };
 
 }  // namespace gpu

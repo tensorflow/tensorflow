@@ -15,7 +15,6 @@
 """Tests for tensorflow.ops.tf.Cholesky."""
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
@@ -76,7 +75,7 @@ class CholeskyOpTest(xla_test.XLATestCase):
 
       # Generate random positive-definite matrices.
       matrices = np.random.rand(10, 5, 5).astype(dtype)
-      for i in xrange(10):
+      for i in range(10):
         matrices[i] = np.dot(matrices[i].T, matrices[i])
       self._verifyCholesky(matrices, atol=1e-4)
 

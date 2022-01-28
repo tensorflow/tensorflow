@@ -110,9 +110,9 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     int64_t max_threads_per_block_x =
         threads_per_block_row_vectorized > 0
             ? threads_per_block_row_vectorized
-            : RoundUpToNearest(ThreadsPerBlockLimit(gpu_device_info) /
-                                   dim_config.unroll_factor,
-                               int64_t{32});
+            : RoundUpTo(ThreadsPerBlockLimit(gpu_device_info) /
+                            dim_config.unroll_factor,
+                        int64_t{32});
     if (num_elements < max_threads_per_block_x) {
       return num_elements;
     }

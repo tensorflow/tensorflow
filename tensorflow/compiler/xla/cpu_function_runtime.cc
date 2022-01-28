@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 
-#include "tensorflow/core/platform/dynamic_annotations.h"
+#include "absl/base/dynamic_annotations.h"
 
 namespace xla {
 namespace {
@@ -64,7 +64,7 @@ size_t AlignedBufferBytes(const BufferInfo* buffer_infos, size_t n,
         (buffer_infos[i].is_entry_parameter() && allocate_entry_params);
 
     if (should_allocate) {
-      total += align_to(buffer_infos[i].size(), kAlign);
+      total += align_to(buffer_infos[i].size(), Align());
     }
   }
   return total;
@@ -77,11 +77,11 @@ void* MallocContiguousBuffers(const BufferInfo* buffer_infos, size_t n,
       AlignedBufferBytes(buffer_infos, n, allocate_entry_params);
   void* contiguous = nullptr;
   if (total > 0) {
-    contiguous = aligned_malloc(total, kAlign);
+    contiguous = aligned_malloc(total, Align());
     if (annotate_initialized) {
       // Since the memory for temp buffers is written to by JITed code, msan has
       // no way of knowing the memory was initialized, so explicitly mark it.
-      TF_ANNOTATE_MEMORY_IS_INITIALIZED(contiguous, total);
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(contiguous, total);
     }
   }
   uintptr_t pos = reinterpret_cast<uintptr_t>(contiguous);
@@ -91,7 +91,7 @@ void* MallocContiguousBuffers(const BufferInfo* buffer_infos, size_t n,
         (buffer_infos[i].is_entry_parameter() && allocate_entry_params);
     if (should_allocate) {
       bufs[i] = reinterpret_cast<void*>(pos);
-      pos += align_to(buffer_infos[i].size(), kAlign);
+      pos += align_to(buffer_infos[i].size(), Align());
     } else {
       bufs[i] = nullptr;
     }

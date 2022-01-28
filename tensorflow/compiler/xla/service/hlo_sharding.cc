@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
+#include <algorithm>
+#include <numeric>
 #include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -270,7 +273,7 @@ HloSharding HloSharding::Single(const Shape& shape,
   return shape.IsTuple() ? SingleTuple(shape, sharding) : sharding;
 }
 
-string HloSharding::ToString(bool include_metadata) const {
+std::string HloSharding::ToString(bool include_metadata) const {
   if (IsTuple()) {
     CHECK(metadata_.empty());
     std::string result = "{";
@@ -852,30 +855,6 @@ HloSharding HloSharding::WithoutMetadata() const {
     sub_sharding.metadata_.clear();
   }
   return sharding;
-}
-
-size_t HloSharding::Hash() const {
-  if (tuple_) {
-    size_t h = 0;
-    for (const auto& element : tuple_elements_) {
-      h = tensorflow::Hash64Combine(h, element.Hash());
-    }
-    return h;
-  }
-  if (replicated_) {
-    return 0;
-  }
-  if (manual_) {
-    return 1;
-  }
-  size_t h = 0;
-  for (uint32 v : tile_assignment_) {
-    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(v));
-  }
-  if (replicate_on_last_tile_dim_) {
-    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(1));
-  }
-  return h;
 }
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {

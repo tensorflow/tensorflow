@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/pybind11_absl.h"
@@ -40,16 +41,9 @@ class PyRecordReader {
   static tensorflow::Status New(const std::string& filename,
                                 const std::string& compression_type,
                                 PyRecordReader** out) {
-    std::unique_ptr<tensorflow::RandomAccessFile> file;
-    TF_RETURN_IF_ERROR(
-        tensorflow::Env::Default()->NewRandomAccessFile(filename, &file));
-    auto options =
-        tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions(
-            compression_type);
-    options.buffer_size = kReaderBufferSize;
-    auto reader =
-        absl::make_unique<tensorflow::io::RecordReader>(file.get(), options);
-    *out = new PyRecordReader(std::move(file), std::move(reader));
+    auto tmp = new PyRecordReader(filename, compression_type);
+    TF_RETURN_IF_ERROR(tmp->Reopen());
+    *out = tmp;
     return tensorflow::Status::OK();
   }
 
@@ -60,7 +54,6 @@ class PyRecordReader {
     if (IsClosed()) {
       return tensorflow::errors::FailedPrecondition("Reader is closed.");
     }
-
     return reader_->ReadRecord(&offset_, out);
   }
 
@@ -71,13 +64,47 @@ class PyRecordReader {
     file_ = nullptr;
   }
 
+  // Reopen a closed writer by re-opening the file and re-creating the reader,
+  // but preserving the prior read offset. If not closed, returns an error.
+  //
+  // This is useful to allow "refreshing" the underlying file handle, in cases
+  // where the file was replaced with a newer version containing additional data
+  // that otherwise wouldn't be available via the existing file handle. This
+  // allows the file to be polled continuously using the same iterator, even as
+  // it grows, which supports use cases such as TensorBoard.
+  tensorflow::Status Reopen() {
+    if (!IsClosed()) {
+      return tensorflow::errors::FailedPrecondition("Reader is not closed.");
+    }
+    TF_RETURN_IF_ERROR(
+        tensorflow::Env::Default()->NewRandomAccessFile(filename_, &file_));
+    reader_ =
+        absl::make_unique<tensorflow::io::RecordReader>(file_.get(), options_);
+    return tensorflow::Status::OK();
+  }
+
  private:
   static constexpr tensorflow::uint64 kReaderBufferSize = 16 * 1024 * 1024;
 
-  PyRecordReader(std::unique_ptr<tensorflow::RandomAccessFile> file,
-                 std::unique_ptr<tensorflow::io::RecordReader> reader)
-      : offset_(0), file_(std::move(file)), reader_(std::move(reader)) {}
+  PyRecordReader(const std::string& filename,
+                 const std::string& compression_type)
+      : filename_(filename),
+        options_(CreateOptions(compression_type)),
+        offset_(0),
+        file_(nullptr),
+        reader_(nullptr) {}
 
+  static tensorflow::io::RecordReaderOptions CreateOptions(
+      const std::string& compression_type) {
+    auto options =
+        tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions(
+            compression_type);
+    options.buffer_size = kReaderBufferSize;
+    return options;
+  }
+
+  const std::string filename_;
+  const tensorflow::io::RecordReaderOptions options_;
   tensorflow::uint64 offset_;
   std::unique_ptr<tensorflow::RandomAccessFile> file_;
   std::unique_ptr<tensorflow::io::RecordReader> reader_;
@@ -234,7 +261,15 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
              MaybeRaiseRegisteredFromStatus(status);
              return py::bytes(record);
            })
-      .def("close", [](PyRecordReader* self) { self->Close(); });
+      .def("close", [](PyRecordReader* self) { self->Close(); })
+      .def("reopen", [](PyRecordReader* self) {
+        tensorflow::Status status;
+        {
+          py::gil_scoped_release release;
+          status = self->Reopen();
+        }
+        MaybeRaiseRegisteredFromStatus(status);
+      });
 
   py::class_<PyRecordRandomReader>(m, "RandomRecordReader")
       .def(py::init([](const std::string& filename) {

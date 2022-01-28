@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 
 #include <algorithm>
+#include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -27,14 +29,14 @@ limitations under the License.
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<HloDomainMap>> HloDomainMap::Create(
-    HloComputation* computation, string domain_kind) {
+    HloComputation* computation, std::string domain_kind) {
   auto domain_map = absl::WrapUnique(new HloDomainMap(std::move(domain_kind)));
   TF_RETURN_IF_ERROR(domain_map->Populate(computation));
   return std::move(domain_map);
 }
 
 /* static */ StatusOr<std::unique_ptr<HloDomainMap>> HloDomainMap::Create(
-    HloModule* module, string domain_kind) {
+    HloModule* module, std::string domain_kind) {
   auto domain_map = absl::WrapUnique(new HloDomainMap(std::move(domain_kind)));
   for (HloComputation* computation : module->computations()) {
     TF_RETURN_IF_ERROR(domain_map->Populate(computation));

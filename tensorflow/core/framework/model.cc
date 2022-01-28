@@ -46,6 +46,9 @@ bool AreAllParametersMax(const Model::ModelParameters& parameters) {
 
 // Records the ram usage of hill climbing algorithm.
 void RecordAutotuneRamUsage(int64 ram_budget, double max_buffered_bytes) {
+  if (ram_budget == 0) {
+    return;
+  }
   const auto memory_info = port::GetMemoryInfo();
   // Records ratio of memory used since RootDataset was created over the ram
   // budget.

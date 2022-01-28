@@ -934,6 +934,13 @@ then b == f32[3]{0.0, 1.0, 2.0}
 
 Performs `AllReduce` with a summation computation.
 
+## OptimizationBarrier
+
+Blocks any optimization pass from moving computations across the barrier.
+
+Ensures that all inputs are evaluated before any operators that depend on the
+barrier's outputs.
+
 ## CustomCall
 
 See also
@@ -1793,19 +1800,39 @@ Infeed of the device.
 
 ## Iota
 
-<b> `Iota()` </b>
+See also
+[`XlaBuilder::Iota`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+<b> `Iota(shape, iota_dimension)` </b>
 
 Builds a constant literal on device rather than a potentially large host
-transfer. Creates a rank 1 array of values starting at zero and incrementing by
-one. For floating-point types, the produced array is equivalent to
-`ConvertElementType(Iota(...))` where the `Iota` is of integral type and the
-conversion is to the floating-point type.
+transfer. Creates an array that has specified shape and holds values starting at
+zero and incrementing by one along the specified dimension. For floating-point
+types, the produced array is equivalent to `ConvertElementType(Iota(...))` where
+the `Iota` is of integral type and the conversion is to the floating-point type.
 
-Arguments        | Type            | Semantics
----------------- | --------------- | ------------------------------------
-`type`           | `PrimitiveType` | type U
-`size`           | `int64`         | The number of elements in the array.
-`iota_dimension` | `int64`         | The dimension to increment along.
+Arguments        | Type    | Semantics
+---------------- | ------- | --------------------------------------
+`shape`          | `Shape` | Shape of the array created by `Iota()`
+`iota_dimension` | `int64` | The dimension to increment along.
+
+For example, `Iota(s32[4, 8], 0)` returns
+
+```
+  [[0, 0, 0, 0, 0, 0, 0, 0 ],
+   [1, 1, 1, 1, 1, 1, 1, 1 ],
+   [2, 2, 2, 2, 2, 2, 2, 2 ],
+   [3, 3, 3, 3, 3, 3, 3, 3 ]]
+```
+
+`Iota(s32[4, 8], 1)` returns
+
+```
+  [[0, 1, 2, 3, 4, 5, 6, 7 ],
+   [0, 1, 2, 3, 4, 5, 6, 7 ],
+   [0, 1, 2, 3, 4, 5, 6, 7 ],
+   [0, 1, 2, 3, 4, 5, 6, 7 ]]
+```
 
 ## Map
 
