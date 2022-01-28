@@ -85,9 +85,7 @@ ENTRY entry {
   auto module = module_status.ConsumeValueOrDie();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
-  EXPECT_THAT(reshape, AllOf(op::Reshape(op::AllGather(
-                                 AllOf(op::Reshape(_), op::Shape("s32[1,8]")))),
-                             op::Shape("s32[2,8,1,1]")));
+  EXPECT_THAT(reshape, op::Reshape(op::AllGather(op::Parameter())));
 }
 
 TEST_F(AllGatherCanonicalizeTest, MultipleDegenerateReshapes2) {
@@ -106,9 +104,7 @@ ENTRY entry {
   auto module = module_status.ConsumeValueOrDie();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
-  EXPECT_THAT(reshape, AllOf(op::Reshape(op::AllGather(
-                                 AllOf(op::Reshape(_), op::Shape("s32[1,8]")))),
-                             op::Shape("s32[2,8,1,1]")));
+  EXPECT_THAT(reshape, op::Reshape(op::AllGather(op::Parameter())));
 }
 
 TEST_F(AllGatherCanonicalizeTest, MultipleDegenerateReshapesNoDim0) {
@@ -127,8 +123,7 @@ ENTRY entry {
   auto module = module_status.ConsumeValueOrDie();
   const HloInstruction* const reshape =
       module->entry_computation()->root_instruction();
-  EXPECT_THAT(reshape, AllOf(op::AllGather(op::Reshape(op::Reshape(_))),
-                             op::Shape("s32[1,16,1,1]")));
+  EXPECT_THAT(reshape, op::Reshape(op::AllGather(op::Parameter())));
 }
 
 TEST_F(AllGatherCanonicalizeTest, NonDegenerateReshape) {
