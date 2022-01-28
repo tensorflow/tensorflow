@@ -196,7 +196,6 @@ if _typing.TYPE_CHECKING:
   from keras.api._v1.keras import metrics
   from keras.api._v1.keras import optimizers
   from keras.api._v1.keras import initializers
-  from tensorflow import contrib
 # pylint: enable=g-import-not-at-top
 
 # Delete modules that should be hidden from dir().
