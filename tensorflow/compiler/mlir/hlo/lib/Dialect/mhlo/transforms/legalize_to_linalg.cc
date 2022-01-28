@@ -938,6 +938,96 @@ class TransposeConverter
   }
 };
 
+/// Lowers mhlo.RealDynamicSliceOp to tensor.extract_slice and other
+/// arith/tensor dialect ops.
+class RealDynamicSliceConverter
+    : public OpConversionPattern<mhlo::RealDynamicSliceOp> {
+ public:
+  using OpConversionPattern<mhlo::RealDynamicSliceOp>::OpConversionPattern;
+
+  /// Computes size of a slice as :-
+  /// size = ceil((limit - start)/stride)
+  static Value computeSize(Location loc, Value start, Value limit, Value stride,
+                           ConversionPatternRewriter& rewriter) {
+    Value delta = rewriter.create<arith::SubIOp>(loc, limit, start);
+    return rewriter.create<arith::CeilDivUIOp>(loc, delta, stride);
+  }
+
+  LogicalResult matchAndRewrite(
+      mhlo::RealDynamicSliceOp real_dynamic_slice_op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    Location loc = real_dynamic_slice_op.getLoc();
+    auto arg_type = adaptor.operand().getType().dyn_cast<ShapedType>();
+    if (!arg_type || !arg_type.hasRank()) {
+      return rewriter.notifyMatchFailure(real_dynamic_slice_op,
+                                         "require known-rank args");
+    }
+    auto result_type =
+        this->typeConverter->convertType(real_dynamic_slice_op.getType())
+            .cast<RankedTensorType>();
+    Value zero =
+        rewriter.create<arith::ConstantOp>(loc, rewriter.getI64IntegerAttr(0));
+    Type i64_type = rewriter.getI64Type();
+    SmallVector<OpFoldResult, 4> offsets, sizes, strides;
+    SmallVector<Type, 3> clamp_type(3, i64_type);
+    for (auto i : llvm::seq<unsigned>(0, arg_type.getRank())) {
+      Value dim = rewriter.create<arith::ConstantIndexOp>(loc, i);
+      Value start =
+          rewriter.create<tensor::ExtractOp>(loc, adaptor.start_indices(), dim);
+      Value limit =
+          rewriter.create<tensor::ExtractOp>(loc, adaptor.limit_indices(), dim);
+      Value stride =
+          rewriter.create<tensor::ExtractOp>(loc, adaptor.strides(), dim);
+
+      // Compute i-th dimension size of the result : size[i].
+      // If the i-th dimension of the result type is known, we go ahead with it
+      // else we compute it using limit, start and stride values.
+      int64_t result_dim_size = result_type.getDimSize(i);
+      Value size;
+      if (ShapedType::isDynamic(result_dim_size)) {
+        size = computeSize(loc, start, limit, stride, rewriter);
+      } else {
+        size = rewriter.create<arith::ConstantIndexOp>(loc, result_dim_size);
+      }
+
+      // Fetch i-th dimension size of the operand and calculate upper bound as
+      // :-
+      //    ub = operand_dim[i] - size[i]
+      Value operand_dim_size =
+          rewriter.createOrFold<tensor::DimOp>(loc, adaptor.operand(), dim);
+      Value upper_bound =
+          rewriter.createOrFold<arith::SubIOp>(loc, operand_dim_size, size);
+
+      // We clamp the start_index to keep it bounded as :-
+      // start index : 0 <= start_index[i] <= ub
+      // ClampOp lowering does not support index type, so we cast it into
+      // integer type.
+      start = rewriter.create<arith::IndexCastOp>(loc, i64_type, start);
+      upper_bound =
+          rewriter.create<arith::IndexCastOp>(loc, i64_type, upper_bound);
+      start = mhlo::MhloOpToStdScalarOp::map<mhlo::ClampOp>(
+          loc, i64_type, clamp_type, ValueRange{zero, start, upper_bound},
+          &rewriter);
+
+      offsets.push_back(
+          rewriter
+              .create<arith::IndexCastOp>(loc, rewriter.getIndexType(), start)
+              .getResult());
+      if (ShapedType::isDynamic(result_dim_size)) {
+        sizes.push_back(size);
+      } else {
+        sizes.push_back(rewriter.getI64IntegerAttr(result_dim_size));
+      }
+      strides.push_back(stride);
+    }
+
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+        real_dynamic_slice_op, result_type, adaptor.operand(), offsets, sizes,
+        strides);
+    return success();
+  }
+};
+
 // Converts reshape ops that can be proven to be either a collapse of dimensions
 // or expansion of dimensions of the operand.
 class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
@@ -2829,6 +2919,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::SubOp>,
       PointwiseToLinalgConverter<mhlo::TanhOp>,
       PointwiseToLinalgConverter<mhlo::XorOp>,
+      RealDynamicSliceConverter,
       ReshapeOpConverter,
       ReverseConverter,
       SliceConverter,
