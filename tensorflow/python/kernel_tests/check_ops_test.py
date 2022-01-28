@@ -1197,7 +1197,7 @@ class AssertRankTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raises_if_rank_is_not_integer_static(self):
     tensor = constant_op.constant([1, 2], name="my_tensor")
-    with self.assertRaisesRegex(TypeError, "must be of type tf.int32"):
+    with self.assertRaisesRegex(TypeError, "must be of type <dtype: 'int32'>"):
       check_ops.assert_rank(tensor, .5)
 
   @test_util.run_deprecated_v1
@@ -1206,7 +1206,8 @@ class AssertRankTest(test.TestCase):
       tensor = constant_op.constant(
           [1, 2], dtype=dtypes.float32, name="my_tensor")
       rank_tensor = array_ops.placeholder(dtypes.float32, name="rank_tensor")
-      with self.assertRaisesRegex(TypeError, "must be of type tf.int32"):
+      with self.assertRaisesRegex(TypeError,
+                                  "must be of type <dtype: 'int32'>"):
         with ops.control_dependencies(
             [check_ops.assert_rank(tensor, rank_tensor)]):
           array_ops.identity(tensor).eval(feed_dict={rank_tensor: .5})
@@ -1314,7 +1315,7 @@ class AssertRankInTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raises_if_rank_is_not_integer_static(self):
     tensor = constant_op.constant((42, 43), name="my_tensor")
-    with self.assertRaisesRegex(TypeError, "must be of type tf.int32"):
+    with self.assertRaisesRegex(TypeError, "must be of type <dtype: 'int32'>"):
       check_ops.assert_rank_in(tensor, (1, .5,))
 
   @test_util.run_deprecated_v1
@@ -1323,7 +1324,8 @@ class AssertRankInTest(test.TestCase):
       tensor = constant_op.constant(
           (42, 43), dtype=dtypes.float32, name="my_tensor")
       rank_tensor = array_ops.placeholder(dtypes.float32, name="rank_tensor")
-      with self.assertRaisesRegex(TypeError, "must be of type tf.int32"):
+      with self.assertRaisesRegex(TypeError,
+                                  "must be of type <dtype: 'int32'>"):
         with ops.control_dependencies(
             [check_ops.assert_rank_in(tensor, (1, rank_tensor))]):
           array_ops.identity(tensor).eval(feed_dict={rank_tensor: .5})
@@ -1544,8 +1546,7 @@ class AssertTypeTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raises_when_wrong_type(self):
     floats = constant_op.constant([1.0, 2.0], dtype=dtypes.float16)
-    with self.assertRaisesRegex(TypeError, "must be of type tf.float32; "
-                                "got tf.float16"):
+    with self.assertRaisesRegex(TypeError, "must be of type.*float32"):
       check_ops.assert_type(floats, dtypes.float32)
 
   @test_util.run_in_graph_and_eager_modes
