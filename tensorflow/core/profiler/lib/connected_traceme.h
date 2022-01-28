@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_LIB_CONNECTED_TRACEME_H_
 
 #include <string>
-#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -88,13 +87,13 @@ enum class ContextType : int {
 class TraceMeProducer {
  public:
   template <typename NameT>
-  explicit TraceMeProducer(NameT&& name,
+  explicit TraceMeProducer(NameT name,
                            ContextType context_type = ContextType::kGeneric,
                            absl::optional<uint64> context_id = absl::nullopt,
                            int level = 2)
       : context_id_(context_id.has_value() ? context_id.value()
                                            : TraceMe::NewActivityId()),
-        trace_me_(std::forward<NameT>(name), level) {
+        trace_me_(name, level) {
     trace_me_.AppendMetadata([&] {
       return TraceMeEncode({{"_pt", context_type}, {"_p", context_id_}});
     });
@@ -110,18 +109,17 @@ class TraceMeProducer {
 class TraceMeConsumer {
  public:
   template <typename NameT>
-  TraceMeConsumer(NameT&& name, ContextType context_type, uint64 context_id,
+  TraceMeConsumer(NameT name, ContextType context_type, uint64 context_id,
                   int level = 2)
-      : trace_me_(std::forward<NameT>(name), level) {
+      : trace_me_(name, level) {
     trace_me_.AppendMetadata([&] {
       return TraceMeEncode({{"_ct", context_type}, {"_c", context_id}});
     });
   }
 
   template <typename NameT>
-  TraceMeConsumer(NameT&& name, uint64 context_id, int level = 2)
-      : TraceMeConsumer(std::forward<NameT>(name), ContextType::kGeneric,
-                        context_id, level) {}
+  TraceMeConsumer(NameT name, uint64 context_id, int level = 2)
+      : TraceMeConsumer(name, ContextType::kGeneric, context_id, level) {}
 
  private:
   TraceMe trace_me_;

@@ -134,12 +134,11 @@ class TraceMe {
   //     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});
   //   });
   template <typename NameGeneratorT>
-  explicit TraceMe(NameGeneratorT&& name_generator, int level = 1) {
+  explicit TraceMe(NameGeneratorT name_generator, int level = 1) {
     DCHECK_GE(level, 1);
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
-      new (&no_init_.name)
-          std::string(std::forward<NameGeneratorT>(name_generator)());
+      new (&no_init_.name) std::string(name_generator());
       start_time_ = GetCurrentTimeNanos();
     }
 #endif
@@ -195,13 +194,11 @@ class TraceMe {
   //     return TraceMeEncode({{"key1", value1}, {"key2", 42}});
   //   });
   template <typename MetadataGeneratorT>
-  void AppendMetadata(MetadataGeneratorT&& metadata_generator) {
+  void AppendMetadata(MetadataGeneratorT metadata_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
-        traceme_internal::AppendMetadata(
-            &no_init_.name,
-            std::forward<MetadataGeneratorT>(metadata_generator)());
+        traceme_internal::AppendMetadata(&no_init_.name, metadata_generator());
       }
     }
 #endif
@@ -213,12 +210,12 @@ class TraceMe {
   // Returns the activity ID, which is used to stop the activity.
   // Calls `name_generator` to get the name for activity.
   template <typename NameGeneratorT>
-  static int64_t ActivityStart(NameGeneratorT&& name_generator, int level = 1) {
+  static int64_t ActivityStart(NameGeneratorT name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       int64_t activity_id = TraceMeRecorder::NewActivityId();
-      TraceMeRecorder::Record({std::forward<NameGeneratorT>(name_generator)(),
-                               GetCurrentTimeNanos(), -activity_id});
+      TraceMeRecorder::Record(
+          {name_generator(), GetCurrentTimeNanos(), -activity_id});
       return activity_id;
     }
 #endif
@@ -264,12 +261,12 @@ class TraceMe {
 
   // Records the time of an instant activity.
   template <typename NameGeneratorT>
-  static void InstantActivity(NameGeneratorT&& name_generator, int level = 1) {
+  static void InstantActivity(NameGeneratorT name_generator, int level = 1) {
 #if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       int64_t now = GetCurrentTimeNanos();
-      TraceMeRecorder::Record({std::forward<NameGeneratorT>(name_generator)(),
-                               /*start_time=*/now, /*end_time=*/now});
+      TraceMeRecorder::Record(
+          {name_generator(), /*start_time=*/now, /*end_time=*/now});
     }
 #endif
   }
