@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_body.h"
@@ -78,6 +80,7 @@ static void RegisterPasses() {
     // These are in compiler/mlir/xla and not part of the above MHLO
     // passes.
     mlir::mhlo::registerXlaPasses();
+    mlir::mhlo::registerTfXlaPasses();
     mlir::mhlo::registerLegalizeTFPass();
     mlir::mhlo::registerLegalizeTFControlFlowPass();
     mlir::mhlo::registerLegalizeTfTypesPassPass();

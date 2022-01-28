@@ -4,7 +4,7 @@ func @Abs(%in: memref<?xf64>) {
 linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
                 iterator_types = ["parallel"]}
     ins(%in : memref<?xf64>) outs(%in : memref<?xf64>) {
-  ^bb0(%arg1: f64, %arg2: f64):  // no predecessors
+  ^bb0(%arg1: f64, %arg2: f64):
     %9 = math.abs %arg1 : f64
     linalg.yield %9 : f64
   }
@@ -71,7 +71,7 @@ func @Add(%lhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s
          : memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
            memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>)
      outs(%out : memref<?x?xf64>) {
-  ^bb0(%arg2: f64, %arg3: f64, %arg4: f64):  // no predecessors
+  ^bb0(%arg2: f64, %arg3: f64, %arg4: f64):
     %65 = arith.addf %arg2, %arg3 : f64
     linalg.yield %65 : f64
   }

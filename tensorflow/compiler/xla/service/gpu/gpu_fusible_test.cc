@@ -936,8 +936,10 @@ TEST_F(GpuFusibleTest, NonscalarConstantsNotFused) {
   const HloInstruction* producer = root->operand(1);
   const HloInstruction* consumer2 = root->operand(2);
   const HloInstruction* producer2 = root->operand(3);
-  EXPECT_FALSE(IsProducerConsumerFusible(*producer, *consumer));
-  EXPECT_FALSE(IsProducerConsumerFusible(*producer2, *consumer2));
+  EXPECT_FALSE(
+      static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
+  EXPECT_FALSE(
+      static_cast<bool>(IsProducerConsumerFusible(*producer2, *consumer2)));
 }
 
 TEST_F(GpuFusibleTest, TransposingCopyNotFused) {
@@ -974,7 +976,8 @@ TEST_F(GpuFusibleTest, TransposingCopyNotFused) {
   const HloInstruction* consumer =
       module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
-  EXPECT_FALSE(IsProducerConsumerFusible(*producer, *consumer));
+  EXPECT_FALSE(
+      static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
 }
 
 TEST_F(GpuFusibleTest, DoNotFuseLayoutChangingOpWithReduce) {
@@ -998,7 +1001,8 @@ TEST_F(GpuFusibleTest, DoNotFuseLayoutChangingOpWithReduce) {
   const HloInstruction* consumer =
       module->entry_computation()->root_instruction();
   const HloInstruction* producer = consumer->operand(0);
-  EXPECT_FALSE(IsProducerConsumerFusible(*producer, *consumer));
+  EXPECT_FALSE(
+      static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
 }
 
 TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
@@ -1014,7 +1018,8 @@ TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
   const HloInstruction* consumer =
       module->entry_computation()->root_instruction();
   const HloInstruction* producer = consumer->operand(0);
-  EXPECT_TRUE(IsProducerConsumerFusible(*producer, *consumer));
+  EXPECT_TRUE(
+      static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
 }
 
 TEST_F(GpuFusibleTest, CreatesNestedLoop_NonfusionInstr) {

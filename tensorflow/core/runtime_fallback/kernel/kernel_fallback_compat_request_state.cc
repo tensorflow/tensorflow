@@ -33,6 +33,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tfd {
 
+using ::tensorflow::tfrt_stub::OpKernelRunnerTable;
+
 void FallbackResourceArray::SetResource(
     int index, tensorflow::tfrt_stub::ImmutableTensor tensor) {
   if (resource_async_values_.size() <= index) {
@@ -49,13 +51,6 @@ void FallbackResourceArray::SetResource(
       resources_.back().get());
 }
 
-static std::function<void(std::function<void()>)>* GetDefaultRunner() {
-  static auto* const default_runner =
-      new std::function<void(std::function<void()>)>(
-          [](const std::function<void()>& f) { f(); });
-  return default_runner;
-}
-
 static CancellationManager* GetDefaultCancellationManager() {
   // TODO(b/167630926): Support cancellation by hooking up with TFRT's
   // mechanism.
@@ -64,15 +59,16 @@ static CancellationManager* GetDefaultCancellationManager() {
 }
 
 KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
+    std::function<void(std::function<void()>)>* runner,
     const tensorflow::DeviceMgr* device_manager, int64_t step_id,
     tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container,
     std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle,
     core::RefCountPtr<Rendezvous> rendezvous, OpKernelRunnerTable* runner_table,
     FallbackResourceArray* resource_array,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata,
+    const absl::optional<SessionMetadata>& model_metadata,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr)
-    : default_runner_(GetDefaultRunner()),
+    : runner_(runner),
       step_container_(std::move(step_container)),
       collective_executor_handle_(std::move(collective_executor_handle)),
       collective_executor_(collective_executor_handle_
@@ -85,6 +81,7 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
       resource_array_(resource_array),
       intra_op_threadpool_(user_intra_op_threadpool),
       pflr_(pflr) {
+  DCHECK(runner_);
   DCHECK(device_manager_);
   DCHECK(runner_table_);
   DCHECK(resource_array_);
@@ -98,19 +95,19 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
         /*isolate_session_state=*/false, user_intra_op_threadpool);
   }
   if (model_metadata.has_value()) {
-    session_metadata_.set_name(model_metadata.value().name);
-    session_metadata_.set_version(model_metadata.value().version);
+    session_metadata_ = *model_metadata;
   }
 }
 
 KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
+    std::function<void(std::function<void()>)>* runner,
     const tensorflow::DeviceMgr* device_manager, int64_t step_id,
     OpKernelRunnerTable* runner_table, FallbackResourceArray* resource_array,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata,
+    const absl::optional<SessionMetadata>& model_metadata,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr)
     : KernelFallbackCompatRequestState(
-          device_manager, step_id,
+          runner, device_manager, step_id,
           // The following code is copied from
           // third_party/tensorflow/core/common_runtime/direct_session.cc
           tfrt::OwnedOrUnownedPtr<ScopedStepContainer>{

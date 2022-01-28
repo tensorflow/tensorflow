@@ -2043,7 +2043,18 @@ class RaggedTensor(composite_tensor.CompositeTensor,
   #=============================================================================
   def __repr__(self):
     if self._is_eager():
-      return "<tf.RaggedTensor %s>" % self.to_list()
+      # The np.array2string in _formatter provides a separator argument, but
+      # doesn't handle recursive calls correctly. The np.printoptions handles
+      # recursive calls correctly, but doesn't provide a separator argument.
+      # Combines them together to print elements separated by comma, while
+      # avoiding the redundant array prefixes and dtypes. For example,
+      # the value of tf.ragged.constant([[1, 2], [3, 4]]) will look like
+      #
+      # [[1, 2],
+      #  [3, 4]]
+      with np.printoptions(formatter={"all": _formatter}):
+        value_text = _formatter(self.numpy())
+      return f"<tf.RaggedTensor {value_text}>"
     else:
       return "tf.RaggedTensor(values=%s, row_splits=%s)" % (self.values,
                                                             self.row_splits)
@@ -2092,7 +2103,8 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     # rank=row.rank+1.
     #
     # Manually set dtype as numpy now complains when given ragged rows.
-    dtype = np.object if any(len(row) != len(rows[0]) for row in rows) else None
+    has_variable_length_rows = any(len(row) != len(rows[0]) for row in rows)
+    dtype = np.object_ if has_variable_length_rows else None
     return np.array(rows, dtype=dtype)
 
   def to_list(self):
@@ -2703,7 +2715,7 @@ session.register_session_run_conversion_functions(
 #===============================================================================
 # RaggedTensorType
 #===============================================================================
-class RaggedTensorType(object):
+class RaggedTensorType:
   """Encoding of a static type for a `RaggedTensor`.
 
   Use this type to express/declare that an output must have the type of
@@ -3047,6 +3059,13 @@ def _assert_is_supported_ragged_values_type(value):
     ok_types = ", ".join(cls.__name__ for cls in _SUPPORTED_RAGGED_VALUE_TYPES)
     raise TypeError(f"type(values) must be one of: {ok_types}, got {value}.")
 
+
+def _formatter(x):
+  """Separate Numpy array elements with comma."""
+  if isinstance(x, np.ndarray):
+    return np.array2string(x, separator=", ")
+  else:
+    return str(x)
 
 # Type annotation indicating that a value is ragged.  Includes RaggedTensor
 # as well as the (deprecated) RaggedTensorValue class from TF 1.x.

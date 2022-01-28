@@ -33,6 +33,15 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
+// Convert a Graph and function libs to a MLIR module containing the graph and
+// expressed in TFG dialect.
+tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
+    MLIRContext* context, const tensorflow::Graph& graph,
+    const tensorflow::GraphDebugInfo& debug_info,
+    const tensorflow::FunctionLibraryDefinition& flib_def);
+
+// Convert a GraphDef to a MLIR module containing the graph and expressed in TFG
+// dialect.
 tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
     MLIRContext* context, const tensorflow::GraphDebugInfo& debug_info,
     const tensorflow::GraphDef& graphdef);

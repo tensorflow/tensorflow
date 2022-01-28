@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
 // Get the C++ declaration for all the ops defined in ODS for the dialect.

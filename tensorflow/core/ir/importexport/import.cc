@@ -41,7 +41,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -438,7 +437,7 @@ Location GraphImporter::GetLocation(const Node& node) {
     std::string debug_info_key = (name + "@" + function_name).str();
     std::string name_for_name_loc =
         function_name.empty() ? name.str() : (name + "@" + function_name).str();
-    auto name_loc_id = Identifier::get(name_for_name_loc, context_);
+    auto name_loc_id = StringAttr::get(context_, name_for_name_loc);
 
     llvm::SmallVector<Location, 4> locations;
     // Prefer stack traces if available, fallback to debug info if not, and then
@@ -448,7 +447,7 @@ Location GraphImporter::GetLocation(const Node& node) {
       absl::Span<const StackFrame> frames = stack_trace->ToFrames();
       locations.reserve(frames.size());
       for (const StackFrame& frame : llvm::reverse(frames)) {
-        auto file_name = Identifier::get(frame.file_name, context_);
+        auto file_name = StringAttr::get(context_, frame.file_name);
         // Use col 1 as there is no column info in StackTrace.
         auto file_line_loc =
             FileLineColLoc::get(file_name, frame.line_number, 1);
@@ -464,7 +463,7 @@ Location GraphImporter::GetLocation(const Node& node) {
         locations.reserve(trace.file_line_cols_size());
         for (const auto& location : trace.file_line_cols()) {
           const auto& file = debug_info_.files(location.file_index());
-          auto file_name = Identifier::get(file, context_);
+          auto file_name = StringAttr::get(context_, file);
           auto file_line_loc =
               FileLineColLoc::get(file_name, location.line(), location.col());
           locations.push_back(file_line_loc);
@@ -588,6 +587,7 @@ Status GraphImporter::ConvertNode(const Node& node) {
                       StringAttr::get(context_, node.name()));
   for (const auto& namedAttr : node.attrs()) {
     const std::string& name = namedAttr.first;
+    if (name.empty()) return InvalidArgument("empty attr name");
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
                         ConvertAttributeValue(tf_attr, builder_, dialect_));
@@ -707,8 +707,9 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   // Create the func operation in which we will convert the individual nodes.
   OpBuilder builder = OpBuilder::atBlockEnd(module.getBody());
   MLIRContext* context = module->getContext();
+  Location unknown_loc = builder.getUnknownLoc();
   GraphFuncOp func_op = builder.create<GraphFuncOp>(
-      builder.getUnknownLoc(), name, FunctionType::get(context, {}, {}),
+      unknown_loc, name, FunctionType::get(context, {}, {}),
       /*generic=*/false);
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   const OpDef& signature = fdef.signature();
@@ -729,6 +730,8 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                         ConvertAttributeValue(tf_attr, builder, tfgDialect));
     attrs.append(name, attr);
   }
+  if (signature.name().empty())
+    return InvalidArgument("function without a name");
   attrs.append("sym_name", builder.getStringAttr(name));
 
   if (!signature.description().empty())
@@ -773,11 +776,11 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
         return InvalidArgument(
             "Expect `_Arg` node to have a single output, got ",
             arg_op->getNumResults());
-      body->addArgument(arg_op->getResult(0).getType());
+      body->addArgument(arg_op->getResult(0).getType(), unknown_loc);
       arg_types.push_back(arg_op->getResult(0).getType());
       arg_op->getResult(0).replaceAllUsesWith(body->getArguments().back());
 
-      body->addArgument(arg_op->getResult(1).getType());
+      body->addArgument(arg_op->getResult(1).getType(), unknown_loc);
       arg_types.push_back(arg_op->getResult(1).getType());
       arg_op->getResult(1).replaceAllUsesWith(body->getArguments().back());
 
@@ -817,7 +820,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
       arg_attrs.push_back(builder.getDictionaryAttr({}));
     }
     attrs.push_back(
-        builder.getNamedAttr(function_like_impl::getArgDictAttrName(),
+        builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
                              builder.getArrayAttr(arg_attrs)));
   }
 
@@ -867,7 +870,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
       res_attrs.push_back(output_attrs.getDictionary(context));
     }
     attrs.push_back(
-        builder.getNamedAttr(function_like_impl::getResultDictAttrName(),
+        builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
                              builder.getArrayAttr(res_attrs)));
     DenseMap<StringRef, Node*> control_ret_nodes;
     for (Node* node : fbody->control_ret_nodes)
@@ -918,6 +921,32 @@ bool IsGenericFunction(FunctionDef fdef) {
   return false;
 }
 
+}  // namespace
+
+// Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
+// attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
+// and a ShapeAttr
+tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
+    Builder builder,
+    const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
+  // Two entries: a type and a shape.
+  SmallVector<Attribute> dtype_and_shape;
+  for (const auto& handle : handle_data) {
+    if (handle.dtype() == tensorflow::DT_INVALID)
+      return InvalidArgument("Invalid dtype for handle_data");
+    Type dtype;
+    TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
+    TF_ASSIGN_OR_RETURN(
+        Attribute shape,
+        ConvertTensorShapeProto(handle.shape(), builder.getContext()));
+
+    dtype_and_shape.push_back(
+        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
+  }
+  return builder.getArrayAttr(dtype_and_shape);
+}
+// Convert a Graph and function libs to a MLIR module containing the graph and
+// expressed in TFG dialect.
 tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
     MLIRContext* context, const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
@@ -951,30 +980,8 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
   return module;
 }
 
-}  // namespace
-
-// Convert an array of "handle_data" (a DType and a Shape) to an MLIR array
-// attribute. Each entry will be itself an ArrayAttribute containing a TypeAttr
-// and a ShapeAttr
-tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
-    Builder builder,
-    const RepeatedPtrField<ResourceHandleProto_DtypeAndShape>& handle_data) {
-  // Two entries: a type and a shape.
-  SmallVector<Attribute> dtype_and_shape;
-  for (const auto& handle : handle_data) {
-    Type dtype;
-    if (handle.dtype() != tensorflow::DT_INVALID)
-      TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
-    TF_ASSIGN_OR_RETURN(
-        Attribute shape,
-        ConvertTensorShapeProto(handle.shape(), builder.getContext()));
-
-    dtype_and_shape.push_back(
-        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
-  }
-  return builder.getArrayAttr(dtype_and_shape);
-}
-
+// Convert a GraphDef to a MLIR module containing the graph and expressed in TFG
+// dialect.
 tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
     MLIRContext* context, const GraphDebugInfo& debug_info,
     const GraphDef& graphdef) {

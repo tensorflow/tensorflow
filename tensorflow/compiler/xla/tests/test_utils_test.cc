@@ -74,14 +74,14 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 5);
 
-  EXPECT_GE(args[0].Get<int32>({}), -1);
-  EXPECT_LE(args[0].Get<int32>({}), 1);
+  EXPECT_GE(args[0].Get<int32_t>({}), -1);
+  EXPECT_LE(args[0].Get<int32_t>({}), 1);
 
-  EXPECT_GE(args[1].Get<int32>({}), -1);
-  EXPECT_LE(args[1].Get<int32>({}), 2);
+  EXPECT_GE(args[1].Get<int32_t>({}), -1);
+  EXPECT_LE(args[1].Get<int32_t>({}), 2);
 
-  EXPECT_GE(args[2].Get<int32>({}), -1);
-  EXPECT_LE(args[2].Get<int32>({}), 3);
+  EXPECT_GE(args[2].Get<int32_t>({}), -1);
+  EXPECT_LE(args[2].Get<int32_t>({}), 3);
 }
 
 XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
@@ -105,14 +105,14 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 7);
 
-  EXPECT_GE(args[0].Get<int32>({}), -1);
-  EXPECT_LE(args[0].Get<int32>({}), 1);
+  EXPECT_GE(args[0].Get<int32_t>({}), -1);
+  EXPECT_LE(args[0].Get<int32_t>({}), 1);
 
-  EXPECT_GE(args[1].Get<int32>({}), -1);
-  EXPECT_LE(args[1].Get<int32>({}), 2);
+  EXPECT_GE(args[1].Get<int32_t>({}), -1);
+  EXPECT_LE(args[1].Get<int32_t>({}), 2);
 
-  EXPECT_GE(args[2].Get<int32>({}), -1);
-  EXPECT_LE(args[2].Get<int32>({}), 3);
+  EXPECT_GE(args[2].Get<int32_t>({}), -1);
+  EXPECT_LE(args[2].Get<int32_t>({}), 3);
 }
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesFloats) {
@@ -140,9 +140,9 @@ ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (
   ASSERT_EQ(args.size(), 2);
   const Literal& key_arg = args[0];
 
-  absl::flat_hash_set<uint32> key_set;
+  absl::flat_hash_set<uint32_t> key_set;
   for (const float& value : key_arg.data<float>()) {
-    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint32>(value)).second);
+    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint32_t>(value)).second);
   }
 }
 
@@ -171,9 +171,9 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
   ASSERT_EQ(args.size(), 2);
   const Literal& key_arg = args[0];
 
-  absl::flat_hash_set<int32> key_set;
-  for (const int32& value : key_arg.data<int32>()) {
-    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint32>(value)).second);
+  absl::flat_hash_set<int32_t> key_set;
+  for (const int32_t& value : key_arg.data<int32_t>()) {
+    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint32_t>(value)).second);
   }
 }
 
@@ -202,9 +202,9 @@ ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,14
   ASSERT_EQ(args.size(), 2);
   const Literal& key_arg = args[0];
 
-  absl::flat_hash_set<uint16> key_set;
+  absl::flat_hash_set<uint16_t> key_set;
   for (const bfloat16& value : key_arg.data<bfloat16>()) {
-    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint16>(value)).second);
+    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint16_t>(value)).second);
   }
 }
 
@@ -263,7 +263,7 @@ ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
   EXPECT_TRUE(
       ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
       << ShapeUtil::HumanString(indices_shape);
-  auto indices = args[1].data<int32>();
+  auto indices = args[1].data<int32_t>();
   for (const auto index : indices) {
     EXPECT_GE(index, -1);
     EXPECT_LE(index, 100);
@@ -301,7 +301,7 @@ ENTRY main {
   EXPECT_TRUE(
       ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
       << ShapeUtil::HumanString(indices_shape);
-  auto indices = args[1].data<int32>();
+  auto indices = args[1].data<int32_t>();
   for (const auto index : indices) {
     EXPECT_GE(index, -1);
     EXPECT_LE(index, 100);

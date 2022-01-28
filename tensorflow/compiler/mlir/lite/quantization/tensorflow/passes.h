@@ -27,6 +27,10 @@ namespace TF {
 // Legalize the tf ops to the quant ops, so the quantization passes can work.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass();
 
+// Fallbacks ops that are not supported by TF Quantization to TFLite Flex ops.
+std::unique_ptr<OperationPass<FuncOp>> CreateFallbackToFlexOpsPass(
+    const std::string &mode = "DEFAULT");
+
 }  // namespace TF
 }  // namespace mlir
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_TENSORFLOW_PASSES_H_

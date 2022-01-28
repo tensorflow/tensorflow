@@ -70,6 +70,10 @@ CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 CreateFuseTpuCompileAndExecutePass();
 
+// Create a pass to optimize TF dialect for TFRT workflow.
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateOptimizeTfForTfrtPass();
+
 }  // namespace tfrt_compiler
 
 class CoreRTConverter;
@@ -88,7 +92,7 @@ CreateConvertReferenceVariableToResourceVariablePass();
 // reusing the pass logic in a custom pass with additional conversions.
 mlir::LogicalResult TFSavedModelToCoreRTConversionPassRun(
     mlir::MLIRContext* context, mlir::FuncOp func,
-    mlir::ConversionTarget* target, mlir::OwningRewritePatternList* patterns,
+    mlir::ConversionTarget* target, mlir::RewritePatternSet* patterns,
     CoreRTConverter* corert_converter);
 
 // Create an operation pass that converts each tfrt_dist.remote_execute_func op

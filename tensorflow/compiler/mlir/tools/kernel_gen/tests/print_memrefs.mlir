@@ -5,7 +5,7 @@ func @print_memrefs(
     -> memref<*xf16> attributes {tf_entry} {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
-  %rank = rank %input : memref<*xf16>
+  %rank = memref.rank %input : memref<*xf16>
   %shape = memref.alloca(%rank) : memref<?xindex>
   scf.for %i = %c0 to %rank step %c1 {
     %dim = memref.dim %input, %i : memref<*xf16>

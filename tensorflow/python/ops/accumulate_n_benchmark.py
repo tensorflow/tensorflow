@@ -17,7 +17,6 @@
 import random
 import time
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
@@ -68,7 +67,7 @@ class AccumulateNBenchmark(test.Benchmark):
         validate_shape=True)
 
   def _GenerateUnorderedInputs(self, size, n):
-    inputs = [random_ops.random_uniform(shape=[size]) for _ in xrange(n)]
+    inputs = [random_ops.random_uniform(shape=[size]) for _ in range(n)]
     random.shuffle(inputs)
     return inputs
 
@@ -79,7 +78,7 @@ class AccumulateNBenchmark(test.Benchmark):
     inputs = self._GenerateUnorderedInputs(size, 1)
     queue = data_flow_ops.FIFOQueue(
         capacity=1, dtypes=[inputs[0].dtype], shapes=[inputs[0].get_shape()])
-    for _ in xrange(n - 1):
+    for _ in range(n - 1):
       op = queue.enqueue(inputs[-1])
       with ops.control_dependencies([op]):
         inputs.append(math_ops.tanh(1.0 + queue.dequeue()))
@@ -104,10 +103,10 @@ class AccumulateNBenchmark(test.Benchmark):
 
     with session.Session(graph=graph):
       for tag, op in test_ops:
-        for _ in xrange(100):
+        for _ in range(100):
           op.run()  # Run for warm up.
         start = time.time()
-        for _ in xrange(repeats):
+        for _ in range(repeats):
           op.run()
         duration = time.time() - start
         args = format_args + (tag, duration)

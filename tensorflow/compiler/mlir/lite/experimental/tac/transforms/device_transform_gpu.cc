@@ -59,14 +59,13 @@ struct DeviceTransformGPUPass
 void DeviceTransformGPUPass::runOnFunction() {
   auto func = getFunction();
   auto* ctx = &getContext();
-  OwningRewritePatternList patterns = GetHardwareRewritePatternsGPU(ctx);
+  RewritePatternSet patterns = GetHardwareRewritePatternsGPU(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
-
-OwningRewritePatternList GetHardwareRewritePatternsGPU(MLIRContext* context) {
+RewritePatternSet GetHardwareRewritePatternsGPU(MLIRContext* context) {
   GpuHardware gpu_hardware;
   return gpu_hardware.GetTransformations(context);
 }

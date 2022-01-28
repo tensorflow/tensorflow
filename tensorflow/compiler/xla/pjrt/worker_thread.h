@@ -40,11 +40,11 @@ class WorkerThread {
   void Schedule(std::function<void()> fn);
 
  private:
-  bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool WorkAvailable() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 
   absl::Mutex mu_;
-  std::queue<std::function<void()>> work_queue_ TF_GUARDED_BY(mu_);
+  std::queue<std::function<void()>> work_queue_ ABSL_GUARDED_BY(mu_);
 
   std::unique_ptr<tensorflow::Thread> thread_;
 };

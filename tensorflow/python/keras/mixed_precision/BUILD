@@ -216,7 +216,6 @@ cuda_py_test(
         ":test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_v2_toggles",
-        "//tensorflow/python:loss_scaling_gradient_tape",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",

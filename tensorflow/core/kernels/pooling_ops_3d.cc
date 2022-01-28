@@ -255,16 +255,12 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
           dst.FillIndicesAndSizes<5>(tensor_in.shape(), &dst_indices,
                                      &dst_sizes);
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-          Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
-#else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
                            Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
           bcast.set(3, psize);
-#endif
 
           // Slice from tensor_in.
           Eigen::Tensor<T, 5, Eigen::RowMajor> tensor_in_slice(dst_sizes);
@@ -454,16 +450,12 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
           src.FillIndicesAndSizes<5>(out_backprop.shape(), &src_indices,
                                      &src_sizes);
           dst.FillIndicesAndSizes<5>(tensor_in_shape, &dst_indices, &dst_sizes);
-#if !defined(EIGEN_HAS_INDEX_LIST)
-          Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
-#else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
                            Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
           bcast.set(3, psize);
-#endif
           Eigen::Tensor<T, 5, Eigen::RowMajor> slices(src_sizes);
           slices.device(context->eigen_cpu_device()) =
               out_backprop.tensor<T, 5>().slice(src_indices, src_sizes);

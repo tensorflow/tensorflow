@@ -219,7 +219,7 @@ TEST_F(RemapperTest, FuseBatchNormWithRelu) {
 
 #if defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
 TEST_F(RemapperTest, FuseBatchNormGradWithReluGrad) {
-  if (IsMKLEnabled()) GTEST_SKIP() << "Fusion not available with MKL";
+  if (IsMKLEnabled()) GTEST_SKIP() << "Fusion not available with oneDNN.";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   bool is_training = true;
@@ -456,7 +456,7 @@ TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
 
 #if defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
 TEST_F(RemapperTest, FuseBatchNormGradWithAddAndReluGrad) {
-  if (IsMKLEnabled()) GTEST_SKIP() << "Fusion not available with MKL";
+  if (IsMKLEnabled()) GTEST_SKIP() << "Fusion not available with oneDNN.";
   using ::tensorflow::ops::Placeholder;
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   bool is_training = true;
@@ -642,7 +642,7 @@ class RemapperFuseConvWithBias : public RemapperTest {
     auto bias_t = GenerateTensorWithSetRandom<DTYPE>({128});
 
     if (dim == 3) {
-      if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+      if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
       input_shape = ops::Placeholder::Shape({8, 4, 32, 32, 3});
       filter_shape = ops::Placeholder::Shape({1, 1, 1, 3, 128});
       bias_shape = ops::Placeholder::Shape({128});
@@ -749,7 +749,7 @@ class RemapperFuseConvWithBiasAndActivation : public RemapperTest {
       auto bias_t = GenerateTensorWithSetRandom<DTYPE>({128});
 
       if (dim == 3) {
-        if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+        if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
         input_shape = Placeholder::Shape({8, 4, 32, 32, 3});
         filter_shape = Placeholder::Shape({1, 1, 1, 3, 128});
         bias_shape = Placeholder::Shape({128});
@@ -903,7 +903,7 @@ class RemapperFuseConvWithSqueezeAndBias : public RemapperTest {
     auto bias_t = GenerateTensorWithSetRandom<DTYPE>({128});
 
     if (dim == 3) {
-      if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+      if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
       input_shape = ops::Placeholder::Shape({8, 4, 32, 1, 3});
       filter_shape = ops::Placeholder::Shape({1, 1, 1, 3, 128});
       bias_shape = ops::Placeholder::Shape({128});
@@ -1529,6 +1529,247 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
     test::ExpectClose(tensors[0], tensors_expected[0], 1e-6, 1e-4);
   }
 }
+
+#ifdef INTEL_MKL
+TEST_F(RemapperTest, FuseConv3DWithBiasAndAddN) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+  using ::tensorflow::ops::Placeholder;
+
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto input_shape = ops::Placeholder::Shape({8, 4, 32, 32, 3});
+  auto filter_shape = ops::Placeholder::Shape({1, 1, 1, 3, 128});
+  auto bias_shape = ops::Placeholder::Shape({128});
+  auto add_shape = ops::Placeholder::Shape({8, 4, 32, 32, 128});
+
+  auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+  auto filter = Placeholder(s.WithOpName("filter"), DT_FLOAT, filter_shape);
+  auto bias = Placeholder(s.WithOpName("bias"), DT_FLOAT, bias_shape);
+  auto input_add = Placeholder(s.WithOpName("input_add"), DT_FLOAT, add_shape);
+
+  std::vector<int> strides = {1, 1, 1, 1, 1};
+  auto conv = ops::Conv3D(s.WithOpName("conv"), input, filter, strides, "SAME");
+  auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+  auto add = ops::AddN(s.WithOpName("add_op"),
+                       std::initializer_list<Input>{input_add, bias_add});
+  auto fetch = ops::Identity(s.WithOpName("fetch"), add);
+
+  auto input_t = GenerateRandomTensor<DT_FLOAT>({8, 4, 32, 32, 3});
+  auto filter_t = GenerateRandomTensor<DT_FLOAT>({1, 1, 1, 3, 128});
+  auto add_t = GenerateRandomTensor<DT_FLOAT>({8, 4, 32, 32, 128});
+  auto bias_t = GenerateRandomTensor<DT_FLOAT>({128});
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"input", input_t},
+               {"filter", filter_t},
+               {"bias", bias_t},
+               {"input_add", add_t}};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on CPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:CPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::AGGRESSIVE);  // trust placeholders shape
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "add_op") {
+      EXPECT_EQ(node.op(), "_FusedConv3D");
+      ASSERT_GE(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "input");
+      EXPECT_EQ(node.input(1), "filter");
+
+      EXPECT_EQ(node.attr().at("num_args").i(), 2);
+      EXPECT_EQ(node.input(2), "bias");
+
+      const auto fused_ops = node.attr().at("fused_ops").list().s();
+      ASSERT_EQ(fused_ops.size(), 2);
+      EXPECT_EQ(fused_ops[0], "BiasAdd");
+      EXPECT_EQ(fused_ops[1], "Add");
+      found++;
+    }
+  }
+  EXPECT_EQ(found, 1);
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+}
+
+TEST_F(RemapperTest, FuseConv3DWithBiasAndAdd) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+  using ::tensorflow::ops::Placeholder;
+
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto input_shape = ops::Placeholder::Shape({8, 4, 32, 32, 3});
+  auto filter_shape = ops::Placeholder::Shape({1, 1, 1, 3, 128});
+  auto bias_shape = ops::Placeholder::Shape({128});
+  auto add_shape = ops::Placeholder::Shape({8, 4, 32, 32, 128});
+
+  auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+  auto filter = Placeholder(s.WithOpName("filter"), DT_FLOAT, filter_shape);
+  auto bias = Placeholder(s.WithOpName("bias"), DT_FLOAT, bias_shape);
+  auto input_add = Placeholder(s.WithOpName("input_add"), DT_FLOAT, add_shape);
+
+  std::vector<int> strides = {1, 1, 1, 1, 1};
+  auto conv = ops::Conv3D(s.WithOpName("conv"), input, filter, strides, "SAME");
+  auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+  auto add = ops::Add(s.WithOpName("add_op"), input_add, bias_add);
+  auto fetch = ops::Identity(s.WithOpName("fetch"), add);
+
+  auto input_t = GenerateRandomTensor<DT_FLOAT>({8, 4, 32, 32, 3});
+  auto filter_t = GenerateRandomTensor<DT_FLOAT>({1, 1, 1, 3, 128});
+  auto add_t = GenerateRandomTensor<DT_FLOAT>({8, 4, 32, 32, 128});
+  auto bias_t = GenerateRandomTensor<DT_FLOAT>({128});
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"input", input_t},
+               {"filter", filter_t},
+               {"bias", bias_t},
+               {"input_add", add_t}};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on CPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:CPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::AGGRESSIVE);  // trust placeholders shape
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "add_op") {
+      EXPECT_EQ(node.op(), "_FusedConv3D");
+      ASSERT_GE(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "input");
+      EXPECT_EQ(node.input(1), "filter");
+
+      EXPECT_EQ(node.attr().at("num_args").i(), 2);
+      EXPECT_EQ(node.input(2), "bias");
+
+      const auto fused_ops = node.attr().at("fused_ops").list().s();
+      ASSERT_EQ(fused_ops.size(), 2);
+      EXPECT_EQ(fused_ops[0], "BiasAdd");
+      EXPECT_EQ(fused_ops[1], "Add");
+      found++;
+    }
+  }
+  EXPECT_EQ(found, 1);
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+}
+
+TEST_F(RemapperTest, FuseConv3DWithBiasAndAddActivation) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+  using ::tensorflow::ops::Placeholder;
+
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto input_shape = Placeholder::Shape({8, 4, 32, 32, 3});
+    auto filter_shape = Placeholder::Shape({1, 1, 1, 3, 128});
+    auto bias_shape = Placeholder::Shape({128});
+    auto add_shape = ops::Placeholder::Shape({8, 4, 32, 32, 128});
+
+    auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+    auto filter = Placeholder(s.WithOpName("filter"), DT_FLOAT, filter_shape);
+    auto bias = Placeholder(s.WithOpName("bias"), DT_FLOAT, bias_shape);
+    auto input_add =
+        Placeholder(s.WithOpName("input_add"), DT_FLOAT, add_shape);
+
+    float leakyrelu_alpha = 0.5;
+
+    std::vector<int> strides = {1, 1, 1, 1, 1};
+    auto conv =
+        ops::Conv3D(s.WithOpName("conv"), input, filter, strides, "SAME");
+    auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+    auto add = ops::Add(s.WithOpName("add_op"), input_add, bias_add);
+
+    ops::Identity fetch = [&]() -> ops::Identity {
+      auto activate = s.WithOpName("activation");
+      auto fetch = s.WithOpName("fetch");
+
+      if (activation == "Relu") {
+        return ops::Identity(fetch, ops::Relu(activate, add));
+      } else if (activation == "Relu6") {
+        return ops::Identity(fetch, ops::Relu6(activate, add));
+      } else if (activation == "Elu") {
+        return ops::Identity(fetch, ops::Elu(activate, add));
+      } else if (activation == "LeakyRelu") {
+        auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
+        return ops::Identity(fetch,
+                             ops::internal::LeakyRelu(activate, add, attr));
+      }
+
+      return ops::Identity(fetch, bias);
+    }();
+
+    auto input_t = GenerateRandomTensor<DT_FLOAT>({8, 4, 32, 32, 3});
+    auto filter_t = GenerateRandomTensor<DT_FLOAT>({1, 1, 1, 3, 128});
+    auto bias_t = GenerateRandomTensor<DT_FLOAT>({128});
+    auto add_t = GenerateRandomTensor<DT_FLOAT>({8, 4, 32, 32, 128});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t},
+                 {"filter", filter_t},
+                 {"bias", bias_t},
+                 {"input_add", add_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::AGGRESSIVE);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "activation") {
+        EXPECT_EQ(node.op(), "_FusedConv3D");
+        ASSERT_GE(node.input_size(), 3);
+        EXPECT_EQ(node.input(0), "input");
+        EXPECT_EQ(node.input(1), "filter");
+
+        EXPECT_EQ(node.attr().at("num_args").i(), 2);
+        EXPECT_EQ(node.input(2), "bias");
+
+        const auto fused_ops = node.attr().at("fused_ops").list().s();
+        ASSERT_EQ(fused_ops.size(), 3);
+        EXPECT_EQ("BiasAdd", fused_ops[0]);
+        EXPECT_EQ("Add", fused_ops[1]);
+        EXPECT_EQ(activation, fused_ops[2]);
+        found++;
+      }
+    }
+    EXPECT_EQ(found, 1);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+  }
+}
+#endif
 
 }  // namespace grappler
 }  // namespace tensorflow

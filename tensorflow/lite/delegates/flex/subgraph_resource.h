@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 
 namespace tflite {
@@ -30,7 +31,8 @@ namespace flex {
 // needs to first acquire a lock on the mutex object.
 class TFLiteSubgraphResource : public tensorflow::ResourceBase {
  public:
-  explicit TFLiteSubgraphResource(Subgraph& subgraph) : subgraph_(subgraph) {}
+  explicit TFLiteSubgraphResource(Subgraph& subgraph, TfLiteDelegate* delegate)
+      : subgraph_(subgraph), delegate_(delegate) {}
 
   // This class is movable but not copyable.
   TFLiteSubgraphResource(TFLiteSubgraphResource&&) = default;
@@ -51,9 +53,16 @@ class TFLiteSubgraphResource : public tensorflow::ResourceBase {
     return mutex_;
   }
 
+  // Returns a pointer to the TfLiteDelegate which this instance of subgraph
+  // is running as part of it.
+  TfLiteDelegate* GetFlexDelegate() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+    return delegate_;
+  }
+
  private:
   tensorflow::mutex mutex_;
   Subgraph& subgraph_ TF_GUARDED_BY(mutex_);
+  TfLiteDelegate* delegate_ TF_GUARDED_BY(mutex_) = nullptr;
 };
 
 }  // namespace flex

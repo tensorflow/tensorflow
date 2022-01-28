@@ -358,7 +358,7 @@ tf_module {
   }
   member_method {
     name: "silu"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'beta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
   }
   member_method {
     name: "softmax"
@@ -410,7 +410,7 @@ tf_module {
   }
   member_method {
     name: "swish"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'beta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
   }
   member_method {
     name: "tanh"

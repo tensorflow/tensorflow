@@ -33,11 +33,11 @@ class DefaultWorkQueueWrapper final : public WorkQueueInterface {
 
   ~DefaultWorkQueueWrapper() override = default;
 
-  tensorflow::Status InitializeRequest(
+  StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
       tfrt::RequestContextBuilder* request_context_builder,
       thread::ThreadPoolInterface** intra_op_threadpool) const override {
     *intra_op_threadpool = intra_thread_pool_;
-    return tensorflow::Status::OK();
+    return {nullptr};
   }
 
  private:

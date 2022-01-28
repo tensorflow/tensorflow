@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -2406,10 +2407,11 @@ class UnsupportedOperationParser : public TFLiteOperationParser {
   }
 };
 
-absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
-                         const TfLiteRegistration* registration,
-                         bool allow_quant_ops = false) {
-  return NewOperationParser(registration, allow_quant_ops)
+absl::Status IsSupported(
+    const TfLiteContext* context, TfLiteNode* node,
+    const TfLiteRegistration* registration, bool allow_quant_ops = false,
+    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops = nullptr) {
+  return NewOperationParser(registration, allow_quant_ops, excluded_ops)
       ->IsSupported(context, node, registration);
 }
 
@@ -2439,8 +2441,14 @@ bool IsAllAllowedTensors(TfLiteContext* context,
 }  // namespace
 
 std::unique_ptr<TFLiteOperationParser> NewOperationParser(
-    const TfLiteRegistration* registration, bool allow_quant_ops) {
+    const TfLiteRegistration* registration, bool allow_quant_ops,
+    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops) {
   const auto builtin_code = registration->builtin_code;
+  if (excluded_ops != nullptr &&
+      excluded_ops->contains(
+          static_cast<TfLiteBuiltinOperator>(builtin_code))) {
+    return std::make_unique<UnsupportedOperationParser>();
+  }
   switch (builtin_code) {
     case kTfLiteBuiltinAbs:
       return std::make_unique<ElementwiseOperationParser>(OperationType::ABS);
@@ -2620,14 +2628,15 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
 
 // TODO(impjdi): Check number of input/output tensors and their dimensions.
 // TODO(impjdi): Check ops' parameters.
-TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
-                                int max_delegated_partitions) {
+TfLiteIntArray* GetOpsToReplace(
+    TfLiteContext* context, bool allow_quant_ops, int max_delegated_partitions,
+    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops) {
   delegates::IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
           TfLiteRegistration* registration,
           std::string* unsupported_details) -> bool {
     const auto status =
-        IsSupported(context, node, registration, allow_quant_ops);
+        IsSupported(context, node, registration, allow_quant_ops, excluded_ops);
     if (!status.ok()) {
       if (unsupported_details) {
         *unsupported_details = std::string(status.message());
@@ -2655,7 +2664,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
       if (unsupported_details) {
         *unsupported_details =
-            "OP is supported, but tensor type/shape doesn't supported.";
+            "OP is supported, but tensor type/shape isn't compatible.";
       }
       return false;
     }

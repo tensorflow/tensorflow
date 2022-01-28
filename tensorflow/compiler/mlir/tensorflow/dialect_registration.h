@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/core/ir/ops.h"
 
 namespace mlir {
 // Inserts all the TensorFlow dialects in the provided registry. This is
@@ -34,7 +35,8 @@ inline void RegisterAllTensorFlowDialects(DialectRegistry &registry) {
                   mlir::complex::ComplexDialect,
                   mlir::tf_device::TensorFlowDeviceDialect,
                   mlir::tf_executor::TensorFlowExecutorDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect>();
+                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
+                  mlir::tfg::TFGraphDialect>();
 }
 }  // namespace mlir
 

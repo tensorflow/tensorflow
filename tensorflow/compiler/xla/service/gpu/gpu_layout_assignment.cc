@@ -65,8 +65,8 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 
   // Integer convolution must use NHWC or NCHW_VECT_C.
   //
-  // TODO(jlebar): Do non-VECT_C int8 convs still require NHWC with new versions
-  // of cudnn?
+  // TODO(jlebar): Do non-VECT_C int8_t convs still require NHWC with new
+  // versions of cudnn?
   const ConvolutionDimensionNumbers& dnums =
       instr->convolution_dimension_numbers();
   Shape input_shape = instr->operand(0)->shape();
@@ -74,10 +74,10 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   if (primitive_util::IsIntegralType(input_ty)) {
     if (input_ty == S8 && dnums.input_spatial_dimensions_size() == 2 &&
         input_shape.dimensions_size() == 5) {
-      VLOG(2) << "Using NCHW_VECT_C for int8 conv " << instr->ToString();
+      VLOG(2) << "Using NCHW_VECT_C for int8_t conv " << instr->ToString();
       return kAllNCHW_VECT_C;
     }
-    VLOG(2) << "Using NHWC for int8 conv " << instr->ToString();
+    VLOG(2) << "Using NHWC for int8_t conv " << instr->ToString();
     return kAllNHWC;
   }
 
@@ -210,6 +210,16 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   return Status::OK();
 }
 
+// Imposes the default layout with first two dimensions swapped on input
+// `shape`.
+static void SetFortranLayout(Shape* shape) {
+  LayoutUtil::SetToDefaultLayout(shape);
+  int n = shape->mutable_layout()->minor_to_major_size();
+  CHECK_GE(n, 2);
+  std::swap(shape->mutable_layout()->mutable_minor_to_major()->at(0),
+            shape->mutable_layout()->mutable_minor_to_major()->at(1));
+}
+
 Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   // Add convolution constraints in reverse postorder that the earliest
@@ -226,6 +236,27 @@ Status GpuLayoutAssignment::AddBackendConstraints(
 
     CHECK(!IsCublasGemm(*instruction))
         << "Gemm rewriting should run after layout assignment";
+
+    // For unbatched S8xS8->S32 matrix multiplication enforce a TN layout, which
+    // will allow the NVidia GPUs to use TensorCores.
+    if (IsMatrixMultiplication(*instruction)) {
+      Shape output_shape = instruction->shape();
+      Shape p1_shape = instruction->operand(0)->shape();
+      Shape p2_shape = instruction->operand(1)->shape();
+      if (output_shape.element_type() == PrimitiveType::S32 &&
+          p1_shape.element_type() == PrimitiveType::S8 &&
+          p2_shape.element_type() == PrimitiveType::S8 &&
+          output_shape.dimensions_size() == 2 &&
+          p1_shape.dimensions_size() == 2 && p2_shape.dimensions_size() == 2) {
+        LayoutUtil::SetToDefaultLayout(&p1_shape);
+        SetFortranLayout(&p2_shape);
+        LayoutUtil::SetToDefaultLayout(&output_shape);
+        TF_RETURN_IF_ERROR(SetOperandLayout(p1_shape, instruction, 0));
+        TF_RETURN_IF_ERROR(SetOperandLayout(p2_shape, instruction, 1));
+        TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
+        continue;
+      }
+    }
 
     // For batched dot we require the default layout.
     // TODO(b/112111608): This is overly conservative, the only real restriction
@@ -289,19 +320,12 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       // b) the two minor dimensions are in fortran (column-major) order,
       // although for the 'a' argument we could potentially accept row-major
       // order and fold the transpose into the operator.
-      auto set_fortran_layout = [](Shape* shape) {
-        LayoutUtil::SetToDefaultLayout(shape);
-        int n = shape->mutable_layout()->minor_to_major_size();
-        CHECK_GE(n, 2);
-        std::swap(shape->mutable_layout()->mutable_minor_to_major()->at(0),
-                  shape->mutable_layout()->mutable_minor_to_major()->at(1));
-      };
       Shape op0_shape = instruction->operand(0)->shape();
       Shape op1_shape = instruction->operand(1)->shape();
       Shape output_shape = instruction->shape();
-      set_fortran_layout(&op0_shape);
-      set_fortran_layout(&op1_shape);
-      set_fortran_layout(&output_shape);
+      SetFortranLayout(&op0_shape);
+      SetFortranLayout(&op1_shape);
+      SetFortranLayout(&output_shape);
       TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
       TF_RETURN_IF_ERROR(SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
@@ -331,100 +355,6 @@ Status GpuLayoutAssignment::AddBackendConstraints(
     }
   }
   return Status::OK();
-}
-
-Status GpuLayoutAssignment::PropagateOperandConstraint(
-    const OperandLayoutConstraint& layout_constraint,
-    LayoutConstraints* constraints) {
-  const HloInstruction* instruction = layout_constraint.instruction();
-
-  // cudnn batchnorm forward inference's result must have the same layout as its
-  // operand 0.
-  if (instruction->opcode() == HloOpcode::kCustomCall &&
-      instruction->custom_call_target() ==
-          kCudnnBatchNormForwardInferenceCallTarget &&
-      layout_constraint.operand_no() == 0) {
-    TF_RETURN_IF_ERROR(SetInstructionLayout(
-        layout_constraint.shape_layout().shape(), instruction));
-  }
-
-  // cudnn batchnorm forward training returns a tuple {output, mean,
-  // inverse-stddev}.  mean and inverse-stddev are rank 1 and so have only one
-  // possible layout, but output is not (necessarily) rank 1, and, like in
-  // batchnorm forward inference, must have the same layout as operand 0.
-  if (instruction->opcode() == HloOpcode::kCustomCall &&
-      instruction->custom_call_target() ==
-          kCudnnBatchNormForwardTrainingCallTarget &&
-      layout_constraint.operand_no() == 0) {
-    TF_ASSIGN_OR_RETURN(
-        const LogicalBuffer* out_buf,
-        points_to_analysis_->GetBufferDefinedAt(instruction, /*index=*/{0}));
-    TF_RETURN_IF_ERROR(
-        SetBufferLayout(layout_constraint.shape_layout().layout(), *out_buf));
-  }
-
-  // Like forward training, cudnn batchnorm backward returns a tuple {output,
-  // mean, inverse-stddev}, and its operand 0 and 'output' must have the same
-  // layout.  In addition, its operand 0 and operand 4 -- the 'operand' and
-  // 'grad_output' parameters -- must have the same layout.
-  if (instruction->opcode() == HloOpcode::kCustomCall &&
-      instruction->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
-      (layout_constraint.operand_no() == 0 ||
-       layout_constraint.operand_no() == 4)) {
-    TF_ASSIGN_OR_RETURN(
-        const LogicalBuffer* out_buf,
-        points_to_analysis_->GetBufferDefinedAt(instruction, /*index=*/{0}));
-    TF_RETURN_IF_ERROR(
-        SetBufferLayout(layout_constraint.shape_layout().layout(), *out_buf));
-
-    int64_t operand_to_set = layout_constraint.operand_no() == 0 ? 4 : 0;
-    TF_RETURN_IF_ERROR(SetOperandLayout(
-        layout_constraint.shape_layout().shape(), instruction, operand_to_set));
-  }
-
-  return LayoutAssignment::PropagateOperandConstraint(layout_constraint,
-                                                      constraints);
-}
-
-Status GpuLayoutAssignment::PropagateBufferConstraint(
-    const BufferLayoutConstraint& buffer_constraint,
-    LayoutConstraints* constraints) {
-  const LogicalBuffer& buf = buffer_constraint.buffer();
-  const HloInstruction* instruction = buf.instruction();
-
-  Shape shape_with_layout = buf.shape();
-  *shape_with_layout.mutable_layout() = buffer_constraint.layout();
-
-  // Propagate output constraints to the operands of cudnn batchnorm ops.  This
-  // is the same as PropagateOperandConstraint, just in the other direction.  We
-  // need to both to fulfill our contract to LayoutAssignment.
-  if (instruction->opcode() == HloOpcode::kCustomCall &&
-      instruction->custom_call_target() ==
-          kCudnnBatchNormForwardInferenceCallTarget) {
-    TF_RETURN_IF_ERROR(
-        SetOperandLayout(shape_with_layout, instruction, /*operand_no=*/0));
-  }
-
-  if (instruction->opcode() == HloOpcode::kCustomCall &&
-      instruction->custom_call_target() ==
-          kCudnnBatchNormForwardTrainingCallTarget &&
-      buf.index() == ShapeIndex({0})) {
-    TF_RETURN_IF_ERROR(
-        SetOperandLayout(shape_with_layout, instruction, /*operand_no=*/0));
-  }
-  if (instruction->opcode() == HloOpcode::kCustomCall &&
-      instruction->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
-      buf.index() == ShapeIndex({0})) {
-    // batchnorm backward has two operands, "operand" and "grad_output" whose
-    // layouts must both match that of the result at tuple-index 0.
-    TF_RETURN_IF_ERROR(
-        SetOperandLayout(shape_with_layout, instruction, /*operand_no=*/0));
-    TF_RETURN_IF_ERROR(
-        SetOperandLayout(shape_with_layout, instruction, /*operand_no=*/4));
-  }
-
-  return LayoutAssignment::PropagateBufferConstraint(buffer_constraint,
-                                                     constraints);
 }
 
 }  // namespace gpu

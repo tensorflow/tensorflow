@@ -19,15 +19,16 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
-class DeviceAttributes;
+class CoordinationServiceDeviceInfo;
 class ServerDef;
-class WorkerEnv;
+class Env;
 
 // Static registration for coordination service implementations.
 #define REGISTER_COORDINATION_SERVICE(service_type_name, factory_fn)        \
@@ -65,7 +66,7 @@ class CoordinationServiceInterface {
  public:
   using CoordinationServiceFactory =
       std::function<std::unique_ptr<CoordinationServiceInterface>(
-          const WorkerEnv* env, const ServerDef& server_def,
+          Env* env, const ServerDef& server_def,
           std::unique_ptr<CoordinationClientCache> cache)>;
 
   using StatusOrValueCallback =
@@ -81,8 +82,8 @@ class CoordinationServiceInterface {
   }
 
   static std::unique_ptr<CoordinationServiceInterface>
-  EnableCoordinationService(const std::string& service_type,
-                            const WorkerEnv* env, const ServerDef& server_def,
+  EnableCoordinationService(const std::string& service_type, Env* env,
+                            const ServerDef& server_def,
                             std::unique_ptr<CoordinationClientCache> cache) {
     const auto* factories = GetCoordinationServiceFactories();
     auto factories_iter = factories->find(service_type);
@@ -103,23 +104,23 @@ class CoordinationServiceInterface {
   }
 
   // Register a worker to the service.
-  virtual void RegisterWorker(const std::string& job_name, const int task_id,
-                              const uint64 incarnation,
-                              std::vector<DeviceAttributes> devices,
-                              StatusCallback done) = 0;
+  virtual void RegisterWorker(const std::string& job_name, int task_id,
+                              uint64 incarnation, StatusCallback done) = 0;
 
-  // Wait for all tasks to be up and running. The callback is invoked when all
-  // tasks are up and registered, or some error occurs.
-  virtual void WaitForAllTasks(const std::string& job_name, const int task_id,
+  // Wait for all tasks to be up and running, and register local device
+  // info. The callback is invoked when all tasks are up and registered, or some
+  // error occurs.
+  virtual void WaitForAllTasks(const std::string& job_name, int task_id,
+                               const CoordinationServiceDeviceInfo& devices,
                                StatusCallback done) = 0;
 
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
-  virtual Status RecordHeartbeat(const std::string& job_name, const int task_id,
-                                 const uint64 incarnation) = 0;
+  virtual Status RecordHeartbeat(const std::string& job_name, int task_id,
+                                 uint64 incarnation) = 0;
 
   // Set a task in error state permanently.
-  virtual Status ReportTaskError(const std::string& job_name, const int task_id,
+  virtual Status ReportTaskError(const std::string& job_name, int task_id,
                                  Status error) = 0;
 
   // Insert a configuration key-value in the coordination service.
@@ -142,7 +143,10 @@ class CoordinationServiceInterface {
 
  private:
   friend class CoordinationServiceRpcHandler;
-  virtual const std::vector<DeviceAttributes>& ListClusterDevices() = 0;
+  friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
+  friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
+
+  virtual const CoordinationServiceDeviceInfo& ListClusterDevices() = 0;
 
   static std::unordered_map<std::string, CoordinationServiceFactory>*
   GetCoordinationServiceFactories() {

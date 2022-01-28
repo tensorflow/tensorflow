@@ -36,7 +36,7 @@ struct IdentifyDilatedConvPass
 };
 
 void IdentifyDilatedConvPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   auto func = getFunction();
 
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,

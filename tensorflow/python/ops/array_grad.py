@@ -1200,14 +1200,18 @@ def _ScatterNdNonAliasingAddGrad(op, grad):
 def _BroadcastToGrad(op, grad):
   input_value = op.inputs[0]
   broadcast_shape = op.inputs[1]
-  input_value_shape = array_ops.shape(input_value)
+  shape_dtype = dtypes.int32
+  if isinstance(broadcast_shape, ops.Tensor):
+    shape_dtype = broadcast_shape.dtype
+
+  input_value_shape = array_ops.shape(input_value, out_type=shape_dtype)
   if not isinstance(broadcast_shape, ops.EagerTensor):
     broadcast_shape_static = tensor_shape.TensorShape(
         pywrap_tf_session.TF_TryEvaluateConstant_wrapper(
             broadcast_shape.graph._c_graph, broadcast_shape._as_tf_output()))  # pylint: disable=protected-access
     if broadcast_shape_static.is_fully_defined():
       broadcast_shape = constant_op.constant(
-          broadcast_shape_static.as_list(), dtype=dtypes.int32)
+          broadcast_shape_static.as_list(), dtype=shape_dtype)
   _, reduction_axes = gen_array_ops.broadcast_gradient_args(
       broadcast_shape, input_value_shape)
   updates_grad_reshaped = math_ops.reduce_sum(

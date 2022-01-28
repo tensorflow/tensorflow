@@ -209,6 +209,15 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
 #endif  // !IS_MOBILE_PLATFORM
   options.graph_collector = graph_collector;
 
+  options.allow_small_function_optimizations =
+      allow_small_function_optimizations_;
+
+  options.allow_control_flow_sync_execution =
+      allow_control_flow_sync_execution_;
+
+  options.shape_inference_on_tfe_dialect_import =
+      shape_inference_on_tfe_dialect_import_;
+
   // In Eager mode we always inline all functions into the top-level
   // function body graph, to get a single executable graph, that could be
   // optimized across function boundaries (e.g. prune unused inputs and
@@ -220,6 +229,8 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
       ->set_do_function_inlining(true);
 
   options.config_proto.set_log_device_placement(log_device_placement);
+
+  options.int_args_and_retvals_on_device = int_args_and_retvals_on_device_;
 
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
@@ -420,7 +431,12 @@ Status KernelAndDeviceFunc::Run(
                     eager_func_params, stack_trace, coordination_service_agent);
 
   std::vector<Tensor> rets;
-  Status s = pflr_->RunSync(*opts, handle_, inputs.GetLocalTensors(), &rets);
+  Status s;
+  {
+    port::ScopedFlushDenormal flush;
+    port::ScopedSetRound round(FE_TONEAREST);
+    s.Update(pflr_->RunSync(*opts, handle_, inputs.GetLocalTensors(), &rets));
+  }
 
   if (cancellation_manager == nullptr) {
     delete opts->cancellation_manager;

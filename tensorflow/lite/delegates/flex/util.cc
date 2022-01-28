@@ -14,8 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/util.h"
 
+#include "absl/strings/str_format.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/string_util.h"
+
 namespace tflite {
 namespace flex {
+
+static constexpr char kResourceVariablePrefix[] = "tflite_resource_variable";
 
 TfLiteStatus ConvertStatus(TfLiteContext* context,
                            const tensorflow::Status& status) {
@@ -169,6 +179,73 @@ const char* TfLiteTypeToTfTypeName(TfLiteType type) {
       return "variant";
   }
   return "invalid";
+}
+
+std::string TfLiteResourceIdentifier(const TfLiteTensor* tensor) {
+  // TODO(b/199782192): Create a util function to get Resource ID from a TF Lite
+  // resource tensor.
+  const int resource_id = tensor->data.i32[0];
+  return absl::StrFormat("%s:%d", kResourceVariablePrefix, resource_id);
+}
+
+bool GetTfLiteResourceTensorFromResourceHandle(
+    const tensorflow::ResourceHandle& resource_handle, TfLiteTensor* tensor) {
+  std::vector<std::string> parts = absl::StrSplit(resource_handle.name(), ':');
+  if (parts.size() != 2) {
+    return false;
+  }
+  const int kBytesRequired = sizeof(int32_t);
+  TfLiteTensorRealloc(kBytesRequired, tensor);
+  int resource_id;
+  if (parts[0] == kResourceVariablePrefix &&
+      absl::SimpleAtoi<int32_t>(parts[1], &resource_id)) {
+    // TODO(b/199782192): Create a util function to set the Resource ID of
+    // a TF Lite resource tensor.
+    GetTensorData<int32_t>(tensor)[0] = resource_id;
+    return true;
+  }
+  return false;
+}
+
+tensorflow::StatusOr<tensorflow::Tensor> CreateTfTensorFromTfLiteTensor(
+    const TfLiteTensor* tflite_tensor) {
+  if (IsResourceOrVariant(tflite_tensor)) {
+    // Returns error if the input tflite tensor has variant or resource type.
+    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+                              "Input tensor has resource or variant type.");
+  }
+
+  tensorflow::TensorShape shape;
+  int num_dims = tflite_tensor->dims->size;
+  for (int i = 0; i < num_dims; ++i) {
+    shape.AddDim(tflite_tensor->dims->data[i]);
+  }
+
+  tensorflow::Tensor tf_tensor(
+      tensorflow::DataType(GetTensorFlowDataType(tflite_tensor->type)), shape);
+  if (tf_tensor.dtype() == tensorflow::DataType::DT_STRING &&
+      tf_tensor.data()) {
+    tensorflow::tstring* buf =
+        static_cast<tensorflow::tstring*>(tf_tensor.data());
+    for (int i = 0; i < tflite::GetStringCount(tflite_tensor); ++buf, ++i) {
+      auto ref = GetString(tflite_tensor, i);
+      buf->assign(ref.str, ref.len);
+    }
+  } else {
+    if (tf_tensor.tensor_data().size() != tflite_tensor->bytes) {
+      return tensorflow::Status(
+          tensorflow::error::INTERNAL,
+          "TfLiteTensor's size doesn't match the TF tensor's size.");
+    }
+    if (!tflite_tensor->data.raw) {
+      return tensorflow::Status(tensorflow::error::INTERNAL,
+                                "TfLiteTensor's data field is null.");
+    }
+    std::memcpy(tf_tensor.data(), tflite_tensor->data.raw,
+                tflite_tensor->bytes);
+  }
+
+  return tf_tensor;
 }
 
 }  // namespace flex

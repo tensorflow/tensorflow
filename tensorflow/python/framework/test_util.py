@@ -49,6 +49,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -1129,6 +1130,7 @@ def enable_eager_op_as_function(fn):
   return wrapper
 
 
+@tf_export("test.with_eager_op_as_function")
 def with_eager_op_as_function(cls=None, only_as_function=False):
   """Adds methods that call original methods with eager_op_as_function enabled.
 
@@ -1191,6 +1193,89 @@ def with_eager_op_as_function(cls=None, only_as_function=False):
   return decorator
 
 
+def enable_graph_building_optimization(fn):
+  """Decorator for enabling graph_building_optimization on a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will enable graph_building_optimization,
+  execute the test, then reset the feature flag to its default value.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @enable_graph_building_optimization
+    def testFoo(self):
+      ...
+
+  Args:
+    fn: the function to be wrapped.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def wrapper(*args, **kwargs):
+    # If `graph_building_optimization` is already enabled do nothing.
+    if context.graph_building_optimization_enabled():
+      return fn(*args, **kwargs)
+
+    context.enable_graph_building_optimization()
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      context.disable_graph_building_optimization()
+
+  return wrapper
+
+
+def add_graph_building_optimization_tests(cls=None):
+  """Adds methods with graph_building_optimization enabled to the test suite.
+
+  Example:
+
+  @test_util.add_graph_building_optimization_tests
+  class FooTest(test.TestCase):
+
+    def testBar(self):
+      ...
+
+  Generated class:
+  class FooTest(test.TestCase):
+
+    def testBar(self):
+      ...
+
+    def testBarWithGraphBuildingOptimization(self):
+      // Enable graph_building_optimization
+      testBar(self)
+      // Disable graph_building_optimization
+
+  Args:
+    cls: class to decorate.
+
+  Returns:
+    cls with new test methods added.
+  """
+
+  def decorator(cls):
+    if context.graph_building_optimization_enabled():
+      return cls
+
+    for name, value in cls.__dict__.copy().items():
+      if (callable(value) and
+          (name.startswith(unittest.TestLoader.testMethodPrefix) or
+           name.startswith("benchmark"))):
+        setattr(cls, name + "WithGraphBuildingOptimization",
+                enable_graph_building_optimization(value))
+    return cls
+
+  if cls is not None:
+    return decorator(cls)
+
+  return decorator
+
+
 def disable_eager_op_as_function(unused_msg):
   """Decorator for a function in a with_eager_op_as_function enabled test class.
 
@@ -1206,6 +1291,13 @@ def disable_eager_op_as_function(unused_msg):
   def wrapper(func):
     func._disable_eager_op_as_function = True
     return func
+
+  # Once the environment flag is flipped and `run_eager_op_as_function_enabled`
+  # is True by default, the `with_eager_op_as_function` wrapper will not add a
+  # separate test for eager_op_as_function execution. In that case the test with
+  # the original name needs to be disabled.
+  if context.run_eager_op_as_function_enabled():
+    return _disable_test(execute_func=False)
 
   return wrapper
 
@@ -2430,14 +2522,13 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     stream.flush()
     fd = stream.fileno()
-    tmp_file_path = tempfile.mktemp(dir=self.get_temp_dir())
-    tmp_file = open(tmp_file_path, "w")
+    tmp_file, tmp_file_path = tempfile.mkstemp(dir=self.get_temp_dir())
     orig_fd = os.dup(fd)
-    os.dup2(tmp_file.fileno(), fd)
+    os.dup2(tmp_file, fd)
     try:
       yield CapturedWrites(tmp_file_path)
     finally:
-      tmp_file.close()
+      os.close(tmp_file)
       os.dup2(orig_fd, fd)
 
   def _AssertProtoEquals(self, a, b, msg=None):
@@ -3405,23 +3496,33 @@ class TensorFlowTestCase(googletest.TestCase):
         exception_type, r"Incompatible shapes|Dimensions must be equal|"
         r"required broadcastable shapes")
 
-  def assertShapeEqual(self, np_array, tf_tensor, msg=None):
-    """Asserts that a Numpy ndarray and a TensorFlow tensor have the same shape.
+  def assertShapeEqual(self, input_a, input_b, msg=None):
+    """Asserts that two Numpy or TensorFlow objects have the same shape.
+
+    For Tensors, this compares statically known shapes at compile time, not
+    dynamic shapes at runtime.
 
     Args:
-      np_array: A Numpy ndarray or Numpy scalar.
-      tf_tensor: A Tensor.
+      input_a: A Numpy ndarray, Numpy scalar, or a Tensor.
+      input_b: A Numpy ndarray, Numpy scalar, or a Tensor.
       msg: Optional message to report on failure.
 
     Raises:
       TypeError: If the arguments have the wrong type.
     """
-    if not isinstance(np_array, (np.ndarray, np.generic)):
-      raise TypeError("np_array must be a Numpy ndarray or Numpy scalar")
-    if not isinstance(tf_tensor, ops.Tensor):
-      raise TypeError("tf_tensor must be a Tensor")
-    self.assertAllEqual(
-        np_array.shape, tf_tensor.get_shape().as_list(), msg=msg)
+    if not isinstance(input_a, (np.ndarray, np.generic, ops.Tensor)):
+      raise TypeError(
+          "input_a must be a Numpy ndarray, Numpy scalar, or a Tensor."
+          f"Instead received {type(input_a)}")
+    if not isinstance(input_b, (np.ndarray, np.generic, ops.Tensor)):
+      raise TypeError(
+          "input_b must be a Numpy ndarray, Numpy scalar, or a Tensor."
+          f"Instead received {type(input_b)}")
+    shape_a = input_a.get_shape().as_list() if isinstance(
+        input_a, ops.Tensor) else input_a.shape
+    shape_b = input_b.get_shape().as_list() if isinstance(
+        input_b, ops.Tensor) else input_b.shape
+    self.assertAllEqual(shape_a, shape_b, msg=msg)
 
   def assertDeviceEqual(self, device1, device2, msg=None):
     """Asserts that the two given devices are the same.
@@ -3509,16 +3610,15 @@ class TensorFlowTestCase(googletest.TestCase):
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
   # Fix Python 3+ compatibility issues
-  if not six.PY2:
-    # pylint: disable=invalid-name
+  # pylint: disable=invalid-name
 
-    # Silence a deprecation warning
-    assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
+  # Silence a deprecation warning
+  assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
 
-    # assertItemsEqual is assertCountEqual as of 3.2.
-    assertItemsEqual = googletest.TestCase.assertCountEqual
+  # assertItemsEqual is assertCountEqual as of 3.2.
+  assertItemsEqual = googletest.TestCase.assertCountEqual
 
-    # pylint: enable=invalid-name
+  # pylint: enable=invalid-name
 
   @contextlib.contextmanager
   def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):
@@ -3822,3 +3922,20 @@ def run_functions_eagerly(run_eagerly):
     yield
   finally:
     def_function.run_functions_eagerly(initial_state)
+
+
+class TestDelta(object):
+  """A utility class to track increments to test counters."""
+
+  def __init__(self, name, label):
+    self.name = name
+    self.label = label
+    self.Reset()
+
+  def Reset(self):
+    self.last_value = _test_metrics_util.test_counter_value(
+        self.name, self.label)
+
+  def Get(self):
+    value = _test_metrics_util.test_counter_value(self.name, self.label)
+    return value - self.last_value

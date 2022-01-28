@@ -49,9 +49,11 @@ using ops::Pow;
 using ops::Prod;
 using ops::RealDiv;
 using ops::SegmentSum;
+using ops::SelectV2;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
+using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -1005,6 +1007,34 @@ TEST_F(NaryGradTest, CastGrad) {
   TF_ASSERT_OK((ComputeGradientError<double, float, double>(
       scope_, {x}, {shape}, {y}, {shape}, &max_error)));
   EXPECT_LT(max_error, 1e-3);
+}
+
+TEST_F(NaryGradTest, Select) {
+  TensorShape shape({1, 3});
+  auto cond = Const<bool>(scope_, {{false, true, true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto z = Where3(scope_, cond, x, y);
+  RunTest({x, y}, {shape, shape}, {z}, {shape});
+}
+
+TEST_F(NaryGradTest, SelectV2_Basic) {
+  TensorShape shape({1, 3});
+  auto cond = Const<bool>(scope_, {{false, true, true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto z = SelectV2(scope_, cond, x, y);
+  RunTest({x, y}, {shape, shape}, {z}, {shape});
+}
+
+TEST_F(NaryGradTest, SelectV2_Broadcast) {
+  TensorShape x_shape({2, 3});
+  TensorShape y_shape({});
+  auto cond = Const<bool>(scope_, {{false, true, true}, {true, true, false}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(y_shape));
+  auto z = SelectV2(scope_, cond, x, y);
+  RunTest({x, y}, {x_shape, y_shape}, {z}, {x_shape});
 }
 
 }  // namespace

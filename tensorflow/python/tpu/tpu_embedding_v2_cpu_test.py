@@ -338,6 +338,55 @@ class CPUEmbeddingTest(test.TestCase):
 
     self.assertAllClose(result[0], golden)
 
+  def test_cpu_high_dimensional_lookup_ragged(self):
+    feature_config = (tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_user, name='friends', output_shape=[2, 2]),)
+    optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
+    mid_level = tpu_embedding_v2.TPUEmbedding(
+        feature_config=feature_config, optimizer=optimizer)
+    features = self._get_ragged_tensors()[2:3]
+    result = tpu_embedding_v2.cpu_embedding_lookup(
+        features,
+        weights=None,
+        tables=mid_level.embedding_tables,
+        feature_config=feature_config)
+
+    self.assertAllClose(result[0].shape, (2, 2, 2))
+
+  def test_cpu_high_dimensional_sequence_lookup_ragged(self):
+    # Prod of output shape is a factor of the data batch size.
+    # The divide result will be the sequence length.
+    feature_config = (tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_user, name='friends', output_shape=[2, 4]),)
+    optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
+    mid_level = tpu_embedding_v2.TPUEmbedding(
+        feature_config=feature_config, optimizer=optimizer)
+    features = self._get_ragged_tensors()[2:3]
+    result = tpu_embedding_v2.cpu_embedding_lookup(
+        features,
+        weights=None,
+        tables=mid_level.embedding_tables,
+        feature_config=feature_config)
+    self.assertAllClose(result[0].shape, (2, 4, 2))
+
+  def test_cpu_high_dimensional_invalid_lookup_ragged(self):
+    # Prod of output shape is not a factor of the data batch size.
+    # An error will be raised in this case.
+    feature_config = (tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_user, name='friends', output_shape=[3]),)
+    optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
+    mid_level = tpu_embedding_v2.TPUEmbedding(
+        feature_config=feature_config, optimizer=optimizer)
+    features = self._get_ragged_tensors()[2:3]
+    with self.assertRaisesRegex(
+        ValueError,
+        'Output shape set in the FeatureConfig should be the factor'):
+      tpu_embedding_v2.cpu_embedding_lookup(
+          features,
+          weights=None,
+          tables=mid_level.embedding_tables,
+          feature_config=feature_config)
+
   def test_cpu_no_optimizer(self):
     feature_config = (
         tpu_embedding_v2_utils.FeatureConfig(

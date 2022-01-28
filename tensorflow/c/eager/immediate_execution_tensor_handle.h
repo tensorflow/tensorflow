@@ -81,7 +81,7 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
   // Release any underlying resources, including the interface object.
   //
   // WARNING: The destructor of this class is marked as protected to disallow
-  // clients from directly destroying this object since it may manage it's own
+  // clients from directly destroying this object since it may manage its own
   // lifetime through ref counting. Thus this must be allocated on the heap and
   // clients MUST call Release() in order to destroy an instance of this class.
   virtual void Release() = 0;

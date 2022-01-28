@@ -30,7 +30,7 @@ from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.platform import googletest
 
 
-class _SliceBuilder(object):
+class _SliceBuilder:
   """Helper to construct arguments for __getitem__.
 
   Usage: _SliceBuilder()[<expr>] slice_spec Python generates for <expr>.

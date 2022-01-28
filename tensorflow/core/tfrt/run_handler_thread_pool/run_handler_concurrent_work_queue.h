@@ -86,10 +86,11 @@ class RunHandlerThreadWorkQueue
         " complementary threads)");
   }
 
-  tensorflow::Status InitializeRequest(
-      tfrt::RequestContextBuilder* request_context_builder,
-      tensorflow::thread::ThreadPoolInterface** intra_op_threadpool)
-      const override;
+  tensorflow::StatusOr<
+      std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
+  InitializeRequest(tfrt::RequestContextBuilder* request_context_builder,
+                    tensorflow::thread::ThreadPoolInterface**
+                        intra_op_threadpool) const override;
 
   int GetParallelismLevel() const override {
     return options_.num_main_threads + options_.num_complementary_threads;
@@ -97,13 +98,7 @@ class RunHandlerThreadWorkQueue
 
   void AddTask(TaskFunction work) override;
 
-  void AddTask(const ExecutionContext& exec_ctx, TaskFunction work) override;
-
   Optional<TaskFunction> AddBlockingTask(TaskFunction work,
-                                         bool allow_queuing) override;
-
-  Optional<TaskFunction> AddBlockingTask(const ExecutionContext& exec_ctx,
-                                         TaskFunction work,
                                          bool allow_queuing) override;
 
   void Quiesce() override;

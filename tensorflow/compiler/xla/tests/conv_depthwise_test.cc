@@ -82,7 +82,6 @@ static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
   return config_set;
 }
 
-
 XLA_TEST_P(DepthwiseConvolution2DTest, DoIt) {
   const DepthwiseConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
@@ -93,7 +92,7 @@ XLA_TEST_P(DepthwiseConvolution2DTest, DoIt) {
   }
 #endif
 
-  const string hlo_text =
+  const std::string hlo_text =
       BuildHloTextDepthwiseConvolution2D(spec, use_bfloat16);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},

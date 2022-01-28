@@ -161,6 +161,9 @@ cuda_py_test(
     name = "constant_op_eager_test",
     size = "small",
     srcs = ["constant_op_eager_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/207048720): re-enable
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -686,6 +689,7 @@ cuda_py_test(
     name = "where_op_test",
     size = "medium",
     srcs = ["where_op_test.py"],
+    tags = ["no_cuda_asan"],  #TODO(b/212580469)
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

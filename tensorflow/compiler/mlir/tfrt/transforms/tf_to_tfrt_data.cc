@@ -56,7 +56,7 @@ T ConstAttrToTypeAttr(ElementsAttr value_attr) {
   if (T type_attr = value_attr.dyn_cast<T>()) {
     return type_attr;
   } else if (auto v = value_attr.dyn_cast<SplatElementsAttr>()) {
-    return v.getSplatValue().dyn_cast<T>();
+    return v.getSplatValue<Attribute>().dyn_cast<T>();
   }
   return T(nullptr);
 }
@@ -247,10 +247,11 @@ class TFToTFRTDataRewritePass
     target.addDynamicallyLegalOp<mlir::FuncOp>([&data_converter](FuncOp op) {
       return data_converter.isSignatureLegal(op.getType());
     });
-    mlir::OwningRewritePatternList patterns(&getContext());
+    mlir::RewritePatternSet patterns(&getContext());
     patterns.insert<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
                     ConstOpConversion, ReturnOpConversion>(context);
-    mlir::populateFuncOpTypeConversionPattern(patterns, data_converter);
+    mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
+        patterns, data_converter);
 
     auto result =
         mlir::applyPartialConversion(module, target, std::move(patterns));

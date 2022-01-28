@@ -117,6 +117,8 @@ class ToolParams {
     params_[name] = std::move(value);
   }
 
+  void RemoveParam(const std::string& name) { params_.erase(name); }
+
   bool HasParam(const std::string& name) const {
     return params_.find(name) != params_.end();
   }

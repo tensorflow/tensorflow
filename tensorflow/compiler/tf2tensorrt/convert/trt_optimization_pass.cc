@@ -19,6 +19,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/trt_parameters.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -42,157 +44,71 @@ using absl::StrCat;
 
 namespace {
 
-Status ValidateValueCase(const AttrValue* attr_value,
-                         const AttrValue::ValueCase& value_case) {
-  if (attr_value->value_case() != value_case) {
-    return errors::InvalidArgument("AttrValue had value with type '",
-                                   attr_value->value_case(), "' when '",
-                                   value_case, "' was expected.");
+bool ShouldUseExplicitPrecision(const GraphDef& gdef) {
+  if (!IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+    return false;
   }
-  return Status::OK();
-}
-
-template <typename T>
-Status GetAttrBoolValue(T* value, const AttrValue* attr_value) {
-  *value = static_cast<T>(attr_value->b());
-  return Status::OK();
-}
-
-template <typename T>
-Status GetAttrIntValue(T* value, const AttrValue* attr_value) {
-  *value = static_cast<T>(attr_value->i());
-  return Status::OK();
-}
-
-template <typename T>
-Status GetAttrStringValue(T* value, const AttrValue* attr_value) {
-  *value = attr_value->s();
-  return Status::OK();
-}
-
-template <typename T>
-Status GetAttrTrtPrecisionModeValue(T* value, const AttrValue* attr_value) {
-  return TrtPrecisionModeFromName(attr_value->s(), value);
-}
-
-template <typename T>
-Status GetAttrProfileStrategyValue(T* value, const AttrValue* attr_value) {
-  return ProfileStrategyFromName(attr_value->s(), value);
-}
-
-template <AttrValue::ValueCase value_case, typename T, typename F>
-Status GetAttrValue(const tensorflow::AttrSlice& attr_slice,
-                    const std::string& attr_name, T* value, F value_getter) {
-  const AttrValue* attr_value = attr_slice.FindByString(attr_name);
-  if (attr_value != nullptr) {
-    TF_RETURN_IF_ERROR(ValidateValueCase(attr_value, value_case));
-    TF_RETURN_IF_ERROR(value_getter(value, attr_value));
-    VLOG(1) << "Updated cp." << attr_name.substr(7) << ".";
-  }
-  return Status::OK();
-}
-
-Status GetAttrValue(const tensorflow::AttrSlice& attr_slice,
-                    const std::string& attr_name, std::string* value) {
-  return GetAttrValue<AttrValue::ValueCase::kS, std::string,
-                      Status(std::string*, const AttrValue*)>(
-      attr_slice, attr_name, value, GetAttrStringValue);
-}
-
-Status GetAttrValue(const tensorflow::AttrSlice& attr_slice,
-                    const std::string& attr_name, size_t* value) {
-  return GetAttrValue<AttrValue::ValueCase::kI, size_t,
-                      Status(size_t*, const AttrValue*)>(
-      attr_slice, attr_name, value, GetAttrIntValue);
-}
-
-Status GetAttrValue(const tensorflow::AttrSlice& attr_slice,
-                    const std::string& attr_name, int* value) {
-  return GetAttrValue<AttrValue::ValueCase::kI, int,
-                      Status(int*, const AttrValue*)>(attr_slice, attr_name,
-                                                      value, GetAttrIntValue);
-}
-
-Status GetAttrValue(const tensorflow::AttrSlice& attr_slice,
-                    const std::string& attr_name, TrtPrecisionMode* value) {
-  return GetAttrValue<AttrValue::ValueCase::kS, TrtPrecisionMode,
-                      Status(TrtPrecisionMode*, const AttrValue*)>(
-      attr_slice, attr_name, value, GetAttrTrtPrecisionModeValue);
-}
-
-Status GetAttrValue(const tensorflow::AttrSlice& attr_slice,
-                    const std::string& attr_name, int64_t* value) {
-  return GetAttrValue<AttrValue::ValueCase::kI, int64_t,
-                      Status(int64_t*, const AttrValue*)>(
-      attr_slice, attr_name, value, GetAttrIntValue);
-}
-
-Status GetAttrValue(const tensorflow::AttrSlice& attr_slice,
-                    const std::string& attr_name, bool* value) {
-  return GetAttrValue<AttrValue::ValueCase::kB, bool,
-                      Status(bool*, const AttrValue*)>(attr_slice, attr_name,
-                                                       value, GetAttrBoolValue);
-}
-
-Status GetAttrValue(const tensorflow::AttrSlice& attr_slice,
-                    const std::string& attr_name, ProfileStrategy* value) {
-  return GetAttrValue<AttrValue::ValueCase::kS, ProfileStrategy,
-                      Status(ProfileStrategy*, const AttrValue*)>(
-      attr_slice, attr_name, value, GetAttrProfileStrategyValue);
+  return absl::c_any_of(gdef.node(), [](const auto& node) {
+    return (absl::c_find(kExplicitQuantizationOpNames, node.op()) !=
+            kExplicitQuantizationOpNames.end());
+  });
 }
 
 StatusOr<bool> ShouldConvertFunction(const grappler::GrapplerItem& item) {
   if (item.id == "tf_graph") {
     return false;
   }
-  const grappler::GrapplerFunctionItem& func_item =
+  const auto& func_item =
       tensorflow::down_cast<const grappler::GrapplerFunctionItem&>(item);
-  const tensorflow::AttrSlice& attr = func_item.func_attr();
+  const AttrSlice& attr = func_item.func_attr();
   const AttrValue* attr_value = attr.FindByString("_tftrt_convert_function");
   if (attr_value != nullptr) {
-    TF_RETURN_IF_ERROR(ValidateValueCase(attr_value, AttrValue::ValueCase::kB));
-    return attr_value->b();
+    bool result = false;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attr, "_tftrt_convert_function", &result));
+    return result;
   }
   VLOG(1) << "Attribute _tftrt_convert_function was not found.";
-  return false;
-}
-
-StatusOr<bool> CheckForFunctionConversionAttribute(
-    const tensorflow::AttrSlice& attr) {
-  const AttrValue* attr_value = attr.FindByString("_tftrt_convert_function");
-  if (attr_value != nullptr) {
-    TF_RETURN_IF_ERROR(ValidateValueCase(attr_value, AttrValue::ValueCase::kB));
-    return attr_value->b();
-  } else {
-    VLOG(1) << "Attribute _tftrt_convert_function was not found.";
-  }
   return false;
 }
 
 // Converts function conversion attributes to conversion parameters.
 Status UpdateFunctionSpecificConversionParams(
     ConversionParams& cp, const tensorflow::AttrSlice& attr) {
+  auto get_size_attr = [](const AttrSlice& attr, absl::string_view name,
+                          size_t* dst) -> Status {
+    int tmp = 0;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attr, name, &tmp));
+    *dst = static_cast<size_t>(tmp);
+    return Status::OK();
+  };
+
   TF_RETURN_IF_ERROR(
-      GetAttrValue(attr, "_tftrt_trt_logger_name", &cp.trt_logger_name));
+      GetNodeAttr(attr, "_tftrt_trt_logger_name", &cp.trt_logger_name));
   TF_RETURN_IF_ERROR(
-      GetAttrValue(attr, "_tftrt_max_batch_size", &cp.max_batch_size));
-  TF_RETURN_IF_ERROR(GetAttrValue(attr, "_tftrt_max_workspace_size_bytes",
-                                  &cp.max_workspace_size_bytes));
+      get_size_attr(attr, "_tftrt_max_batch_size", &cp.max_batch_size));
+  TF_RETURN_IF_ERROR(get_size_attr(attr, "_tftrt_max_workspace_size_bytes",
+                                   &cp.max_workspace_size_bytes));
+  std::string precision_mode;
   TF_RETURN_IF_ERROR(
-      GetAttrValue(attr, "_tftrt_precision_mode", &cp.precision_mode));
-  TF_RETURN_IF_ERROR(GetAttrValue(attr, "_tftrt_minimum_segment_size",
-                                  &cp.minimum_segment_size));
-  TF_RETURN_IF_ERROR(GetAttrValue(attr, "_tftrt_is_dyn_op", &cp.is_dyn_op));
+      GetNodeAttr(attr, "_tftrt_precision_mode", &precision_mode));
   TF_RETURN_IF_ERROR(
-      GetAttrValue(attr, "_tftrt_max_cached_engines", &cp.max_cached_engines));
+      TrtPrecisionModeFromName(precision_mode, &cp.precision_mode));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attr, "_tftrt_minimum_segment_size",
+                                 &cp.minimum_segment_size));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attr, "_tftrt_is_dyn_op", &cp.is_dyn_op));
   TF_RETURN_IF_ERROR(
-      GetAttrValue(attr, "_tftrt_use_calibration", &cp.use_calibration));
+      GetNodeAttr(attr, "_tftrt_max_cached_engines", &cp.max_cached_engines));
   TF_RETURN_IF_ERROR(
-      GetAttrValue(attr, "_tftrt_use_implicit_batch", &cp.use_implicit_batch));
+      GetNodeAttr(attr, "_tftrt_use_calibration", &cp.use_calibration));
   TF_RETURN_IF_ERROR(
-      GetAttrValue(attr, "_tftrt_profile_strategy", &cp.profile_strategy));
-  TF_RETURN_IF_ERROR(GetAttrValue(attr, "_tftrt_allow_build_at_runtime",
-                                  &cp.allow_build_at_runtime));
+      GetNodeAttr(attr, "_tftrt_use_implicit_batch", &cp.use_implicit_batch));
+  std::string profile_strategy;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(attr, "_tftrt_profile_strategy", &profile_strategy));
+  TF_RETURN_IF_ERROR(
+      ProfileStrategyFromName(profile_strategy, &cp.profile_strategy));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attr, "_tftrt_allow_build_at_runtime",
+                                 &cp.allow_build_at_runtime));
   return Status::OK();
 }
 
@@ -347,6 +263,10 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
   }
 }
 
+static bool ExplicitPrecisionModePolicy() {
+  return IS_TRT_VERSION_GE(8, 0, 0, 0);
+}
+
 Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
                                      const grappler::GrapplerItem& item,
                                      GraphDef* optimized_graph) {
@@ -367,10 +287,25 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   }
 
   if (use_calibration_ && precision_mode_ != TrtPrecisionMode::INT8) {
-    VLOG(1) << "Calibration with FP32 or FP16 is not implemented. "
-            << "Falling back to use_calibration = False."
-            << "Note that the default value of use_calibration is True.";
+    LOG(WARNING) << "Calibration with FP32 or FP16 is not implemented. "
+                 << "Falling back to use_calibration = False."
+                 << "Note that the default value of use_calibration is True.";
     use_calibration_ = false;
+  }
+
+  const bool use_explicit_precision = ShouldUseExplicitPrecision(item.graph);
+  if (use_explicit_precision) {
+    LOG(INFO) << "[TF-TRT] Using explicit QDQ mode";
+    if (precision_mode_ != TrtPrecisionMode::INT8 || use_calibration_) {
+      LOG(WARNING)
+          << "Explicit precision mode with calibration or FP32/FP16 mode is "
+             "not supported."
+          << " Setting precision mode to INT8 and calibration to false.";
+      precision_mode_ = TrtPrecisionMode::INT8;
+      use_calibration_ = false;
+    }
+  } else {
+    LOG(INFO) << "[TF-TRT] not using explicit QDQ mode";
   }
 
   std::vector<string> nodes_to_preserve;
@@ -394,7 +329,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
 
   ConversionParams cp;
   cp.grappler_item = &item;
-  cp.output_names = &nodes_to_preserve;
+  cp.input_output_names = &nodes_to_preserve;
   cp.trt_logger_name = trt_logger_name_;
   cp.max_batch_size = maximum_batch_size_;
   cp.max_workspace_size_bytes = max_workspace_size_bytes_;
@@ -408,6 +343,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.use_implicit_batch = use_implicit_batch_;
   cp.profile_strategy = profile_strategy_;
   cp.allow_build_at_runtime = allow_build_at_runtime_;
+  cp.use_explicit_precision = use_explicit_precision;
 
   if (item.id != "tf_graph" && do_function_conversion) {
     const grappler::GrapplerFunctionItem& func_item =

@@ -15,479 +15,819 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 
+#include <functional>
+#include <string>
+
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/dnn.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-// Describes matched patterns:
-//   max(0, alpha1 * conv(x, w) + alpha2 * side_input + broadcast(bias));
-//   for floating point types or
-//   max(0, alpha1 * conv<float>(int8_x, int8_w) + alpha2 *
-//   * side_input + broadcast(bias));
-//   for int8.
-// Where side_input has the shape of output buffer, and bias is a 1D array with
-// the dimension of number of output features.
-struct ConvWithRelu {
-  HloInstruction* maximum;
-  HloCustomCallInstruction* conv;
-  HloInstruction* bias;
-  HloInstruction* side_input;
-  HloConstantInstruction* alpha_conv;
-  HloConstantInstruction* alpha_side_input;
-};
+namespace m = match;
 
-// The pattern we want to match:
-//   max(0, alpha1 * conv(x, w) + alpha2 * side_input + broadcast(bias));
-//   or
-//   max(0, alpha1 * conv<float>(int8_x, int8_w) + alpha2 *
-//   * side_input + broadcast(bias));
-// With its variants involving commute/reassociation of adds, multiplies, and
-// max, and omission of alpha1, side_input, alpha2, or bias.
-absl::optional<ConvWithRelu> FindConvWithRelu(HloInstruction* instr) {
-  using match::Add;
-  using match::AddAnyOrder;
-  using match::AnyOf;
-  using match::Broadcast;
-  using match::ConstantScalar;
-  using match::GetTupleElement;
-  using match::Maximum;
-  using match::MultiplyAnyOrder;
-  using match::Op;
-
-  HloInstruction* relu_input;
-
-  // Match max(0, relu_input).
-  auto zero_pattern = Broadcast(ConstantScalar(0));
-  if (!Match(instr, Maximum(zero_pattern, Op(&relu_input))) &&
-      !Match(instr, Maximum(Op(&relu_input), zero_pattern))) {
-    return absl::nullopt;
+// If VLOG is on and `instr` matches `filter_pattern`, prints out why it doesn't
+// match `log_pattern`.  You can use this to explain "near-hits".
+template <typename FilterPattern, typename LogPattern>
+void VlogIfFailureToMatch(HloInstruction* instr, const LogPattern& log_pattern,
+                          absl::string_view desc,
+                          const FilterPattern& filter_pattern) {
+  if (!VLOG_IS_ON(3) || !Match(instr, filter_pattern)) {
+    return;
   }
-  HloInstruction* conv_instr = nullptr;
-  HloInstruction* alpha_conv_instr = nullptr;
-  HloInstruction* alpha_side_input_instr = nullptr;
-  HloInstruction* bias_broadcast_instr = nullptr;
-  HloInstruction* bias = nullptr;
-  HloInstruction* side_input = nullptr;
-
-  // These nodes will not be in the returned value, but we need to check them
-  // for single use.
-  HloInstruction *gte = nullptr, *add1 = nullptr, *add2 = nullptr,
-                 *mul1 = nullptr, *mul2 = nullptr;
-
-  const auto bias_pattern = Broadcast(&bias_broadcast_instr, Op(&bias));
-  const auto conv_pattern = [&] {
-    auto alpha_pattern = Broadcast(ConstantScalar(&alpha_conv_instr));
-    auto conv_pattern = GetTupleElement(
-        &gte, Op(&conv_instr).WithOpcode(HloOpcode::kCustomCall), 0);
-    return AnyOf<HloInstruction>(
-        MultiplyAnyOrder(&mul1, alpha_pattern, conv_pattern), conv_pattern);
-  }();
-  const auto side_input_pattern = [&] {
-    auto alpha_pattern = Broadcast(ConstantScalar(&alpha_side_input_instr));
-    // If bias is already matched, match arbitrary additional input as side
-    // input. Note this may force a cheap operation (e.g. broadcast) to be
-    // materialized into a large buffer, as large as the output buffer.
-    //
-    // TODO(timshen): If in practice there are significant false positives, we
-    // should fix it.
-    auto side_input_pattern = Op(&side_input);
-    return AnyOf<HloInstruction>(
-        MultiplyAnyOrder(&mul2, alpha_pattern, side_input_pattern),
-        side_input_pattern);
-  }();
-
-  {
-    // Try to match any of the following form of add, in any association:
-    //   addends[0]
-    //   addends[0] + addends[1]
-    //   addends[0] + addends[1] + addends[2]
-    //
-    // Then try to match each addend with one of the three patterns: bias, conv,
-    // or side_input. Notice that side_input matching must go last, as it
-    // also matches a conv or a bias.
-    HloInstruction* addends[3] = {nullptr, nullptr, nullptr};
-    auto add3_pattern = [&] {
-      auto add2_pattern = Add(&add1, Op(&addends[0]), Op(&addends[1]));
-      return AnyOf<HloInstruction>(
-          AddAnyOrder(&add2, add2_pattern, Op(&addends[2])), add2_pattern,
-          Op(&addends[0]));
-    }();
-    CHECK(Match(relu_input, add3_pattern));
-    for (auto addend : addends) {
-      if (addend) {
-        if (bias == nullptr && Match(addend, bias_pattern)) {
-          CHECK(bias);
-        } else if (conv_instr == nullptr && Match(addend, conv_pattern)) {
-          CHECK(conv_instr);
-        } else if (side_input == nullptr && Match(addend, side_input_pattern)) {
-          CHECK(side_input);
-        } else {
-          return absl::nullopt;
-        }
-      }
-    }
+  std::stringstream os;
+  if (!Match(instr, log_pattern, {/*capture=*/false, /*explain_os=*/&os})) {
+    VLOG(3) << "Failed to match " << desc << ":\n" << os.str();
   }
-
-  if (conv_instr == nullptr) {
-    return absl::nullopt;
-  }
-
-  for (HloInstruction* instr :
-       {conv_instr, bias_broadcast_instr, gte, add1, add2, mul1, mul2}) {
-    if (instr && instr->user_count() > 1) {
-      return absl::nullopt;
-    }
-  }
-
-  auto conv = Cast<HloCustomCallInstruction>(conv_instr);
-  auto bias_broadcast =
-      CastOrNull<HloBroadcastInstruction>(bias_broadcast_instr);
-
-  if (conv->custom_call_target() != kCudnnConvForwardCallTarget) {
-    return absl::nullopt;
-  }
-
-  // In order to map to cudnnConvolutionBiasActivationForward for int8, the
-  // convolution output is float, i.e. conv<float>(int8_x, int8_w)
-  if (conv->operand(0)->shape().element_type() == xla::S8) {
-    if (conv->shape().tuple_shapes(0).element_type() != xla::F32) {
-      return absl::nullopt;
-    }
-  }
-
-  if (bias_broadcast) {
-    // TODO(timshen): handle bias_broadcast_instr->dimensions() == {}.
-    if (bias_broadcast_instr->dimensions().size() != 1) {
-      return absl::nullopt;
-    }
-    if (bias_broadcast_instr->dimensions(0) !=
-        conv->convolution_dimension_numbers().output_feature_dimension()) {
-      return absl::nullopt;
-    }
-  }
-
-  return ConvWithRelu{
-      instr,
-      conv,
-      bias,
-      side_input,
-      CastOrNull<HloConstantInstruction>(alpha_conv_instr),
-      CastOrNull<HloConstantInstruction>(alpha_side_input_instr)};
 }
 
-StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
-    ConvWithRelu match) {
-  auto conv = match.conv;
+bool IsConvCustomCall(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kCustomCall &&
+         (instr->custom_call_target() == kCudnnConvForwardCallTarget ||
+          instr->custom_call_target() ==
+              kCudnnConvBiasActivationForwardCallTarget);
+}
 
-  HloComputation* computation = conv->parent();
-
-  const auto get_alpha_value =
-      [](HloConstantInstruction* instr) -> StatusOr<double> {
-    TF_ASSIGN_OR_RETURN(
-        auto alpha,
-        Cast<HloConstantInstruction>(instr)->literal().Convert(F64));
-    return alpha.GetFirstElement<double>();
-  };
-
-  double alpha_conv = 1;
-  if (match.alpha_conv) {
-    TF_ASSIGN_OR_RETURN(alpha_conv, get_alpha_value(match.alpha_conv));
+// Can instr be converted to type `dst_ty` without losing any precision?  For
+// our purposes, this is true if:
+//
+//  - instr already has type dst_ty, or
+//  - instr is convert<wider type>(op_with_dst_ty), or
+//  - instr is a constant which we can convert orig_ty -> dst_ty -> orig_ty and
+//    get back exactly the original value, or
+//  - instr is a broadcast, reshape, or transpose of one of the above.
+bool IsLosslesslyConvertibleTo(const HloInstruction* instr,
+                               PrimitiveType dst_ty) {
+  if (instr->shape().element_type() == dst_ty) {
+    return true;
   }
 
-  double alpha_side_input;
-  if (match.side_input) {
-    if (match.alpha_side_input) {
-      TF_ASSIGN_OR_RETURN(alpha_side_input,
-                          get_alpha_value(match.alpha_side_input));
-    } else {
-      alpha_side_input = 1;
+  if (Match(instr, m::Convert(m::Op().WithElementType(dst_ty)))) {
+    // Check that the convert from dst_ty to instr->element_type() doesn't lose
+    // precision.  Otherwise, this convert is not lossless.
+    return primitive_util::CastPreservesValues(dst_ty,
+                                               instr->shape().element_type());
+  }
+
+  if (instr->opcode() == HloOpcode::kConstant) {
+    if (!instr->shape().IsArray()) {
+      return false;
     }
-  } else {
-    CHECK(match.alpha_side_input == nullptr);
-    alpha_side_input = 0;
+    // Check if instr's literal roundtrips to ty and back to its original type
+    // without modification.
+    PrimitiveType orig_ty = instr->shape().element_type();
+
+    // The only reason Convert() should fail is if we don't support converting
+    // from x to y, which indeed means it's not losslessly-convertible.
+    StatusOr<Literal> converted1 = instr->literal().Convert(dst_ty);
+    if (!converted1.ok()) {
+      return false;
+    }
+    StatusOr<Literal> converted2 = converted1->Convert(orig_ty);
+    if (!converted2.ok()) {
+      return false;
+    }
+
+    return instr->literal() == *converted2;
   }
 
-  auto bias = match.bias;
-  if (!bias) {
-    PrimitiveType conv_output_type =
-        conv->shape().tuple_shapes(0).element_type();
-    auto zero = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::Zero(conv_output_type)));
+  if (instr->opcode() == HloOpcode::kBroadcast ||
+      instr->opcode() == HloOpcode::kReshape ||
+      instr->opcode() == HloOpcode::kTranspose) {
+    return IsLosslesslyConvertibleTo(instr->operand(0), dst_ty);
+  }
 
-    int64_t num_output_feature = conv->shape().tuple_shapes(0).dimensions(
+  return false;
+}
+
+// Helpers suitable for use in m::Op().WithPredicate(...).
+bool IsLosslesslyConvertibleToS8(const HloInstruction* instr) {
+  return IsLosslesslyConvertibleTo(instr, S8);
+}
+bool IsLosslesslyConvertibleToF16(const HloInstruction* instr) {
+  return IsLosslesslyConvertibleTo(instr, F16);
+}
+
+// If `conv` is a vanilla forward conv, transforms it into a
+// conv-bias-activation.  If it's already a conv-bias-activation, does nothing.
+//
+// If `conv` is anything else, returns an error.
+StatusOr<HloInstruction*> EnsureIsConvBiasActivation(HloInstruction* conv) {
+  CHECK_EQ(conv->opcode(), HloOpcode::kCustomCall);
+
+  if (conv->custom_call_target() == kCudnnConvBiasActivationForwardCallTarget) {
+    return conv;
+  }
+
+  if (conv->custom_call_target() == kCudnnConvForwardCallTarget) {
+    HloComputation* comp = conv->parent();
+
+    const Shape& shape = conv->shape().tuple_shapes(0);
+    int64_t num_output_features = shape.dimensions(
         conv->convolution_dimension_numbers().output_feature_dimension());
-    bias = computation->AddInstruction(HloInstruction::CreateBroadcast(
-        ShapeUtil::MakeShapeWithDescendingLayout(conv_output_type,
-                                                 {num_output_feature}),
-        zero, {}));
+
+    // bias for integer convs is always f32, see
+    // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
+    PrimitiveType bias_ty;
+    if (primitive_util::IsIntegralType(shape.element_type())) {
+      bias_ty = F32;
+    } else {
+      bias_ty = shape.element_type();
+    }
+    auto bias = BroadcastZeros(comp, bias_ty, {num_output_features});
+
+    absl::InlinedVector<HloInstruction*, 3> new_operands(
+        conv->operands().begin(), conv->operands().end());
+    new_operands.push_back(bias);
+
+    HloInstruction* new_conv = comp->AddInstruction(
+        conv->CloneWithNewOperands(conv->shape(), new_operands));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(conv, new_conv));
+    new_conv->set_custom_call_target(kCudnnConvBiasActivationForwardCallTarget);
+    comp->parent()->SetAndUniquifyInstrName(new_conv,
+                                            "cudnn-conv-bias-activation");
+    return new_conv;
   }
 
-  CHECK(bias);
-  std::vector<HloInstruction*> args = {conv->mutable_operand(0),
-                                       conv->mutable_operand(1), bias};
-  if (match.side_input) {
-    args.push_back(match.side_input);
-  }
-  auto new_conv = computation->AddInstruction(HloInstruction::CreateCustomCall(
-      conv->shape(), args, kCudnnConvBiasActivationForwardCallTarget));
-  new_conv->set_feature_group_count(conv->feature_group_count());
-  new_conv->set_window(conv->window());
-  new_conv->set_convolution_dimension_numbers(
-      conv->convolution_dimension_numbers());
-  new_conv->set_metadata(conv->metadata());
-  computation->parent()->SetAndUniquifyInstrName(new_conv,
-                                                 "cudnn-conv-bias-activation");
-  TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
-                      conv->backend_config<CudnnConvBackendConfig>());
-  config.set_activation_mode(
-      static_cast<int64_t>(se::dnn::ActivationMode::kRelu));
-  config.set_conv_result_scale(alpha_conv);
-  config.set_side_input_scale(alpha_side_input);
-  TF_RETURN_IF_ERROR(new_conv->set_backend_config(config));
-
-  VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
-          << new_conv->ToString();
-  return HloInstruction::CreateGetTupleElement(conv->shape().tuple_shapes(0),
-                                               new_conv, 0);
+  return FailedPrecondition("Unsupported conv: %s", conv->ToString());
 }
 
-// Fuse bias/scaling/ReLU with convolution custom call with floating point
-// output
-StatusOr<bool> RunFuseBiasSideActivation(HloModule* module) {
+// convert<float>(gte(custom-call<int32>(int8_x, int8_w))) ->
+// gte(custom-call<float>(int8_x, int8_w))
+StatusOr<bool> FuseConvertToFloat(HloComputation* comp) {
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    std::vector<ConvWithRelu> matches;
-    int num_forward_convs = 0;
-    for (auto instr : computation->instructions()) {
-      auto match = FindConvWithRelu(instr);
-      if (match.has_value()) {
-        matches.push_back(*match);
-      }
-      if (auto call = DynCast<HloCustomCallInstruction>(instr)) {
-        if (call->custom_call_target() == kCudnnConvForwardCallTarget) {
-          num_forward_convs++;
-        }
-      }
+  for (auto instr : comp->MakeInstructionPostOrder()) {
+    HloInstruction* conv = nullptr;
+    auto pattern =
+        m::Convert(
+            m::GetTupleElement(m::Op(&conv).WithPredicate(IsConvCustomCall), 0)
+                .WithElementType(S32))
+            .WithElementType(F32);
+    if (!Match(instr, pattern)) {
+      continue;
     }
-    VLOG(1) << "Identified cuDNN forward conv + relu: " << matches.size()
-            << " out of " << num_forward_convs << " forward convs.";
-    std::vector<std::pair<HloInstruction*, std::unique_ptr<HloInstruction>>>
-        replacements;
-    for (const ConvWithRelu& match : matches) {
-      TF_ASSIGN_OR_RETURN(auto new_instr, TryRewriteToCudnnForwardRelu(match));
-      replacements.push_back({match.maximum, std::move(new_instr)});
-      changed = true;
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseConvertToFloat: ", conv->ToString());
+        })) {
+      continue;
     }
-    for (auto& replacement : replacements) {
-      TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
-          replacement.first, std::move(replacement.second)));
+
+    Shape new_shape = conv->shape();
+    new_shape.mutable_tuple_shapes(0)->set_element_type(F32);
+    HloInstruction* new_conv =
+        comp->AddInstruction(conv->CloneWithNewShape(new_shape));
+    comp->parent()->SetAndUniquifyInstrName(new_conv, conv->name());
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_gte,
+                        MakeGetTupleElementHlo(new_conv, 0));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_gte));
+
+    changed = true;
+  }
+
+  return changed;
+}
+
+// alpha * gte(custom-call(...)) ->
+// gte(custom-call(..., backend_config={alpha})).
+StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
+  bool changed = false;
+  for (auto instr : comp->MakeInstructionPostOrder()) {
+    HloInstruction* conv = nullptr;
+    HloInstruction* gte = nullptr;
+    HloInstruction* alpha = nullptr;
+    auto pattern = m::MultiplyAnyOrder(
+        m::GetTupleElement(&gte, m::Op(&conv).WithPredicate(IsConvCustomCall),
+                           0)
+            .WithOneUse(),
+        m::Broadcast(m::ConstantEffectiveScalar(&alpha)));
+    if (!Match(instr, pattern)) {
+      continue;
     }
+
+    // alpha is f32 except for f64 convs, where it's f64.  See
+    // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
+    PrimitiveType alpha_ty = gte->shape().element_type() == F64 ? F64 : F32;
+    if (!IsLosslesslyConvertibleTo(alpha, alpha_ty)) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(auto config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.conv_result_scale() != 1) {
+      continue;
+    }
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseConvAlpha: ", conv->ToString());
+        })) {
+      continue;
+    }
+
+    // StreamExecutor doesn't support the alpha parameter on non-bias-activation
+    // convs, so we have to upgrade `conv`.
+    TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
+
+    TF_ASSIGN_OR_RETURN(Literal alpha_f64, alpha->literal().Convert(F64));
+    config.set_conv_result_scale(alpha_f64.GetFirstElement<double>());
+
+    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(instr, gte));
+
+    changed = true;
   }
   return changed;
 }
 
-// Describes a matched pattern:
-// convert_or_clamp(get_tuple_element(custom_call(x,w, ...)));
-// where the custom_call targets CuDNN convolution (either pure convolution or
-// fused convolution).
-struct ConvWithConvertOrClamp {
-  HloInstruction* convert_or_clamp;
-  HloInstruction* gte;
-  HloCustomCallInstruction* conv;
-};
-
-// The pattern we want to match:
-//   convert<int8>(clamp(broadcast(-128), (get_tuple_element(custom_call(int8_x,
-//   int8_w, ...)), broadcast(127));
-absl::optional<ConvWithConvertOrClamp> FindConvWithClampAndConvertToInt8(
-    HloInstruction* instr) {
-  using match::Broadcast;
-  using match::Clamp;
-  using match::Convert;
-  using match::GetTupleElement;
-  using match::Op;
-
-  HloInstruction* gte = nullptr;
-  HloInstruction* conv_instr = nullptr;
-  auto lower_pattern = Broadcast(match::ConstantScalar(-128));
-  auto upper_pattern = Broadcast(match::ConstantScalar(127));
-  auto pattern = Convert(
-      Clamp(lower_pattern,
-            GetTupleElement(
-                &gte, Op(&conv_instr).WithOpcode(HloOpcode::kCustomCall), 0),
-            upper_pattern));
-
-  if (Match(instr, pattern)) {
-    if (conv_instr->operand(0)->shape().element_type() == xla::S8 &&
-        instr->shape().element_type() == xla::S8) {
-      HloCustomCallInstruction* conv =
-          CastOrNull<HloCustomCallInstruction>(conv_instr);
-      return ConvWithConvertOrClamp{instr, gte, conv};
+StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
+  bool changed = false;
+  for (auto instr : comp->MakeInstructionPostOrder()) {
+    HloInstruction* conv = nullptr;
+    HloInstruction* gte = nullptr;
+    HloInstruction* addend = nullptr;
+    auto pattern = m::AddAnyOrder(
+        m::GetTupleElement(
+            &gte, m::Op(&conv).WithPredicate(IsConvCustomCall).WithOneUse(), 0)
+            .WithOneUse(),
+        m::Op(&addend));
+    if (!Match(instr, pattern)) {
+      continue;
     }
+
+    // If it's a vanilla forward conv, upgrade it to a bias-activation conv.  We
+    // only want to do this if the fusion will succeed, but we're guaranteed
+    // that it will, because the only reason we'll bail at this point is if
+    // !can_accept_bias && !can_accept_side_input, and our shiny new
+    // bias-activation conv will be able to accept both.
+    if (conv->custom_call_target() == kCudnnConvForwardCallTarget) {
+      TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
+    }
+
+    // Can't fuse bias or side-input if the conv already has a relu (or other
+    // activation), because bias and side-input are added before the activation
+    // is applied.
+    TF_ASSIGN_OR_RETURN(auto config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.activation_mode() != se::dnn::kNone) {
+      continue;
+    }
+
+    // Does `conv` already have a (nonzero) bias?  Does it already have a
+    // side_input?
+    bool can_accept_bias =
+        Match(conv->operand(2), m::Broadcast(m::ConstantEffectiveScalar(0)));
+    bool can_accept_side_input = conv->operand_count() < 4;
+
+    // The addend can be fused as a bias if
+    //  - it is 1D broadcasted in the output feature dimension, and
+    //  - it is losslessly-convertible to the correct type (f32 for s8/f32/u32
+    //    convs, and conv_ty for floating-point convs)
+    PrimitiveType conv_ty = gte->shape().element_type();
+    PrimitiveType bias_ty =
+        primitive_util::IsFloatingPointType(conv_ty) ? conv_ty : F32;
+    bool addend_may_be_rank1_bias =
+        addend->opcode() == HloOpcode::kBroadcast &&
+        addend->dimensions().size() == 1 &&
+        addend->dimensions(0) ==
+            conv->convolution_dimension_numbers().output_feature_dimension() &&
+        IsLosslesslyConvertibleTo(addend, bias_ty);
+
+    bool addend_may_be_rank0_bias = addend->opcode() == HloOpcode::kBroadcast &&
+                                    addend->dimensions().empty() &&
+                                    IsLosslesslyConvertibleTo(addend, bias_ty);
+
+    absl::InlinedVector<HloInstruction*, 4> new_operands(
+        conv->operands().begin(), conv->operands().end());
+    if (can_accept_bias && addend_may_be_rank1_bias) {
+      new_operands[2] = MakeConvertToHlo(addend->mutable_operand(0), bias_ty);
+    } else if (can_accept_bias && addend_may_be_rank0_bias) {
+      new_operands[2] = MakeBroadcastHlo(
+          MakeConvertToHlo(addend->mutable_operand(0), bias_ty),
+          /*broadcast_dimensions=*/{},
+          /*result_shape_bounds=*/
+          {gte->shape().dimensions(conv->convolution_dimension_numbers()
+                                       .output_feature_dimension())});
+    } else if (can_accept_side_input) {
+      CHECK_EQ(new_operands.size(), 3);
+      new_operands.push_back(addend);
+      config.set_side_input_scale(1);
+    } else {
+      // Can't fuse; this op already has a bias and a side-input.
+      continue;
+    }
+
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseBiasOrSideInput: ", conv->ToString());
+        })) {
+      continue;
+    }
+
+    HloInstruction* new_conv = comp->AddInstruction(
+        conv->CloneWithNewOperands(conv->shape(), new_operands));
+    comp->parent()->SetAndUniquifyInstrName(new_conv, conv->name());
+    TF_RETURN_IF_ERROR(new_conv->set_backend_config(config));
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_instr,
+                        MakeGetTupleElementHlo(new_conv, 0));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
+    changed = true;
   }
-  return absl::nullopt;
+  return changed;
 }
 
-// A help function to rewrite convert_or_clamp_or_other<new_type>(gte(conv()))
-// to gte<new_type>(conv<new_type>()).  It bypasses convert_or_clamp_or_other
-// and set the output data type on gte and conv.
-Status RewriteForConvertOrClampImpl(ConvWithConvertOrClamp match) {
-  auto conv = match.conv;
-  auto gte = match.gte;
-  auto convert_or_clamp = match.convert_or_clamp;
+// custom-call(..., alpha * side_input) ->
+// custom-call(..., side_input, backend_config={alpha}).
+//
+// We also have to support the more complicated case of
+//
+//   custom-call(..., reshape(side_input * alpha)) -->
+//   custom-call(..., reshape(side_input), backend_config={alpha}),
+//
+// where `reshape` can be an arbitrary chain of reshapes+transposes.  This idiom
+// is created by the ReshapeMover pass.
+StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    HloInstruction* conv;
+    HloInstruction* side_input;
+    auto pattern = m::Op(&conv)
+                       .WithPredicate(IsConvCustomCall)
+                       .WithOperand(3, m::Op(&side_input));
+    if (!Match(instr, pattern)) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(auto config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.side_input_scale() != 1) {
+      continue;
+    }
 
-  // Change type on conv and gte
-  auto convert_out_type = convert_or_clamp->shape().element_type();
-  conv->mutable_shape()->mutable_tuple_shapes(0)->set_element_type(
-      convert_out_type);
-  gte->mutable_shape()->set_element_type(convert_out_type);
+    // Given side_input, pattern match the following (working from bottom up).
+    //
+    // before_reshape = multiply(base, broadcast(alpha))
+    // side_input = chain_of_reshapes_and_transposes(before_reshape)
+    //
+    // where alpha is a scalar constant.
+    //
+    // alpha is f32 except for f64 convs, where it's f64.  See
+    // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
+    HloInstruction* before_reshape = side_input;
+    while (before_reshape->opcode() == HloOpcode::kReshape ||
+           before_reshape->opcode() == HloOpcode::kTranspose) {
+      before_reshape = before_reshape->mutable_operand(0);
+    }
 
-  // Remove clamp/convert and so on and just keep
-  // get_tuple_element(custom_call(x,w, ...))
-  TF_RETURN_IF_ERROR(convert_or_clamp->ReplaceAllUsesWithDifferentShape(gte));
-  TF_RETURN_IF_ERROR(
-      conv->parent()->RemoveInstructionAndUnusedOperands(convert_or_clamp));
-  return Status::OK();
+    PrimitiveType conv_ty = conv->shape().tuple_shapes(0).element_type();
+    PrimitiveType alpha_ty = conv_ty == F64 ? F64 : F32;
+    HloInstruction* base;
+    HloInstruction* alpha;
+    if (!Match(
+            before_reshape,
+            m::MultiplyAnyOrder(
+                m::Op(&base),
+                m::Broadcast(m::ConstantEffectiveScalar(&alpha).WithPredicate(
+                    [&](const HloInstruction* instr) {
+                      return IsLosslesslyConvertibleTo(instr, alpha_ty);
+                    }))))) {
+      continue;
+    }
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseSideInputAlpha: ", conv->ToString());
+        })) {
+      continue;
+    }
+
+    // Rewrite conv's operand 3 to
+    //
+    //   chain_of_reshapes_and_transposes(before_reshape).
+    //
+    // and store alpha in the conv's backend config.
+    //
+    // We're going to do something bad here: We aren't going to check that the
+    // chain of reshapes/transposes has one use, so we're potentially
+    // duplicating all these instructions (once with alpha and once without).
+    //
+    // This is justified because
+    //
+    //  - duplicating reshapes/transposes shouldn't be "that bad" -- these
+    //    instructions can usually be fused, and
+    //
+    //  - *not* fusing alpha can be catastrophic.  For s8->s8 convolutions, the
+    //    side-input must be s8.  But the product side_input * alpha is f32, so
+    //    we can only see that side-input is s8 if we fuse alpha. IOW not fusing
+    //    alpha means we'll run this s8->s8 conv as s8->f32, which is *much*
+    //    slower than some extra transposes.
+
+    // Recursively clone chain_of_reshapes_and_transposes until we get to
+    // `before_reshape`, at which point we skip the multiply(base, alpha) and
+    // just return base.
+    std::function<HloInstruction*(const HloInstruction*)> clone =
+        [&](const HloInstruction* instr) {
+          if (instr == before_reshape) {
+            return base;
+          }
+          CHECK(instr->opcode() == HloOpcode::kReshape ||
+                instr->opcode() == HloOpcode::kTranspose)
+              << "Must be reshape or transpose: " << instr->ToString();
+          return comp->AddInstruction(instr->CloneWithNewOperands(
+              instr->shape(), {clone(instr->operand(0))}));
+        };
+    absl::InlinedVector<HloInstruction*, 4> new_operands(
+        conv->operands().begin(), conv->operands().end());
+    new_operands[3] = clone(side_input);
+
+    HloInstruction* new_conv = comp->AddInstruction(
+        conv->CloneWithNewOperands(conv->shape(), new_operands));
+    comp->parent()->SetAndUniquifyInstrName(new_conv, conv->name());
+
+    TF_ASSIGN_OR_RETURN(Literal alpha_f64, alpha->literal().Convert(F64));
+    config.set_side_input_scale(alpha_f64.GetFirstElement<double>());
+    TF_RETURN_IF_ERROR(new_conv->set_backend_config(config));
+
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(conv, new_conv));
+    changed = true;
+  }
+  return changed;
 }
 
-Status RewriteForFinalOutput(ConvWithConvertOrClamp match) {
-  // When the matched clamp has a single user, which is convert<int8>, we
-  // will absorb it, if
-  // 1. the side_input matches a convert<float>(int8_side_input), or
-  // 2. there is no side input
-  const auto is_one_to_one_X_to_Y_cast = [](const HloInstruction* instr,
-                                            PrimitiveType X,
-                                            PrimitiveType Y) -> bool {
-    return (instr->opcode() == HloOpcode::kConvert &&
-            instr->shape().element_type() == Y && instr->operand_count() == 1 &&
-            instr->operand(0)->user_count() == 1 &&
-            instr->operand(0)->shape().element_type() == X);
+StatusOr<bool> FuseRelu(HloComputation* comp) {
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    HloInstruction* gte;
+    HloInstruction* conv;
+    if (!Match(
+            instr,
+            m::MaximumAnyOrder(
+                m::Broadcast(m::ConstantEffectiveScalar(0)),
+                m::GetTupleElement(
+                    &gte,
+                    m::Op(&conv).WithPredicate(IsConvCustomCall).WithOneUse())
+                    .WithOneUse()))) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
+                        conv->backend_config<CudnnConvBackendConfig>());
+    if (config.activation_mode() != se::dnn::kNone) {
+      continue;
+    }
+
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseRelu: ", conv->ToString());
+        })) {
+      continue;
+    }
+    TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
+    config.set_activation_mode(se::dnn::kRelu);
+    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
+    changed = true;
+  }
+  return changed;
+}
+
+StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    HloInstruction* gte = nullptr;
+    HloInstruction* conv = nullptr;
+
+    auto f32_convertible_to_f16_pattern =
+        m::Op().WithElementType(F32).WithPredicate(
+            IsLosslesslyConvertibleToF16);
+    auto pattern =
+        m::Convert(
+            m::GetTupleElement(
+                &gte,
+                m::Op(&conv)
+                    .WithPredicate(IsConvCustomCall)
+                    .WithOperand(0, f32_convertible_to_f16_pattern)
+                    .WithOperand(1, f32_convertible_to_f16_pattern)
+                    .WithOperandIfPresent(2, f32_convertible_to_f16_pattern)
+                    .WithOperandIfPresent(3, f32_convertible_to_f16_pattern),
+                0)
+                .WithOneUse())
+            .WithElementType(F16);
+    if (!Match(instr, pattern)) {
+      VlogIfFailureToMatch(
+          instr, pattern, "fp16 conv",
+          m::Op().WithOperand(
+              0, m::GetTupleElement(m::Op().WithPredicate(IsConvCustomCall))));
+      continue;
+    }
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseConvertToF16: ", conv->ToString());
+        })) {
+      continue;
+    }
+
+    VLOG(2) << "Matched fp16 conv: " << conv->ToString();
+
+    // In fp16 convs, all operands, including `bias`, must be fp16.  This is
+    // different from int8 convs, where the bias is fp32.  See table of
+    // supported datatypes at
+    // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
+    absl::InlinedVector<HloInstruction*, 4> new_operands;
+    for (HloInstruction* operand : conv->operands()) {
+      new_operands.push_back(MakeConvertToHlo(operand, F16));
+    }
+
+    Shape new_shape = conv->shape();
+    new_shape.mutable_tuple_shapes(0)->set_element_type(F16);
+
+    HloInstruction* new_conv = comp->AddInstruction(
+        conv->CloneWithNewOperands(new_shape, new_operands));
+    comp->parent()->SetAndUniquifyInstrName(new_conv, conv->name());
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_instr,
+                        MakeGetTupleElementHlo(new_conv, 0));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
+    changed = true;
+  }
+  return changed;
+}
+
+StatusOr<bool> FuseConvertToS8(HloComputation* comp) {
+  bool changed = false;
+  for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
+    HloInstruction* gte = nullptr;
+    HloInstruction* conv = nullptr;
+
+    auto conv_pattern =
+        m::Op(&conv)
+            .WithPredicate(IsConvCustomCall)
+            .WithOperand(0, m::Op().WithPredicate(IsLosslesslyConvertibleToS8))
+            .WithOperand(1, m::Op().WithPredicate(IsLosslesslyConvertibleToS8));
+
+    // int8 -> int8 conv
+    auto s8_pattern =
+        m::Convert(
+            m::Clamp(
+                m::Broadcast(m::ConstantEffectiveScalar(-128)),
+                m::GetTupleElement(
+                    &gte,
+                    conv_pattern.WithOperandIfPresent(
+                        3, m::Op().WithPredicate(IsLosslesslyConvertibleToS8)),
+                    0)
+                    .WithOneUse(),
+                m::Broadcast(m::ConstantEffectiveScalar(127))))
+            .WithElementType(S8);
+
+    // int8 -> fp32 conv
+    auto f32_pattern = m::GetTupleElement(&gte,
+                                          conv_pattern.WithOperandIfPresent(
+                                              3, m::Op().WithElementType(F32)),
+                                          0)
+                           .WithElementType(F32);
+
+    VlogIfFailureToMatch(
+        instr, s8_pattern, "s8->s8 conv",
+        m::Convert(m::Clamp(m::Op(),  //
+                            m::GetTupleElement(
+                                m::Op().WithPredicate(IsConvCustomCall)),  //
+                            m::Op()))
+            .WithElementType(S8));
+
+    VlogIfFailureToMatch(
+        instr, f32_pattern, "s8->f32 conv",
+        m::GetTupleElement(m::Op().WithPredicate(IsConvCustomCall))
+            .WithElementType(F32));
+
+    PrimitiveType conv_output_ty;
+    if (Match(instr, s8_pattern)) {
+      conv_output_ty = S8;
+    } else if (Match(instr, f32_pattern)) {
+      conv_output_ty = F32;
+    } else {
+      continue;
+    }
+    if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+          return absl::StrCat("FuseConvertToS8: ", conv->ToString());
+        })) {
+      continue;
+    }
+
+    absl::InlinedVector<HloInstruction*, 4> new_operands(
+        conv->operands().begin(), conv->operands().end());
+    new_operands[0] = MakeConvertToHlo(new_operands[0], S8);
+    new_operands[1] = MakeConvertToHlo(new_operands[1], S8);
+    // Don't convert bias (operand 2); it's always f32 for s8 ops in cudnn.  See
+    // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
+    if (new_operands.size() >= 4) {
+      // side-input always matches conv output type.  We checked in the patterns
+      // above that it's losslessly-convertible to this type.
+      new_operands[3] = MakeConvertToHlo(new_operands[3], conv_output_ty);
+    }
+
+    Shape new_shape = conv->shape();
+    new_shape.mutable_tuple_shapes(0)->set_element_type(conv_output_ty);
+
+    HloInstruction* new_conv = comp->AddInstruction(
+        conv->CloneWithNewOperands(new_shape, new_operands));
+    comp->parent()->SetAndUniquifyInstrName(new_conv, conv->name());
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_instr,
+                        MakeGetTupleElementHlo(new_conv, 0));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
+    changed = true;
+  }
+  return changed;
+}
+
+Status CheckNoIllegalIntegerConvs(HloComputation* comp) {
+  auto is_integral_not_s8 = [](const Shape& s) {
+    return primitive_util::IsIntegralType(s.element_type()) &&
+           s.element_type() != S8;
   };
 
-  if (match.conv->operand_count() < 4) {
-    // Conv input #3 (zero based) is side_input, after x, w, and bias.
-    // Side input doesn't exist in this case.
-    TF_RETURN_IF_ERROR(RewriteForConvertOrClampImpl(match));
-  } else if (is_one_to_one_X_to_Y_cast(match.conv->operand(3), S8, F32)) {
-    // If side_input has a convert_float_to_int8, absorb it as well.
-    auto side_converter = match.conv->mutable_operand(3);
-    TF_RETURN_IF_ERROR(side_converter->ReplaceAllUsesWithDifferentShape(
-        side_converter->mutable_operand(0)));
-    TF_RETURN_IF_ERROR(
-        side_converter->parent()->RemoveInstructionAndUnusedOperands(
-            side_converter));
-
-    TF_RETURN_IF_ERROR(RewriteForConvertOrClampImpl(match));
+  std::vector<HloInstruction*> bad_convs;
+  for (HloInstruction* instr : comp->instructions()) {
+    if (!IsConvCustomCall(instr)) {
+      continue;
+    }
+    if (is_integral_not_s8(instr->shape().tuple_shapes(0)) ||
+        is_integral_not_s8(instr->operand(0)->shape()) ||
+        is_integral_not_s8(instr->operand(1)->shape()) ||
+        (instr->operand_count() >= 4 &&
+         is_integral_not_s8(instr->operand(3)->shape()))) {
+      bad_convs.push_back(instr);
+    }
   }
-  return Status::OK();
+
+  if (bad_convs.empty()) {
+    return Status::OK();
+  }
+
+  return Unimplemented(
+      R"(
+Can't lower one or more integer convolutions to idioms supported by CuDNN.
+
+CuDNN integer convolutions must have:
+
+  - s8 input and filter,
+  - f32 bias (if present),
+  - s8 or f32 output, and
+  - s8 side_input (if present) if output is s8.
+
+For each of the unsupported convs below, we weren't able to lower one of the
+operands or the output to the appropriate type.
+
+See specific HLO idioms in cudnn_fused_conv_rewriter.h, and see cudnn semantics:
+
+https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward and
+https://docs.nvidia.com/deeplearning/cudnn/developer-guide/index.html#scaling-parameters
+
+Unsupported convs:
+%s
+
+******* Full HLO module *******
+%s
+)",
+      absl::StrJoin(bad_convs, "\n",
+                    [](std::string* out, HloInstruction* instr) {
+                      absl::StrAppend(out, " - ", instr->ToString());
+                    }),
+      comp->parent()->ToString());
 }
 
-// Fuse the clamp/convert pattern with the int8 convolution custom call
-// (either pure or fused) for int8 output
-StatusOr<bool> RunFuseClamp(HloModule* module) {
-  bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    std::vector<ConvWithConvertOrClamp> matches;
-    for (auto instr : computation->instructions()) {
-      auto match = FindConvWithClampAndConvertToInt8(instr);
-      if (match.has_value()) {
-        matches.push_back(*match);
-      }
-    }
-    for (const ConvWithConvertOrClamp& match : matches) {
-      TF_RETURN_IF_ERROR(RewriteForFinalOutput(match));
-      changed = true;
-    }
+void VlogStats(HloModule* module) {
+  if (!VLOG_IS_ON(1)) {
+    return;
+  }
 
-    // Report error for any convolution still having int32 output.
-    // Although int32 output convolution will trigger other sanity check errors
-    // later, we want to give specific error message here.
-    for (auto instr : computation->instructions()) {
-      if (auto call = DynCast<HloCustomCallInstruction>(instr)) {
-        if ((call->custom_call_target() == kCudnnConvForwardCallTarget ||
-             call->custom_call_target() ==
-                 kCudnnConvBiasActivationForwardCallTarget) &&
-            call->shape().tuple_shapes(0).element_type() == xla::S32) {
-          return Unimplemented(
-              "Integer convolutions for CuDNN must have float or int8 output.  "
-              "Use convert to cast output to float or the following pattern to "
-              "int8: "
-              "clamp(broadcast(-128), conv(int8_x, int8_w, ...), "
-              "broadcast(127)).");
+  VLOG(1) << "Results of CudnnFusedConvRewriter for " << module->name();
+  absl::flat_hash_map<std::string, int> stats;
+  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+    for (HloInstruction* instr : comp->instructions()) {
+      if (!Match(instr, m::Op().WithPredicate(IsConvCustomCall))) {
+        continue;
+      }
+
+      VLOG(3) << instr->ToString();
+
+      if (instr->custom_call_target() == kCudnnConvForwardCallTarget) {
+        stats["01 non-fused forward convs"]++;
+      } else if (instr->custom_call_target() ==
+                 kCudnnConvBiasActivationForwardCallTarget) {
+        stats["02 fused forward convs"]++;
+      }
+
+      PrimitiveType conv_in_ty = instr->operand(0)->shape().element_type();
+      PrimitiveType conv_out_ty = instr->shape().tuple_shapes(0).element_type();
+      if (conv_in_ty == F32) {
+        stats["10 f32 convs"]++;
+      } else if (conv_in_ty == F16) {
+        stats["11 f16 convs"]++;
+      } else if (conv_in_ty == S8) {
+        if (conv_out_ty == S8) {
+          stats["12 s8->s8 convs"]++;
+        } else if (conv_out_ty == F32) {
+          stats["13 s8->f32 convs"]++;
+        } else {
+          LOG(ERROR) << "Unexpected conv: " << instr->ToString();
         }
       }
-    }
-  }
-  return changed;
-}
 
-// The pattern we want to match:
-//   convert<float>(get_tuple_element<int32>(custom_call()));
-absl::optional<ConvWithConvertOrClamp> FindConvWithConvertToFloat(
-    HloInstruction* instr) {
-  using match::Convert;
-  using match::GetTupleElement;
-  using match::Op;
-
-  HloInstruction* gte = nullptr;
-  HloInstruction* conv_instr = nullptr;
-  auto pattern =
-      Convert(GetTupleElement(
-                  &gte,
-                  Op(&conv_instr)
-                      .WithOpcode(HloOpcode::kCustomCall)
-                      .WithCustomCallTarget(kCudnnConvForwardCallTarget),
-                  0)
-                  .WithShape(match::Shape().WithElementType(xla::S32)))
-          .WithShape(match::Shape().WithElementType(xla::F32));
-  if (Match(instr, pattern)) {
-    HloCustomCallInstruction* conv =
-        CastOrNull<HloCustomCallInstruction>(conv_instr);
-    return ConvWithConvertOrClamp{instr, gte, conv};
-  }
-  return absl::nullopt;
-}
-
-// Transform
-// convert<float>(GetTupleElement<int32>(custom_call<int32>(int8_x, int8_w)))
-// to
-// GetTupleElement<float>(custom_call<int32>(int8_x, int8_w))
-StatusOr<bool> RunFuseConvertToFloat(HloModule* module) {
-  bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    std::vector<ConvWithConvertOrClamp> matches;
-    for (auto instr : computation->instructions()) {
-      auto match = FindConvWithConvertToFloat(instr);
-      if (match.has_value()) {
-        matches.push_back(*match);
+      if (instr->operand_count() > 2) {
+        stats["20 convs with bias"]++;
+        if (Match(instr->operand(2),
+                  m::Broadcast(m::ConstantEffectiveScalar(0)))) {
+          stats["21 convs with 0 bias"]++;
+        }
       }
-    }
+      if (instr->operand_count() > 3) {
+        stats["22 convs with side-input"]++;
+      }
 
-    for (const ConvWithConvertOrClamp& match : matches) {
-      TF_RETURN_IF_ERROR(RewriteForConvertOrClampImpl(match));
-      changed = true;
+      auto config = instr->backend_config<CudnnConvBackendConfig>();
+      if (!config.ok()) {
+        LOG(ERROR) << "Couldn't parse backend config for " << instr->ToString();
+        continue;
+      }
+
+      if (config->conv_result_scale() != 1) {
+        stats["30 convs with result scale"]++;
+      }
+      if (config->side_input_scale() != 0 && config->side_input_scale() != 1) {
+        stats["31 convs with side-input scale"]++;
+      }
+      stats[absl::StrCat(
+          "32 convs with activation mode ",
+          se::dnn::ActivationMode_Name(config->activation_mode()))]++;
     }
   }
-  return changed;
+
+  std::vector<std::pair<std::string, int>> stats_sorted(stats.begin(),
+                                                        stats.end());
+  absl::c_sort(stats_sorted);
+  for (const auto& kv : stats_sorted) {
+    VLOG(1) << absl::StreamFormat("%4d %s", kv.second,
+                                  absl::string_view(kv.first).substr(3));
+  }
 }
+
 }  // namespace
 
 StatusOr<bool> CudnnFusedConvRewriter::Run(HloModule* module) {
-  TF_ASSIGN_OR_RETURN(bool fused_for_convert_to_float,
-                      RunFuseConvertToFloat(module));
+  bool any_changed = false;
 
-  TF_ASSIGN_OR_RETURN(bool fused_for_bias, RunFuseBiasSideActivation(module));
+  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+    // Fuse "inside out" starting with the operations closest to the conv.
+    bool changed = false;
 
-  TF_ASSIGN_OR_RETURN(bool fused_for_clamp, RunFuseClamp(module));
+    TF_ASSIGN_OR_RETURN(changed, FuseConvertToFloat(comp));
+    any_changed |= changed;
 
-  return fused_for_convert_to_float || fused_for_bias || fused_for_clamp;
+    TF_ASSIGN_OR_RETURN(changed, FuseConvAlpha(comp));
+    any_changed |= changed;
+
+    // s8 convs' bias and side-input appear before conversion to s8.
+    //
+    // Run FuseBiasOrSideInput twice, so we get both the bias and the side
+    // input, if both are present.
+    TF_ASSIGN_OR_RETURN(changed, FuseBiasOrSideInput(comp));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseBiasOrSideInput(comp));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseSideInputAlpha(comp));
+    any_changed |= changed;
+
+    // Relu might appear before or after convert-to-f16/s8, so we check in both
+    // cases.
+    TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
+    any_changed |= changed;
+
+    TF_ASSIGN_OR_RETURN(changed, FuseConvertToF16(comp));
+    any_changed |= changed;
+
+    TF_ASSIGN_OR_RETURN(changed, FuseConvertToS8(comp));
+    any_changed |= changed;
+
+    // f16 convs' bias+side-input can appear before or after conversion to f16.
+    TF_ASSIGN_OR_RETURN(changed, FuseBiasOrSideInput(comp));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseBiasOrSideInput(comp));
+    any_changed |= changed;
+    TF_ASSIGN_OR_RETURN(changed, FuseSideInputAlpha(comp));
+    any_changed |= changed;
+
+    TF_ASSIGN_OR_RETURN(changed, FuseRelu(comp));
+    any_changed |= changed;
+
+    // Check that we don't have any convs outputing integer types other than s8.
+    // cudnn does not support these.  They should have been transformed to
+    // int8->int8 or int8->float above.
+    TF_RETURN_IF_ERROR(CheckNoIllegalIntegerConvs(comp));
+  }
+
+  VlogStats(module);
+
+  return any_changed;
 }
 }  // namespace gpu
 }  // namespace xla

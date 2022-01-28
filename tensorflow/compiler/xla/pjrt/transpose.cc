@@ -651,7 +651,7 @@ void TransposePlan::CoalesceDimensions(
 int64_t TransposePlan::InputNumElems() const {
   int64_t size = 1;
   for (size_t i = 0; i < a_dims_.size(); ++i) {
-    size *= RoundUpToNearest(a_dims_[i], a_tiling_[i]);
+    size *= RoundUpTo(a_dims_[i], a_tiling_[i]);
   }
   return size;
 }
@@ -659,7 +659,7 @@ int64_t TransposePlan::InputNumElems() const {
 int64_t TransposePlan::OutputNumElems() const {
   int64_t size = 1;
   for (size_t i = 0; i < a_dims_.size(); ++i) {
-    size *= RoundUpToNearest(a_dims_[permutation_[i]], b_tiling_[i]);
+    size *= RoundUpTo(a_dims_[permutation_[i]], b_tiling_[i]);
   }
   return size;
 }
@@ -1351,17 +1351,10 @@ bool TransposePlanCacheKey::operator==(
 
 template <typename H>
 H AbslHashValue(H h, const TransposePlanCacheKey& key) {
-  h = H::combine(std::move(h), key.elem_size_in_bytes,
-                 key.input_layout_is_tiling, key.num_threads,
-                 static_cast<int>(key.transformation));
-  h = H::combine_contiguous(std::move(h), key.dims.data(), key.dims.size());
-  h = H::combine_contiguous(std::move(h), key.permutation.data(),
-                            key.permutation.size());
-  h = H::combine_contiguous(std::move(h), key.input_layout.data(),
-                            key.input_layout.size());
-  h = H::combine_contiguous(std::move(h), key.output_tiling.data(),
-                            key.output_tiling.size());
-  return h;
+  return H::combine(std::move(h), key.elem_size_in_bytes,
+                    key.input_layout_is_tiling, key.num_threads,
+                    key.transformation, key.dims, key.permutation,
+                    key.input_layout, key.output_tiling);
 }
 
 TransposePlanCache::TransposePlanCache(int capacity)

@@ -60,7 +60,7 @@ struct FuseParallelMapAndBatch : public OpRewritePattern<BatchDatasetV2Op> {
 }  // namespace
 
 void PopulateTFDataOptimizationPatterns(MLIRContext *context,
-                                        OwningRewritePatternList *patterns) {
+                                        RewritePatternSet *patterns) {
   patterns->insert<FuseParallelMapAndBatch>(context);
   populateWithGenerated(*patterns);
 }

@@ -68,7 +68,7 @@ endif()
 
 ExternalProject_Add(flatbuffers-flatc
   PREFIX ${CMAKE_BINARY_DIR}/flatbuffers-flatc
-  SOURCE_DIR ${CMAKE_BINARY_DIR}/flatbuffers
+  SOURCE_DIR ${flatbuffers_SOURCE_DIR}
   CMAKE_ARGS -DCMAKE_CXX_FLAGS="-DNOMINMAX=1"
              -DFLATBUFFERS_BUILD_TESTS=OFF
              -DFLATBUFFERS_BUILD_FLATLIB=OFF

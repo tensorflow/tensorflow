@@ -345,20 +345,28 @@ TF_CALL_variant(REGISTER_DYNAMIC_STITCH);
 TF_CALL_QUANTIZED_TYPES(REGISTER_DYNAMIC_STITCH);
 #undef REGISTER_DYNAMIC_STITCH
 
+#define REGISTER_PARALLEL_DYNAMIC_STITCH(type)           \
+  REGISTER_KERNEL_BUILDER(Name("ParallelDynamicStitch")  \
+                              .Device(DEVICE_DEFAULT)    \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("indices")     \
+                              .HostMemory("data")        \
+                              .HostMemory("merged"),     \
+                          ParallelDynamicStitchOpCPU<type>)
+
+TF_CALL_int32(REGISTER_PARALLEL_DYNAMIC_STITCH);
+TF_CALL_int64(REGISTER_PARALLEL_DYNAMIC_STITCH);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_PARALLEL_DYNAMIC_STITCH);
+TF_CALL_COMPLEX_TYPES(REGISTER_PARALLEL_DYNAMIC_STITCH);
+#undef REGISTER_PARALLEL_DYNAMIC_STITCH
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_DYNAMIC_STITCH_GPU(type)                \
   REGISTER_KERNEL_BUILDER(Name("DynamicStitch")          \
                               .Device(DEVICE_GPU)        \
                               .TypeConstraint<type>("T") \
                               .HostMemory("indices"),    \
-                          DynamicStitchOpGPU<type>)      \
-  REGISTER_KERNEL_BUILDER(Name("ParallelDynamicStitch")  \
-                              .Device(DEVICE_GPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("indices")     \
-                              .HostMemory("data")        \
-                              .HostMemory("merged"),     \
-                          ParallelDynamicStitchOpCPU<type>)
+                          DynamicStitchOpGPU<type>)
 
 TF_CALL_int32(REGISTER_DYNAMIC_STITCH_GPU);
 TF_CALL_int64(REGISTER_DYNAMIC_STITCH_GPU);

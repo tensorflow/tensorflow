@@ -95,6 +95,12 @@ TYPED_TEST(ReshapeOpTest, TooManySpecialDimensions) {
 TYPED_TEST(ReshapeOpTest, InvalidShape) {
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    if (SingleOpModel::GetForceUseNnapi() &&
+        shape_type == ShapeSpecificationType::kAsTensor) {
+      // NNAPI delegate does not support RESHAPE with shape as a non-constant
+      // tensor.
+      continue;
+    }
     ReshapeOpModel<TypeParam> m({1, 2, 2}, {2, 2}, {1, 2, 2, 1}, shape_type);
     m.SetInput({5, 6, 7, 8});
     m.Invoke();
@@ -107,6 +113,12 @@ TYPED_TEST(ReshapeOpTest, InvalidShape) {
 TYPED_TEST(ReshapeOpTest, RegularShapes) {
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    if (SingleOpModel::GetForceUseNnapi() &&
+        shape_type == ShapeSpecificationType::kAsTensor) {
+      // NNAPI delegate does not support RESHAPE with shape as a non-constant
+      // tensor.
+      continue;
+    }
     ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {3}, {2, 2, 2}, shape_type);
     m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
     m.Invoke();
@@ -118,6 +130,12 @@ TYPED_TEST(ReshapeOpTest, RegularShapes) {
 TYPED_TEST(ReshapeOpTest, WithStretchDimension) {
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    if (SingleOpModel::GetForceUseNnapi() &&
+        shape_type == ShapeSpecificationType::kAsTensor) {
+      // NNAPI delegate does not support RESHAPE with shape as a non-constant
+      // tensor.
+      continue;
+    }
     ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {3}, {2, 1, -1}, shape_type);
     m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
     m.Invoke();

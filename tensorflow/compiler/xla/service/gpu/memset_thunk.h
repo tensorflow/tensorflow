@@ -45,7 +45,7 @@ class MemzeroThunk : public Thunk {
 // destination chunk must have size divisible by 32 bits.
 class Memset32BitValueThunk : public Thunk {
  public:
-  explicit Memset32BitValueThunk(ThunkInfo thunk_info, uint32 value,
+  explicit Memset32BitValueThunk(ThunkInfo thunk_info, uint32_t value,
                                  const BufferAllocation::Slice& dest)
       : Thunk(Kind::kMemset32BitValue, thunk_info),
         value_(value),
@@ -54,7 +54,7 @@ class Memset32BitValueThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  const uint32 value_;
+  const uint32_t value_;
   const BufferAllocation::Slice dest_;
 };
 

@@ -284,6 +284,8 @@ typedef std::function<void(const Status&)> StatusCallback;
 extern tensorflow::string* TfCheckOpHelperOutOfLine(
     const ::tensorflow::Status& v, const char* msg);
 
+std::string error_name(error::Code code);
+
 inline tensorflow::string* TfCheckOpHelper(::tensorflow::Status v,
                                            const char* msg) {
   if (v.ok()) return nullptr;

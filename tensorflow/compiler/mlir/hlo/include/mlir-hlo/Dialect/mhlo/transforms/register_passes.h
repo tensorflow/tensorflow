@@ -22,7 +22,7 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
-std::unique_ptr<FunctionPass> createTestInferShapedTypeMethodsPass();
+std::unique_ptr<OperationPass<FuncOp>> createTestInferShapedTypeMethodsPass();
 std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();
 std::unique_ptr<Pass> createTestUnfuseBatchNormPass();
 
@@ -32,15 +32,6 @@ std::unique_ptr<Pass> createTestUnfuseBatchNormPass();
 inline void registerAllMhloPasses() { registerMHLOPasses(); }
 
 }  // namespace mhlo
-
-namespace lmhlo {
-
-#define GEN_PASS_REGISTRATION
-#include "mlir-hlo/Dialect/mhlo/transforms/lmhlo_passes.h.inc"
-
-inline void registerAllLmhloPasses() { registerLMHLOPasses(); }
-
-}  // namespace lmhlo
 }  // namespace mlir
 
 #endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REGISTER_PASSES_H_

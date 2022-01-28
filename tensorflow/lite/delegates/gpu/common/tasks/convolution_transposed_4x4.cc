@@ -29,7 +29,15 @@ ConvolutionTransposed4x4::WeightsUploadType GetBestWeightsUploadType(
     const GpuInfo& gpu_info) {
   ConvolutionTransposed4x4::WeightsUploadType weights_upload_type =
       ConvolutionTransposed4x4::WeightsUploadType::GLOBAL_MEM;
-  if (gpu_info.IsPowerVR()) {
+  if (gpu_info.IsApple()) {
+    if (gpu_info.apple_info.IsBionic()) {
+      weights_upload_type =
+          ConvolutionTransposed4x4::WeightsUploadType::GLOBAL_MEM;
+    } else {
+      weights_upload_type =
+          ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    }
+  } else if (gpu_info.IsPowerVR()) {
     weights_upload_type =
         ConvolutionTransposed4x4::WeightsUploadType::LOCAL_MEM_ASYNC;
   } else if (gpu_info.IsNvidia() || gpu_info.IsIntel()) {

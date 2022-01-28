@@ -160,6 +160,9 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, XlaShapeToTpuShapeRepresentation);
   TFTPU_SET_FN(executor_fn, XlaShapeToTpuPaddedShape);
 
+  TFTPU_SET_FN(executor_fn, TpuAsyncCollectiveOffloadHelper_Init);
+  TFTPU_SET_FN(executor_fn, TpuAsyncCollectiveOffloadHelper_Shutdown);
+
   return tensorflow::Status::OK();
 }
 

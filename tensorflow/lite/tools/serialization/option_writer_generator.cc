@@ -42,6 +42,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteFakeQuantParams",
                                       "TfLiteFullyConnectedParams",
                                       "TfLiteGatherParams",
+                                      "TfLiteGeluParams",
                                       "TfLiteIfParams",
                                       "TfLiteL2NormParams",
                                       "TfLiteLeakyReluParams",
@@ -178,6 +179,7 @@ class OpOptionData {
     op_to_option_["CONV_3D_TRANSPOSE"] = "Conv3DOptions";
     op_to_option_["RANDOM_STANDARD_NORMAL"] = "RandomOptions";
     op_to_option_["RANDOM_UNIFORM"] = "RandomOptions";
+    op_to_option_["MULTINOMIAL"] = "RandomOptions";
 
     // These operators are not real ones.
     op_to_option_["CUSTOM"] = "";    // TODO(aselle): maybe something else.
@@ -209,6 +211,7 @@ class OpOptionData {
     op_to_option_["IMAG"] = "";
     op_to_option_["COMPLEX_ABS"] = "";
     op_to_option_["BROADCAST_ARGS"] = "";
+    op_to_option_["GELU"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";

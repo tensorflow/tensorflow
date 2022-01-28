@@ -513,8 +513,8 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(model.variables[1], [1])
     self.assertAllEqual(model.variables, model.trainable_variables)
 
-    self.assertLen(model._checkpoint_dependencies, 1)
-    self.assertIs(model._checkpoint_dependencies[0].ref, model.w)
+    self.assertLen(model._trackable_children(), 1)
+    self.assertIs(model._trackable_children().popitem()[1], model.w)
 
   def test_embedding_lookup(self):
     v = [

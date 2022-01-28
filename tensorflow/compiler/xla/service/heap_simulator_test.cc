@@ -225,7 +225,7 @@ const char kShare[] = "Share";
 const char kFinish[] = "Finish";
 
 // CallSequence records a sequence of Alloc/Free/Finish calls.
-using CallSequence = std::vector<std::pair<string, const HloValue*>>;
+using CallSequence = std::vector<std::pair<std::string, const HloValue*>>;
 
 // HeapCallRecorder is a dummy heap algorithm that simply records its calls.
 class HeapCallRecorder : public HeapAlgorithm<HloValue> {
@@ -283,7 +283,8 @@ class HeapSimulatorTracker {
 
   // Constructor for testing a single entry computation.
   explicit HeapSimulatorTracker(
-      const string& name, std::unique_ptr<HloComputation> entry_computation,
+      const std::string& name,
+      std::unique_ptr<HloComputation> entry_computation,
       const std::vector<HloInstruction*>& instruction_sequence,
       const std::vector<HloInstruction*>& must_alias_set = {},
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
@@ -293,7 +294,7 @@ class HeapSimulatorTracker {
     Init(instruction_sequence, can_share_buffer);
   }
 
-  explicit HeapSimulatorTracker(const string& name) {
+  explicit HeapSimulatorTracker(const std::string& name) {
     HloModuleConfig config;
     module_ = absl::make_unique<HloModule>(name, config);
   }

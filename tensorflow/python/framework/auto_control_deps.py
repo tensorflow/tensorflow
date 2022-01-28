@@ -40,9 +40,7 @@ from tensorflow.python.util import tf_decorator
 
 ASYNC_STATEFUL_OPS = frozenset((
     "CollectiveGather",
-    "CollectiveGatherV2",
     "CollectiveReduce",
-    "CollectiveReduceV2",
     "CollectiveBcastSend",
     "CollectiveBcastSendV2",
     "CollectiveBcastRecv",
@@ -101,6 +99,8 @@ LEGACY_RANDOM_OPS = frozenset((
 ))
 
 MUST_RUN_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
+    "InfeedEnqueue",
+    "InfeedEnqueueTuple",
 ))
 
 # These ops are order-insensitive ans should in theory run, but at the moment
@@ -122,8 +122,6 @@ SKIPPED_ORDER_INSENSITIVE_STATEFUL_OPS = frozenset((
     "EnqueueTPUEmbeddingArbitraryTensorBatch",
     "RestoreV2",
     "SaveV2",
-    "InfeedEnqueue",
-    "InfeedEnqueueTuple",
 ))
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
 

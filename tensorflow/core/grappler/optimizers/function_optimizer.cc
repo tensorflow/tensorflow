@@ -831,10 +831,9 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
       {// LINT.IfChange
        // Op types that should not run in program order, e.g. because they need
        // to run asynchronously to avoid deadlock.
-       "CollectiveGather", "CollectiveGatherV2", "CollectiveReduce",
-       "CollectiveReduceV2", "CollectiveBcastSend", "CollectiveBcastRecv",
-       "CollectiveBcastSendV2", "CollectiveBcastRecvV2", "NcclAllReduce",
-       "Send", "Recv", "CollectiveInitializeCommunicator",
+       "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
+       "CollectiveBcastRecv", "CollectiveBcastSendV2", "CollectiveBcastRecvV2",
+       "NcclAllReduce", "Send", "Recv", "CollectiveInitializeCommunicator",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.

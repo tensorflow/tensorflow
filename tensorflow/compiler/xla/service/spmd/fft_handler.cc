@@ -18,7 +18,6 @@ limitations under the License.
 #include <cmath>
 #include <functional>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -230,7 +229,7 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
     int64_t num_partitions, HloInstruction* partition_id,
     int64_t* next_channel_id, HloModule* module, SpmdBuilder* b) {
   auto iteration = b->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(0)));
   auto converted_partition_id = b->AddInstruction(HloInstruction::CreateConvert(
       ShapeUtil::ChangeElementType(partition_id->shape(),
                                    hlo->shape().element_type()),
@@ -302,7 +301,7 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
   i = body_b.AddInstruction(HloInstruction::CreateBinary(
       i->shape(), HloOpcode::kAdd, i,
       body_b.AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(1)))));
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(1)))));
   body_b.AddInstruction(
       HloInstruction::CreateTuple({dest_transform, source_transform,
                                    dest_partition_id, source_partition_id, i}));
@@ -321,7 +320,7 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
   cond_b.AddInstruction(HloInstruction::CreateCompare(
       ShapeUtil::MakeShape(PRED, {}), cond_i,
       cond_b.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<uint32>(num_partitions))),
+          LiteralUtil::CreateR0<uint32_t>(num_partitions))),
       ComparisonDirection::kLt));
 
   // Build while loop.

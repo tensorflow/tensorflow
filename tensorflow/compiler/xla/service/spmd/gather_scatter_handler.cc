@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -112,9 +113,9 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
     int64_t dim = index_map[i];
     int64_t partitions = operand.sharding().tile_assignment().dim(dim);
     if (partitions == 1) {
-      min_indices.push_back(CreateR0WithType<int32>(
+      min_indices.push_back(CreateR0WithType<int32_t>(
           replicated_indices.base_shape().element_type(), 0, b));
-      max_indices.push_back(CreateR0WithType<int32>(
+      max_indices.push_back(CreateR0WithType<int32_t>(
           replicated_indices.base_shape().element_type(),
           operand.base_shape().dimensions(dim), b));
       continue;
@@ -128,9 +129,9 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
           offset));
     }
     min_indices.push_back(offset);
-    auto partition_size_minus_1 =
-        CreateR0WithType<int32>(replicated_indices.base_shape().element_type(),
-                                operand.hlo()->shape().dimensions(dim) - 1, b);
+    auto partition_size_minus_1 = CreateR0WithType<int32_t>(
+        replicated_indices.base_shape().element_type(),
+        operand.hlo()->shape().dimensions(dim) - 1, b);
     max_indices.push_back(b->AddInstruction(HloInstruction::CreateBinary(
         offset->shape(), HloOpcode::kAdd, offset, partition_size_minus_1)));
   }
@@ -504,7 +505,7 @@ StatusOr<HloInstruction*> PartitionIndexParallelDimensions(
     PartitionedHlo& indices, SpmdPartitioningVisitor* visitor) {
   absl::InlinedVector<std::pair<HloInstruction*, HloSharding>, 2>
       top_level_sharding_to_reset;
-  auto cleaner = MakeCleanup([&top_level_sharding_to_reset] {
+  auto cleaner = absl::MakeCleanup([&top_level_sharding_to_reset] {
     for (auto& to_reset : top_level_sharding_to_reset) {
       to_reset.first->set_sharding(to_reset.second);
     }
@@ -693,7 +694,7 @@ StatusOr<HloInstruction*> PartitionGather(
           output_shape, operand.Replicate().hlo(), indices.Replicate().hlo(),
           gather->gather_dimension_numbers(), slice_sizes,
           gather->indices_are_sorted()));
-  new_gather->set_sharding(output_sharding);
+  new_gather->set_sharding(HloSharding::Replicate());
   return new_gather;
 }
 
@@ -908,12 +909,10 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
       PartitionGather(gather, operand, indices, gather->shape(),
                       gather->sharding(), absl::MakeConstSpan(batch_dims),
                       gather->gather_slice_sizes(), this));
-  if (pgather) {
-    SetPartitionedHlo(gather, [pgather] { return pgather; });
-    return Status::OK();
-  }
-
-  return DefaultAction(gather);
+  SetPartitionedHlo(
+      gather, PartitionedHlo(pgather, gather->shape(), MakePartitioningState())
+                  .Reshard(gather->sharding()));
+  return Status::OK();
 }
 
 }  // namespace spmd

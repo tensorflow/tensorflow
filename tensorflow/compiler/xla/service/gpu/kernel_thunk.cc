@@ -34,7 +34,7 @@ namespace gpu {
 
 KernelThunk::KernelThunk(ThunkInfo thunk_info,
                          absl::Span<const BufferAllocation* const> args,
-                         const string& kernel_name,
+                         const std::string& kernel_name,
                          const LaunchDimensions& launch_dimensions)
     : Thunk(Kind::kKernel, thunk_info),
       args_(args.begin(), args.end()),
@@ -47,7 +47,7 @@ std::string KernelThunk::ToStringExtra(int indent) const {
 
 Status KernelThunk::Initialize(const GpuExecutable& executable,
                                se::StreamExecutor* executor) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
 
   // Load the kernel into the device if necessary.
   //
@@ -91,7 +91,7 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   const se::KernelBase* kernel = nullptr;
 
   {
-    tensorflow::mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     auto it = kernel_cache_.find(executor);
     CHECK(it != kernel_cache_.end())
         << "Initialize() not called for StreamExecutor " << executor;

@@ -46,6 +46,11 @@ class ResourceHandle {
   ResourceHandle(const ResourceHandleProto& proto);
   ~ResourceHandle();
 
+  // Use this factory method if the `proto` comes from user controlled input, to
+  // prevent a denial of service.
+  static Status BuildResourceHandle(const ResourceHandleProto& proto,
+                                    ResourceHandle* out);
+
   // Unique name for the device containing the resource.
   const std::string& device() const { return device_; }
 
@@ -91,7 +96,7 @@ class ResourceHandle {
 
   // Conversion to and from ResourceHandleProto
   void AsProto(ResourceHandleProto* proto) const;
-  void FromProto(const ResourceHandleProto& proto);
+  Status FromProto(const ResourceHandleProto& proto);
 
   // Serialization via ResourceHandleProto
   std::string SerializeAsString() const;
@@ -99,7 +104,7 @@ class ResourceHandle {
 
   std::string DebugString() const;
 
-  std::string SummarizeValue() const { return "Resource Tensor"; }
+  std::string SummarizeValue() const;
 
   // GUID for anonymous resources. Resources with this shared_name will have
   // their shared_name replaced with a GUID at creation time

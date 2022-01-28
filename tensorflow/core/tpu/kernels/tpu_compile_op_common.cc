@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -119,7 +120,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   // doesn't hurt to also deregister the callback in the failure case; the
   // CancellationManager ensures that already-registered callbacks will be run
   // once cancellation has started.
-  auto cancellation_cleanup = xla::MakeCleanup([ctx, token, done] {
+  auto cancellation_cleanup = absl::MakeCleanup([ctx, token, done] {
     ctx->cancellation_manager()->DeregisterCallback(token);
     done->store(true);
   });
@@ -177,10 +178,10 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
             << session_name << " took " << duration << " and "
             << (compile_status.ok() ? "succeeded" : "failed");
   tpu_program_group->LogProgramMemorySummary();
+  metrics::UpdateTpuErrorCounter("TpuCompileOp",
+                                 error_name(compile_status.code()));
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
-
-  TF_RETURN_IF_ERROR(tpu_program_group->LogCompilationStats(key, duration));
 
   return compile_status;
 }

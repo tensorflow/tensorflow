@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -351,7 +350,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
               results, executable->ExecuteOnStreams(service_run_options,
                                                     argument_buffer_slices));
         } else {
-          tensorflow::mutex mutex;
+          absl::Mutex mutex;
           std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
               options.num_replicas);
           {
@@ -364,7 +363,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
                 auto result = executable->ExecuteOnStream(
                     &service_run_options[i], argument_buffer_slices[i],
                     nullptr);
-                tensorflow::mutex_lock lock(mutex);
+                absl::MutexLock lock(&mutex);
                 thread_results[i] = std::move(result);
               });
             }
@@ -390,10 +389,16 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::function<Executable*(int64_t)> executable_provider,
     std::function<int64_t(int64_t)> argument_count_provider,
     std::function<const Literal*(int64_t, int64_t)> argument_provider,
-    const ReplicatedExecuteOptions& options) {
-  TF_ASSIGN_OR_RETURN(
-      DeviceAssignment device_assignment,
-      backend().computation_placer()->AssignDevices(options.num_replicas, 1));
+    const ReplicatedExecuteOptions& options,
+    DeviceAssignment* device_assignment) {
+  DeviceAssignment computation_device_assignment;
+  if (device_assignment == nullptr) {
+    TF_ASSIGN_OR_RETURN(
+        computation_device_assignment,
+        backend().computation_placer()->AssignDevices(options.num_replicas, 1));
+    device_assignment = &computation_device_assignment;
+  }
+  CHECK_NE(device_assignment, nullptr);
   return ExecuteReplicatedImpl(
       [&](const std::vector<ServiceExecutableRunOptions>& service_run_options,
           const std::vector<absl::Span<const ShapedBuffer* const>>&
@@ -401,7 +406,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           -> StatusOr<std::vector<ScopedShapedBuffer>> {
         TF_RET_CHECK(options.use_threads);
         std::vector<ScopedShapedBuffer> results;
-        tensorflow::mutex mutex;
+        absl::Mutex mutex;
         std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
             options.num_replicas);
         {
@@ -416,7 +421,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             pool.Schedule([&, i] {
               auto result = executable_provider(i)->ExecuteOnStream(
                   &service_run_options[i], argument_buffer_slices[i], nullptr);
-              tensorflow::mutex_lock lock(mutex);
+              absl::MutexLock lock(&mutex);
               thread_results[i] = std::move(result);
             });
           }
@@ -432,7 +437,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
         }
         return results;
       },
-      argument_count_provider, argument_provider, options, &device_assignment);
+      argument_count_provider, argument_provider, options, device_assignment);
 }
 
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(

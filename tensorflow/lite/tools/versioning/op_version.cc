@@ -675,8 +675,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
-    case BuiltinOperator_ARG_MAX:
-    case BuiltinOperator_ARG_MIN:
       // In case of int16 inputs, the version is 3.
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;
@@ -765,6 +763,19 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
     }
 
+    case BuiltinOperator_ARG_MAX:
+    case BuiltinOperator_ARG_MIN:
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+        return 4;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_SUM:
@@ -802,14 +813,23 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 2;
     case BuiltinOperator_CAST:
-      if (op_sig.inputs.at(0).type == kTfLiteUInt32 ||
-          op_sig.outputs.at(0).type == kTfLiteUInt32) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
+        return 3;
+      } else if (op_sig.inputs.at(0).type == kTfLiteUInt32 ||
+                 op_sig.outputs.at(0).type == kTfLiteUInt32) {
         return 2;
       }
       return 1;
     case BuiltinOperator_WHERE:
       if (op_sig.inputs.at(0).type == kTfLiteBool) return 1;
       return 2;
+    case BuiltinOperator_GELU:
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt8) {
+        return 2;
+      }
+      return 1;
     default:
       return 1;
   }

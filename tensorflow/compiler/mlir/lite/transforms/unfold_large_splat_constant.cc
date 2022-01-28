@@ -100,7 +100,7 @@ class UnfoldLargeSplatConstant
             DenseElementsAttr::get(
                 RankedTensorType::get(
                     {}, splat_elements_attr.getType().getElementType()),
-                splat_elements_attr.getSplatValue()));
+                splat_elements_attr.getSplatValue<Attribute>()));
     TFL::FillOp fill = op_builder->create<TFL::FillOp>(
         const_op->getLoc(), splat_elements_attr.getType(), fill_shape,
         fill_value);

@@ -63,5 +63,6 @@ setup(
     package_dir={'': '.'},
     package_data={'': ['*.so', '*.pyd']},
     install_requires=[
-        'numpy ~= 1.19.2',  # Higher versions have a compatibility issue.
+        'numpy >= 1.19.2',  # Better to keep sync with both TF ci_build
+                            # and OpenCV-Python requirement.
     ])

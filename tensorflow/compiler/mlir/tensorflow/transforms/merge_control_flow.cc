@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -163,30 +164,57 @@ void MoveBranches(TF::IfRegionOp source, TF::IfRegionOp destination) {
 void MoveResultsAfter(
     Operation* result_op, Operation* after_op,
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+  Block* block = after_op->getBlock();
   std::queue<Operation*> queue;
+  absl::flat_hash_set<Operation*> visited;
+  absl::flat_hash_set<Operation*> move_ops;
 
+  // Enqueue dependencies of source_op into queue.
   auto enqueue_deps = [&](Operation* source_op) {
     for (Operation* user : source_op->getUsers()) {
-      queue.push(user);
+      if (!visited.count(user)) {
+        visited.insert(user);
+        queue.push(user);
+      }
     }
     source_op->walk([&](Operation* walked_op) {
       for (Operation* successor :
            side_effect_analysis.DirectControlSuccessors(walked_op)) {
-        if (!source_op->isProperAncestor(successor)) queue.push(successor);
+        if (!source_op->isProperAncestor(successor)) {
+          if (!visited.count(successor)) {
+            visited.insert(successor);
+            queue.push(successor);
+          }
+        }
       }
     });
   };
   enqueue_deps(result_op);
 
+  // Populate move_ops.
   while (!queue.empty()) {
     auto* op = queue.front();
     queue.pop();
-    while (op->getBlock() != after_op->getBlock()) op = op->getParentOp();
+    while (op->getBlock() != block) op = op->getParentOp();
     if (op->isBeforeInBlock(after_op)) {
-      op->moveAfter(after_op);
-      after_op = op;
+      move_ops.insert(op);
       enqueue_deps(op);
     }
+  }
+
+  // Create move_ops_ordered, which is move_ops in the Block's order.
+  std::vector<Operation*> move_ops_ordered;
+  move_ops_ordered.reserve(move_ops.size());
+  for (Operation& op : *block) {
+    if (move_ops.count(&op)) {
+      move_ops_ordered.push_back(&op);
+    }
+  }
+
+  // Move ops in order.
+  for (Operation* op : move_ops_ordered) {
+    op->moveAfter(after_op);
+    after_op = op;
   }
 }
 

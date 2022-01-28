@@ -26,7 +26,7 @@ limitations under the License.
 //      tf_executor.yield %2 : tensor<i1>
 //  }
 //  %3:2 = tf_executor.island(%0) {
-//    %4 = "tf_device.parallel_execute"() ( {
+//    %4 = "tf_device.parallel_execute"() ({
 //      %5 = "tf.opB"() : () -> tensor<i1>
 //      tf_device.return %5 : tensor<i1>
 //    }, {

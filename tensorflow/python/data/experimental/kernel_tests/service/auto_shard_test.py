@@ -16,6 +16,7 @@
 
 from absl.testing import parameterized
 
+from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python.data.experimental.kernel_tests.service import multi_process_cluster
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.kernel_tests.service.multi_process_cluster import MultiProcessCluster
@@ -29,16 +30,19 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 
 
-def _make_service_cluster(num_workers,
-                          local_shard_index,
-                          worker_addresses=None):
+def _make_service_cluster(
+    num_workers,
+    local_shard_index,
+    worker_addresses=None,
+    deployment_mode=data_service_pb2.DEPLOYMENT_MODE_COLOCATED):
   if worker_addresses is None:
     worker_addresses = ["localhost" for _ in range(num_workers)]
 
   cluster = MultiProcessCluster(
       num_local_workers=0,
       num_remote_workers=0,
-      worker_addresses=worker_addresses)
+      worker_addresses=worker_addresses,
+      deployment_mode=deployment_mode)
   for _ in range(local_shard_index):
     cluster.start_remote_worker()
   cluster.start_local_worker()
@@ -161,18 +165,14 @@ class AutoShardTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testRangeDataset_ReadFromAnyWorker(self):
-    cluster = _make_service_cluster(num_workers=5, local_shard_index=1)
+    # When deployment mode is unspecified, the client will read from any worker.
+    cluster = _make_service_cluster(
+        num_workers=5, local_shard_index=1, deployment_mode=None)
     dataset = dataset_ops.Dataset.range(20)
     dataset = self.make_distributed_dataset(
-        dataset,
-        cluster=cluster,
-        processing_mode=ShardingPolicy.FILE_OR_DATA,
-        target_workers="ANY")
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Static sharding policy <FILE_OR_DATA> requires reading from local "
-        "workers"):
-      self.getDatasetOutput(dataset)
+        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+    self.assertDatasetProduces(
+        dataset, list(range(20)), assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -284,19 +284,20 @@ class AutoShardTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testTFRecordDataset_ReadFromAnyWorker(self):
-    cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
+    # When deployment mode is unspecified, the client will read from any worker.
+    cluster = _make_service_cluster(
+        num_workers=5, local_shard_index=3, deployment_mode=None)
     dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
     dataset = dataset.flat_map(readers.TFRecordDataset)
     dataset = self.make_distributed_dataset(
-        dataset,
-        cluster=cluster,
-        processing_mode=ShardingPolicy.FILE_OR_DATA,
-        target_workers="ANY")
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Static sharding policy <FILE_OR_DATA> requires reading from local "
-        "workers"):
-      self.getDatasetOutput(dataset)
+        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+
+    expected = [
+        b"Record %d of file %d" % (record, file)
+        for file in range(0, 10)
+        for record in range(0, 10)
+    ]
+    self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
