@@ -416,7 +416,7 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     partial_proto_shape = tensor_shape.as_shape(
         make_tensor_shape_proto([-1, 37, 42]))
     partial_shape = tensor_shape.TensorShape([None, 37, 42])
-    self.assertNotEqual(partial_proto_shape, partial_shape)
+    self.assertEqual(partial_proto_shape, partial_shape)
     self.assertEqual(tensor_shape.dimension_value(partial_proto_shape[0]), None)
     self.assertEqual(tensor_shape.dimension_value(partial_proto_shape[1]), 37)
     self.assertEqual(tensor_shape.dimension_value(partial_proto_shape[2]), 42)
@@ -464,25 +464,15 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # Test with an unknown shape in s3
     self.assertNotEqual(s1, s3)
 
-    # eq and neq are not symmetric for unknown shapes.
-    # pylint: disable=g-generic-assert
     unk0 = tensor_shape.unknown_shape()
-    self.assertFalse(unk0 == s1)
-    self.assertFalse(s1 == unk0)
-    # pylint: enable=g-generic-assert
-    with self.assertRaises(ValueError):
-      _ = unk0 != s1
-    with self.assertRaises(ValueError):
-      _ = s1 != unk0
+    self.assertNotEqual(unk0, s1)
+    self.assertNotEqual(s1, unk0)
+    self.assertNotEqual(unk0, s1)
+    self.assertNotEqual(s1, unk0)
+
     unk1 = tensor_shape.unknown_shape()
-    # pylint: disable=g-generic-assert
-    self.assertTrue(unk0 == unk1)
-    self.assertTrue(unk1 == unk0)
-    # pylint: enable=g-generic-assert
-    with self.assertRaises(ValueError):
-      _ = unk0 != unk1
-    with self.assertRaises(ValueError):
-      _ = unk1 != unk0
+    self.assertEqual(unk0, unk1)
+    self.assertEqual(unk1, unk0)
 
   def testAsList(self):
     with self.assertRaisesRegex(ValueError,
