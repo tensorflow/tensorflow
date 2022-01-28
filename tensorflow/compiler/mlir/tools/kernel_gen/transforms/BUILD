@@ -167,6 +167,7 @@ cc_library(
         "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",  # buildcleaner: keep
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:SCFToStandard",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:ShapeToStandard",
