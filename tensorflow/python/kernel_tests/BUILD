@@ -592,6 +592,9 @@ tf_py_test(
     name = "fractional_avg_pool_op_test",
     size = "small",
     srcs = ["fractional_avg_pool_op_test.py"],
+    tags = [
+        "no_oss",
+    ],
     shard_count = 5,
     deps = [
         "//tensorflow/python:array_ops",
@@ -608,6 +611,9 @@ tf_py_test(
     name = "fractional_max_pool_op_test",
     size = "small",
     srcs = ["fractional_max_pool_op_test.py"],
+    tags = [
+        "no_oss",
+    ],
     shard_count = 5,
     deps = [
         "//tensorflow/python:array_ops",
