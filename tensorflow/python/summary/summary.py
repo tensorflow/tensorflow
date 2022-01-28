@@ -130,8 +130,11 @@ def scalar(name, tensor, collections=None, family=None):
       # Defer the import to happen inside the symbol to prevent breakage due to
       # missing dependency.
       from tensorboard.summary.v2 import scalar as scalar_v2  # pylint: disable=g-import-not-at-top
-      # TODO(b/210992280): Handle the family argument.
-      scalar_v2(name, data=tensor)
+      # Get a new summary tag name with the `family` arg.
+      with _summary_op_util.summary_scope(name, family) as (tag, _):
+        # Reset the root name scope with an empty summary_scope.
+        with _summary_op_util.summary_scope(name='', family=None):
+          scalar_v2(name=tag, data=tensor)
       # Return an empty Tensor, which will be acceptable as an input to the
       # `tf.compat.v1.summary.merge()` API.
       return _constant_op.constant(b'')

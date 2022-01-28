@@ -20,6 +20,7 @@ V1 summary ops will invoke V2 TensorBoard summary ops in eager mode.
 from tensorboard.summary import v2 as summary_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
@@ -62,6 +63,37 @@ class SummaryV2Test(test.TestCase):
             '/tmp/test').as_default():
           summary_lib.scalar('float', constant_op.constant(2.5))
     mock_scalar_v2.assert_not_called()
+
+  @test_util.run_v2_only
+  def test_scalar_summary_v2__family(self):
+    """Tests `family` arg handling when scalar v2 is invoked."""
+    with test.mock.patch.object(
+        summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
+      with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default(
+          step=1):
+        tensor = summary_lib.scalar(
+            'float', constant_op.constant(2.5), family='otter')
+    # Returns empty string.
+    self.assertEqual(tensor.numpy(), b'')
+    self.assertEqual(tensor.dtype, dtypes.string)
+    mock_scalar_v2.assert_called_once_with(
+        'otter/otter/float', data=constant_op.constant(2.5))
+
+  @test_util.run_v2_only
+  def test_scalar_summary_v2__family_w_outer_scope(self):
+    """Tests `family` arg handling when there is an outer scope."""
+    with test.mock.patch.object(
+        summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
+      with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default(
+          step=1):
+        with ops.name_scope_v2('sea'):
+          tensor = summary_lib.scalar(
+              'float', constant_op.constant(3.5), family='crabnet')
+    # Returns empty string.
+    self.assertEqual(tensor.numpy(), b'')
+    self.assertEqual(tensor.dtype, dtypes.string)
+    mock_scalar_v2.assert_called_once_with(
+        'crabnet/sea/crabnet/float', data=constant_op.constant(3.5))
 
 
 if __name__ == '__main__':
