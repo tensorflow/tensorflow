@@ -2,7 +2,24 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/compiler/xla/pjrt/distributed/protocol.proto";
 import "tensorflow/core/framework/device_attributes.proto";
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// Represent device information from different runtimes.
+message TfDeviceList {
+  repeated DeviceAttributes devices = 1;
+}
+message XlaDeviceList {
+  xla.GlobalTopologyProto devices = 1;
+}
+message CoordinationServiceDeviceInfo {
+  oneof type {
+    TfDeviceList tf = 1;
+    XlaDeviceList xla = 2;
+  }
+}
 
 // Request and response messages for registering a worker to the cluster leader.
 // Use `job` and `task` to represent the role of the worker, and use
@@ -38,14 +55,18 @@ message HeartbeatResponse {
 message WaitForAllTasksRequest {
   string job = 1;
   int32 task = 2;
+  // Removed field that specifically used TF device info.
+  reserved 3;
   // All local device attributes on the request sender.
-  repeated DeviceAttributes local_device_attributes = 3;
+  CoordinationServiceDeviceInfo local_device_info = 4;
 }
 
 message WaitForAllTasksResponse {
   fixed64 leader_incarnation = 1;
+  // Removed field that specifically used TF device info.
+  reserved 2;
   // All devices in the cluster.
-  repeated DeviceAttributes cluster_device_attributes = 2;
+  CoordinationServiceDeviceInfo cluster_device_info = 3;
 }
 
 // Request and response messages for reporting errors to task.

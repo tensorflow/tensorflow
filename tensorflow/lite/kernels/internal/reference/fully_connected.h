@@ -315,29 +315,6 @@ inline void ShuffledFullyConnected(
   }
 }
 
-inline void AddBiasToOutput(const FullyConnectedParams& params,
-                            const int64_t* bias_data,
-                            const RuntimeShape& output_shape,
-                            int16_t* output_data) {
-  ruy::profiler::ScopeLabel label("FullyConnected:AddBias_16x8_quant");
-  const int output_dim_count = output_shape.DimensionsCount();
-  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
-  const int output_depth = output_shape.Dims(output_dim_count - 1);
-  int index = 0;
-  for (int b = 0; b < batches; ++b) {
-    for (int out_c = 0; out_c < output_depth; ++out_c) {
-      int32_t acc =
-          output_data[index] +
-          MultiplyByQuantizedMultiplier(
-              bias_data[out_c], params.output_multiplier, params.output_shift);
-      acc = std::max(acc, params.quantized_activation_min);
-      acc = std::min(acc, params.quantized_activation_max);
-      output_data[index] = static_cast<int16_t>(acc);
-      ++index;
-    }
-  }
-}
-
 }  // namespace reference_ops
 }  // namespace tflite
 

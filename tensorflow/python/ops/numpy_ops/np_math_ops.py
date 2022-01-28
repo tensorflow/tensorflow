@@ -19,7 +19,6 @@ import numbers
 import sys
 
 import numpy as np
-import six
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -226,7 +225,7 @@ def matmul(x1, x2):  # pylint: disable=missing-docstring
                   x1, x2, axes=[[0], [-2]]),
               lambda: math_ops.matmul(x1, x2)))
     except errors.InvalidArgumentError as err:
-      six.reraise(ValueError, ValueError(str(err)), sys.exc_info()[2])
+      raise ValueError(str(err)).with_traceback(sys.exc_info()[2])
 
   return _bin_op(f, x1, x2)
 
@@ -1239,7 +1238,7 @@ def append(arr, values, axis=None):
 
 @np_utils.np_doc('average')
 def average(a, axis=None, weights=None, returned=False):  # pylint: disable=missing-docstring
-  if axis is not None and not isinstance(axis, six.integer_types):
+  if axis is not None and not isinstance(axis, int):
     # TODO(wangpeng): Support tuple of ints as `axis`
     raise ValueError('Argument `axis` must be an integer. '
                      f'Received axis={axis} (of type {type(axis)})')

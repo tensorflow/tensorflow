@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -412,7 +411,7 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
                     llvm::MDNode::get(context, dereferenceable_bytes_metadata));
 }
 
-llvm::Instruction* AddRangeMetadata(int64_t lower, int64_t upper,
+llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
                                     llvm::Instruction* inst) {
   llvm::LLVMContext& context = inst->getParent()->getContext();
   llvm::IntegerType* i32 = llvm::Type::getInt32Ty(context);

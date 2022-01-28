@@ -21,10 +21,13 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/hash/hash.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -41,10 +44,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -145,7 +146,8 @@ MutableLiteralBase::StrideConfig::StrideConfig(
 Literal::Literal(const Shape& shape)
     : Literal(shape, /*allocate_arrays=*/true) {}
 
-void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
+void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
+                       ArrayValueState leaf_array_value_state) {
   if (shape.IsTuple()) {
     for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       const Shape& subshape = shape.tuple_shapes(i);
@@ -153,20 +155,15 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
       auto child_piece = Piece();
       child_piece.set_subshape(&subshape);
 
-      SetPiece(subshape, &child_piece, allocate_arrays);
+      SetPiece(subshape, &child_piece, allocate_arrays, leaf_array_value_state);
 
       piece->emplace_back(std::move(child_piece));
     }
   } else if (shape.IsArray()) {
-    if (allocate_arrays) {
-      piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
-          piece->size_bytes(), kMinimumAlignment)));
-      if (shape.is_dynamic()) {
-        CHECK_EQ(piece->dynamic_size_buffer(), nullptr);
-        piece->set_dynamic_size_buffer(
-            static_cast<int32_t*>(tensorflow::port::AlignedMalloc(
-                piece->dynamic_size_buffer_bytes(), kMinimumAlignment)));
-      }
+    piece->set_array_value_state(leaf_array_value_state);
+    if (leaf_array_value_state == LiteralBase::ArrayValueState::kKnown &&
+        allocate_arrays) {
+      piece->AllocateBuffers();
     }
   } else {
     // If the shape is neither an array nor tuple, then it must be
@@ -175,15 +172,17 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
   }
 }
 
-Literal::Literal(const Shape& shape, bool allocate_arrays)
+Literal::Literal(const Shape& shape, bool allocate_arrays,
+                 ArrayValueState leaf_array_value_state)
     : MutableLiteralBase() {
   shape_ = absl::make_unique<Shape>(shape);
-  CHECK(LayoutUtil::HasLayout(*shape_));
+  CHECK(leaf_array_value_state != ArrayValueState::kKnown ||
+        LayoutUtil::HasLayout(*shape_));
   root_piece_ = new Piece();
   root_piece_->set_subshape(shape_.get());
   CHECK(&root_piece_->subshape() == shape_.get());
 
-  SetPiece(*shape_, root_piece_, allocate_arrays);
+  SetPiece(*shape_, root_piece_, allocate_arrays, leaf_array_value_state);
 }
 
 Literal::~Literal() {
@@ -196,12 +195,7 @@ Literal::~Literal() {
 void Literal::DeallocateBuffers() {
   root_piece_->ForEachMutableSubpiece(
       [&](const ShapeIndex& index, Piece* piece) {
-        if (piece->buffer() != nullptr) {
-          tensorflow::port::AlignedFree(piece->buffer());
-        }
-        if (piece->dynamic_size_buffer() != nullptr) {
-          tensorflow::port::AlignedFree(piece->dynamic_size_buffer());
-        }
+        piece->DeallocateBuffers();
       });
 }
 
@@ -227,6 +221,18 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
           memset(piece->untyped_data(), 0, piece->size_bytes());
         }
       });
+  return literal;
+}
+
+Literal LiteralBase::CreateFromShapeWithUnknownLeafArrays(const Shape& shape) {
+  Literal literal(shape, /*allocate_arrays=*/false, ArrayValueState::kUnknown);
+  return literal;
+}
+
+Literal LiteralBase::CreateFromShapeWithUndeterminedLeafArrays(
+    const Shape& shape) {
+  Literal literal(shape, /*allocate_arrays=*/false,
+                  ArrayValueState::kUndetermined);
   return literal;
 }
 
@@ -492,10 +498,49 @@ void LiteralBase::Piece::SetDynamicSize(int64_t dim_index, int32_t size) {
   dynamic_size_buffer_[dim_index] = size;
 }
 
+void LiteralBase::Piece::AllocateBuffers() {
+  CHECK_EQ(buffer(), nullptr);
+  set_buffer(static_cast<char*>(
+      tensorflow::port::AlignedMalloc(size_bytes(), kMinimumAlignment)));
+  if (subshape().is_dynamic()) {
+    CHECK_EQ(dynamic_size_buffer(), nullptr);
+    set_dynamic_size_buffer(
+        static_cast<int32_t*>(tensorflow::port::AlignedMalloc(
+            dynamic_size_buffer_bytes(), kMinimumAlignment)));
+  }
+}
+
+void LiteralBase::Piece::DeallocateBuffers() {
+  if (buffer_ != nullptr) {
+    tensorflow::port::AlignedFree(buffer_);
+    buffer_ = nullptr;
+  }
+  if (dynamic_size_buffer_ != nullptr) {
+    tensorflow::port::AlignedFree(dynamic_size_buffer_);
+    dynamic_size_buffer_ = nullptr;
+  }
+}
+
 Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
                                     bool only_dynamic_bound) {
   CHECK(subshape_ != nullptr);
   CHECK(src.subshape_ != nullptr);
+  if (src.array_value_state_ == ArrayValueState::kUnknown ||
+      src.array_value_state_ == ArrayValueState::kUndetermined) {
+    if (array_value_state_ == ArrayValueState::kKnown) {
+      DeallocateBuffers();
+    }
+    array_value_state_ = src.array_value_state_;
+    return Status::OK();
+  } else {
+    CHECK(src.array_value_state_ == ArrayValueState::kKnown);
+    if (array_value_state_ == ArrayValueState::kUndetermined ||
+        array_value_state_ == ArrayValueState::kUnknown) {
+      AllocateBuffers();
+    }
+    array_value_state_ = src.array_value_state_;
+  }
+
   if (ShapeUtil::Equal(subshape(), src.subshape())) {
     // If the layouts are equal it's faster just to memcpy.
     memcpy(buffer(), src.buffer(), src.size_bytes());
@@ -799,8 +844,8 @@ StatusOr<Literal> LiteralBase::Broadcast(
                  result_shape.dimensions(dimensions[i]));
   }
 
+  TF_RET_CHECK(result_shape.element_type() == shape().element_type());
   Literal result(result_shape);
-
   // scratch_source_index is temporary storage space for the computed index into
   // the input literal.  We put it here to avoid allocating an std::vector in
   // every iteration of ShapeUtil::ForEachIndex.
@@ -810,7 +855,6 @@ StatusOr<Literal> LiteralBase::Broadcast(
   const char* source_data = static_cast<const char*>(untyped_data());
   const int64_t primitive_size =
       ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
-
   for (int64_t i = 0; i < dimensions.size(); ++i) {
     int64_t dynamic_size = GetDynamicSize(i);
     result.SetDynamicSize(dimensions[i], dynamic_size);
@@ -993,6 +1037,14 @@ std::unique_ptr<Literal> LiteralBase::CloneToUnique() const {
   return result;
 }
 
+bool LiteralBase::IsDetermined(const ShapeIndex& shape_index) const {
+  return piece(shape_index).IsDetermined();
+}
+
+bool LiteralBase::IsKnown(const ShapeIndex& shape_index) const {
+  return piece(shape_index).IsKnown();
+}
+
 std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
                                      const ShapeIndex& shape_index) const {
   const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
@@ -1105,27 +1157,6 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
   }
 }
 
-size_t LiteralBase::Hash(int64_t byte_limit) const {
-  using tensorflow::Hash64;
-  using tensorflow::Hash64Combine;
-
-  size_t hash_value = ShapeUtil::Hash(shape());
-
-  ShapeUtil::ForEachSubshape(
-      shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) {
-          return;
-        }
-
-        CHECK(LayoutUtil::IsDense(subshape.layout()));
-        hash_value = Hash64Combine(
-            hash_value, Hash64(static_cast<const char*>(untyped_data(index)),
-                               std::min(byte_limit, size_bytes(index))));
-      });
-
-  return hash_value;
-}
-
 Status MutableLiteralBase::SetIntegralAsS64(
     absl::Span<const int64_t> multi_index, int64_t value) {
   CHECK(LayoutUtil::IsDenseArray(shape()));
@@ -1225,7 +1256,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
         // Their sum is equal to the rank of the tensor.
         CHECK_EQ(rank, dimensions.size() + accum_indices->size());
 
-        auto brace_to_string = [&](std::string brace) -> string {
+        auto brace_to_string = [&](std::string brace) -> std::string {
           // Handle 1D tensor
           if (rank == 1) {
             return brace;
@@ -1263,9 +1294,9 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
         } else {
           pieces->push_back(brace_to_string("{"));
           for (int i = 0; i < dimensions[0]; ++i) {
-            std::vector<int64_t> cloned_indices(*accum_indices);
-            cloned_indices.push_back(i);
-            to_string_recursive(dimensions.subspan(1), &cloned_indices);
+            accum_indices->push_back(i);
+            to_string_recursive(dimensions.subspan(1), accum_indices);
+            accum_indices->pop_back();
             if (i < dimensions[0] - 1) {
               pieces->push_back(",");
               pieces->push_back(dimensions.size() > 1 ? "\n" : " ");
@@ -1311,8 +1342,18 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
     pieces->push_back("token");
   } else {
     CHECK(LayoutUtil::IsDenseArray(subshape));
-    DenseArrayToStringHelper(literal, shape_index, print_shape, print_layout,
-                             pieces);
+    if (literal.IsKnown(shape_index)) {
+      DenseArrayToStringHelper(literal, shape_index, print_shape, print_layout,
+                               pieces);
+    } else {
+      pieces->push_back(ShapeToString(print_layout, subshape));
+      pieces->push_back(" ");
+      if (literal.IsDetermined(shape_index)) {
+        pieces->push_back("unknown");
+      } else {
+        pieces->push_back("undetermined");
+      }
+    }
   }
 }
 
@@ -2142,6 +2183,14 @@ void CopyToRepeatedField(RepeatedFieldT* dest,
 
 }  // namespace
 
+void LiteralBase::Piece::set_array_value_state(ArrayValueState state) {
+  array_value_state_ = state;
+}
+
+LiteralBase::ArrayValueState LiteralBase::Piece::get_array_value_state() {
+  return array_value_state_;
+}
+
 void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
   *proto->mutable_shape() = subshape().ToProto();
   switch (subshape().element_type()) {
@@ -2169,28 +2218,28 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
       break;
     case U16:
-      *proto->mutable_u16s() = string(
+      *proto->mutable_u16s() = std::string(
           reinterpret_cast<const char*>(data<uint16_t>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_u16s());
       }
       break;
     case S16:
-      *proto->mutable_s16s() = string(
+      *proto->mutable_s16s() = std::string(
           reinterpret_cast<const char*>(data<int16_t>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_s16s());
       }
       break;
     case F16:
-      *proto->mutable_f16s() = string(
+      *proto->mutable_f16s() = std::string(
           reinterpret_cast<const char*>(data<half>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_f16s());
       }
       break;
     case BF16:
-      *proto->mutable_bf16s() = string(
+      *proto->mutable_bf16s() = std::string(
           reinterpret_cast<const char*>(data<bfloat16>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_bf16s());
@@ -2352,6 +2401,42 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   return Status::OK();
 }
 
+bool LiteralBase::Piece::IsKnown() const {
+  if (array_value_state_ != ArrayValueState::kKnown) {
+    return false;
+  }
+  if (subshape().IsTuple()) {
+    bool are_all_leaf_arrays_known = true;
+    ForEachSubpiece([&are_all_leaf_arrays_known](const ShapeIndex& index,
+                                                 const Piece& piece) {
+      if (!piece.subshape().IsArray()) {
+        return;
+      }
+      are_all_leaf_arrays_known &= piece.IsKnown();
+    });
+    return are_all_leaf_arrays_known;
+  }
+  return true;
+}
+
+bool LiteralBase::Piece::IsDetermined() const {
+  if (array_value_state_ == ArrayValueState::kUndetermined) {
+    return false;
+  }
+  if (subshape().IsTuple()) {
+    bool are_all_leaf_arrays_determined = true;
+    ForEachSubpiece([&are_all_leaf_arrays_determined](const ShapeIndex& index,
+                                                      const Piece& piece) {
+      if (!piece.subshape().IsArray()) {
+        return;
+      }
+      are_all_leaf_arrays_determined &= piece.IsDetermined();
+    });
+    return are_all_leaf_arrays_determined;
+  }
+  return true;
+}
+
 LiteralProto LiteralBase::ToProto() const {
   LiteralProto proto;
   root_piece().ForEachSubpiece(
@@ -2385,8 +2470,8 @@ std::string LiteralBase::GetR1U8AsString() const {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(shape().element_type(), U8);
-  return string(absl::bit_cast<const char*>(data<uint8_t>().data()),
-                ShapeUtil::ElementsIn(shape()));
+  return std::string(absl::bit_cast<const char*>(data<uint8_t>().data()),
+                     ShapeUtil::ElementsIn(shape()));
 }
 
 void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
@@ -2397,6 +2482,7 @@ void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
       << ShapeUtil::HumanString(src_piece->subshape())
       << "dest_piece has shape: "
       << ShapeUtil::HumanString(dest_piece->subshape());
+  dest_piece->set_array_value_state(src_piece->get_array_value_state());
   if (shape.IsTuple()) {
     for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       const Shape& subshape = shape.tuple_shapes(i);

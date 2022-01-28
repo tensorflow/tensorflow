@@ -63,12 +63,22 @@ struct RunHloModuleOptions {
   std::string input_literals_file;
 };
 
-// Reads a HloModule from 'hlo_filename', runs it on the platform with the name
+// Runs test_module on the platform with the name
 // 'test_platform_name', and if 'reference_platform_name' is non-empty, it also
 // runs it on the platform with the name 'reference_platform_name' and compares
 // the results. 'reference_module_modifier_hook' can be used to transform the
 // HloModule before it is run on the reference platform. This may be necessary
 // to match the numerics of the test platform.
+Status RunAndCompare(
+    std::unique_ptr<HloModule> test_module, HloRunnerInterface* test_runner,
+    HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
+    const RunHloModuleOptions& options,
+    xla::RunHloModuleIterationLiterals* iteration_literals_proto = nullptr,
+    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
+        reference_module_modifier_hook = {},
+    std::function<void(HloModuleConfig*)> config_modifier_hook = {});
+
+// Same as above but reads a HloModule from 'hlo_filename'.
 Status RunAndCompare(
     const std::string& hlo_filename, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
@@ -77,7 +87,6 @@ Status RunAndCompare(
     std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
         reference_module_modifier_hook = {},
     std::function<void(HloModuleConfig*)> config_modifier_hook = {});
-
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TOOLS_RUN_HLO_MODULE_H_

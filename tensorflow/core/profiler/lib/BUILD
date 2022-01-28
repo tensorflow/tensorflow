@@ -42,11 +42,14 @@ cc_library(
     hdrs = ["profiler_session.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core:lib",
-    ] + if_static([
+        "//tensorflow/core/platform",
+    ] + if_not_android([
+        ":profiler_interface",
+        ":profiler_lock",
+    ]) + if_static([
         ":profiler_session_impl",
     ]),
 )
@@ -65,13 +68,13 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
-        ":profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "@com_google_absl//absl/memory",
-        "//tensorflow/core:protos_all_cc",
     ] + if_not_android([
+        ":profiler_interface",
         ":profiler_factory",
+        ":profiler_collection",
         ":profiler_lock",
         "//tensorflow/core/profiler/convert:post_process_single_host_xplane",
         "//tensorflow/core/profiler/utils:time_utils",
@@ -101,6 +104,7 @@ cc_library(
         "//tensorflow/core/profiler:__pkg__",
     ],
     deps = [
+        ":profiler_controller",
         ":profiler_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
@@ -127,9 +131,34 @@ cc_library(
     name = "profiler_interface",
     hdrs = ["profiler_interface.h"],
     copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "profiler_collection",
+    srcs = ["profiler_collection.cc"],
+    hdrs = ["profiler_collection.h"],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "profiler_controller",
+    srcs = ["profiler_controller.cc"],
+    hdrs = ["profiler_controller.h"],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -268,6 +297,27 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "profiler_lock_test",
+    srcs = ["profiler_lock_test.cc"],
+    deps = [
+        ":profiler_lock",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "profiler_disabled_test",
+    srcs = ["profiler_disabled_test.cc"],
+    deps = [
+        ":profiler_lock",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

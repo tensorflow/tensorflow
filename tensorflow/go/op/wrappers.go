@@ -816,6 +816,26 @@ func AnonymousMultiDeviceIterator(scope *Scope, devices []string, output_types [
 	return op.Output(0), op.Output(1)
 }
 
+// A container for a multi device iterator resource.
+//
+// Returns A handle to a multi device iterator that can be passed to a
+// "MultiDeviceIteratorGetNextFromShard" op. In contrast to MultiDeviceIterator,
+// AnonymousIterator prevents resource sharing by name, and does not keep a
+// reference to the resource container.
+func AnonymousMultiDeviceIteratorV3(scope *Scope, devices []string, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"devices": devices, "output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "AnonymousMultiDeviceIteratorV3",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // AnonymousMutableDenseHashTableAttr is an optional argument to AnonymousMutableDenseHashTable.
 type AnonymousMutableDenseHashTableAttr func(optionalAttr)
 
@@ -1072,7 +1092,7 @@ func ArgMaxOutputType(value tf.DataType) ArgMaxAttr {
 //
 // Arguments:
 //
-//	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+//	dimension: int16, int32 or int64, must be in the range `[-rank(input), rank(input))`.
 // Describes which dimension of the input Tensor to reduce across. For vectors,
 // use dimension = 0.
 func ArgMax(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMaxAttr) (output tf.Output) {
@@ -12048,17 +12068,17 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) Dyn
 // the corresponding feature.
 //
 // Arguments:
-//	sample_indices_or_row_lengths: A list of rank 2 Tensors specifying the training example to which the
+//	sample_indices_or_row_splits: A list of rank 2 Tensors specifying the training example to which the
 // corresponding embedding_indices and aggregation_weights values belong.
 // If the size of its first dimension is 0, we assume each embedding_indices
 // belongs to a different sample. Both int32 and int64 are allowed and will
 // be converted to int32 internally.
 //
-// Or a list of rank 1 Tensors specifying the row lengths for splitting
+// Or a list of rank 1 Tensors specifying the row splits for splitting
 // embedding_indices and aggregation_weights into rows. It corresponds to
-// ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
+// ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. When
 // enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
-// the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+// the row splits is 1-D dense tensor. When empty, we assume a dense tensor is
 // passed to the op Both int32 and int64 are allowed and will be converted to
 // int32 internally.
 //	embedding_indices: A list of rank 1 Tensors, indices into the embedding
@@ -12075,7 +12095,7 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) Dyn
 // of TPU cores in the task on which the node is placed.
 //
 // Returns the created operation.
-func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_lengths []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, device_ordinal tf.Output, optional ...DynamicEnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
+func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_splits []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, device_ordinal tf.Output, optional ...DynamicEnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
@@ -12086,7 +12106,7 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices
 	opspec := tf.OpSpec{
 		Type: "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch",
 		Input: []tf.Input{
-			tf.OutputList(sample_indices_or_row_lengths), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override, device_ordinal,
+			tf.OutputList(sample_indices_or_row_splits), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override, device_ordinal,
 		},
 		Attrs: attrs,
 	}
@@ -13061,17 +13081,17 @@ func EnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) EnqueueTPU
 // the corresponding feature.
 //
 // Arguments:
-//	sample_indices_or_row_lengths: A list of rank 2 Tensors specifying the training example to which the
+//	sample_indices_or_row_splits: A list of rank 2 Tensors specifying the training example to which the
 // corresponding embedding_indices and aggregation_weights values belong.
 // If the size of its first dimension is 0, we assume each embedding_indices
 // belongs to a different sample. Both int32 and int64 are allowed and will
 // be converted to int32 internally.
 //
-// Or a list of rank 1 Tensors specifying the row lengths for splitting
+// Or a list of rank 1 Tensors specifying the row splits for splitting
 // embedding_indices and aggregation_weights into rows. It corresponds to
-// ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
+// ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. When
 // enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
-// the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+// the row splits is 1-D dense tensor. When empty, we assume a dense tensor is
 // passed to the op Both int32 and int64 are allowed and will be converted to
 // int32 internally.
 //	embedding_indices: A list of rank 1 Tensors, indices into the embedding
@@ -13086,7 +13106,7 @@ func EnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) EnqueueTPU
 // in TPUEmbeddingConfiguration is used, otherwise mode_override is used.
 //
 // Returns the created operation.
-func EnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_lengths []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, optional ...EnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
+func EnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_splits []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, optional ...EnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
@@ -13097,7 +13117,70 @@ func EnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row
 	opspec := tf.OpSpec{
 		Type: "EnqueueTPUEmbeddingArbitraryTensorBatch",
 		Input: []tf.Input{
-			tf.OutputList(sample_indices_or_row_lengths), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override,
+			tf.OutputList(sample_indices_or_row_splits), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// EnqueueTPUEmbeddingBatchAttr is an optional argument to EnqueueTPUEmbeddingBatch.
+type EnqueueTPUEmbeddingBatchAttr func(optionalAttr)
+
+// EnqueueTPUEmbeddingBatchDeviceOrdinal sets the optional device_ordinal attribute to value.
+//
+// value: The TPU device to use. This should be -1 when the Op
+// is running on a TPU device, and >= 0 when the Op is running on the CPU
+// device.
+// If not specified, defaults to -1
+func EnqueueTPUEmbeddingBatchDeviceOrdinal(value int64) EnqueueTPUEmbeddingBatchAttr {
+	return func(m optionalAttr) {
+		m["device_ordinal"] = value
+	}
+}
+
+// EnqueueTPUEmbeddingBatchCombiners sets the optional combiners attribute to value.
+//
+// value: A list of string scalars, one for each embedding table that specify
+// how to normalize the embedding activations after weighted summation.
+// Supported combiners are 'mean', 'sum', or 'sqrtn'. It is invalid to have
+// the sum of the weights be 0 for 'mean' or the sum of the squared weights be
+// 0 for 'sqrtn'. If combiners isn't passed, the default is to use 'sum' for
+// all tables.
+// If not specified, defaults to {}
+func EnqueueTPUEmbeddingBatchCombiners(value []string) EnqueueTPUEmbeddingBatchAttr {
+	return func(m optionalAttr) {
+		m["combiners"] = value
+	}
+}
+
+// An op that enqueues a list of input batch tensors to TPUEmbedding.
+//
+// An op that enqueues a list of input batch tensors to TPUEmbedding.
+//
+// Arguments:
+//	batch: A list of 1D tensors, one for each embedding table, containing the
+// batch inputs encoded as dist_belief.SparseFeatures protos. If the weight
+// field in the SparseFeatures proto is not populated for an ID, a weight of
+// 1.0 is assumed.
+//	mode_override: A string input that overrides the mode specified in the
+// TPUEmbeddingConfiguration. Supported values are {'unspecified', 'inference',
+// 'training', 'backward_pass_only'}. When set to 'unspecified', the mode set
+// in TPUEmbeddingConfiguration is used, otherwise mode_override is used.
+//
+// Returns the created operation.
+func EnqueueTPUEmbeddingBatch(scope *Scope, batch []tf.Output, mode_override tf.Output, optional ...EnqueueTPUEmbeddingBatchAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "EnqueueTPUEmbeddingBatch",
+		Input: []tf.Input{
+			tf.OutputList(batch), mode_override,
 		},
 		Attrs: attrs,
 	}
@@ -20144,6 +20227,77 @@ func ListDiff(scope *Scope, x tf.Output, y tf.Output, optional ...ListDiffAttr) 
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// An op that loads optimization parameters into embedding memory.
+//
+// An op that loads optimization parameters into embedding memory. Must be
+// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct embedding
+// table configuration. For example, this op is used to install parameters that are
+// loaded from a checkpoint before a training loop is executed.  For Adagrad,
+// auxiliary1 should be the accumulators. For SGD, all of the auxiliary* values
+// should be empty. For FTRL, auxiliary1 should be the accumulators and auxiliary2
+// should be the linear terms. For ADAM, auxiliary1 should be the momenta and
+// auxiliary2 should be the velocities.
+//
+// Arguments:
+//	parameters: A list of tensors, one for each embedding table,
+// containing the initial embedding table parameters to use in embedding
+// lookups.
+//	auxiliary1: A list of tensors, one for each embedding table, containing the
+// initial values of the first auxiliary optimization parameter to use in embedding
+// training loop updates. The shape of each entry is ignored (and thus can be
+// empty) for those tables whose optimization algorithms do not have at least one
+// auxiliary parameter.
+//	auxiliary2: A list of tensors, one for each embedding table, containing the
+// initial values of the second auxiliary optimization parameter to use in
+// embedding training loop updates. The shape of each entry is ignored (and thus
+// can be empty) for those tables whose optimization algorithms do not have at
+// least two auxiliary
+//	auxiliary3: A list of tensors, one for each embedding table, containing the
+// initial values of the third auxiliary optimization parameter to use in embedding
+// training loop updates. The shape of each entry is ignored (and thus can be
+// empty) for those tables whose optimization algorithms do not have three
+// auxiliary parameters.
+//	auxiliary4: A list of tensors, one for each embedding table, containing the
+// initial values of the second auxiliary optimization parameter to use in
+// embedding training loop updates. The shape of each entry is ignored (and thus
+// can be empty) for those tables whose optimization algorithms do not have at
+// least four auxiliary
+//	auxiliary5: A list of tensors, one for each embedding table, containing the
+// initial values of the third auxiliary optimization parameter to use in embedding
+// training loop updates. The shape of each entry is ignored (and thus can be
+// empty) for those tables whose optimization algorithms do not have five
+// auxiliary parameters.
+//	auxiliary6: A list of tensors, one for each embedding table, containing the
+// initial values of the second auxiliary optimization parameter to use in
+// embedding training loop updates. The shape of each entry is ignored (and thus
+// can be empty) for those tables whose optimization algorithms do not have at
+// least six auxiliary
+//	auxiliary7: A list of tensors, one for each embedding table, containing the
+// initial values of the third auxiliary optimization parameter to use in embedding
+// training loop updates. The shape of each entry is ignored (and thus can be
+// empty) for those tables whose optimization algorithms do not have sevan
+// auxiliary parameters.
+//	config: An TPUEmbeddingConfiguration proto describing the
+// table parameters being loaded, serialized to a string.
+//	num_shards: Number of shards into which the embedding tables are divided.
+//	shard_id: Identifier of shard for this operation.
+//
+// Returns the created operation.
+func LoadAllTPUEmbeddingParameters(scope *Scope, parameters []tf.Output, auxiliary1 []tf.Output, auxiliary2 []tf.Output, auxiliary3 []tf.Output, auxiliary4 []tf.Output, auxiliary5 []tf.Output, auxiliary6 []tf.Output, auxiliary7 []tf.Output, config string, num_shards int64, shard_id int64) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"config": config, "num_shards": num_shards, "shard_id": shard_id}
+	opspec := tf.OpSpec{
+		Type: "LoadAllTPUEmbeddingParameters",
+		Input: []tf.Input{
+			tf.OutputList(parameters), tf.OutputList(auxiliary1), tf.OutputList(auxiliary2), tf.OutputList(auxiliary3), tf.OutputList(auxiliary4), tf.OutputList(auxiliary5), tf.OutputList(auxiliary6), tf.OutputList(auxiliary7),
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
 }
 
 // LoadAndRemapMatrixAttr is an optional argument to LoadAndRemapMatrix.
@@ -37084,6 +37238,106 @@ func RestoreV2(scope *Scope, prefix tf.Output, tensor_names tf.Output, shape_and
 	return tensors
 }
 
+// An op that retrieves optimization parameters from embedding to host memory.
+//
+// An op that retrieves optimization parameters from embedding to host memory.
+// Must be preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+// embedding table configuration. For example, this op is used to retrieve updated
+// parameters before saving a checkpoint.  For Adagrad, auxiliary1 will contain the
+// accumulators after running this op. For SGD, all of the auxiliary* values will
+// be empty (0x0 tensors for that table). For FTRL, auxiliary1 will contain the
+// accumulators and auxiliary2 will contain the linear terms. For ADAM, auxiliary1
+// will contain the momenta and auxiliary2 will contain the velocities.
+//
+// Arguments:
+//	NumTables: The number of embedding tables.
+//	config: An TPUEmbeddingConfiguration proto describing the
+// table parameters being loaded, serialized to a string.
+//	num_shards: Number of shards into which the embedding tables are divided.
+//	shard_id: Identifier of shard for this operation.
+//
+// Returns:
+//	parameters:  A list of tensors, one for each embedding table, containing the
+// stored embedding table parameters.
+//	auxiliary1: A list of tensors, one for each embedding table, containing the
+// first auxiliary optimization parameter stored. Elements are
+// present in the list, but have zero size, for unused optimization parameters
+// (based on the algorithm in use for each table).
+//	auxiliary2: A list of tensors, one for each embedding table, containing the
+// second auxiliary optimization parameter stored. Elements are
+// present in the list, but have zero size, for unused optimization parameters
+// (based on the algorithm in use for each table).
+//	auxiliary3: A list of tensors, one for each embedding table, containing the
+// third auxiliary optimization parameter stored. Elements are
+// present in the list, but have zero size, for unused optimization parameters
+// (based on the algorithm in use for each table).
+//	auxiliary4: A list of tensors, one for each embedding table, containing the
+// fourth auxiliary optimization parameter stored. Elements are
+// present in the list, but have zero size, for unused optimization parameters
+// (based on the algorithm in use for each table).
+//	auxiliary5: A list of tensors, one for each embedding table, containing the
+// fifth auxiliary optimization parameter stored. Elements are
+// present in the list, but have zero size, for unused optimization parameters
+// (based on the algorithm in use for each table).
+//	auxiliary6: A list of tensors, one for each embedding table, containing the
+// six auxiliary optimization parameter stored. Elements are
+// present in the list, but have zero size, for unused optimization parameters
+// (based on the algorithm in use for each table).
+//	auxiliary7: A list of tensors, one for each embedding table, containing the
+// seventh auxiliary optimization parameter stored. Elements are
+// present in the list, but have zero size, for unused optimization parameters
+// (based on the algorithm in use for each table).
+func RetrieveAllTPUEmbeddingParameters(scope *Scope, NumTables int64, config string, num_shards int64, shard_id int64) (parameters []tf.Output, auxiliary1 []tf.Output, auxiliary2 []tf.Output, auxiliary3 []tf.Output, auxiliary4 []tf.Output, auxiliary5 []tf.Output, auxiliary6 []tf.Output, auxiliary7 []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"NumTables": NumTables, "config": config, "num_shards": num_shards, "shard_id": shard_id}
+	opspec := tf.OpSpec{
+		Type: "RetrieveAllTPUEmbeddingParameters",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if parameters, idx, err = makeOutputList(op, idx, "parameters"); err != nil {
+		scope.UpdateErr("RetrieveAllTPUEmbeddingParameters", err)
+		return
+	}
+	if auxiliary1, idx, err = makeOutputList(op, idx, "auxiliary1"); err != nil {
+		scope.UpdateErr("RetrieveAllTPUEmbeddingParameters", err)
+		return
+	}
+	if auxiliary2, idx, err = makeOutputList(op, idx, "auxiliary2"); err != nil {
+		scope.UpdateErr("RetrieveAllTPUEmbeddingParameters", err)
+		return
+	}
+	if auxiliary3, idx, err = makeOutputList(op, idx, "auxiliary3"); err != nil {
+		scope.UpdateErr("RetrieveAllTPUEmbeddingParameters", err)
+		return
+	}
+	if auxiliary4, idx, err = makeOutputList(op, idx, "auxiliary4"); err != nil {
+		scope.UpdateErr("RetrieveAllTPUEmbeddingParameters", err)
+		return
+	}
+	if auxiliary5, idx, err = makeOutputList(op, idx, "auxiliary5"); err != nil {
+		scope.UpdateErr("RetrieveAllTPUEmbeddingParameters", err)
+		return
+	}
+	if auxiliary6, idx, err = makeOutputList(op, idx, "auxiliary6"); err != nil {
+		scope.UpdateErr("RetrieveAllTPUEmbeddingParameters", err)
+		return
+	}
+	if auxiliary7, idx, err = makeOutputList(op, idx, "auxiliary7"); err != nil {
+		scope.UpdateErr("RetrieveAllTPUEmbeddingParameters", err)
+		return
+	}
+	return parameters, auxiliary1, auxiliary2, auxiliary3, auxiliary4, auxiliary5, auxiliary6, auxiliary7
+}
+
 // RetrieveTPUEmbeddingADAMParametersAttr is an optional argument to RetrieveTPUEmbeddingADAMParameters.
 type RetrieveTPUEmbeddingADAMParametersAttr func(optionalAttr)
 
@@ -39098,24 +39352,31 @@ func SdcaOptimizerV2(scope *Scope, sparse_example_indices []tf.Output, sparse_fe
 //
 // If the max is empty for a given segment ID `i`, `output[i] = 0`.
 //
+// Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+// and an error is thrown for indices that are not increasing. On GPU, this
+// does not throw an error for unsorted indices. On GPU, out-of-order indices
+// result in safe but unspecified behavior, which may include treating
+// out-of-order indices as the same as a smaller following index.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
 // </div>
 //
 // For example:
 //
-// ```
-// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-// tf.segment_max(c, tf.constant([0, 0, 1]))
-// # ==> [[4, 3, 3, 4],
-// #      [5, 6, 7, 8]]
-// ```
+// >>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// >>> tf.math.segment_max(c, tf.constant([0, 0, 1])).numpy()
+// array([[4, 3, 3, 4],
+//        [5, 6, 7, 8]], dtype=int32)
 //
 //
 // Arguments:
 //
 //	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 // first dimension.  Values should be sorted and can be repeated.
+//
+// Caution: The values are always validated to be sorted on CPU, never validated
+// on GPU.
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
@@ -39146,24 +39407,32 @@ func SegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 //
 // If the mean is empty for a given segment ID `i`, `output[i] = 0`.
 //
+// Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+// and an error is thrown for indices that are not increasing. On GPU, this
+// does not throw an error for unsorted indices. On GPU, out-of-order indices
+// result in safe but unspecified behavior, which may include treating
+// out-of-order indices as a smaller following index when computing the numerator
+// of the mean.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
 // </div>
 //
 // For example:
 //
-// ```
-// c = tf.constant([[1.0,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-// tf.segment_mean(c, tf.constant([0, 0, 1]))
-// # ==> [[2.5, 2.5, 2.5, 2.5],
-// #      [5, 6, 7, 8]]
-// ```
+// >>> c = tf.constant([[1.0,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// >>> tf.math.segment_mean(c, tf.constant([0, 0, 1])).numpy()
+// array([[2.5, 2.5, 2.5, 2.5],
+//        [5., 6., 7., 8.]], dtype=float32)
 //
 //
 // Arguments:
 //
 //	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 // first dimension.  Values should be sorted and can be repeated.
+//
+// Caution: The values are always validated to be sorted on CPU, never validated
+// on GPU.
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
@@ -39193,23 +39462,31 @@ func SegmentMean(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf
 //
 // If the min is empty for a given segment ID `i`, `output[i] = 0`.
 //
+// Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+// and an error is thrown for indices that are not increasing. On GPU, this
+// does not throw an error for unsorted indices. On GPU, out-of-order indices
+// result in safe but unspecified behavior, which may include treating
+// out-of-order indices as the same as a smaller following index.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
 // </div>
 //
 // For example:
 //
-// ```
-// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-// tf.segment_min(c, tf.constant([0, 0, 1]))
-// # ==> [[1, 2, 2, 1],
-// #      [5, 6, 7, 8]]
-// ```
+// >>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// >>> tf.math.segment_min(c, tf.constant([0, 0, 1])).numpy()
+// array([[1, 2, 2, 1],
+//        [5, 6, 7, 8]], dtype=int32)
+//
 //
 // Arguments:
 //
 //	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 // first dimension.  Values should be sorted and can be repeated.
+//
+// Caution: The values are always validated to be sorted on CPU, never validated
+// on GPU.
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
@@ -39239,24 +39516,31 @@ func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 //
 // If the product is empty for a given segment ID `i`, `output[i] = 1`.
 //
+// Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+// and an error is thrown for indices that are not increasing. On GPU, this
+// does not throw an error for unsorted indices. On GPU, out-of-order indices
+// result in safe but unspecified behavior, which may include treating
+// out-of-order indices as the same as a smaller following index.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
 // </div>
 //
 // For example:
 //
-// ```
-// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-// tf.segment_prod(c, tf.constant([0, 0, 1]))
-// # ==> [[4, 6, 6, 4],
-// #      [5, 6, 7, 8]]
-// ```
+// >>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// >>> tf.math.segment_prod(c, tf.constant([0, 0, 1])).numpy()
+// array([[4, 6, 6, 4],
+//        [5, 6, 7, 8]], dtype=int32)
 //
 //
 // Arguments:
 //
 //	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 // first dimension.  Values should be sorted and can be repeated.
+//
+// Caution: The values are always validated to be sorted on CPU, never validated
+// on GPU.
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
@@ -39286,24 +39570,31 @@ func SegmentProd(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf
 //
 // If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 //
+// Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+// and an error is thrown for indices that are not increasing. On GPU, this
+// does not throw an error for unsorted indices. On GPU, out-of-order indices
+// result in safe but unspecified behavior, which may include treating
+// out-of-order indices as the same as a smaller following index.
+//
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/SegmentSum.png" alt>
 // </div>
 //
 // For example:
 //
-// ```
-// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-// tf.math.segment_sum(c, tf.constant([0, 0, 1]))
-// # ==> [[5, 5, 5, 5],
-// #      [5, 6, 7, 8]]
-// ```
+// >>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// >>> tf.math.segment_sum(c, tf.constant([0, 0, 1])).numpy()
+// array([[5, 5, 5, 5],
+//        [5, 6, 7, 8]], dtype=int32)
 //
 //
 // Arguments:
 //
 //	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 // first dimension.  Values should be sorted and can be repeated.
+//
+// Caution: The values are always validated to be sorted on CPU, never validated
+// on GPU.
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.

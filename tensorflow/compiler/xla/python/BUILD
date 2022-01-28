@@ -196,8 +196,28 @@ cc_library(
         ":python_ref_manager",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "pprof_profile_builder",
+    srcs = ["pprof_profile_builder.cc"],
+    hdrs = ["pprof_profile_builder.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/profiler:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@pybind11",
     ],
 )
@@ -225,6 +245,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
         ":traceback",
@@ -244,7 +265,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python/lib/core:numpy_lib",
         "@com_google_absl//absl/algorithm:container",
@@ -586,6 +606,7 @@ pybind_extension(
         ":mlir",
         ":ops",
         ":pmap_lib",
+        ":pprof_profile_builder",
         ":profiler",
         ":py_client",
         ":pytree",

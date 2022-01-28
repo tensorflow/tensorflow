@@ -18,12 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -42,12 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
 
@@ -630,7 +627,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return IsScalar(shape) && shape.element_type() == element_type;
 }
 
-/* static */ string ShapeUtil::HumanString(const Shape& shape) {
+/* static */ std::string ShapeUtil::HumanString(const Shape& shape) {
   if (shape.IsTuple()) {
     std::string text = "(";
     const auto& tuple_shapes = shape.tuple_shapes();
@@ -662,7 +659,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       absl::StrJoin(dim_elements, ","), "]");
 }
 
-/* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
+/* static */ std::string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
   if (shape.IsTuple()) {
     std::string text = "(";
     const auto& tuple_shapes = shape.tuple_shapes();
@@ -692,7 +689,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return result;
 }
 
-/* static */ string ShapeUtil::HumanString(const ProgramShape& program_shape) {
+/* static */ std::string ShapeUtil::HumanString(
+    const ProgramShape& program_shape) {
   std::vector<std::string> parameters;
   const auto& shape_parameters = program_shape.parameters();
   parameters.reserve(shape_parameters.size());
@@ -1696,31 +1694,6 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     shape = DeleteDimension(dim, shape);
   }
   return shape;
-}
-
-/*static*/ size_t ShapeUtil::Hash(const Shape& shape) {
-  using tensorflow::hash;
-  using tensorflow::Hash64Combine;
-
-  size_t hash_value = hash<PrimitiveType>()(shape.element_type());
-
-  if (shape.tuple_shapes().empty()) {
-    for (int i = 0; i < shape.dimensions_size(); ++i) {
-      hash_value =
-          Hash64Combine(hash_value, hash<int64_t>()(shape.dimensions(i)));
-      hash_value = Hash64Combine(hash_value,
-                                 hash<bool>()(shape.is_dynamic_dimension(i)));
-    }
-
-    hash_value = Hash64Combine(hash_value, LayoutUtil::Hash(shape.layout()));
-  } else {
-    hash_value = 0;
-    for (const Shape& subshape : shape.tuple_shapes()) {
-      hash_value = Hash64Combine(hash_value, ShapeUtil::Hash(subshape));
-    }
-  }
-
-  return hash_value;
 }
 
 // Returns the indices of the first elements of all consecutive subarrays of the

@@ -110,10 +110,14 @@ class BaseLayerTest(keras_parameterized.TestCase):
       model.compile(rmsprop.RMSprop(0.001), loss='mse')
       model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
     except errors_impl.OperatorNotAllowedInGraphError as e:
-      if 'iterating over `tf.Tensor` is not allowed' in str(e):
+      if 'iterating over `tf.Tensor`' in str(e):
+        raised_error = True
+      elif 'Iterating over a symbolic `tf.Tensor`' in str(e):
         raised_error = True
     except TypeError as e:
       if 'attempting to use Python control flow' in str(e):
+        raised_error = True
+      elif 'Attempting to use Python control flow' in str(e):
         raised_error = True
     self.assertTrue(raised_error)
 

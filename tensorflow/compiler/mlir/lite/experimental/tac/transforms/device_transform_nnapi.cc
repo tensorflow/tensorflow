@@ -58,7 +58,7 @@ void DeviceTransformNNAPIPass::runOnFunction() {
   auto func = getFunction();
   auto* ctx = &getContext();
   NNAPIHardware nnapi_hardware;
-  OwningRewritePatternList patterns = nnapi_hardware.GetTransformations(ctx);
+  RewritePatternSet patterns = nnapi_hardware.GetTransformations(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

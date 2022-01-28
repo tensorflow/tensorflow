@@ -531,13 +531,13 @@ Usage:
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
-    Arg<TF_I32OrI64Tensor, [{int32 or int64, must be in the range `[-rank(input), rank(input))`.
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{int16, int32 or int64, must be in the range `[-rank(input), rank(input))`.
 Describes which dimension of the input Tensor to reduce across. For vectors,
 use dimension = 0.}]>:$dimension
   );
 
   let results = (outs
-    TF_I32OrI64Tensor:$output
+    TensorOf<[TF_Int16, TF_Int32, TF_Int64]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1685,6 +1685,10 @@ endian orderings will give different results.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr type = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 
   let hasCanonicalizer = 1;
 }
@@ -4103,13 +4107,13 @@ If the size of its first dimension is 0, we assume each embedding_indices
 belongs to a different sample. Both int32 and int64 are allowed and will
 be converted to int32 internally.
 
-Or a list of rank 1 Tensors specifying the row lengths for splitting
+Or a list of rank 1 Tensors specifying the row splits for splitting
 embedding_indices and aggregation_weights into rows. It corresponds to
-ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
+ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. When
 enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
-the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+the row splits is 1-D dense tensor. When empty, we assume a dense tensor is
 passed to the op Both int32 and int64 are allowed and will be converted to
-int32 internally.}]>:$sample_indices_or_row_lengths,
+int32 internally.}]>:$sample_indices_or_row_splits,
     Arg<Variadic<TF_I32OrI64Tensor>, [{A list of rank 1 Tensors, indices into the embedding
 tables. Both int32 and int64 are allowed and will be converted to
 int32 internally.}]>:$embedding_indices,
@@ -4135,6 +4139,10 @@ in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_
 
 def TF_EnqueueTPUEmbeddingBatchOp : TF_Op<"EnqueueTPUEmbeddingBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_TPUEmbeddingWriteEffect]> {
   let summary = [{
+An op that enqueues a list of input batch tensors to TPUEmbedding.
+  }];
+
+  let description = [{
 An op that enqueues a list of input batch tensors to TPUEmbedding.
   }];
 
@@ -5289,11 +5297,11 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 
   let arguments = (ins
     Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{A 4D Tensor for input data.}]>:$x,
-    Arg<TF_Float32Tensor, [{A 1D Tensor for scaling factor, to scale the normalized x.}]>:$scale,
-    Arg<TF_Float32Tensor, [{A 1D Tensor for offset, to shift to the normalized x.}]>:$offset,
-    Arg<TF_Float32Tensor, [{A 1D Tensor for population mean. Used for inference only;
+    Arg<TensorOf<[TF_Bfloat16, TF_Float32]>, [{A 1D Tensor for scaling factor, to scale the normalized x.}]>:$scale,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float32]>, [{A 1D Tensor for offset, to shift to the normalized x.}]>:$offset,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float32]>, [{A 1D Tensor for population mean. Used for inference only;
 must be empty for training.}]>:$mean,
-    Arg<TF_Float32Tensor, [{A 1D Tensor for population variance. Used for inference only;
+    Arg<TensorOf<[TF_Bfloat16, TF_Float32]>, [{A 1D Tensor for population variance. Used for inference only;
 must be empty for training.}]>:$variance,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
@@ -5304,15 +5312,15 @@ must be empty for training.}]>:$variance,
 
   let results = (outs
     Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{A 4D Tensor for output data.}]>:$y,
-    Res<TF_Float32Tensor, [{A 1D Tensor for the computed batch mean, to be used by TensorFlow
+    Res<TensorOf<[TF_Bfloat16, TF_Float32]>, [{A 1D Tensor for the computed batch mean, to be used by TensorFlow
 to compute the running mean.}]>:$batch_mean,
-    Res<TF_Float32Tensor, [{A 1D Tensor for the computed batch variance, to be used by
+    Res<TensorOf<[TF_Bfloat16, TF_Float32]>, [{A 1D Tensor for the computed batch variance, to be used by
 TensorFlow to compute the running variance.}]>:$batch_variance,
-    Res<TF_Float32Tensor, [{A 1D Tensor for the computed batch mean, to be reused
+    Res<TensorOf<[TF_Bfloat16, TF_Float32]>, [{A 1D Tensor for the computed batch mean, to be reused
 in the gradient computation.}]>:$reserve_space_1,
-    Res<TF_Float32Tensor, [{A 1D Tensor for the computed batch variance (inverted variance
+    Res<TensorOf<[TF_Bfloat16, TF_Float32]>, [{A 1D Tensor for the computed batch variance (inverted variance
 in the cuDNN case), to be reused in the gradient computation.}]>:$reserve_space_2,
-    Res<TF_Float32Tensor, [{A 1D Tensor for some intermediate results, to be reused in the gradient
+    Res<TensorOf<[TF_Bfloat16, TF_Float32]>, [{A 1D Tensor for some intermediate results, to be reused in the gradient
 computation for better efficiency.}]>:$reserve_space_3
   );
 
@@ -5493,7 +5501,7 @@ See also `tf.gather` and `tf.batch_gather`.
 
   let arguments = (ins
     Arg<TF_Tensor, [{The tensor from which to gather values.}]>:$params,
-    Arg<TF_I32OrI64Tensor, [{Index tensor.}]>:$indices
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{Index tensor.}]>:$indices
   );
 
   let results = (outs
@@ -5543,7 +5551,7 @@ See also `tf.batch_gather` and `tf.gather_nd`.
   let arguments = (ins
     Arg<TF_Tensor, [{The tensor from which to gather values. Must be at least rank
 `axis + 1`.}]>:$params,
-    Arg<TF_I32OrI64Tensor, [{Index tensor. Must be in range `[0, params.shape[axis])`.}]>:$indices,
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{Index tensor. Must be in range `[0, params.shape[axis])`.}]>:$indices,
     Arg<TF_I32OrI64Tensor, [{The axis in `params` to gather `indices` from. Defaults to the first
 dimension. Supports negative indexes.}]>:$axis,
 
@@ -10859,6 +10867,170 @@ tensor.}]>:$input_max,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_QuantizeV2Op : TF_Op<"QuantizeV2", [NoSideEffect]> {
+  let summary = [{
+Quantize the 'input' tensor of type float to 'output' tensor of type 'T'.
+  }];
+
+  let description = [{
+[min_range, max_range] are scalar floats that specify the range for
+the 'input' data. The 'mode' attribute controls exactly which calculations are
+used to convert the float values to their quantized equivalents.  The
+'round_mode' attribute controls which rounding tie-breaking algorithm is used
+when rounding float values to their quantized equivalents.
+
+In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
+
+```
+out[i] = (in[i] - min_range) * range(T) / (max_range - min_range)
+if T == qint8: out[i] -= (range(T) + 1) / 2.0
+```
+
+here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
+
+*MIN_COMBINED Mode Example*
+
+Assume the input is type float and has a possible range of [0.0, 6.0] and the
+output type is quint8 ([0, 255]). The min_range and max_range values should be
+specified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each
+value of the input by 255/6 and cast to quint8.
+
+If the output type was qint8 ([-128, 127]), the operation will additionally
+subtract each value by 128 prior to casting, so that the range of values aligns
+with the range of qint8.
+
+If the mode is 'MIN_FIRST', then this approach is used:
+
+```
+num_discrete_values = 1 << (# of bits in T)
+range_adjust = num_discrete_values / (num_discrete_values - 1)
+range = (range_max - range_min) * range_adjust
+range_scale = num_discrete_values / range
+quantized = round(input * range_scale) - round(range_min * range_scale) +
+  numeric_limits<T>::min()
+quantized = max(quantized, numeric_limits<T>::min())
+quantized = min(quantized, numeric_limits<T>::max())
+```
+
+The biggest difference between this and MIN_COMBINED is that the minimum range
+is rounded first, before it's subtracted from the rounded value. With
+MIN_COMBINED, a small bias is introduced where repeated iterations of quantizing
+and dequantizing will introduce a larger and larger error.
+
+*SCALED mode Example*
+
+`SCALED` mode matches the quantization approach used in
+`QuantizeAndDequantize{V2|V3}`.
+
+If the mode is `SCALED`, the quantization is performed by multiplying each
+input value by a scaling_factor.
+The scaling_factor is determined from `min_range` and `max_range` to be as large
+as possible such that the range from `min_range` to `max_range` is representable
+within values of type T.
+
+```c++
+
+  const int min_T = std::numeric_limits<T>::min();
+  const int max_T = std::numeric_limits<T>::max();
+  const float max_float = std::numeric_limits<float>::max();
+
+  const float scale_factor_from_min_side =
+      (min_T * min_range > 0) ? min_T / min_range : max_float;
+  const float scale_factor_from_max_side =
+      (max_T * max_range > 0) ? max_T / max_range : max_float;
+
+  const float scale_factor = std::min(scale_factor_from_min_side,
+                                      scale_factor_from_max_side);
+```
+
+We next use the scale_factor to adjust min_range and max_range as follows:
+
+```c++
+      min_range = min_T / scale_factor;
+      max_range = max_T / scale_factor;
+```
+
+
+e.g. if T = qint8, and initially min_range = -10, and max_range = 9, we would
+compare -128/-10.0 = 12.8 to 127/9.0 = 14.11, and set scaling_factor = 12.8
+In this case, min_range would remain -10, but max_range would be adjusted to
+127 / 12.8 = 9.921875
+
+So we will quantize input values in the range (-10, 9.921875) to (-128, 127).
+
+The input tensor can now be quantized by clipping values to the range
+`min_range` to `max_range`, then multiplying by scale_factor as follows:
+
+```c++
+result = round(min(max_range, max(min_range, input)) * scale_factor)
+```
+
+The adjusted `min_range` and `max_range` are returned as outputs 2 and 3 of
+this operation. These outputs should be used as the range for any further
+calculations.
+
+
+*narrow_range (bool) attribute*
+
+If true, we do not use the minimum quantized value.
+i.e. for int8 the quantized output, it would be restricted to the range
+-127..127 instead of the full -128..127 range.
+This is provided for compatibility with certain inference backends.
+(Only applies to SCALED mode)
+
+
+*axis (int) attribute*
+
+An optional `axis` attribute can specify a dimension index of the input tensor,
+such that quantization ranges will be calculated and applied separately for each
+slice of the tensor along that dimension. This is useful for per-channel
+quantization.
+
+If axis is specified, min_range and max_range
+
+if `axis`=None, per-tensor quantization is performed as normal.
+
+
+*ensure_minimum_range (float) attribute*
+
+Ensures the minimum quantization range is at least this value.
+The legacy default value for this is 0.01, but it is strongly suggested to
+set it to 0 for new uses.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$input,
+    Arg<TF_Float32Tensor, [{The minimum value of the quantization range. This value may be adjusted by the
+op depending on other parameters. The adjusted value is written to `output_min`.
+If the `axis` attribute is specified, this must be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.}]>:$min_range,
+    Arg<TF_Float32Tensor, [{The maximum value of the quantization range. This value may be adjusted by the
+op depending on other parameters. The adjusted value is written to `output_max`.
+If the `axis` attribute is specified, this must be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.}]>:$max_range,
+
+    DefaultValuedAttr<TF_AnyStrAttrOf<["MIN_COMBINED", "MIN_FIRST", "SCALED"]>, "\"MIN_COMBINED\"">:$mode,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["HALF_AWAY_FROM_ZERO", "HALF_TO_EVEN"]>, "\"HALF_AWAY_FROM_ZERO\"">:$round_mode,
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
+    DefaultValuedAttr<I64Attr, "-1">:$axis,
+    DefaultValuedAttr<F32Attr, "0.01f">:$ensure_minimum_range
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8]>, [{The quantized data produced from the float input.}]>:$output,
+    Res<TF_Float32Tensor, [{The final quantization range minimum, used to clip input values before scaling
+and rounding them to quantized values.
+If the `axis` attribute is specified, this will be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.}]>:$output_min,
+    Res<TF_Float32Tensor, [{The final quantization range maximum, used to clip input values before scaling
+and rounding them to quantized values.
+If the `axis` attribute is specified, this will be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.}]>:$output_max
+  );
+
+  TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_QueueDequeueV2Op : TF_Op<"QueueDequeueV2", []> {
   let summary = "Dequeues a tuple of one or more tensors from the given queue.";
 
@@ -14015,9 +14187,9 @@ On GPU, if an out of bound index is found, the index is ignored.
   }];
 
   let arguments = (ins
-    Arg<TF_I32OrI64Tensor, [{Tensor of indices.}]>:$indices,
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{Tensor of indices.}]>:$indices,
     Arg<TF_Tensor, [{Values to scatter into the output tensor.}]>:$updates,
-    Arg<TF_I32OrI64Tensor, [{1-D. The shape of the output tensor.}]>:$shape
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{1-D. The shape of the output tensor.}]>:$shape
   );
 
   let results = (outs
@@ -14043,24 +14215,31 @@ that `segment_ids[j] == i`.
 
 If the max is empty for a given segment ID `i`, `output[i] = 0`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_max(c, tf.constant([0, 0, 1]))
-# ==> [[4, 3, 3, 4],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_max(c, tf.constant([0, 0, 1])).numpy()
+array([[4, 3, 3, 4],
+       [5, 6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
-first dimension.  Values should be sorted and can be repeated.}]>:$segment_ids
+first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids
   );
 
   let results = (outs
@@ -14087,24 +14266,32 @@ values summed.
 
 If the mean is empty for a given segment ID `i`, `output[i] = 0`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as a smaller following index when computing the numerator
+of the mean.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1.0,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_mean(c, tf.constant([0, 0, 1]))
-# ==> [[2.5, 2.5, 2.5, 2.5],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1.0,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_mean(c, tf.constant([0, 0, 1])).numpy()
+array([[2.5, 2.5, 2.5, 2.5],
+       [5., 6., 7., 8.]], dtype=float32)
   }];
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
-first dimension.  Values should be sorted and can be repeated.}]>:$segment_ids
+first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids
   );
 
   let results = (outs
@@ -14130,24 +14317,31 @@ that `segment_ids[j] == i`.
 
 If the min is empty for a given segment ID `i`, `output[i] = 0`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_min(c, tf.constant([0, 0, 1]))
-# ==> [[1, 2, 2, 1],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_min(c, tf.constant([0, 0, 1])).numpy()
+array([[1, 2, 2, 1],
+       [5, 6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
-first dimension.  Values should be sorted and can be repeated.}]>:$segment_ids
+first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids
   );
 
   let results = (outs
@@ -14173,24 +14367,31 @@ that `segment_ids[j] == i`.
 
 If the product is empty for a given segment ID `i`, `output[i] = 1`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.segment_prod(c, tf.constant([0, 0, 1]))
-# ==> [[4, 6, 6, 4],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_prod(c, tf.constant([0, 0, 1])).numpy()
+array([[4, 6, 6, 4],
+       [5, 6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
-first dimension.  Values should be sorted and can be repeated.}]>:$segment_ids
+first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids
   );
 
   let results = (outs
@@ -14216,24 +14417,31 @@ that `segment_ids[j] == i`.
 
 If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 
+Caution: On CPU, values in `segment_ids` are always validated to be sorted,
+and an error is thrown for indices that are not increasing. On GPU, this
+does not throw an error for unsorted indices. On GPU, out-of-order indices
+result in safe but unspecified behavior, which may include treating
+out-of-order indices as the same as a smaller following index.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/SegmentSum.png" alt>
 </div>
 
 For example:
 
-```
-c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-tf.math.segment_sum(c, tf.constant([0, 0, 1]))
-# ==> [[5, 5, 5, 5],
-#      [5, 6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+>>> tf.math.segment_sum(c, tf.constant([0, 0, 1])).numpy()
+array([[5, 5, 5, 5],
+       [5, 6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor whose size is equal to the size of `data`'s
-first dimension.  Values should be sorted and can be repeated.}]>:$segment_ids
+first dimension.  Values should be sorted and can be repeated.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.}]>:$segment_ids
   );
 
   let results = (outs
@@ -16777,15 +16985,15 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
 
   let arguments = (ins
     TF_Tensor:$input,
-    Arg<TF_I32OrI64Tensor, [{`begin[k]` specifies the offset into the `k`th range specification.
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{`begin[k]` specifies the offset into the `k`th range specification.
 The exact dimension this corresponds to will be determined by context.
 Out-of-bounds values will be silently clamped. If the `k`th bit of
 `begin_mask` then `begin[k]` is ignored and the full range of the
 appropriate dimension is used instead. Negative values causes indexing
 to start from the highest element e.g. If `foo==[1,2,3]` then `foo[-1]==3`.}]>:$begin,
-    Arg<TF_I32OrI64Tensor, [{`end[i]` is like `begin` with the exception that `end_mask` is
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{`end[i]` is like `begin` with the exception that `end_mask` is
 used to determine full ranges.}]>:$end,
-    Arg<TF_I32OrI64Tensor, [{`strides[i]` specifies the increment in the `i`th specification
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{`strides[i]` specifies the increment in the `i`th specification
 after extracting a given element. Negative indices will reverse
 the original order. Out or range values are
 clamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`}]>:$strides,
@@ -17065,7 +17273,7 @@ Computes the gradient function for function f via backpropagation.
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [TF_TPUCompileExecuteSideEffect]> {
+def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [TF_MustExecute]> {
   let summary = "Returns the result of a TPU compilation.";
 
   let description = [{
@@ -17081,7 +17289,7 @@ occurred during compilation.
   );
 }
 
-def TF_TPUCompileSucceededAssertOp : TF_Op<"TPUCompileSucceededAssert", [TF_TPUCompileExecuteSideEffect]> {
+def TF_TPUCompileSucceededAssertOp : TF_Op<"TPUCompileSucceededAssert", [TF_MustExecute]> {
   let summary = "Asserts that compilation succeeded.";
 
   let description = [{
@@ -17377,7 +17585,7 @@ is taken.}]>:$count,
   );
 }
 
-def TF_TakeWhileDatasetOp : TF_Op<"TakeWhileDataset", []> {
+def TF_TakeWhileDatasetOp : TF_Op<"TakeWhileDataset", [NoSideEffect]> {
   let summary = [{
 Creates a dataset that stops iteration when predicate` is false.
   }];
@@ -18113,7 +18321,22 @@ On GPU, if an out of bound index is found, the index is ignored.
 }
 
 def TF_TensorScatterMaxOp : TF_Op<"TensorScatterMax", [NoSideEffect]> {
-  let summary = "";
+  let summary = [{
+Apply a sparse update to a tensor taking the element-wise maximum.
+  }];
+
+  let description = [{
+Returns a new tensor copied from `tensor` whose values are element-wise maximum between
+tensor and updates according to the indices.
+
+>>> tensor = [0, 0, 0, 0, 0, 0, 0, 0] 
+>>> indices = [[1], [4], [5]]
+>>> updates = [1, -1, 1]
+>>> tf.tensor_scatter_nd_max(tensor, indices, updates).numpy()
+array([0, 1, 0, 0, 0, 1, 0, 0], dtype=int32)
+
+Refer to `tf.tensor_scatter_nd_update` for more details.
+  }];
 
   let arguments = (ins
     Arg<TF_Tensor, [{Tensor to update.}]>:$tensor,
@@ -18275,7 +18498,7 @@ https://www.tensorflow.org/api_docs/python/tf/tensor_scatter_nd_update) function
 
   let arguments = (ins
     Arg<TF_Tensor, [{Tensor to copy/update.}]>:$tensor,
-    Arg<TF_I32OrI64Tensor, [{Index tensor.}]>:$indices,
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{Index tensor.}]>:$indices,
     Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates
   );
 
@@ -18761,23 +18984,32 @@ possible value for the specific numeric type,
 If the given segment ID `i` is negative, then the corresponding value is
 dropped, and will not be included in the result.
 
+Caution: On CPU, values in `segment_ids` are always validated to be less than
+`num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+result in safe but unspecified behavior, which may include ignoring
+out-of-bound indices or outputting a tensor with a 0 stored in the first
+dimension of its shape if `num_segments` is 0.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentMax.png" alt>
 </div>
 
 For example:
 
-``` python
-c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-tf.unsorted_segment_max(c, tf.constant([0, 1, 0]), num_segments=2)
-# ==> [[ 4,  3, 3, 4],
-#       [5,  6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+>>> tf.math.unsorted_segment_max(c, tf.constant([0, 1, 0]), num_segments=2).numpy()
+array([[4, 3, 3, 4],
+       [5,  6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$data,
-    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be in range on CPU, never validated
+on GPU.}]>:$segment_ids,
     TF_I32OrI64Tensor:$num_segments
   );
 
@@ -18814,20 +19046,29 @@ possible value for the specific numeric type,
 
 For example:
 
-``` python
-c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
-# ==> [[ 1,  2, 2, 1],
-#       [5,  6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+>>> tf.math.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2).numpy()
+array([[1, 2, 2, 1],
+       [5, 6, 7, 8]], dtype=int32)
 
 If the given segment ID `i` is negative, then the corresponding value is
 dropped, and will not be included in the result.
+
+Caution: On CPU, values in `segment_ids` are always validated to be less than
+`num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+result in safe but unspecified behavior, which may include ignoring
+out-of-bound indices or outputting a tensor with a 0 stored in the first
+dimension of its shape if `num_segments` is 0.
   }];
 
   let arguments = (ins
     TF_IntOrFpTensor:$data,
-    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be in range on CPU, never validated
+on GPU.}]>:$segment_ids,
     TF_I32OrI64Tensor:$num_segments
   );
 
@@ -18861,22 +19102,30 @@ entries belonging to a segment such that:
 
 For example:
 
-``` python
-c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-tf.unsorted_segment_prod(c, tf.constant([0, 1, 0]), num_segments=2)
-# ==> [[ 4,  6, 6, 4],
-#       [5,  6, 7, 8]]
-```
+>>> c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+>>> tf.math.unsorted_segment_prod(c, tf.constant([0, 1, 0]), num_segments=2).numpy()
+array([[4, 6, 6, 4],
+       [5, 6, 7, 8]], dtype=int32)
 
 If there is no entry for a given segment ID `i`, it outputs 1.
 
 If the given segment ID `i` is negative, then the corresponding value is
 dropped, and will not be included in the result.
+Caution: On CPU, values in `segment_ids` are always validated to be less than
+`num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+result in safe but unspecified behavior, which may include ignoring
+out-of-bound indices or outputting a tensor with a 0 stored in the first
+dimension of its shape if `num_segments` is 0.
   }];
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
-    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be in range on CPU, never validated
+on GPU.}]>:$segment_ids,
     TF_I32OrI64Tensor:$num_segments
   );
 
@@ -18913,21 +19162,30 @@ added to the sum of the segment.
 
 `num_segments` should equal the number of distinct segment IDs.
 
+Caution: On CPU, values in `segment_ids` are always validated to be less than
+`num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+result in safe but unspecified behavior, which may include ignoring
+out-of-bound indices or outputting a tensor with a 0 stored in the first
+dimension of its shape if `num_segments` is 0.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
 </div>
 
-``` python
-c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
-# ==> [[ 5, 5, 5, 5],
-#       [5, 6, 7, 8]]
-```
+>>> c = [[1,2,3,4], [5,6,7,8], [4,3,2,1]]
+>>> tf.math.unsorted_segment_sum(c, [0, 1, 0], num_segments=2).numpy()
+array([[5, 5, 5, 5],
+       [5, 6, 7, 8]], dtype=int32)
   }];
 
   let arguments = (ins
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$data,
-    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.}]>:$segment_ids,
+    Arg<TF_I32OrI64Tensor, [{A tensor whose shape is a prefix of `data.shape`.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be in range on CPU, never validated
+on GPU.}]>:$segment_ids,
     TF_I32OrI64Tensor:$num_segments
   );
 
@@ -19601,6 +19859,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#reducewindow .
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_XlaRemoveDynamicDimensionSizeOp : TF_Op<"XlaRemoveDynamicDimensionSize", [NoSideEffect]> {
@@ -19713,6 +19973,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#selectandscatter
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_XlaSelfAdjointEigOp : TF_Op<"XlaSelfAdjointEig", [NoSideEffect]> {
@@ -20311,7 +20573,7 @@ weights (DT_FLOAT) to apply to the output of the embedding lookup operation.}]>:
   TF_DerivedOperandSizeAttr NumTables = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF__TPUCompileMlirOp : TF_Op<"_TPUCompileMlir", [TF_TPUCompileExecuteSideEffect]> {
+def TF__TPUCompileMlirOp : TF_Op<"_TPUCompileMlir", [TF_MustExecute]> {
   let summary = [{
 Compiles a computations for execution on one or more TPU devices.
   }];
@@ -20346,7 +20608,7 @@ look up the program in the compilation cache.
   TF_DerivedResultSizeAttr num_computations = TF_DerivedResultSizeAttr<1>;
 }
 
-def TF__TPUCompileMlirPlaceholderProgramKeyOp : TF_Op<"_TPUCompileMlirPlaceholderProgramKey", [TF_TPUCompileExecuteSideEffect]> {
+def TF__TPUCompileMlirPlaceholderProgramKeyOp : TF_Op<"_TPUCompileMlirPlaceholderProgramKey", [TF_MustExecute]> {
   let summary = [{
 Placeholder program key (compilation cache key) of a _TPUCompileMlir `program`.
   }];

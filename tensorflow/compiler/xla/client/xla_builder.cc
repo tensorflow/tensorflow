@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
@@ -351,7 +350,7 @@ void XlaBuilder::IsConstantVisitor(const int64_t op_handle, int depth,
         // Set bound is considered constant -- the bound is used as the value.
         break;
       }
-      TF_FALLTHROUGH_INTENDED;
+      ABSL_FALLTHROUGH_INTENDED;
     case HloOpcode::kWhile:
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
@@ -2066,6 +2065,17 @@ XlaOp XlaBuilder::CustomCall(
     instr.set_custom_call_schedule(schedule);
     instr.set_custom_call_api_version(api_version);
     return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
+  });
+}
+
+XlaOp XlaBuilder::OptimizationBarrier(XlaOp operand) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    Shape shape = *operand_shape;
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kOptimizationBarrier,
+                          {operand});
   });
 }
 
@@ -4363,6 +4373,10 @@ XlaOp CustomCallWithConvDnums(
                              maybe_operand_shapes, has_side_effect,
                              output_operand_aliasing, literal, window, dnums,
                              schedule, api_version);
+}
+
+XlaOp OptimizationBarrier(XlaOp operand) {
+  return operand.builder()->OptimizationBarrier(operand);
 }
 
 XlaOp Complex(const XlaOp lhs, const XlaOp rhs,

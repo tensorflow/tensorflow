@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -351,7 +350,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
               results, executable->ExecuteOnStreams(service_run_options,
                                                     argument_buffer_slices));
         } else {
-          tensorflow::mutex mutex;
+          absl::Mutex mutex;
           std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
               options.num_replicas);
           {
@@ -364,7 +363,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
                 auto result = executable->ExecuteOnStream(
                     &service_run_options[i], argument_buffer_slices[i],
                     nullptr);
-                tensorflow::mutex_lock lock(mutex);
+                absl::MutexLock lock(&mutex);
                 thread_results[i] = std::move(result);
               });
             }
@@ -407,7 +406,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           -> StatusOr<std::vector<ScopedShapedBuffer>> {
         TF_RET_CHECK(options.use_threads);
         std::vector<ScopedShapedBuffer> results;
-        tensorflow::mutex mutex;
+        absl::Mutex mutex;
         std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
             options.num_replicas);
         {
@@ -422,7 +421,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             pool.Schedule([&, i] {
               auto result = executable_provider(i)->ExecuteOnStream(
                   &service_run_options[i], argument_buffer_slices[i], nullptr);
-              tensorflow::mutex_lock lock(mutex);
+              absl::MutexLock lock(&mutex);
               thread_results[i] = std::move(result);
             });
           }

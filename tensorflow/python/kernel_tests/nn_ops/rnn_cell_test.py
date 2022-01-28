@@ -237,9 +237,8 @@ class RNNTest(test.TestCase):
     cell = Plus1RNNCell()
     full_dropout_cell = rnn_cell.DropoutWrapper(
         cell, input_keep_prob=1e-6, seed=0)
-    (name, dep), = full_dropout_cell._checkpoint_dependencies
-    self.assertIs(dep, cell)
-    self.assertEqual("cell", name)
+    self.assertIn("cell", full_dropout_cell._trackable_children())
+    self.assertIs(full_dropout_cell._trackable_children()["cell"], cell)
     batch_size = 2
     input_size = 5
     max_length = 8
@@ -2584,8 +2583,8 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
               ],
               state_is_tuple=False)
           self.assertEqual(cell.dtype, None)
-          self.assertEqual("cell-0", cell._checkpoint_dependencies[0].name)
-          self.assertEqual("cell-1", cell._checkpoint_dependencies[1].name)
+          self.assertIn("cell-0", cell._trackable_children())
+          self.assertIn("cell-1", cell._trackable_children())
           cell.get_config()  # Should not throw an error
           g, out_m = cell(x, m)
           # Layer infers the input type.
@@ -2830,10 +2829,10 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
         bias_initializer=init_ops.constant_initializer(0.5))
     g, m_new = base_cell(x, m)
     wrapper_object = wrapper_type(base_cell)
-    (name, dep), = wrapper_object._checkpoint_dependencies
     wrapper_object.get_config()  # Should not throw an error
-    self.assertIs(dep, base_cell)
-    self.assertEqual("cell", name)
+
+    self.assertIn("cell", wrapper_object._trackable_children())
+    self.assertIs(wrapper_object._trackable_children()["cell"], base_cell)
 
     g_res, m_new_res = wrapper_object(x, m)
     self.evaluate([variables_lib.global_variables_initializer()])
@@ -2873,10 +2872,8 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
     m = array_ops.zeros([1, 3])
     cell = rnn_cell_impl.GRUCell(3)
     wrapped_cell = wrapper_type(cell, "/cpu:0")
-    (name, dep), = wrapped_cell._checkpoint_dependencies
     wrapped_cell.get_config()  # Should not throw an error
-    self.assertIs(dep, cell)
-    self.assertEqual("cell", name)
+    self.assertEqual(wrapped_cell._trackable_children()["cell"], cell)
 
     outputs, _ = wrapped_cell(x, m)
     self.assertIn("cpu:0", outputs.device.lower())

@@ -126,12 +126,13 @@ inline void ConvPerChannel(
 
 // Fixed-point per-channel-quantization convolution reference kernel.
 // 16-bit data and 8-bit filter
+template <typename AccumScalar>
 inline void ConvPerChannel(
     const ConvParams& params, const int32_t* output_multiplier,
     const int32_t* output_shift, const RuntimeShape& input_shape,
     const int16_t* input_data, const RuntimeShape& filter_shape,
     const int8_t* filter_data, const RuntimeShape& bias_shape,
-    const std::int64_t* bias_data, const RuntimeShape& output_shape,
+    const AccumScalar* bias_data, const RuntimeShape& output_shape,
     int16_t* output_data) {
   // Get parameters.
   const int stride_width = params.stride_width;
@@ -170,7 +171,7 @@ inline void ConvPerChannel(
       for (int out_x = 0; out_x < output_width; ++out_x) {
         const int in_x_origin = (out_x * stride_width) - pad_width;
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          std::int64_t acc = 0;
+          AccumScalar acc = 0;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             const int in_y = in_y_origin + dilation_height_factor * filter_y;
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {

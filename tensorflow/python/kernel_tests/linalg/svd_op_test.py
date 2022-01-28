@@ -165,7 +165,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
     tol = 3e-4 if is_single else 1e-12
     if test.is_gpu_available():
       # The gpu version returns results that are much less accurate.
-      tol *= 100
+      tol *= 200
     np.random.seed(42)
     x_np = np.random.uniform(
         low=-1.0, high=1.0, size=np.prod(shape_)).reshape(shape_).astype(dtype_)

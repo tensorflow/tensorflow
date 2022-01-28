@@ -311,10 +311,10 @@ def _get_tensorrt_rewriter_config(conversion_params,
       trt_utils.is_loaded_tensorrt_version_greater_equal(8, 0, 0))
 
   if not disable_non_trt_optimizers:
-    # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
-    # need to run constant folding again.
-    rewriter_config_with_trt.optimizers.extend(
-        ["constfold", "layout", "constfold"])
+    rewriter_config_with_trt.optimizers.extend([
+        "pruning", "debug_stripper", "layout", "dependency", "constfold",
+        "common_subgraph_elimination"
+    ])
 
   rewriter_config_with_trt.meta_optimizer_iterations = (
       rewriter_config_pb2.RewriterConfig.ONE)
@@ -900,7 +900,7 @@ def _extract_shapes_from_node(node, key):
 
 
 def _get_engine_dtypes_from_node(node, key):
-  return [dtype.str() for dtype in node.attr[key].list.type]
+  return [dtypes._TYPE_TO_STRING[dtype] for dtype in node.attr[key].list.type]
 
 
 @tf_export("experimental.tensorrt.Converter", v1=[])

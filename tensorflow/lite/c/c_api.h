@@ -147,8 +147,7 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetErrorReporter(
 // failure.
 //
 // * `model` must be a valid model instance. The caller retains ownership of the
-//   object, and can destroy it immediately after creating the interpreter; the
-//   interpreter will maintain its own reference to the underlying model data.
+//   object, and the model must outlive the interpreter.
 // * `optional_options` may be null. The caller retains ownership of the object,
 //   and can safely destroy it immediately after creating the interpreter.
 //

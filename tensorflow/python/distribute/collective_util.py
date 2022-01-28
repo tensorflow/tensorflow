@@ -159,6 +159,11 @@ class Options(object):
       merged.implementation = options.implementation
     return merged
 
+  def __str__(self):
+    return (f"Options(bytes_per_pack={self.bytes_per_pack},"
+            f"timeout_seconds={self.timeout_seconds}, "
+            f"implementation={self.implementation})")
+
 
 @tf_export("distribute.experimental.CollectiveHints")
 class Hints(object):

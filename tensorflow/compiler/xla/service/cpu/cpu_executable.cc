@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <set>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -45,8 +44,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 
@@ -134,7 +131,7 @@ static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
   // by the JITed code, msan has no way of knowing their memory was
   // initialized. Mark them initialized so that msan doesn't flag loads from
   // these buffers.
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(out->opaque(), buffer_size);
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(out->opaque(), buffer_size);
   return MaybeOwningDeviceMemory{std::move(out)};
 }
 

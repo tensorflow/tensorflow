@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -242,7 +241,7 @@ static bool HasAnyTfSavedModelArgAttr(FuncOp func) {
 static LogicalResult VerifySavedModelModule(
     ModuleOp module, TensorFlowSavedModelDialect *dialect) {
   auto exported_names_ident =
-      Identifier::get("tf_saved_model.exported_names", dialect->getContext());
+      StringAttr::get(dialect->getContext(), "tf_saved_model.exported_names");
   // Check that there are no duplicated exported_names.
   DenseMap<StringRef, Operation *> exported_name_to_op;
   for (auto &op : module) {
@@ -492,7 +491,7 @@ class OptimizeSessionInitializerPattern
 };
 
 void SessionInitializerOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+    RewritePatternSet &results, MLIRContext *context) {
   results.insert<OptimizeSessionInitializerPattern>(context);
 }
 

@@ -23,11 +23,13 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -42,10 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -106,7 +105,7 @@ using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
       &XLA_TimerStats##counter);
 
 struct TimerStats {
-  tensorflow::mutex stats_mutex;
+  absl::Mutex stats_mutex;
   double cumulative_secs ABSL_GUARDED_BY(stats_mutex) = 0;
   double max_secs ABSL_GUARDED_BY(stats_mutex) = 0;
   uint64_t times_called ABSL_GUARDED_BY(stats_mutex) = 0;
@@ -179,6 +178,16 @@ bool ContainersEqual(const Container1T& c1,
   absl::Span<const ElementType> c2{il};
   return absl::c_equal(c1, c2);
 }
+
+#if defined(__cpp_lib_to_underlying) && __cpp_lib_to_underlying >= 202102L
+using to_underlying = std::to_underlying;
+#else
+// Helper function which implements C++23's std::to_underlying.
+template <typename T>
+constexpr absl::underlying_type_t<T> to_underlying(T value) noexcept {
+  return static_cast<absl::underlying_type_t<T>>(value);
+}
+#endif
 
 // Performs a copy of count values from src to dest, using different strides for
 // source and destination. The source starting index is src_base, while the
@@ -400,12 +409,9 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
-inline T LsbMask(int width) {
+constexpr inline T LsbMask(int width) {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
-  CHECK_GE(width, 0) << "Unsupported width " << width;
-  CHECK_LE(width, std::numeric_limits<T>::digits)
-      << "Unsupported width " << width;
   return width == 0
              ? 0
              : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
@@ -413,7 +419,7 @@ inline T LsbMask(int width) {
 
 // Returns the value with every bit except the lower 'width' bits set to zero.
 template <typename T>
-inline T ClearUpperBits(T value, int width) {
+constexpr inline T ClearUpperBits(T value, int width) {
   return value & LsbMask<T>(width);
 }
 
@@ -510,6 +516,9 @@ struct ConvertedDimensionNumbers {
   DimensionVector transformed_from_dimensions;
   DimensionVector untransformed_from_dimensions;
   DimensionVector to_dimensions;
+  DimensionVector split_from_dimensions;
+  DimensionVector split_from_sizes;
+  DimensionVector split_to_dimensions;
 };
 
 // Convert and unsorted list of dimensions from one shapes dimension sizes to

@@ -108,9 +108,9 @@ func @conv_with_relu1_pattern1(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x4x2xf3
   %1 = "tf.Maximum"(%0, %cst_0) : (tensor<1x3x4x2xf32>, tensor<f32>) -> tensor<1x3x4x2xf32>
   %2 = "tf.Minimum"(%1, %cst_1) : (tensor<1x3x4x2xf32>, tensor<f32>) -> tensor<1x3x4x2xf32>
   return %2 : tensor<1x3x4x2xf32>
-// CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<1x1x3x2xf32>} : () -> tensor<1x1x3x2xf32>
-// CHECK: %[[CONST_1:.*]] = "tf.Const"() {value = dense<-1.000000e+00> : tensor<f32>} : () -> tensor<f32>
-// CHECK: %[[CONST_2:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<1x1x3x2xf32>} : () -> tensor<1x1x3x2xf32>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {value = dense<-1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
 // CHECK: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %[[CONST_0]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x3x4x3xf32>, tensor<1x1x3x2xf32>) -> tensor<1x3x4x2xf32>
 // CHECK: %[[MAXIMUM_0:.*]] = "tf.Maximum"(%[[CONV2D_0]], %[[CONST_1]]) : (tensor<1x3x4x2xf32>, tensor<f32>) -> tensor<1x3x4x2xf32>
 // CHECK: %[[MINIMUM_0:.*]] = "tf.Minimum"(%[[MAXIMUM_0]], %[[CONST_2]]) : (tensor<1x3x4x2xf32>, tensor<f32>) -> tensor<1x3x4x2xf32>
@@ -126,9 +126,9 @@ func @conv_with_relu1_pattern2(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x4x2xf3
   %1 = "tf.Minimum"(%0, %cst_1) : (tensor<1x3x4x2xf32>, tensor<f32>) -> tensor<1x3x4x2xf32>
   %2 = "tf.Maximum"(%1, %cst_0) : (tensor<1x3x4x2xf32>, tensor<f32>) -> tensor<1x3x4x2xf32>
   return %2 : tensor<1x3x4x2xf32>
-// CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<1x1x3x2xf32>} : () -> tensor<1x1x3x2xf32>
-// CHECK: %[[CONST_1:.*]] = "tf.Const"() {value = dense<-1.000000e+00> : tensor<f32>} : () -> tensor<f32>
-// CHECK: %[[CONST_2:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<1x1x3x2xf32>} : () -> tensor<1x1x3x2xf32>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {value = dense<-1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
 // CHECK: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %[[CONST_0]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x3x4x3xf32>, tensor<1x1x3x2xf32>) -> tensor<1x3x4x2xf32>
 // CHECK: %[[MINIMUM_0:.*]] = "tf.Minimum"(%[[CONV2D_0]], %[[CONST_2]]) : (tensor<1x3x4x2xf32>, tensor<f32>) -> tensor<1x3x4x2xf32>
 // CHECK: %[[MAXIMUM_0:.*]] = "tf.Maximum"(%[[MINIMUM_0]], %[[CONST_1]]) : (tensor<1x3x4x2xf32>, tensor<f32>) -> tensor<1x3x4x2xf32>
@@ -144,9 +144,9 @@ func @conv_with_relu1_invalid_pattern(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3
   %1 = "tf.Minimum"(%0, %cst_1) : (tensor<1x3x4x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
   %2 = "tf.Maximum"(%1, %cst_0) : (tensor<1x3x4x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
   return %2 : tensor<1x3x4x2xf32>
-// CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<1x1x3x2xf32>} : () -> tensor<1x1x3x2xf32>
-// CHECK: %[[CONST_1:.*]] = "tf.Const"() {value = dense<[-1.000000e+00, -3.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
-// CHECK: %[[CONST_2:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 3.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
+// CHECK-DAG: %[[CONST_0:.*]] = "tf.Const"() {value = dense<{{.*}}> : tensor<1x1x3x2xf32>} : () -> tensor<1x1x3x2xf32>
+// CHECK-DAG: %[[CONST_1:.*]] = "tf.Const"() {value = dense<[-1.000000e+00, -3.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
+// CHECK-DAG: %[[CONST_2:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 3.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
 // CHECK: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %[[CONST_0]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<1x3x4x3xf32>, tensor<1x1x3x2xf32>) -> tensor<1x3x4x2xf32>
 // CHECK: %[[CUSTOM_0:.*]] = "tfl.custom"(%[[CONV2D_0]], %[[CONST_2]]) {custom_code = "FlexMinimum", custom_option = opaque<"tfl", "0x074D696E696D756D001812074D696E696D756D1A001A002A070A01541202300132000002231B1414042801"> : tensor<43xi8>} : (tensor<1x3x4x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>
 // CHECK: %[[CUSTOM_1:.*]] = "tfl.custom"(%[[CUSTOM_0]], %[[CONST_1]]) {custom_code = "FlexMaximum", custom_option = opaque<"tfl", "0x074D6178696D756D001812074D6178696D756D1A001A002A070A01541202300132000002231B1414042801"> : tensor<43xi8>} : (tensor<1x3x4x2xf32>, tensor<2xf32>) -> tensor<1x3x4x2xf32>

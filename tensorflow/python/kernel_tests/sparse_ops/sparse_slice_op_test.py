@@ -85,7 +85,7 @@ class SparseSliceOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSliceMatrixRows(self):
-    with self.session(use_gpu=False):
+    with self.session():
       sp_input = self._SparseTensor_4x6()
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [2, 6])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [2, 0], [3, 7])
@@ -102,7 +102,7 @@ class SparseSliceOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSliceMatrixUnevenCols(self):
-    with self.session(use_gpu=False):
+    with self.session():
       sp_input = self._SparseTensor_5x7()
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [5, 3])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [0, 3], [5, 2])
@@ -144,7 +144,7 @@ class SparseSliceOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSliceMatrixUnevenRows(self):
-    with self.session(use_gpu=False):
+    with self.session():
       sp_input = self._SparseTensor_5x7()
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [3, 7])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [3, 0], [3, 7])
@@ -178,7 +178,7 @@ class SparseSliceOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSliceAllRows(self):
-    with self.session(use_gpu=False):
+    with self.session():
       sp_input = self._SparseTensor_4x6()
       sp_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [1, 6])
       sp_tensor1 = sparse_ops.sparse_slice(sp_input, [1, 0], [1, 6])
@@ -199,7 +199,7 @@ class SparseSliceOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSliceColumns(self):
-    with self.session(use_gpu=False):
+    with self.session():
       sp_input = self._SparseTensor_4x6()
       sparse_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [4, 2])
       sparse_tensor1 = sparse_ops.sparse_slice(sp_input, [0, 2], [5, 2])
@@ -220,7 +220,7 @@ class SparseSliceOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSliceAllColumns(self):
-    with self.session(use_gpu=False):
+    with self.session():
       sp_input = self._SparseTensor_4x6()
       sparse_tensor0 = sparse_ops.sparse_slice(sp_input, [0, 0], [4, 1])
       sparse_tensor1 = sparse_ops.sparse_slice(sp_input, [0, 1], [4, 1])
@@ -248,8 +248,7 @@ class SparseSliceOpTest(test.TestCase):
       self.assertAllEqual(sparse_tensor5.dense_shape, [4, 1])
 
   def testSliceEmpty(self):
-    # SparseSlice does not currently have a GPU kernel.
-    with test_util.force_cpu():
+    with test_util.use_gpu():
       sp_empty = self._SparseTensor_4x6_empty()
       sp_input = self._SparseTensor_4x6()
       sparse_tensor0 = sparse_ops.sparse_slice(sp_empty, [0, 0], [4, 1])

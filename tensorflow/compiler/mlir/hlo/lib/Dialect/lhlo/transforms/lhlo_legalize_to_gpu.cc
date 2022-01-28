@@ -52,7 +52,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      ReduceOp reduce_op, OpAdaptor adaptor,
+      ReduceOp reduce_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = reduce_op.getLoc();
     // Only support 1d reductions for now.
@@ -156,7 +156,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       mapping.map(reduce_op.body().getArgument(1), rhs);
       mapping.map(reduce_op.body().getArgument(2), accumulator);
       for (auto& nested : reduce_op.body().front().without_terminator()) {
-        auto clone = rewriter.clone(nested, mapping);
+        auto* clone = rewriter.clone(nested, mapping);
         for (auto pair : llvm::zip(nested.getResults(), clone->getResults())) {
           mapping.map(std::get<0>(pair), std::get<1>(pair));
         }
@@ -179,14 +179,14 @@ struct LhloLegalizeToGpuPass
                     memref::MemRefDialect, scf::SCFDialect>();
   }
 
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<arith::ArithmeticDialect, linalg::LinalgDialect,
                            memref::MemRefDialect, StandardOpsDialect,
                            gpu::GPUDialect, scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<ReduceOp>();
-    auto func = getFunction();
+    auto func = getOperation();
     patterns.insert<LhloReduceToGPULaunchConverter>(func.getContext());
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
@@ -196,7 +196,7 @@ struct LhloLegalizeToGpuPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createLegalizeToGpuPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass() {
   return std::make_unique<LhloLegalizeToGpuPass>();
 }
 

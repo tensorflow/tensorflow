@@ -19,6 +19,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <cmath>
+
 #include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 
@@ -190,6 +192,14 @@ struct Int64List {
   int64_t size;
 };
 
+struct FloatList {
+  union {
+    float_t* heap;  // owned
+    float_t inlined[TPU_C_API_MAX_INLINED];
+  };
+  int64_t size;
+};
+
 struct BoolList {
   union {
     bool* heap;  // owned
@@ -197,6 +207,16 @@ struct BoolList {
   };
   int64_t size;
 };
+
+struct FloatListRef {
+  float_t* ptr;  // not owned
+  int64_t size;
+};
+
+typedef struct TpuEmbeddingEngineParameters {
+  FloatListRef** parameters[8];
+  size_t num_tables;
+} TpuEmbeddingEngineParameters;
 
 typedef struct XLA_Tile {
   Int64List dimensions;

@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -483,7 +482,7 @@ StatusOr<std::string> Client::ExecutionStatsAsString(
         ", compute cycles: ", cycle_count, ", performance: ", gflops,
         "gflop/s");
   }
-  return string("[Execution Statistics] not available.");
+  return std::string("[Execution Statistics] not available.");
 }
 
 StatusOr<ChannelHandle> Client::CreateChannelHandleByType(

@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_LIVENESS_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_LIVENESS_ANALYSIS_H_
 
-#include <unordered_map>
-
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -39,7 +38,7 @@ class HloLivenessAnalysis {
  public:
   // Maps from an HloInstruction to its live/dead output shape indices.
   using HloIndexMap =
-      std::unordered_map<const HloInstruction*, ShapeTree<bool>>;
+      absl::flat_hash_map<const HloInstruction*, ShapeTree<bool>>;
 
   // Runs liveness analysis on 'module'. Returns HloLivenessAnalysis object
   // which exports liveness for each {HloInstruction, ShapeIndex} in 'module'.

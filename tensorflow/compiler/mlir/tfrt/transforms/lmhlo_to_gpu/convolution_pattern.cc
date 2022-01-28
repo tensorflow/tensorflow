@@ -315,9 +315,10 @@ Value CreateBuildConvOp(lmhlo_gpu::ConvForwardOp op, Value handle,
 }
 Value CreateRunConvolutionOp(lmhlo_gpu::ConvForwardOpAdaptor adaptor,
                              mlir::Location loc, Value handle, Value conv_plan,
-                             Value chain, ConversionPatternRewriter& rewriter) {
+                             Value chain, Value stream,
+                             ConversionPatternRewriter& rewriter) {
   return rewriter.create<tfrt::gpu::DnnRunConvolutionOp>(
-      loc, handle, conv_plan, adaptor.input(), adaptor.output(),
+      loc, handle, stream, conv_plan, adaptor.input(), adaptor.output(),
       adaptor.filter(), adaptor.scratch(), chain);
 }
 
@@ -337,9 +338,10 @@ Value CreateBuildConvOp(lmhlo_gpu::ConvBackwardInputOp op, Value handle,
 }
 Value CreateRunConvolutionOp(lmhlo_gpu::ConvBackwardInputOpAdaptor adaptor,
                              mlir::Location loc, Value handle, Value conv_plan,
-                             Value chain, ConversionPatternRewriter& rewriter) {
+                             Value chain, Value stream,
+                             ConversionPatternRewriter& rewriter) {
   return rewriter.create<tfrt::gpu::DnnRunConvolutionOp>(
-      loc, handle, conv_plan, adaptor.d_input(), adaptor.d_output(),
+      loc, handle, stream, conv_plan, adaptor.d_input(), adaptor.d_output(),
       adaptor.filter(), adaptor.scratch(), chain);
 }
 
@@ -359,9 +361,10 @@ Value CreateBuildConvOp(lmhlo_gpu::ConvBackwardFilterOp op, Value handle,
 }
 Value CreateRunConvolutionOp(lmhlo_gpu::ConvBackwardFilterOpAdaptor adaptor,
                              mlir::Location loc, Value handle, Value conv_plan,
-                             Value chain, ConversionPatternRewriter& rewriter) {
+                             Value chain, Value stream,
+                             ConversionPatternRewriter& rewriter) {
   return rewriter.create<tfrt::gpu::DnnRunConvolutionOp>(
-      loc, handle, conv_plan, adaptor.input(), adaptor.d_output(),
+      loc, handle, stream, conv_plan, adaptor.input(), adaptor.d_output(),
       adaptor.d_filter(), adaptor.scratch(), chain);
 }
 
@@ -389,9 +392,10 @@ Value CreateBuildConvOp(lmhlo_gpu::ConvForwardFusedOp op, Value handle,
 }
 Value CreateRunConvolutionOp(lmhlo_gpu::ConvForwardFusedOpAdaptor adaptor,
                              mlir::Location loc, Value handle, Value conv_plan,
-                             Value chain, ConversionPatternRewriter& rewriter) {
+                             Value chain, Value stream,
+                             ConversionPatternRewriter& rewriter) {
   return rewriter.create<tfrt::gpu::DnnRunFusedConvolutionOp>(
-      loc, handle, conv_plan, adaptor.input(), adaptor.output(),
+      loc, handle, stream, conv_plan, adaptor.input(), adaptor.output(),
       adaptor.filter(), adaptor.output(), adaptor.bias(), adaptor.scratch(),
       chain);
 }
@@ -424,10 +428,10 @@ Value CreateBuildConvOp(lmhlo_gpu::ConvForwardFusedSideInputOp op, Value handle,
 }
 Value CreateRunConvolutionOp(
     lmhlo_gpu::ConvForwardFusedSideInputOpAdaptor adaptor, mlir::Location loc,
-    Value handle, Value conv_plan, Value chain,
+    Value handle, Value conv_plan, Value chain, Value stream,
     ConversionPatternRewriter& rewriter) {
   return rewriter.create<tfrt::gpu::DnnRunFusedConvolutionOp>(
-      loc, handle, conv_plan, adaptor.input(), adaptor.output(),
+      loc, handle, stream, conv_plan, adaptor.input(), adaptor.output(),
       adaptor.filter(), adaptor.side_input(), adaptor.bias(), adaptor.scratch(),
       chain);
 }
@@ -487,8 +491,11 @@ struct ConvolutionRewritePattern
     }
 
     auto saved_point = rewriter.saveInsertionPoint();
+    Location loc = op->getLoc();
 
     // Create a function that returns the convolution plan.
+    mlir::SymbolTable symbol_table(
+        op->template getParentOfType<mlir::ModuleOp>());
     rewriter.setInsertionPoint(op->template getParentOfType<mlir::FuncOp>());
     mlir::Type handle_type = rewriter.getType<tfrt::gpu::DnnHandleType>();
     mlir::Type conv_plan_type =
@@ -496,24 +503,26 @@ struct ConvolutionRewritePattern
     std::string function_name =
         absl::StrCat("get_", op->getName().stripDialect().str(), "_plan");
     mlir::FuncOp conv_plan_func = rewriter.create<mlir::FuncOp>(
-        op.getLoc(), function_name,
+        loc, function_name,
         rewriter.getFunctionType(handle_type, conv_plan_type));
+    symbol_table.insert(conv_plan_func);
     rewriter.setInsertionPointToEnd(conv_plan_func.addEntryBlock());
     Value conv_plan = CreateBuildConvOp(op, conv_plan_func.getArgument(0),
                                         config, backend_type, rewriter);
-    rewriter.create<tfrt::compiler::ReturnOp>(op.getLoc(), conv_plan);
+    rewriter.create<tfrt::compiler::ReturnOp>(loc, conv_plan);
 
     // Once-initialize the convolution plan.
     rewriter.restoreInsertionPoint(saved_point);
-    Value handle = rewriter.create<tfrt::gpu::DnnCreateOp>(op.getLoc(), stream);
+    Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
+    Value handle = rewriter.create<tfrt::gpu::DnnCreateOp>(loc, context);
     auto once_op = rewriter.create<tfrt::compiler::OnceOp>(
-        op.getLoc(), conv_plan_func.getType().getResults(), handle,
+        loc, conv_plan_func.getType().getResults(), handle,
         conv_plan_func.getName());
 
-    Value out_chain = CreateRunConvolutionOp(
-        adaptor, op.getLoc(), handle, once_op.getResult(0), chain, rewriter);
+    chain = CreateRunConvolutionOp(adaptor, loc, handle, once_op.getResult(0),
+                                   chain, stream, rewriter);
     rewriter.eraseOp(op);
-    return out_chain;
+    return chain;
   }
 };
 

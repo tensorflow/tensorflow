@@ -86,18 +86,6 @@ message GetOrRegisterDatasetResponse {
 }
 
 // Next tag: 2
-message GetElementSpecRequest {
-  // The id of the dataset to get the element spec for.
-  int64 dataset_id = 1;
-}
-
-// Next tag: 2
-message GetElementSpecResponse {
-  // The retrieved element spec.
-  bytes element_spec = 1;
-}
-
-// Next tag: 2
 message GetDataServiceMetadataRequest {
   // The dataset id to get the data service dataset metadata.
   int64 dataset_id = 1;
@@ -107,6 +95,14 @@ message GetDataServiceMetadataRequest {
 message GetDataServiceMetadataResponse {
   // The retrieved data service dataset metadata.
   DataServiceMetadata metadata = 1;
+}
+
+// Next tag: 1
+message GetDataServiceConfigRequest {}
+
+// Next tag: 2
+message GetDataServiceConfigResponse {
+  DataServiceConfig config = 1;
 }
 
 // Next tag: 3
@@ -254,10 +250,11 @@ service DispatcherService {
   // Reports a list of all workers registered with the dispatcher.
   rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);
 
-  // Returns the element spec for the registered dataset.
-  rpc GetElementSpec(GetElementSpecRequest) returns (GetElementSpecResponse);
-
   // Returns the data service metadata for the registered dataset.
   rpc GetDataServiceMetadata(GetDataServiceMetadataRequest)
       returns (GetDataServiceMetadataResponse);
+
+  // Returns the config of a data service cluster.
+  rpc GetDataServiceConfig(GetDataServiceConfigRequest)
+      returns (GetDataServiceConfigResponse);
 }

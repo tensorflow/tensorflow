@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_features_nolayering_check_if_android_or_ios")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -49,9 +49,11 @@ cc_library(
     name = "op_kernel_runner",
     srcs = ["op_kernel_runner.cc"],
     hdrs = ["op_kernel_runner.h"],
+    features = tf_features_nolayering_check_if_android_or_ios(),
     visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/eager:__pkg__",
+        # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
+        # copybara:uncomment "//tensorflow/core/tfrt/eager:__pkg__",
+        "//tensorflow/lite/delegates/flex:__pkg__",
     ],
     deps = [
         "@com_google_absl//absl/container:inlined_vector",
@@ -59,13 +61,14 @@ cc_library(
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
         "//conditions:default": [
-            "//tensorflow/core/common_runtime:device_mgr",
-            "//tensorflow/core/common_runtime:function",
             "//tensorflow/core:framework",
+            "//tensorflow/core:core_cpu_base",
             "//tensorflow/core/framework:node_def_proto_cc",
             "//tensorflow/core/framework:op_def_proto_cc",
-            "//tensorflow/core/framework:tensor",
             "//tensorflow/core/platform:errors",
             "//tensorflow/core/platform:status",
         ],

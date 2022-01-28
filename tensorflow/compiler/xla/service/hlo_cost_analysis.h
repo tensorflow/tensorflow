@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COST_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COST_ANALYSIS_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -24,8 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -76,6 +75,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleFft(const HloInstruction* fft) override;
   Status HandleTriangularSolve(const HloInstruction* hlo) override;
   Status HandleCholesky(const HloInstruction* hlo) override;
+  Status HandleOptimizationBarrier(const HloInstruction* hlo) override;
   Status HandleAllGather(const HloInstruction* hlo) override;
   Status HandleAllGatherStart(const HloInstruction* hlo) override;
   Status HandleAllGatherDone(const HloInstruction* hlo) override;
@@ -203,7 +203,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
                              const DotDimensionNumbers& dnums);
 
  protected:
-  typedef std::unordered_map<const HloInstruction*, Properties> HloToProperties;
+  typedef absl::flat_hash_map<const HloInstruction*, Properties>
+      HloToProperties;
 
   // An FMA counts as two floating point operations in these analyzes.
   static constexpr int64_t kFmaFlops = 2;
@@ -273,7 +274,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // second. Is empty if no rates have been set.
   Properties per_second_rates_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HloCostAnalysis);
+  HloCostAnalysis(const HloCostAnalysis&) = delete;
+  HloCostAnalysis& operator=(const HloCostAnalysis&) = delete;
 };
 
 }  // namespace xla

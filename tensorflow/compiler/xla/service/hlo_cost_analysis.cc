@@ -760,6 +760,11 @@ Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleOptimizationBarrier(
+    const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleAllGather(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }

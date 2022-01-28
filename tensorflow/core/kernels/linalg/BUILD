@@ -274,9 +274,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lu_op",
     prefix = "lu_op",
-    deps = if_cuda([
-        "//tensorflow/core/util:cuda_solvers",
+    deps = if_cuda_or_rocm([
         "//tensorflow/core/kernels:transpose_functor",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
     ]) + [
         "//third_party/eigen3",
         "//tensorflow/core:framework",

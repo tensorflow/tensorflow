@@ -22,9 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -59,7 +57,8 @@ class PlatformUtil {
       const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(PlatformUtil);
+  PlatformUtil(const PlatformUtil&) = delete;
+  PlatformUtil& operator=(const PlatformUtil&) = delete;
 };
 
 }  // namespace xla

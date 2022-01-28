@@ -31,8 +31,8 @@ struct InputTensorSpec {
 };
 
 // Benchmark arbitrary Tensorflow dialect MLIR function using inputs of given
-// type and shape by compiling it using TF CpuRt pipeline and the TFRT runtime.
-void RunCpurtBenchmark(::testing::benchmark::State& state,
+// type and shape by compiling it using TF JitRt pipeline and the TFRT runtime.
+void RunJitRtBenchmark(::testing::benchmark::State& state,
                        llvm::StringRef mlir_input,
                        llvm::StringRef function_name,
                        llvm::ArrayRef<InputTensorSpec> input_specs,
@@ -55,17 +55,17 @@ void RunEigenBenchmark(
 // TODO(ezhulenev): Benchmarking macro should generate unit tests to verify
 // that benchmarks at least do not crash with the specified inputs.
 
-#define BM_Cpurt(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
-  static void BM_cpurt_##NAME(::testing::benchmark::State& state) { \
-    RunCpurtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC);           \
+#define BM_Jitrt(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
+  static void BM_Jitrt_##NAME(::testing::benchmark::State& state) { \
+    RunJitRtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC);           \
   }                                                                 \
-  BENCHMARK(BM_cpurt_##NAME)->MeasureProcessCPUTime()
+  BENCHMARK(BM_Jitrt_##NAME)->MeasureProcessCPUTime()
 
-#define BM_CpurtV(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
-  static void BM_cpurtv_##NAME(::testing::benchmark::State& state) { \
-    RunCpurtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC, true);      \
+#define BM_JitrtV(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
+  static void BM_Jitrtv_##NAME(::testing::benchmark::State& state) { \
+    RunJitRtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC, true);      \
   }                                                                  \
-  BENCHMARK(BM_cpurtv_##NAME)->MeasureProcessCPUTime()
+  BENCHMARK(BM_Jitrtv_##NAME)->MeasureProcessCPUTime()
 
 #define BM_Tfrt(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
   static void BM_tfrt_##NAME(::testing::benchmark::State& state) { \

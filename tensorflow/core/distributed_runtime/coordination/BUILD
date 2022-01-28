@@ -7,6 +7,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_oss",
     "tf_cc_test",
     "tf_cuda_library",
 )
@@ -60,23 +61,23 @@ tf_cuda_library(
 tf_cc_test(
     name = "coordination_service_test",
     srcs = ["coordination_service_test.cc"],
+    tags = if_oss([
+        "manual",
+        "no_oss",
+    ]),  # b/169705709, no protobuf matchers in OSS.
     deps = [
         ":coordination_client",
         ":coordination_service",
         ":coordination_service_impl",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/compiler/xla/pjrt/distributed:protocol_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/common_runtime:device_factory",
-        "//tensorflow/core/common_runtime:device_mgr",
-        "//tensorflow/core/distributed_runtime:rpc_collective_executor_mgr",
-        "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:test_utils",
-        "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/synchronization",
     ],
@@ -90,10 +91,27 @@ tf_cuda_library(
         ":coordination_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:device_mgr",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test(
+    name = "coordination_service_agent_test",
+    srcs = ["coordination_service_agent_test.cc"],
+    deps = [
+        ":coordination_client",
+        ":coordination_service_agent",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/time",
     ],
 )
 

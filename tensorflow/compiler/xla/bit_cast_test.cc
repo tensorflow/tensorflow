@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/bit_cast.h"
 
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {

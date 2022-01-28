@@ -28,7 +28,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/saved_model:registration",
+        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/training/saving:saveable_object",
         "@six_archive//:six",
     ],

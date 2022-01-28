@@ -20,6 +20,7 @@ py_library(
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
         ":ragged_batch_gather_with_default_op",
+        ":ragged_check_ops",
         ":ragged_concat_ops",
         ":ragged_config",
         ":ragged_conversion_ops",
@@ -62,6 +63,16 @@ py_library(
         "//tensorflow/python:sort_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "ragged_check_ops",
+    srcs = ["ragged_check_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":ragged_tensor",
+        "//tensorflow/python:check_ops",
     ],
 )
 
@@ -233,6 +244,7 @@ py_library(
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
         ":ragged_batch_gather_with_default_op",
+        ":ragged_check_ops",
         ":ragged_concat_ops",
         ":ragged_config",  # fixdeps: keep
         ":ragged_conversion_ops",
@@ -534,6 +546,7 @@ py_test(
     name = "ragged_tensor_test",
     srcs = ["ragged_tensor_test.py"],
     python_version = "PY3",
+    shard_count = 8,
     srcs_version = "PY3",
     tags = [
         "no_windows",
@@ -1460,6 +1473,9 @@ cuda_py_test(
     name = "ragged_factory_ops_test",
     size = "small",
     srcs = ["ragged_factory_ops_test.py"],
+    tags = [
+        "no_gpu",  # TODO(b/213596871): times out
+    ],
     deps = [
         ":ragged_functional_ops",
         "//tensorflow/python:map_fn",

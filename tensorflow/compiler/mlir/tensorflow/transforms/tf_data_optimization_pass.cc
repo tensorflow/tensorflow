@@ -29,7 +29,7 @@ namespace {
 struct TFDataOptimization
     : public TFDataOptimizationPassBase<TFDataOptimization> {
   void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     mlir::TF::PopulateTFDataOptimizationPatterns(&getContext(), &patterns);
 
     (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));

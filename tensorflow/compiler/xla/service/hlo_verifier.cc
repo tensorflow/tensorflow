@@ -218,6 +218,11 @@ Status ShapeVerifier::HandleCholesky(HloInstruction* hlo) {
   return CheckShape(hlo, expected);
 }
 
+Status ShapeVerifier::HandleOptimizationBarrier(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(hlo, 1));
+  return CheckShape(hlo, hlo->operand(0)->shape());
+}
+
 // Checks that `hlo`'s set of ReplicaGroups:
 //
 //  - names each replica 0 through n-1 exactly once (where n is either number of
@@ -1032,7 +1037,7 @@ Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
 }
 
 Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
-  // HLO broadcast has no exact analog at the proto level so there is no
+  // HLO broadcast has no exact analog at the client level so there is no
   // ShapeInference method. Check the output shape explicitly.
   const Shape& operand_shape = broadcast->operand(0)->shape();
   // Check for mixed precision.

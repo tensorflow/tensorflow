@@ -18,7 +18,6 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Identifier.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/PassManager.h"
@@ -99,7 +98,7 @@ mlir::ArrayAttr CoreRTConverter::CreateOpAttrs(ArrayRef<NamedAttribute> attrs) {
 
 mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
     ArrayRef<NamedAttribute> attrs,
-    llvm::SmallVector<mlir::Identifier, 4> *func_attr_keys) {
+    llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys) {
   llvm::SmallVector<mlir::Attribute, 4> attr_array;
   for (auto key_and_value : attrs) {
     auto attr_key = key_and_value.getName();

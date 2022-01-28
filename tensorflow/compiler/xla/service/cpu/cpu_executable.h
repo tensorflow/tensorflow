@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -34,9 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
@@ -148,7 +145,8 @@ class CpuExecutable : public Executable {
   // Entry function name for the computation.
   const std::string entry_function_name_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CpuExecutable);
+  CpuExecutable(const CpuExecutable&) = delete;
+  CpuExecutable& operator=(const CpuExecutable&) = delete;
 };
 
 }  // namespace cpu

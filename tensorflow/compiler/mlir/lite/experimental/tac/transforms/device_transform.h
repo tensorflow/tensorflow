@@ -30,8 +30,8 @@ namespace tac {
 bool IsSupported(Operation* op, const std::string& hardware);
 
 // Return proper rewriter patterns for different hardwares.
-OwningRewritePatternList GetHardwareRewritePatterns(
-    MLIRContext* context, const std::string& hardware);
+RewritePatternSet GetHardwareRewritePatterns(MLIRContext* context,
+                                             const std::string& hardware);
 
 // Convert quantized ops to float, this will essentially insert dequantize &
 // quantize pair around the op.

@@ -32,7 +32,6 @@ py_strict_library(
         ":loader",
         ":main_op",
         ":method_name_updater",
-        ":registration",
         ":save",
         ":signature_constants",
         ":signature_def_utils",
@@ -41,6 +40,7 @@ py_strict_library(
         ":utils",
         "//tensorflow/python:util",
         "//tensorflow/python/saved_model/model_utils",
+        "//tensorflow/python/saved_model/registration",
     ],
 )
 
@@ -336,7 +336,6 @@ py_strict_library(
         ":builder",
         ":function_serialization",
         ":pywrap_saved_model",
-        ":registration",
         ":revived_types",
         ":save_context",
         ":save_options",
@@ -365,6 +364,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:functional_saver",
         "//tensorflow/python/training/saving:saveable_object_util",
@@ -409,7 +409,6 @@ py_library(
         ":loader",
         ":nested_structure_coder",
         ":pywrap_saved_model",
-        ":registration",
         ":revived_types",
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -431,6 +430,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking",
@@ -523,45 +523,6 @@ tf_py_test(
 )
 
 py_strict_library(
-    name = "registration",
-    srcs = [
-        "registration.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/util",
-    ],
-)
-
-tf_py_test(
-    name = "registration_test",
-    srcs = ["registration_test.py"],
-    deps = [
-        ":registration",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/tracking:base",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "registration_saving_test",
-    srcs = ["registration_saving_test.py"],
-    deps = [
-        ":registration",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:io_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/tracking",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_strict_library(
     name = "revived_types",
     srcs = [
         "revived_types.py",
@@ -620,6 +581,7 @@ py_strict_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:function_spec",
         "@absl_py//absl/logging",
     ],
 )

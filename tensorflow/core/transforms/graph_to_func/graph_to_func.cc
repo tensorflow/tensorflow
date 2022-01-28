@@ -59,14 +59,15 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
   }
   for (Value fetch : fetches) ret_types.push_back(fetch.getType());
   FunctionType func_type = builder.getFunctionType(arg_types, ret_types);
-  auto func_op = builder.create<GraphFuncOp>(graph.getLoc(), name, func_type,
+  auto loc = graph.getLoc();
+  auto func_op = builder.create<GraphFuncOp>(loc, name, func_type,
                                              /*generic=*/false);
   func_op.getRegion().takeBody(graph.getRegion());
   Block *body = func_op.getBody();
   llvm::SmallVector<Attribute> args_rets_attrs;
   for (Value feed : feeds) {
-    feed.replaceAllUsesWith(body->addArgument(feed.getType()));
-    body->addArgument(control_ty);
+    feed.replaceAllUsesWith(body->addArgument(feed.getType(), loc));
+    body->addArgument(control_ty, loc);
     llvm::SmallVector<NamedAttribute> arg_attrs;
     std::string slot = OpResultToSlotName(feed.cast<OpResult>());
     arg_attrs.push_back(
@@ -91,7 +92,7 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
   return_operands.reserve(fetches.size() + control_rets.size());
   for (Value fetch : fetches) return_operands.push_back(fetch);
   for (Value control_ret : control_rets) return_operands.push_back(control_ret);
-  body_builder.create<ReturnOp>(graph.getLoc(), return_operands);
+  body_builder.create<ReturnOp>(loc, return_operands);
   graph.erase();
   return Status::OK();
 }

@@ -93,9 +93,9 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
                      const HloModule& hlo_module,
                      const BufferAssignment& assignment,
                      llvm::Module* llvm_module,
-                     std::unordered_map<const HloInstruction*, int64_t>
+                     absl::flat_hash_map<const HloInstruction*, int64_t>
                          instruction_to_profile_idx,
-                     std::unordered_map<const HloComputation*, int64_t>
+                     absl::flat_hash_map<const HloComputation*, int64_t>
                          computation_to_profile_idx,
                      absl::flat_hash_map<const HloComputation*, bool>
                          computation_transitively_contains_custom_call,
@@ -2906,7 +2906,7 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
 template <typename T>
 llvm::Value* IrEmitter::GetProfileCounterCommon(
     const T& hlo,
-    const std::unordered_map<const T*, int64_t>& profile_index_map) {
+    const absl::flat_hash_map<const T*, int64_t>& profile_index_map) {
   auto it = profile_index_map.find(&hlo);
   if (it == profile_index_map.end()) {
     return nullptr;

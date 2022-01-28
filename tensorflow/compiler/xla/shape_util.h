@@ -19,9 +19,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 
+#include <functional>
 #include <initializer_list>
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
@@ -38,9 +40,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -782,9 +781,6 @@ class ShapeUtil {
               .ok());
   }
 
-  // Compute a hash for `shape`.
-  static size_t Hash(const Shape& shape);
-
   // About 0-2-1 transpose:
   //
   // If a shape can be viewed as three logical components 0-1-2 in the order of
@@ -859,7 +855,7 @@ class ShapeUtil {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
     }
 
-    tensorflow::mutex mu;
+    absl::Mutex mu;
     Status status;  // Guarded by mu
 
     while (n < rank) {
@@ -867,7 +863,7 @@ class ShapeUtil {
         pool->Schedule([indexes, &visitor_function, &mu, &status] {
           StatusOr<bool> result = visitor_function(indexes);
           if (!result.ok()) {
-            tensorflow::mutex_lock lock(mu);
+            absl::MutexLock lock(&mu);
             status = status.ok() ? result.status() : status;
           }
         });
@@ -893,7 +889,8 @@ class ShapeUtil {
     return status;
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);
+  ShapeUtil(const ShapeUtil&) = delete;
+  ShapeUtil& operator=(const ShapeUtil&) = delete;
 };
 
 }  // namespace xla

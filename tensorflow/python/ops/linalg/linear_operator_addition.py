@@ -16,8 +16,6 @@
 
 import abc
 
-import six
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -219,7 +217,7 @@ def _static_check_for_broadcastable_batch_shape(operators):
     batch_shape = array_ops.broadcast_static_shape(batch_shape, op.batch_shape)
 
 
-class _Hints(object):
+class _Hints:
   """Holds 'is_X' flags that every LinearOperator is initialized with."""
 
   def __init__(self,
@@ -236,8 +234,7 @@ class _Hints(object):
 ################################################################################
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _Adder(object):
+class _Adder(metaclass=abc.ABCMeta):
   """Abstract base class to add two operators.
 
   Each `Adder` acts independently, adding everything it can, paying no attention

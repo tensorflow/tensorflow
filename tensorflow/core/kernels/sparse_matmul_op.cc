@@ -67,7 +67,6 @@ using DSizes = Eigen::DSizes<Eigen::DenseIndex, 2>;
 
 // Two commonly used static dsizes. We use Eigen::type2index to allow as much
 // compile time optimization as possible.
-#ifdef EIGEN_HAS_INDEX_LIST
 inline Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<0>>
 dsizes_00() {
   return Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<0>>();
@@ -76,10 +75,6 @@ inline Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<0>>
 dsizes_10() {
   return Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<0>>();
 }
-#else
-inline DSizes dsizes_00() { return DSizes(0, 0); }
-inline DSizes dsizes_10() { return DSizes(1, 0); }
-#endif
 
 // Blocksizes
 // TODO(agarwal): compute these sizes based on cache sizes.

@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -51,7 +50,8 @@ class PackedLiteralReader {
   tensorflow::RandomAccessFile* file_;  // We own and close in our destructor
   uint64_t offset_;                     // Next file offset to read from
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PackedLiteralReader);
+  PackedLiteralReader(const PackedLiteralReader&) = delete;
+  PackedLiteralReader& operator=(const PackedLiteralReader&) = delete;
 };
 
 }  // namespace xla

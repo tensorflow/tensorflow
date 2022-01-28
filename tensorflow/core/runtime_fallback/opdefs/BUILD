@@ -89,6 +89,7 @@ cc_library(
     hdrs = ["tfrt_fallback_util.h"],
     visibility = [
         "//tensorflow/core/runtime_fallback:internal",
+        "//tensorflow/core/tfrt/graph_executor:__pkg__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
     ],
     deps = [

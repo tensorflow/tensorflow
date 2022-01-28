@@ -30,7 +30,6 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/bfloat16.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 

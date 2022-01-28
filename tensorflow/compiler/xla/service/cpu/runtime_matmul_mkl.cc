@@ -19,11 +19,10 @@ limitations under the License.
 #include "third_party/intel_mkl_ml/include/mkl_cblas.h"
 #include "third_party/intel_mkl_ml/include/mkl_service.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/core/platform/types.h"
 
 #define EIGEN_USE_THREADS
+#include "absl/base/dynamic_annotations.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
-#include "tensorflow/core/platform/dynamic_annotations.h"
 
 namespace {
 // BLAS GEMM API for 32-bit Matrix Multiplication.
@@ -72,7 +71,7 @@ void MatMulF64(const void* run_options_ptr, double* out, double* lhs,
 
 }  // namespace
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLMatMulF32(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLMatMulF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs, int64_t m,
     int64_t n, int64_t k, int32_t transpose_lhs, int32_t transpose_rhs) {
   const xla::ExecutableRunOptions* run_options =
@@ -87,7 +86,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLMatMulF32(
 }
 
 // BLAS GEMM API for 64-bit Matrix Multiplication
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLMatMulF64(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLMatMulF64(
     const void* run_options_ptr, double* out, double* lhs, double* rhs,
     int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
     int32_t transpose_rhs) {
@@ -102,7 +101,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_MKLMatMulF64(
   mkl_set_num_threads_local(prev_num_threads);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_MKLSingleThreadedMatMulF32(const void* run_options_ptr,
                                              float* out, float* lhs, float* rhs,
                                              int64_t m, int64_t n, int64_t k,
@@ -115,7 +114,7 @@ __xla_cpu_runtime_MKLSingleThreadedMatMulF32(const void* run_options_ptr,
   mkl_set_num_threads_local(prev_num_threads);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_MKLSingleThreadedMatMulF64(const void* run_options_ptr,
                                              double* out, double* lhs,
                                              double* rhs, int64_t m, int64_t n,

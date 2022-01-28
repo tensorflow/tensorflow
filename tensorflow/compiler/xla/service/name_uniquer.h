@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -80,7 +79,8 @@ class NameUniquer {
   // identifiers and generates new ones.
   absl::flat_hash_map<std::string, SequentialIdGenerator> generated_names_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NameUniquer);
+  NameUniquer(const NameUniquer&) = delete;
+  NameUniquer& operator=(const NameUniquer&) = delete;
 };
 
 }  // namespace xla

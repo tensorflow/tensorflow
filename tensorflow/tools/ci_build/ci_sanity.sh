@@ -457,6 +457,10 @@ do_bazel_deps_query() {
   # default in TF WORKSPACE file.
   local BUILD_TARGET="${BUILD_TARGET}"' - kind("android_*", //tensorflow/...)'
 
+  # TODO(pcloudy): Remove the following exclusion after upgrading to a Bazel
+  # which contains fix for https://github.com/bazelbuild/bazel/issues/14639
+  local BUILD_TARGET="${BUILD_TARGET}"' - //tensorflow/lite/experimental/acceleration/...'
+
   # We've set the flag noimplicit_deps as a workaround for
   # https://github.com/bazelbuild/bazel/issues/10544
   bazel query ${BAZEL_FLAGS} --noimplicit_deps -- "deps($BUILD_TARGET)" > /dev/null

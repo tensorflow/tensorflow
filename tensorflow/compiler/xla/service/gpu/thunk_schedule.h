@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <list>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"

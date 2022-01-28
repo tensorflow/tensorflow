@@ -28,6 +28,8 @@ cudaDataType_t MlirTypeToCudaDataType(mlir::Type type) {
     if (element_type.isF32()) return CUDA_C_32F;
     if (element_type.isF64()) return CUDA_C_64F;
   }
+  if (type.isSignlessInteger(/*width=*/8)) return CUDA_R_8I;
+  if (type.isSignlessInteger(/*width=*/32)) return CUDA_R_32I;
   llvm_unreachable("unsupported type");
 }
 
@@ -35,6 +37,7 @@ cublasComputeType_t MlirTypeToCublasComputeType(mlir::Type type) {
   if (type.isF16()) return CUBLAS_COMPUTE_16F;
   if (type.isF32()) return CUBLAS_COMPUTE_32F;
   if (type.isF64()) return CUBLAS_COMPUTE_64F;
+  if (type.isSignlessInteger(/*width=*/32)) return CUBLAS_COMPUTE_32I;
   llvm_unreachable("unsupported type");
 }
 
@@ -129,6 +132,14 @@ mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
       return builder.create<tfrt::compiler::ConstantComplexF64Op>(
           loc, value_real, value_imaginary);
     }
+  }
+  if (type.isSignlessInteger(/*width=*/32)) {
+    llvm::APSInt value_int;
+    bool is_exact = false;
+    value_real.convertToInteger(
+        value_int, llvm::RoundingMode::NearestTiesToEven, &is_exact);
+    return builder.create<tfrt::compiler::ConstantI32Op>(
+        loc, value_int.getExtValue());
   }
 
   llvm_unreachable("unsupported type");

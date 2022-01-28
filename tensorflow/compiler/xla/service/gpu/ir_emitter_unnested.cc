@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -69,11 +70,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
@@ -1222,38 +1223,6 @@ struct NamedValue {
   absl::string_view name;
 };
 
-// Verifies that the given batch norm is well formed for thunk emission. This
-// requires that all statistics operands (mean, stddev etc) are F32 types and
-// all the non-statistics operands need to match in shape, element type, and
-// layout (which maps to them having the same memref type).
-Status VerifyBatchNormForThunkEmission(
-    mlir::ArrayRef<NamedValue> statistics_operands,
-    mlir::ArrayRef<NamedValue> other_operands) {
-  for (const NamedValue& v : statistics_operands) {
-    // Note: MLIR verification will ensure that the operands of the batchnorm
-    // LHLO are valid memref types.
-    if (!v.value.getType().cast<mlir::MemRefType>().getElementType().isF32()) {
-      return Unimplemented("Operand %s of batch norm should have F32 type",
-                           v.name);
-    }
-  }
-  if (other_operands.empty()) {
-    return Status::OK();
-  }
-
-  mlir::Type first_type = other_operands.front().value.getType();
-  absl::string_view first_name = other_operands.front().name;
-
-  for (const NamedValue& v : other_operands.drop_front(1)) {
-    if (v.value.getType() != first_type) {
-      return Unimplemented("%s and %s for batch norm should have same types",
-                           v.name, first_name);
-    }
-  }
-
-  return Status::OK();
-}
-
 // Determine if we enable the row optimized codegen.  When we have a
 // fusion with only point-wise operations, scalar broadcasting and row
 // broadcasting, we can trigger a kernel that vectorize the row loads.
@@ -1329,141 +1298,6 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
 }
 }  // namespace
 
-Status IrEmitterUnnested::EmitBatchNormThunk(mlir::Operation* op) {
-  auto get_batch_norm_config = [](auto op, mlir::Value output) {
-    CudnnBatchNormConfig config;
-    config.output_shape = GetShape(output);
-    config.output_type = config.output_shape.element_type();
-    config.epsilon = op.epsilon().convertToFloat();
-    config.feature_index = op.feature_index();
-    return config;
-  };
-
-  // The statistics operands for batch norm operations need to be FP32 type.
-  // And the rest of the operands need match in shape, layout, and element type
-  // to match.
-  if (auto bn_train =
-          mlir::dyn_cast<mlir::lmhlo_gpu::BatchNormTrainingOp>(op)) {
-    TF_RETURN_IF_ERROR(VerifyBatchNormForThunkEmission(
-        /*statistics_operands=*/
-        {{bn_train.scale(), "scale"},
-         {bn_train.offset(), "offset"},
-         {bn_train.batch_mean(), "batch_mean"},
-         {bn_train.batch_stddev(), "batch_stddev"}},
-        /*other_operands=*/
-        {{bn_train.operand(), "operand"}, {bn_train.output(), "output"}}));
-    TF_ASSIGN_OR_RETURN(auto operand, GetAllocationSlice(bn_train.operand()));
-    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSlice(bn_train.scale()));
-    TF_ASSIGN_OR_RETURN(auto offset, GetAllocationSlice(bn_train.offset()));
-
-    // BatchNormTraining returns a tuple of three elements: data, calculated
-    // mean, and calculated 1/sqrt(variance + epsilon).
-    TF_ASSIGN_OR_RETURN(auto output_data,
-                        GetAllocationSlice(bn_train.output()));
-    TF_ASSIGN_OR_RETURN(auto output_mean,
-                        GetAllocationSlice(bn_train.batch_mean()));
-    TF_ASSIGN_OR_RETURN(auto output_inv_stddev,
-                        GetAllocationSlice(bn_train.batch_stddev()));
-
-    AddThunkToThunkSequence(
-        absl::make_unique<CudnnBatchNormForwardTrainingThunk>(
-            GetThunkInfo(op),
-            /*config=*/get_batch_norm_config(bn_train, bn_train.output()),
-            /*operand=*/operand,
-            /*scale=*/scale,
-            /*offset=*/offset,
-            /*output_data=*/output_data,
-            /*output_mean=*/output_mean,
-            /*output_inv_stddev=*/output_inv_stddev));
-    return Status::OK();
-  }
-
-  if (auto bn_grad = mlir::dyn_cast<mlir::lmhlo_gpu::BatchNormGradOp>(op)) {
-    TF_RETURN_IF_ERROR(VerifyBatchNormForThunkEmission(
-        /*statistics_operands=*/
-        {{bn_grad.scale(), "scale"},
-         {bn_grad.mean(), "mean"},
-         {bn_grad.stddev(), "stddev"},
-         {bn_grad.grad_scale(), "grad_scale"},
-         {bn_grad.grad_offset(), "grad_offset"}},
-        /*other_operands=*/
-        {{bn_grad.operand(), "operand"},
-         {bn_grad.grad_output(), "grad_output"},
-         {bn_grad.grad_operand(), "grad_operand"}}));
-
-    TF_ASSIGN_OR_RETURN(auto operand, GetAllocationSlice(bn_grad.operand()));
-    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSlice(bn_grad.scale()));
-    TF_ASSIGN_OR_RETURN(auto mean, GetAllocationSlice(bn_grad.mean()));
-    TF_ASSIGN_OR_RETURN(auto inv_stddev, GetAllocationSlice(bn_grad.stddev()));
-    TF_ASSIGN_OR_RETURN(auto grad_output,
-                        GetAllocationSlice(bn_grad.grad_output()));
-
-    // BatchNormGrad returns a tuple of three elements: grad_data, grad_scale,
-    // grad_offset.
-    TF_ASSIGN_OR_RETURN(auto output_grad_data,
-                        GetAllocationSlice(bn_grad.grad_operand()));
-    TF_ASSIGN_OR_RETURN(auto output_grad_scale,
-                        GetAllocationSlice(bn_grad.grad_scale()));
-    TF_ASSIGN_OR_RETURN(auto output_grad_offset,
-                        GetAllocationSlice(bn_grad.grad_offset()));
-
-    CudnnBatchNormConfig config;
-    config.output_shape = GetShape(bn_grad.grad_output());
-    config.output_type = config.output_shape.element_type();
-    config.epsilon = bn_grad.epsilon().convertToFloat();
-    config.feature_index = bn_grad.feature_index();
-
-    AddThunkToThunkSequence(absl::make_unique<CudnnBatchNormBackwardThunk>(
-        GetThunkInfo(op),
-        /*config=*/get_batch_norm_config(bn_grad, bn_grad.grad_output()),
-        /*operand=*/operand,
-        /*scale=*/scale,
-        /*mean=*/mean,
-        /*inv_stddev=*/inv_stddev,
-        /*grad_output=*/grad_output,
-        /*output_grad_data=*/output_grad_data,
-        /*output_grad_scale=*/output_grad_scale,
-        /*output_grad_offset=*/output_grad_offset));
-    return Status::OK();
-  }
-
-  if (auto bn_inference =
-          mlir::dyn_cast<mlir::lmhlo_gpu::BatchNormInferenceOp>(op)) {
-    TF_RETURN_IF_ERROR(
-        VerifyBatchNormForThunkEmission(/*statistics_operands=*/
-                                        {{bn_inference.scale(), "scale"},
-                                         {bn_inference.offset(), "offset"},
-                                         {bn_inference.mean(), "mean"},
-                                         {bn_inference.stddev(), "stddev"}},
-                                        /*other_operands=*/
-                                        {{bn_inference.operand(), "operand"},
-                                         {bn_inference.output(), "output"}}));
-
-    TF_ASSIGN_OR_RETURN(auto operand,
-                        GetAllocationSlice(bn_inference.operand()));
-    TF_ASSIGN_OR_RETURN(auto scale, GetAllocationSlice(bn_inference.scale()));
-    TF_ASSIGN_OR_RETURN(auto offset, GetAllocationSlice(bn_inference.offset()));
-    TF_ASSIGN_OR_RETURN(auto mean, GetAllocationSlice(bn_inference.mean()));
-    TF_ASSIGN_OR_RETURN(auto variance,
-                        GetAllocationSlice(bn_inference.stddev()));
-    TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(bn_inference.output()));
-
-    AddThunkToThunkSequence(absl::make_unique<
-                            CudnnBatchNormForwardInferenceThunk>(
-        GetThunkInfo(op),
-        /*config=*/get_batch_norm_config(bn_inference, bn_inference.output()),
-        /*operand=*/operand,
-        /*scale=*/scale,
-        /*offset=*/offset,
-        /*mean=*/mean,
-        /*variance=*/variance,
-        /*output=*/output));
-    return Status::OK();
-  }
-
-  return Unimplemented("Unsupported batch norm operation");
-}
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   auto cholesky_op = mlir::cast<mlir::lmhlo_gpu::CholeskyOp>(op);
@@ -1508,8 +1342,9 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   CholeskyOptions options;
   options.set_lower(cholesky_op.is_lower());
   thunks.push_back(absl::make_unique<CholeskyThunk>(
-      GetThunkInfo(op), options, a_buffer, workspace_buffer, info_buffer,
-      shape.element_type(), batch_size, n));
+      GetThunkInfo(op), options,
+      PtxOptsFromDebugOptions(hlo_module_config_.debug_options()), a_buffer,
+      workspace_buffer, info_buffer, shape.element_type(), batch_size, n));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {
@@ -1784,8 +1619,8 @@ static Status ProcessFusionForConversion(mlir::Region* region,
     }
   });
 
-  for (auto load : loads) {
-    auto arg = region->addArgument(load.getType());
+  for (auto& load : loads) {
+    auto arg = region->addArgument(load.getType(), region->getLoc());
     load.replaceAllUsesWith(arg);
     Shape shape = GetShape(load.getResult());
     operand_shapes->push_back(std::move(shape));
@@ -3029,8 +2864,14 @@ Status IrEmitterUnnested::EmitReplicaOrPartitionId(mlir::Operation* op) {
   auto casted = mlir::cast<OpT>(op);
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                       GetAllocationSlice(casted.getOperand()));
-  AddThunkToThunkSequence(
-      absl::make_unique<ThunkType>(GetThunkInfo(op), result_slice));
+  std::unique_ptr<Thunk> thunk;
+  if (IsBefThunkEnabled()) {
+    TF_ASSIGN_OR_RETURN(thunk,
+                        CreateBefThunk(GetThunkInfo(op), op, {result_slice}));
+  } else {
+    thunk = absl::make_unique<ThunkType>(GetThunkInfo(op), result_slice);
+  }
+  AddThunkToThunkSequence(std::move(thunk));
   return Status::OK();
 }
 
@@ -3256,7 +3097,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
   // plus the XLA temp buffer (if we have it).  We always include the temp
   // buffer because even if the kernel itself doesn't use it, a nested
   // subcomputation within the kernel (e.g. a kMap's computation) might.
-  std::unordered_set<const BufferAllocation*> buffers_needed;
+  absl::flat_hash_set<const BufferAllocation*> buffers_needed;
   for (const auto& slice : slices) {
     buffers_needed.insert(slice.buffer_slice.allocation());
   }
@@ -3290,7 +3131,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
 
   // Build a map from a BufferAllocation to the corresponding argument in our
   // kernel.
-  std::unordered_map<const BufferAllocation*, llvm::Value*> kernel_args;
+  absl::flat_hash_map<const BufferAllocation*, llvm::Value*> kernel_args;
   {
     auto arg_it = kernel->arg_begin();
     auto buffers_it = non_constant_buffers.begin();
@@ -4075,7 +3916,7 @@ llvm::Value* IrEmitterUnnested::GetOutputAddressForReduction(
                                               "output_element_address");
 }
 
-llvm::Value* IrEmitterUnnested::EmitBlockId(int64_t num_blocks,
+llvm::Value* IrEmitterUnnested::EmitBlockId(int32_t num_blocks,
                                             llvm::Type* index_ty) {
   llvm::Value* block_id = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kBlockIdx, {}, {}, &b_);
@@ -4311,15 +4152,21 @@ llvm::Value* IrEmitterUnnested::EmitThreadId(int64_t threads_per_block,
                           /*isSigned=*/true, "thread.id.x");
 }
 
-IrEmitterUnnested::ThreadIdInfo IrEmitterUnnested::EmitThreadIdInfo(
+StatusOr<IrEmitterUnnested::ThreadIdInfo> IrEmitterUnnested::EmitThreadIdInfo(
     const TilingScheme& tiling_scheme, llvm::Type* index_ty) {
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
   llvm::Value* thread_id_physical =
       EmitThreadId(tiling_scheme.GetNumThreadsPerBlockPhysical(), index_ty);
-  llvm::Value* block_id_physical =
-      EmitBlockId(tiling_scheme.GetNumberOfBlocksPhysical(), index_ty);
+  int64_t num_blocks = tiling_scheme.GetNumberOfBlocksPhysical();
+  if (num_blocks > (int64_t)std::numeric_limits<uint32_t>::max()) {
+    return FailedPrecondition(
+        "Number of physical blocks (%d) does not fit in an i32 in tiling "
+        "scheme: %s",
+        num_blocks, tiling_scheme.ToString());
+  }
+  llvm::Value* block_id_physical = EmitBlockId(num_blocks, index_ty);
 
   // Wait this will break coalescing.
   llvm::Value* thread_id_logical = b_.CreateURem(
@@ -4337,18 +4184,19 @@ IrEmitterUnnested::ThreadIdInfo IrEmitterUnnested::EmitThreadIdInfo(
   llvm::Value* block_exists = b_.CreateICmpULT(
       block_id_logical, constant(tiling_scheme.GetNumberOfBlocks()));
   llvm_ir::EmitEarlyReturn(block_exists, &b_);
-  return {thread_id_logical,
-          /*thread_id_x=*/
-          b_.CreateURem(thread_id_logical, num_threads_x_v, "thread_id.x"),
-          /*thread_id_y=*/
-          b_.CreateUDiv(thread_id_logical, num_threads_x_v, "thread_id.y"),
-          /*lane_id=*/
-          b_.CreateURem(thread_id_logical, constant(WarpSize()), "lane_id"),
-          /*block_id=*/block_id_logical,
-          /*scaling=*/scaling};
+  return {{thread_id_logical,
+           /*thread_id_x=*/
+           b_.CreateURem(thread_id_logical, num_threads_x_v, "thread_id.x"),
+           /*thread_id_y=*/
+           b_.CreateUDiv(thread_id_logical, num_threads_x_v, "thread_id.y"),
+           /*lane_id=*/
+           b_.CreateURem(thread_id_logical, constant(WarpSize()), "lane_id"),
+           /*block_id=*/block_id_logical,
+           /*scaling=*/scaling}};
 }
 
-IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
+StatusOr<IrEmitterUnnested::TilingKernelInfo>
+IrEmitterUnnested::EmitTilingKernel(
     const TilingScheme& tiling_scheme, llvm::Type* index_ty,
     const TileElementGenerator& tile_element_generator) {
   absl::Span<const int64_t> dims_in_elems = tiling_scheme.GetDimsInElems();
@@ -4357,7 +4205,8 @@ IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
     return llvm::ConstantInt::get(index_ty, c);
   };
 
-  ThreadIdInfo thread_id_info = EmitThreadIdInfo(tiling_scheme, index_ty);
+  TF_ASSIGN_OR_RETURN(ThreadIdInfo thread_id_info,
+                      EmitThreadIdInfo(tiling_scheme, index_ty));
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
 
@@ -4431,7 +4280,7 @@ IrEmitterUnnested::TilingKernelInfo IrEmitterUnnested::EmitTilingKernel(
             });
   }
 
-  return {tile_dimensions, tile_origin, thread_id_info};
+  return {{tile_dimensions, tile_origin, thread_id_info}};
 }
 
 llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
@@ -4586,7 +4435,8 @@ void IrEmitterUnnested::EmitHlo021Tile(
         }
       };
 
-  EmitTilingKernel(tiling_scheme, index_type, tile_generator);
+  TF_CHECK_OK(
+      EmitTilingKernel(tiling_scheme, index_type, tile_generator).status());
 }
 
 namespace {
@@ -5141,7 +4991,7 @@ void IrEmitterUnnested::GenerateElementForReducer(
   }
 }
 
-void IrEmitterUnnested::EmitIRForReduction(
+Status IrEmitterUnnested::EmitIRForReduction(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<HloInstruction* const> instr_index_group,
     HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
@@ -5200,13 +5050,15 @@ void IrEmitterUnnested::EmitIRForReduction(
             result_ir_arrays, input_index, reduction_info, extra_output_gens));
       };
 
-  TilingKernelInfo tiling_kernel_info = EmitTilingKernel(
-      tiling_scheme, index_ty,
-      [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
-          std::array<llvm::Value*, 3> tile_dimensions) {
-        EmitTile(codegen_state.GetTilingScheme(), index, thread_id_info,
-                 tile_dimensions, emit_reduction_element);
-      });
+  TF_ASSIGN_OR_RETURN(
+      TilingKernelInfo tiling_kernel_info,
+      EmitTilingKernel(
+          tiling_scheme, index_ty,
+          [&](const ThreadIdInfo& thread_id_info, const IrArray::Index& index,
+              std::array<llvm::Value*, 3> tile_dimensions) {
+            EmitTile(codegen_state.GetTilingScheme(), index, thread_id_info,
+                     tile_dimensions, emit_reduction_element);
+          }));
 
   KernelSupportLibrary ksl(&b_);
   for (const HloReduceInstruction* reduce : reductions) {
@@ -5224,6 +5076,8 @@ void IrEmitterUnnested::EmitIRForReduction(
       }
     }
   }
+
+  return Status::OK();
 }
 
 namespace {
@@ -5446,13 +5300,13 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
     llvm_ir::AddRangeMetadata(0, instr_index_groups.size(),
                               llvm::cast<llvm::Instruction>(raw_block_id_y));
 
-    ksl.If(StrCat("reduce-group-", i),
-           b_.CreateICmpEQ(raw_block_id_y, b_.getInt32(i)), [&] {
-             EmitIRForReduction(fusion, instr_index_groups[i],
-                                fused_computation, &fused_emitter,
-                                result_ir_arrays, reduction_codegen_info,
-                                input_shape);
-           });
+    TF_RETURN_IF_ERROR(ksl.IfWithStatus(
+        StrCat("reduce-group-", i),
+        b_.CreateICmpEQ(raw_block_id_y, b_.getInt32(i)), [&] {
+          return EmitIRForReduction(
+              fusion, instr_index_groups[i], fused_computation, &fused_emitter,
+              result_ir_arrays, reduction_codegen_info, input_shape);
+        }));
   }
 
   ThunkSequence thunks;
@@ -5637,12 +5491,6 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
                 mlir::lmhlo_gpu::ConvBackwardFilterOp,
                 mlir::lmhlo_gpu::ConvBackwardInputOp>(op)) {
     return EmitConvolutionThunk(op);
-  }
-
-  if (mlir::isa<mlir::lmhlo_gpu::BatchNormTrainingOp,
-                mlir::lmhlo_gpu::BatchNormInferenceOp,
-                mlir::lmhlo_gpu::BatchNormGradOp>(op)) {
-    return EmitBatchNormThunk(op);
   }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

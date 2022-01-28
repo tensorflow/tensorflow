@@ -33,27 +33,40 @@ limitations under the License.
 
 namespace {
 
-llvm::cl::OptionCategory saved_model_category("Saved Model options");
+llvm::cl::OptionCategory tfg_graph_transform_category(
+    "TFG graph transform options");
 
 // NOLINTNEXTLINE
 llvm::cl::opt<std::string> input_file(
-    llvm::cl::Positional, llvm::cl::desc("<Input saved model>"),
-    llvm::cl::value_desc("Full path to the input saved model"),
-    llvm::cl::cat(saved_model_category), llvm::cl::Required);
+    llvm::cl::Positional, llvm::cl::desc("<Input model>"),
+    llvm::cl::value_desc("Full path to the input model"),
+    llvm::cl::cat(tfg_graph_transform_category), llvm::cl::Required);
 
 // NOLINTNEXTLINE
 llvm::cl::opt<std::string> output_file(
-    "o", llvm::cl::desc("Output saved model"),
-    llvm::cl::value_desc("Full path to the output saved model"),
-    llvm::cl::cat(saved_model_category), llvm::cl::Required);
+    "o", llvm::cl::desc("Output model"),
+    llvm::cl::value_desc("Full path to the output model"),
+    llvm::cl::cat(tfg_graph_transform_category), llvm::cl::Required);
+
+enum class DataFormat { SavedModel = 0, GraphDef = 1 };
+
+// NOLINTNEXTLINE
+llvm::cl::opt<DataFormat> data_format(
+    "data_format",
+    llvm::cl::desc(
+        "Data format for both input and output, e.g., SavedModel or GraphDef"),
+    values(clEnumValN(DataFormat::SavedModel, "savedmodel",
+                      "SavedModel format"),
+           clEnumValN(DataFormat::GraphDef, "graphdef", "GraphDef format")),
+    llvm::cl::init(DataFormat::SavedModel),
+    llvm::cl::cat(tfg_graph_transform_category));
 
 // Validate CL options and returns false in case of an error.
 bool CheckCLParams() {
   if (input_file == output_file) {
     LOG(WARNING)
         << "Input and output files are set to the same location. "
-           "The resulted saved model protobuf will overwrite the original "
-           "one.\n";
+           "The resulted model protobuf will overwrite the original one.\n";
   }
   if (!tensorflow::Env::Default()->FileExists(input_file).ok()) {
     LOG(ERROR) << "Provided file or directory does not exist: '" << input_file
@@ -62,9 +75,9 @@ bool CheckCLParams() {
   }
 
   if (tensorflow::Env::Default()->IsDirectory(input_file).ok()) {
-    LOG(ERROR) << "Expected full path to the saved model protobuf file, given "
-                  "directory: '"
-               << input_file << "'\n";
+    LOG(ERROR)
+        << "Expected full path to the model protobuf file, given directory: '"
+        << input_file << "'\n";
     return false;
   }
 
@@ -104,6 +117,34 @@ tensorflow::Status RunOptimizationPasses(
   return diagnostics_handler.ConsumeStatus();
 }
 
+// Import model to the TFG MLIR module.
+tensorflow::StatusOr<mlir::OwningModuleRef> ImportModel(
+    DataFormat data_format, const std::string& input_file,
+    mlir::MLIRContext* mlir_context) {
+  switch (data_format) {
+    case DataFormat::SavedModel:
+      return mlir::tfg::graph_transforms::ImportSavedModel(mlir_context,
+                                                           input_file);
+    case DataFormat::GraphDef:
+      return mlir::tfg::graph_transforms::ImportGraphDef(mlir_context,
+                                                         input_file);
+  }
+}
+
+tensorflow::Status ExportTFGModule(mlir::ModuleOp moduleOp,
+                                   DataFormat data_format,
+                                   const std::string& input_file,
+                                   const std::string& output_file) {
+  switch (data_format) {
+    case DataFormat::SavedModel:
+      return mlir::tfg::graph_transforms::ExportTFGToSavedModel(
+          moduleOp, input_file, output_file);
+    case DataFormat::GraphDef:
+      return mlir::tfg::graph_transforms::ExportTFGToGraphDef(moduleOp,
+                                                              output_file);
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -112,8 +153,7 @@ int main(int argc, char** argv) {
   mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
   mlir::PassPipelineCLParser pass_pipeline("", "TFG passes to run");
-  llvm::cl::ParseCommandLineOptions(argc, argv,
-                                    "TFG SavedModel optimization tool\n");
+  llvm::cl::ParseCommandLineOptions(argc, argv, "TFG optimization tool\n");
 
   if (!CheckCLParams()) {
     LOG(QFATAL) << "Command line parameters are invalid";
@@ -123,11 +163,12 @@ int main(int argc, char** argv) {
   RegisterDialects(registry);
   mlir::MLIRContext context(registry);
 
-  // Import SavedModel to the TFG MLIR module.
+  // Import model to the TFG MLIR module.
   tensorflow::StatusOr<mlir::OwningModuleRef> module_ref_status =
-      mlir::tfg::graph_transforms::ImportSavedModel(&context, input_file);
+      ImportModel(data_format, input_file, &context);
+
   if (!module_ref_status.ok()) {
-    LOG(QFATAL) << "SavedModel import failed: "
+    LOG(QFATAL) << "Model import failed: "
                 << module_ref_status.status().ToString();
   }
   mlir::OwningModuleRef module_ref = std::move(module_ref_status.ValueOrDie());
@@ -140,10 +181,10 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << pass_pipeline_status.ToString() << "\n";
   }
 
-  // Export MLIR TFG module to the SavedModel.
+  // Export MLIR TFG module to the resulting model proto.
   tensorflow::Status export_status =
-      mlir::tfg::graph_transforms::ExportTFGToSavedModel(
-          *module_ref, input_file, output_file);
+      ExportTFGModule(*module_ref, data_format, input_file, output_file);
+
   if (!export_status.ok()) {
     LOG(QFATAL) << "Export of TFG module failed: " << export_status.ToString()
                 << "\n";

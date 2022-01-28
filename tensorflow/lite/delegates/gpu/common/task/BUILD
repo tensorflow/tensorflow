@@ -10,15 +10,17 @@ cc_library(
     srcs = ["arguments.cc"],
     hdrs = ["arguments.h"],
     deps = [
+        ":buffer_desc",
+        ":gpu_object_desc",
         ":serialization_base_cc_fbs",
+        ":tensor_desc",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -91,6 +93,26 @@ cc_library(
     hdrs = ["profiling_info.h"],
     deps = [
         "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "serialization_base",
+    srcs = ["serialization_base.cc"],
+    hdrs = ["serialization_base.h"],
+    deps = [
+        ":arguments",
+        ":buffer_desc",
+        ":gpu_object_desc",
+        ":gpu_operation",
+        ":serialization_base_cc_fbs",
+        ":tensor_desc",
+        ":tensor_linear_desc",
+        ":texture2d_desc",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )
 

@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -734,6 +733,31 @@ TEST_F(HloCseTest, Iota) {
   EXPECT_EQ(root->operand(0), root->operand(1));
   EXPECT_NE(root->operand(0), root->operand(2));
   EXPECT_NE(root->operand(0), root->operand(3));
+}
+
+TEST_F(HloCseTest, OptimizationBarrier) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    ENTRY entry {
+      %param.0 = f32[] parameter(0)
+      %param.1 = f32[] parameter(1)
+      %add.0 = f32[] add(%param.0, %param.1)
+      %cse_tmp.0 = (f32[], f32[], f32[]) tuple(%param.0, %param.1, %add.0)
+      %cse_tmp.1 = (f32[], f32[], f32[]) opt-barrier(%cse_tmp.0)
+
+      %param.0.1 = f32[] get-tuple-element(%cse_tmp.1), index=0
+      %param.1.1 = f32[] get-tuple-element(%cse_tmp.1), index=1
+      %add.0.1 = f32[] get-tuple-element(%cse_tmp.1), index=2
+
+      %add.1 = f32[] add(%param.0.1, %param.1.1)
+      ROOT %add.2 = f32[] add(%add.1, %add.0.1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

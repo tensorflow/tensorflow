@@ -26,11 +26,16 @@ namespace tfg {
 namespace graph_transforms {
 
 // Given the original saved model from the `input_file` and modified GraphDef
-// represented as the TFG MLIR `module`. Serializes the resulting saved model
+// represented as the TFG MLIR `module`, serializes the resulting saved model
 // to the `output_file`.
 tensorflow::Status ExportTFGToSavedModel(mlir::ModuleOp module,
                                          const std::string& input_file,
                                          const std::string& output_file);
+
+// Given the modified GraphDef represented as the TFG MLIR `module`,
+// serializes the resulting GraphDef model to the `output_file`.
+tensorflow::Status ExportTFGToGraphDef(mlir::ModuleOp module,
+                                       const std::string& output_file);
 
 }  // namespace graph_transforms
 }  // namespace tfg

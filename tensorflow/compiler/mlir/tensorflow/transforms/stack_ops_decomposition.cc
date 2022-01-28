@@ -100,7 +100,7 @@ void ModifyFunctionSignature(
     if (!stack_type.hasValue()) continue;
     func.getArgument(i).setType(*stack_type);
     new_input_types[i] = *stack_type;
-    auto size_arg = func.front().addArgument(size_var_type);
+    auto size_arg = func.front().addArgument(size_var_type, func.getLoc());
     new_input_types.push_back(size_arg.getType());
     if (stack_var_to_size_var) {
       (*stack_var_to_size_var)[func.getArgument(i)] = size_arg;

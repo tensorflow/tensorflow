@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <tuple>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 

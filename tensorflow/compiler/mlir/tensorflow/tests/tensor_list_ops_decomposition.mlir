@@ -317,16 +317,16 @@ func @main() -> tensor<f32> {
   %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.EmptyTensorList
   %tl = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<f32>>>
-  %while_op:2 = "tf.WhileRegion"(%tl, %size) ( {
+  %while_op:2 = "tf.WhileRegion"(%tl, %size) ({
   // CHECK: ^bb0(%[[CARG0:.*]]: tensor<10xf32>, %[[CARG1:.*]]: tensor<i32>, %[[CARG2:.*]]: tensor<1xi32>):
-  ^bb0(%arg0: tensor<!tf_type.variant<tensor<f32>>>, %arg1: tensor<i32>):  // no predecessors
+  ^bb0(%arg0: tensor<!tf_type.variant<tensor<f32>>>, %arg1: tensor<i32>):
     // CHECK:   %[[PRED:.*]] = "tf._SomeOp"()
     // CHECK:   "tf.Yield"(%[[PRED]])
     %pred = "tf._SomeOp"() : () -> tensor<i1>
     "tf.Yield"(%pred) : (tensor<i1>) -> ()
   },  {
   // CHECK: ^bb0(%[[CARG0:.*]]: tensor<10xf32>, %[[CARG1:.*]]: tensor<i32>, %[[CARG2:.*]]: tensor<1xi32>):
-  ^bb0(%arg0: tensor<!tf_type.variant<tensor<f32>>>, %arg1: tensor<i32>):  // no predecessors
+  ^bb0(%arg0: tensor<!tf_type.variant<tensor<f32>>>, %arg1: tensor<i32>):
     // CHECK:   %[[CST:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     // CHECK:   %[[SUB:.*]] = "tf.Sub"(%[[CARG1]], %[[CST]])
     // CHECK:   %[[ELEM:.*]] = "tf._SomeOp"() : () -> tensor<f32>

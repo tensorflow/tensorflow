@@ -34,7 +34,7 @@ using ::tflite::gpu::metal::CreateComputeProgram;
 @implementation CommonTest
 
 - (void)testComputeShaderCompilation {
-  NSString* code = @R"(\
+  const std::string code = R"(\
 #include <metal_stdlib>
 using namespace metal;
 kernel void FunctionName(device TYPE* const src_buffer[[buffer(0)]],
@@ -51,24 +51,21 @@ kernel void FunctionName(device TYPE* const src_buffer[[buffer(0)]],
 
   id<MTLDevice> device = GetBestSupportedMetalDevice();
   XCTAssertNotNil(device, @"The Metal device must exists on real device");
-  NSString* functionName = @"FunctionName";
   id<MTLComputePipelineState> program;
   absl::Status status;
 
-  NSDictionary* macrosFloat4 = @{@"TYPE" : @"float4"};
-  status = CreateComputeProgram(device, code, functionName, macrosFloat4, &program);
+  status = CreateComputeProgram(device, code, "FunctionName", {{"TYPE", "float4"}}, &program);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   XCTAssertNotNil(program);
 
-  NSDictionary* macrosHalf4 = @{@"TYPE" : @"half4"};
-  status = CreateComputeProgram(device, code, functionName, macrosHalf4, &program);
+  status = CreateComputeProgram(device, code, "FunctionName", {{"TYPE", "half4"}}, &program);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   XCTAssertNotNil(program);
 
   // This compilation is intended to be incorrect
-  NSDictionary* macrosFail = @{@"TYPE" : @"some_undefined_value"};
   program = nil;
-  status = CreateComputeProgram(device, code, functionName, macrosFail, &program);
+  status = CreateComputeProgram(device, code, "FunctionName", {{"TYPE", "some_undefined_value"}},
+                                &program);
   XCTAssertFalse(status.ok(), @"Shader contains an error that has not been detected");
   XCTAssertNil(program);
 }

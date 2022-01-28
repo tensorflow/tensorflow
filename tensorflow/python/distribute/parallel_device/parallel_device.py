@@ -19,7 +19,6 @@ import weakref
 
 from tensorflow.python import _pywrap_parallel_device
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute.parallel_device import saving
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -78,7 +77,6 @@ class ParallelDevice(object):
     context.register_custom_device(device, self._name, device_info)
     self._device_ids = None
     self._device_scope = None
-    self._saving_scope = None
     _all_parallel_devices[self._name] = self
 
   def _pack_tensor(self, *tensors):
@@ -206,22 +204,14 @@ class ParallelDevice(object):
 
   def __enter__(self):
     """Runs ops in parallel, makes variables which save independent buffers."""
-    if (self._device_scope is not None or self._saving_scope is not None):
+    if self._device_scope is not None:
       raise AssertionError(
           "Re-entered a ParallelDevice scope without first exiting it.")
     self._assert_eager()
     self._device_scope = ops.device(self._name)
-    self._saving_scope = saving.independent_buffers(self)
     self._device_scope.__enter__()
-    # TODO(allenl): Fixing saving in Python is a bit odd. One alternative would
-    # be to provide a hook for the custom device to create save specs/etc., then
-    # call that hook from the default variable implementation if the variable is
-    # on a custom device. We'll likely want similar hooks for repr() and such.
-    self._saving_scope.__enter__()
     return self
 
   def __exit__(self, typ, exc, tb):
     self._device_scope.__exit__(typ, exc, tb)
-    self._saving_scope.__exit__(typ, exc, tb)
     self._device_scope = None
-    self._saving_scope = None

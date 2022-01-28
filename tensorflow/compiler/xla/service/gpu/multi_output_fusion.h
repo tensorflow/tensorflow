@@ -104,6 +104,9 @@ class GpuMultiOutputFusion : public HloModulePass {
   // Recompute reachability for the current computation.
   void RecomputeReachability();
 
+  void DumpFusionState(const HloInstruction& consumer, absl::string_view label,
+                       const HloInstruction* producer = nullptr);
+
   // Computation for the pass.
   HloComputation* computation_;
 

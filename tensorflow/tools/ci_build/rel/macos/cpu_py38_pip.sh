@@ -23,18 +23,23 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
+# Set up py38 via pyenv and check it worked
+export PYENV_VERSION=3.8.9
+setup_python_from_pyenv_macos "${PYENV_VERSION}"
+
 # Set up and install MacOS pip dependencies.
-install_macos_pip_deps_no_venv python3.8
+install_macos_pip_deps
 
 # Export required variables for running pip_new.sh
 export OS_TYPE="MACOS"
 export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.8'
-export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
+export PYTHON_BIN_PATH="$(which python)"
 export TF_BUILD_BOTH_CPU_PACKAGES=1
 
 # Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=release_cpu_macos"
+# Pass PYENV_VERSION since we're using pyenv. See b/182399580
+export TF_BUILD_FLAGS="--config=release_cpu_macos --action_env=PYENV_VERSION=${PYENV_VERSION}"
 export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
 export TF_TEST_TARGETS="//tensorflow/python/..."
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"

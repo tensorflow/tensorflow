@@ -41,15 +41,12 @@ ForwardTypeInferenceFn ReplicateInput(int i, int n) {
   };
 }
 
-// TODO(mdan): Rename to MergeIdenticalInputs.
-ForwardTypeInferenceFn ReplicateIdenticalInputs() {
+ForwardTypeInferenceFn Merge() {
   return [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
                 input_types) -> StatusOr<FullTypeDef> {
     DCHECK(!input_types.empty());
 
-    FullTypeDef ret_type;
-    int first_known = -1;
-    FullTypeDef const* first_known_t = nullptr;
+    FullTypeDef merged;
     for (int i = 0; i < input_types.size(); i++) {
       const auto& t = input_types[i].get();
 
@@ -57,41 +54,42 @@ ForwardTypeInferenceFn ReplicateIdenticalInputs() {
         continue;
       }
 
-      if (first_known < 0) {
-        first_known = i;
-        first_known_t = &t;
-        *(ret_type.add_args()) = t;
+      if (IsSubtype(t, merged)) {
+        merged = t;
+        continue;
+      }
+      if (IsSubtype(merged, t)) {
         continue;
       }
 
-      // TODO(mdan): Make a deep comparison.
-      if (first_known_t->type_id() != t.type_id()) {
-        return Status(
-            error::INVALID_ARGUMENT,
-            absl::StrCat("expected identical input types, but input ", i,
-                         " differed from ", first_known, ":\n", t.DebugString(),
-                         "\nvs.\n", first_known_t->DebugString()));
-      }
+      return Status(error::INVALID_ARGUMENT,
+                    absl::StrCat("expected compatible input types, but input ",
+                                 i, ":\n", t.DebugString(),
+                                 " is neither a subtype nor a supertype of the "
+                                 "combined inputs preceding it:\n",
+                                 merged.DebugString()));
     }
 
-    if (first_known >= 0) {
+    FullTypeDef ret_type;
+    if (merged.type_id() != TFT_UNSET) {
       ret_type.set_type_id(TFT_PRODUCT);
+      *(ret_type.add_args()) = merged;
     }
     return ret_type;
   };
 }
 
-ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int container_idx) {
-  return [t, container_idx](
+ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx) {
+  return [t, element_idx](
              const std::vector<std::reference_wrapper<const FullTypeDef>>&
                  input_types) -> StatusOr<FullTypeDef> {
-    DCHECK(input_types.size() >= container_idx);
+    DCHECK(input_types.size() >= element_idx);
 
     FullTypeDef ret_type;
     ret_type.set_type_id(TFT_PRODUCT);
     FullTypeDef* arg_t = ret_type.add_args();
     arg_t->set_type_id(t);
-    *(arg_t->add_args()) = input_types[container_idx].get();
+    *(arg_t->add_args()) = input_types[element_idx].get();
 
     return ret_type;
   };

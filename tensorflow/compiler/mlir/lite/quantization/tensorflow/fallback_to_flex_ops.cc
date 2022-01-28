@@ -87,6 +87,7 @@ ABSL_ATTRIBUTE_NOINLINE const std::set<std::string>
           TF::Conv2DBackpropInputOp::getOperationName().str(),
           TF::Conv2DOp::getOperationName().str(),
           TF::DepthwiseConv2dNativeOp::getOperationName().str(),
+          TF::FusedBatchNormV3Op::getOperationName().str(),
           TF::GatherV2Op::getOperationName().str(),
           TF::MatMulOp::getOperationName().str(),
           TF::MaxPoolOp::getOperationName().str(),
@@ -119,6 +120,7 @@ ABSL_ATTRIBUTE_NOINLINE const std::set<std::string>
           TF::Conv2DBackpropInputOp::getOperationName().str(),
           TF::Conv2DOp::getOperationName().str(),
           TF::DepthwiseConv2dNativeOp::getOperationName().str(),
+          TF::FusedBatchNormV3Op::getOperationName().str(),
           TF::MatMulOp::getOperationName().str(),
           TF::Relu6Op::getOperationName().str(),
           TF::ReluOp::getOperationName().str(),
@@ -274,7 +276,7 @@ void FallbackToFlexOps::runOnFunction() {
   MLIRContext *ctx = &getContext();
 
   // Convert binary ops to BiasAdd ops if possible.
-  OwningRewritePatternList patterns(ctx);
+  RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 

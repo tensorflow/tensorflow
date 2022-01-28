@@ -19,8 +19,6 @@ limitations under the License.
 #include <iterator>
 #include <set>
 #include <sstream>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -38,10 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -708,8 +704,31 @@ bool CompareComputationsByContent(const HloComputation* a,
          b->ToString(HloPrintOptions::Fingerprint());
 }
 
+uint64_t GetFingerprint(
+    absl::flat_hash_map<const HloComputation*, uint64_t>& fingerprint_map,
+    const HloComputation* computation) {
+  auto it = fingerprint_map.find(computation);
+  if (it != fingerprint_map.end()) {
+    return it->second;
+  } else {
+    const uint64_t fingerprint = tensorflow::Fingerprint64(
+        computation->ToString(HloPrintOptions::Fingerprint()));
+    fingerprint_map[computation] = fingerprint;
+    return fingerprint;
+  }
+}
+
 void SortComputationsByContent(std::vector<HloComputation*>* computations) {
-  absl::c_sort(*computations, CompareComputationsByContent);
+  absl::flat_hash_map<const HloComputation*, uint64_t> fingerprint_map;
+  auto cmp = [&fingerprint_map](const HloComputation* a,
+                                const HloComputation* b) {
+    if (a->instruction_count() != b->instruction_count()) {
+      return a->instruction_count() < b->instruction_count();
+    }
+    return GetFingerprint(fingerprint_map, a) <
+           GetFingerprint(fingerprint_map, b);
+  };
+  absl::c_sort(*computations, cmp);
 }
 
 }  // anonymous namespace
@@ -818,7 +837,7 @@ HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,
 }
 
 uint64_t HloModule::RandomNew64() const {
-  tensorflow::mutex_lock l(rng_mutex_);
+  absl::MutexLock l(&rng_mutex_);
   return rng_();
 }
 
@@ -828,19 +847,6 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
-}
-
-uint64_t HloModule::Hash() const {
-  uint64_t result = entry_computation_layout().Hash();
-  // Use MakeComputationSorted() instead of MakeComputationPostOrder()
-  // because naming may affect the order of MakeComputationPostOrder() but not
-  // MakeComputationSorted().
-  for (auto* computation : MakeComputationSorted()) {
-    for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      result = tensorflow::Hash64Combine(result, instruction->Hash());
-    }
-  }
-  return result;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

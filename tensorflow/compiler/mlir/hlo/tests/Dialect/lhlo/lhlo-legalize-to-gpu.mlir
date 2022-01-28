@@ -3,7 +3,7 @@
 func @reduce(%arg: memref<100x10xf32>,
              %init: memref<f32>,
              %result: memref<100xf32>) {
-  "lmhlo.reduce"(%arg, %init, %result) ( {
+  "lmhlo.reduce"(%arg, %init, %result) ({
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
       "lmhlo.add"(%lhs, %rhs, %res)
         : (memref<f32>, memref<f32>, memref<f32>) -> ()

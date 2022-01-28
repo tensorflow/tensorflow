@@ -119,7 +119,7 @@ def _push_critical_section_stack(signature):
 
 
 @tf_export("CriticalSection")
-class CriticalSection(object):
+class CriticalSection:
   """Critical section.
 
   A `CriticalSection` object is a resource in the graph which executes subgraphs

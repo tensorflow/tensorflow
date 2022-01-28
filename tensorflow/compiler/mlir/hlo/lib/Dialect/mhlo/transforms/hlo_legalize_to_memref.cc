@@ -224,7 +224,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     strides.reserve(result_rank);
 
     DenseMap<int, int> output_to_input_dim;
-    for (auto dim : llvm::enumerate(op.broadcast_dimensions())) {
+    for (const auto& dim : llvm::enumerate(op.broadcast_dimensions())) {
       output_to_input_dim[dim.value().getSExtValue()] = dim.index();
     }
     for (int i = 0; i < result_rank; ++i) {
@@ -265,7 +265,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
 
     // Type-erased memref type with static rank and dynamic strides.
     SmallVector<int64_t, 2> dynamic_layout(result_rank,
-                                           MemRefType::kDynamicStrideOrOffset);
+                                           ShapedType::kDynamicStrideOrOffset);
     auto type_erased_memref_type = MemRefType::get(
         result_type.getShape(), operand_type.getElementType(),
         makeStridedLinearLayoutMap(dynamic_layout,
@@ -312,9 +312,9 @@ struct HloLegalizeToMemrefPass
   }
 
  public:
-  void runOnFunction() override {
+  void runOnOperation() override {
     auto& context = getContext();
-    OwningRewritePatternList patterns(&context);
+    RewritePatternSet patterns(&context);
     ConversionTarget target(context);
 
     bufferization::BufferizeTypeConverter converter;
@@ -329,7 +329,7 @@ struct HloLegalizeToMemrefPass
                            memref::MemRefDialect, StandardOpsDialect,
                            tensor::TensorDialect>();
 
-    auto func = getFunction();
+    auto func = getOperation();
     if (failed(applyPartialConversion(func, target, std::move(patterns))))
       signalPassFailure();
   }
@@ -339,17 +339,17 @@ struct HloLegalizeToMemrefPass
 
 void populateHLOToMemrefConversionPattern(
     bufferization::BufferizeTypeConverter* converter,
-    RemoveSignTypeConverter* sign_converter, OwningRewritePatternList* patterns,
-    std::function<bool(Operation*)> enforce_identity_maps) {
+    RemoveSignTypeConverter* sign_converter, RewritePatternSet* patterns,
+    const std::function<bool(Operation*)>& enforce_identity_maps) {
   MLIRContext* context = patterns->getContext();
   patterns->insert<HloToMemrefDynamicBroadcastInDimOpConverter>(
-      *converter, sign_converter, context, std::move(enforce_identity_maps));
+      *converter, sign_converter, context, enforce_identity_maps);
   patterns->insert<HloToMemrefDynamicReshapeConverter,
                    HloToMemrefReshapeUnrankedConverter>(
       *converter, sign_converter, context);
 }
 
-std::unique_ptr<FunctionPass> createLegalizeToMemrefPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToMemrefPass() {
   return std::make_unique<HloLegalizeToMemrefPass>();
 }
 

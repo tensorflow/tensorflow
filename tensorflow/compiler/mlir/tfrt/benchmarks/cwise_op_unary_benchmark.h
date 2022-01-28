@@ -34,13 +34,13 @@ using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::cpu::jit::Executable;
-using ::tfrt::cpu::jit::JitExecutable;
-using ::tfrt::cpu::jit::MemrefDesc;
-using ::tfrt::cpu::jit::ReturnValueConverter;
+using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::JitExecutable;
+using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::ReturnValueConverter;
 
 // -------------------------------------------------------------------------- //
-// Run benchmark by compiling MLIR function using TFRT CPURT API.
+// Run benchmark by compiling MLIR function using TFRT JitRt API.
 // -------------------------------------------------------------------------- //
 
 template <typename T, int rank>
@@ -61,10 +61,10 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
-  TfCpuRtPipelineOptions tf_cpurt_opts;
-  tf_cpurt_opts.vectorize = vectorize;
+  TfJitRtPipelineOptions tf_jitrt_opts;
+  tf_jitrt_opts.vectorize = vectorize;
   JitExecutable& jit_executable = CreateJitExecutable(
-      *host, mlir_input, function_name, lower_from_tensorflow, tf_cpurt_opts);
+      *host, mlir_input, function_name, lower_from_tensorflow, tf_jitrt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =

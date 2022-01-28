@@ -38,8 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -150,7 +148,8 @@ class PointsToSet {
 
   // PointsToSet contains references (const LogicalBuffer*) to elements within
   // TuplePointsToAnalysis, so disable copying.
-  TF_DISALLOW_COPY_AND_ASSIGN(PointsToSet);
+  PointsToSet(const PointsToSet&) = delete;
+  PointsToSet& operator=(const PointsToSet&) = delete;
 };
 
 // This class describes a particular subshape in a computation (instruction and
@@ -353,7 +352,8 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // buffer
   std::vector<BufferAliasVector> logical_buffer_aliases_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TuplePointsToAnalysis);
+  TuplePointsToAnalysis(const TuplePointsToAnalysis&) = delete;
+  TuplePointsToAnalysis& operator=(const TuplePointsToAnalysis&) = delete;
 };
 
 }  // namespace xla

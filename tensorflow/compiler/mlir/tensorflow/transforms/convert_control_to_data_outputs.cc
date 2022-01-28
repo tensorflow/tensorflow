@@ -17,6 +17,7 @@ limitations under the License.
 #include <queue>
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -39,8 +40,13 @@ namespace mlir {
 namespace tf_executor {
 namespace {
 
+using TF::ResourceId;
+static constexpr ResourceId kUnknownResourceId =
+    TF::detail::ResourceAliasAnalysisInfo::kUnknownResourceId;
+static constexpr ResourceId kInvalidResourceId =
+    TF::detail::ResourceAliasAnalysisInfo::kInvalidResourceId;
 using OperationSetTy = SmallPtrSet<Operation*, 4>;
-using ResourceToOpsMapTy = DenseMap<TF::ResourceId, OperationSetTy>;
+using ResourceToOpsMapTy = DenseMap<ResourceId, OperationSetTy>;
 
 class ConvertControlToDataOutputsPass
     : public TF::ExecutorConvertControlToDataOutputsPassBase<
@@ -66,10 +72,13 @@ SmallVector<TF::WhileOp> GetWhileCallers(FuncOp func,
   return while_callers;
 }
 
-// Populates the map from all resources that need to be chained to the set of
-// operations that access the resource.
-void PopulateChainResourceToOpsMap(
+// Populates `chain_resource_to_ops_map`, the map from all resources that need
+// to be chained to the set of operations that access the resource, and
+// `resource_equivalence_classes`. Resources are equivalent if they are accessed
+// by a common op, and equivalent resources will be assigned to the same chain.
+void CollectChainResources(
     FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
+    llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   auto graph_op = cast<GraphOp>(func.front().front());
 
@@ -81,15 +90,25 @@ void PopulateChainResourceToOpsMap(
     // internal op perfectly. Hence this assertion should never fail.
     assert(island.WrapsSingleOp());
     Operation& op = island.GetBody().front();
+
+    ResourceId prev_resource_id = kInvalidResourceId;
     for (auto resource_id_read_only_pair :
          side_effect_analysis.GetResourceIds(&op)) {
-      TF::ResourceId resource_id = resource_id_read_only_pair.first;
+      ResourceId resource_id = resource_id_read_only_pair.first;
       // If the resource was allocated by an op with `UniqueResourceAllocation`
       // trait, then we don't need to chain resource ops accessing this resource
       // between iterations: Every iteration will create a new independent
       // resource. This enables more parallelism across iterations.
       if (!side_effect_analysis.IsUniqueResourceAllocationId(resource_id)) {
         chain_resource_to_ops_map[resource_id].insert(&op);
+        if (prev_resource_id != kInvalidResourceId) {
+          // Merge class of current ID with class of previous ID since both
+          // resources are accessed by `op`.
+          resource_equivalence_classes.unionSets(prev_resource_id, resource_id);
+        } else {
+          resource_equivalence_classes.insert(resource_id);
+        }
+        prev_resource_id = resource_id;
       }
     }
   });
@@ -101,7 +120,7 @@ void PopulateChainResourceToOpsMap(
 //
 // For example,
 // ```
-// %merged_control = "tf_executor.island"(%control_a, %control_b) ( {
+// %merged_control = "tf_executor.island"(%control_a, %control_b) ({
 //   "tf.NoOp"() : () -> ()
 //   "tf_executor.yield"() : () -> ()
 // }) : (!tf_executor.control, !tf_executor.control) -> (!tf_executor.control)
@@ -171,11 +190,12 @@ bool RemoveAllControlOutputs(FuncOp func) {
 void AppendFunctionArguments(FuncOp func, int num_resources,
                              ShapedType chaining_data_type) {
   for (int i = 0; i < num_resources; ++i) {
-    func.getRegion().addArgument(chaining_data_type);
+    func.getRegion().addArgument(chaining_data_type, func.getLoc());
   }
 
-  FunctionType ftype = FunctionType::get(
-      func.getContext(), func.getArgumentTypes(), func.getType().getResults());
+  FunctionType ftype =
+      FunctionType::get(func.getContext(), func.getBody().getArgumentTypes(),
+                        func.getType().getResults());
   func.setType(ftype);
 }
 
@@ -233,19 +253,19 @@ IslandOp CreateIsland(Operation* sub_op, ValueRange control_inputs,
 }
 
 // Adds control dependencies from/to chain arguments/results. It adds two
-// identity ops - chain_src and chain_sink per resource. Using
-// the resource to operations map, it adds (1) a control dependency
-// from chain_src to all the operations that read/write to that resource, and
-// (2) a control dependency from all the operations that read/write to the
-// resource to the chain_sink operation.
-void ChainResourceOps(FuncOp func,
-                      ResourceToOpsMapTy& chain_resource_to_ops_map,
-                      int num_old_outputs) {
-  assert(num_old_outputs + chain_resource_to_ops_map.size() ==
+// identity ops, chain_src and chain_sink, per resource equivalence class.
+// Using the resource to operations map, it adds (1) a control dependency
+// from chain_src to all the operations that read/write to a resource of the
+// equivalence class, and (2) a control dependency from all the operations that
+// read/write to a resource of the class to the chain_sink operation.
+void ChainResourceOps(
+    FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
+    llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
+    int num_old_outputs) {
+  assert(num_old_outputs + resource_equivalence_classes.getNumClasses() ==
          func.getNumArguments());
   auto graph_op = cast<GraphOp>(func.front().front());
 
-  auto new_result_type = llvm::to_vector<4>(graph_op->getResultTypes());
   auto fetch = graph_op.GetFetch();
   OpBuilder builder_chain_src(fetch);
   builder_chain_src.setInsertionPointToStart(fetch->getBlock());
@@ -253,10 +273,14 @@ void ChainResourceOps(FuncOp func,
   OpBuilder builder_chain_sink(fetch);
   int chain_index = num_old_outputs;
 
-  for (auto entry : chain_resource_to_ops_map) {
-    OperationSetTy& resource_ops = entry.getSecond();
+  // Iterate over all equivalence classes.
+  for (auto class_iter = resource_equivalence_classes.begin();
+       class_iter != resource_equivalence_classes.end(); ++class_iter) {
+    // Only visit one element per class, the leader.
+    if (!class_iter->isLeader()) continue;
 
-    // Create chain source and sink identity islands.
+    // Create chain source and sink identity islands for current equivalence
+    // class.
     auto chain_arg = func.getArgument(chain_index++);
     auto src_identity = builder_chain_src.create<TF::IdentityOp>(
         chain_arg.getLoc(), chain_arg.getType(), chain_arg);
@@ -270,13 +294,33 @@ void ChainResourceOps(FuncOp func,
     // Add the chain sink data output to fetch.
     fetch.fetchesMutable().append(chain_sink_island.outputs().front());
 
-    for (Operation* op : resource_ops) {
-      IslandOp wrapper = op->getParentOfType<IslandOp>();
-      assert(wrapper);
-      wrapper.controlInputsMutable().append(chain_src_island.control());
-      chain_sink_island.controlInputsMutable().append(wrapper.control());
+    // Iterate over all members of the current equivalence class (represented
+    // by `class_iter`). Keep track of ops that have already been processed.
+    llvm::SmallDenseSet<Operation*> processed_ops;
+    for (auto member_iter =
+             resource_equivalence_classes.member_begin(class_iter);
+         member_iter != resource_equivalence_classes.member_end();
+         ++member_iter) {
+      ResourceId resource_id = *member_iter;
+      auto map_iter = chain_resource_to_ops_map.find(resource_id);
+      if (map_iter == chain_resource_to_ops_map.end()) continue;
+      OperationSetTy& resource_ops = map_iter->getSecond();
+
+      // Add dependencies between all ops that access current resource and chain
+      // source and sink.
+      for (Operation* op : resource_ops) {
+        if (processed_ops.contains(op)) continue;
+
+        IslandOp wrapper = op->getParentOfType<IslandOp>();
+        assert(wrapper);
+        wrapper.controlInputsMutable().append(chain_src_island.control());
+        chain_sink_island.controlInputsMutable().append(wrapper.control());
+        processed_ops.insert(op);
+      }
     }
   }
+  VLOG(2) << "Added " << resource_equivalence_classes.getNumClasses()
+          << " chains for " << chain_resource_to_ops_map.size() << " resources";
 }
 
 // Generate a dummy constant island of requested type.
@@ -299,7 +343,7 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
   // Get the dummy constant.
   OpBuilder builder(while_wrapper);
   auto loc = NameLoc::get(
-      builder.getIdentifier("chain_control_outputs@" + while_op.body()));
+      builder.getStringAttr("chain_control_outputs@" + while_op.body()));
   IslandOp const_wrapper = GetDummyConstant(builder, const_type, loc);
 
   // Get new operand and result types.
@@ -334,20 +378,20 @@ void ConvertControlToDataOutputs(
   if (while_callers.empty()) return;
 
   // Collect access information for each resource in the while body that needs
-  // to be chained.
+  // to be chained, along with equivalence classes (resources in one class will
+  // use the same chain).
   ResourceToOpsMapTy chain_resource_to_ops_map;
-  PopulateChainResourceToOpsMap(while_body, chain_resource_to_ops_map,
-                                side_effect_analysis);
+  llvm::EquivalenceClasses<ResourceId> resource_equivalence_classes;
+  CollectChainResources(while_body, chain_resource_to_ops_map,
+                        resource_equivalence_classes, side_effect_analysis);
 
   // Check for presence of unknown side-effecting ops within the while loop
   // body. These ops act as barriers and the optimization would not yield much
   // inter iteration parallelism for this while loop body. So return with
   // warning.
-  if (chain_resource_to_ops_map.count(
-          TF::detail::ResourceAliasAnalysisInfo::kUnknownResourceId) > 0) {
+  if (chain_resource_to_ops_map.count(kUnknownResourceId) > 0) {
     std::set<std::string> blocking_ops;
-    for (Operation* op : chain_resource_to_ops_map
-             [TF::detail::ResourceAliasAnalysisInfo::kUnknownResourceId]) {
+    for (Operation* op : chain_resource_to_ops_map[kUnknownResourceId]) {
       std::string op_name = op->getName().getStringRef().str();
       if (blocking_ops.insert(op_name).second) {
         LOG(INFO) << "[`tf-executor-convert-control-to-data-outputs` disabled] "
@@ -367,16 +411,17 @@ void ConvertControlToDataOutputs(
   // If there was no control output to be removed, return early.
   if (!changed) return;
 
-  int num_chain_resources = chain_resource_to_ops_map.size();
+  int num_chains = resource_equivalence_classes.getNumClasses();
   RankedTensorType chaining_data_type =
       RankedTensorType::get({}, OpBuilder(while_body).getI32Type());
   // Create new while body
   int num_old_outputs = while_body.getNumResults();
-  AppendFunctionArguments(while_body, num_chain_resources, chaining_data_type);
-  AppendFunctionResults(while_body, num_chain_resources, chaining_data_type);
+  AppendFunctionArguments(while_body, num_chains, chaining_data_type);
+  AppendFunctionResults(while_body, num_chains, chaining_data_type);
 
   // Insert identity ops with control dep
-  ChainResourceOps(while_body, chain_resource_to_ops_map, num_old_outputs);
+  ChainResourceOps(while_body, chain_resource_to_ops_map,
+                   resource_equivalence_classes, num_old_outputs);
   // Modify all the while ops referencing the body function and the
   // corresponding while condition functions. Note that each while condition
   // needs to be modified only once.
@@ -388,13 +433,11 @@ void ConvertControlToDataOutputs(
     recompute_analysis_for_funcs.insert(while_op->getParentOfType<FuncOp>());
     FuncOp while_cond = while_op.cond_function();
     // Rewrite while op with extra chaining arguments and results.
-    while_op =
-        RewriteWhileOp(while_op, num_chain_resources, chaining_data_type);
+    while_op = RewriteWhileOp(while_op, num_chains, chaining_data_type);
     bool first_visit = visited.insert(while_cond).second;
     if (!first_visit) continue;
     // Modify while condition function with extra chaining arguments.
-    AppendFunctionArguments(while_cond, num_chain_resources,
-                            chaining_data_type);
+    AppendFunctionArguments(while_cond, num_chains, chaining_data_type);
   }
 }
 

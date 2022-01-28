@@ -56,7 +56,7 @@ std::string StripLogHeaders(const std::string& hlo_string) {
   std::vector<std::string> lines = absl::StrSplit(hlo_string, '\n');
   for (auto& line : lines) {
     if (matcher->Match(line, 0, line.size(), RE2::ANCHOR_START, matches, 4)) {
-      line = string(matches[1]);
+      line = std::string(matches[1]);
     }
   }
   return absl::StrJoin(lines, "\n",
@@ -122,7 +122,7 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
     const std::function<void(HloModuleConfig*)>& config_modifier_hook) {
   std::string data;
   if (format.empty()) {
-    format = string(tensorflow::io::Extension(path));
+    format = std::string(tensorflow::io::Extension(path));
   }
   TF_RETURN_IF_ERROR(
       tensorflow::ReadFileToString(tensorflow::Env::Default(), path, &data));

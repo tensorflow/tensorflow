@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 
 #include <memory>
-#include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -256,7 +256,7 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -313,7 +313,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -375,7 +375,7 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   EXPECT_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -443,7 +443,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
   FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   EXPECT_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";

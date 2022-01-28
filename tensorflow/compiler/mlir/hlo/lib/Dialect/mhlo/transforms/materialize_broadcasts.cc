@@ -70,7 +70,7 @@ struct ClampWithBroadcastConvert : public OpRewritePattern<ClampOp> {
 
 }  // namespace
 
-void SetupMaterializeBroadcastsLegality(MLIRContext *context,
+void SetupMaterializeBroadcastsLegality(MLIRContext * /*context*/,
                                         ConversionTarget *conversionTarget) {
   conversionTarget->addDynamicallyLegalOp<ClampOp>([](ClampOp op) {
     return op.max().getType() == op.operand().getType() &&
@@ -79,7 +79,7 @@ void SetupMaterializeBroadcastsLegality(MLIRContext *context,
 }
 
 void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
-                                           OwningRewritePatternList *patterns) {
+                                           RewritePatternSet *patterns) {
   // ClampOp. This op has a special case where it accepts either same-shaped
   // inputs or scalars (a restricted form of broadcasting). This makes the
   // broadcast explicit.

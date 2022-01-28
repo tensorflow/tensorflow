@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
@@ -298,7 +297,8 @@ class Service : public ServiceInterface {
   // Backend to compile and execute computations on.
   std::unique_ptr<Backend> execute_backend_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Service);
+  Service(const Service&) = delete;
+  Service& operator=(const Service&) = delete;
 };
 
 }  // namespace xla

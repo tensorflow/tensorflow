@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?x?xf32>, %V__1: tensor<3xi32>, %V__2: tensor<?x?x?xf32>, %V__3: tensor<?xf32>) -> tensor<?x?x?xf32> {
+builtin.func @test(%V__0: tensor<?x?xf32> { python_test_attrs.static_type = tensor<1x2xf32> }, %V__1: tensor<3xi32> { python_test_attrs.shape_value = dense<[5, 3, 2]> : tensor<3xi32> }, %V__2: tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<5x1x2xf32> }, %V__3: tensor<?xf32> { python_test_attrs.static_type = tensor<2xf32> }) -> tensor<?x?x?xf32> {
   %0 = "tf.BroadcastTo"(%V__0, %V__1) : (tensor<?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
   %1 = "tf.Abs"(%0) : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %2 = "tf.Ceil"(%1) : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>

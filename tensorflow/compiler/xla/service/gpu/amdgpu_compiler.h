@@ -48,7 +48,8 @@ class AMDGPUCompiler : public GpuCompiler {
   // The parent directory of ROCm-Device-Libs IR libraries.
   std::string rocdl_dir_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AMDGPUCompiler);
+  AMDGPUCompiler(const AMDGPUCompiler&) = delete;
+  AMDGPUCompiler& operator=(const AMDGPUCompiler&) = delete;
 };
 
 }  // namespace gpu

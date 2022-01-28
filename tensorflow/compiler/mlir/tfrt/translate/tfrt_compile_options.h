@@ -70,6 +70,11 @@ struct TfrtCompileOptions {
   // in order to saved TPU memory usage. This option is experimental.
   bool tpu_move_resource_gather_to_host = false;
 
+  // The threshold in bytes that controls whether a resource gather op on TPU
+  // should be moved to host. A negative value means there is no threshold. This
+  // option is experimental.
+  int64_t tpu_gather_table_width_threshold_bytes = -1;
+
   // If true, fallback executeops that produce inputs to tpu program will use
   // tpu host allocator. This options is experimental.
   bool use_tpu_host_allocator_for_inputs = false;

@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Tensorflow -> CPURT compilation."""
+"""Tests for Tensorflow -> jitrt compilation."""
 
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 def softmax(x):
@@ -39,11 +39,11 @@ class TfSoftmaxTest(test.TestCase):
           return %0 : tensor<?x?xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test', vectorize=True)
+    compiled = jitrt.compile(mlir_function, 'test', vectorize=True)
 
     arg0 = np.random.uniform(1, 5, size=(8, 8)).astype(np.float32)
 
-    [res] = cpurt.execute(compiled, [arg0])
+    [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_allclose(res, softmax(arg0), atol=0.00001)
 
   def test_static_softmax(self):
@@ -53,11 +53,11 @@ class TfSoftmaxTest(test.TestCase):
           return %0 : tensor<10x8xf32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test', vectorize=True)
+    compiled = jitrt.compile(mlir_function, 'test', vectorize=True)
 
     arg0 = np.random.uniform(1, 5, size=(10, 8)).astype(np.float32)
 
-    [res] = cpurt.execute(compiled, [arg0])
+    [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_allclose(res, softmax(arg0), atol=0.00001)
 
 

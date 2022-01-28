@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {

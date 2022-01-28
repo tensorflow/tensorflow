@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -173,8 +176,7 @@ struct CanonicalDebugOptions {
 };
 
 static Status WriteStringToFile(tensorflow::Env* env, const std::string& fname,
-                                const tensorflow::StringPiece& data,
-                                bool compressed) {
+                                absl::string_view data, bool compressed) {
   if (!compressed) {
     return tensorflow::WriteStringToFile(env, fname, data);
   }
@@ -281,6 +283,18 @@ static absl::optional<std::string> DumpToFileInDirOrStdoutImpl(
   return DumpToFileInDirImpl(filename, contents, opts);
 }
 
+// Returns whether the computation is trivial enough not to warrant dumping.
+// Currently skips instructions where the root instruction has only parameters
+// as operands AND is not a fusion.
+static bool IsTrivial(const HloComputation& computation) {
+  const HloInstruction* root = computation.root_instruction();
+  return absl::c_all_of(root->operands(),
+                        [&](const HloInstruction* op) {
+                          return op->opcode() == HloOpcode::kParameter;
+                        }) &&
+         root->opcode() != HloOpcode::kFusion;
+}
+
 // Returns full file paths of all dumps of the module.
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
@@ -343,18 +357,22 @@ static std::vector<std::string> DumpHloModuleImpl(
   if (opts.dump_fusion_visualization) {
     for (const HloComputation* computation :
          module.MakeNonfusionComputations()) {
-      StatusOr<std::string> rendered_graph = RenderGraph(
-          *computation,
-          /*label=*/absl::StrCat(filename, "_", computation->name()),
-          module.config().debug_options(),
-          RenderedGraphFormat::kFusionVisualization, profile);
+      if (IsTrivial(*computation)) {
+        VLOG(1) << "Skipping computation " << computation->name()
+                << " as trivial";
+        continue;
+      }
+
+      StatusOr<std::string> rendered_graph = WrapFusionExplorer(*computation);
+      if (!rendered_graph.ok()) {
+        VLOG(1) << "Skipping fusion visualization"
+                << " for computation " << computation->name()
+                << " due to: " << rendered_graph.status().ToString();
+        continue;
+      }
       file_paths.push_back(DumpToFileInDirImpl(
-          StrFormat("%s_%s_fusion_visualization.html", filename,
-                    computation->name()),
-          rendered_graph.ok() ? *rendered_graph
-                              : StrFormat("Error rendering graph: %s",
-                                          rendered_graph.status().ToString()),
-          opts));
+          FilenameFor(module, computation->name(), "_fusion.html"),
+          *rendered_graph, opts));
     }
   }
 
@@ -395,7 +413,7 @@ static void DumpHloModuleMetadata(
   }
 }
 
-static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+static absl::Mutex mu(absl::kConstInit);
 
 // Maps a module's unique ID to a counter indicating how many times we've dumped
 // this module during the compilation pipeline.  This lets us keep the filenames
@@ -405,7 +423,7 @@ static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
-static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
+static auto& module_id_to_step_number ABSL_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64_t, int64_t>();
 
 // Maps a module's unique ID to a timestamp indicating when we've first dumped
@@ -416,11 +434,11 @@ static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
-static auto& module_id_to_timestamp TF_GUARDED_BY(mu) =
+static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64_t, uint64_t>();
 
 int64_t StepNumberForModule(const HloModule& module) {
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
 
@@ -432,7 +450,7 @@ std::string TimestampFor(const HloModule& module) {
   if (!module.config().debug_options().xla_dump_include_timestamp()) {
     return "";
   }
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   auto timestamp_emplace = module_id_to_timestamp.try_emplace(
       module.unique_id(), tensorflow::Env::Default()->NowMicros());
   return std::to_string(timestamp_emplace.first->second);
@@ -496,10 +514,17 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
       GetDumpFilePath(FilenameFor(module, file_prefix, "mlir"), opts);
   if (!file_path) return;
 
-  // TODO(csigg): Change tag to file_prefix once BEF handles fused locs.
-  llvm::StringRef tag = "";
-  if (failed(mlir::generateLocationsFromIR(*file_path, tag, op, llvm::None)))
-    LOG(ERROR) << "Failed to dump op to " << *file_path;
+  std::string error;
+  std::unique_ptr<llvm::ToolOutputFile> outputFile =
+      mlir::openOutputFile(llvm::SmallString<32>(*file_path), &error);
+  if (!outputFile) {
+    LOG(ERROR) << "Error: " << error << std::endl
+               << "Failed to open file: " << *file_path;
+    return;
+  }
+
+  op->print(outputFile->os(), mlir::OpPrintingFlags().useLocalScope());
+  outputFile->keep();
 }
 
 void DumpExecutionOptions(const ExecutionOptions& execution_options,
@@ -623,9 +648,9 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   int64_t execution_count;
   uint64_t timestamp;
   {
-    static auto& module_id_to_execution_count TF_GUARDED_BY(mu) =
+    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64_t, int64_t>();
-    tensorflow::mutex_lock lock(mu);
+    absl::MutexLock lock(&mu);
     execution_count = module_id_to_execution_count[module.unique_id()]++;
     auto timestamp_emplace = module_id_to_timestamp.try_emplace(
         module.unique_id(), tensorflow::Env::Default()->NowMicros());
@@ -660,9 +685,9 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
   // have to use its name.
   int64_t execution_count;
   {
-    static auto& module_name_to_execution_count TF_GUARDED_BY(mu) =
+    static auto& module_name_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<std::string, int64_t>();
-    tensorflow::mutex_lock lock(mu);
+    absl::MutexLock lock(&mu);
     execution_count = module_name_to_execution_count[name]++;
   }
   std::string filename = StrFormat("module_%s.execution_%04d.hlo_snapshot.pb",

@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace llvm {
 class FastMathFlags;
@@ -236,7 +235,7 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
                                        uint64_t dereferenceable_bytes);
 
 // Tells LLVM `inst >= lower && inst < upper`. Returns `inst` for convenience.
-llvm::Instruction* AddRangeMetadata(int64_t lower, int64_t upper,
+llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
                                     llvm::Instruction* inst);
 
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);

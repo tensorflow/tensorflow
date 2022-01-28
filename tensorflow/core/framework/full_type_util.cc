@@ -127,17 +127,6 @@ OpTypeConstructor VariadicTensorContainer(FullTypeId t,
 
 namespace {
 
-inline bool ReduceVariantTensor(FullTypeDef& t) {
-  // Special case for DT_VARIANT tensors. We leave those unset to avoid even
-  // more special casing downstream.
-  if (t.type_id() == TFT_TENSOR && t.args_size() &&
-      t.args(0).type_id() == TFT_LEGACY_VARIANT) {
-    t.Clear();
-    return true;
-  }
-  return false;
-}
-
 typedef absl::flat_hash_map<StringPiece, const AttrValue*> AttrMap;
 
 inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t);
@@ -234,9 +223,18 @@ Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
 Status SubstituteGeneric(AttrMap& attrs, FullTypeDef& t) {
   int nargs = t.args_size();
   for (int j = 0; j < nargs; j++) {
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        SubstituteFromAttrs(attrs, *(t.mutable_args(j))),
-        "while substituting arg ", j, ": ", t.args(j).DebugString());
+    FullTypeDef* arg_t = t.mutable_args(j);
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(SubstituteFromAttrs(attrs, *arg_t),
+                                    "while substituting arg ", j, ": ",
+                                    arg_t->DebugString());
+
+    // Special case for DT_VARIANT tensors. We leave those unset to avoid even
+    // more special casing downstream.
+    if (arg_t->type_id() == TFT_TENSOR && arg_t->args_size() &&
+        arg_t->args(0).type_id() == TFT_LEGACY_VARIANT) {
+      t.clear_args();
+      break;
+    }
   }
   return Status::OK();
 }
@@ -283,7 +281,6 @@ Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         SubstituteFromAttrs(map, t), "while expanding vars of\n",
         t.DebugString(), "\nfrom\n", attrs.SummarizeNode());
-    ReduceVariantTensor(t);
   }
 
   return Status::OK();

@@ -2103,7 +2103,8 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     # rank=row.rank+1.
     #
     # Manually set dtype as numpy now complains when given ragged rows.
-    dtype = np.object if any(len(row) != len(rows[0]) for row in rows) else None
+    has_variable_length_rows = any(len(row) != len(rows[0]) for row in rows)
+    dtype = np.object_ if has_variable_length_rows else None
     return np.array(rows, dtype=dtype)
 
   def to_list(self):
@@ -2714,7 +2715,7 @@ session.register_session_run_conversion_functions(
 #===============================================================================
 # RaggedTensorType
 #===============================================================================
-class RaggedTensorType(object):
+class RaggedTensorType:
   """Encoding of a static type for a `RaggedTensor`.
 
   Use this type to express/declare that an output must have the type of

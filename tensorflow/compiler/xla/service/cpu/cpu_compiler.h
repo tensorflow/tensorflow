@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -170,7 +169,8 @@ class CpuCompiler : public LLVMCompiler {
 
   mutable std::unique_ptr<HloProto> hlo_proto_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
+  CpuCompiler(const CpuCompiler&) = delete;
+  CpuCompiler& operator=(const CpuCompiler&) = delete;
 };
 
 }  // namespace cpu

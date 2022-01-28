@@ -260,11 +260,12 @@ void DoListCommand(const HloModule& module,
   std::cout << "Query results:" << std::endl;
   for (const auto& computation : module.computations()) {
     for (const auto& instr : computation->instructions()) {
-      if ((type == "name" && instr->name().find(pattern) != string::npos) ||
+      if ((type == "name" &&
+           instr->name().find(pattern) != std::string::npos) ||
           (type == "op_name" &&
-           instr->metadata().op_name().find(pattern) != string::npos) ||
+           instr->metadata().op_name().find(pattern) != std::string::npos) ||
           (type == "op_type" &&
-           instr->metadata().op_type().find(pattern) != string::npos)) {
+           instr->metadata().op_type().find(pattern) != std::string::npos)) {
         std::cout << "  " << instr->name();
         std::cout << ", op_name '" << instr->metadata().op_name() << "'";
         std::cout << ", op_type '" << instr->metadata().op_type() << "'";

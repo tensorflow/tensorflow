@@ -51,16 +51,6 @@ Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                       ncclGetErrorString(s)));
 }
 
-Status ToStatus(cudaError_t s, const char* file, int64_t line,
-                const char* expr) {
-  if (s == cudaSuccess) {
-    return Status::OK();
-  }
-  return tensorflow::errors::Internal(
-      absl::StrFormat("%s:%d: CUDA operation %s failed: %s", file, line, expr,
-                      cudaGetErrorString(s)));
-}
-
 ncclRedOp_t ToNcclReduction(ReductionKind kind) {
   switch (kind) {
     case ReductionKind::SUM:

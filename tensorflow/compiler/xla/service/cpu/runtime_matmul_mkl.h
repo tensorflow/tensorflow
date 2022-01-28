@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <iostream>
 
-#include "tensorflow/core/platform/types.h"
 #ifdef ENABLE_MKL
 #include "third_party/intel_mkl_ml/include/mkl_cblas.h"
 

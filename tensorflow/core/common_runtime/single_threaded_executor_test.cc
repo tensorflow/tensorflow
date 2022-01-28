@@ -64,7 +64,11 @@ class MockOp : public OpKernel {
  private:
   std::function<void(OpKernelContext* ctx)> compute_;
 };
-REGISTER_OP("Mock").Input("x: float").Output("y: float").SetIsStateful();
+REGISTER_OP("Mock")
+    .Input("x: float")
+    .Output("y: float")
+    .Output("empty_output: string")
+    .SetIsStateful();
 REGISTER_KERNEL_BUILDER(Name("Mock").Device(DEVICE_CPU), MockOp);
 
 class ExecutorTest : public ::testing::Test {
@@ -220,6 +224,28 @@ TEST_F(ExecutorTest, SimpleAdd) {
   const Tensor* arg_1;
   TF_ASSERT_OK(call_frame.GetArg(1, &arg_1));
   EXPECT_EQ(2.0, V(*arg_1));
+}
+
+TEST_F(ExecutorTest, EmptyOutput) {
+  // in, _ = MockOp(in)
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  Node* in = test::graph::Arg(g.get(), 0, DT_FLOAT);
+  Node* mock;
+  TF_ASSERT_OK(
+      NodeBuilder(g->NewName("n"), "Mock").Input(in).Finalize(g.get(), &mock));
+  test::graph::Retval(g.get(), 0, mock, 0);
+  test::graph::Retval(g.get(), 1, mock, 1);
+  FixupSourceAndSinkEdges(g.get());
+  Create(std::move(g),
+         [&](OpKernelContext* ctx) { ctx->set_output(0, ctx->input(0)); });
+  FunctionCallFrame call_frame({DT_FLOAT}, {DT_FLOAT, DT_STRING});
+  TF_ASSERT_OK(call_frame.SetArgs({V(1.0)}));
+  TF_ASSERT_OK(Run(&call_frame));
+  std::vector<Tensor> retvals;
+  TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
+  EXPECT_EQ(1.0, V(retvals[0]));
+  EXPECT_EQ(DT_STRING, retvals[1].dtype());
+  EXPECT_EQ(0, retvals[1].tensor_data().size());
 }
 
 TEST_F(ExecutorTest, SelfAdd) {

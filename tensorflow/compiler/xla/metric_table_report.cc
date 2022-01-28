@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/metric_table_report.h"
 
-#include <unordered_map>
+#include <algorithm>
+#include <string>
+#include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -83,7 +85,7 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
   const int report_size = report.size();
   while (pos < report_size) {
     int64_t end_of_line = report.find('\n', pos);
-    const int64_t _npos = string::npos;
+    const int64_t _npos = std::string::npos;
     if (end_of_line == _npos) {
       end_of_line = report.size();
     }
@@ -100,7 +102,7 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
 std::vector<MetricTableReport::Category> MetricTableReport::MakeCategories(
     const std::vector<Entry>* entries) {
   // Create the categories using a category_text -> category map.
-  std::unordered_map<std::string, Category> category_map;
+  absl::flat_hash_map<std::string, Category> category_map;
   for (const Entry& entry : *entries) {
     Category& category = category_map[entry.category_text];
     category.metric_sum += entry.metric;

@@ -282,7 +282,7 @@ def _non_atrous_convolution(
     return op(input, filter)
 
 
-class _NonAtrousConvolution(object):
+class _NonAtrousConvolution:
   """Helper class for _non_atrous_convolution.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -694,7 +694,7 @@ def with_space_to_batch(
   return new_op(input, None)
 
 
-class _WithSpaceToBatch(object):
+class _WithSpaceToBatch:
   """Helper class for with_space_to_batch.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -1305,7 +1305,7 @@ def convolution_internal(
       return op(input, filters)
 
 
-class Convolution(object):
+class Convolution:
   """Helper class for convolution.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -3831,9 +3831,10 @@ def softmax_v2(logits, axis=None, name=None):
   is 1.
 
   This function performs the equivalent of
-
-      softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
-
+  
+  ```
+  softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis, keepdims=True)
+  ```
   Example usage:
 
   >>> softmax = tf.nn.softmax([-1, 0., 1.])
@@ -4635,8 +4636,8 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
   window in `value`.
 
   Args:
-    input: A 5-D `Tensor` of shape `[batch, depth, height, width, channels]` and type
-      `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+    input: A 5-D `Tensor` of shape `[batch, depth, height, width, channels]`
+      and type `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
     ksize: An int or list of `ints` that has length `1`, `3` or `5`. The size of
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `3` or `5`. The

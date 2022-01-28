@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -53,17 +54,21 @@ static const char kImportModelDefaultGraphFuncName[] = "main";
 // which are inconsistent between TFG and TFE.
 //
 static mlir::LogicalResult FilterTfgSpecificArgResultAttributes(
-    mlir::MLIRContext *context, mlir::ArrayAttr array_attr,
-    llvm::SmallVector<mlir::DictionaryAttr> &output) {
-  for (mlir::DictionaryAttr dict_attr :
-       array_attr.template getAsRange<mlir::DictionaryAttr>()) {
+    mlir::MLIRContext *context, mlir::ArrayRef<Type> types,
+    mlir::ArrayAttr array_attr, llvm::SmallVector<mlir::Type> &output_types,
+    llvm::SmallVector<mlir::DictionaryAttr> &output_attrs) {
+  for (auto it : llvm::zip(
+           types, array_attr.template getAsRange<mlir::DictionaryAttr>())) {
+    if (std::get<0>(it).isa<tfg::ControlType>()) continue;
+    output_types.push_back(std::get<0>(it));
+
     mlir::NamedAttrList list;
-    for (mlir::NamedAttribute attr : dict_attr.getValue()) {
+    for (mlir::NamedAttribute attr : std::get<1>(it).getValue()) {
       // Skip if the attribute has "tfg" prefix.
       if (attr.getName().getValue().startswith("tfg")) continue;
       list.append(attr);
     }
-    output.push_back(list.getDictionary(context));
+    output_attrs.push_back(list.getDictionary(context));
   }
   return mlir::success();
 }
@@ -88,7 +93,7 @@ static mlir::LogicalResult ReformatOpAttributes(
         parsed_name.has_id = true;
       }
       output.push_back(mlir::NamedAttribute(
-          mlir::Identifier::get("device", context),
+          mlir::StringAttr::get(context, "device"),
           mlir::StringAttr::get(
               context,
               tensorflow::DeviceNameUtils::ParsedNameToString(parsed_name))));
@@ -99,6 +104,12 @@ static mlir::LogicalResult ReformatOpAttributes(
   return mlir::success();
 }
 
+static void FilterOutBlockArgControlDep(
+    ValueRange operands, llvm::SmallVectorImpl<Value> &filtered) {
+  for (Value value : operands)
+    if (!value.isa<mlir::BlockArgument>()) filtered.push_back(value);
+}
+
 // Split the tfg.NextIteration into tf_executor::NextIterationSourceOp and
 // tf_executor::NextIterationSinkOp to break the cycle introduced by itself.
 static void SplitNextIteration(Block &block) {
@@ -106,11 +117,15 @@ static void SplitNextIteration(Block &block) {
   block.walk([&](Operation *op) {
     if (!op->getName().getStringRef().equals("tfg.NextIteration")) return;
     mlir::OpBuilder builder(op);
+
+    llvm::SmallVector<Value, 2> new_operands;
+    FilterOutBlockArgControlDep(op->getOperands().drop_front(), new_operands);
+
     auto source_op = builder.create<tf_executor::NextIterationSourceOp>(
         op->getLoc(), op->getOperand(0).getType());
     builder.create<tf_executor::NextIterationSinkOp>(
         op->getLoc(), source_op.token(), /*input=*/op->getOperand(0),
-        /*controlInputs=*/op->getOperands().drop_front());
+        /*controlInputs=*/new_operands);
     op->replaceAllUsesWith(
         ValueRange({source_op.output(), source_op.control()}));
     op->erase();
@@ -135,7 +150,8 @@ class ConvertGraphOp : public OpConversionPattern<tfg::GraphOp> {
     rewriter.setInsertionPointToStart(func.addEntryBlock());
     auto executor_graph =
         rewriter.create<tf_executor::GraphOp>(loc, func_type.getResults());
-    executor_graph.body().takeBody(graph.nodes());
+    rewriter.inlineRegionBefore(graph.nodes(), executor_graph.body(),
+                                executor_graph.body().end());
 
     // Add terminator of tf_executor::graph
     rewriter.setInsertionPointToEnd(&executor_graph.body().front());
@@ -159,6 +175,7 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
       tfg::GraphFuncOp graph_func, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     assert(!graph_func.generic());
+    Location loc = graph_func.getLoc();
 
     FuncOp func = rewriter.create<FuncOp>(
         graph_func.getLoc(),
@@ -168,20 +185,49 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
 
     func->setAttrs(graph_func->getAttrs());
 
+    llvm::SmallVector<Type> arg_types;
+    llvm::SmallVector<Type> res_types;
     llvm::SmallVector<DictionaryAttr> arg_attrs;
     llvm::SmallVector<DictionaryAttr> res_attrs;
+
     if (failed(FilterTfgSpecificArgResultAttributes(
-            getContext(), graph_func.getAllArgAttrs(), arg_attrs)) ||
+            getContext(), graph_func.getType().getInputs(),
+            graph_func.getAllArgAttrs(), arg_types, arg_attrs)) ||
         failed(FilterTfgSpecificArgResultAttributes(
-            getContext(), graph_func.getAllResultAttrs(), res_attrs)))
+            getContext(), graph_func.getType().getResults(),
+            graph_func.getAllResultAttrs(), res_types, res_attrs)))
       return failure();
+
+    // Update the function type which has excluded the control args.
+    func->setAttr(
+        "type", TypeAttr::get(rewriter.getFunctionType(arg_types, res_types)));
 
     // Update arg/result attributes.
     func.setAllArgAttrs(arg_attrs);
     func.setAllResultAttrs(res_attrs);
 
     rewriter.setInsertionPointToStart(func.addEntryBlock());
-    func.body().takeBody(graph_func.body());
+    // In TFE, the function body is inlined in a GraphOp. Create a GraphOp
+    // instance and move the regions from GraphFuncOp to GraphOp.
+    auto executor_graph =
+        rewriter.create<tf_executor::GraphOp>(loc, func.getType().getResults());
+
+    // Replace the uses of block arguments with function arguments. Note that we
+    // can't erase the arguments here because the operations may still use them
+    // and these uses will be dropped after legalization of each op.
+    unsigned idx = 0;
+    Block &block = graph_func.body().front();
+    for (auto iter = block.args_begin(), end_iter = block.args_end();
+         iter != end_iter; ++iter) {
+      if (!iter->getType().isa<tfg::ControlType>())
+        iter->replaceAllUsesWith(func.body().getArgument(idx++));
+    }
+
+    rewriter.inlineRegionBefore(graph_func.body(), executor_graph.body(),
+                                executor_graph.body().end());
+
+    rewriter.setInsertionPointToEnd(&func.body().front());
+    rewriter.create<ReturnOp>(loc, executor_graph.getOperation()->getResults());
 
     rewriter.replaceOp(graph_func.getOperation(),
                        func.getOperation()->getResults());
@@ -196,8 +242,8 @@ class ConvertReturnOp : public OpConversionPattern<tfg::ReturnOp> {
   LogicalResult matchAndRewrite(
       tfg::ReturnOp ret, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    rewriter.replaceOpWithNewOp<ReturnOp>(ret.getOperation(),
-                                          adaptor.getOperands());
+    rewriter.replaceOpWithNewOp<tf_executor::FetchOp>(ret.getOperation(),
+                                                      adaptor.getOperands());
     return success();
   }
 };
@@ -213,8 +259,11 @@ class ConvertControlTriggerOp : public ConversionPattern {
     llvm::SmallVector<Type, 2> new_types(op->getResultTypes());
     new_types.back() = rewriter.getType<tf_executor::ControlType>();
 
+    llvm::SmallVector<Value, 2> new_operands;
+    FilterOutBlockArgControlDep(operands, new_operands);
+
     rewriter.replaceOpWithNewOp<tf_executor::ControlTriggerOp>(
-        op, new_types, operands, op->getAttrs());
+        op, new_types, new_operands, op->getAttrs());
     return success();
   }
 };
@@ -230,8 +279,11 @@ class ConvertEnterOp : public ConversionPattern {
     llvm::SmallVector<Type, 2> new_types(op->getResultTypes());
     new_types.back() = rewriter.getType<tf_executor::ControlType>();
 
-    rewriter.replaceOpWithNewOp<tf_executor::EnterOp>(op, new_types, operands,
-                                                      op->getAttrs());
+    llvm::SmallVector<Value, 2> new_operands;
+    FilterOutBlockArgControlDep(operands, new_operands);
+
+    rewriter.replaceOpWithNewOp<tf_executor::EnterOp>(
+        op, new_types, new_operands, op->getAttrs());
     return success();
   }
 };
@@ -247,8 +299,11 @@ class ConvertExitOp : public ConversionPattern {
     llvm::SmallVector<Type, 2> new_types(op->getResultTypes());
     new_types.back() = rewriter.getType<tf_executor::ControlType>();
 
-    rewriter.replaceOpWithNewOp<tf_executor::ExitOp>(op, new_types, operands,
-                                                     op->getAttrs());
+    llvm::SmallVector<Value, 2> new_operands;
+    FilterOutBlockArgControlDep(operands, new_operands);
+
+    rewriter.replaceOpWithNewOp<tf_executor::ExitOp>(
+        op, new_types, new_operands, op->getAttrs());
     return success();
   }
 };
@@ -264,8 +319,11 @@ class ConvertLoopCondOp : public ConversionPattern {
     llvm::SmallVector<Type, 2> new_types(op->getResultTypes());
     new_types.back() = rewriter.getType<tf_executor::ControlType>();
 
+    llvm::SmallVector<Value, 2> new_operands;
+    FilterOutBlockArgControlDep(operands, new_operands);
+
     rewriter.replaceOpWithNewOp<tf_executor::LoopCondOp>(
-        op, new_types, operands, op->getAttrs());
+        op, new_types, new_operands, op->getAttrs());
     return success();
   }
 };
@@ -281,8 +339,11 @@ class ConvertMergeOp : public ConversionPattern {
     llvm::SmallVector<Type, 2> new_types(op->getResultTypes());
     new_types.back() = rewriter.getType<tf_executor::ControlType>();
 
-    rewriter.replaceOpWithNewOp<tf_executor::MergeOp>(op, new_types, operands,
-                                                      op->getAttrs());
+    llvm::SmallVector<Value, 2> new_operands;
+    FilterOutBlockArgControlDep(operands, new_operands);
+
+    rewriter.replaceOpWithNewOp<tf_executor::MergeOp>(
+        op, new_types, new_operands, op->getAttrs());
     return success();
   }
 };
@@ -298,8 +359,11 @@ class ConvertSwitchOp : public ConversionPattern {
     llvm::SmallVector<Type, 2> new_types(op->getResultTypes());
     new_types.back() = rewriter.getType<tf_executor::ControlType>();
 
-    rewriter.replaceOpWithNewOp<tf_executor::SwitchOp>(op, new_types, operands,
-                                                       op->getAttrs());
+    llvm::SmallVector<Value, 2> new_operands;
+    FilterOutBlockArgControlDep(operands, new_operands);
+
+    rewriter.replaceOpWithNewOp<tf_executor::SwitchOp>(
+        op, new_types, new_operands, op->getAttrs());
     return success();
   }
 };
@@ -315,8 +379,11 @@ class ConvertSwitchNOp : public ConversionPattern {
     llvm::SmallVector<Type, 2> new_types(op->getResultTypes());
     new_types.back() = rewriter.getType<tf_executor::ControlType>();
 
-    rewriter.replaceOpWithNewOp<tf_executor::SwitchNOp>(op, new_types, operands,
-                                                        op->getAttrs());
+    llvm::SmallVector<Value, 2> new_operands;
+    FilterOutBlockArgControlDep(operands, new_operands);
+
+    rewriter.replaceOpWithNewOp<tf_executor::SwitchNOp>(
+        op, new_types, new_operands, op->getAttrs());
     return success();
   }
 };
@@ -347,7 +414,8 @@ class ConvertGeneralOp : public ConversionPattern {
       // not have been converted to tf_executor::ControlType.
       if (value.getType().isa<tfg::ControlType>() ||
           value.getType().isa<tf_executor::ControlType>()) {
-        island_control_operands.push_back(value);
+        if (!value.isa<BlockArgument>())
+          island_control_operands.push_back(value);
       } else {
         inner_op_operands.push_back(value);
       }
@@ -436,7 +504,7 @@ void LegalizeTFGToTFE::runOnOperation() {
   target.addLegalOp<FuncOp>();
   target.addLegalOp<ReturnOp>();
 
-  OwningRewritePatternList patterns(&context);
+  RewritePatternSet patterns(&context);
   patterns.insert<ConvertGraphOp>(&context);
   patterns.insert<ConvertGraphFuncOp>(&context);
   patterns.insert<ConvertReturnOp>(&context);
@@ -483,6 +551,12 @@ void LegalizeTFGToTFE::runOnOperation() {
 
   if (failed(applyFullConversion(module.getOperation(), target, finalPatterns)))
     signalPassFailure();
+
+  // The uses of arg control dependency has been dropped. We can safely remove
+  // the block argument here.
+  module.walk([&](tf_executor::GraphOp graph) {
+    graph.body().front().eraseArguments([](BlockArgument arg) { return true; });
+  });
 }
 
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass() {

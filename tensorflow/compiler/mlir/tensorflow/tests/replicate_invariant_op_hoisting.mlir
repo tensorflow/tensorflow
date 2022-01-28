@@ -125,15 +125,15 @@ func @dependent_invariants(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
 func @nested_ops(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
   %0:8 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<*xf32>) {n = 2: i32} {
     %1 = "tf.Shape"(%ri) {device = "", T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
-    %2 = "tf_device.launch"() ( {
+    %2 = "tf_device.launch"() ({
       %a = "tf.opA"(%1) : (tensor<?xi32>) -> tensor<*xi32>
       tf_device.return %a : tensor<*xi32>
     }) {device = "a"} : () -> tensor<*xi32>
-    %3 = "tf_device.launch"() ( {
+    %3 = "tf_device.launch"() ({
       %b = "tf.opB"(%1, %2) : (tensor<?xi32>, tensor<*xi32>) -> tensor<*xf32>
       tf_device.return %b : tensor<*xf32>
     }) {device = "b"} : () -> tensor<*xf32>
-    %4 = "tf_device.launch"() ( {
+    %4 = "tf_device.launch"() ({
       %c = "tf.opC"(%ri, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<?xi1>
       tf_device.return %c : tensor<?xi1>
     }) {device = "c"} : () -> tensor<?xi1>
@@ -165,11 +165,11 @@ func @do_not_hoist_ops_with_virtual_device(%arg0: tensor<*xf32>, %arg1: tensor<*
   %0:8 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<*xf32>) {devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}, n = 2: i32} {
     %1 = "tf.Shape"(%ri) {device = "", T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
     %2 = "tf.opA"(%1) {device = "TPU_REPLICATED_CORE_0"} : (tensor<?xi32>) -> tensor<*xi32>
-    %3 = "tf_device.launch"() ( {
+    %3 = "tf_device.launch"() ({
       %b = "tf.opB"(%1) : (tensor<?xi32>) -> tensor<*xi32>
       tf_device.return %b : tensor<*xi32>
     }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<*xi32>
-    %4 = "tf_device.launch"() ( {
+    %4 = "tf_device.launch"() ({
       %c = "tf.opC"(%1) {device = "TPU_REPLICATED_CORE_0"} : (tensor<?xi32>) -> tensor<*xi32>
       tf_device.return %c : tensor<*xi32>
     }) {device = "c"} : () -> tensor<*xi32>
@@ -181,11 +181,11 @@ func @do_not_hoist_ops_with_virtual_device(%arg0: tensor<*xf32>, %arg1: tensor<*
 // CHECK:  [[SHAPE:%.*]] = "tf.Shape"([[VAL_0]])
 // CHECK:  tf_device.replicate({{\[}}[[VAL_0]], [[VAL_1]]] as [[VAL_4:%.*]]: tensor<*xf32>) {devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}, n = 2 : i32} {
 // CHECK:    [[OP_A:%.*]] = "tf.opA"([[SHAPE]]) {device = "TPU_REPLICATED_CORE_0"} : (tensor<?xi32>) -> tensor<*xi32>
-// CHECK:    [[LAUNCH_B:%.*]] = "tf_device.launch"() ( {
+// CHECK:    [[LAUNCH_B:%.*]] = "tf_device.launch"() ({
 // CHECK:      [[OP_B:%.*]] = "tf.opB"([[SHAPE]]) : (tensor<?xi32>) -> tensor<*xi32>
 // CHECK:      tf_device.return [[OP_B]] : tensor<*xi32>
 // CHECK:    }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<*xi32>
-// CHECK:    [[LAUNCH_C:%.*]] = "tf_device.launch"() ( {
+// CHECK:    [[LAUNCH_C:%.*]] = "tf_device.launch"() ({
 // CHECK:      [[OP_C:%.*]] = "tf.opC"([[SHAPE]]) {device = "TPU_REPLICATED_CORE_0"} : (tensor<?xi32>) -> tensor<*xi32>
 // CHECK:      tf_device.return [[OP_C]] : tensor<*xi32>
 // CHECK:    }) {device = "c"} : () -> tensor<*xi32>

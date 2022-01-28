@@ -305,6 +305,7 @@ cc_library(
 
 cc_library(
     name = "env_time",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["env_time.h"],
     deps = tf_windows_aware_platform_deps("env_time"),
 )
@@ -396,6 +397,7 @@ cc_library(
 
 cc_library(
     name = "logging",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
     deps = tf_logging_deps(),
 )
@@ -403,6 +405,7 @@ cc_library(
 cc_library(
     name = "macros",
     hdrs = ["macros.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 filegroup(
@@ -878,6 +881,7 @@ cc_library(
 cc_library(
     name = "threadpool_interface",
     hdrs = ["threadpool_interface.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":mutex",
         ":types",
@@ -888,6 +892,7 @@ cc_library(
 cc_library(
     name = "threadpool_options",
     hdrs = ["threadpool_options.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":threadpool_interface",
     ],
@@ -1530,6 +1535,7 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -1708,6 +1714,7 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
