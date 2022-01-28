@@ -196,8 +196,28 @@ cc_library(
         ":python_ref_manager",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "pprof_profile_builder",
+    srcs = ["pprof_profile_builder.cc"],
+    hdrs = ["pprof_profile_builder.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/profiler:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@pybind11",
     ],
 )
@@ -225,22 +245,26 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
         ":traceback",
         ":types",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/compiler/xla/pjrt:transpose",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python/lib/core:numpy_lib",
         "@com_google_absl//absl/algorithm:container",
@@ -251,6 +275,8 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@pybind11",
     ],
 )
@@ -471,6 +497,31 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir",
+    srcs = ["mlir.cc"],
+    hdrs = ["mlir.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        ":types",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:StandardOps",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "profiler",
     srcs = ["profiler.cc"],
     hdrs = ["profiler.h"],
@@ -552,8 +603,10 @@ pybind_extension(
     deps = [
         ":dlpack",
         ":jax_jit",
-        ":pmap_lib",
+        ":mlir",
         ":ops",
+        ":pmap_lib",
+        ":pprof_profile_builder",
         ":profiler",
         ":py_client",
         ":pytree",

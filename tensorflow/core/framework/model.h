@@ -707,7 +707,8 @@ class Model {
  private:
   // Determines whether optimization should stop given total processing time,
   // estimated output time, and estimated number of buffers bytes.
-  using StopPredicate = std::function<bool(double, double, double)>;
+  using StopPredicate =
+      std::function<bool(const ModelParameters&, double, double, double)>;
 
   static constexpr int64_t kOptimizationPeriodMinMs = 10;
   static constexpr int64_t kOptimizationPeriodMaxMs =

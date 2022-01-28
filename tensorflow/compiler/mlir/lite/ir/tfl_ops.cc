@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -687,17 +688,18 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
       const int64_t result_dim_size = result_dim_sizes[dim];
 
       if (dim == axis) {
-        if (RankedTensorType::isDynamic(operand_dim_size) ||
-            RankedTensorType::isDynamic(result_dim_size))
+        if (ShapedType::isDynamic(operand_dim_size) ||
+            ShapedType::isDynamic(result_dim_size)) {
           result_dim_sizes[axis] = kDynamicSize;
-        else
+        } else {
           result_dim_sizes[axis] += operand_dim_size;
+        }
         continue;
       }
 
-      if (RankedTensorType::isDynamic(operand_dim_size)) continue;
+      if (ShapedType::isDynamic(operand_dim_size)) continue;
 
-      if (RankedTensorType::isDynamic(result_dim_size)) {
+      if (ShapedType::isDynamic(result_dim_size)) {
         result_dim_sizes[dim] = operand_dim_size;
         result_dim_sizes_loc[dim] = operand.index();
         continue;
@@ -714,8 +716,8 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
   }
 
   const int64_t output_concated_dim_size = output_type.getDimSize(axis);
-  if (!RankedTensorType::isDynamic(output_concated_dim_size) &&
-      !RankedTensorType::isDynamic(result_dim_sizes[axis]) &&
+  if (!ShapedType::isDynamic(output_concated_dim_size) &&
+      !ShapedType::isDynamic(result_dim_sizes[axis]) &&
       result_dim_sizes[axis] != output_concated_dim_size)
     return op->emitOpError()
            << "dimension size of dimension #" << axis << " of output "
@@ -890,6 +892,35 @@ LogicalResult Verify(GatherOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BroadcastToOp
+//===----------------------------------------------------------------------===//
+
+// Canonicalizes BroadcastToOp to ReshapeOp if the input and output has the same
+// number of elements.
+struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
+  using OpRewritePattern<BroadcastToOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(BroadcastToOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input_type = op.input().getType().cast<ShapedType>();
+    auto output_type = op.getType().cast<ShapedType>();
+    if (!input_type.hasStaticShape() || !output_type.hasStaticShape() ||
+        input_type.getNumElements() != output_type.getNumElements()) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.input(),
+                                           op.shape());
+    return success();
+  }
+};
+
+void BroadcastToOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                MLIRContext *context) {
+  results.insert<ConvertBroadcastToReshape>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // FullyConnectedOp
 //===----------------------------------------------------------------------===//
 
@@ -1037,8 +1068,8 @@ LogicalResult FullyConnectedOp::fold(ArrayRef<Attribute> operands,
   return success();
 }
 
-void FullyConnectedOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void FullyConnectedOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                   MLIRContext *context) {
   results.insert<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
 }
 
@@ -1055,7 +1086,7 @@ int64_t FullyConnectedOp::GetArithmeticCount(Operation *op) {
 // Conv2DOp
 //===----------------------------------------------------------------------===//
 
-void Conv2DOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void Conv2DOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
@@ -1106,13 +1137,13 @@ LogicalResult Conv2DOp::inferReturnTypes(
     return success();
   }
 
-  auto stride_h = op.stride_h().getInt();
-  auto stride_w = op.stride_w().getInt();
-  auto dilation_h = op.dilation_h_factor().getInt();
-  auto dilation_w = op.dilation_w_factor().getInt();
+  auto stride_h = op.stride_hAttr().getInt();
+  auto stride_w = op.stride_wAttr().getInt();
+  auto dilation_h = op.dilation_h_factorAttr().getInt();
+  auto dilation_w = op.dilation_w_factorAttr().getInt();
 
   // We don't have EXPLICIT PADDING in TfLite.
-  auto paddings = op.padding().getValue();
+  auto paddings = op.padding();
   tensorflow::Padding padding;
   auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
   if (!padding_is_valid.ok()) {
@@ -1177,8 +1208,8 @@ int64_t Conv2DOp::GetArithmeticCount(Operation *op) {
 // DepthwiseConv2DO
 //===----------------------------------------------------------------------===//
 
-void DepthwiseConv2DOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void DepthwiseConv2DOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
   // results.insert<RemoveOptionalZeroBias<DepthwiseConv2DOp>>(context);
@@ -1617,7 +1648,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   return nullptr;
 }
 
-void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
   results.insert<RemoveAdjacentReshape, ConvertShapeTo1D>(context);
 }
@@ -1835,7 +1866,7 @@ struct ReplacePackWithReshape : public RewritePattern {
   }
 };
 
-void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void PackOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
   results.insert<RemoveRedundantUnpackPack, ReplacePackWithReshape>(context);
 }
@@ -1887,10 +1918,8 @@ static LogicalResult Verify(SliceOp op) {
 
   if (begin && size && input_type.hasStaticShape()) {
     for (uint64_t i = 0, end = begin.getNumElements(); i < end; i++) {
-      int begin_i =
-          begin.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
-      int size_i =
-          size.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
+      int begin_i = begin.getValues<APInt>()[i].getSExtValue();
+      int size_i = size.getValues<APInt>()[i].getSExtValue();
       int dim_i = input_type.getShape()[i];
       if (begin_i > dim_i) {
         return op.emitOpError(llvm::formatv(
@@ -1971,7 +2000,7 @@ struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
   }
 };
 
-void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void SliceOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
   results.insert<CastDonwInt64BeginEndToInt32>(context);
 }
@@ -2021,7 +2050,7 @@ static void BuildTopKOp(OpBuilder *builder, OperationState &result, Value input,
   if (matchPattern(k, m_Constant(&cst)))
     // These casts should all be valid due to how Tensor constants are stored.
     // TODO(jpienaar): This should use a helper function.
-    const_k = cst.getValue<IntegerAttr>({}).getValue().getSExtValue();
+    const_k = cst.getValues<IntegerAttr>()[0].getValue().getSExtValue();
 
   auto val_type = input.getType().cast<TensorType>();
   // If value is unranked, then so is results.
@@ -2076,7 +2105,7 @@ struct DropFakeQuant : public RewritePattern {
 };
 }  // end anonymous namespace
 
-void FakeQuantOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void FakeQuantOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
   results.insert<DropFakeQuant>(context);
 }
@@ -2100,7 +2129,7 @@ LogicalResult UnpackOp::inferReturnTypes(
     return emitOptionalError(loc, "input count should be equal to 1");
   }
 
-  const int64_t num_value = op.num().getInt();
+  const int64_t num_value = op.numAttr().getInt();
   auto input_type = operands[0].getType().dyn_cast<ShapedType>();
   if (!input_type || !input_type.hasRank()) {
     // If input is unranked, then so is output.
@@ -2119,14 +2148,14 @@ LogicalResult UnpackOp::inferReturnTypes(
     return emitOptionalError(loc, "input should be of rank larger than 0");
   }
 
-  int64_t axis_value = op.axis().getInt();
+  int64_t axis_value = op.axisAttr().getInt();
   if (axis_value < 0) {
     axis_value += rank;
   }
   if (axis_value < 0 || axis_value >= rank) {
     return emitOptionalError(
         loc, "attribute 'axis' should be in range [-rank, rank), got axis = ",
-        op.axis().getInt(), ", and rank = ", rank);
+        op.axisAttr().getInt(), ", and rank = ", rank);
   }
 
   if (!ShapedType::isDynamic(input_type.getDimSize(axis_value)) &&
@@ -2279,7 +2308,7 @@ static LogicalResult Verify(SplitVOp op) {
   int64_t total_size_splits = 0;
 
   for (int64_t i = 0; i < num_splits; ++i) {
-    auto size_split_attr = size_splits_attr.getValue<IntegerAttr>(i);
+    auto size_split_attr = size_splits_attr.getValues<IntegerAttr>()[i];
     int64_t size_split = size_split_attr.getValue().getSExtValue();
     size_splits.push_back(size_split);
     if (size_split >= 0) {
@@ -2419,7 +2448,7 @@ struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
 
 }  // namespace
 
-void LSTMOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void LSTMOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
   results.insert<RemoveLSTMOpZeroBias>(context);
 }
@@ -2468,12 +2497,10 @@ LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
   }
 
   // Default to non-time_major.
-  bool time_majored = attr.getNamed("time_major").hasValue()
-                          ? attr.getNamed("time_major")
-                                .getValue()
-                                .second.cast<BoolAttr>()
-                                .getValue()
-                          : false;
+  Optional<mlir::NamedAttribute> time_major_attr = attr.getNamed("time_major");
+  bool time_majored =
+      time_major_attr ? time_major_attr->getValue().cast<BoolAttr>().getValue()
+                      : false;
 
   int batch =
       time_majored ? input_type.getDimSize(1) : input_type.getDimSize(0);
@@ -2762,7 +2789,7 @@ struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
 
 }  // namespace
 
-void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void ConstOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
   results.insert<FoldPseudoConstOp>(context);
 }
@@ -2924,17 +2951,17 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
            delta_tensor.getType().getRank() == 0);
     Type elem_type = getType().cast<ShapedType>().getElementType();
     if (elem_type.isSignlessInteger()) {
-      auto start_attr = start_tensor.getValue<IntegerAttr>({});
-      auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
-      auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
+      auto start_attr = start_tensor.getValues<IntegerAttr>()[0];
+      auto limit_attr = limit_tensor.getValues<IntegerAttr>()[0];
+      auto delta_attr = delta_tensor.getValues<IntegerAttr>()[0];
       const int num_elements = GetLengthOfRange(
           start_attr.getInt(), limit_attr.getInt(), delta_attr.getInt());
       return BuildConstRangeTensor(elem_type, num_elements, start_attr,
                                    delta_attr);
     } else if (elem_type.isa<FloatType>()) {
-      auto start_attr = start_tensor.getValue<FloatAttr>({});
-      auto limit_attr = limit_tensor.getValue<FloatAttr>({});
-      auto delta_attr = delta_tensor.getValue<FloatAttr>({});
+      auto start_attr = start_tensor.getValues<FloatAttr>()[0];
+      auto limit_attr = limit_tensor.getValues<FloatAttr>()[0];
+      auto delta_attr = delta_tensor.getValues<FloatAttr>()[0];
       const int num_elements = GetLengthOfRange(start_attr.getValueAsDouble(),
                                                 limit_attr.getValueAsDouble(),
                                                 delta_attr.getValueAsDouble());
@@ -3113,7 +3140,8 @@ void ComputePermutation(ElementsAttr input_tensor, ArrayRef<int32_t> perm,
     // recurse into the next axis.
     const bool is_last_axis = output_axis == num_dimensions - 1;
     if (is_last_axis) {
-      new_values->push_back(input_tensor.getValue(*input_indices));
+      new_values->push_back(
+          input_tensor.getValues<Attribute>()[*input_indices]);
     } else {
       ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
                          output_axis + 1, input_indices, new_values);
@@ -3144,8 +3172,7 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   SmallVector<int32_t, 4> perm;
   SmallVector<int64_t, 4> output_shape;
   for (int i = 0; i < num_dimensions; ++i) {
-    perm.push_back(
-        perm_tensor.getValue<IntegerAttr>({static_cast<uint64_t>(i)}).getInt());
+    perm.push_back(perm_tensor.getValues<IntegerAttr>()[i].getInt());
     output_shape.push_back(input_shape[perm[i]]);
 
     // Check that the derived output shape matches the static shape.
@@ -3339,7 +3366,7 @@ struct PolyCallResultOperandsMatchAndImplicitCapture
 
 }  // namespace
 
-void PolyCallOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void PolyCallOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.insert<PolyCallResultOperandsMatchAndImplicitCapture>(context);
 }
@@ -3490,7 +3517,7 @@ struct WhileResultOperandsMatchAndImplicitCapture
 
 }  // namespace
 
-void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void WhileOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
   results.insert<WhileResultOperandsMatchAndImplicitCapture>(context);
 }

@@ -114,7 +114,7 @@ CreateTensorDeviceCopyConversionPass();
 std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass();
 
 void populateTfControlFlowToScfPatterns(MLIRContext* context,
-                                        OwningRewritePatternList* patterns);
+                                        RewritePatternSet* patterns);
 // Create a pass to convert TensorFlow control flow to SCF.
 std::unique_ptr<OperationPass<ModuleOp>> createConvertTfControlFlowToScfPass();
 
@@ -200,8 +200,11 @@ CreateTensorArrayOpsDecompositionPass();
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
 
+// Create a pass that legalize TFG to TF dialect.
+std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
+
 // Addds the HLO to TF rewrite patterns to the specified pattern list.
-void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
+void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);
 
 // Matches sequence of ops to TensorFlow fused kernels. This pass should not be
@@ -434,7 +437,8 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps();
 
 // Creates a pass that adds ops which perform formatting on variables at
 // run-time according to compilation result.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTPUVariableRuntimeReformattingPass();
 
 // Creates a pass that wraps ops with the same `_xla_outside_compilation`
 // attribute value in a tf_device.launch op with host device assignment.

@@ -15,7 +15,9 @@ limitations under the License.
 
 // This file implements conversion of `linalg.tiled_loop` to buffer form.
 
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
@@ -35,12 +37,12 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
+using bufferization::ToMemrefOp;
+using bufferization::ToTensorOp;
 using linalg::FillOp;
 using linalg::InitTensorOp;
 using linalg::TiledLoopOp;
-using memref::BufferCastOp;
 using memref::SubViewOp;
-using memref::TensorLoadOp;
 using tensor::ExtractSliceOp;
 using tensor::InsertSliceOp;
 using vector::TransferReadOp;
@@ -103,12 +105,12 @@ bool IsBlockArgOfTiledLoop(Value value) {
 // loop. The assumption is that in `linalg.tiled_loop` the tile of the output
 // tensor that we read and the tile that we write to are the same.
 Value FindExistingSubview(Value destMemRef) {
-  if (auto buffer_cast = destMemRef.getDefiningOp<BufferCastOp>()) {
-    if (auto tensor_load = buffer_cast.tensor().getDefiningOp<TensorLoadOp>()) {
-      if (!IsBlockArgOfTiledLoop(tensor_load.memref())) return Value{};
+  if (auto to_memref = destMemRef.getDefiningOp<ToMemrefOp>()) {
+    if (auto to_tensor = to_memref.tensor().getDefiningOp<ToTensorOp>()) {
+      if (!IsBlockArgOfTiledLoop(to_tensor.memref())) return Value{};
       // Scan through users of the block argument to find `subview` op.
-      for (Operation *tensor_user : buffer_cast.tensor().getUsers()) {
-        if (auto another_cast = mlir::dyn_cast<BufferCastOp>(tensor_user)) {
+      for (Operation *tensor_user : to_memref.tensor().getUsers()) {
+        if (auto another_cast = mlir::dyn_cast<ToMemrefOp>(tensor_user)) {
           for (Operation *memref_user : another_cast.memref().getUsers()) {
             if (auto subview = mlir::dyn_cast<SubViewOp>(memref_user)) {
               if (subview.source() == destMemRef) return subview;
@@ -199,16 +201,11 @@ struct BufferizeTiledLoopOp : public OpConversionPattern<TiledLoopOp> {
       TiledLoopOp loop, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (loop.getNumResults() == 0) return failure();
-    // The following code to set distribution_type is due to the following bug
-    // causing distribution_types to return an ArrayAttr instead of an
-    // Optional<ArrayAttr>. https://bugs.llvm.org/show_bug.cgi?id=51622
-    llvm::Optional<ArrayAttr> distribution_types = adaptor.distribution_types();
-    if (!distribution_types.getValue()) distribution_types = llvm::None;
 
     auto new_loop = rewriter.create<TiledLoopOp>(
         loop.getLoc(), adaptor.lowerBound(), adaptor.upperBound(),
         adaptor.step(), adaptor.inputs(), adaptor.outputs(),
-        adaptor.iterator_types(), distribution_types);
+        adaptor.iterator_types(), adaptor.distribution_types());
 
     Location loc = loop.getLoc();
     BlockAndValueMapping bvm;
@@ -227,7 +224,7 @@ struct BufferizeTiledLoopOp : public OpConversionPattern<TiledLoopOp> {
         inputs.push_back(newArg);
         continue;
       }
-      inputs.push_back(innerBuilder.create<TensorLoadOp>(loc, std::get<0>(en)));
+      inputs.push_back(innerBuilder.create<ToTensorOp>(loc, std::get<0>(en)));
     }
     bvm.map(loop.getRegionInputArgs(), inputs);
 
@@ -241,8 +238,7 @@ struct BufferizeTiledLoopOp : public OpConversionPattern<TiledLoopOp> {
         outputs.push_back(newArg);
         continue;
       }
-      outputs.push_back(
-          innerBuilder.create<TensorLoadOp>(loc, std::get<0>(en)));
+      outputs.push_back(innerBuilder.create<ToTensorOp>(loc, std::get<0>(en)));
     }
     bvm.map(loop.getRegionOutputArgs(), outputs);
 
@@ -266,8 +262,8 @@ struct BufferizeVectorTransferReadOp
     if (readOp.getShapedType().isa<MemRefType>()) return failure();
     rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
         readOp, readOp.getType(), adaptor.source(), adaptor.indices(),
-        adaptor.permutation_map(), adaptor.padding(), adaptor.mask(),
-        adaptor.in_bounds() ? adaptor.in_bounds() : ArrayAttr());
+        adaptor.permutation_mapAttr(), adaptor.padding(), adaptor.mask(),
+        adaptor.in_bounds() ? adaptor.in_boundsAttr() : ArrayAttr());
     return success();
   }
 };
@@ -282,8 +278,8 @@ struct BufferizeVectorTransferWriteOp
     if (writeOp.getShapedType().isa<MemRefType>()) return failure();
     rewriter.create<vector::TransferWriteOp>(
         writeOp.getLoc(), adaptor.vector(), adaptor.source(), adaptor.indices(),
-        adaptor.permutation_map(),
-        adaptor.in_bounds() ? adaptor.in_bounds() : ArrayAttr());
+        adaptor.permutation_mapAttr(),
+        adaptor.in_bounds() ? adaptor.in_boundsAttr() : ArrayAttr());
     rewriter.replaceOp(writeOp, adaptor.source());
     return success();
   }
@@ -291,9 +287,9 @@ struct BufferizeVectorTransferWriteOp
 
 }  // namespace
 
-void populateTiledLoopBufferizePattern(MLIRContext *context,
-                                       BufferizeTypeConverter *converter,
-                                       RewritePatternSet *patterns) {
+void populateTiledLoopBufferizePattern(
+    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
+    RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
     BufferizeExtractSliceOp,

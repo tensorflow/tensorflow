@@ -671,7 +671,8 @@ def rot90(image, k=1, name=None):
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    k: A scalar integer. The number of times the image is rotated by 90 degrees.
+    k: A scalar integer tensor. The number of times the image(s) are
+      rotated by 90 degrees.
     name: A name for this operation (optional).
 
   Returns:
@@ -1356,7 +1357,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
 
 
 @tf_export(v1=['image.ResizeMethod'])
-class ResizeMethodV1(object):
+class ResizeMethodV1:
   """See `v1.image.resize` for details."""
   BILINEAR = 0
   NEAREST_NEIGHBOR = 1
@@ -1365,7 +1366,7 @@ class ResizeMethodV1(object):
 
 
 @tf_export('image.ResizeMethod', v1=[])
-class ResizeMethod(object):
+class ResizeMethod:
   """See `tf.image.resize` for details."""
   BILINEAR = 'bilinear'
   NEAREST_NEIGHBOR = 'nearest'
@@ -1939,6 +1940,7 @@ def per_image_standardization(image):
 
 
 @tf_export('image.random_brightness')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def random_brightness(image, max_delta, seed=None):
   """Adjust the brightness of images by a random factor.
@@ -1981,6 +1983,7 @@ def random_brightness(image, max_delta, seed=None):
 
 
 @tf_export('image.stateless_random_brightness', v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def stateless_random_brightness(image, max_delta, seed):
   """Adjust the brightness of images by a random factor deterministically.
@@ -2120,6 +2123,7 @@ def stateless_random_contrast(image, lower, upper, seed):
 
 
 @tf_export('image.adjust_brightness')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
@@ -2229,6 +2233,7 @@ def adjust_contrast(images, contrast_factor):
 
 
 @tf_export('image.adjust_gamma')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs [Gamma Correction](http://en.wikipedia.org/wiki/Gamma_correction).
@@ -2294,6 +2299,7 @@ def adjust_gamma(image, gamma=1, gain=1):
 
 
 @tf_export('image.convert_image_dtype')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def convert_image_dtype(image, dtype, saturate=False, name=None):
   """Convert `image` to `dtype`, scaling its values if needed.
@@ -2685,6 +2691,10 @@ def adjust_hue(image, delta, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+
+  Raises:
+    InvalidArgumentError: image must have at least 3 dimensions.
+    InvalidArgumentError: The size of the last dimension must be 3.
 
   Usage Example:
 
@@ -3742,12 +3752,12 @@ def non_max_suppression_with_scores(boxes,
   Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
   of other overlapping boxes instead of directly causing them to be pruned.
   Consequently, in contrast to `tf.image.non_max_suppression`,
-  `tf.image.non_max_suppression_padded` returns the new scores of each input box
+  `tf.image.non_max_suppression_with_scores` returns the new scores of each input box
   in the second output, `selected_scores`.
 
   To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
   larger than 0.  When `soft_nms_sigma` equals 0, the behavior of
-  `tf.image.non_max_suppression_padded` is identical to that of
+  `tf.image.non_max_suppression_with_scores` is identical to that of
   `tf.image.non_max_suppression` (except for the extra output) both in function
   and in running time.
 

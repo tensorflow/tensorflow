@@ -18,13 +18,10 @@ def tf_gen_op_wrapper_private_py(
         visibility = []):
     if not name.endswith("_gen"):
         fail("name must end in _gen")
-    if not visibility:
-        visibility = ["//visibility:private"]
-    bare_op_name = name[:-4]  # Strip off the _gen
     tf_gen_op_wrapper_py(
-        name = bare_op_name,
+        name = name[:-4],  # Strip off _gen
         out = out,
-        visibility = visibility,
+        visibility = visibility or ["//visibility:private"],
         deps = deps,
         require_shape_functions = require_shape_functions,
         generated_target_name = name,

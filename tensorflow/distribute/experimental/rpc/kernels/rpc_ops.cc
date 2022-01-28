@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
@@ -573,6 +574,10 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   ctx->set_output(0, handle);
 
   if (!list_registered_methods_) {
+    Tensor* method_output_t;
+    OP_REQUIRES_OK_ASYNC(
+        ctx, ctx->allocate_output(1, TensorShape({}), &method_output_t), done);
+    method_output_t->scalar<tstring>()() = "";
     done();
     return;
   }
@@ -895,5 +900,6 @@ REGISTER_KERNEL_BUILDER(Name("RpcGetValue").Device(DEVICE_CPU), RpcGetValueOp);
 REGISTER_KERNEL_BUILDER(Name("DeleteRpcFutureResource").Device(DEVICE_CPU),
                         DeleteRpcFutureResourceOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("RpcServerRegister");
 }  // namespace rpc
 }  // namespace tensorflow

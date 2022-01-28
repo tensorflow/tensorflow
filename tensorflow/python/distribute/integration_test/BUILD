@@ -51,6 +51,21 @@ cuda_py_test(
     ],
 )
 
+py_library(
+    name = "mwms_peer_failure_test_lib",
+    srcs = ["mwms_peer_failure_test.py"],
+    visibility = ["//learning/brain/runtime/python:__pkg__"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:test_util",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 tpu_py_test(
     name = "tpu_memory_test",
     size = "medium",

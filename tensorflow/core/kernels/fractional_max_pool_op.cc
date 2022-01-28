@@ -83,6 +83,13 @@ class FractionalMaxPoolOp : public OpKernel {
     std::vector<int> output_size(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size[i] = tensor_in.dim_size(i);
+
+      OP_REQUIRES(
+          context, input_size[i] >= pooling_ratio_[i],
+          errors::InvalidArgument("Pooling ratio is higher than input "
+                                  "dimension size for dimension ",
+                                  i, ". Input dim size: ", input_size[i],
+                                  " pooling ratio: ", pooling_ratio_[i]));
     }
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {

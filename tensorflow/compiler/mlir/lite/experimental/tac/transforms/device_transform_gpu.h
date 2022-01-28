@@ -25,7 +25,7 @@ namespace TFL {
 namespace tac {
 
 // nit: Returns all the gpu suitable transformation patterns.
-OwningRewritePatternList GetHardwareRewritePatternsGPU(MLIRContext* context);
+RewritePatternSet GetHardwareRewritePatternsGPU(MLIRContext* context);
 
 }  // namespace tac
 }  // namespace TFL

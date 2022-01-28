@@ -68,9 +68,7 @@ tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
 """
 import numbers
 import numpy as np
-import six
-from six.moves import builtins
-from six.moves import xrange  # pylint: disable=redefined-builtin
+import builtins
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -421,7 +419,7 @@ def _bucketize(input, boundaries, name=None):
 # pylint: enable=redefined-builtin
 
 
-class DivideDelegateWithName(object):
+class DivideDelegateWithName:
   """Use Python2/Python3 division delegation to implement divide for tensors."""
 
   def __init__(self, x, name):
@@ -591,6 +589,7 @@ def _neg(x, name=None):
 
 
 @tf_export(v1=["math.scalar_mul", "scalar_mul"])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def scalar_mul(scalar, x, name=None):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
@@ -616,8 +615,9 @@ def scalar_mul(scalar, x, name=None):
   Raises:
     ValueError: if scalar is not a 0-D `scalar`.
   """
+  base_dtype = dtypes.as_dtype(x.dtype).base_dtype
   scalar = ops.convert_to_tensor(
-      scalar, dtype=x.dtype.base_dtype, name="scalar")
+      scalar, dtype=base_dtype, name="scalar")
   shape = scalar.get_shape()
   if shape.ndims == 0:
     if isinstance(x, indexed_slices.IndexedSlices):
@@ -657,6 +657,7 @@ def softplus(features, name=None):
 
 
 @tf_export("math.scalar_mul", "scalar_mul", v1=[])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 @_set_doc(scalar_mul.__doc__)
 def scalar_mul_v2(scalar, x, name=None):
@@ -2128,9 +2129,8 @@ def _range_tensor_conversion_function(value, dtype=None, name=None,
   return range(value.start, value.stop, value.step, dtype=dtype, name=name)
 
 
-if not six.PY2:
-  ops.register_tensor_conversion_function(builtins.range,
-                                          _range_tensor_conversion_function)
+ops.register_tensor_conversion_function(builtins.range,
+                                        _range_tensor_conversion_function)
 
 
 # Reduction operations
@@ -4157,7 +4157,7 @@ def sigmoid(x, name=None):
   >>> x = tf.constant([0.0, 1.0, 50.0, 100.0])
   >>> tf.math.sigmoid(x)
   <tf.Tensor: shape=(4,), dtype=float32,
-  numpy=array([0.5      , 0.7310586, 1.       , 1.       ], dtype=float32)>
+  numpy=array([0.5, 0.7310586, 1.0, 1.0], dtype=float32)>
 
   If a negative number is large, its sigmoid will approach to 0 since the
   formula will be `y = 1 / (1 + <large_num>)`
@@ -4567,9 +4567,19 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
 
+  Caution: On CPU, values in `segment_ids` are always validated to be less than
+  `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+  does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+  result in safe but unspecified behavior, which may include ignoring
+  out-of-bound indices or outputting a tensor with a 0 stored in the first
+  dimension of its shape if `num_segments` is 0.
+
   Args:
     data: A `Tensor` with floating point or complex dtype.
     segment_ids: An integer tensor whose shape is a prefix of `data.shape`.
+      The values must be less than `num_segments`.
+      The values are always validated to be in range on CPU,
+      never validated on GPU.
     num_segments: An integer scalar `Tensor`.  The number of distinct segment
       IDs.
     name: A name for the operation (optional).
@@ -4615,9 +4625,19 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
 
+  Caution: On CPU, values in `segment_ids` are always validated to be less than
+  `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+  does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+  result in safe but unspecified behavior, which may include ignoring
+  out-of-bound indices or outputting a tensor with a 0 stored in the first
+  dimension of its shape if `num_segments` is 0.
+
   Args:
     data: A `Tensor` with floating point or complex dtype.
     segment_ids: An integer tensor whose shape is a prefix of `data.shape`.
+      The values must be in the range `[0, num_segments)`.
+      The values are always validated to be in range on CPU,
+      never validated on GPU.
     num_segments: An integer scalar `Tensor`.  The number of distinct segment
       IDs.
     name: A name for the operation (optional).
@@ -5013,7 +5033,7 @@ def tensordot(a, b, axes, name=None):
     if a.get_shape().is_fully_defined() and isinstance(axes, (list, tuple)):
       shape_a = a.get_shape().as_list()
       axes = [i if i >= 0 else i + len(shape_a) for i in axes]
-      free = [i for i in xrange(len(shape_a)) if i not in axes]
+      free = [i for i in builtins.range(len(shape_a)) if i not in axes]
       free_dims = [shape_a[i] for i in free]
       prod_free = int(np.prod([shape_a[i] for i in free]))
       prod_axes = int(np.prod([shape_a[i] for i in axes]))
@@ -5032,7 +5052,7 @@ def tensordot(a, b, axes, name=None):
       if a.get_shape().ndims is not None and isinstance(axes, (list, tuple)):
         shape_a = a.get_shape().as_list()
         axes = [i if i >= 0 else i + len(shape_a) for i in axes]
-        free = [i for i in xrange(len(shape_a)) if i not in axes]
+        free = [i for i in builtins.range(len(shape_a)) if i not in axes]
         axes_dims = [shape_a[i] for i in axes]
         free_dims = [shape_a[i] for i in free]
         free_dims_static = free_dims
@@ -5070,8 +5090,8 @@ def tensordot(a, b, axes, name=None):
           raise ValueError(f"`axes` must not be larger than the number of "
                            f"dimensions of tensor {a}.  Received {axes}, vs "
                            f"tensor dimensions {a_shape.ndims}.")
-        return (list(xrange(a_shape.ndims - axes,
-                            a_shape.ndims)), list(xrange(axes)))
+        return (list(builtins.range(a_shape.ndims - axes,
+                                    a_shape.ndims)), list(builtins.range(axes)))
       else:
         rank = array_ops.rank(a)
         return (range(rank - axes, rank,
@@ -5226,6 +5246,7 @@ def reciprocal_no_nan(x, name=None):
 
 
 @tf_export("math.xlog1py")
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def xlog1py(x, y, name=None):
   r"""Compute x * log1p(y).
@@ -5556,6 +5577,7 @@ def floor(x, name=None):
 
 
 # Register elementwise ops that don't have Python wrappers.
+# Binary elementwise ops.
 dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_and)
 dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_or)
 dispatch.register_binary_elementwise_api(gen_bitwise_ops.bitwise_xor)
@@ -5577,6 +5599,11 @@ dispatch.register_binary_elementwise_api(gen_math_ops.real_div)
 dispatch.register_binary_elementwise_api(gen_math_ops.squared_difference)
 dispatch.register_binary_elementwise_api(gen_math_ops.truncate_div)
 dispatch.register_binary_elementwise_api(gen_math_ops.truncate_mod)
+dispatch.register_binary_elementwise_api(gen_math_ops.xdivy)
+dispatch.register_binary_elementwise_api(gen_math_ops.xlogy)
+dispatch.register_binary_elementwise_api(gen_math_ops.zeta)
+
+# Unary elementwise ops.
 dispatch.register_unary_elementwise_api(gen_math_ops.acosh)
 dispatch.register_unary_elementwise_api(gen_math_ops.asin)
 dispatch.register_unary_elementwise_api(gen_math_ops.asinh)

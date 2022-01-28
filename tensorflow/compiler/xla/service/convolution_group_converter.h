@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CONVOLUTION_GROUP_CONVERTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CONVOLUTION_GROUP_CONVERTER_H_
 
+#include <functional>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -27,10 +29,12 @@ namespace xla {
 // convolutions with feature_group_count = 1.
 class ConvolutionGroupConverter : public HloModulePass {
  public:
-  ConvolutionGroupConverter(std::function<bool(HloInstruction*)> is_cost_viable,
+  ConvolutionGroupConverter(std::function<bool(HloInstruction*)> should_expand,
+                            std::function<bool(HloInstruction*)> is_cost_viable,
                             bool convert_batch_groups_only,
                             bool filter_expansion = true)
-      : is_cost_viable_(is_cost_viable),
+      : should_expand_(should_expand),
+        is_cost_viable_(is_cost_viable),
         convert_batch_groups_only_(convert_batch_groups_only),
         filter_expansion_(filter_expansion) {}
 
@@ -41,6 +45,10 @@ class ConvolutionGroupConverter : public HloModulePass {
   // Run convolution rewriting on the given computation. Returns whether the
   // computation was changed.
   StatusOr<bool> Run(HloModule* module) override;
+
+  // Predicate that determines whether this pass should rewrite a given
+  // convolution.
+  std::function<bool(HloInstruction*)> should_expand_;
 
   // Lambda containing cost model that decides whether to expand
   // batch_group_count.

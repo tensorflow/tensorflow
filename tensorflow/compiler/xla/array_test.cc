@@ -143,7 +143,7 @@ TEST(ArrayTest, StringificationEmpty) {
 
 TEST(ArrayTest, Stringification1D) {
   Array<int64_t> arr({2}, 1);
-  const string expected = R"([1, 1])";
+  const std::string expected = R"([1, 1])";
   EXPECT_EQ(expected, arr.ToString());
 }
 
@@ -155,7 +155,7 @@ TEST(ArrayTest, StringificationEmpty1D) {
 
 TEST(ArrayTest, Stringification2D) {
   Array<int64_t> arr({2, 3}, 7);
-  const string expected = "[[7, 7, 7],\n [7, 7, 7]]";
+  const std::string expected = "[[7, 7, 7],\n [7, 7, 7]]";
   EXPECT_EQ(expected, arr.ToString());
 }
 
@@ -167,7 +167,7 @@ TEST(ArrayTest, StringificationEmpty2D) {
 
 TEST(ArrayTest, Stringification3D) {
   Array<int64_t> arr({2, 3, 4}, 5);
-  const string expected = R"([[[5, 5, 5, 5],
+  const std::string expected = R"([[[5, 5, 5, 5],
   [5, 5, 5, 5],
   [5, 5, 5, 5]],
  [[5, 5, 5, 5],
@@ -179,6 +179,12 @@ TEST(ArrayTest, Stringification3D) {
 TEST(ArrayTest, StringificationEmpty3D) {
   Array<int64_t> arr({0, 0, 0}, 0);
   constexpr absl::string_view expected = "[[[]]]";
+  EXPECT_EQ(expected, arr.ToString());
+}
+
+TEST(ArrayTest, Stringification3DOneZeroDim) {
+  Array<int64_t> arr({1, 0, 2}, 0);
+  constexpr absl::string_view expected = "[[[, ]]]";
   EXPECT_EQ(expected, arr.ToString());
 }
 
@@ -210,7 +216,7 @@ TEST(ArrayTest, Slice) {
 
   Array<int64_t> sub_slice = arr.Slice({1, 0}, {2, 2});
   EXPECT_EQ(sub_slice.dimensions(), (std::vector<int64_t>{1, 2}));
-  const string expected = R"([[4, 5]])";
+  const std::string expected = R"([[4, 5]])";
   EXPECT_EQ(expected, sub_slice.ToString());
 }
 
@@ -223,7 +229,7 @@ TEST(ArrayTest, UpdateSlice) {
 
   arr.UpdateSlice(sub_arr, {1, 1});
 
-  const string expected = R"([[0, 1, 2, 3],
+  const std::string expected = R"([[0, 1, 2, 3],
  [4, 0, 3, 7],
  [8, 6, 9, 11]])";
   EXPECT_EQ(expected, arr.ToString());

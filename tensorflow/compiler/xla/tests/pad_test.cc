@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -269,18 +268,18 @@ XLA_TEST_P(PadTestFloat, Pad4DFloatArrayMinorFirstNonTrivialMinorDimensions) {
 
 XLA_TEST_F(PadTest, Pad4DU8Array) {
   XlaBuilder b(TestName());
-  auto input = absl::make_unique<Array4D<uint8>>(1, 1, 3, 2);
-  Array2D<uint8> input_xy({
+  auto input = absl::make_unique<Array4D<uint8_t>>(1, 1, 3, 2);
+  Array2D<uint8_t> input_xy({
       {1, 2},  // row 0
       {3, 4},  // row 1
       {5, 6},  // row 2
   });
   input->FillWithYX(input_xy);
 
-  Pad(AddParam(*input, &b), ConstantR0<uint8>(&b, 35),
+  Pad(AddParam(*input, &b), ConstantR0<uint8_t>(&b, 35),
       r4_padding_on_dim0_dim1_);
 
-  auto expected = absl::make_unique<Array4D<uint8>>(2, 3, 3, 2);
+  auto expected = absl::make_unique<Array4D<uint8_t>>(2, 3, 3, 2);
   expected->Fill(35);
   (*expected)(1, 0, 0, 0) = 1;
   (*expected)(1, 0, 0, 1) = 2;
@@ -288,7 +287,7 @@ XLA_TEST_F(PadTest, Pad4DU8Array) {
   (*expected)(1, 0, 1, 1) = 4;
   (*expected)(1, 0, 2, 0) = 5;
   (*expected)(1, 0, 2, 1) = 6;
-  ComputeAndCompareR4<uint8>(&b, *expected, {});
+  ComputeAndCompareR4<uint8_t>(&b, *expected, {});
 }
 
 XLA_TEST_F(PadTest, Pad4DPredArray) {
@@ -300,14 +299,14 @@ XLA_TEST_F(PadTest, Pad4DPredArray) {
   auto padded =
       Pad(input, ConstantR0<bool>(&b, false), r4_padding_on_dim0_dim1_);
 
-  // For the same reason, use Select to convert boolean values to int32.
-  auto zeros = absl::make_unique<Array4D<int32>>(2, 3, 3, 2);
-  auto ones = absl::make_unique<Array4D<int32>>(2, 3, 3, 2);
+  // For the same reason, use Select to convert boolean values to int32_t.
+  auto zeros = absl::make_unique<Array4D<int32_t>>(2, 3, 3, 2);
+  auto ones = absl::make_unique<Array4D<int32_t>>(2, 3, 3, 2);
   zeros->Fill(0);
   ones->Fill(1);
   Select(padded, AddParam(*ones, &b), AddParam(*zeros, &b));
 
-  auto expected = absl::make_unique<Array4D<int32>>(2, 3, 3, 2);
+  auto expected = absl::make_unique<Array4D<int32_t>>(2, 3, 3, 2);
   expected->Fill(0);
   (*expected)(1, 0, 0, 0) = 1;
   (*expected)(1, 0, 0, 1) = 1;
@@ -315,7 +314,7 @@ XLA_TEST_F(PadTest, Pad4DPredArray) {
   (*expected)(1, 0, 1, 1) = 1;
   (*expected)(1, 0, 2, 0) = 1;
   (*expected)(1, 0, 2, 1) = 1;
-  ComputeAndCompareR4<int32>(&b, *expected, {});
+  ComputeAndCompareR4<int32_t>(&b, *expected, {});
 }
 
 XLA_TEST_P(PadTestFloat, Large2DPad) {

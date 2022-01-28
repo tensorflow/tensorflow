@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Tensorflow -> CPURT compilation."""
+"""Tests for Tensorflow -> jitrt compilation."""
 
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 class TfStridedSliceTest(test.TestCase):
@@ -43,9 +43,9 @@ class TfStridedSliceTest(test.TestCase):
         return %0 : tensor<i32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
+    compiled = jitrt.compile(mlir_function, 'test')
     arg0 = np.array([1, 2, 3], dtype=np.int32)
-    [res] = cpurt.execute(compiled, [arg0])
+    [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_allclose(res, arg0[0], atol=0.0)
 
 

@@ -85,7 +85,9 @@ class ShapeLayout {
   void ResetLayout(const Layout& layout, ShapeIndexView shape_index);
 
   // Returns a string representation of this object.
-  string ToString() const { return ShapeUtil::HumanStringWithLayout(shape_); }
+  std::string ToString() const {
+    return ShapeUtil::HumanStringWithLayout(shape_);
+  }
 
   // Tests for equality of both shape and layout (ShapeUtil::Equal).
   bool operator==(const ShapeLayout& other) const;

@@ -55,7 +55,7 @@ class RematerializationTestBase : public HloTestBase {
   // (during execution of %concat_1) and about 12KB after rematerializing %bcast
   // for its use in %concat_2.
   std::unique_ptr<HloComputation> MakeRematerializableComputation(
-      const string& suffix = "") {
+      const std::string& suffix = "") {
     auto builder = HloComputation::Builder(TestName() + suffix);
     auto param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, vec1_shape_, "param"));
@@ -100,7 +100,7 @@ class RematerializationTestBase : public HloTestBase {
   // the while subcomputations.
   std::unique_ptr<HloComputation> MakeRematerializableWhileComputation(
       HloComputation* while_cond, HloComputation* while_body,
-      const string& suffix = "") {
+      const std::string& suffix = "") {
     auto builder = HloComputation::Builder(TestName() + suffix);
     auto param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, vec1_shape_, "param"));

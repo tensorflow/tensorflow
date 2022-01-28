@@ -654,6 +654,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "Switch",
           "SymbolicGradient",
           "TakeDataset",
+          "TakeWhileDataset",
           "Tan",
           "Tanh",
           "TanhGrad",

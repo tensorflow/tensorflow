@@ -253,6 +253,7 @@ class Subgraph {
 
   // Return the subgraph specific context.
   TfLiteContext* context() { return &context_; }
+  const TfLiteContext* context() const { return &context_; }
 
   // Set the value of an external context.
   void SetExternalContext(TfLiteExternalContextType type,

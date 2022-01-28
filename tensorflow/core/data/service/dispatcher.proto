@@ -14,11 +14,13 @@ message TaskProgress {
   bool completed = 2;
 }
 
-// Next tag: 5
+// Next tag: 6
 message WorkerHeartbeatRequest {
   string worker_address = 1;
   string transfer_address = 3;
   repeated string worker_tags = 4;
+  // The UID of the worker Borg job, used for telemetry.
+  int64 worker_uid = 5;
   repeated int64 current_tasks = 2;
 }
 
@@ -68,12 +70,13 @@ message GetVersionResponse {
   int64 version = 1;
 }
 
-// Next tag: 3
+// Next tag: 4
 message GetOrRegisterDatasetRequest {
   // The dataset to register.
   DatasetDef dataset = 1;
-  // The element spec of the dataset (encoded as a string).
-  bytes element_spec = 2;
+  // Metadata related to tf.data service.
+  DataServiceMetadata metadata = 3;
+  reserved 2;
 }
 
 // Next tag: 2
@@ -83,15 +86,23 @@ message GetOrRegisterDatasetResponse {
 }
 
 // Next tag: 2
-message GetElementSpecRequest {
-  // The id of the dataset to get the element spec for.
+message GetDataServiceMetadataRequest {
+  // The dataset id to get the data service dataset metadata.
   int64 dataset_id = 1;
 }
 
 // Next tag: 2
-message GetElementSpecResponse {
-  // The retrieved element spec.
-  bytes element_spec = 1;
+message GetDataServiceMetadataResponse {
+  // The retrieved data service dataset metadata.
+  DataServiceMetadata metadata = 1;
+}
+
+// Next tag: 1
+message GetDataServiceConfigRequest {}
+
+// Next tag: 2
+message GetDataServiceConfigResponse {
+  DataServiceConfig config = 1;
 }
 
 // Next tag: 3
@@ -167,7 +178,7 @@ message ClientHeartbeatRequest {
   }
 }
 
-// Next tag: 4
+// Next tag: 5
 message ClientHeartbeatResponse {
   // A list of all tasks that the client should read from.
   repeated TaskInfo task_info = 1;
@@ -177,6 +188,9 @@ message ClientHeartbeatResponse {
   }
   // Whether the job has finished.
   bool job_finished = 2;
+  // tf.data service deployment mode. Supported values are "REMOTE",
+  // "COLOCATED", and "HYBRID". If unspecified, it is assumed to be "REMOTE".
+  DeploymentMode deployment_mode = 4;
 }
 
 // Next tag: 3
@@ -236,6 +250,11 @@ service DispatcherService {
   // Reports a list of all workers registered with the dispatcher.
   rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);
 
-  // Returns the element spec for the registered dataset.
-  rpc GetElementSpec(GetElementSpecRequest) returns (GetElementSpecResponse);
+  // Returns the data service metadata for the registered dataset.
+  rpc GetDataServiceMetadata(GetDataServiceMetadataRequest)
+      returns (GetDataServiceMetadataResponse);
+
+  // Returns the config of a data service cluster.
+  rpc GetDataServiceConfig(GetDataServiceConfigRequest)
+      returns (GetDataServiceConfigResponse);
 }

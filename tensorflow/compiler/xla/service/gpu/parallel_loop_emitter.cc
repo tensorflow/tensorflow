@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
@@ -232,17 +231,17 @@ Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
     return llvm::ConstantInt::get(index_type, val);
   };
 
-  TF_RETURN_IF_ERROR(ksl.ForWithStatus(
-      "loop", constant(0), constant(num_elements),
-      constant(total_threads * launch_config_.unroll_factor),
-      [&](llvm::Value* base_indvar) {
-        for (const llvm_ir::IrArray::Index& array_index :
-             EmitIndexAndSetExitBasicBlock(loop_name, index_type,
-                                           base_indvar)) {
-          TF_RETURN_IF_ERROR(body_emitter_(array_index));
-        }
-        return Status::OK();
-      }));
+  TF_RETURN_IF_ERROR(
+      ksl.ForWithStatus("loop", constant(0), constant(num_elements),
+                        constant(total_threads * launch_config_.unroll_factor),
+                        [&](llvm::Value* base_indvar) {
+                          for (const llvm_ir::IrArray::Index& array_index :
+                               EmitIndexAndSetExitBasicBlock(
+                                   loop_name, index_type, base_indvar)) {
+                            TF_RETURN_IF_ERROR(body_emitter_(array_index));
+                          }
+                          return Status::OK();
+                        }));
 
   // Set the insertion point of b_ to the loop exit, so that
   // code emitted for later instructions will be correctly placed.

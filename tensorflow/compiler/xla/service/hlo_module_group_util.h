@@ -108,7 +108,7 @@ class HloModuleGroupUtil {
       HloInstruction* instruction, HloReachabilityMap* reachability_map);
 
  private:
-  string CycleToString(HloInstruction* instruction);
+  std::string CycleToString(HloInstruction* instruction);
 
   const HloModuleGroupMetadata& metadata_;
 };

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -580,6 +581,16 @@ bool FindTpuReplicatedInputAndXlaSharding(
     }
   }
   return xla_spmd_input_sharded;
+}
+
+// Returns the name of the framework that rewrote the graph to support
+// inference on TPUs. This name is accessed later during metric collection.
+string GetProducerName(const string& function_name) {
+  if (absl::StrContains(function_name, "tpu_func_0") ||
+      absl::StrContains(function_name, "_with_batch") ||
+      absl::StrContains(function_name, "_optim"))
+    return "TPU_INFERENCE_CONVERTER";
+  return "UNKNOWN";
 }
 
 }  // end namespace
@@ -1325,32 +1336,25 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
   const string device = strings::StrCat(kTPUDeviceNamePrefix, device_ordinal);
   Status status;
   std::unique_ptr<Graph> init_graph(new Graph(OpRegistry::Global()));
-  Node* init_handle = init_graph->AddNode(*ndef, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * init_handle, init_graph->AddNode(*ndef));
   init_handle->set_assigned_device_name(device);
 
   NodeDef init_const_ndef;
   init_const_ndef.set_name("initial_value");
-  if (fast_mem) {
-    init_const_ndef.set_op("_TPUConst");
-    AddNodeAttr("memory_space", "FastMem", &init_const_ndef);
-  } else {
-    init_const_ndef.set_op("Const");
-  }
+  init_const_ndef.set_op("_TPUConst");
+  AddNodeAttr("memory_space", "HBM", &init_const_ndef);
   init_const_ndef.set_device(device);
   AddNodeAttr("dtype", var->tensor()->dtype(), &init_const_ndef);
   AddNodeAttr("value", *var->tensor(), &init_const_ndef);
 
-  Node* init_const = init_graph->AddNode(init_const_ndef, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * init_const, init_graph->AddNode(init_const_ndef));
 
   NodeDef assign_node_def;
   assign_node_def.set_name("Assign");
   assign_node_def.set_op("AssignVariableOp");
   assign_node_def.set_device(device);
   AddNodeAttr("dtype", var->tensor()->dtype(), &assign_node_def);
-  Node* init_assign = init_graph->AddNode(assign_node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * init_assign, init_graph->AddNode(assign_node_def));
 
   init_graph->AddEdge(init_handle, 0, init_assign, 0);
   init_graph->AddEdge(init_const, 0, init_assign, 1);
@@ -1414,8 +1418,7 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   std::vector<std::string> devices;
   std::vector<Node*> init_handles;
   for (int i = 0; i < num_cores; i++) {
-    Node* init_handle = init_graph->AddNode(ndefs[i], &status);
-    TF_RETURN_IF_ERROR(status);
+    TF_ASSIGN_OR_RETURN(Node * init_handle, init_graph->AddNode(ndefs[i]));
     string device = strings::StrCat(kTPUDeviceNamePrefix, device_ordinal + i);
     init_handle->set_assigned_device_name(device);
     devices.push_back(device);
@@ -1428,9 +1431,8 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   init_const_ndef.set_device(cpu_device);
   AddNodeAttr("dtype", var->tensor()->dtype(), &init_const_ndef);
   AddNodeAttr("value", *var->tensor(), &init_const_ndef);
-  Node* init_const = init_graph->AddNode(init_const_ndef, &status);
+  TF_ASSIGN_OR_RETURN(Node * init_const, init_graph->AddNode(init_const_ndef));
   init_const->set_assigned_device_name(cpu_device);
-  TF_RETURN_IF_ERROR(status);
 
   Node* assign_value_node = init_const;
   // If the variable is sharded, we will insert "Split" node between the initial
@@ -1453,9 +1455,9 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     TensorShape shape({});
     shape.AsProto(tensor_proto.mutable_tensor_shape());
     AddNodeAttr("value", tensor_proto, &split_dim_def);
-    Node* split_dim_node = init_graph->AddNode(split_dim_def, &status);
+    TF_ASSIGN_OR_RETURN(Node * split_dim_node,
+                        init_graph->AddNode(split_dim_def));
     split_dim_node->set_assigned_device_name(cpu_device);
-    TF_RETURN_IF_ERROR(status);
 
     // Add a split node.
     NodeDef split_def;
@@ -1467,9 +1469,8 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     AddNodeAttr("T", var->tensor()->dtype(), &split_def);
     split_def.add_input(absl::StrCat(split_dim_node->name(), ":0"));
     split_def.add_input(absl::StrCat(init_const->name(), ":0"));
-    Node* split_node = init_graph->AddNode(split_def, &status);
+    TF_ASSIGN_OR_RETURN(Node * split_node, init_graph->AddNode(split_def));
     split_node->set_assigned_device_name(cpu_device);
-    TF_RETURN_IF_ERROR(status);
 
     init_graph->AddEdge(split_dim_node, 0, split_node, 0);
     init_graph->AddEdge(init_const, 0, split_node, 1);
@@ -1483,9 +1484,9 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     assign_node_def.set_op("AssignVariableOp");
     assign_node_def.set_device(devices[i]);
     AddNodeAttr("dtype", var->tensor()->dtype(), &assign_node_def);
-    Node* init_assign = init_graph->AddNode(assign_node_def, &status);
+    TF_ASSIGN_OR_RETURN(Node * init_assign,
+                        init_graph->AddNode(assign_node_def));
     init_assign->set_assigned_device_name(devices[i]);
-    TF_RETURN_IF_ERROR(status);
 
     init_graph->AddEdge(init_handles[i], 0, init_assign, 0);
     if (split_dim >= 0) {
@@ -1693,9 +1694,7 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
       TensorShapeProto proto;
       var->tensor()->shape().AsProto(&proto);
       AddNodeAttr("shape", proto, &ndef);
-      Status status;
-      Node* new_node = graph->AddNode(ndef, &status);
-      TF_RETURN_IF_ERROR(status);
+      TF_ASSIGN_OR_RETURN(Node * new_node, graph->AddNode(ndef));
       std::vector<const Edge*> in_edges(node->in_edges().begin(),
                                         node->in_edges().end());
       for (const Edge* edge : in_edges) {
@@ -1722,7 +1721,7 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
       TF_RETURN_IF_ERROR(library_runtime_->device_mgr()->LookupDevice(
           strings::StrCat(kTPUDeviceNamePrefix, device_ordinal), &d));
       Var* tpu_var;
-      status = d->resource_manager()->Lookup(cname, sname, &tpu_var);
+      Status status = d->resource_manager()->Lookup(cname, sname, &tpu_var);
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(InitializeVarOnTPU(ctx, var, &ndef, device_ordinal,
                                               var_info.fast_mem));
@@ -1826,9 +1825,7 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
     }
     AddNodeAttr("shape", proto, &ndef);
 
-    Status status;
-    Node* new_node = graph->AddNode(ndef, &status);
-    TF_RETURN_IF_ERROR(status);
+    TF_ASSIGN_OR_RETURN(Node * new_node, graph->AddNode(ndef));
     per_core_vars.push_back(new_node);
   }
 
@@ -1847,11 +1844,8 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
   builder.Input(inputs);
   NodeDef node_def;
   TF_RETURN_IF_ERROR(builder.Finalize(&node_def));
-  Status s;
-  Node* tpu_partitioned_input_node = graph->AddNode(node_def, &s);
-  if (!s.ok()) {
-    return s;
-  }
+  TF_ASSIGN_OR_RETURN(Node * tpu_partitioned_input_node,
+                      graph->AddNode(node_def));
 
   for (int core_index = 0; core_index < num_cores_per_replica; core_index++) {
     graph->AddEdge(per_core_vars[core_index], 0, tpu_partitioned_input_node,
@@ -2237,6 +2231,11 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
     if (node->IsArg() || node->IsRetval()) {
       node->set_assigned_device_name(local_device_name_);
     } else if (node->type_string() == "TPUReplicateMetadata") {
+      // Record the producer name so it can be accessed later during metric
+      // collection.
+      string producer_name = GetProducerName(func_.name());
+      node->AddAttr("_producer_name", producer_name);
+
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "num_cores_per_replica",
                                      num_core_per_replica));
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(),

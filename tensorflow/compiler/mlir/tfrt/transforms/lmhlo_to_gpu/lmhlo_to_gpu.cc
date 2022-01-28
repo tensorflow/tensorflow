@@ -21,8 +21,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -42,8 +42,11 @@ namespace tensorflow {
 
 void populateCclConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCholeskyConversionPattern(RewritePatternSet&, TypeConverter&);
+void populateConvolutionConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCustomCallConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateGemmConversionPattern(RewritePatternSet&, TypeConverter&);
+void populateReplicaAndPartitionConversionPattern(RewritePatternSet&,
+                                                  TypeConverter&);
 void populateTriangularSolveConversionPattern(RewritePatternSet&,
                                               TypeConverter&);
 
@@ -74,10 +77,12 @@ void ConvertLmhloToGpuPass::runOnFunction() {
   RewritePatternSet patterns(context);
   populateCclConversionPattern(patterns, converter);
   populateCholeskyConversionPattern(patterns, converter);
+  populateConvolutionConversionPattern(patterns, converter);
   populateCustomCallConversionPattern(patterns, converter);
   populateGemmConversionPattern(patterns, converter);
+  populateReplicaAndPartitionConversionPattern(patterns, converter);
   populateTriangularSolveConversionPattern(patterns, converter);
-  populateFuncOpTypeConversionPattern(patterns, converter);
+  populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
   populateReturnOpTypeConversionPattern(patterns, converter);
 
   // Set of ops that need to be wrapped in tfrt_gpu_conversion.async.execute
@@ -86,10 +91,10 @@ void ConvertLmhloToGpuPass::runOnFunction() {
   // hand, ops which lower to the gpu dialect do not need to be wrapped.
   ConversionTarget wrap_target(*context);
   wrap_target.addLegalDialect<lmhlo_gpu::LmhloGpuDialect>();
-  wrap_target.addLegalOp<lmhlo::AllGatherOp, lmhlo::AllReduceOp,
-                         lmhlo::ReduceScatterOp, lmhlo::AllToAllOp,
-                         lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp,
-                         lmhlo::TriangularSolveOp>();
+  wrap_target.addLegalOp<
+      lmhlo::AllGatherOp, lmhlo::AllReduceOp, lmhlo::ReduceScatterOp,
+      lmhlo::AllToAllOp, lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp,
+      lmhlo::TriangularSolveOp, lmhlo::ReplicaIdOp, lmhlo::PartitionIdOp>();
   tfrt::gpu::populateGpuAsyncConversionPatterns(patterns, converter,
                                                 wrap_target);
 

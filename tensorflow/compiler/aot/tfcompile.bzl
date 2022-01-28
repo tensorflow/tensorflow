@@ -315,6 +315,7 @@ def tf_library(
             "//tensorflow/compiler/xla/service/cpu:runtime_custom_call_status",
             "//tensorflow/compiler/xla/service/cpu:runtime_key_value_sort",
             "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
+            "//tensorflow/compiler/xla/service/cpu:runtime_topk",
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
             "//third_party/eigen3",

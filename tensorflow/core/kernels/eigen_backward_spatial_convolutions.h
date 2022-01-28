@@ -45,15 +45,10 @@ namespace Eigen {
  * that the same order is used in the input, the kernel, and the output.
  *
  */
-#ifdef EIGEN_HAS_INDEX_LIST
 typedef IndexList<type2index<0>, type2index<0>, type2index<1>, type2index<1>>
     ReverseColMajor;
 typedef IndexList<type2index<1>, type2index<1>, type2index<0>, type2index<0>>
     ReverseRowMajor;
-#else
-typedef array<bool, 4> ReverseColMajor;
-typedef array<bool, 4> ReverseRowMajor;
-#endif
 
 template <typename OutputBackward, typename Kernel>
 EIGEN_ALWAYS_INLINE static const typename internal::conditional<
@@ -176,21 +171,6 @@ SpatialConvolutionBackwardInput(
   typedef typename internal::conditional<isColMajor, ReverseColMajor,
                                          ReverseRowMajor>::type Reverse;
   Reverse kernel_reverse;
-
-#ifndef EIGEN_HAS_INDEX_LIST
-  if (isColMajor) {
-    kernel_reverse[0] = false;
-    kernel_reverse[1] = false;
-    kernel_reverse[2] = true;
-    kernel_reverse[3] = true;
-  } else {
-    kernel_reverse[0] = true;
-    kernel_reverse[1] = true;
-    kernel_reverse[2] = false;
-    kernel_reverse[3] = false;
-  }
-#endif
-
   // Reorder the dimensions to:
   //   filters x patch_rows x patch_cols x channels
   array<TensorIndex, 4> kernel_shuffle;

@@ -68,6 +68,9 @@ tf_py_test(
     name = "cache_test",
     size = "small",
     srcs = ["cache_test.py"],
+    tags = [
+        "notsan",  # TODO(b/206452257): re-enable after flakiness resolved.
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -786,7 +789,7 @@ tf_py_test(
 
 tf_py_test(
     name = "repeat_test",
-    size = "small",
+    size = "medium",
     srcs = ["repeat_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -956,6 +959,7 @@ py_library(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:lookup_ops",
+        "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",

@@ -49,6 +49,7 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
 
+@test_util.with_eager_op_as_function
 class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.graph_only_combinations())

@@ -65,6 +65,9 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -194,6 +197,18 @@ class BundleReader {
   // internally, so this call invalidates the reader's current position.
   // REQUIRES: status().ok()
   bool Contains(StringPiece key);
+
+  // Sorts a `container` of tensors to read such that when `Seek(key)` is called
+  // on the elements of the sorted container, the underlying file access is
+  // sequential. Sorting can greatly improve overall read speed.
+  //
+  // `get_key` should be a functon that when passed an element in `container`,
+  // returns the `key` of the tensor.
+  //
+  // REQUIRES: status().ok()
+  template <class T>
+  Status SortForSequentialAccess(std::vector<T>& container,
+                                 absl::FunctionRef<string(const T&)> get_key);
 
   // Looks up the dtype and the shape of the tensor keyed by "key".
   // REQUIRES: status().ok()
@@ -346,6 +361,31 @@ class FileOutputBuffer {
   // Checksum of all appended bytes since construction or last clear_crc32c().
   uint32 crc32c_ = 0;
 };
+
+template <class T>
+Status BundleReader::SortForSequentialAccess(
+    std::vector<T>& container, absl::FunctionRef<string(const T&)> get_key) {
+  struct FileOffset {
+    int32_t shard_id;
+    int64_t offset;
+  };
+  absl::flat_hash_map<string, FileOffset> file_offsets;
+  for (const T& element : container) {
+    BundleEntryProto entry;
+    TF_RETURN_IF_ERROR(GetBundleEntryProto(get_key(element), &entry));
+    file_offsets[get_key(element)] = {entry.shard_id(), entry.offset()};
+  }
+  absl::c_sort(container, [&get_key, &file_offsets](const T& a, const T& b) {
+    const FileOffset& file_offset_a = file_offsets[get_key(a)];
+    const FileOffset& file_offset_b = file_offsets[get_key(b)];
+    if (file_offset_a.shard_id == file_offset_b.shard_id) {
+      return file_offset_a.offset < file_offset_b.offset;
+    } else {
+      return file_offset_a.shard_id < file_offset_b.shard_id;
+    }
+  });
+  return Status::OK();
+}
 
 }  // namespace tensorflow
 

@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -34,15 +33,15 @@ namespace xla {
 class NameUniquer {
  public:
   // The separator must contain allowed characters only: "[a-zA-Z0-9_.-]".
-  explicit NameUniquer(const string& separator = "__");
+  explicit NameUniquer(const std::string& separator = "__");
 
   // Get a sanitized unique name in a string, with an optional prefix for
   // convenience.
-  string GetUniqueName(absl::string_view prefix = "");
+  std::string GetUniqueName(absl::string_view prefix = "");
 
   // Sanitizes and returns the name. Unallowed characters will be replaced with
   // '_'. The result will match the regexp "[a-zA-Z_][a-zA-Z0-9_.-]*".
-  static string GetSanitizedName(absl::string_view name);
+  static std::string GetSanitizedName(absl::string_view name);
 
  private:
   // Used to track and generate new identifiers for the same instruction name
@@ -74,13 +73,14 @@ class NameUniquer {
 
   // The string to use to separate the prefix of the name from the uniquing
   // integer value.
-  string separator_;
+  std::string separator_;
 
   // Map from name prefix to the generator data structure which tracks used
   // identifiers and generates new ones.
-  absl::flat_hash_map<string, SequentialIdGenerator> generated_names_;
+  absl::flat_hash_map<std::string, SequentialIdGenerator> generated_names_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NameUniquer);
+  NameUniquer(const NameUniquer&) = delete;
+  NameUniquer& operator=(const NameUniquer&) = delete;
 };
 
 }  // namespace xla

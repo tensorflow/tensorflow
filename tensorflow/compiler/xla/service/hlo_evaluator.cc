@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -49,9 +51,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
@@ -181,18 +185,19 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[PRED] =
       absl::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
   typed_visitors_[U8] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint8>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<uint8_t>>(this);
   typed_visitors_[U16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint16>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<uint16_t>>(this);
   typed_visitors_[U32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint32>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<uint32_t>>(this);
   typed_visitors_[U64] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
-  typed_visitors_[S8] = absl::make_unique<HloEvaluatorTypedVisitor<int8>>(this);
+  typed_visitors_[S8] =
+      absl::make_unique<HloEvaluatorTypedVisitor<int8_t>>(this);
   typed_visitors_[S16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int16>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<int16_t>>(this);
   typed_visitors_[S32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int32>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
   typed_visitors_[S64] =
       absl::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
   typed_visitors_[F16] =
@@ -276,46 +281,46 @@ StatusOr<Literal> HloEvaluator::Evaluate(
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
 
+  const Literal& result =
+      GetEvaluatedLiteralFor(computation.root_instruction());
   if (VLOG_IS_ON(100)) {
     for (const HloInstruction* instr : computation.instructions()) {
       VLOG(100) << instr->name() << " = " << GetEvaluatedLiteralFor(instr);
     }
   }
 
-  return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
+  if (!result.IsKnown()) {
+    return tensorflow::errors::FailedPrecondition(
+        "Failed to evaluate instruction since it depends on infeed or "
+        "parameters to its parent computation.");
+  }
+  return result.Clone();
 }
 
-StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
-  // If the instruction is a kCopyDone, simply find the argument that it is
-  // copied from.
-  while (instruction->opcode() == HloOpcode::kCopyDone) {
-    if (instruction->operand(0)->opcode() != HloOpcode::kCopyStart) {
-      return tensorflow::errors::FailedPrecondition(
-          "kCopyDone has an argument different than a kCopyStart.");
-    }
-    instruction = instruction->mutable_operand(0)->mutable_operand(0);
-  }
-  if (instruction->opcode() == HloOpcode::kParameter) {
-    return tensorflow::errors::FailedPrecondition(
-        "Cannot evaluate a parameter.");
-  }
-  if (!hlo_query::AllOperandsAreConstants(*instruction)) {
-    return tensorflow::errors::FailedPrecondition(
-        "Not all operands are constants.");
-  }
-
+StatusOr<Literal> HloEvaluator::Evaluate(
+    HloInstruction* instruction,
+    bool recursively_evaluate_nonconstant_operands) {
   arg_literals_.clear();
   evaluated_.clear();
-
-  TF_RETURN_IF_ERROR(Preprocess(instruction));
-  TF_RETURN_IF_ERROR(instruction->Visit(this));
-  TF_RETURN_IF_ERROR(Postprocess(instruction));
-  return GetEvaluatedLiteralFor(instruction).Clone();
+  enable_partial_evaluation_ = recursively_evaluate_nonconstant_operands;
+  TF_RETURN_IF_ERROR(
+      EvaluateInternal(instruction, /*shape_index=*/{},
+                       recursively_evaluate_nonconstant_operands));
+  const Literal& result = GetEvaluatedLiteralFor(instruction);
+  if (!result.IsKnown()) {
+    return tensorflow::errors::FailedPrecondition(
+        "Failed to evaluate instruction since it depends on infeed or "
+        "parameters to its parent computation.");
+  }
+  enable_partial_evaluation_ = false;
+  return result.Clone();
 }
 
-bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result) {
+bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result,
+                               bool recursively_evaluate_nonconstant_operands) {
   CHECK(result != nullptr);
-  auto result_or = Evaluate(instruction);
+  auto result_or =
+      Evaluate(instruction, recursively_evaluate_nonconstant_operands);
   if (!result_or.ok()) {
     VLOG(1) << "TryEvaluate failed:" << result_or.status();
     return false;
@@ -327,7 +332,7 @@ bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result) {
 
 StatusOr<Literal> HloEvaluator::EvaluateWithSubstitutions(
     const HloInstruction* instruction,
-    const std::unordered_map<const HloInstruction*, const Literal*>&
+    const absl::flat_hash_map<const HloInstruction*, const Literal*>&
         substitutions) {
   std::vector<std::unique_ptr<HloInstruction>> owned_operands;
   for (const HloInstruction* operand : instruction->operands()) {
@@ -407,8 +412,10 @@ StatusOr<Literal> HloEvaluator::EvaluateElementwiseUnaryOp(
   std::unique_ptr<HloInstruction> operand_instr =
       HloInstruction::CreateConstant(operand.Clone());
 
+  TF_ASSIGN_OR_RETURN(Shape inferred_shape, ShapeInference::InferUnaryOpShape(
+                                                opcode, operand.shape()));
   std::unique_ptr<HloInstruction> cloned_instruction =
-      HloInstruction::CreateUnary(operand.shape(), opcode, operand_instr.get());
+      HloInstruction::CreateUnary(inferred_shape, opcode, operand_instr.get());
   auto result = Evaluate(cloned_instruction.get());
 
   return result;
@@ -432,6 +439,61 @@ StatusOr<Literal> HloEvaluator::EvaluateDotOp(
       HloInstruction::CreateDot(dot_shape, lhs_instr.get(), rhs_instr.get(),
                                 dim_numbers, precision_config);
   return Evaluate(cloned_instruction.get());
+}
+
+Status HloEvaluator::EvaluateInternal(
+    HloInstruction* instruction, const ShapeIndex& shape_index,
+    bool recursively_evaluate_nonconstant_operands) {
+  // Don't need to evaluate this instruction again if it has already been
+  // evaluated.
+  if (IsAlreadyEvaluated(instruction, shape_index)) {
+    return Status::OK();
+  }
+
+  if (!recursively_evaluate_nonconstant_operands) {
+    if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+      return tensorflow::errors::FailedPrecondition(
+          "Not all operands are constants.");
+    }
+  } else {
+    if (instruction->opcode() == HloOpcode::kGetTupleElement) {
+      ShapeIndex new_shape_index = shape_index;
+      new_shape_index.push_front(instruction->tuple_index());
+      TF_RETURN_IF_ERROR(
+          EvaluateInternal(instruction->mutable_operand(0), new_shape_index,
+                           /*recursively_evaluate_nonconstant_operands=*/true));
+    } else if (instruction->opcode() == HloOpcode::kTuple &&
+               !shape_index.empty()) {
+      ShapeIndex new_shape_index = shape_index;
+      int64_t tuple_index = new_shape_index.front();
+      new_shape_index.pop_front();
+      TF_RETURN_IF_ERROR(EvaluateInternal(
+          instruction->mutable_operand(tuple_index), new_shape_index,
+          /*recursively_evaluate_nonconstant_operands=*/true));
+    } else {
+      for (HloInstruction* operand : instruction->operands()) {
+        TF_RETURN_IF_ERROR(EvaluateInternal(
+            operand, /*shape_index=*/{},
+            /*recursively_evaluate_nonconstant_operands=*/true));
+        // Except for the above and following cases, we do not support handling
+        // unknown operands for other HLOs. So mark the result as unknown.
+        if ((!GetEvaluatedLiteralFor(operand).IsKnown() &&
+             instruction->opcode() != HloOpcode::kCopy &&
+             instruction->opcode() != HloOpcode::kCopyStart &&
+             instruction->opcode() != HloOpcode::kCopyDone)) {
+          evaluated_[instruction] =
+              Literal::CreateFromShapeWithUnknownLeafArrays(
+                  instruction->shape());
+          return Status::OK();
+        }
+      }
+    }
+  }
+  visitor_shape_index_ = shape_index;
+  TF_RETURN_IF_ERROR(Preprocess(instruction));
+  TF_RETURN_IF_ERROR(instruction->Visit(this));
+  TF_RETURN_IF_ERROR(Postprocess(instruction));
+  return Status::OK();
 }
 
 Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
@@ -464,7 +526,7 @@ Status HloEvaluator::HandleGetDimensionSize(
   const Shape& shape = get_dimension_size->operand(0)->shape();
   Literal output(ShapeUtil::MakeShape(S32, {}));
   output.PopulateWithValue(
-      static_cast<int32>(shape.dimensions(get_dimension_size->dimension())));
+      static_cast<int32_t>(shape.dimensions(get_dimension_size->dimension())));
   evaluated_[get_dimension_size] = std::move(output);
   return Status::OK();
 }
@@ -479,12 +541,23 @@ Status HloEvaluator::HandleSetDimensionSize(
   const Literal& size_literal =
       GetEvaluatedLiteralFor(set_dimension_size->operand(1));
   result.SetDynamicSize(set_dimension_size->dimension(),
-                        size_literal.Get<int32>({}));
+                        size_literal.Get<int32_t>({}));
   evaluated_[set_dimension_size] = std::move(result);
   return Status::OK();
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
+  if (arg_literals_.empty()) {
+    if (!enable_partial_evaluation_) {
+      return tensorflow::errors::FailedPrecondition(
+          "Failed to evaluate instruction since its operands are unknown "
+          "or undetermined and partial evaluation is not enabled.");
+    }
+    evaluated_[parameter] =
+        Literal::CreateFromShapeWithUnknownLeafArrays(parameter->shape());
+    return Status::OK();
+  }
+
   // Nothing to do other than sanity checks. Parameters' values are stored in
   // arg_literals_.
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
@@ -503,13 +576,23 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleInfeed(HloInstruction* infeed) {
+  if (!enable_partial_evaluation_) {
+    return tensorflow::errors::FailedPrecondition(
+        "Failed to evaluate instruction since its operands are unknown "
+        "or undetermined and partial evaluation is not enabled.");
+  }
+  evaluated_[infeed] =
+      Literal::CreateFromShapeWithUnknownLeafArrays(infeed->shape());
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleConstant(HloInstruction*) { return Status::OK(); }
 
 Status HloEvaluator::HandleReshape(HloInstruction* reshape) {
-  TF_ASSIGN_OR_RETURN(
-      evaluated_[reshape],
-      GetEvaluatedLiteralFor(reshape->operand(0))
-          .Reshape(AsInt64Slice(reshape->shape().dimensions())));
+  TF_ASSIGN_OR_RETURN(evaluated_[reshape],
+                      GetEvaluatedLiteralFor(reshape->operand(0))
+                          .Reshape(reshape->shape().dimensions()));
   return Status::OK();
 }
 
@@ -551,7 +634,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
     const Shape& operand_shape = operand->shape();
     TF_RETURN_IF_ERROR(result_literal.CopySliceFrom(
         GetEvaluatedLiteralFor(operand), source_indices, dest_indices,
-        AsInt64Slice(operand_shape.dimensions())));
+        operand_shape.dimensions()));
     dest_indices[concat_dim] +=
         ShapeUtil::GetDimension(operand_shape, concat_dim);
   }
@@ -762,18 +845,18 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
     } break;
     case U8: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint8>(compare->shape(), direction,
-                                         lhs_literal, rhs_literal));
+                          Compare<uint8_t>(compare->shape(), direction,
+                                           lhs_literal, rhs_literal));
     } break;
     case U16: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint16>(compare->shape(), direction,
-                                          lhs_literal, rhs_literal));
+                          Compare<uint16_t>(compare->shape(), direction,
+                                            lhs_literal, rhs_literal));
     } break;
     case U32: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint32>(compare->shape(), direction,
-                                          lhs_literal, rhs_literal));
+                          Compare<uint32_t>(compare->shape(), direction,
+                                            lhs_literal, rhs_literal));
     } break;
     case U64: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
@@ -781,19 +864,19 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
                                             lhs_literal, rhs_literal));
     } break;
     case S8: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<int8>(compare->shape(), direction, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<int8_t>(compare->shape(), direction,
+                                          lhs_literal, rhs_literal));
     } break;
     case S16: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<int16>(compare->shape(), direction,
-                                         lhs_literal, rhs_literal));
+                          Compare<int16_t>(compare->shape(), direction,
+                                           lhs_literal, rhs_literal));
     } break;
     case S32: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<int32>(compare->shape(), direction,
-                                         lhs_literal, rhs_literal));
+                          Compare<int32_t>(compare->shape(), direction,
+                                           lhs_literal, rhs_literal));
     } break;
     case S64: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
@@ -840,11 +923,41 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
 
 Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
   std::vector<const Literal*> operand_literals;
-  for (auto operand : tuple->operands()) {
-    operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+  std::vector<Literal> operand_literal_values;
+  if (!visitor_shape_index_.empty()) {
+    // We only need to evaluate tuple at visitor_shape_index_. The other
+    // operands might not have been evaluated, so mark the other operands as
+    // undetermined.
+    int64_t tuple_index = visitor_shape_index_.front();
+    operand_literal_values.resize(tuple->operand_count());
+    for (int operand_index = 0; operand_index < tuple->operand_count();
+         ++operand_index) {
+      if (operand_index == tuple_index) {
+        operand_literals.push_back(
+            &GetEvaluatedLiteralFor(tuple->mutable_operand(operand_index)));
+      } else {
+        operand_literal_values[operand_index] =
+            Literal::CreateFromShapeWithUndeterminedLeafArrays(
+                ShapeUtil::GetSubshape(tuple->shape(), {operand_index}));
+        operand_literals.push_back(&operand_literal_values[operand_index]);
+      }
+    }
+  } else {
+    for (auto operand : tuple->operands()) {
+      operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+    }
   }
 
-  evaluated_[tuple] = LiteralUtil::MakeTuple(operand_literals);
+  if (evaluated_.contains(tuple)) {
+    Literal new_result = LiteralUtil::MakeTuple(operand_literals);
+    CHECK(new_result.IsDetermined(visitor_shape_index_));
+    TF_RETURN_IF_ERROR(
+        evaluated_[tuple].CopyFrom(new_result,
+                                   /*dest_shape_index=*/visitor_shape_index_,
+                                   /*src_shape_index=*/visitor_shape_index_));
+  } else {
+    evaluated_[tuple] = LiteralUtil::MakeTuple(operand_literals);
+  }
   return Status::OK();
 }
 
@@ -948,7 +1061,8 @@ class FftTransform {
       // to simultaneously hold input and output in Fft1D() above.
       int64_t buffer_size = 0;
       for (auto len : fft_lengths_) {
-        int64_t size = IsPowerOfTwo(static_cast<uint64_t>(len)) ? len * 2 : len;
+        int64_t size =
+            absl::has_single_bit(static_cast<uint64_t>(len)) ? len * 2 : len;
         buffer_size = std::max(buffer_size, size);
       }
       std::vector<ComplexType> buffer(buffer_size);
@@ -1068,7 +1182,7 @@ class FftTransform {
                     bool contract_output, bool expand_input,
                     absl::Span<ComplexType> data,
                     absl::Span<ComplexType> buffer) {
-    CHECK(IsPowerOfTwo(static_cast<uint64_t>(length)));
+    CHECK(absl::has_single_bit(static_cast<uint64_t>(length)));
     const bool input_is_zero =
         GatherToBuffer(data, length, start, stride, expand_input, buffer);
 
@@ -1124,7 +1238,7 @@ class FftTransform {
                     bool contract_output, bool expand_input,
                     absl::Span<ComplexType> data,
                     absl::Span<ComplexType> buffer) {
-    if (IsPowerOfTwo(static_cast<uint64_t>(length))) {
+    if (absl::has_single_bit(static_cast<uint64_t>(length))) {
       Fft1D(length, start, stride, inverse, contract_output, expand_input, data,
             buffer);
     } else {
@@ -1876,7 +1990,9 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
 
 Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   const Literal& operand = GetEvaluatedLiteralFor(broadcast->operand(0));
-
+  TF_RET_CHECK(broadcast->shape().element_type() ==
+               operand.shape().element_type())
+      << " broadcast from a different data type is not supported";
   TF_RET_CHECK(broadcast->dimensions().size() == operand.shape().rank())
       << "broadcast dimensions is of size: " << broadcast->dimensions().size()
       << " and rank of operand_to_broadcast is: " << operand.shape().rank();
@@ -1953,7 +2069,7 @@ Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
   // since we ensure that the only user of a kCopyStart is a kCopyDone which
   // consumes the context. Also note that MakeTuple copies its arguments, so
   // this is memory-safe.
-  const Literal context_literal = LiteralUtil::CreateR0<uint32>(0);
+  const Literal context_literal = LiteralUtil::CreateR0<uint32_t>(0);
   evaluated_[copy_start] = LiteralUtil::MakeTuple(
       {&GetEvaluatedLiteralFor(copy_start->operand(0)),
        &GetEvaluatedLiteralFor(copy_start->operand(0)), &context_literal});
@@ -1969,7 +2085,6 @@ Status HloEvaluator::HandleCopyDone(HloInstruction* copy_done) {
   }
 
   const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
-
   evaluated_[copy_done] =
       Literal(ShapeUtil::GetTupleElementShape(operand->shape(), /*index=*/0));
   TF_RETURN_IF_ERROR(evaluated_[copy_done].CopyFrom(operand_tuple_literal,
@@ -2041,7 +2156,7 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   if (conditional->operand(0)->shape().element_type() == PRED) {
     branch_index = branch_index_literal.Get<bool>({}) ? 0 : 1;
   } else {
-    branch_index = branch_index_literal.Get<int32>({});
+    branch_index = branch_index_literal.Get<int32_t>({});
     if (branch_index < 0 || branch_index >= conditional->branch_count()) {
       branch_index = conditional->branch_count() - 1;
     }
@@ -2155,12 +2270,12 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
                                                     extract_as_scalar);
     }
     case U8: {
-      return ExtractLiteralFromIndexPositions<uint8>(from, indices,
-                                                     extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint8_t>(from, indices,
+                                                       extract_as_scalar);
     }
     case S8: {
-      return ExtractLiteralFromIndexPositions<int8>(from, indices,
-                                                    extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int8_t>(from, indices,
+                                                      extract_as_scalar);
     }
     case BF16: {
       return ExtractLiteralFromIndexPositions<bfloat16>(from, indices,
@@ -2171,24 +2286,24 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
                                                            extract_as_scalar);
     }
     case U16: {
-      return ExtractLiteralFromIndexPositions<uint16>(from, indices,
-                                                      extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint16_t>(from, indices,
+                                                        extract_as_scalar);
     }
     case S16: {
-      return ExtractLiteralFromIndexPositions<int16>(from, indices,
-                                                     extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int16_t>(from, indices,
+                                                       extract_as_scalar);
     }
     case F32: {
       return ExtractLiteralFromIndexPositions<float>(from, indices,
                                                      extract_as_scalar);
     }
     case U32: {
-      return ExtractLiteralFromIndexPositions<uint32>(from, indices,
-                                                      extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint32_t>(from, indices,
+                                                        extract_as_scalar);
     }
     case S32: {
-      return ExtractLiteralFromIndexPositions<int32>(from, indices,
-                                                     extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int32_t>(from, indices,
+                                                       extract_as_scalar);
     }
     case F64: {
       return ExtractLiteralFromIndexPositions<double>(from, indices,
@@ -2243,11 +2358,14 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   std::vector<int64_t> increment(rank, 1);
   int64_t sort_dim = sort->dimensions(0);
   int64_t sort_dim_elements = key_shape.dimensions(sort_dim);
+  TF_RET_CHECK(sort_dim >= 0 && sort_dim < increment.size())
+      << "Unexpected out-of-bound sort dimension " << sort_dim
+      << " accessing increment of size " << increment.size();
   increment[sort_dim] = sort_dim_elements;
   HloEvaluator embedded_evaluator(max_loop_iterations_);
   // Iterate through each dimension except 'sort_dim'.
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
-      key_shape, zero_base, AsInt64Slice(key_shape.dimensions()), increment,
+      key_shape, zero_base, key_shape.dimensions(), increment,
       [&](absl::Span<const int64_t> indices) -> StatusOr<bool> {
         // Extract a slice from each operand literal that corresponds to
         // exactly the row in dimension 'sort_dim'.
@@ -2428,8 +2546,7 @@ static StatusOr<bool> GenerateReduceOutputElement(
                       IsScalarAdd(function) && !is_tuple;
 
   const Shape& arg_shape = input_args[0]->shape();
-  absl::Span<const int64_t> arg_dimensions =
-      AsInt64Slice(arg_shape.dimensions());
+  absl::Span<const int64_t> arg_dimensions = arg_shape.dimensions();
   std::vector<int64_t> base(arg_dimensions.size());
   for (int64_t i = 0; i < output_index.size(); ++i) {
     base[result_to_arg_index[i]] = output_index[i];
@@ -2504,8 +2621,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
                                   ? inferred_return_shape.tuple_shapes(0)
                                   : inferred_return_shape;
 
-  absl::Span<const int64_t> arg_dimensions =
-      AsInt64Slice(arg_shape.dimensions());
+  absl::Span<const int64_t> arg_dimensions = arg_shape.dimensions();
 
   // All increments are set to 0.
   std::vector<int64_t> arg_dim_steps(arg_dimensions.size());
@@ -2601,6 +2717,16 @@ Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
   VLOG(2) << "About to visit HLO: " << hlo->ToString();
+  if (!enable_partial_evaluation_) {
+    for (HloInstruction* operand : hlo->mutable_operands()) {
+      if (!IsAlreadyEvaluated(operand) ||
+          !GetEvaluatedLiteralFor(operand).IsKnown()) {
+        return tensorflow::errors::FailedPrecondition(
+            "Failed to evaluate instruction since its operands are unknown "
+            "or undetermined and partial evaluation is not enabled.");
+      }
+    }
+  }
   return ShapeUtil::ValidateShape(hlo->shape());
 }
 
@@ -2674,9 +2800,9 @@ std::unique_ptr<Array2D<std::complex<double>>> HloEvaluator::MatmulArray2D(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulC128);
 }
 
-std::unique_ptr<Array2D<int32>> HloEvaluator::MatmulArray2D(
-    const Array2D<int32>& lhs, const Array2D<int32>& rhs) {
-  return MatmulArray2DImpl<int32>(
+std::unique_ptr<Array2D<int32_t>> HloEvaluator::MatmulArray2D(
+    const Array2D<int32_t>& lhs, const Array2D<int32_t>& rhs) {
+  return MatmulArray2DImpl<int32_t>(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulS32);
 }
 

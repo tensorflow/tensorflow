@@ -33,7 +33,7 @@ namespace {
 class HloReplicationAnalysisTest : public HloTestBase {};
 
 TEST_F(HloReplicationAnalysisTest, NoControlFlow) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule NoControlFlow
 
 sum {
@@ -100,7 +100,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, NoControlFlowSPMD) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule NoControlFlow
 
 sum {
@@ -185,7 +185,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, NestedCall) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule NestedCall
 
 fusion_computation {
@@ -237,7 +237,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, SimpleWhileLoop) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule SimpleWhileLoop
 
 cond {
@@ -283,7 +283,7 @@ ENTRY SimpleWhileLoop {
 
 TEST_F(HloReplicationAnalysisTest,
        WhileLoopParameterAliasingNonReplicatedOutput) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule WhileLoopParameterAliasingNonReplicatedOutput
 
 cond {
@@ -334,7 +334,7 @@ ENTRY WhileLoopParameterAliasingNonReplicatedOutput {
 }
 
 TEST_F(HloReplicationAnalysisTest, WhileLoopDifferentCondition) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule WhileLoopDifferentCondition
 
 cond {
@@ -375,7 +375,7 @@ ENTRY WhileLoopDifferentCondition {
 }
 
 TEST_F(HloReplicationAnalysisTest, SimpleConditional) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule SimpleConditional
 
 Negate {
@@ -437,7 +437,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, ConditionalWithDifferentPredicates) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule ConditionalWithDifferentPredicates
 
 Negate {
@@ -502,7 +502,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, X64SplitCombine) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule SimpleTupleSelect
 
 ENTRY entry {
@@ -532,7 +532,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, SimpleTupleSelect) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule SimpleTupleSelect
 
 ENTRY entry {
@@ -559,7 +559,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, TupleSelectWithDifferentPredicates) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TupleSelectWithDifferentPredicates
 
 ENTRY entry {
@@ -586,7 +586,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, CrossModuleAndReplicaAllReduce) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule CrossModuleAndReplicaAllReduce
 
 sum {
@@ -617,7 +617,7 @@ ENTRY entry {
 }
 
 TEST_F(HloReplicationAnalysisTest, GlobalIdAllGather) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule GlobalIdAllGather
 
 ENTRY entry {

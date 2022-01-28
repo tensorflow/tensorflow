@@ -110,7 +110,7 @@ class ObjType : public WeakRefCounted {};
 
 TEST(WeakPtr, SingleThread) {
   auto obj = new ObjType();
-  auto weakptr = WeakPtr<ObjType>(obj);
+  WeakPtr<ObjType> weakptr(obj);
 
   ASSERT_TRUE(obj->RefCountIsOne());
   EXPECT_EQ(obj->WeakRefCount(), 1);
@@ -128,7 +128,7 @@ TEST(WeakPtr, MultiThreadedWeakRef) {
 
   for (int i = 0; i < 100; i++) {
     auto obj = new ObjType();
-    auto weakptr = WeakPtr<ObjType>(obj);
+    WeakPtr<ObjType> weakptr(obj);
 
     bool obj_destructed = false;
     EXPECT_EQ(obj->WeakRefCount(), 1);
@@ -157,9 +157,82 @@ TEST(WeakPtr, MultiThreadedWeakRef) {
 
     EXPECT_EQ(weakptr.GetNewRef(), nullptr);
   }
-  ASSERT_GT(hit_destructed, 0);
-  ASSERT_LT(hit_destructed, 200);  // 2 threads per iterations.
+  if (hit_destructed == 0) {
+    LOG(WARNING) << "The destructed weakref test branch is not exercised.";
+  }
+  if (hit_destructed == 200) {
+    LOG(WARNING) << "The valid weakref test branch is not exercised.";
+  }
 }
+
+TEST(WeakPtr, NotifyCalled) {
+  auto obj = new ObjType();
+  int num_calls1 = 0;
+  int num_calls2 = 0;
+
+  auto notify_fn1 = [&num_calls1]() { num_calls1++; };
+  auto notify_fn2 = [&num_calls2]() { num_calls2++; };
+  WeakPtr<ObjType> weakptr1(obj, notify_fn1);
+  WeakPtr<ObjType> weakptr2(obj, notify_fn2);
+
+  ASSERT_TRUE(obj->RefCountIsOne());
+  EXPECT_EQ(obj->WeakRefCount(), 2);
+  EXPECT_NE(weakptr1.GetNewRef(), nullptr);
+  EXPECT_NE(weakptr2.GetNewRef(), nullptr);
+
+  EXPECT_EQ(num_calls1, 0);
+  EXPECT_EQ(num_calls2, 0);
+  obj->Unref();
+  EXPECT_EQ(weakptr1.GetNewRef(), nullptr);
+  EXPECT_EQ(weakptr2.GetNewRef(), nullptr);
+  EXPECT_EQ(num_calls1, 1);
+  EXPECT_EQ(num_calls2, 1);
+}
+
+TEST(WeakPtr, MoveTargetNotCalled) {
+  auto obj = new ObjType();
+  int num_calls1 = 0;
+  int num_calls2 = 0;
+  int num_calls3 = 0;
+
+  auto notify_fn1 = [&num_calls1]() { num_calls1++; };
+  auto notify_fn2 = [&num_calls2]() { num_calls2++; };
+  auto notify_fn3 = [&num_calls3]() { num_calls3++; };
+  WeakPtr<ObjType> weakptr1(obj, notify_fn1);
+  WeakPtr<ObjType> weakptr2(obj, notify_fn2);
+  WeakPtr<ObjType> weakptr3(WeakPtr<ObjType>(obj, notify_fn3));
+
+  weakptr2 = std::move(weakptr1);
+
+  ASSERT_TRUE(obj->RefCountIsOne());
+  EXPECT_EQ(obj->WeakRefCount(), 2);
+  EXPECT_NE(weakptr2.GetNewRef(), nullptr);
+  EXPECT_NE(weakptr3.GetNewRef(), nullptr);
+
+  EXPECT_EQ(num_calls1, 0);
+  EXPECT_EQ(num_calls2, 0);
+  EXPECT_EQ(num_calls3, 0);
+  obj->Unref();
+  EXPECT_EQ(weakptr2.GetNewRef(), nullptr);
+  EXPECT_EQ(weakptr3.GetNewRef(), nullptr);
+  EXPECT_EQ(num_calls1, 1);
+  EXPECT_EQ(num_calls2, 0);
+  EXPECT_EQ(num_calls3, 1);
+}
+
+TEST(WeakPtr, DestroyedNotifyNotCalled) {
+  auto obj = new ObjType();
+  int num_calls = 0;
+  auto notify_fn = [&num_calls]() { num_calls++; };
+  { WeakPtr<ObjType> weakptr(obj, notify_fn); }
+  ASSERT_TRUE(obj->RefCountIsOne());
+  EXPECT_EQ(obj->WeakRefCount(), 0);
+
+  EXPECT_EQ(num_calls, 0);
+  obj->Unref();
+  EXPECT_EQ(num_calls, 0);
+}
+
 }  // namespace
 }  // namespace core
 }  // namespace tensorflow

@@ -34,10 +34,12 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
-NUMERIC_TYPES = frozenset(
-    [dtypes.float32, dtypes.float64, dtypes.int8, dtypes.int16, dtypes.int32,
-     dtypes.int64, dtypes.uint8, dtypes.qint8, dtypes.qint32, dtypes.quint8,
-     dtypes.complex64])
+NUMERIC_TYPES = frozenset([
+    dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int8, dtypes.int16,
+    dtypes.int32, dtypes.int64, dtypes.uint8, dtypes.uint16, dtypes.uint32,
+    dtypes.uint64, dtypes.qint8, dtypes.qint16, dtypes.qint32, dtypes.quint8,
+    dtypes.quint16, dtypes.complex64, dtypes.complex128, dtypes.bfloat16
+])
 
 __all__ = [
     'assert_negative',
@@ -1586,7 +1588,7 @@ def assert_type_v2(tensor, tf_type, message=None, name=None):
   >>> tf.debugging.assert_type(c, tf_type= tf.int32)
 
   Args:
-    tensor: A `Tensor`, `SparseTensor` or `tf.Variable .
+    tensor: A `Tensor`, `SparseTensor` or `tf.Variable` .
     tf_type: A tensorflow type (`dtypes.float32`, `tf.int64`, `dtypes.bool`,
       etc).
     message: A string to prefix to the default message.
@@ -2041,6 +2043,7 @@ def is_numeric_tensor(tensor):
 
   Specifically, returns `True` if the dtype of `tensor` is one of the following:
 
+  * `tf.float16`
   * `tf.float32`
   * `tf.float64`
   * `tf.int8`
@@ -2048,10 +2051,17 @@ def is_numeric_tensor(tensor):
   * `tf.int32`
   * `tf.int64`
   * `tf.uint8`
+  * `tf.uint16`
+  * `tf.uint32`
+  * `tf.uint64`
   * `tf.qint8`
+  * `tf.qint16`
   * `tf.qint32`
   * `tf.quint8`
+  * `tf.quint16`
   * `tf.complex64`
+  * `tf.complex128`
+  * `tf.bfloat16`
 
   Returns `False` if `tensor` is of a non-numeric type or if `tensor` is not
   a `tf.Tensor` object.

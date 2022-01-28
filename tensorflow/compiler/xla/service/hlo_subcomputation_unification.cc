@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 
-#include <unordered_map>
-
 namespace xla {
 
 StatusOr<bool> HloSubcomputationUnification::Run(HloModule* module) {

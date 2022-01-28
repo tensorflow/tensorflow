@@ -23,9 +23,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
@@ -366,7 +368,10 @@ class SerializeManySparseOp : public OpKernel {
         errors::InvalidArgument(
             "Rank of input SparseTensor should be > 1, but saw rank: ", rank));
 
-    TensorShape tensor_input_shape(input_shape->vec<int64_t>());
+    TensorShape tensor_input_shape;
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape(input_shape->vec<int64_t>(),
+                                                 &tensor_input_shape));
     gtl::InlinedVector<int64_t, 8> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
     SparseTensor input_st;

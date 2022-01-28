@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
@@ -215,68 +214,68 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   }
 };
 
-XLA_TEST_F(DynamicSliceTest, Int32R1BF16) { TestR1<int32, bfloat16>(); }
-XLA_TEST_F(DynamicSliceTest, Int32R1) { TestR1<int32, int32>(); }
-XLA_TEST_F(DynamicSliceTest, Int32R1OOB) { TestR1OOB<int32, int32>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R1BF16) { TestR1<int32_t, bfloat16>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R1) { TestR1<int32_t, int32_t>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R1OOB) { TestR1OOB<int32_t, int32_t>(); }
 XLA_TEST_F(DynamicSliceTest, Int64R1) { TestR1<int64_t, float>(); }
-XLA_TEST_F(DynamicSliceTest, UInt64R1) { TestR1<uint64, float>(); }
+XLA_TEST_F(DynamicSliceTest, UInt64R1) { TestR1<uint64_t, float>(); }
 XLA_TEST_F(DynamicSliceTest, UInt32R1OOB) {
-  RunR1<uint32, int32>({0, 1, 2, 3, 4}, {2147483648u}, {2}, {3, 4});
+  RunR1<uint32_t, int32_t>({0, 1, 2, 3, 4}, {2147483648u}, {2}, {3, 4});
 }
 
-XLA_TEST_F(DynamicSliceTest, Int32R2BF16) { TestR2<int32, bfloat16>(); }
-XLA_TEST_F(DynamicSliceTest, Int32R2) { TestR2<int32, int32>(); }
-XLA_TEST_F(DynamicSliceTest, Int32R2OOB) { TestR2OOB<int32, int32>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R2BF16) { TestR2<int32_t, bfloat16>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R2) { TestR2<int32_t, int32_t>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R2OOB) { TestR2OOB<int32_t, int32_t>(); }
 XLA_TEST_F(DynamicSliceTest, Int64R2) { TestR2<int64_t, float>(); }
-XLA_TEST_F(DynamicSliceTest, UInt64R2) { TestR2<uint64, int32>(); }
+XLA_TEST_F(DynamicSliceTest, UInt64R2) { TestR2<uint64_t, int32_t>(); }
 XLA_TEST_F(DynamicSliceTest, UInt32R2OOB) {
-  RunR2<uint32, int32>({{0, 1}, {2, 3}}, {2147483648u, 0}, {1, 1}, {{2}});
+  RunR2<uint32_t, int32_t>({{0, 1}, {2, 3}}, {2147483648u, 0}, {1, 1}, {{2}});
 }
 
-XLA_TEST_F(DynamicSliceTest, Int32R3BF16) { TestR3<int32, bfloat16>(); }
-XLA_TEST_F(DynamicSliceTest, Int32R3) { TestR3<int32, float>(); }
-XLA_TEST_F(DynamicSliceTest, Int32R3OOB) { TestR3OOB<int32, float>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R3BF16) { TestR3<int32_t, bfloat16>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R3) { TestR3<int32_t, float>(); }
+XLA_TEST_F(DynamicSliceTest, Int32R3OOB) { TestR3OOB<int32_t, float>(); }
 XLA_TEST_F(DynamicSliceTest, Int64R3) { TestR3<int64_t, float>(); }
-XLA_TEST_F(DynamicSliceTest, UInt64R3) { TestR3<uint64, float>(); }
+XLA_TEST_F(DynamicSliceTest, UInt64R3) { TestR3<uint64_t, float>(); }
 XLA_TEST_F(DynamicSliceTest, UInt32R3OOB) {
-  RunR3<uint32, int32>({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}},
-                       {2147483648u, 0, 2147483648u}, {1, 1, 1}, {{{5}}});
+  RunR3<uint32_t, int32_t>({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}},
+                           {2147483648u, 0, 2147483648u}, {1, 1, 1}, {{{5}}});
 }
 
 XLA_TEST_F(DynamicSliceTest, Int32R1Pred) {
   // Slice at dimension start.
-  RunR1<int32, bool>({true, false, false, true, false, true, true, false}, {0},
-                     {5}, {true, false, false, true, false});
+  RunR1<int32_t, bool>({true, false, false, true, false, true, true, false},
+                       {0}, {5}, {true, false, false, true, false});
   // Slice in the middle.
-  RunR1<int32, bool>({true, false, false, true, false, true, true, false}, {2},
-                     {3}, {false, true, false});
+  RunR1<int32_t, bool>({true, false, false, true, false, true, true, false},
+                       {2}, {3}, {false, true, false});
   // Slice at dimension boundaries.
-  RunR1<int32, bool>({true, false, false, true, false, true, true, false}, {5},
-                     {3}, {true, true, false});
+  RunR1<int32_t, bool>({true, false, false, true, false, true, true, false},
+                       {5}, {3}, {true, true, false});
   // Zero element slice.
-  RunR1<int32, bool>({true, false, false, true, false, true, true, false}, {2},
-                     {0}, {});
+  RunR1<int32_t, bool>({true, false, false, true, false, true, true, false},
+                       {2}, {0}, {});
 }
 
 XLA_TEST_F(DynamicSliceTest, Int32R2Pred) {
   // Slice at dimension start.
-  RunR2<int32, bool>(
+  RunR2<int32_t, bool>(
       {{true, false, true}, {false, false, true}, {true, true, false}}, {0, 0},
       {2, 2}, {{true, false}, {false, false}});
   // Slice in the middle.
-  RunR2<int32, bool>(
+  RunR2<int32_t, bool>(
       {{true, false, true}, {false, false, true}, {true, true, false}}, {1, 1},
       {2, 1}, {{false}, {true}});
   // Slice at dimension boundaries.
-  RunR2<int32, bool>(
+  RunR2<int32_t, bool>(
       {{true, false, true}, {false, false, true}, {true, true, false}}, {1, 1},
       {2, 1}, {{false}, {true}});
   // Zero element slice: 2x0.
-  RunR2<int32, bool>(
+  RunR2<int32_t, bool>(
       {{true, false, true}, {false, false, true}, {true, true, false}}, {0, 0},
       {2, 0}, {{}, {}});
   // Zero element slice: 0x2.
-  RunR2<int32, bool>(
+  RunR2<int32_t, bool>(
       {{true, false, true}, {false, false, true}, {true, true, false}}, {0, 0},
       {0, 2}, Array2D<int>(0, 2));
 }
@@ -286,14 +285,14 @@ XLA_TEST_F(DynamicSliceTest, Int32R3Pred) {
   // clang-format off
 
   // Slice at dimension start.
-  RunR3<int32, bool>(
+  RunR3<int32_t, bool>(
     {{{true, false}, {false, true}, {true, true}},
      {{false, true}, {true, false}, {false, false}}},
     {0, 0, 0}, {2, 1, 2},
     {{{true, false}}, {{false, true}}});
 
   // Slice in the middle.
-  RunR3<int32, bool>(
+  RunR3<int32_t, bool>(
     {{{true, false}, {false, true}, {true, true}},
      {{false, true}, {true, false}, {false, false}}},
     {0, 1, 1}, {2, 2, 1},
@@ -509,7 +508,7 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   }
 
   template <class T>
-  void RunR3Contiguous(std::vector<int32> operand_shape, int32_t index,
+  void RunR3Contiguous(std::vector<int32_t> operand_shape, int32_t index,
                        int32_t size) {
     const int32_t kSeq = operand_shape[0];
     const int32_t kBatch = operand_shape[1];
@@ -549,8 +548,8 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     XlaOp update;
     std::unique_ptr<GlobalData> update_data = CreateR3Parameter<T>(
         update_values, 1, "update_values", &builder, &update);
-    auto constant_index = ConstantR0<int32>(&builder, index);
-    auto zero = ConstantR0<int32>(&builder, 0);
+    auto constant_index = ConstantR0<int32_t>(&builder, index);
+    auto zero = ConstantR0<int32_t>(&builder, 0);
     DynamicUpdateSlice(input, update, {constant_index, zero, zero});
 
     // Run computation and compare against expected values.
@@ -560,85 +559,89 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   }
 
   template <typename NativeT>
-  void DumpArray(const string& name, const Array3D<NativeT> values) {
+  void DumpArray(const std::string& name, const Array3D<NativeT> values) {
     Literal literal = LiteralUtil::CreateR3FromArray3D<NativeT>(values);
     LOG(INFO) << name << ":" << literal.ToString();
   }
 };
 
-XLA_TEST_F(DynamicUpdateSliceTest, Int32R0BF16) { TestR0<int32, bfloat16>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int32R0) { TestR0<int32, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R0BF16) { TestR0<int32_t, bfloat16>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R0) { TestR0<int32_t, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int64R0) { TestR0<int64_t, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, UInt64R0) { TestR0<uint64, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64R0) { TestR0<uint64_t, float>(); }
 
-XLA_TEST_F(DynamicUpdateSliceTest, Int32R1BF16) { TestR1<int32, bfloat16>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int32R1) { TestR1<int32, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R1BF16) { TestR1<int32_t, bfloat16>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R1) { TestR1<int32_t, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int64R1) { TestR1<int64_t, float>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, UInt64R1) { TestR1<uint64, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64R1) { TestR1<uint64_t, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt32R1OOB) {
-  RunR1<uint32, int32>({0, 1, 2, 3, 4}, {5, 6}, {2147483648u}, {0, 1, 2, 5, 6});
+  RunR1<uint32_t, int32_t>({0, 1, 2, 3, 4}, {5, 6}, {2147483648u},
+                           {0, 1, 2, 5, 6});
 }
 
-XLA_TEST_F(DynamicUpdateSliceTest, Int32R2BF16) { TestR2<int32, bfloat16>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int32R2) { TestR2<int32, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R2BF16) { TestR2<int32_t, bfloat16>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R2) { TestR2<int32_t, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int64R2) { TestR2<int64_t, int64_t>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, UInt64R2) { TestR2<uint64, int32>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64R2) { TestR2<uint64_t, int32_t>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt32R2OOB) {
-  RunR2<uint32, int32>({{0, 1}, {2, 3}}, {{4}}, {2147483648u, 0},
-                       {{0, 1}, {4, 3}});
+  RunR2<uint32_t, int32_t>({{0, 1}, {2, 3}}, {{4}}, {2147483648u, 0},
+                           {{0, 1}, {4, 3}});
 }
 
-XLA_TEST_F(DynamicUpdateSliceTest, Int32R3BF16) { TestR3<int32, bfloat16>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int32R3) { TestR3<int32, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R3BF16) { TestR3<int32_t, bfloat16>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32R3) { TestR3<int32_t, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int64R3) { TestR3<int64_t, int64_t>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, UInt64R3) { TestR3<uint64, uint64_t>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64R3) { TestR3<uint64_t, uint64_t>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt32R3OOB) {
-  RunR3<uint32, int32>({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}}, {{{8}}},
-                       {2147483648u, 0, 2147483648u},
-                       {{{0, 1}, {2, 3}}, {{4, 8}, {6, 7}}});
+  RunR3<uint32_t, int32_t>({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}}, {{{8}}},
+                           {2147483648u, 0, 2147483648u},
+                           {{{0, 1}, {2, 3}}, {{4, 8}, {6, 7}}});
 }
 
-XLA_TEST_F(DynamicUpdateSliceTest, Int32OOBBF16) { TestOOB<int32, bfloat16>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, Int32OOB) { TestOOB<int32, float>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, Int32OOBBF16) {
+  TestOOB<int32_t, bfloat16>();
+}
+XLA_TEST_F(DynamicUpdateSliceTest, Int32OOB) { TestOOB<int32_t, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, Int64OOB) { TestOOB<int64_t, int64_t>(); }
-XLA_TEST_F(DynamicUpdateSliceTest, UInt64OOB) { TestOOB<uint64, uint64_t>(); }
+XLA_TEST_F(DynamicUpdateSliceTest, UInt64OOB) { TestOOB<uint64_t, uint64_t>(); }
 
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R1Pred) {
   // Slice at dimension start.
-  RunR1<int32, bool>({false, false, true, true, false, true, true, false},
-                     {true, true, false}, {0},
-                     {true, true, false, true, false, true, true, false});
+  RunR1<int32_t, bool>({false, false, true, true, false, true, true, false},
+                       {true, true, false}, {0},
+                       {true, true, false, true, false, true, true, false});
   // Slice in the middle.
-  RunR1<int32, bool>({false, false, true, true, false, true, true, false},
-                     {false, true, true}, {2},
-                     {false, false, false, true, true, true, true, false});
+  RunR1<int32_t, bool>({false, false, true, true, false, true, true, false},
+                       {false, true, true}, {2},
+                       {false, false, false, true, true, true, true, false});
   // Slice at dimension boundaries.
-  RunR1<int32, bool>({false, false, true, true, false, true, true, false},
-                     {false, true, true}, {5},
-                     {false, false, true, true, false, false, true, true});
+  RunR1<int32_t, bool>({false, false, true, true, false, true, true, false},
+                       {false, true, true}, {5},
+                       {false, false, true, true, false, false, true, true});
   // Zero-sized update.
-  RunR1<int32, bool>({false, false, true, true, false, true, true, false}, {},
-                     {2}, {false, false, true, true, false, true, true, false});
+  RunR1<int32_t, bool>({false, false, true, true, false, true, true, false}, {},
+                       {2},
+                       {false, false, true, true, false, true, true, false});
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R2Pred) {
   // Slice at dimension start.
-  RunR2<int32, bool>(
+  RunR2<int32_t, bool>(
       {{false, true, false}, {true, false, true}, {false, true, true}},
       {{true, false}}, {0, 0},
       {{true, false, false}, {true, false, true}, {false, true, true}});
   // Slice in the middle.
-  RunR2<int32, bool>(
+  RunR2<int32_t, bool>(
       {{false, true, false}, {true, false, true}, {false, true, true}},
       {{true, false}}, {1, 1},
       {{false, true, false}, {true, true, false}, {false, true, true}});
   // Slice at dimension boundaries.
-  RunR2<int32, bool>(
+  RunR2<int32_t, bool>(
       {{false, true, false}, {true, false, true}, {false, true, true}},
       {{true, false}}, {2, 1},
       {{false, true, false}, {true, false, true}, {false, true, false}});
   // Zero-sized update.
-  RunR2<int32, bool>(
+  RunR2<int32_t, bool>(
       {{false, true, false}, {true, false, true}, {false, true, true}}, {{}},
       {2, 1}, {{false, true, false}, {true, false, true}, {false, true, true}});
 }
@@ -646,7 +649,7 @@ XLA_TEST_F(DynamicUpdateSliceTest, Int32R2Pred) {
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R3Pred) {
   // R3 Shape: [2, 3, 2]
   // Slice at dimension start.
-  RunR3<int32, bool>(
+  RunR3<int32_t, bool>(
       {{{true, false}, {false, true}, {true, true}},
        {{false, false}, {false, true}, {true, false}}},
       {{{false, true}, {true, false}}, {{true, true}, {false, true}}},
@@ -654,81 +657,81 @@ XLA_TEST_F(DynamicUpdateSliceTest, Int32R3Pred) {
       {{{false, true}, {true, false}, {true, true}},
        {{true, true}, {false, true}, {true, false}}});
   // Slice in the middle.
-  RunR3<int32, bool>({{{true, false}, {false, true}, {true, true}},
-                      {{false, false}, {false, true}, {true, false}}},
-                     {{{false}, {true}}}, {1, 1, 1},
-                     {{{true, false}, {false, true}, {true, true}},
-                      {{false, false}, {false, false}, {true, true}}});
+  RunR3<int32_t, bool>({{{true, false}, {false, true}, {true, true}},
+                        {{false, false}, {false, true}, {true, false}}},
+                       {{{false}, {true}}}, {1, 1, 1},
+                       {{{true, false}, {false, true}, {true, true}},
+                        {{false, false}, {false, false}, {true, true}}});
 }
 
 // Tests for simple R3 case where the update is contiguous (i.e. the minor
 // two dimensions are not sliced).
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousSingleElement) {
   // Single element, index in-bounds
-  std::vector<int32> operand_shape({4, 5, 2});
+  std::vector<int32_t> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/1, /*size=*/1);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousSingleElementBF16) {
   // Single element, index in-bounds
-  std::vector<int32> operand_shape({4, 5, 2});
+  std::vector<int32_t> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/1);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleElements) {
   // Multiples element, index in-bounds.
-  std::vector<int32> operand_shape({4, 5, 2});
+  std::vector<int32_t> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/1, /*size=*/2);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleElementsBF16) {
   // Multiples element, index in-bounds.
-  std::vector<int32> operand_shape({4, 5, 2});
+  std::vector<int32_t> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/2);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleOOB) {
   // Multiple element, index out of bounds.
-  std::vector<int32> operand_shape({4, 5, 2});
+  std::vector<int32_t> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/3, /*size=*/2);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousMultipleOOBBF16) {
   // Multiple element, index out of bounds.
-  std::vector<int32> operand_shape({4, 5, 2});
+  std::vector<int32_t> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/3, /*size=*/2);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousTooLarge) {
   // Multiple element, update size larger than operand.
-  std::vector<int32> operand_shape({4, 5, 2});
+  std::vector<int32_t> operand_shape({4, 5, 2});
   RunR3Contiguous<float>(operand_shape, /*index=*/5, /*size=*/2);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousTooLargeBF16) {
   // Multiple element, update size larger than operand.
-  std::vector<int32> operand_shape({4, 5, 2});
+  std::vector<int32_t> operand_shape({4, 5, 2});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/5, /*size=*/2);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousUnaligned) {
-  std::vector<int32> operand_shape({3, 123, 247});
+  std::vector<int32_t> operand_shape({3, 123, 247});
   RunR3Contiguous<float>(operand_shape, /*index=*/1, /*size=*/1);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, R3ContiguousUnalignedBF16) {
-  std::vector<int32> operand_shape({3, 123, 247});
+  std::vector<int32_t> operand_shape({3, 123, 247});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/1, /*size=*/1);
 }
 
 // TODO(b/34134076) Disabled on GPU 2016-01-06 due to out-of-memory error.
 XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_GPU(R3ContiguousLarger)) {
-  std::vector<int32> operand_shape({32, 128, 1024});
+  std::vector<int32_t> operand_shape({32, 128, 1024});
   RunR3Contiguous<float>(operand_shape, /*index=*/7, /*size=*/1);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, DISABLED_ON_GPU(R3ContiguousLargerBF16)) {
-  std::vector<int32> operand_shape({32, 128, 1024});
+  std::vector<int32_t> operand_shape({32, 128, 1024});
   RunR3Contiguous<bfloat16>(operand_shape, /*index=*/7, /*size=*/1);
 }
 
@@ -779,7 +782,7 @@ void BM_DynamicSlice(::testing::benchmark::State& state) {
   for (int i = 0; i < 4; ++i) {
     start_indices[i] =
         Parameter(&builder, i, start_indices_shape, "start_indices");
-    auto start_index_literal = LiteralUtil::CreateR0<int32>(i + 1);
+    auto start_index_literal = LiteralUtil::CreateR0<int32_t>(i + 1);
     // Initialize and transfer parameter buffer.
     shaped_buffers.emplace_back(
         client->backend()

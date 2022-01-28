@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
@@ -254,7 +253,7 @@ class Service : public ServiceInterface {
       Executable* executable,
       absl::Span<const std::vector<const ShapedBuffer*>> arguments,
       Backend* backend, const DeviceHandle& device_handle,
-      const string& result_tag, ExecutionProfile* profile);
+      const std::string& result_tag, ExecutionProfile* profile);
 
   // Runs the given executables with the given arguments and register the result
   // from each executable in the allocation tracker. The handles of the result
@@ -263,7 +262,7 @@ class Service : public ServiceInterface {
       absl::Span<Executable* const> executables,
       absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
       Backend* backend, absl::Span<const DeviceHandle> device_handles,
-      absl::Span<const string> result_tags, ExecutionProfile* profile);
+      absl::Span<const std::string> result_tags, ExecutionProfile* profile);
 
   // Convenience function which checks whether the given client_shape
   // (presumably passed by the client to set the result layout) is valid for the
@@ -298,7 +297,8 @@ class Service : public ServiceInterface {
   // Backend to compile and execute computations on.
   std::unique_ptr<Backend> execute_backend_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Service);
+  Service(const Service&) = delete;
+  Service& operator=(const Service&) = delete;
 };
 
 }  // namespace xla

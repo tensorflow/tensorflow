@@ -294,11 +294,8 @@ DEFINE_TRY_GET_ATTR(
     })
 DEFINE_GET_ATTR(float, f, "float", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(float, f, "float", emplace_back, v, ;)
-// std::vector<bool> specialization does not have emplace_back until
-// c++14, so we have to use push_back (see
-// http://en.cppreference.com/w/cpp/container/vector/emplace_back)
-DEFINE_GET_ATTR(bool, b, "bool", push_back, v, ;)
-DEFINE_TRY_GET_ATTR(bool, b, "bool", push_back, v, ;)
+DEFINE_GET_ATTR(bool, b, "bool", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(bool, b, "bool", emplace_back, v, ;)
 DEFINE_GET_ATTR(DataType, type, "type", emplace_back, static_cast<DataType>(v),
                 ;)
 DEFINE_TRY_GET_ATTR(DataType, type, "type", emplace_back,

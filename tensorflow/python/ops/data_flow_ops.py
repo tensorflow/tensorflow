@@ -14,10 +14,9 @@
 #==============================================================================
 """Data Flow Operations."""
 # pylint: disable=g-bad-name
+import functools
 import hashlib
 import threading
-
-import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as _dtypes
@@ -115,7 +114,7 @@ def _shape_common(s1, s2):
 @tf_export("queue.QueueBase",
            v1=["queue.QueueBase", "io.QueueBase", "QueueBase"])
 @deprecation.deprecated_endpoints(["io.QueueBase", "QueueBase"])
-class QueueBase(object):
+class QueueBase:
   """Base class for queue implementations.
 
   A queue is a TensorFlow data structure that stores tensors across
@@ -214,7 +213,7 @@ class QueueBase(object):
 
     queue_shapes = [q.shapes for q in queues]
     reduced_shapes = [
-        six.moves.reduce(_shape_common, s) for s in zip(*queue_shapes)
+        functools.reduce(_shape_common, s) for s in zip(*queue_shapes)
     ]
 
     queue_refs = array_ops.stack([x.queue_ref for x in queues])
@@ -993,7 +992,7 @@ class PriorityQueue(QueueBase):
 # TODO(josh11b): class BatchQueue(QueueBase):
 
 
-class Barrier(object):
+class Barrier:
   """Represents a key-value map that persists across graph executions."""
 
   def __init__(self, types, shapes=None, shared_name=None, name="barrier"):
@@ -1239,7 +1238,7 @@ class Barrier(object):
 
 
 @tf_export(v1=["ConditionalAccumulatorBase"])
-class ConditionalAccumulatorBase(object):
+class ConditionalAccumulatorBase:
   """A conditional accumulator for aggregating gradients.
 
   Up-to-date gradients (i.e., time step at which gradient was computed is
@@ -1605,7 +1604,7 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         name=name)
 
 
-class BaseStagingArea(object):
+class BaseStagingArea:
   """Base class for Staging Areas."""
   _identifier = 0
   _lock = threading.Lock()
@@ -1620,7 +1619,7 @@ class BaseStagingArea(object):
     if shared_name is None:
       self._name = (
           ops.get_default_graph().unique_name(self.__class__.__name__))
-    elif isinstance(shared_name, six.string_types):
+    elif isinstance(shared_name, str):
       self._name = shared_name
     else:
       raise ValueError(f"shared_name must be a string, got {shared_name}")
@@ -1921,7 +1920,7 @@ class StagingArea(BaseStagingArea):
         values = [values]
 
       # Hard-code indices for this staging area
-      indices = list(six.moves.range(len(values)))
+      indices = list(range(len(values)))
       vals, _ = self._check_put_dtypes(values, indices)
 
       with ops.colocate_with(self._coloc_op):
@@ -1938,7 +1937,7 @@ class StagingArea(BaseStagingArea):
     with ops.colocate_with(self._coloc_op):
       ret = get_fn()
 
-    indices = list(six.moves.range(len(self._dtypes)))  # Hard coded
+    indices = list(range(len(self._dtypes)))  # Hard coded
     return self._get_return_value(ret, indices)
 
   def get(self, name=None):
@@ -2208,7 +2207,7 @@ class MapStagingArea(BaseStagingArea):
 
   def _get_indices_and_dtypes(self, indices=None):
     if indices is None:
-      indices = list(six.moves.range(len(self._dtypes)))
+      indices = list(range(len(self._dtypes)))
 
     if not isinstance(indices, (tuple, list)):
       raise TypeError(f"Invalid indices type {type(indices)}")
@@ -2429,7 +2428,7 @@ class MapStagingArea(BaseStagingArea):
         memory_limit=self._memory_limit)
 
 
-class RecordInput(object):
+class RecordInput:
   """RecordInput asynchronously reads and randomly yields TFRecords.
 
   A RecordInput Op will continuously read a batch of records asynchronously
@@ -2510,7 +2509,7 @@ class RecordInput(object):
       return records
     else:
       with ops.name_scope(self._name):
-        batch_list = [[] for _ in six.moves.range(self._batches)]
+        batch_list = [[] for _ in range(self._batches)]
         records = array_ops.split(records, self._batch_size, 0)
         for index, protobuf in enumerate(records):
           batch_index = index % self._batches

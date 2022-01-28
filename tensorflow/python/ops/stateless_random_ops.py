@@ -16,7 +16,6 @@
 
 import enum
 import numpy as np
-import six
 
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
@@ -68,7 +67,7 @@ def convert_alg_to_int(alg):
   Returns:
     An integer, unless the input is a Tensor in which case a Tensor is returned.
   """
-  if isinstance(alg, six.integer_types):
+  if isinstance(alg, int):
     return alg
   if isinstance(alg, Algorithm):
     return alg.value

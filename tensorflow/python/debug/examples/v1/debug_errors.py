@@ -40,9 +40,11 @@ def main(_):
   z = tf.matmul(m, v, name="z")
 
   if FLAGS.debug:
-    config_file_path = (
-        tempfile.mktemp(".tfdbg_config")
-        if FLAGS.use_random_config_path else None)
+    if FLAGS.use_random_config_path:
+      # TODO(mihaimaruseac): Safe to ignore fd here?
+      _, config_file_path = tempfile.mkstemp(".tfdbg_config")
+    else:
+      config_file_path = None
     sess = tf_debug.LocalCLIDebugWrapperSession(
         sess, ui_type=FLAGS.ui_type, config_file_path=config_file_path)
 

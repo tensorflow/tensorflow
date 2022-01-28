@@ -766,7 +766,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     class Valid(tracking.AutoTrackable):
 
       def _deserialization_dependencies(self):
-        return {x.name: x.ref for x in self._checkpoint_dependencies}
+        return {name: ref for name, ref in self._trackable_children().items()}
 
     root = Valid()
     root.f = variables.Variable(1.0)
@@ -930,7 +930,7 @@ class SavingOptionsTest(test.TestCase):
         "my_func": root.f,
     })
     save.save(root, save_dir, root.f, options=options)
-    function_cache = list(root.f._stateful_fn._function_cache.all_values())
+    function_cache = root.f._stateful_fn._list_all_concrete_functions()
     function_aliases = loader_impl.parse_saved_model(
         save_dir).meta_graphs[0].meta_info_def.function_aliases
     self.assertLen(function_cache, 1)

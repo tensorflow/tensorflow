@@ -565,6 +565,16 @@ void EvalSparseHybridImpl(TfLiteContext* context, TfLiteNode* node,
     scaling_factors_ptr[b] *= filter->params.scale;
   }
 
+  if (params->asymmetric_quantize_inputs) {
+    float* per_thread_output_ptr = per_thread_output;
+    for (int b = 0; b < batch_size; ++b) {
+      const float scaled_zp = scaling_factors_ptr[b] * input_offset_ptr[b];
+      for (int row = 0; row < output_depth; ++row) {
+        *per_thread_output_ptr++ -= scaled_zp * row_sums_ptr[row];
+      }
+    }
+  }
+
   // Compute output += weight * quantized_input
   TfLiteTensor* filter_ledger = &context->tensors[node->temporaries->data[5]];
   tensor_utils::SparseMatrixBatchVectorMultiplyAccumulate(
@@ -661,7 +671,25 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   const int batches =
       FlatSizeSkipDim(output_shape, output_shape.DimensionsCount() - 1);
   const int thread_count = std::max(1, std::min(batches, max_threads));
-
+  if (params->asymmetric_quantize_inputs && data->compute_row_sums) {
+    // Precompute row sums.
+    static const int kBlockSize = 16;
+    const uint8_t* ledger_ptr = GetTensorData<uint8_t>(filter_ledger);
+    const int8_t* row_ptr = GetTensorData<int8_t>(filter);
+    const int output_depth = filter->dims->data[0];
+    int32_t* row_sums_ptr = GetTensorData<int32_t>(row_sums);
+    for (int row = 0; row < output_depth; ++row) {
+      int32_t row_sum = 0;
+      int num_nonzero_blocks = *ledger_ptr++;
+      for (int i = 0; i < num_nonzero_blocks; ++i, ++ledger_ptr) {
+        for (int c = 0; c < kBlockSize; c++) {
+          row_sum += (*row_ptr++);
+        }
+      }
+      row_sums_ptr[row] = row_sum;
+    }
+    data->compute_row_sums = false;
+  }
   std::vector<SparseHybridFullyConnectedTask> tasks;
   tasks.reserve(thread_count);
   int thread_start = 0;
@@ -799,7 +827,22 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         break;
       case kTfLiteInt16:
         if (input->type == kTfLiteInt16) {
-          FullyConnectedInt16<kernel_type>(data, input, filter, bias, output);
+          // To avoid 32bit accum overflow, it enables RUY only
+          // when zero_point is 0.
+          bool has_non_zero_point = input->params.zero_point ||
+                                    filter->params.zero_point ||
+                                    output->params.zero_point;
+          if (kernel_type == kReference || has_non_zero_point ||
+              (bias && bias->type == kTfLiteInt64)) {
+            FullyConnectedInt16<kernel_type>(data, input, filter, bias, output);
+          } else {
+            optimized_integer_ops::FullyConnected(
+                op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
+                GetTensorShape(filter), GetTensorData<int8_t>(filter),
+                GetTensorShape(bias), GetTensorData<int32_t>(bias),
+                GetTensorShape(output), GetTensorData<int16_t>(output),
+                CpuBackendContext::GetFromContext(context));
+          }
         } else if (kernel_type == kReference) {
           reference_ops::FullyConnected(
               op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
@@ -879,6 +922,36 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
+// Verifies that sparsity values are valid given input/weight/output.
+bool VerifySparsity(const RuntimeShape& weights_shape,
+                    const RuntimeShape& input_shape,
+                    const RuntimeShape& output_shape,
+                    const TfLiteSparsity* sparsity) {
+  const int weights_dims_count = weights_shape.DimensionsCount();
+  const int output_dims_count = output_shape.DimensionsCount();
+  const int w0_size = sparsity->dim_metadata[0].dense_size;
+  const int accum_depth = weights_shape.Dims(weights_dims_count - 1);
+  const int output_elements = output_shape.FlatSize();
+  const int input_elements = input_shape.FlatSize();
+  const int batches = FlatSizeSkipDim(output_shape, output_dims_count - 1);
+  const int output_depth = MatchingDim(weights_shape, weights_dims_count - 2,
+                                       output_shape, output_dims_count - 1);
+  const int max_batch_index = batches - 1;
+  const int max_output = max_batch_index * output_depth + w0_size;
+  const int max_batch_depth = accum_depth * max_batch_index;
+
+  // Verify output size is enough.
+  if (output_elements < max_output) return false;
+
+  // Verify index from sparse in input is valid.
+  for (int i = 0; i < sparsity->dim_metadata[1].array_indices->size; ++i) {
+    if (input_elements <=
+        max_batch_depth + sparsity->dim_metadata[1].array_indices->data[i])
+      return false;
+  }
+  return true;
+}
+
 template <KernelType kernel_type>
 TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
                        TfLiteFullyConnectedParams* params, OpData* data,
@@ -919,24 +992,32 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
                            "Unsupported sparse fully-connected weight format.");
         return kTfLiteError;
       }
+      const auto& input_shape = GetTensorShape(input);
+      const auto& filter_shape = GetTensorShape(filter);
+      const auto& output_shape = GetTensorShape(output);
+      const auto& bias_shape = GetTensorShape(bias);
+      if (!VerifySparsity(filter_shape, input_shape, output_shape, &sparsity)) {
+        TF_LITE_KERNEL_LOG(context, "Invalid sparse fully-connected format.");
+        return kTfLiteError;
+      }
 
       if (sparsity.dim_metadata_size == kDimMetadataSizeRandomSparse) {
         // Random sparse.
         optimized_ops::FullyConnectedSparseWeight(
-            sparsity, op_params, GetTensorShape(input),
-            GetTensorData<float>(input), GetTensorShape(filter),
-            GetTensorData<float>(filter), GetTensorShape(bias),
-            GetTensorData<float>(bias), GetTensorShape(output),
-            GetTensorData<float>(output));
+            sparsity, op_params,                         // Disable formatting
+            input_shape, GetTensorData<float>(input),    // Disable formatting
+            filter_shape, GetTensorData<float>(filter),  // Disable formatting
+            bias_shape, GetTensorData<float>(bias),      // Disable formatting
+            output_shape, GetTensorData<float>(output));
       } else if (sparsity.dim_metadata_size == kDimMetadataSizeBlockSparse &&
                  sparsity.dim_metadata[2].dense_size == 4) {
         // Block sparse with block size of 1x4.
         optimized_ops::FullyConnectedSparseWeight1x4(
-            sparsity, op_params, GetTensorShape(input),
-            GetTensorData<float>(input), GetTensorShape(filter),
-            GetTensorData<float>(filter), GetTensorShape(bias),
-            GetTensorData<float>(bias), GetTensorShape(output),
-            GetTensorData<float>(output),
+            sparsity, op_params,                         // Disable formatting
+            input_shape, GetTensorData<float>(input),    // Disable formatting
+            filter_shape, GetTensorData<float>(filter),  // Disable formatting
+            bias_shape, GetTensorData<float>(bias),      // Disable formatting
+            output_shape, GetTensorData<float>(output),
             CpuBackendContext::GetFromContext(context));
       } else {
         TF_LITE_KERNEL_LOG(context,

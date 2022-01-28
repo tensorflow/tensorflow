@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -619,7 +620,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   DeviceContext* device_context = nullptr;
   TF_RETURN_IF_ERROR(device->TryGetDeviceContext(&device_context));
   bool using_default_context = false;
-  auto cleanup = xla::MakeCleanup([&] {
+  auto cleanup = absl::MakeCleanup([&] {
     if (device_context != nullptr && !using_default_context) {
       device_context->Unref();
     }

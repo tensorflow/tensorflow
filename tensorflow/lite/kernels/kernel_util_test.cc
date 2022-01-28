@@ -332,6 +332,10 @@ TEST_F(KernelUtilTest, BroadcastShapeWithZeroOnThreeTensors) {
 }
 
 TEST_F(KernelUtilTest, GetShapeDebugString) {
+  TfLiteIntArray* dims0 = TfLiteIntArrayCreate(0);
+  EXPECT_EQ("[]", GetShapeDebugString(dims0));
+  TfLiteIntArrayFree(dims0);
+
   TfLiteIntArray* dims1 = TfLiteIntArrayCreate(1);
   dims1->data[0] = 1;
   EXPECT_EQ("[1]", GetShapeDebugString(dims1));

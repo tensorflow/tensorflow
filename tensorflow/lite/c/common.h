@@ -98,7 +98,7 @@ typedef struct TfLiteIntArray {
 
 // Given the size (number of elements) in a TfLiteIntArray, calculate its size
 // in bytes.
-int TfLiteIntArrayGetSizeInBytes(int size);
+size_t TfLiteIntArrayGetSizeInBytes(int size);
 
 #ifndef TF_LITE_STATIC_MEMORY
 // Create a array of a given `size` (uninitialized entries).
@@ -626,6 +626,16 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        const void* allocation, bool is_variable,
                        TfLiteTensor* tensor);
 
+// Copies the contents of 'src' in 'dst'.
+// Function does nothing if either 'src' or 'dst' is passed as nullptr and
+// return kTfLiteOk.
+// Returns kTfLiteError if 'src' and 'dst' doesn't have matching data size.
+// Note function copies contents, so it won't create new data pointer
+// or change allocation type.
+// All Tensor related properties will be copied from 'src' to 'dst' like
+// quantization, sparsity, ...
+TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst);
+
 // Resize the allocated data of a (dynamic) tensor. Tensors with allocation
 // types other than kTfLiteDynamic will be ignored.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
@@ -831,6 +841,9 @@ typedef struct TfLiteContext {
 
 typedef struct TfLiteRegistration {
   // Initializes the op from serialized data.
+  // Called only *once* for the lifetime of the op, so any one-time allocations
+  // should be made here (unless they depend on tensor sizes).
+  //
   // If a built-in op:
   //   `buffer` is the op's params data (TfLiteLSTMParams*).
   //   `length` is zero.
@@ -853,6 +866,7 @@ typedef struct TfLiteRegistration {
   // prepare is called when the inputs this node depends on have been resized.
   // context->ResizeTensor() can be called to request output tensors to be
   // resized.
+  // Can be called multiple times for the lifetime of the op.
   //
   // Returns kTfLiteOk on success.
   TfLiteStatus (*prepare)(TfLiteContext* context, TfLiteNode* node);

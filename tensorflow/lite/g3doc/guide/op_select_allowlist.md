@@ -636,6 +636,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Switch`
 *   `raw_ops.SymbolicGradient`
 *   `raw_ops.TakeDataset`
+*   `raw_ops.TakeWhileDataset`
 *   `raw_ops.Tan`
 *   `raw_ops.Tanh`
 *   `raw_ops.TanhGrad`

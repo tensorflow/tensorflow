@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -270,6 +269,12 @@ Status PopulateQuantizationSpecs(
       quant_specs->inference_type = tensorflow::DT_QINT8;
       quant_specs->inference_input_type = tensorflow::DT_QINT8;
     }
+  } else {
+    // These flags are incompatible with post_training_quantize() as only
+    // QAT models can provide required ranges.
+    quant_specs->disable_infer_tensor_range =
+        toco_flags.disable_infer_tensor_range();
+    quant_specs->use_fake_quant_num_bits = toco_flags.use_fake_quant_num_bits();
   }
 
   // Add information about half-precision support if fp16 quantization applies.
@@ -297,7 +302,9 @@ Status PopulateQuantizationSpecs(
   if (toco_flags.has_default_ranges_max()) {
     quant_specs->default_ranges.second = toco_flags.default_ranges_max();
   }
-
+  if (toco_flags.enable_mlir_dynamic_range_quantizer()) {
+    quant_specs->enable_mlir_dynamic_range_quantizer = true;
+  }
   return ::tensorflow::Status::OK();
 }
 
@@ -329,24 +336,11 @@ Status ConvertMLIRToTFLiteFlatBuffer(
         absl::StrCat(toco_flags.dump_graphviz_dir(), "/toco_AT_IMPORT.dot")));
   }
 
-  mlir::PassManager pm(module->getContext(),
-                       mlir::OpPassManager::Nesting::Implicit);
-  ::tensorflow::SetCrashReproducer(pm);
-  pm.addInstrumentation(
-      std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
-          module->getContext()));
-
-  tensorflow::AddTFToTFLConversionPasses(model_flags, toco_flags, pass_config,
-                                         &pm, session);
-  // Convert back to outlined while format for export back to flatbuffer.
-  if (pass_config.legalize_tf_while) {
-    pm.addPass(mlir::TFL::CreateWhileOutlinePass());
-  }
-  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
-
+  mlir::TFL::PassConfig pass_config_copy = pass_config;
+  pass_config_copy.outline_tf_while = true;
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
-      module.get(), /*export_to_mlir=*/false, toco_flags,
-      pass_config.quant_specs, saved_model_tags, result, &pm);
+      module.get(), /*export_to_mlir=*/false, toco_flags, pass_config_copy,
+      saved_model_tags, model_flags.saved_model_dir(), session, result);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

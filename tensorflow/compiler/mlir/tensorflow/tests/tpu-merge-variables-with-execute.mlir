@@ -18,7 +18,7 @@ func @merge_same_device_variables(
   %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<64xf32>>>) -> tensor<64xf32>
   %read2 = "tf.ReadVariableOp"(%arg2) : (tensor<*x!tf_type.resource<tensor<16xf32>>>) -> tensor<16xf32>
   // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
-  %compile:2 = "tf_device.launch"() ( {
+  %compile:2 = "tf_device.launch"() ({
       // CHECK: tf._TPUCompileMlir
       %0:2 = "tf._TPUCompileMlir"() {
         metadata = "",
@@ -30,7 +30,7 @@ func @merge_same_device_variables(
   // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[ID_0]], %[[ARG_1]], %[[READ_2]], %[[COMPILE]]#1)
   // CHECK-SAME: device_var_reads_indices = [0, 1],
   // CHECK-SAME: device_var_updates_indices = [0, -1]
-  %execute:2 = "tf_device.launch"() ( {
+  %execute:2 = "tf_device.launch"() ({
     %0:2 = "tf.TPUExecute"(%read0, %read1, %read2, %compile#1) {
       Targs = [tensor<32xf32>, tensor<64xf32>, tensor<16xf32>],
       Tresults = [tensor<32xf32>, tensor<16xf32>]}
@@ -60,7 +60,7 @@ func @merge_replicated_variables(
   // CHECK-NEXT: %[[READ_0:.*]] = "tf.ReadVariableOp"(%[[ARG_0]])
   %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
   // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
-  %compile:2 = "tf_device.launch"() ( {
+  %compile:2 = "tf_device.launch"() ({
     // CHECK: tf._TPUCompileMlir
     %0:2 = "tf._TPUCompileMlir"() {
       metadata = "",
@@ -75,7 +75,7 @@ func @merge_replicated_variables(
     // CHECK-SAME: device_var_reads_indices = [1],
     // CHECK-SAME: device_var_updates_indices = [0]
     %read1 = "tf.ReadVariableOp"(%r) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
-    %execute = "tf_device.launch"() ( {
+    %execute = "tf_device.launch"() ({
       %0 = "tf.TPUExecute"(%read0, %read1, %compile#1)
         : (tensor<32xf32>, tensor<32xf32>, tensor<2x!tf_type.string>) -> tensor<32xf32>
       tf_device.return %0 : tensor<32xf32>
@@ -121,7 +121,7 @@ func @interfering_accesses(
   %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<64xf32>>>) -> tensor<64xf32>
   %read2 = "tf.ReadVariableOp"(%arg4) : (tensor<*x!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
   // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
-  %compile:2 = "tf_device.launch"() ( {
+  %compile:2 = "tf_device.launch"() ({
     // CHECK: tf._TPUCompileMlir
     %0:2 = "tf._TPUCompileMlir"() {
       metadata = "",
@@ -133,7 +133,7 @@ func @interfering_accesses(
   // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[READ_0]], %[[ARG_1]], %[[ARG_4]], %[[READ_5]], %[[COMPILE]]#1)
   // CHECK-SAME: device_var_reads_indices = [1, 2],
   // CHECK-SAME: device_var_updates_indices = [1, -1]
-  %execute:3 = "tf_device.launch"() ( {
+  %execute:3 = "tf_device.launch"() ({
     %0:3 = "tf.TPUExecute"(%read0, %read1, %read2, %read5, %compile#1) {
       Targs = [tensor<32xf32>, tensor<64xf32>, tensor<8xf32>, tensor<2xf32>],
       Tresults = [tensor<32xf32>, tensor<64xf32>, tensor<8xf32>]}
@@ -188,7 +188,7 @@ func @non_interfering_accesses(
   %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<64xf32>>>) -> tensor<64xf32>
   %read2 = "tf.ReadVariableOp"(%arg3) : (tensor<*x!tf_type.resource<tensor<8xf32>>>) -> tensor<8xf32>
   // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
-  %compile:2 = "tf_device.launch"() ( {
+  %compile:2 = "tf_device.launch"() ({
     // CHECK: tf._TPUCompileMlir
     %0:2 = "tf._TPUCompileMlir"() {
       metadata = "",
@@ -200,7 +200,7 @@ func @non_interfering_accesses(
   // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[ARG_0]], %[[ARG_1]], %[[ARG_3]], %[[ARG_4]], %[[COMPILE]]#1)
   // CHECK-SAME: device_var_reads_indices = [0, 1, 2, 3],
   // CHECK-SAME: device_var_updates_indices = [0, 1, -1, -1]
-  %execute:3 = "tf_device.launch"() ( {
+  %execute:3 = "tf_device.launch"() ({
     %0:3 = "tf.TPUExecute"(%read0, %read1, %read2, %read5, %compile#1) {
       Targs = [tensor<32xf32>, tensor<64xf32>, tensor<8xf32>, tensor<2xf32>],
       Tresults = [tensor<32xf32>, tensor<64xf32>, tensor<8xf32>]}
@@ -237,7 +237,7 @@ func @do_not_merge_multi_read(
   %read1 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
   // CHECK-NEXT: %[[EXE:.*]] = "tf_device.launch"
   // CHECK-NEXT: "tf.TPUExecute"(%[[READ_0]], %[[READ_1]], %[[ARG_1]])
-  %execute = "tf_device.launch"() ( {
+  %execute = "tf_device.launch"() ({
     %0 = "tf.TPUExecute"(%read0, %read1, %arg1) {
       Targs = [tensor<32xf32>, tensor<32xf32>], Tresults = [tensor<32xf32>]}
       : (tensor<32xf32>, tensor<32xf32>, tensor<!tf_type.string>) -> (tensor<32xf32>)
@@ -266,7 +266,7 @@ func @do_not_merge_multi_assign(
   %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
   // CHECK-NEXT: %[[EXE:.*]]:2 = "tf_device.launch"
   // CHECK-NEXT: "tf.TPUExecute"(%[[READ_0]], %[[ARG_1]])
-  %execute:2 = "tf_device.launch"() ( {
+  %execute:2 = "tf_device.launch"() ({
     %0:2 = "tf.TPUExecute"(%read0, %arg1) {
       Targs = [tensor<32xf32>], Tresults = [tensor<32xf32>, tensor<32xf32>]}
       : (tensor<32xf32>, tensor<!tf_type.string>) -> (tensor<32xf32>, tensor<32xf32>)
@@ -299,9 +299,9 @@ func @parallel_execute(
   %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<64xf32>>>) -> tensor<64xf32>
   // CHECK-NOT: "tf.ReadVariableOp"
   // CHECK: "tf_device.parallel_execute"
-  %pe:2 = "tf_device.parallel_execute"() ( {
+  %pe:2 = "tf_device.parallel_execute"() ({
     // CHECK: "tf_device.launch"
-    %execute0 = "tf_device.launch"() ( {
+    %execute0 = "tf_device.launch"() ({
       // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[ARG_0]], %[[ARG_2]])
       %0 = "tf.TPUExecute"(%read0, %arg2) : (tensor<32xf32>, tensor<!tf_type.string>) -> tensor<32xf32>
       // CHECK-NEXT: tf_device.return
@@ -311,7 +311,7 @@ func @parallel_execute(
     tf_device.return %execute0 : tensor<32xf32>
   }, {
     // CHECK: "tf_device.launch"
-    %execute1 = "tf_device.launch"() ( {
+    %execute1 = "tf_device.launch"() ({
       // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[ARG_1]], %[[ARG_2]])
       %1 = "tf.TPUExecute"(%read1, %arg2) : (tensor<64xf32>, tensor<!tf_type.string>) -> tensor<64xf32>
       // CHECK-NEXT: tf_device.return
@@ -352,9 +352,9 @@ func @replicated_parallel_execute(
     %read0 = "tf.ReadVariableOp"(%ri0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
     %read1 = "tf.ReadVariableOp"(%ri1) : (tensor<*x!tf_type.resource<tensor<64xf32>>>) -> tensor<64xf32>
     // CHECK: "tf_device.parallel_execute"
-    %pe:2 = "tf_device.parallel_execute"() ( {
+    %pe:2 = "tf_device.parallel_execute"() ({
       // CHECK: "tf_device.launch"
-      %execute0 = "tf_device.launch"() ( {
+      %execute0 = "tf_device.launch"() ({
         // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[RI_0]], %[[ARG_4]])
         %0 = "tf.TPUExecute"(%read0, %arg4) : (tensor<32xf32>, tensor<!tf_type.string>) -> tensor<32xf32>
         // CHECK-NEXT: tf_device.return
@@ -363,7 +363,7 @@ func @replicated_parallel_execute(
       tf_device.return %execute0 : tensor<32xf32>
     }, {
       // CHECK: "tf_device.launch"
-      %execute1 = "tf_device.launch"() ( {
+      %execute1 = "tf_device.launch"() ({
         // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[RI_1]], %[[ARG_4]])
         %1 = "tf.TPUExecute"(%read1, %arg4) : (tensor<64xf32>, tensor<!tf_type.string>) -> tensor<64xf32>
         // CHECK-NEXT: tf_device.return
@@ -386,7 +386,7 @@ func @missing_read_write(
   %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<!tf_type.string>) {
   %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>
-  %execute:2 = "tf_device.launch"() ( {
+  %execute:2 = "tf_device.launch"() ({
     // expected-error @+1 {{resource that was neither read nor written to}}
     %0:2 = "tf.TPUExecute"(%arg0, %read0, %arg1)
       : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>, tensor<!tf_type.string>) -> (tensor<32xf32>, tensor<32xf32>)

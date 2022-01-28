@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -99,6 +100,19 @@ static Status ValidateNode(const NodeDef& node) {
   return Status::OK();
 }
 
+static Status ValidateFunctionNotRecursive(const FunctionDef& function) {
+  const auto& function_name = function.signature().name();
+  for (const auto& node : function.node_def()) {
+    if (node.op() == function_name) {
+      return errors::FailedPrecondition(
+          "Function ", function_name,
+          " is self recursive and TensorFlow does not support this scenario.");
+    }
+  }
+
+  return Status::OK();
+}
+
 static Status ValidateSavedTensors(const GraphDef& graph_def) {
   for (const auto& node : graph_def.node()) {
     TF_RETURN_IF_ERROR(ValidateNode(node));
@@ -110,6 +124,10 @@ static Status ValidateSavedTensors(const GraphDef& graph_def) {
       for (const auto& node : function.node_def()) {
         TF_RETURN_IF_ERROR(ValidateNode(node));
       }
+
+      // Also check that there is no recursivity in the library
+      // TODO(mihaimaruseac): Do more than self-recursivity
+      TF_RETURN_IF_ERROR(ValidateFunctionNotRecursive(function));
     }
   }
 
