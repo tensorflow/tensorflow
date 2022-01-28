@@ -1,6 +1,6 @@
 # Release 2.8.0
 
-# Major Features and Improvements
+## Major Features and Improvements
 
 *   `tf.lite`:
     *   Added TFLite builtin op support for the following TF ops:
@@ -23,7 +23,7 @@
 
 *   (Since TF 2.7) Add [PluggableDevice](https://blog.tensorflow.org/2021/06/pluggabledevice-device-plugins-for-TensorFlow.html) support to [TensorFlow Profiler](https://github.com/tensorflow/community/blob/master/rfcs/20210513-pluggable-profiler-for-tensorflow.md).
 
-# Bug Fixes and Other Changes
+## Bug Fixes and Other Changes
 
 * `tf.data`:
   * The optimization `parallel_batch` now becomes default if not disabled by users, which will parallelize copying of batch elements.
@@ -90,7 +90,70 @@
 *   TensorFlow has been validated on Windows Subsystem for Linux 2 (aka WSL 2) for both GPUs and CPUs.  
 *   Due to security issues (see section below), all boosted trees code has been deprecated. Users should switch to [TensorFlow Decision Forests](https://github.com/tensorflow/decision-forests). TF's boosted trees code will be eliminated before the branch cut for TF 2.9 and will no longer be present since that release.
 
-# Thanks to our Contributors
+## Security
+
+*   Fixes a floating point division by 0 when executing convolution operators ([CVE-2022-21725](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21725))
+*   Fixes a heap OOB read in shape inference for `ReverseSequence` ([CVE-2022-21728](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21728))
+*   Fixes a heap OOB access in `Dequantize` ([CVE-2022-21726](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21726))
+*   Fixes an integer overflow in shape inference for `Dequantize` ([CVE-2022-21727](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21727))
+*   Fixes a heap OOB access in `FractionalAvgPoolGrad` ([CVE-2022-21730](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21730))
+*   Fixes an overflow and divide by zero in `UnravelIndex` ([CVE-2022-21729](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21729))
+*   Fixes a type confusion in shape inference for `ConcatV2` ([CVE-2022-21731](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21731))
+*   Fixes an OOM in `ThreadPoolHandle` ([CVE-2022-21732](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21732))
+*   Fixes an OOM due to integer overflow in `StringNGrams` ([CVE-2022-21733](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21733))
+*   Fixes more issues caused by incomplete validation in boosted trees code ([CVE-2021-41208](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41208))
+*   Fixes an integer overflows in most sparse component-wise ops ([CVE-2022-23567](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23567))
+*   Fixes an integer overflows in `AddManySparseToTensorsMap` ([CVE-2022-23568](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23568))
+*   Fixes a number of `CHECK`-failures in `MapStage` ([CVE-2022-21734](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21734))
+*   Fixes a division by zero in `FractionalMaxPool` ([CVE-2022-21735](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21735))
+*   Fixes a number of `CHECK`-fails when building invalid/overflowing tensor shapes ([CVE-2022-23569](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23569))
+*   Fixes an undefined behavior in `SparseTensorSliceDataset` ([CVE-2022-21736](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21736))
+*   Fixes an assertion failure based denial of service via faulty bin count operations ([CVE-2022-21737](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21737))
+*   Fixes a reference binding to null pointer in `QuantizedMaxPool` ([CVE-2022-21739](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21739))
+*   Fixes an integer overflow leading to crash in `SparseCountSparseOutput` ([CVE-2022-21738](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21738))
+*   Fixes a heap overflow in `SparseCountSparseOutput` ([CVE-2022-21740](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21740))
+*   Fixes an FPE in `BiasAndClamp` in TFLite ([CVE-2022-23557](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23557))
+*   Fixes an FPE in depthwise convolutions in TFLite ([CVE-2022-21741](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-21741))
+*   Fixes an integer overflow in TFLite array creation ([CVE-2022-23558](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23558))
+*   Fixes an integer overflow in TFLite ([CVE-2022-23559](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23559))
+*   Fixes a dangerous OOB write in TFLite ([CVE-2022-23561](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23561))
+*   Fixes a vulnerability leading to read and write outside of bounds in TFLite ([CVE-2022-23560](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23560))
+*   Fixes a set of vulnerabilities caused by using insecure temporary files ([CVE-2022-23563](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23563))
+*   Fixes an integer overflow in Range resulting in undefined behavior and OOM ([CVE-2022-23562](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23562))
+*   Fixes a vulnerability where missing validation causes `tf.sparse.split` to crash when `axis` is a tuple ([CVE-2021-41206](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41206))
+*   Fixes a `CHECK`-fail when decoding resource handles from proto ([CVE-2022-23564](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23564))
+*   Fixes a `CHECK`-fail with repeated `AttrDef` ([CVE-2022-23565](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23565))
+*   Fixes a heap OOB write in Grappler ([CVE-2022-23566](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23566))
+*   Fixes a `CHECK`-fail when decoding invalid tensors from proto ([CVE-2022-23571](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23571))
+*   Fixes a null-dereference when specializing tensor type ([CVE-2022-23570](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23570))
+*   Fixes a crash when type cannot be specialized ([CVE-2022-23572](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23572))
+*   Fixes a heap OOB read/write in `SpecializeType` ([CVE-2022-23574](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23574))
+*   Fixes an unitialized variable access in `AssignOp` ([CVE-2022-23573](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23573))
+*   Fixes an integer overflow in `OpLevelCostEstimator::CalculateTensorSize` ([CVE-2022-23575](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23575))
+*   Fixes an integer overflow in `OpLevelCostEstimator::CalculateOutputSize` ([CVE-2022-23576](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23576))
+*   Fixes a null dereference in `GetInitOp` ([CVE-2022-23577](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23577))
+*   Fixes a memory leak when a graph node is invalid ([CVE-2022-23578](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23578))
+*   Fixes an abort caused by allocating a vector that is too large ([CVE-2022-23580](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23580))
+*   Fixes multiple `CHECK`-failures during Grappler's `IsSimplifiableReshape` ([CVE-2022-23581](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23581))
+*   Fixes multiple `CHECK`-failures during Grappler's `SafeToRemoveIdentity` ([CVE-2022-23579](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23579))
+*   Fixes multiple `CHECK`-failures in `TensorByteSize` ([CVE-2022-23582](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23582))
+*   Fixes multiple `CHECK`-failures in binary ops due to type confusion ([CVE-2022-23583](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23583))
+*   Fixes a use after free in `DecodePng` kernel ([CVE-2022-23584](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23584))
+*   Fixes a memory leak in decoding PNG images ([CVE-2022-23585](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23585))
+*   Fixes multiple `CHECK`-fails in `function.cc` ([CVE-2022-23586](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23586))
+*   Fixes multiple  `CHECK`-fails due to attempting to build a reference tensor ([CVE-2022-23588](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23588))
+*   Fixes an integer overflow in Grappler cost estimation of crop and resize operation ([CVE-2022-23587](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23587))
+*   Fixes a null pointer dereference in Grappler's `IsConstant` ([CVE-2022-23589](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23589))
+*   Fixes a `CHECK` failure in constant folding ([CVE-2021-41197](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-41197))
+*   Fixes a stack overflow due to self-recursive function in `GraphDef` ([CVE-2022-23591](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23591))
+*   Fixes a heap OOB access in `RunForwardTypeInference` ([CVE-2022-23592](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23592))
+*   Fixes a crash due to erroneous `StatusOr` ([CVE-2022-23590](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23590))
+*   Fixes multiple crashes and heap OOB accesses in TFG dialect (MLIR) ([CVE-2022-23594](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23594))
+*   Fixes a segfault in `simplifyBroadcast` (MLIR) ([CVE-2022-23593](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23593))
+*   Fixes a null pointer dereference in `BuildXlaCompilationCache` (XLA) ([CVE-2022-23595](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-23595))
+*   Updates `icu` to `69.1` to handle [CVE-2020-10531](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-10531)
+
+## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
