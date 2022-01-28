@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/canonicalize_all_gather_for_cse.h"
 
-#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -52,20 +51,14 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     HloAllGatherInstruction* ag = DynCast<HloAllGatherInstruction>(hlo);
     // Only supporting AllGather on dimension 0 as it's the only case currently
     // happening and additional cases needs more complexity.
-    //
     // TODO(cjfj): Support all-gathers with more than one operand.
-    //
-    // Also only do this for degenerate dimension sizes as the additional
-    // reshaping may not be worth the potential for CSE.
-    if (!ag || ag->operand_count() > 1) {
+    if (!ag || ag->all_gather_dimension() != 0 || ag->operand_count() > 1) {
       continue;
     }
     HloInstruction* real_data = ag->mutable_operand(0);
     const int64_t ag_dim = ag->all_gather_dimension();
     const Shape& out_shape = ag->shape();
     const Shape& in_shape = ag->operand(0)->shape();
-    int64_t major_elements = Product(absl::MakeSpan(
-        in_shape.dimensions().begin(), in_shape.dimensions().begin() + ag_dim));
     CHECK_EQ(out_shape.dimensions(ag_dim) % in_shape.dimensions(ag_dim), 0);
     const int64_t all_gather_participants =
         out_shape.dimensions(ag_dim) / in_shape.dimensions(ag_dim);
@@ -75,25 +68,32 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     while (IsAddingOnlyDegenerateDimensions(real_data)) {
       real_data = real_data->mutable_operand(0);
     }
-    int64_t new_ag_dim = 0;
-    while (major_elements > 1) {
-      major_elements /= real_data->shape().dimensions(new_ag_dim);
-      CHECK_GT(major_elements, 0);
-      ++new_ag_dim;
-    }
-
+    // If we looked through some reshapes and there's more than just one reshape
+    // adding the dimension the all-gather is operating on then perform the
+    // canonicalization.
     if (real_data != ag->operand(0)) {
+      std::vector<int64_t> new_dimensions;
+      new_dimensions.reserve(real_data->shape().dimensions_size() + 1);
+      new_dimensions.push_back(1);
+      new_dimensions.insert(new_dimensions.end(),
+                            real_data->shape().dimensions().begin(),
+                            real_data->shape().dimensions().end());
+      // Adding specialized all-gather dimension.
+      HloInstruction* ag_input =
+          comp->AddInstruction(HloInstruction::CreateReshape(
+              ShapeUtil::MakeShape(real_data->shape().element_type(),
+                                   new_dimensions),
+              real_data));
+      new_dimensions[0] = all_gather_participants;
       absl::optional<int64_t> new_channel_id =
           ag->channel_id() ? absl::make_optional(this->NextChannelId())
                            : absl::nullopt;
-      Shape new_ag_shape = real_data->shape();
-      new_ag_shape.set_dimensions(
-          new_ag_dim,
-          all_gather_participants * new_ag_shape.dimensions(new_ag_dim));
       HloInstruction* new_ag =
           comp->AddInstruction(HloInstruction::CreateAllGather(
-              new_ag_shape, {real_data}, /*all_gather_dimension=*/new_ag_dim,
-              ag->replica_groups(), ag->constrain_layout(), new_channel_id,
+              ShapeUtil::MakeShape(real_data->shape().element_type(),
+                                   new_dimensions),
+              {ag_input}, /*all_gather_dimension=*/0, ag->replica_groups(),
+              ag->constrain_layout(), new_channel_id,
               ag->use_global_device_ids()));
       HloInstruction* new_formatting = comp->AddInstruction(
           HloInstruction::CreateReshape(ag->shape(), new_ag));
