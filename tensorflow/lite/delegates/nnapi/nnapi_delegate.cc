@@ -2190,7 +2190,11 @@ NNAPIExecutionCache::Signature CreateExecutionCacheSignature(
   std::vector<int> dynamic_dimensions;
   if (delegate_options.allow_dynamic_dimensions) {
     AppendDynamicDimensions(context, node->inputs, dynamic_dimensions);
-    AppendDynamicDimensions(context, node->outputs, dynamic_dimensions);
+    // When using custom ops, we cannot infer output shapes, so it is not part
+    // of the execution request.
+    if (delegate_options.vendor_plugin == nullptr) {
+      AppendDynamicDimensions(context, node->outputs, dynamic_dimensions);
+    }
   }
 
   return NNAPIExecutionCache::Signature{std::move(tensor_handles),
@@ -4422,9 +4426,30 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
     }
   }
 
+  if (nnapi_->android_sdk_version < kMinSdkVersionForNNAPI12 &&
+      delegate_options.allow_dynamic_dimensions &&
+      delegate_options.vendor_plugin != nullptr) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Models with dynamic dimensions and vendor plugin is "
+                       "not supported before NNAPI 1.2 (API level 29).");
+    return kTfLiteError;
+  }
+
   // Mark the handle backed tensors.
   tensor_memory_map_ =
       &StatefulNnApiDelegate::GetTensorMemoryMap(params->delegate);
+
+  // Initialize tensor max size hints.
+  tensor_max_size_hints_.resize(context->tensors_size, 0);
+  for (const auto it : delegate_options.tensor_max_size_hints) {
+    auto tensor_index = it.first;
+    // Skip invalid or optional entries.
+    if (tensor_index >= context->tensors_size || tensor_index < 0) continue;
+    // Skip tensors with static shape.
+    if (!HasUnspecifiedDimension(&context->tensors[tensor_index])) continue;
+    auto max_size_hint = it.second;
+    tensor_max_size_hints_[tensor_index] = max_size_hint;
+  }
 
   if (!nn_model_) {
     ANeuralNetworksModel* model = nullptr;
@@ -4665,6 +4690,10 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
       nnapi_->nnapi_runtime_feature_level > kMinSdkVersionForNNAPI13 &&
       delegate_options.max_execution_cache_size > 0;
 
+  // The output dynamic dimensions cannot be inferred when using custom ops.
+  bool can_infer_output_shape = !delegate_options.allow_dynamic_dimensions ||
+                                delegate_options.vendor_plugin == nullptr;
+
   ANeuralNetworksExecution* execution = nullptr;
   NNAPIExecutionCache::Signature signature;
   if (execution_is_reusable) {
@@ -4761,11 +4790,24 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
 
       size_t total_output_byte_size = 0;
       for (int i : TfLiteIntArrayView(node->outputs)) {
-        if (context->tensors[i].buffer_handle != kTfLiteNullBufferHandle) {
+        const auto& tensor = context->tensors[i];
+        if (tensor.buffer_handle != kTfLiteNullBufferHandle) {
           continue;
         }
-        total_output_byte_size += context->tensors[i].bytes;
-        total_output_byte_size += GetNumPaddingBytes(context->tensors[i].bytes);
+        size_t tensor_size = tensor.bytes;
+        if (!can_infer_output_shape && HasUnspecifiedDimension(&tensor)) {
+          if (tensor_max_size_hints_[i] == 0) {
+            TF_LITE_KERNEL_LOG(context,
+                               "Missing max tensor size for tensor#%d. When a "
+                               "vendor plugin is supplied, max tensor size is "
+                               "required for all dynamic output tensors.",
+                               i);
+            return kTfLiteError;
+          }
+          tensor_size = std::max(tensor_size, tensor_max_size_hints_[i]);
+        }
+        total_output_byte_size += tensor_size;
+        total_output_byte_size += GetNumPaddingBytes(tensor_size);
       }
       if (total_output_byte_size > nn_output_memory_->get_byte_size()) {
         nn_output_memory_.reset(
@@ -4925,7 +4967,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     ANeuralNetworksOperandType output_nn_operand_type;
     ANeuralNetworksOperandType* output_nn_operand_type_ptr = nullptr;
     TfLiteTensor* tensor = &context->tensors[output_index];
-    if (delegate_options.allow_dynamic_dimensions &&
+    if (delegate_options.allow_dynamic_dimensions && can_infer_output_shape &&
         ::tflite::HasUnspecifiedDimension(tensor)) {
       TfLiteType ann_type_equivalent =
           mapping_util_->TfLiteIndexToNnTypeConversion(mapping_util_.get(),
@@ -4947,18 +4989,23 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
           nnapi_errno);
 
     } else {
-      int padding_bytes = GetNumPaddingBytes(tensor->bytes);
+      size_t tensor_size = tensor->bytes;
+      if (!can_infer_output_shape && HasUnspecifiedDimension(tensor)) {
+        tensor_size =
+            std::max(tensor->bytes, tensor_max_size_hints_[output_index]);
+      }
+      int padding_bytes = GetNumPaddingBytes(tensor_size);
       if (should_create_new_execution) {
         RETURN_TFLITE_ERROR_IF_NN_ERROR_FOR_TENSOR(
             context,
             nnapi_->ANeuralNetworksExecution_setOutputFromMemory(
                 execution, relative_output_index, output_nn_operand_type_ptr,
                 nn_output_memory_->get_handle(), output_offset,
-                GetNNTensorSize(tensor->bytes, allow_padding)),
+                GetNNTensorSize(tensor_size, allow_padding)),
             "associating NNAPI execution output to a memory object", tensor,
             nnapi_errno);
       }
-      output_offset += tensor->bytes + padding_bytes;
+      output_offset += tensor_size + padding_bytes;
     }
     relative_output_index++;
   }
@@ -5010,6 +5057,25 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     }
   }
 
+  // resize dynamic output tensors
+  if (!can_infer_output_shape) {
+    relative_output_index = 0;
+    for (auto output_index : TfLiteIntArrayView(node->outputs)) {
+      TfLiteTensor* tensor = &context->tensors[output_index];
+      if (HasUnspecifiedDimension(tensor)) {
+        auto* new_dims = TfLiteIntArrayCreate(tensor->dims->size);
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(
+            context,
+            nnapi_->ANeuralNetworksExecution_getOutputOperandDimensions(
+                execution, relative_output_index,
+                reinterpret_cast<uint32_t*>(new_dims->data)),
+            "get output operand dimensions", nnapi_errno);
+        TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, tensor, new_dims));
+      }
+      relative_output_index++;
+    }
+  }
+
   // copy results from shared memory to the destination.
   output_offset = 0;
   for (auto output_index : TfLiteIntArrayView(node->outputs)) {
@@ -5032,8 +5098,13 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     }
     memcpy(tensor->data.raw, nn_output_memory_->get_data_ptr() + output_offset,
            tensor->bytes);
-    output_offset += tensor->bytes;
-    output_offset += GetNumPaddingBytes(tensor->bytes);
+    size_t tensor_size = tensor->bytes;
+    if (!can_infer_output_shape && HasUnspecifiedDimension(tensor)) {
+      tensor_size =
+          std::max(tensor->bytes, tensor_max_size_hints_[output_index]);
+    }
+    output_offset += tensor_size;
+    output_offset += GetNumPaddingBytes(tensor_size);
   }
   // The state_out of previous invocation need to be copied to state_in of
   // current invocation.
@@ -6011,7 +6082,8 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
           mapping_util_->TfLiteIndexToNnTypeConversion(mapping_util_.get(), i);
       int tensor_size = 0;
       if (nn_type_conversion == kTfLiteNoType) {
-        tensor_size = context->tensors[i].bytes;
+        tensor_size =
+            std::max(context->tensors[i].bytes, tensor_max_size_hints_[i]);
       } else {
         size_t type_size;
         TF_LITE_ENSURE_OK(
@@ -6034,8 +6106,10 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
     if (context->tensors[i].buffer_handle != kTfLiteNullBufferHandle) {
       continue;
     }
-    total_output_byte_size += context->tensors[i].bytes;
-    total_output_byte_size += GetNumPaddingBytes(context->tensors[i].bytes);
+    size_t tensor_size =
+        std::max(context->tensors[i].bytes, tensor_max_size_hints_[i]);
+    total_output_byte_size += tensor_size;
+    total_output_byte_size += GetNumPaddingBytes(tensor_size);
   }
 
   // Add state output tensors as model outputs.
@@ -6149,6 +6223,7 @@ void StatefulNnApiDelegate::StatefulNnApiDelegateConstructorImpl(
   delegate_data_.vendor_execution_hints = options.vendor_execution_hints;
   delegate_data_.vendor_plugin = options.vendor_plugin;
   delegate_data_.max_execution_cache_size = options.max_execution_cache_size;
+  delegate_data_.tensor_max_size_hints = options.tensor_max_size_hints;
 
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
@@ -6159,7 +6234,10 @@ void StatefulNnApiDelegate::StatefulNnApiDelegateConstructorImpl(
   data_ = &delegate_data_;
   if (delegate_data_.allow_dynamic_dimensions) {
     flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
-    flags |= kTfLiteDelegateFlagsRequirePropagatedShapes;
+    // TFLite cannot propagate tensor shapes if custom operators are used.
+    if (!delegate_data_.vendor_plugin) {
+      flags |= kTfLiteDelegateFlagsRequirePropagatedShapes;
+    }
   }
 }
 
@@ -6217,6 +6295,7 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.vendor_execution_hints = delegate_data->vendor_execution_hints;
   options.vendor_plugin = delegate_data->vendor_plugin;
   options.max_execution_cache_size = delegate_data->max_execution_cache_size;
+  options.tensor_max_size_hints = delegate_data->tensor_max_size_hints;
   return options;
 }
 

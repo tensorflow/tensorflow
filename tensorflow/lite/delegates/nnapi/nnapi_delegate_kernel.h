@@ -368,6 +368,9 @@ class NNAPIDelegateKernel {
   // model_state_tfl_inputs_ for all tensors where we have to keep the output
   // data available for TFLite model users
   std::vector<std::tuple<int, int>> feedback_loops_;
+  // The mappings of tenor id to max size in bytes. If the hint is not provided
+  // for a tensor, it is set to 0.
+  std::vector<size_t> tensor_max_size_hints_;
 
   std::unique_ptr<NNMemory> nn_input_memory_;
   std::unique_ptr<NNMemory> nn_output_memory_;

@@ -145,6 +145,15 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // this field to 0 means do not reuse execution.
     uint32_t max_execution_cache_size = 4;
 
+    // Provides hints about the max size of tensors with dynamic shapes. The key
+    // of the map is the tensor index, and the value is the max size of the
+    // tensor in bytes. If a vendor plugin is supplied, this field is required
+    // for all output tensors with dynamic shapes because the output size cannot
+    // be inferred. Otherwise, this field is optional and any provided
+    // information may be used to guide the memory allocation. This field has no
+    // effect on tensors with static shapes.
+    std::map<int, size_t> tensor_max_size_hints;
+
     // The optional null-terminated vendor specific compilation hints string.
     // It is the vendor_plugin's responsibility to parse the hint string and
     // decide whether the hints should be respected or not. If no vendor_plugin
@@ -159,6 +168,10 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
 
     // It is the users responsibility to make sure that
     // vendor_plugin outlives the delegate instance.
+    // If a vendor plugin is supplied, and the model has dynamic dimensions, the
+    // delegate is not able to propagate tensor shapes. In such a case, the user
+    // must provide max tensor size in the "tensor_max_size_hints" field for all
+    // output tensors with dynamic shapes.
     NnapiDelegateVendorPlugin* vendor_plugin = nullptr;
   };
 
@@ -321,6 +334,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     bool use_burst_computation = false;
     // Specifies the max number of NNAPI reusable executions to cache.
     uint32_t max_execution_cache_size = 4;
+    // Provides hints about the max size of tensors with dynamic shapes.
+    std::map<int, size_t> tensor_max_size_hints;
     // The null-terminated vendor specific compilation hints string
     const char* vendor_compilation_hints = nullptr;
     // The null-terminated vendor specific execution hints string.
