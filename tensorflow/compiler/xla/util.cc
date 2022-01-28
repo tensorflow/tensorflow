@@ -135,11 +135,12 @@ std::string Reindent(absl::string_view original,
       });
 }
 
-template <typename IntT, typename FloatT>
+template <typename FloatT>
 static void RoundTripNanPayload(FloatT value, std::string* result) {
   const int kPayloadBits = NanPayloadBits<FloatT>();
   if (std::isnan(value) && kPayloadBits > 0) {
-    auto rep = absl::bit_cast<IntT>(value);
+    auto rep = absl::bit_cast<
+        typename UnsignedIntegerTypeForSize<sizeof(FloatT)>::type>(value);
     auto payload = rep & NanPayloadBitMask<FloatT>();
     if (payload != QuietNanWithoutPayload<FloatT>()) {
       absl::StrAppendFormat(result, "(0x%x)", payload);
@@ -147,31 +148,43 @@ static void RoundTripNanPayload(FloatT value, std::string* result) {
   }
 }
 
-std::string RoundTripFpToString(tensorflow::bfloat16 value) {
-  std::string result = absl::StrFormat("%.4g", static_cast<float>(value));
-  RoundTripNanPayload<uint16_t>(value, &result);
+template <typename FloatT>
+static std::string GenericRoundTripFpToString(FloatT value) {
+  return absl::StrFormat("%.*g", std::numeric_limits<FloatT>::max_digits10,
+                         static_cast<double>(value));
+}
+
+std::string RoundTripFpToString(bfloat16 value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayload(value, &result);
   return result;
 }
 
-std::string RoundTripFpToString(Eigen::half value) {
-  std::string result = absl::StrFormat("%.5g", static_cast<float>(value));
-  RoundTripNanPayload<uint16_t>(value, &result);
+std::string RoundTripFpToString(half value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayload(value, &result);
   return result;
 }
 
 std::string RoundTripFpToString(float value) {
-  char buffer[tensorflow::strings::kFastToBufferSize];
-  tensorflow::strings::FloatToBuffer(value, buffer);
-  std::string result = buffer;
-  RoundTripNanPayload<uint32_t>(value, &result);
+  float parsed_result;
+  std::string result =
+      absl::StrFormat("%.*g", std::numeric_limits<float>::digits10, value);
+  if (!absl::SimpleAtof(result, &parsed_result) || parsed_result != value) {
+    result = GenericRoundTripFpToString(value);
+  }
+  RoundTripNanPayload(value, &result);
   return result;
 }
 
 std::string RoundTripFpToString(double value) {
-  char buffer[tensorflow::strings::kFastToBufferSize];
-  tensorflow::strings::DoubleToBuffer(value, buffer);
-  std::string result = buffer;
-  RoundTripNanPayload<uint64_t>(value, &result);
+  double parsed_result;
+  std::string result =
+      absl::StrFormat("%.*g", std::numeric_limits<double>::digits10, value);
+  if (!absl::SimpleAtod(result, &parsed_result) || parsed_result != value) {
+    result = GenericRoundTripFpToString(value);
+  }
+  RoundTripNanPayload(value, &result);
   return result;
 }
 
