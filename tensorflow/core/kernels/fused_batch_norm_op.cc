@@ -1171,7 +1171,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
         workspace_allocator;
     DeviceMemory<uint8>* reserve_space_data_ptr = nullptr;
     DeviceMemory<uint8> reserve_space_data;
-#if CUDNN_VERSION >= 7402 || TF_ROCM_VERSION >= 50000
+#if CUDNN_VERSION >= 7402 || TF_ROCM_VERSION >= 50100
     if (use_reserved_space) {
       const Tensor& reserve_space = context->input(5);
       workspace_allocator.reset(
@@ -1185,7 +1185,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
         reserve_space_data_ptr = &reserve_space_data;
       }
     }
-#endif  // CUDNN_VERSION >= 7402 || TF_ROCM_VERSION >= 50000
+#endif  // CUDNN_VERSION >= 7402 || TF_ROCM_VERSION >= 50100
     bool cudnn_launch_status =
         stream
             ->ThenBatchNormalizationBackward(
