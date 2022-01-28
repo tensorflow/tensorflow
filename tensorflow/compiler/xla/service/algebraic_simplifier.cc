@@ -4513,8 +4513,10 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
         // multiply with the multiplier.
         HloInstruction* result = clamped;
         if (index_type != element_type) {
-          result = computation_->AddInstruction(HloInstruction::CreateConvert(
-              ShapeUtil::MakeScalarShape(element_type), clamped));
+          Shape result_shp = result->shape();
+          result_shp.set_element_type(element_type);
+          result = computation_->AddInstruction(
+              HloInstruction::CreateConvert(result_shp, clamped));
         }
 
         if (multiplier) {
@@ -4524,8 +4526,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
 
         return ReplaceWithNewInstruction(
             dynamic_slice,
-            HloInstruction::CreateReshape(
-                ShapeUtil::MakeShape(element_type, {1}), result));
+            HloInstruction::CreateReshape(dynamic_slice->shape(), result));
       }
     }
   }
