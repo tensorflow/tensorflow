@@ -13,7 +13,7 @@ def repo():
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/unicode-org/icu/archive/release-69-1.zip",
             "https://github.com/unicode-org/icu/archive/release-69-1.zip",
         ],
-        build_file = "//third_party/icu:icu.BUILD",
+        build_file = "//third_party/icu:BUILD.bazel",
         system_build_file = "//third_party/icu:BUILD.system",
         patch_file = "//third_party/icu:udata.patch",
     )
