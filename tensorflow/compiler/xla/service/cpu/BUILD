@@ -852,14 +852,41 @@ cc_library(
 )
 
 cc_library(
-    name = "runtime_single_threaded_matmul",
+    name = "runtime_single_threaded_matmul_impl",
     srcs = ["runtime_single_threaded_matmul.cc"],
+    hdrs = ["runtime_single_threaded_matmul.h"],
+    compatible_with = get_compatible_with_cloud(),
+    copts = runtime_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:private"],
+    deps = [
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "runtime_single_threaded_matmul",
     hdrs = ["runtime_single_threaded_matmul.h"],
     compatible_with = get_compatible_with_cloud(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_single_threaded_matmul_impl",
         "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "runtime_single_threaded_matmul_nomkl",
+    compatible_with = get_compatible_with_cloud(),
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_single_threaded_matmul_impl",
+        "//tensorflow/core/kernels:eigen_contraction_kernel_no_mkl",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
     ],
