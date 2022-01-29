@@ -11291,7 +11291,7 @@ to match the size of the vector inputs.
   TF_DerivedResultTypeAttr Tsplits = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RandomGammaOp : TF_Op<"RandomGamma", [TF_CannotDuplicate]> {
+def TF_RandomGammaOp : TF_Op<"RandomGamma", [TF_CannotDuplicate, TF_RandomGeneratorSideEffect]> {
   let summary = [{
 Outputs random values from the Gamma distribution(s) described by alpha.
   }];
@@ -11340,7 +11340,7 @@ Computes the derivative of a Gamma random sample w.r.t. `alpha`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RandomPoissonOp : TF_Op<"RandomPoisson", [TF_CannotDuplicate]> {
+def TF_RandomPoissonOp : TF_Op<"RandomPoisson", [TF_CannotDuplicate, TF_RandomGeneratorSideEffect]> {
   let summary = "Use RandomPoissonV2 instead.";
 
   let arguments = (ins
@@ -11359,7 +11359,7 @@ def TF_RandomPoissonOp : TF_Op<"RandomPoisson", [TF_CannotDuplicate]> {
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_RandomPoissonV2Op : TF_Op<"RandomPoissonV2", [TF_CannotDuplicate]> {
+def TF_RandomPoissonV2Op : TF_Op<"RandomPoissonV2", [TF_CannotDuplicate, TF_RandomGeneratorSideEffect]> {
   let summary = [{
 Outputs random values from the Poisson distribution(s) described by rate.
   }];
@@ -11397,7 +11397,7 @@ associated poisson distribution.}]>:$rate,
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RandomShuffleOp : TF_Op<"RandomShuffle", [TF_CannotDuplicate, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_RandomShuffleOp : TF_Op<"RandomShuffle", [TF_CannotDuplicate, TF_RandomGeneratorSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Randomly shuffles a tensor along its first dimension.";
 
   let description = [{
@@ -11427,7 +11427,7 @@ dimension.}]>:$output
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RandomStandardNormalOp : TF_Op<"RandomStandardNormal", [TF_CannotDuplicate]> {
+def TF_RandomStandardNormalOp : TF_Op<"RandomStandardNormal", [TF_CannotDuplicate, TF_RandomGeneratorSideEffect]> {
   let summary = "Outputs random values from a normal distribution.";
 
   let description = [{
@@ -11449,7 +11449,7 @@ The generated values will have mean 0 and standard deviation 1.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RandomUniformOp : TF_Op<"RandomUniform", [TF_CannotDuplicate]> {
+def TF_RandomUniformOp : TF_Op<"RandomUniform", [TF_CannotDuplicate, TF_RandomGeneratorSideEffect]> {
   let summary = "Outputs random values from a uniform distribution.";
 
   let description = [{
@@ -11476,7 +11476,7 @@ lower bound 0 is included in the range, while the upper bound 1 is excluded.
   }];
 }
 
-def TF_RandomUniformIntOp : TF_Op<"RandomUniformInt", [TF_CannotDuplicate]> {
+def TF_RandomUniformIntOp : TF_Op<"RandomUniformInt", [TF_CannotDuplicate, TF_RandomGeneratorSideEffect]> {
   let summary = "Outputs random integers from a uniform distribution.";
 
   let description = [{

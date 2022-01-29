@@ -167,6 +167,8 @@ def TF_TPUEmbeddingResource : TF_ResourceBase<"TPUEmbedding">;
 def TF_GeneratorOpResource : TF_ResourceBase<"GeneratorOp">;
 def TF_SendRecvResource : TF_ResourceBase<"SendRecv">;
 def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
+def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
+
 // Fake resource, see `TF_MustExecute` below.
 def TF_MustExecuteResource : TF_ResourceBase<"MustExecute">;
 
@@ -224,6 +226,8 @@ def TF_TPUEmbeddingReadEffect : MemoryEffects<[MemRead<TF_TPUEmbeddingResource>]
 
 def TF_SendRecvSideEffect : MemoryEffects<[MemWrite<TF_SendRecvResource>]>;
 def TF_TPUExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUExecuteResource>]>;
+
+def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
 
 // Trait for enforcing that a side-effecting op is executed, even if it would be
 // considered dead by MLIR (see b/195782952).
