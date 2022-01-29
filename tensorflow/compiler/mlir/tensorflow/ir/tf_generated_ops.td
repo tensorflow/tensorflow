@@ -435,6 +435,23 @@ reference to the resource container.}], [TF_DatasetIteratorAlloc]>:$handle,
   );
 }
 
+def TF_AnonymousMultiDeviceIteratorV3Op : TF_Op<"AnonymousMultiDeviceIteratorV3", [TF_UniqueResourceAllocation]> {
+  let summary = "A container for a multi device iterator resource.";
+
+  let arguments = (ins
+    Confined<StrArrayAttr, [ArrayMinCount<1>]>:$devices,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    Res<TF_ResourceTensor, [{A handle to a multi device iterator that can be passed to a
+"MultiDeviceIteratorGetNextFromShard" op. In contrast to MultiDeviceIterator,
+AnonymousIterator prevents resource sharing by name, and does not keep a
+reference to the resource container.}], [TF_DatasetIteratorAlloc]>:$handle
+  );
+}
+
 def TF_AnonymousRandomSeedGeneratorOp : TF_Op<"AnonymousRandomSeedGenerator", [TF_UniqueResourceAllocation]> {
   let summary = "";
 
