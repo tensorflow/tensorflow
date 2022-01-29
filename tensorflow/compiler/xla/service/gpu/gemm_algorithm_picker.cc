@@ -128,8 +128,7 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
   // to the index within the algorithms vector, not the algorithm
   // itself.
   se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
-  if (!se::AutoTuneBatchMatmul::GetInstance()->Find(matmul_parameters,
-                                                    &algorithm_config)) {
+  if (!blas_plans_autotune_cache.Find(matmul_parameters, &algorithm_config)) {
     VLOG(4) << "Autotuning BlasLtMatmul over " << algorithms.size()
             << " algorithms.";
     se::blas::ProfileResult best_result;
@@ -192,8 +191,7 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
             << " for " << trans_x << " " << trans_y << " " << m << " " << n
             << " " << k << " " << batch_size << " " << broadcast << " "
             << broadcast << " " << dtype << " " << device_id;
-    se::AutoTuneBatchMatmul::GetInstance()->Insert(matmul_parameters,
-                                                   algorithm_config);
+    blas_plans_autotune_cache.Insert(matmul_parameters, algorithm_config);
   }
   return Status::OK();
 }
@@ -383,14 +381,14 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
           DoBlasPlansAutotune(stream, instr, allocator, input_output_allocator,
                               gemm_config, element_type, cublas_autotune_level,
                               lhs_buffer, rhs_buffer, output_buffer));
+      return {se::blas::kNoAlgorithm};
     };
-    return {se::blas::kNoAlgorithm};
   } else {
     GemmCacheKey key =
         std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
                         instr->shape(), gemm_config.SerializeAsString());
 
-    tensorflow::mutex_lock cache_lock(autotune_cache_mu);
+    absl::MutexLock cache_lock(&autotune_cache_mu);
     auto it = autotune_cache.find(key);
     int64_t autotuning_requests = cache_hits + cache_misses;
     if (autotuning_requests && autotuning_requests % 10 == 0) {

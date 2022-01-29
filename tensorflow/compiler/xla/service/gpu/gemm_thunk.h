@@ -120,6 +120,31 @@ inline bool BlasPlansCompatibleType(PrimitiveType type) {
   return compatible_types.contains(type);
 }
 
+// A class for storing and retrieving algorithms in cublasLT autotuning
+class BlasPlansAutotuneCache {
+ public:
+  BlasPlansAutotuneCache() {}
+  bool Find(const se::BatchMatmulParameters& params,
+            se::blas::AlgorithmConfig* config);
+  void Insert(const se::BatchMatmulParameters& params,
+              const se::blas::AlgorithmConfig& config);
+
+ private:
+  struct Hasher {
+    std::size_t operator()(const se::BatchMatmulParameters& parameter) const {
+      return parameter.hash();
+    }
+  };
+
+  mutable absl::Mutex mu_;
+  absl::flat_hash_map<se::BatchMatmulParameters, se::blas::AlgorithmConfig,
+                      Hasher>
+      blas_plans_algorithms_map_ ABSL_GUARDED_BY(mu_);
+  TF_DISALLOW_COPY_AND_ASSIGN(BlasPlansAutotuneCache);
+};
+
+static BlasPlansAutotuneCache blas_plans_autotune_cache;
+
 }  // namespace gpu
 }  // namespace xla
 

@@ -94,6 +94,25 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
                  &scratch_allocator, nullptr);
 }
 
+bool BlasPlansAutotuneCache::Find(const se::BatchMatmulParameters &params,
+                                  se::blas::AlgorithmConfig *config) {
+  absl::MutexLock lock(&mu_);
+  auto iter = blas_plans_algorithms_map_.find(params);
+  if (iter == blas_plans_algorithms_map_.end()) {
+    return false;
+  }
+  *config = iter->second;
+  return true;
+}
+
+void BlasPlansAutotuneCache::Insert(const se::BatchMatmulParameters &params,
+                                    const se::blas::AlgorithmConfig &config) {
+  absl::MutexLock lock(&mu_);
+  if (!blas_plans_algorithms_map_.contains(params)) {
+    blas_plans_algorithms_map_.insert({params, config});
+  }
+}
+
 // Converts from an XLA PrimitiveType to a blas::ComputationType, which is
 // used to specify the precision with which matmul computations should be
 // performed, separately from the precision of the inputs and result.
@@ -245,16 +264,14 @@ static Status DoGemmLt(
     se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
 
     // When autotuner is disabled, AutoTuneBatchMatmul singleton is empty.
-    if (!se::AutoTuneBatchMatmul::GetInstance()->Find(matmul_parameters,
-                                                      &algorithm_config)) {
+    if (!blas_plans_autotune_cache.Find(matmul_parameters, &algorithm_config)) {
       algorithm_config.set_algorithm(0);
       VLOG(4) << "Autotuner disabled: Inserting algorithm id "
               << algorithm_config.algorithm() << " for " << trans_x << " "
               << trans_y << " " << m << " " << n << " " << k << " "
               << batch_size << " " << broadcast << " " << broadcast << " "
               << dtype << " " << device_id;
-      se::AutoTuneBatchMatmul::GetInstance()->Insert(matmul_parameters,
-                                                     algorithm_config);
+      blas_plans_autotune_cache.Insert(matmul_parameters, algorithm_config);
     }
     se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
     algorithm_ptr = algorithms[algorithm_idx].get();
