@@ -13,23 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
-#define TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
+#ifndef TENSORFLOW_CORE_TRANSFORMS_PASS_DETAIL_H_
+#define TENSORFLOW_CORE_TRANSFORMS_PASS_DETAIL_H_
 
-#include <memory>
-
-#include "tensorflow/core/transforms/drop_unregistered_attribute/output_shapes.h"
-#include "tensorflow/core/transforms/graph_to_func/graph_to_func_pass.h"
-#include "tensorflow/core/transforms/toposort/toposort_pass.h"
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {
 namespace tfg {
 
-// Generate the code for registering passes for command-line parsing.
-#define GEN_PASS_REGISTRATION
+// Include the generated base classes.
+#define GEN_PASS_CLASSES
 #include "tensorflow/core/transforms/passes.h.inc"
 
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
+#endif  // TENSORFLOW_CORE_TRANSFORMS_PASS_DETAIL_H_
