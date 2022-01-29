@@ -4153,6 +4153,7 @@ cc_library(
         ":dump",
         ":hlo",
         ":hlo_alias_analysis",
+        ":hlo_buffer",
         ":hlo_dce",
         ":hlo_graph_dumper",
         ":hlo_ordering",
