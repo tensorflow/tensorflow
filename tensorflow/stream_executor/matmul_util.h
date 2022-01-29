@@ -211,15 +211,6 @@ struct BlasLtPlanMapSingleton {
 typedef BlasLtPlanMapSingleton<BatchMatmulParameters>
     BatchMatmulPlanMapSingleton;
 
-// Dummy type to group matmul autotune results together.
-struct BatchMatmulAutoTuneGroup {
-  static string name() { return "MatmulLt"; }
-};
-
-typedef tensorflow::AutotuneSingleton<
-    BatchMatmulAutoTuneGroup, BatchMatmulParameters, blas::AlgorithmConfig>
-    AutoTuneBatchMatmul;
-
 template <typename Scalar>
 struct CoefficientType {
   typedef Scalar type;
