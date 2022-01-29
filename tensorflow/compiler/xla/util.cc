@@ -150,7 +150,10 @@ static void RoundTripNanPayload(FloatT value, std::string* result) {
 
 template <typename FloatT>
 static std::string GenericRoundTripFpToString(FloatT value) {
-  return absl::StrFormat("%.*g", std::numeric_limits<FloatT>::max_digits10,
+  // TODO(majnemer): Remove this temporary variable once Eigen creates a symbol
+  // definition for `max_digits10`.
+  int max_decimal_digits = std::numeric_limits<FloatT>::max_digits10;
+  return absl::StrFormat("%.*g", max_decimal_digits,
                          static_cast<double>(value));
 }
 
