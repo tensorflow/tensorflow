@@ -15,6 +15,9 @@ You need CMake installed and downloaded TensorFlow source code. Please check
 [Build TensorFlow Lite with CMake](https://www.tensorflow.org/lite/guide/build_cmake)
 page for the details.
 
+You will also need to have a Fortran compiler installed. On a Raspberry Pi you can 
+use "sudo apt-get install gfortran" to achieve this.
+
 ### Check your target environment
 
 The following examples are tested under Raspberry Pi OS, Ubuntu Server 20.04 LTS
@@ -84,7 +87,13 @@ tar xvf gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu.tar.xz -C ${HOME}/toolchain
 **Note:** Binaries built with GCC 8.3 require glibc 2.28 or higher. If your
 target has lower glibc version, you need to use older GCC toolchain.
 
-#### Run CMake
+#### Run CMake 
+
+Note the Cmake command is run from the tflite_build directory.
+
+Also you need to set the BUILD_NUM_JOBS to the maximum number of available processors/cores 
+of your host system to make sure the script does not run out of resources, for example 
+BUILD_NUM_JOBS=4
 
 ```sh
 ARMCC_PREFIX=${HOME}/toolchains/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-
@@ -96,7 +105,7 @@ cmake -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
   -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
   -DCMAKE_SYSTEM_NAME=Linux \
   -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-  ../tensorflow/lite/
+  ../tensorflow_src/tensorflow/lite/
 ```
 
 **Note:** You can enable GPU delegate with "-DTFLITE_ENABLE_GPU=ON" if your
@@ -123,6 +132,12 @@ target has lower glibc version, you need to use older GCC toolchain.
 
 #### Run CMake
 
+Note the Cmake command is run from the tflite_build directory.
+
+Also you need to set the BUILD_NUM_JOBS to the maximum number of available processors/cores 
+of your host system to make sure the script does not run out of resources, for example 
+BUILD_NUM_JOBS=4
+
 ```sh
 ARMCC_FLAGS="-march=armv7-a -mfpu=neon-vfpv4 -funsafe-math-optimizations"
 ARMCC_PREFIX=${HOME}/toolchains/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
@@ -133,7 +148,7 @@ cmake -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
   -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
   -DCMAKE_SYSTEM_NAME=Linux \
   -DCMAKE_SYSTEM_PROCESSOR=armv7 \
-  ../tensorflow/lite/
+  ../tensorflow_src/tensorflow/lite/
 ```
 
 **Note:** Since ARMv7 architecture is diverse, you may need to update
@@ -151,11 +166,18 @@ ${HOME}/toolchains.
 
 ```sh
 curl -L https://github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz -o rpi-toolchain.tar.gz
+mkdir -p ${HOME}/toolchains
 tar xzf rpi-toolchain.tar.gz -C ${HOME}/toolchains
 mv ${HOME}/toolchains/rpi-newer-crosstools-eb68350c5c8ec1663b7fe52c742ac4271e3217c5 ${HOME}/toolchains/arm-rpi-linux-gnueabihf
 ```
 
 #### Run CMake
+
+Note the Cmake command is run from the tflite_build directory.
+
+Also you need to set the BUILD_NUM_JOBS to the maximum number of available processors/cores 
+of your host system to make sure the script does not run out of resources, for example 
+BUILD_NUM_JOBS=4
 
 ```sh
 ARMCC_PREFIX=${HOME}/toolchains/arm-rpi-linux-gnueabihf/x64-gcc-6.5.0/arm-rpi-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-
@@ -168,7 +190,7 @@ cmake -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
   -DCMAKE_SYSTEM_NAME=Linux \
   -DCMAKE_SYSTEM_PROCESSOR=armv6 \
   -DTFLITE_ENABLE_XNNPACK=OFF \
-  ../tensorflow/lite/
+  ../tensorflow_src/tensorflow/lite/
 ```
 
 **Note:** XNNPACK is disabled since there is no NEON support.
