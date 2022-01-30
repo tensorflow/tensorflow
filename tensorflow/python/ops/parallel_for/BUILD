@@ -113,6 +113,7 @@ cuda_py_test(
     srcs = ["control_flow_ops_test.py"],
     shard_count = 16,
     tags = [
+        "no_oss",
         "no_rocm",
     ],
     deps = [
