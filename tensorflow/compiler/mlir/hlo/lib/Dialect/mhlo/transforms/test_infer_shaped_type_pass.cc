@@ -90,7 +90,7 @@ struct TestInferShapedTypeMethodsPass
     registry.insert<shape::ShapeDialect>();
   }
   void runOnOperation() override {
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     patterns.insert<ReifyReturnTypeShapesPattern>(&getContext());
     patterns.insert<InferReturnTypeComponentsPattern>(&getContext());
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));

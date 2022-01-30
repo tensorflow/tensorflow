@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 
 #include <algorithm>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 

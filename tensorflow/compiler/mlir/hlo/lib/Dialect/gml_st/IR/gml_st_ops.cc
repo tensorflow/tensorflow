@@ -48,9 +48,10 @@ void GmlStDialect::initialize() {
 }
 
 LogicalResult MaterializeOp::inferReturnTypes(
-    MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr attrs,
-    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
-  MaterializeOp::Adaptor adaptor(operands, attrs);
+    MLIRContext*, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  MaterializeOp::Adaptor adaptor(operands, attributes);
 
   ShapedType sourceType = adaptor.source().getType().cast<ShapedType>();
   Type subsetType = adaptor.subset().getType();

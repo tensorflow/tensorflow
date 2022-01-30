@@ -104,8 +104,10 @@ class RemoveTfIfConstArgs
       llvm::ArrayRef<mlir::TF::ConstOp> const_args,
       llvm::ArrayRef<unsigned> const_arg_indices) {
     // Get the new function type as const args are removed.
+    llvm::BitVector const_arg_indices_bv(branch.getNumArguments());
+    for (auto i : const_arg_indices) const_arg_indices_bv.set(i);
     auto new_branch_type =
-        branch.getType().getWithoutArgsAndResults(const_arg_indices, {});
+        branch.getType().getWithoutArgsAndResults(const_arg_indices_bv, {});
     std::string new_branch_name =
         absl::StrCat(branch.sym_name().str(), branch_suffix);
     // Create the wrapper function with the new arguments that calls the

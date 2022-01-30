@@ -180,7 +180,7 @@ struct LhloLegalizeToGpuPass
   }
 
   void runOnOperation() override {
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<arith::ArithmeticDialect, linalg::LinalgDialect,
                            memref::MemRefDialect, StandardOpsDialect,

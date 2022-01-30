@@ -52,6 +52,8 @@ upper_tabs:
       - heading: "Audio"
       - title: "Audio classification with Model Maker"
         path: /lite/tutorials/model_maker_audio_classification
+      - title: "Speech recognition with Model Maker"
+        path: /lite/tutorials/model_maker_speech_recognition
 
       - heading: "Microcontrollers"
       - title: "Gesture recognition"

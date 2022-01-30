@@ -2286,7 +2286,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     ])
     saved_model_dir = os.path.join(self.get_temp_dir(), 'dense_saved_model')
     save(model, saved_model_dir)
-    k_dense_bias_name = 'dense/bias'
+    k_dense_bias_name = 'sequential/dense/BiasAdd/ReadVariableOp'
     quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
         saved_model_dir)
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]

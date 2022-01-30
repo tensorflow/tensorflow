@@ -354,7 +354,6 @@ static std::vector<std::string> DumpHloModuleImpl(
                             render_graph(RenderedGraphFormat::kHtml), opts));
   }
 
-
   if (opts.dump_fusion_visualization) {
     for (const HloComputation* computation :
          module.MakeNonfusionComputations()) {
@@ -414,7 +413,7 @@ static void DumpHloModuleMetadata(
   }
 }
 
-static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+static absl::Mutex mu(absl::kConstInit);
 
 // Maps a module's unique ID to a counter indicating how many times we've dumped
 // this module during the compilation pipeline.  This lets us keep the filenames
@@ -424,7 +423,7 @@ static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
-static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
+static auto& module_id_to_step_number ABSL_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64_t, int64_t>();
 
 // Maps a module's unique ID to a timestamp indicating when we've first dumped
@@ -435,11 +434,11 @@ static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
-static auto& module_id_to_timestamp TF_GUARDED_BY(mu) =
+static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64_t, uint64_t>();
 
 int64_t StepNumberForModule(const HloModule& module) {
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
 
@@ -451,7 +450,7 @@ std::string TimestampFor(const HloModule& module) {
   if (!module.config().debug_options().xla_dump_include_timestamp()) {
     return "";
   }
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   auto timestamp_emplace = module_id_to_timestamp.try_emplace(
       module.unique_id(), tensorflow::Env::Default()->NowMicros());
   return std::to_string(timestamp_emplace.first->second);
@@ -649,9 +648,9 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   int64_t execution_count;
   uint64_t timestamp;
   {
-    static auto& module_id_to_execution_count TF_GUARDED_BY(mu) =
+    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64_t, int64_t>();
-    tensorflow::mutex_lock lock(mu);
+    absl::MutexLock lock(&mu);
     execution_count = module_id_to_execution_count[module.unique_id()]++;
     auto timestamp_emplace = module_id_to_timestamp.try_emplace(
         module.unique_id(), tensorflow::Env::Default()->NowMicros());
@@ -686,9 +685,9 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
   // have to use its name.
   int64_t execution_count;
   {
-    static auto& module_name_to_execution_count TF_GUARDED_BY(mu) =
+    static auto& module_name_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<std::string, int64_t>();
-    tensorflow::mutex_lock lock(mu);
+    absl::MutexLock lock(&mu);
     execution_count = module_name_to_execution_count[name]++;
   }
   std::string filename = StrFormat("module_%s.execution_%04d.hlo_snapshot.pb",

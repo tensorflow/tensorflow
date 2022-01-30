@@ -100,6 +100,7 @@ cc_library(
     srcs = [
         "transforms/outline_with_xla_framework.cc",
         "transforms/prepare_for_export.cc",
+        "transforms/xla_framework_to_llvm_pass.cc",
         "transforms/xla_passes_detail.h",
     ],
     hdrs = [

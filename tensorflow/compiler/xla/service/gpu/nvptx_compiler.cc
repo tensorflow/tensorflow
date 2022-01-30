@@ -319,7 +319,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    const HloModule* debug_module) {
   std::string libdevice_dir;
   {
-    tensorflow::mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
 
     // Find the directory containing libdevice.  To avoid searching for it every
     // time, we have a one-element cache, keyed on the module's config's
@@ -377,7 +377,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   CompilationCacheValue* cache_value = nullptr;
 
   {
-    tensorflow::mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     std::tie(iter, inserted) = compilation_cache_.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(ptx, cc.major, cc.minor, relocatable),
@@ -390,7 +390,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   // Other threads asking for the same compilation key will block on
   // cache_value->mutex_ until compilation is done.
   {
-    tensorflow::mutex_lock lock(cache_value->mutex_);
+    absl::MutexLock lock(&cache_value->mutex);
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
@@ -418,7 +418,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
               tensorflow::error::Code::NOT_FOUND) {
             if (!hlo_module_config.debug_options()
                      .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found()) {
-              PrintCantFindCudaMessage(
+              LOG(WARNING) << CantFindCudaMessage(
                   "Can't find ptxas binary in ${CUDA_DIR}/bin.  Custom ptxas "
                   "location can be specified using $PATH.",
                   hlo_module_config);
@@ -433,19 +433,13 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
             // binaries are not available. We don't want to spam logs with
             // identical warnings in this case.
 
-            // TODO(jlebar): we should implement a LOG_FIRST_N and LOG_EVERY_N
-            // for more general usage.
-            static std::atomic<bool> warning_done(false);
-            bool log_warning = !warning_done.exchange(true);
-            if (log_warning) {
-              PrintCantFindCudaMessage(
-                  "Can't find ptxas binary in ${CUDA_DIR}/bin.  Will back to "
-                  "the GPU driver for PTX -> sass compilation.  This is OK so "
-                  "long as you don't see a warning below about an out-of-date "
-                  "driver version. Custom ptxas location can be specified "
-                  "using $PATH.",
-                  hlo_module_config);
-            }
+            LOG_FIRST_N(WARNING, 1) << CantFindCudaMessage(
+                "Can't find ptxas binary in ${CUDA_DIR}/bin.  Will back to "
+                "the GPU driver for PTX -> sass compilation.  This is OK so "
+                "long as you don't see a warning below about an out-of-date "
+                "driver version. Custom ptxas location can be specified "
+                "using $PATH.",
+                hlo_module_config);
           } else if (maybe_cubin.status().code() !=
                      tensorflow::error::Code::UNIMPLEMENTED) {
             // If unimplemented is returned, we fallback to the driver.
@@ -463,10 +457,10 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         }
       }
       cache_value->compilation_done = true;
-      cache_value->compilation_done_cv_.notify_all();
+      cache_value->compilation_done_cv.SignalAll();
     } else {
       while (!cache_value->compilation_done) {
-        cache_value->compilation_done_cv_.wait(lock);
+        cache_value->compilation_done_cv.Wait(&cache_value->mutex);
       }
     }
   }

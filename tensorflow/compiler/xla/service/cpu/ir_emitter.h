@@ -52,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 namespace cpu {
@@ -627,7 +626,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   const TargetMachineFeatures& target_machine_features_;
 
   struct LiteralPtrHashFunctor {
-    size_t operator()(const Literal* literal) const { return HashOf(*literal); }
+    size_t operator()(const Literal* literal) const {
+      return absl::HashOf(*literal);
+    }
   };
 
   struct LiteralPtrEqualityFunctor {

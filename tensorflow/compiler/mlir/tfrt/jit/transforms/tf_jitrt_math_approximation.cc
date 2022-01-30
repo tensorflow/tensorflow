@@ -262,7 +262,7 @@ struct MathApproximationPass
 };
 
 void MathApproximationPass::runOnFunction() {
-  mlir::OwningRewritePatternList patterns(&getContext());
+  mlir::RewritePatternSet patterns(&getContext());
   populateMathApproximationPatterns(patterns, oplist);
   if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
                                                 std::move(patterns))))

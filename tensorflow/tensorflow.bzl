@@ -1460,7 +1460,7 @@ def tf_gpu_cc_test(
         )
         targets.append(name + "_2gpu")
 
-    native.test_suite(name = name, tests = targets)
+    native.test_suite(name = name, tests = targets, tags = tags)
 
 # terminology changes: saving tf_cuda_* definition for compatibility
 def tf_cuda_cc_test(*args, **kwargs):
@@ -1547,6 +1547,7 @@ def tf_cc_tests(
             name = name,
             tests = test_names,
             visibility = visibility,
+            tags = tags,
         )
 
 def tf_cc_test_mkl(
@@ -2622,7 +2623,7 @@ def gpu_py_test(
         )
         targets.append(test_name)
 
-    native.test_suite(name = name, tests = targets)
+    native.test_suite(name = name, tests = targets, tags = tags)
 
 # terminology changes: saving cuda_* definition for compatibility
 def cuda_py_test(*args, **kwargs):

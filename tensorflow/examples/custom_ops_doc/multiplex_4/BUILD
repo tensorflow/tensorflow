@@ -40,6 +40,10 @@ tf_py_test(
     srcs = ["multiplex_4_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = [
+        "no_mac",  # TODO(b/216321151): Re-enable this test.
+        "no_pip",
+    ],
     deps = [
         ":model_using_multiplex",
         ":multiplex_4_op",

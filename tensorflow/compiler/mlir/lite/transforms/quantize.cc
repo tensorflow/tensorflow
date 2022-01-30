@@ -303,7 +303,7 @@ struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
 
 void QuantizePass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   auto func = getFunction();
   auto* ctx = func.getContext();
 
@@ -324,7 +324,7 @@ void QuantizePass::runOnFunction() {
 
   // Constant quantization is a lossy transformation, so they are applied only
   // after all the other patterns have been aplied.
-  OwningRewritePatternList patterns_2(&getContext());
+  RewritePatternSet patterns_2(&getContext());
   patterns_2.insert<QuantizeConstPattern>(ctx, quant_specs.legacy_float_scale);
   if (quant_params.numeric_verify_spec.whole_model_verify) {
     patterns_2.insert<quant::RemoveDebugAttrPattern>(ctx);
@@ -333,7 +333,6 @@ void QuantizePass::runOnFunction() {
 }
 }  // namespace
 
-#define UPDATE_STRING_SET(new_set, set) (!new_set.empty() ? new_set : set)
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
@@ -342,10 +341,12 @@ std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
   QuantizationSpecs updated_quant_specs;
   updated_quant_specs = quant_specs;
   // If there's new blocklists given, update quant_specs to use the new one.
-  updated_quant_specs.ops_blocklist =
-      UPDATE_STRING_SET(ops_blocklist, quant_specs.ops_blocklist);
-  updated_quant_specs.nodes_blocklist =
-      UPDATE_STRING_SET(nodes_blocklist, quant_specs.nodes_blocklist);
+  if (!ops_blocklist.empty()) {
+    updated_quant_specs.ops_blocklist = ops_blocklist;
+  }
+  if (!nodes_blocklist.empty()) {
+    updated_quant_specs.nodes_blocklist = nodes_blocklist;
+  }
   return std::make_unique<QuantizePass>(updated_quant_specs);
 }
 

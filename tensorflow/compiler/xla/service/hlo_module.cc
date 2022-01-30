@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
@@ -838,7 +837,7 @@ HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,
 }
 
 uint64_t HloModule::RandomNew64() const {
-  tensorflow::mutex_lock l(rng_mutex_);
+  absl::MutexLock l(&rng_mutex_);
   return rng_();
 }
 

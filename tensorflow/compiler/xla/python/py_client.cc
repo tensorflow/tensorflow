@@ -298,7 +298,6 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
       std::move(fingerprint));
 }
 
-
 namespace {
 
 struct HeapProfileKey {
@@ -324,8 +323,7 @@ bool HeapProfileKey::operator==(const HeapProfileKey& other) const {
 template <typename H>
 H AbslHashValue(H h, const HeapProfileKey& key) {
   if (key.traceback) {
-    h = H::combine_contiguous(std::move(h), key.traceback->raw_frames().begin(),
-                              key.traceback->raw_frames().size());
+    h = H::combine(std::move(h), key.traceback->raw_frames());
   }
   h = H::combine(std::move(h), key.size, key.device);
   return h;

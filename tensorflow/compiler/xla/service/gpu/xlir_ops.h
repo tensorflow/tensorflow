@@ -26,6 +26,9 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/tensor/opdefs/host_tensor.h"  // from @tf_runtime
@@ -54,11 +57,15 @@ struct GpuModuleData {
   std::vector<ConstantInfo> constants;
 };
 
-// Replica/partition ID container to be stored in TFRT's request context and
-// picked up by xlir.replica_id, xlir.partition_id.
-struct ReplicaAndPartitionId {
-  int32_t replica_id;
-  int32_t partition_id;
+// XLA GPU run option parameters to be stored in TFRT's request context and
+// picked up by xlir kernels. The data pointed to by this struct outlives the
+// struct, which in turn outlives the BEF execution that refers to it.
+struct XlaGpuParams {
+  RunId run_id;
+  const DeviceAssignment* device_assn;                       // never null
+  const std::vector<GlobalDeviceId>* gpu_global_device_ids;  // may be null
+  const NcclUniqueIdCallback* nccl_unique_id_callback;       // may be null
+  GlobalDeviceId global_device_id;
 };
 
 }  // namespace gpu

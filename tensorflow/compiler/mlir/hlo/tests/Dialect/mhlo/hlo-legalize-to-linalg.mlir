@@ -708,6 +708,69 @@ func @transpose_dynamic(%arg0: tensor<?x?x9x?xi32>) -> tensor<?x?x?x9xi32> {
 
 // -----
 
+// CHECK-LABEL: func @real_dynamic_slice
+// CHECK-SAME: (%[[OPERAND:.*]]: tensor<256x?xf32>, %[[START_INDICES:.*]]: tensor<2xindex>, %[[LIMIT_INDICES:.*]]: tensor<2xindex>, %[[STRIDES:.*]]: tensor<2xindex>)
+func @real_dynamic_slice(%input: tensor<256x?xf32>, %start_indices: tensor<2xindex>, %limit_indices: tensor<2xindex>, %strides: tensor<2xindex>) -> tensor<256x?xf32> {
+  %0 = "mhlo.real_dynamic_slice"(%input, %start_indices, %limit_indices, %strides) : (tensor<256x?xf32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<256x?xf32>
+  return %0 : tensor<256x?xf32>
+}
+// CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0 : i64
+
+// 1.   For dimension 0.
+// CHECK-NEXT: %[[DIM0:.*]] = arith.constant 0 : index
+
+// 1.1. Fetch start index, limit index and stride.
+// CHECK-NEXT: %[[START0:.*]] = tensor.extract %[[START_INDICES]][%[[DIM0]]] : tensor<2xindex>
+// CHECK-NEXT: %[[LIMIT0:.*]] = tensor.extract %[[LIMIT_INDICES]][%[[DIM0]]] : tensor<2xindex>
+// CHECK-NEXT: %[[STRIDE0:.*]] = tensor.extract %[[STRIDES]][%[[DIM0]]] : tensor<2xindex>
+
+// 1.2. Since 0-th dimension size of the result is known, we set it as size[0]
+// CHECK-NEXT: %[[SIZE0:.*]] = arith.constant 256 : index
+
+// 1.3. Compute upper bound for starting index = operand_dim[0] - size[0].
+//      where, size[0] is computed at step 1.2
+// CHECK-NEXT: %[[OPERAND_DIM0:.*]] = arith.constant 256 : index
+// CHECK-NEXT: %[[UB:.*]] = arith.constant 0 : index
+
+// 1.4. Clamp starting index : 0 <= start <= ub
+//      where upper bound (ub) is computed at step 1.3
+// CHECK-NEXT: %[[START0_Int:.*]] = arith.index_cast %[[START0]] : index to i64
+// CHECK-NEXT: %[[UB0:.*]] = arith.index_cast %[[UB]] : index to i64
+// CHECK-NEXT: %[[MIN0:.*]] = arith.minsi %[[START0_Int]], %[[UB0]] : i64
+// CHECK-NEXT: %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[ZERO]] : i64
+// CHECK-NEXT: %[[CLAMPED_START0:.*]] = arith.index_cast %[[MAX0]] : i64 to index
+
+// 2.   For dimension 1.
+// CHECK-NEXT: %[[DIM1:.*]] = arith.constant 1 : index
+
+// 2.1. Fetch start index, limit index and stride.
+// CHECK-NEXT: %[[START1:.*]] = tensor.extract %[[START_INDICES]][%[[DIM1]]] : tensor<2xindex>
+// CHECK-NEXT: %[[LIMIT1:.*]] = tensor.extract %[[LIMIT_INDICES]][%[[DIM1]]] : tensor<2xindex>
+// CHECK-NEXT: %[[STRIDE1:.*]] = tensor.extract %[[STRIDES]][%[[DIM1]]] : tensor<2xindex>
+
+// 2.2. Since 1-th dimension of result is unknown we compute result size at 1-th
+//      dimension as size[1] = (limit - start)/stride
+// CHECK-NEXT: %[[DELTA1:.*]] = arith.subi %[[LIMIT1]], %[[START1]] : index
+// CHECK-NEXT: %[[SIZE1:.*]] = arith.ceildivui %[[DELTA1]], %[[STRIDE1]] : index
+
+// 2.3. Compute upper bound for starting index = operand_dim[1] - size[1].
+//      where, size[1] is computed at step 2.2
+// CHECK-NEXT: %[[OPERAND_DIM1:.*]] = tensor.dim %[[OPERAND]], %[[DIM1]] : tensor<256x?xf32>
+// CHECK-NEXT: %[[UB:.*]] = arith.subi %[[OPERAND_DIM1]], %[[SIZE1]] : index
+
+// 2.4. Clamp starting index : 0 <= start <= ub
+//      where upper bound (ub) is computed at step 2.3
+// CHECK-NEXT: %[[START1_Int:.*]] = arith.index_cast %[[START1]] : index to i64
+// CHECK-NEXT: %[[UB1:.*]] = arith.index_cast %[[UB]] : index to i64
+// CHECK-NEXT: %[[MIN1:.*]] = arith.minsi %[[START1_Int]], %[[UB1]] : i64
+// CHECK-NEXT: %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[ZERO]] : i64
+// CHECK-NEXT: %[[CLAMPED_START1:.*]] = arith.index_cast %[[MAX1]] : i64 to index
+
+// CHECK-NEXT: %[[SLICE:.*]] = tensor.extract_slice %[[OPERAND]][%[[CLAMPED_START0]], %[[CLAMPED_START1]]] [256, %[[SIZE1]]] [%[[STRIDE0]], %[[STRIDE1]]] : tensor<256x?xf32> to tensor<256x?xf32>
+// CHECK-NEXT: return %[[SLICE]] : tensor<256x?xf32>
+
+// -----
+
 // CHECK-LABEL: func @reshape_0D_1D
 func @reshape_0D_1D(%arg0: tensor<i32>) -> tensor<1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<i32>) -> tensor<1xi32>

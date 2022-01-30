@@ -7272,7 +7272,7 @@ class ConvertXlaVariadicSortOp
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 void PopulateLegalizeTfPatterns(MLIRContext *context,
-                                OwningRewritePatternList *patterns) {
+                                RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
   // clang-format off
   patterns->insert<

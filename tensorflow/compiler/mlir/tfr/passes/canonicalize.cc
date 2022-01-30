@@ -157,7 +157,7 @@ LogicalResult SimplifySCFIfOp::InlineRegion(Location loc,
 }  // namespace
 
 void populateCanonicalizationPatterns(FuncOp func,
-                                      OwningRewritePatternList &patterns) {
+                                      RewritePatternSet &patterns) {
   MLIRContext *context = func.getContext();
   mlir::Dialect *tf = context->getLoadedDialect<mlir::TF::TensorFlowDialect>();
   // Load all official canonicalization patterns. Here we skip the

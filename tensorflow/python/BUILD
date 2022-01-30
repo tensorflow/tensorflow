@@ -57,6 +57,7 @@ visibility = [
     "//third_party/py/starcraft2:__subpackages__",
     "//third_party/py/tensorflow_gnn:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
+    "//third_party/py/tensorflow_privacy:__subpackages__",
 ]
 
 package(
@@ -1853,7 +1854,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/saved_model:registration",
+        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/util",
     ],
 )

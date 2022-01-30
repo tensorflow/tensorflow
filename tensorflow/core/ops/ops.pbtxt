@@ -2318,6 +2318,7 @@ op {
     }
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -2331,6 +2332,7 @@ op {
     }
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -14450,7 +14452,7 @@ op {
 op {
   name: "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch"
   input_arg {
-    name: "sample_indices_or_row_lengths"
+    name: "sample_indices_or_row_splits"
     type_attr: "T1"
     number_attr: "N"
   }
@@ -15049,7 +15051,7 @@ op {
 op {
   name: "EnqueueTPUEmbeddingArbitraryTensorBatch"
   input_arg {
-    name: "sample_indices_or_row_lengths"
+    name: "sample_indices_or_row_splits"
     type_attr: "T1"
     number_attr: "N"
   }
@@ -19858,6 +19860,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
       }
     }
@@ -20197,6 +20200,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -20237,6 +20241,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -46750,6 +46755,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -55750,6 +55756,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -59184,6 +59191,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }

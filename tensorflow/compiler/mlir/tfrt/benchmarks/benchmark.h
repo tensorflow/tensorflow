@@ -45,6 +45,9 @@ using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::Type;
 
+// The name of the default host device for running fallback kernels.
+ABSL_CONST_INIT extern const char* const kDefaultHostDeviceName;
+
 // Constants to make shape specification more readable.
 // kStaticDim refers to the static shape in IR taken from ARGS of the benchmark.
 ABSL_CONST_INIT extern const bool kStaticDim;

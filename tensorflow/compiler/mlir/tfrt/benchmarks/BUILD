@@ -58,6 +58,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_c_runner_utils",
+        "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",

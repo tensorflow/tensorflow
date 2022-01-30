@@ -34,16 +34,27 @@ namespace tfg {
 namespace graph_transforms {
 
 tensorflow::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
-    mlir::MLIRContext* context, const std::string& saved_model_file) {
+    mlir::MLIRContext* context, const std::string& model_file) {
   tensorflow::SavedModel saved_model;
 
-  TF_RETURN_IF_ERROR(ReadSavedModelProto(saved_model_file, saved_model));
+  TF_RETURN_IF_ERROR(
+      ReadModelProto<tensorflow::SavedModel>(model_file, saved_model));
   if (saved_model.meta_graphs_size() == 0) {
     return tensorflow::errors::InvalidArgument(
         "Input saved model has no meta graphs");
   }
 
   const auto& graphdef = saved_model.meta_graphs(0).graph_def();
+  tensorflow::GraphDebugInfo debug_info;
+  return mlir::tfg::ImportGraphDefToMlir(context, debug_info, graphdef);
+}
+
+tensorflow::StatusOr<mlir::OwningModuleRef> ImportGraphDef(
+    mlir::MLIRContext* context, const std::string& model_file) {
+  tensorflow::GraphDef graphdef;
+
+  TF_RETURN_IF_ERROR(
+      ReadModelProto<tensorflow::GraphDef>(model_file, graphdef));
   tensorflow::GraphDebugInfo debug_info;
   return mlir::tfg::ImportGraphDefToMlir(context, debug_info, graphdef);
 }

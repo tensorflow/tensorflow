@@ -103,15 +103,13 @@ def glob_lit_tests(
 
     # Run tests individually such that errors can be attributed to a specific
     # failure.
-    for i in range(len(tests)):
-        curr_test = tests[i]
-
+    for curr_test in tests:
         # Instantiate this test with updated parameters.
         _run_lit_test(
             name = curr_test + ".test",
-            data = data + [curr_test] + per_test_extra_data.pop(curr_test, []),
-            size = size_override.pop(curr_test, default_size),
-            tags = default_tags + tags_override.pop(curr_test, []),
+            data = data + [curr_test] + per_test_extra_data.get(curr_test, []),
+            size = size_override.get(curr_test, default_size),
+            tags = default_tags + tags_override.get(curr_test, []),
             driver = driver,
             features = features,
             exec_properties = exec_properties,

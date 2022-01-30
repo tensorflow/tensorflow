@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 
@@ -437,7 +436,7 @@ class HloModule {
   // TODO(b/25995601): Replace with better seed setting or dev/random for
   // where we don't need deterministic execution.
   mutable std::mt19937_64 rng_{42};
-  mutable tensorflow::mutex rng_mutex_;
+  mutable absl::Mutex rng_mutex_;
 
   // Unique name generator for computation and instruction names, which are
   // unique per module.

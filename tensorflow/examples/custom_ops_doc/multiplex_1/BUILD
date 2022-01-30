@@ -30,6 +30,10 @@ tf_py_test(
     srcs = ["multiplex_1_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = [
+        "no_mac",  # TODO(b/216321151): Re-enable this test.
+        "no_pip",
+    ],
     deps = [
         ":multiplex_1_op",
         "//tensorflow:tensorflow_py",

@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
@@ -1294,6 +1293,7 @@ class HloInstruction {
       for (size_t i = 0; i < hlo.operands().size(); ++i) {
         h = H::combine(std::move(h), hlo.operand(i)->shape());
       }
+      h = H::combine(std::move(h), hlo.operand_count());
     }
 
     if (hlo.opcode() == HloOpcode::kFusion) {

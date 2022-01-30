@@ -504,7 +504,7 @@ void LegalizeTFGToTFE::runOnOperation() {
   target.addLegalOp<FuncOp>();
   target.addLegalOp<ReturnOp>();
 
-  OwningRewritePatternList patterns(&context);
+  RewritePatternSet patterns(&context);
   patterns.insert<ConvertGraphOp>(&context);
   patterns.insert<ConvertGraphFuncOp>(&context);
   patterns.insert<ConvertReturnOp>(&context);

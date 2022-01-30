@@ -44,7 +44,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/Utils.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -85,7 +85,6 @@ constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
 /// exceed the stack space.
 bool IsSmallAlloc(Value alloc) {
   constexpr unsigned kMaximumSizeInBytes = 64;
-  constexpr unsigned kBitwidthOfIndexType = 64;
   constexpr unsigned kMaxRankOfAllocatedMemRef = 1;
 
   auto type = alloc.getType().dyn_cast<mlir::ShapedType>();
@@ -110,10 +109,8 @@ bool IsSmallAlloc(Value alloc) {
     }
     return false;
   }
-  // For index types, use the provided size, as the type does not know.
-  unsigned int bitwidth = type.getElementType().isIndex()
-                              ? kBitwidthOfIndexType
-                              : type.getElementTypeBitWidth();
+  unsigned bitwidth = mlir::DataLayout::closest(alloc.getDefiningOp())
+                          .getTypeSizeInBits(type.getElementType());
   return type.getNumElements() * bitwidth <= kMaximumSizeInBytes * 8;
 }
 
@@ -347,7 +344,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // Expand memref_reshape to its ranked form so that we can propagate
   // scalars and avoid allocation.
   pm.addNestedPass<mlir::FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createStdExpandOpsPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::memref::createExpandOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   // Before bufferizing further, remove unused tensor_to_memref, so that we do

@@ -195,6 +195,7 @@ cuda_py_test(
     srcs = ["sparse_tensor_dense_matmul_op_d9m_test.py"],
     tags = [
         "no_cuda_asan",
+        "noasan",
         "notsan",
     ],  # b/192492331
     xla_tags = [

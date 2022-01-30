@@ -156,8 +156,8 @@ struct GroupReductionDimensionsPass
 
 }  // namespace
 
-void populateGroupReductionDimensionsPatterns(
-    MLIRContext* context, OwningRewritePatternList* patterns) {
+void populateGroupReductionDimensionsPatterns(MLIRContext* context,
+                                              RewritePatternSet* patterns) {
   patterns->insert<GroupReductionDimensionsPattern>(context);
 }
 

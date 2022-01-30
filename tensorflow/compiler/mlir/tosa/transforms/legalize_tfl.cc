@@ -3213,7 +3213,7 @@ LogicalResult ConvertTFLFakeQuantOp::matchAndRewrite(
 }
 
 LogicalResult LegalizeTFL::initialize(MLIRContext* context) {
-  OwningRewritePatternList patterns(context);
+  RewritePatternSet patterns(context);
   mlir::tosa::populateLegalizeTFLPatterns(context, patterns);
   frozen_patterns_ = FrozenRewritePatternSet(
       std::move(patterns), this->disabled_patterns_, this->enabled_patterns_);

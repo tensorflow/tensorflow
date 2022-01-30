@@ -262,7 +262,6 @@ tf_cc_test(
         ":types",
         ":util",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:bfloat16",
     ],
 )
 
@@ -961,8 +960,7 @@ cc_library(
     hdrs = ["cpu_function_runtime.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core/platform:dynamic_annotations",
-        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )
 

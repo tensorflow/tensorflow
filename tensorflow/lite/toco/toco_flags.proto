@@ -234,7 +234,7 @@ message TocoFlags {
 
   // Whether to enable tflite resource variables during conversion or not.
   // Note: This is an experimental feature.
-  optional bool enable_tflite_resource_variables = 34;
+  optional bool enable_tflite_resource_variables = 34 [default = true];
 
   // Whether to unfold tf.BatchMatMul to a set of tfl.fully_connected ops. If
   // not, translate to tfl.batch_matmul.

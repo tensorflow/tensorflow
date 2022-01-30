@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/shape_layout.h"
@@ -97,6 +98,7 @@ class ComputationLayout {
     for (const auto& parameter_layout : computation_layout.parameter_layouts_) {
       h = H::combine(std::move(h), parameter_layout.shape());
     }
+    h = H::combine(std::move(h), computation_layout.parameter_layouts_.size());
     return h;
   }
 

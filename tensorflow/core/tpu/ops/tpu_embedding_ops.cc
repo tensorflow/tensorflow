@@ -17,8 +17,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/ops/tpu_embedding_shape_util.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
+#include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
 
 namespace tensorflow {
 
@@ -420,5 +423,136 @@ REGISTER_OP("EnqueueTPUEmbeddingBatch")
 
       return Status::OK();
     });
+
+REGISTER_OP("_RecvTPUEmbeddingActivations")
+    .Input("deduplication_data: variant")
+    .Output("outputs: num_tables * float32")
+    .Attr("num_tables: int >= 1")
+    .Attr("config: string")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+      int num_tables;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_tables", &num_tables));
+      if (c->num_outputs() != num_tables) {
+        return errors::InvalidArgument(absl::StrFormat(
+            "Number of outputs: %d of the _RecvTPUEmbeddingActivations node "
+            "does not match the num_tables attribute: %d.",
+            c->num_outputs(), num_tables));
+      }
+      string config_string;
+      TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
+      tpu::TPUEmbeddingConfiguration config;
+      if (!config.ParseFromString(config_string)) {
+        return errors::InvalidArgument(
+            "Malformed config attribute in the _RecvTPUEmbeddingActivations "
+            "node.");
+      }
+      std::vector<TensorShapeProto> output_shapes;
+      if (config.feature_descriptor_size() == 0) {
+        TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
+      } else {
+        TF_RETURN_IF_ERROR(
+            ComputeOutputTensorShapesFromFeature(config, &output_shapes));
+      }
+      if (c->num_outputs() != output_shapes.size()) {
+        return errors::InvalidArgument(absl::StrFormat(
+            "Number of outputs: %d of the _RecvTPUEmbeddingActivations node "
+            "does not match the number of tables or features in the TPU "
+            "embedding config: %d.",
+            c->num_outputs(), output_shapes.size()));
+      }
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        shape_inference::ShapeHandle output_shape;
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromShapeProto(output_shapes[i], &output_shape));
+        c->set_output(i, output_shape);
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+An op that receives embeddng activations on the TPU.
+
+The TPU system performs the embedding lookups and aggregations. The results of
+these aggregations are visible to the Tensorflow Graph as the outputs of a
+_RecvTPUEmbeddingActivations Op. This op returns a list containing one
+Tensor of activations per table specified in the model.
+
+deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
+    data. The tensor is an XLA nested tuple containing N elements (where N is
+    the ratio of the number of embedding to tensor cores per TPU chip). Each
+    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+    contains indices (DT_UINT32) for embedding lookup on the TensorCore or
+    weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
+outputs: A TensorList of embedding activations containing one Tensor per
+    embedding table in the model.
+num_tables: The number of output activation tensors. If feature descriptor is
+    present in the tpu embedding config, it is equal to the number of features
+    otherwise equal to number of embedding tables in the model.
+config: Serialized TPUEmbeddingConfiguration proto.
+)doc");
+
+REGISTER_OP("_SendTPUEmbeddingGradients")
+    .Input("gradients: NumTables * float32")
+    .Input("learning_rates: NumLearningRateTags * float32")
+    .Input("deduplication_data: variant")
+    .Attr("NumTables: int >= 1")
+    .Attr("NumLearningRateTags: int >= 0 = 0")
+    .Attr("config: string")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+      int learning_rate_tag_count;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("NumLearningRateTags", &learning_rate_tag_count));
+      std::vector<shape_inference::ShapeHandle> learning_rates;
+      TF_RETURN_IF_ERROR(c->input("learning_rates", &learning_rates));
+      for (int i = 0; i < learning_rate_tag_count; ++i) {
+        // Verify that each learning_rates element is scalar
+        shape_inference::ShapeHandle learning_rates_shape;
+        TF_RETURN_IF_ERROR(
+            c->WithRank(learning_rates[i], 0, &learning_rates_shape));
+      }
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+An op that performs gradient updates of embedding tables.
+
+The gradients argument is a TensorList having the same length and shapes as the
+return value of _RecvTPUEmbeddingActivations, but contains gradients of the
+model's loss with respect to the embedding activations. The embedding tables are
+updated from these gradients via the optimizer specified in the
+TPUEmbeddingConfiguration proto given to tpu.initialize_system.
+
+gradients: A TensorList of gradients with which to update embedding tables.
+learning_rates: A TensorList of learning rates used for updating the embedding
+    tables via the optimizer. The length of the TensorList must be equal to the
+    number of dynamic learning rate tags specified in the
+    TPUEmbeddingConfiguration proto.
+deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
+    data. The tensor is an XLA nested tuple containing N elements (where N is
+    the ratio of the number of embedding to tensor cores per TPU chip). Each
+    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+    contains indices (DT_UINT32) for embedding lookup on the TensorCore or
+    weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
+config: Serialized TPUEmbeddingConfiguration proto.
+)doc");
+
+REGISTER_OP("_RecvTPUEmbeddingDeduplicationData")
+    .Output("output: variant")
+    .Attr("config: string")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(R"doc(
+Receives deduplication data (indices and weights) from the embedding core.
+
+The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
+XLA nested tuple containing N elements (where N is the ratio of the number of
+embedding to tensor cores per TPU chip). Each element of the nested tuple is a
+tuple of rank 1 tensors. Each tensor either contains indices (DT_UINT32) for
+embedding lookup on the TensorCore or weights (DT_FLOAT) to apply to the output
+of the embedding lookup operation.
+
+config: Serialized TPUEmbeddingConfiguration proto.
+)doc");
 
 }  // namespace tensorflow

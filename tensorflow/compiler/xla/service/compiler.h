@@ -38,10 +38,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace xla {
@@ -327,7 +325,7 @@ class Compiler {
 
  private:
   // Mutex that guards the platform-compiler map.
-  static tensorflow::mutex platform_compiler_mutex_;
+  static absl::Mutex platform_compiler_mutex_;
 
   // Map from platform kind to compiler factory.
   static std::map<se::Platform::Id, CompilerFactory>*

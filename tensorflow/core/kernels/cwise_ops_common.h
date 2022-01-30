@@ -450,14 +450,6 @@ struct BinaryFunctor<CPUDevice, Functor, 2, false> {
     Assign(d, out, in.unaryExpr(Unary(scalar.data())));
   }
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-  inline Eigen::DSizes<int, 2> NByOne(int n) {
-    return Eigen::DSizes<int, 2>(n, 1);
-  }
-  inline Eigen::DSizes<int, 2> OneByM(int m) {
-    return Eigen::DSizes<int, 2>(1, m);
-  }
-#else
   inline Eigen::IndexList<int, Eigen::type2index<1>> NByOne(int n) {
     Eigen::IndexList<int, Eigen::type2index<1>> ret;
     ret.set(0, n);
@@ -468,7 +460,6 @@ struct BinaryFunctor<CPUDevice, Functor, 2, false> {
     ret.set(1, m);
     return ret;
   }
-#endif
 
   void BCast(const CPUDevice& dev,
              typename TTypes<typename Functor::out_type, NDIMS>::Tensor out,

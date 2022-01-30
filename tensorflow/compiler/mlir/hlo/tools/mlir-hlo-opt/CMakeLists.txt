@@ -20,6 +20,8 @@ set(LIBS
         ${conversion_libs}
         MLIROptLib
 
+        GmlStPasses
+        GmlStDialect
         LmhloDialect
         LmhloGPUDialect
         MhloRegisterDialects

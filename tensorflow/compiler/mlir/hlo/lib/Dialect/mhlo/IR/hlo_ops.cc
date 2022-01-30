@@ -505,7 +505,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
   }
 };
 
-void GatherOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void GatherOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
   results.insert<GatherSlice>(context);
 }
@@ -932,7 +932,7 @@ struct IotaBroadcast : public OpRewritePattern<IotaOp> {
   }
 };
 
-void IotaOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void IotaOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* context) {
   results.insert<IotaBroadcast>(context);
 }
@@ -1022,8 +1022,8 @@ struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
 
 }  // namespace
 
-void DynamicIotaOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void DynamicIotaOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                MLIRContext* context) {
   results.insert<DynamicIotaIsStatic>(context);
   results.insert<DynamicIotaBroadcast>(context);
 }
@@ -1165,7 +1165,7 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-void ConvertOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ConvertOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
   results.insert<EliminateIdentityConvert>(context);
 }
@@ -1293,7 +1293,7 @@ struct UnpackRepackSameTuple : public OpRewritePattern<TupleOp> {
 
 }  // namespace
 
-void TupleOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void TupleOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
   results.insert<UnpackRepackSameTuple>(context);
 }
@@ -1634,8 +1634,8 @@ class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
   }
 };
 
-void BroadcastInDimOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void BroadcastInDimOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                   MLIRContext* context) {
   results.insert<BroadcastInDimSimplifier>(context);
 }
 
@@ -1764,7 +1764,7 @@ class ChainedDynamicBroadcastInDimCanonicalization
 }  // namespace
 
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+    RewritePatternSet& results, MLIRContext* context) {
   results.insert<ChainedDynamicBroadcastInDimCanonicalization,
                  DynamicBroadcastInDimOpNotActuallyDynamic,
                  DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
@@ -2077,8 +2077,8 @@ LogicalResult ConcatenateOp::inferReturnTypes(
   return success();
 }
 
-void ConcatenateOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void ConcatenateOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                MLIRContext* context) {
   results.insert<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
 }
 
@@ -2355,8 +2355,8 @@ class DynamicReshapeOpSameShapeOpResult
 };
 }  // namespace
 
-void DynamicReshapeOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void DynamicReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                   MLIRContext* context) {
   // clang-format off
   results.insert<
       DynamicReshapeOpNotActuallyDynamic,
@@ -2423,8 +2423,8 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
 
 }  // namespace
 
-void DynamicSliceOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void DynamicSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                 MLIRContext* context) {
   results.insert<DynamicSliceToSlice>(context);
 }
 
@@ -2539,8 +2539,8 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
 };
 }  // namespace
 
-void RealDynamicSliceOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void RealDynamicSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                     MLIRContext* context) {
   results.insert<RealDynamicSliceIsStatic, RealDSliceToSlice>(context);
 }
 
@@ -3634,7 +3634,7 @@ struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
   }
 };
 
-void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
   results.insert<LowerBoolSplatConstantsIntoRegion>(context);
 }
@@ -3995,8 +3995,8 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
 // DynamicPadOp
 //===----------------------------------------------------------------------===//
 
-void DynamicPadOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void DynamicPadOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                               MLIRContext* context) {
   results.insert<DPadToPad>(context);
 }
 
@@ -4154,7 +4154,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
   results.insert<IdentityBroadcastReshape, IdentityBroadcastInDimReshape,
                  EliminateRedundantReshape, EliminateIdentityReshape>(context);
@@ -4219,7 +4219,7 @@ static LogicalResult InlineIfConstantCondition(IfOp ifOp,
   return success();
 }
 
-void IfOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void IfOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                        MLIRContext* context) {
   results.add(&InlineIfConstantCondition);
 }
@@ -4258,7 +4258,7 @@ static LogicalResult InlineCaseConstantCondition(CaseOp caseOp,
   return success();
 }
 
-void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void CaseOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* context) {
   results.add(&InlineCaseConstantCondition);
 }
@@ -4821,7 +4821,7 @@ struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
 };
 }  // namespace
 
-void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void SliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
   results.insert<SimplifyConcatSlice>(context);
 }
@@ -4954,7 +4954,7 @@ static LogicalResult SortOpInferDefaultDimension(SortOp op,
   return success();
 }
 
-void SortOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void SortOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* /*context*/) {
   results.insert(SortDropEmptyUseArgs);
   results.insert(SortOpInferDefaultDimension);
@@ -5021,7 +5021,7 @@ static LogicalResult EliminateBroadcastInDimTranspose(
   return success();
 }
 
-void TransposeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                               MLIRContext* /*context*/) {
   results.insert(EliminateRedundantTranspse);
   results.insert(EliminateBroadcastInDimTranspose);
@@ -5199,8 +5199,8 @@ void TupleOp::build(OpBuilder& builder, OperationState& result,
 // UnaryEinsumOp
 //===----------------------------------------------------------------------===//
 
-void UnaryEinsumOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void UnaryEinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                MLIRContext* context) {
   results.insert<UnaryEinsumToEinsum>(context);
 }
 
@@ -5699,7 +5699,7 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
   return success();
 }
 
-void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void WhileOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
   results.add(&whileCanonicalization);
 }

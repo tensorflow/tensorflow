@@ -13,6 +13,7 @@ package_group(
         # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
+        "//tensorflow/core/tfrt/graph_executor/...",
         "//tensorflow_serving/...",
         "//platforms/xla/tests/saved_models/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",

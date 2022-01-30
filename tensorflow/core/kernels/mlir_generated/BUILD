@@ -653,6 +653,7 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
+    unroll_factors = "16B",
 )
 
 gpu_kernel_library(
@@ -1109,13 +1110,13 @@ gpu_kernel_library(
         "i32",
         "i64",
     ],
+    unroll_factors = "4",
     # For complex MulOp kernels, we don't use unrolling, it would only cause
     # slowdowns.
-    types_with_unrolling_disabled = [
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "4",
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
 )
 
 gpu_kernel_library(
@@ -1129,13 +1130,13 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "4",
     # For complex MulNoNanOp kernels, we don't use unrolling, it would only
     # cause slowdowns.
-    types_with_unrolling_disabled = [
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "4",
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
 )
 
 # Bitwise operations.
@@ -1181,7 +1182,7 @@ gpu_kernel_library(
 gpu_kernel_library(
     name = "gpu_atan2_kernels",
     op = "atan2",
-    tile_size = "256,1,1",
+    tile_size = "256",
     types = [
         "f16",
         "f32",
@@ -1705,13 +1706,13 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "4",
     # For complex XlogyOp kernels, we don't use unrolling, it would only cause
     # slowdowns.
-    types_with_unrolling_disabled = [
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "4",
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
 )
 
 gpu_kernel_library(
@@ -1739,13 +1740,13 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "4",
     # For complex Xlog1pyOp kernels, we don't use unrolling, it would only cause
     # slowdowns.
-    types_with_unrolling_disabled = [
-        "c64",
-        "c128",
-    ],
-    unroll_factors = "4",
+    unroll_factors_override = {
+        "c64": None,
+        "c128": None,
+    },
 )
 
 cpu_kernel_library(

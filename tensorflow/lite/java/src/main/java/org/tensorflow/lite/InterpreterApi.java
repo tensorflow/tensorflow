@@ -228,6 +228,11 @@ public interface InterpreterApi extends AutoCloseable {
       return this;
     }
 
+    /** Return where to get the TF Lite runtime implementation from. */
+    public TfLiteRuntime getRuntime() {
+      return runtime;
+    }
+
     TfLiteRuntime runtime = TfLiteRuntime.FROM_APPLICATION_ONLY;
     int numThreads = -1;
     Boolean useNNAPI;

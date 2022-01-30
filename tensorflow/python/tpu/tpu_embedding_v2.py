@@ -933,10 +933,10 @@ class TPUEmbedding(tracking.AutoTrackable):
     else:
       weights.append(float_zeros)
 
-  def _add_data_for_ragged_tensor(self, tensor, weight, row_lengths, values,
+  def _add_data_for_ragged_tensor(self, tensor, weight, row_splits, values,
                                   weights, int_zeros, float_zeros, path,
                                   feature):
-    row_lengths.append(math_ops.cast(tensor.row_lengths(), dtypes.int32))
+    row_splits.append(math_ops.cast(tensor.row_splits, dtypes.int32))
     values.append(math_ops.cast(tensor.values, dtypes.int32))
     # If we have weights they must be a RaggedTensor.
     if weight is not None:
@@ -973,8 +973,8 @@ class TPUEmbedding(tracking.AutoTrackable):
     combiners = [table.combiner for table in self._table_config]
 
     # These parallel arrays will be the inputs to the enqueue op.
-    # sample_indices for sparse, row_lengths for ragged.
-    indices_or_row_lengths = []
+    # sample_indices for sparse, row_splits for ragged.
+    indices_or_row_splits = []
     values = []
     weights = []
 
@@ -993,14 +993,14 @@ class TPUEmbedding(tracking.AutoTrackable):
     for inp, weight, (path, feature) in zip(
         flat_inputs, flat_weights, flat_features):
       if isinstance(inp, ops.Tensor):
-        self._add_data_for_tensor(inp, weight, indices_or_row_lengths, values,
+        self._add_data_for_tensor(inp, weight, indices_or_row_splits, values,
                                   weights, int_zeros, float_zeros, path)
       elif isinstance(inp, sparse_tensor.SparseTensor):
-        self._add_data_for_sparse_tensor(inp, weight, indices_or_row_lengths,
+        self._add_data_for_sparse_tensor(inp, weight, indices_or_row_splits,
                                          values, weights, int_zeros,
                                          float_zeros, path, feature)
       elif isinstance(inp, ragged_tensor.RaggedTensor):
-        self._add_data_for_ragged_tensor(inp, weight, indices_or_row_lengths,
+        self._add_data_for_ragged_tensor(inp, weight, indices_or_row_splits,
                                          values, weights, int_zeros,
                                          float_zeros, path, feature)
       else:
@@ -1009,7 +1009,7 @@ class TPUEmbedding(tracking.AutoTrackable):
                          "enqueue.".format(path, type(inp)))
 
     return tpu_ops.enqueue_tpu_embedding_arbitrary_tensor_batch(
-        sample_indices_or_row_lengths=indices_or_row_lengths,
+        sample_indices_or_row_splits=indices_or_row_splits,
         embedding_indices=values,
         aggregation_weights=weights,
         mode_override=mode_override,
