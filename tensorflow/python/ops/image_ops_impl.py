@@ -2720,7 +2720,7 @@ def adjust_hue(image, delta, name=None):
     else:
       flt_image = convert_image_dtype(image, dtypes.float32)
       
-    if delta < -1 and delta > 1:
+    if delta < -1 or delta > 1:
       raise ValueError('delta must be in the range [-1,1].')
 
     rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
