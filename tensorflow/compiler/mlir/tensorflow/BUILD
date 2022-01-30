@@ -387,7 +387,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/transforms:TopoSortPass",
+        "//tensorflow/core/transforms/toposort:Pass",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

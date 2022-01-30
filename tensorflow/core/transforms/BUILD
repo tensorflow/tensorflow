@@ -1,7 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     default_compatible_with = get_compatible_with_cloud(),
@@ -42,68 +41,13 @@ cc_library(
 )
 
 cc_library(
-    name = "DropUnregisteredAttributeOutputShapesPass",
-    srcs = ["drop_unregistered_attribute/output_shapes.cc"],
-    hdrs = ["drop_unregistered_attribute/output_shapes.h"],
-    deps = [
-        ":PassDetail",
-        "//tensorflow/core/ir:Dialect",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Pass",
-    ],
-)
-
-cc_library(
-    name = "TopoSortPass",
-    srcs = ["toposort/toposort_pass.cc"],
-    hdrs = ["toposort/toposort_pass.h"],
-    deps = [
-        ":PassDetail",
-        "//tensorflow/core/ir:Dialect",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-    ],
-)
-
-cc_library(
-    name = "GraphToFunc",
-    srcs = ["graph_to_func/graph_to_func.cc"],
-    hdrs = ["graph_to_func/graph_to_func.h"],
-    deps = [
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
-    name = "GraphToFuncPass",
-    srcs = ["graph_to_func/graph_to_func_pass.cc"],
-    hdrs = ["graph_to_func/graph_to_func_pass.h"],
-    deps = [
-        ":GraphToFunc",
-        ":PassDetail",
-        "//tensorflow/core/ir:Dialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
     name = "PassRegistration",
     hdrs = ["pass_registration.h"],
     deps = [
-        ":DropUnregisteredAttributeOutputShapesPass",
-        ":GraphToFuncPass",
         ":PassIncGen",
-        ":TopoSortPass",
+        "//tensorflow/core/transforms/drop_unregistered_attribute:OutputShapesPass",
+        "//tensorflow/core/transforms/graph_to_func:Pass",
+        "//tensorflow/core/transforms/toposort:Pass",
     ],
 )
 
@@ -128,11 +72,4 @@ filegroup(
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
     ],
-)
-
-glob_lit_tests(
-    data = [":test_utilities"],
-    driver = "@llvm-project//mlir:run_lit.sh",
-    exclude = [],
-    test_file_exts = ["mlir"],
 )
