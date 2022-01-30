@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 
 #include <cmath>
+#include <cstdint>
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
@@ -718,7 +718,7 @@ Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   constexpr int kFmaPerComplexMul = 4;
   int64_t log_factors = 1;
   for (int64_t dim : fft->fft_length()) {
-    log_factors *= tensorflow::Log2Floor(dim);
+    log_factors *= Log2Floor<uint64_t>(dim);
   }
   current_properties_[kFlopsKey] = kFmaFlops * kFmaPerComplexMul * log_factors *
                                    ShapeUtil::ElementsIn(real_shape);
@@ -1060,7 +1060,7 @@ Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
   // This assumes a comparison based N*log(N) algorithm. As for all ops, the
   // actual properties of the op depend on the backend implementation.
   int64_t elements = ShapeUtil::ElementsIn(sort->operand(0)->shape());
-  current_properties_[kFlopsKey] = elements * tensorflow::Log2Ceiling(elements);
+  current_properties_[kFlopsKey] = elements * Log2Ceiling<uint64_t>(elements);
   return Status::OK();
 }
 

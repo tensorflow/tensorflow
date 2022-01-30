@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <bitset>
 #include <cmath>
+#include <limits>
 #include <type_traits>
 
 #include "absl/algorithm/container.h"
@@ -2495,11 +2496,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 std::is_integral<NativeT>::value &&
                 !std::is_same<NativeT, bool>::value>::type* = nullptr>
   Status HandleClz(HloInstruction* clz) {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[clz],
-                        ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
-                          return (sizeof(elem_operand) * CHAR_BIT - 1) -
-                                 tensorflow::Log2Floor64(elem_operand);
-                        }));
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[clz],
+        ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
+          using UnsignedElementwiseT = std::make_unsigned_t<ElementwiseT>;
+          return (std::numeric_limits<UnsignedElementwiseT>::digits - 1) -
+                 Log2Floor<UnsignedElementwiseT>(elem_operand);
+        }));
     return Status::OK();
   }
 

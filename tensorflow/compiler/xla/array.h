@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -415,6 +416,23 @@ constexpr inline T LsbMask(int width) {
   return width == 0
              ? 0
              : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
+}
+
+// Return floor(log2(n)) for positive integer n.  Returns -1 iff n == 0.
+template <typename T>
+constexpr inline int Log2Floor(T x) {
+  static_assert(std::is_unsigned<T>::value,
+                "T should be an unsigned integer type");
+  return absl::bit_width(x) - 1;
+}
+
+// Return ceiling(log2(n)) for positive integer n.  Returns -1 iff n == 0.
+template <typename T>
+constexpr inline int Log2Ceiling(T x) {
+  static_assert(std::is_unsigned<T>::value,
+                "T should be an unsigned integer type");
+  int bit_width = absl::bit_width(x);
+  return absl::popcount(x) <= 1 ? bit_width - 1 : bit_width;
 }
 
 // Returns the value with every bit except the lower 'width' bits set to zero.

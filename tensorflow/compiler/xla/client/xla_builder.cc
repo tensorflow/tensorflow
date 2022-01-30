@@ -1362,17 +1362,15 @@ Status XlaBuilder::VerifyConvolution(
   int num_spatial_dims = num_dims - 2;
 
   const auto check_spatial_dimensions =
-      [&](const char* const field_name,
-          const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>&
-              numbers) {
+      [&](absl::string_view field_name, absl::Span<const int64_t> numbers) {
         if (numbers.size() != num_spatial_dims) {
           return InvalidArgument("Expected %d elements for %s, but got %d.",
                                  num_spatial_dims, field_name, numbers.size());
         }
         for (int i = 0; i < numbers.size(); ++i) {
-          if (numbers.Get(i) < 0 || numbers.Get(i) >= num_dims) {
+          if (numbers[i] < 0 || numbers[i] >= num_dims) {
             return InvalidArgument("Convolution %s[%d] is out of bounds: %d",
-                                   field_name, i, numbers.Get(i));
+                                   field_name, i, numbers[i]);
           }
         }
         return Status::OK();
