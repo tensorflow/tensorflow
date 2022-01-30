@@ -161,8 +161,8 @@ cuda_py_test(
     name = "array_test",
     srcs = ["array_test.py"],
     tags = [
-        "notsan",  # TODO(b/170999669): Data race
         "no_oss",
+        "notsan",  # TODO(b/170999669): Data race
     ],
     deps = [
         ":control_flow_ops",
