@@ -2168,6 +2168,10 @@ def adjust_brightness(image, delta):
       flt_image = image
     else:
       flt_image = convert_image_dtype(image, dtypes.float32)
+    
+    if ((x.numpy().ravel())/255).any() < 0 == True or ((x.numpy().ravel())/255).any() >= 1 == True:
+        if delta < -1 or delta > 1:
+          raise ValueError('delta must be in the range [-1,1].')
 
     adjusted = math_ops.add(
         flt_image, math_ops.cast(delta, flt_image.dtype), name=name)
