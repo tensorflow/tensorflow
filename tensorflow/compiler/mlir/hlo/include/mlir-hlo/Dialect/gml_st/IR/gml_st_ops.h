@@ -20,20 +20,18 @@ limitations under the License.
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 
-namespace mlir {
-namespace gml_st {
+// Generated dialect declarations.
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_dialect.h.inc"
 
-class GmlStDialect : public Dialect {
- public:
-  explicit GmlStDialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "gml_st"; }
-};
-
-}  // namespace gml_st
-}  // namespace mlir
-
+// Generated operation classes.
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc"
+
+// Generated custom type declarations.
+#define GET_TYPEDEF_CLASSES
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.h.inc"
 
 #endif  //  TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H_

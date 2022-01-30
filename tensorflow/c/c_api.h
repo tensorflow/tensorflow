@@ -96,7 +96,7 @@ extern "C" {
 
 // --------------------------------------------------------------------------
 // TF_Version returns a string describing version information of the
-// TensorFlow library. TensorFlow using semantic versioning.
+// TensorFlow library. TensorFlow uses semantic versioning.
 TF_CAPI_EXPORT extern const char* TF_Version(void);
 
 // --------------------------------------------------------------------------
@@ -177,7 +177,7 @@ typedef struct TF_Graph TF_Graph;
 // Return a new graph object.
 TF_CAPI_EXPORT extern TF_Graph* TF_NewGraph(void);
 
-// Destroy an options object.  Graph will be deleted once no more
+// Destroy an options object. Graph will be deleted once no more
 // TFSession's are referencing it.
 TF_CAPI_EXPORT extern void TF_DeleteGraph(TF_Graph*);
 
@@ -664,7 +664,7 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrShapeList(
     int num_shapes, int64_t* storage, int storage_size, TF_Status* status);
 
 // Sets `value` to the binary-serialized TensorShapeProto of the value of
-// `attr_name` attribute of `oper`'.
+// `attr_name` attribute of `oper`.
 TF_CAPI_EXPORT extern void TF_OperationGetAttrTensorShapeProto(
     TF_Operation* oper, const char* attr_name, TF_Buffer* value,
     TF_Status* status);
@@ -1080,7 +1080,7 @@ TF_CAPI_EXPORT void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix,
 //              the nodes in the graph (except for the automatic skipping, see
 //              below).
 //  opers - Array of operations to become the body of the function or null.
-//          - If no array is given (`num_opers`  = -1), all the
+//          - If no array is given (`num_opers` = -1), all the
 //          operations in `fn_body` will become part of the function
 //          except operations referenced in `inputs`. These operations
 //          must have a single output (these operations are typically

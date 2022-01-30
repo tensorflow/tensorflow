@@ -369,7 +369,7 @@ struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
 //              %arg1: memref<2x2xf32>,
 //              %arg2: memref<2x2xf32>,
 //              %arg3: memref<2x2xf32>) {
-//   "lmhlo.fusion"() ( {
+//   "lmhlo.fusion"() ({
 //     %0 = alloc() : memref<2x2xf32>
 //     "lmhlo.add"(%arg1, %arg2, %0) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -418,7 +418,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 
   void runOnOperation() override {
     auto& context = getContext();
-    OwningRewritePatternList patterns(&context);
+    RewritePatternSet patterns(&context);
     ConversionTarget target(context);
     target.addLegalDialect<
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
@@ -448,7 +448,8 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
     });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateFunctionLikeTypeConversionPattern<FuncOp>(patterns, converter);
+    populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
+                                                             converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);
@@ -467,7 +468,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
 // Simply lowers all mhlo ops to their lmhlo counterparts.
 void populateDynamicHLOToLHLOConversionPattern(
     MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
-    OwningRewritePatternList* patterns) {
+    RewritePatternSet* patterns) {
   // clang-format off
   patterns->insert<HloToLhloOpConverter<mhlo::DynamicBroadcastInDimOp>,
                    HloToLhloOpConverter<mhlo::DynamicGatherOp>,
@@ -481,7 +482,7 @@ void populateDynamicHLOToLHLOConversionPattern(
 
 void populateHLOToLHLOConversionPattern(
     MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
-    OwningRewritePatternList* patterns) {
+    RewritePatternSet* patterns) {
   populateDynamicHLOToLHLOConversionPattern(context, converter, patterns);
 
   // clang-format off

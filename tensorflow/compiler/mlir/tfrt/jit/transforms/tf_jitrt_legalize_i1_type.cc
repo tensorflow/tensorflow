@@ -41,9 +41,9 @@ using mlir::NamedAttribute;
 using mlir::Operation;
 using mlir::OperationPass;
 using mlir::OperationState;
-using mlir::OwningRewritePatternList;
 using mlir::RankedTensorType;
 using mlir::Region;
+using mlir::RewritePatternSet;
 using mlir::ShapedType;
 using mlir::Type;
 using mlir::TypeConverter;
@@ -179,12 +179,12 @@ struct I1ToI8GenericConversionPattern : public ConversionPattern {
   }
 };
 
-static void populateI1TypeConversionPatterns(
-    I1TypeConverter &type_converter, OwningRewritePatternList &patterns) {
+static void populateI1TypeConversionPatterns(I1TypeConverter &type_converter,
+                                             RewritePatternSet &patterns) {
   patterns.add<I1ToI8GenericConversionPattern>(type_converter,
                                                patterns.getContext());
-  mlir::populateFunctionLikeTypeConversionPattern<FuncOp>(patterns,
-                                                          type_converter);
+  mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
+      patterns, type_converter);
 }
 
 struct JitRtLegalizeI1TypesPass
@@ -222,7 +222,7 @@ struct JitRtLegalizeI1TypesPass
                          [](Type type) { return isLegalType(type); });
     });
 
-    OwningRewritePatternList patterns(&context);
+    RewritePatternSet patterns(&context);
     populateI1TypeConversionPatterns(type_converter, patterns);
     if (failed(
             applyFullConversion(getOperation(), target, std::move(patterns))))

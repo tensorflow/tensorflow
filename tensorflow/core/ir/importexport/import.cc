@@ -707,8 +707,9 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   // Create the func operation in which we will convert the individual nodes.
   OpBuilder builder = OpBuilder::atBlockEnd(module.getBody());
   MLIRContext* context = module->getContext();
+  Location unknown_loc = builder.getUnknownLoc();
   GraphFuncOp func_op = builder.create<GraphFuncOp>(
-      builder.getUnknownLoc(), name, FunctionType::get(context, {}, {}),
+      unknown_loc, name, FunctionType::get(context, {}, {}),
       /*generic=*/false);
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   const OpDef& signature = fdef.signature();
@@ -775,11 +776,11 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
         return InvalidArgument(
             "Expect `_Arg` node to have a single output, got ",
             arg_op->getNumResults());
-      body->addArgument(arg_op->getResult(0).getType());
+      body->addArgument(arg_op->getResult(0).getType(), unknown_loc);
       arg_types.push_back(arg_op->getResult(0).getType());
       arg_op->getResult(0).replaceAllUsesWith(body->getArguments().back());
 
-      body->addArgument(arg_op->getResult(1).getType());
+      body->addArgument(arg_op->getResult(1).getType(), unknown_loc);
       arg_types.push_back(arg_op->getResult(1).getType());
       arg_op->getResult(1).replaceAllUsesWith(body->getArguments().back());
 
@@ -819,7 +820,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
       arg_attrs.push_back(builder.getDictionaryAttr({}));
     }
     attrs.push_back(
-        builder.getNamedAttr(function_like_impl::getArgDictAttrName(),
+        builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
                              builder.getArrayAttr(arg_attrs)));
   }
 
@@ -869,7 +870,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
       res_attrs.push_back(output_attrs.getDictionary(context));
     }
     attrs.push_back(
-        builder.getNamedAttr(function_like_impl::getResultDictAttrName(),
+        builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
                              builder.getArrayAttr(res_attrs)));
     DenseMap<StringRef, Node*> control_ret_nodes;
     for (Node* node : fbody->control_ret_nodes)

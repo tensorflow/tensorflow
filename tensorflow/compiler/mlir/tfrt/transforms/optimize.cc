@@ -66,7 +66,7 @@ class OptimizeTfForTfrt
   }
 
   mlir::LogicalResult initialize(mlir::MLIRContext* context) override {
-    mlir::OwningRewritePatternList pattern_list(context);
+    mlir::RewritePatternSet pattern_list(context);
     pattern_list.insert<FoldDeviceIndex>(context);
     patterns_ = std::move(pattern_list);
     return mlir::success();

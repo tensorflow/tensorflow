@@ -247,11 +247,11 @@ class TFToTFRTDataRewritePass
     target.addDynamicallyLegalOp<mlir::FuncOp>([&data_converter](FuncOp op) {
       return data_converter.isSignatureLegal(op.getType());
     });
-    mlir::OwningRewritePatternList patterns(&getContext());
+    mlir::RewritePatternSet patterns(&getContext());
     patterns.insert<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
                     ConstOpConversion, ReturnOpConversion>(context);
-    mlir::populateFunctionLikeTypeConversionPattern<FuncOp>(patterns,
-                                                            data_converter);
+    mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
+        patterns, data_converter);
 
     auto result =
         mlir::applyPartialConversion(module, target, std::move(patterns));

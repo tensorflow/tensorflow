@@ -717,7 +717,7 @@ def einsum(equation, *inputs, **kwargs):
 
   This method does not support broadcasting on named-axes. All axes with
   matching labels should have the same length. If you have length-1 axes,
-  use `tf.squeseze` or `tf.reshape` to eliminate them.
+  use `tf.squeeze` or `tf.reshape` to eliminate them.
 
   To write code that is agnostic to the number of indices in the input
   use an ellipsis. The ellipsis is a placeholder for "whatever other indices

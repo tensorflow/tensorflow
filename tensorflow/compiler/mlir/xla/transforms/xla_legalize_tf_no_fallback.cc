@@ -49,7 +49,7 @@ class LegalizeTFNoFallback
 void LegalizeTFNoFallback::runOnFunction() {
   Operation *op = getFunction();
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList patterns(context);
+  RewritePatternSet patterns(context);
 
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &patterns);

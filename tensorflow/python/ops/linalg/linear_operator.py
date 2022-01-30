@@ -165,7 +165,7 @@ class LinearOperator(
      )
      ...
      super().__init__(..., parameters=parameters)
-   ```
+  ```
 
    Users can then access `my_linear_operator.parameters` to see all arguments
    passed to its initializer.
@@ -183,7 +183,7 @@ class LinearOperator(
                is_square=None,
                name=None,
                parameters=None):
-    r"""Initialize the `LinearOperator`.
+    """Initialize the `LinearOperator`.
 
     **This is a private method for subclass use.**
     **Subclasses should copy-paste this `__init__` documentation.**

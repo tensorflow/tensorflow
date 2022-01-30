@@ -53,6 +53,8 @@ class XStatVisitor {
 
   XStat::ValueCase ValueCase() const { return stat_->value_case(); }
 
+  bool BoolValue() const { return static_cast<bool>(IntValue()); }
+
   int64_t IntValue() const { return stat_->int64_value(); }
 
   uint64 UintValue() const { return stat_->uint64_value(); }

@@ -145,9 +145,12 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       // incrementally collect the duration of the iterator's lifetime.
       get_next_end_time_us_ = start_time_us;
     }
+    uint64 gap_time_us = 0;
     if (num_get_next_calls_ == 0) {
       get_next_start_time_us_ = start_time_us;
+      gap_time_us = safe_sub(start_time_us, get_next_end_time_us_);
     }
+    metrics::RecordTFDataIteratorGap(gap_time_us);
     num_get_next_calls_++;
   }
   auto iterator_ = captured_state->iterator();
@@ -234,7 +237,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
 }
 
 Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
-                                                DatasetBase* dataset) {
+                                                const DatasetBase* dataset) {
   std::shared_ptr<State> new_state;
   {
     tf_shared_lock l(mu_);

@@ -317,13 +317,13 @@ class ReshapeSimplifierPass final
     registry.insert<linalg::LinalgDialect>();
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
 };
 }  // end namespace
 
-void ReshapeSimplifierPass::runOnFunction() {
+void ReshapeSimplifierPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   mlir::RewritePatternSet patterns(ctx);
 
@@ -336,13 +336,13 @@ void ReshapeSimplifierPass::runOnFunction() {
   // clang-format on
   shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
 
-  if (failed(mlir::applyPatternsAndFoldGreedily(getFunction(),
+  if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
                                                 std::move(patterns)))) {
     signalPassFailure();
   }
 }
 
-std::unique_ptr<FunctionPass> createReshapeSimplifierPass() {
+std::unique_ptr<OperationPass<FuncOp>> createReshapeSimplifierPass() {
   return std::make_unique<ReshapeSimplifierPass>();
 }
 

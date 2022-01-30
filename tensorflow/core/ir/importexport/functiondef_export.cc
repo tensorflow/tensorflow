@@ -56,7 +56,7 @@ static Status GetValueName(Value operand, Type control_ty, std::string &name) {
     // while the odd position are the associated control input.
     name.clear();
     if (is_control) name = "^";
-    DictionaryAttr arg_attrs = function_like_impl::getArgAttrDict(
+    DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
         block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
     if (!arg_attrs)
       return InvalidArgument("Missing attribute for argument #", arg_num);

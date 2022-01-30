@@ -15,17 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/graph_to_func/graph_to_func_pass.h"
 
+#include <string>
+
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/transforms/graph_to_func/graph_to_func.h"
+#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
-
 namespace {
-
-#define GEN_PASS_CLASSES
-#include "tensorflow/core/transforms/passes.h.inc"
 
 // A pass that lift a graph into a function based on provided feeds and fetches.
 struct GraphToFuncPass : GraphToFuncBase<GraphToFuncPass> {
@@ -60,5 +59,6 @@ std::unique_ptr<Pass> CreateGraphToFuncPass(ArrayRef<std::string> feeds,
                                             ArrayRef<std::string> fetches) {
   return std::make_unique<GraphToFuncPass>(feeds, fetches);
 }
+
 }  // namespace tfg
 }  // namespace mlir

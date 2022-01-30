@@ -152,6 +152,7 @@ tfrt_cc_library(
         ":tf_jitrt",
         ":tf_jitrt_pipeline",
         ":tf_jitrt_request_context",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/core:framework",
@@ -174,6 +175,7 @@ tfrt_cc_library(
         "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:async_runtime",
         "@tf_runtime//backends/jitrt:async_runtime_api",
+        "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )
 

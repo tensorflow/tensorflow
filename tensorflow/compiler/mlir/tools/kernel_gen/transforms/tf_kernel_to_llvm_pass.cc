@@ -34,8 +34,8 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -265,7 +265,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
     arith::populateArithmeticExpandOpsPatterns(patterns);
-    populateStdExpandOpsPatterns(patterns);
+    memref::populateExpandOpsPatterns(patterns);
     arith::populateArithmeticToLLVMConversionPatterns(type_converter, patterns);
     populateMemRefToLLVMConversionPatterns(type_converter, patterns);
     populateMathToLLVMConversionPatterns(type_converter, patterns);

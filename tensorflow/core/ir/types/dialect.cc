@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionSupport.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project

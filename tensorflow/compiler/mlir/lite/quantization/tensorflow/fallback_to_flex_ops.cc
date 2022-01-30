@@ -276,7 +276,7 @@ void FallbackToFlexOps::runOnFunction() {
   MLIRContext *ctx = &getContext();
 
   // Convert binary ops to BiasAdd ops if possible.
-  OwningRewritePatternList patterns(ctx);
+  RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 

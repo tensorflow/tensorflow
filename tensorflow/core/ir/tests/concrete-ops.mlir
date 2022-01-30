@@ -153,4 +153,6 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %For_0, %ctl_9 = For(%Index#0, %Index#1, %Index#2, %If)
   {T = [f32], body = #tf_type.func<@unknown_for_body, {}>}
   : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>)
+
+  %Cast, %ctl_10 = Cast(%For_0) [%ctl_8] {SrcT = f32, DstT = f32} : (tensor<*xf32>) -> (tensor<f32>)
 }

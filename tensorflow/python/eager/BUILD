@@ -623,12 +623,14 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        "//tensorflow/core/function/polymorphism:type_dispatch",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
     ],
 )

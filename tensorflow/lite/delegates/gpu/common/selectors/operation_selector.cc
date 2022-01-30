@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/selectors/operation_selector.h"
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
@@ -331,6 +333,14 @@ absl::Status GPUOperationFromNodePart0(
       auto input_shape = inputs[0]->tensor.shape;
       auto output_shape = outputs[0]->tensor.shape;
       if (inputs.size() == 1) {
+        if (attr.groups != 1) {
+          const int src_group_size = attr.weights.shape.i;
+          const int dst_group_size = attr.weights.shape.o / attr.groups;
+          if (src_group_size % 4 != 0 || dst_group_size % 4 != 0) {
+            return absl::UnimplementedError(
+                "No support of grouped convolution for this channels sizes.");
+          }
+        }
         if (!hints.Check(ModelHints::kNoWinogradOptimizations) &&
             WinogradFromNode(gpu_info, inputs, outputs, op_def, hints,
                              input_shape, output_shape, attr, gpu_subgraph)
@@ -345,6 +355,10 @@ absl::Status GPUOperationFromNodePart0(
           return absl::OkStatus();
         }
       } else {
+        if (inputs[1]->tensor.shape.c != inputs[0]->tensor.shape.c) {
+          return absl::UnimplementedError(
+              "No support of grouped convolution with runtime weights");
+        }
         auto weights_shape = inputs[1]->tensor.shape;
         if (attr.bias.data.empty()) {
           attr.bias.shape = Linear(weights_shape.b);

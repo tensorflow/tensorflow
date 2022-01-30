@@ -321,4 +321,24 @@ cc_library(
     alwayslink = 1,  # For registration to always run.
 )
 
+cc_library(
+    name = "coreml_plugin",
+    srcs = ["coreml_plugin.cc"],
+    deps = [
+        ":configuration_fbs",
+        ":delegate_registry",
+        "@com_google_absl//absl/memory",
+        "//tensorflow/lite:minimal_logging",
+    ] + select({
+        "//tensorflow:macos": [
+            "//tensorflow/lite/delegates/coreml:coreml_delegate",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/lite/delegates/coreml:coreml_delegate",
+        ],
+        "//conditions:default": [],
+    }),
+    alwayslink = 1,  # For registration to always run.
+)
+
 tflite_portable_test_suite()

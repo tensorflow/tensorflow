@@ -18,18 +18,18 @@ limitations under the License.
 #include "mlir-hlo/Analysis/userange_analysis.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/BufferUtils.h"
 
 namespace mlir {
 
 namespace {
 
 /// Reuses already allocated buffer to save allocation operations.
-class BufferReuse : BufferPlacementTransformationBase {
+class BufferReuse : bufferization::BufferPlacementTransformationBase {
   using ValueSetMap = llvm::MapVector<Value, DenseSet<Value>>;
   using ValueVectorMap = llvm::MapVector<Value, SmallVector<Value, 4>>;
 
@@ -46,10 +46,10 @@ class BufferReuse : BufferPlacementTransformationBase {
     // in the useRangeMap. The potentialReuseMap maps each value to the
     // respective list.
     ValueVectorMap potentialReuseMap;
-    for (BufferPlacementAllocs::AllocEntry entry : allocs) {
+    for (bufferization::BufferPlacementAllocs::AllocEntry entry : allocs) {
       Value itemA = std::get<0>(entry);
       SmallVector<Value, 4> potReuseVector;
-      for (BufferPlacementAllocs::AllocEntry entry : allocs) {
+      for (bufferization::BufferPlacementAllocs::AllocEntry entry : allocs) {
         Value itemB = std::get<0>(entry);
         // Do not compare an item to itself and make sure that the value of item
         // B is not a BlockArgument. BlockArguments cannot be reused. Also
@@ -282,9 +282,9 @@ class BufferReuse : BufferPlacementTransformationBase {
 /// The buffer reuse pass that uses already allocated buffers if all critera
 /// are met.
 struct BufferReusePass : BufferReuseBase<BufferReusePass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     // Reuse allocated buffer instead of new allocation.
-    Operation *funcOp = getFunction();
+    Operation *funcOp = getOperation();
     BufferReuse optimizer(funcOp);
     optimizer.reuse();
   }
@@ -292,7 +292,7 @@ struct BufferReusePass : BufferReuseBase<BufferReusePass> {
 
 }  // end namespace
 
-std::unique_ptr<FunctionPass> createBufferReusePass() {
+std::unique_ptr<OperationPass<FuncOp>> createBufferReusePass() {
   return std::make_unique<BufferReusePass>();
 }
 

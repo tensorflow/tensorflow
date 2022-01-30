@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -36,12 +37,14 @@ namespace TFL {
 // Stores information about how to quantize a user-specified custom operation.
 struct CustomOpInfo {
   std::vector<std::int32_t> quantizable_input_indices;
-  bool is_weight_only;
+  bool is_weight_only = false;
+  bool no_side_effect = true;
 };
 
 using ::tflite::optimize::ReducedPrecisionSupport;
 using StringSet = absl::flat_hash_set<std::string>;
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
+enum CustomOpUpdateOptions { kINputIndices, kWeightOnly, kNoSideEffect };
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -187,11 +190,16 @@ struct QuantizationSpecs {
   // Names of locations to block from quantization. Used in QuantizePass.
   StringSet nodes_blocklist;
 
-  // TODO(b/214186439): Support custom op quantization for MLIR dynamic range
-  // quantization
   // Map from custom op code to custom op quantization information.
+  // For dynamic range quantization, among the custom ops in the graph those
+  // specified in this map are subject to quantization.
   CustomOpMap custom_map;
 };
+
+// Parses the command line flag strings to the CustomOpMap specification.
+void ParseCustomOpSpecs(absl::string_view node_names,
+                        const CustomOpUpdateOptions& update_option,
+                        CustomOpMap& custom_op_map);
 
 // Parses the command line flag strings to the quantization specification for
 // input arrays of a graph. The array names are not stored in the spec, and will

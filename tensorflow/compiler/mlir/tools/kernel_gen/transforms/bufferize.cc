@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 
-#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -48,14 +48,23 @@ struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
     if (!result_type || !result_type.hasStaticShape() || result_rank > 1)
       return failure();
 
-    auto memref_type =
-        MemRefType::get(result_type.getShape(), result_type.getElementType());
+    auto element_type = result_type.getElementType();
+    auto memref_type = MemRefType::get(result_type.getShape(), element_type);
     auto elements_attr = op.getValue().cast<DenseElementsAttr>();
+
+    // arith.constant doesn't handle scalar complex types.
+    // TODO(kramerb): Should this use materializeConstant instead?
+    auto make_constant = [&](Attribute attr, Type type) -> Value {
+      if (complex::ConstantOp::isBuildableWith(attr, type))
+        return rewriter.create<complex::ConstantOp>(loc, type,
+                                                    attr.cast<ArrayAttr>());
+      return rewriter.create<arith::ConstantOp>(loc, attr);
+    };
 
     if (result_rank == 0) {
       Value buffer = rewriter.create<memref::AllocOp>(loc, memref_type);
-      Value constant = rewriter.create<arith::ConstantOp>(
-          loc, elements_attr.getValues<Attribute>()[0]);
+      Value constant =
+          make_constant(elements_attr.getValues<Attribute>()[0], element_type);
       rewriter.create<memref::StoreOp>(loc, constant, buffer);
       rewriter.replaceOp(op, {buffer});
       return success();
@@ -66,11 +75,10 @@ struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
     bool all_same_elems = elements_attr.isSplat();
     Value value;
     if (all_same_elems)
-      value = rewriter.create<arith::ConstantOp>(
-          loc, elements_attr.getSplatValue<mlir::Attribute>());
+      value = make_constant(elements_attr.getSplatValue<mlir::Attribute>(),
+                            element_type);
     for (auto &en : llvm::enumerate(elements_attr.getValues<Attribute>())) {
-      if (!all_same_elems)
-        value = rewriter.create<arith::ConstantOp>(loc, en.value());
+      if (!all_same_elems) value = make_constant(en.value(), element_type);
       Value index = rewriter.create<arith::ConstantIndexOp>(loc, en.index());
       rewriter.create<memref::StoreOp>(loc, value, buffer, index);
     }

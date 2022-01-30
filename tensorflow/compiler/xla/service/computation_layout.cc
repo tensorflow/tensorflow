@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 
 #include <algorithm>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 
@@ -89,15 +89,6 @@ bool ComputationLayout::operator==(const ComputationLayout& other) const {
 bool ComputationLayout::operator!=(const ComputationLayout& other) const {
   return result_layout() != other.result_layout() ||
          parameter_layouts() != other.parameter_layouts();
-}
-
-uint64_t ComputationLayout::Hash() const {
-  uint64_t hash_value = ShapeUtil::Hash(result_layout_.shape());
-  for (const auto& parameter_layout : parameter_layouts_) {
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, ShapeUtil::Hash(parameter_layout.shape()));
-  }
-  return hash_value;
 }
 
 }  // namespace xla

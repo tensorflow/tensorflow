@@ -334,7 +334,7 @@ class MultiProcessCluster(object):
       task_id: the id the task such as 1.
 
     Raises:
-      ValueError: if the server alreay exists.
+      ValueError: if the server already exists.
     """
     assert self._mpr
 

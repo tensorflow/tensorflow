@@ -114,10 +114,12 @@ TfLiteStatus QuantizeWeights(
   quant_specs.legacy_float_scale = legacy_float_scale;
   quant_specs.ops_blocklist = denylisted_mlir_op_names;
   for (const auto& entry : custom_op_map) {
-    quant_specs.custom_map[entry.first].is_weight_only =
-        entry.second.is_weight_only;
     quant_specs.custom_map[entry.first].quantizable_input_indices =
         entry.second.quantizable_input_indices;
+    quant_specs.custom_map[entry.first].is_weight_only =
+        entry.second.is_weight_only;
+    quant_specs.custom_map[entry.first].no_side_effect =
+        entry.second.no_side_effect;
   }
 
   if (quant_specs.inference_type == tensorflow::DT_INT8)
@@ -139,7 +141,6 @@ TfLiteStatus QuantizeWeights(
   Builder mlir_builder(&context);
 
   tensorflow::AddDynamicRangeQuantizationPasses(quant_specs, pm);
-  pm.addPass(TFL::CreateOptimizeOpOrderPass());
 
   if (failed(pm.run(module.get()))) {
     absl::string_view err = statusHandler.ConsumeStatus().error_message();

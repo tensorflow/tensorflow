@@ -24,7 +24,7 @@ func @main() -> (tensor<1xf32>, tensor<i32>)
   %cst = arith.constant dense<1> : tensor<i32> loc("dec")
   %arg0 = arith.constant dense<5> : tensor<i32> loc("N")
   %arg1 = arith.constant dense<3.0> : tensor<1xf32> loc("val")
-  %0:3 = "tfl.while"(%arg0, %arg1, %cst) ( {
+  %0:3 = "tfl.while"(%arg0, %arg1, %cst) ({
     ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>, %arg4: tensor<i32>):
       %cst_0 = arith.constant dense<0> : tensor<i32>
       %1 = "tfl.greater"(%arg2, %cst_0) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>

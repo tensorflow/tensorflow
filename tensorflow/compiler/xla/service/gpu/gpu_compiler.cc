@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dot_merger.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -78,7 +79,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -86,7 +86,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
@@ -564,7 +563,8 @@ Status GpuCompiler::OptimizeHloModule(
     horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
     // FusionBitcastLift must be after InstructionFusion, as it undoes
     // part of it.
-    horizontal_fusion.AddPass<FusionBitcastLift>();
+    // TODO(b/209005695) Renable once the bug is fixed.
+    // horizontal_fusion.AddPass<FusionBitcastLift>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
@@ -594,11 +594,9 @@ Status GpuCompiler::OptimizeHloModule(
     }
 
     if (debug_options.xla_gpu_enable_async_all_reduce()) {
-      pipeline.AddPass<AsyncCollectiveCreator>(
-          AsyncCollectiveCreator::CollectiveCreatorConfig{
-              /*convert_all_reduce=*/true,
-              /*convert_all_gather=*/false,
-              /*convert_collective_permute=*/false});
+      AsyncCollectiveCreator::CollectiveCreatorConfig config;
+      config.convert_all_reduce = [](const HloInstruction*) { return true; };
+      pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
     }
 
     pipeline.AddPass<CollectivesScheduleLinearizer>();
@@ -643,7 +641,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
     pipeline.AddPass<AliasPassthroughParams>();
   }
   pipeline.AddPass<LoopScheduleLinearizer>(GetCanShareBuffer());
-  pipeline.AddPass<GpuCopyInsertion>(GetCanShareBuffer());
+  pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
 }
@@ -801,9 +799,21 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 static StatusOr<OwnedBefBuffer> LowerToBef(
     mlir::ModuleOp mlir_module, absl::string_view entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module) {
+  // Forward collective permute attributes for use by the lowering pipeline.
+  mlir::OpBuilder builder(mlir_module.getContext());
+  mlir::IntegerAttr replica_count_attr =
+      builder.getI64IntegerAttr(hlo_module->config().replica_count());
+  mlir::IntegerAttr num_partitions_attr =
+      builder.getI64IntegerAttr(hlo_module->config().num_partitions());
+  mlir::FuncOp func =
+      mlir_module.lookupSymbol<mlir::FuncOp>(entry_function_name);
+  func->setAttr("replica_count", replica_count_attr);
+  func->setAttr("num_partitions", num_partitions_attr);
+
   // LMHLO -> TFRT Dialect
   TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToTfrtGpuWithBinary(
-      mlir_module, entry_function_name, buffer_sizes));
+      mlir_module, {entry_function_name.data(), entry_function_name.size()},
+      buffer_sizes));
 
   if (DumpingEnabledForHloModule(*hlo_module)) {
     DumpToFileInDirOrStdout(*hlo_module, "tfrt_gpu", mlir_module);

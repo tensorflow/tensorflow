@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -38,7 +39,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/experimental/conv_emitter/conv_emitter_transforms.h"
 #include "tensorflow/compiler/xla/permutation_util.h"

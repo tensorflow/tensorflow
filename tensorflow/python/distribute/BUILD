@@ -1128,7 +1128,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # TODO(b/214574707): times out
-        "nogpu",  # TODO(b/214574707): times out
         "notsan",  # TODO(b/177098062): flaky for over a year
     ],
     deps = [
@@ -1409,6 +1408,7 @@ distribute_py_test(
         "no_cuda_asan",  # times out
         "no_oss",  # b/178656226
         "noasan",  # b/175816710
+        "notap",  # Flaky
         "notsan",  # b/168645872
     ],
     tpu_tags = [

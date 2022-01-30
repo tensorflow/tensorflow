@@ -18,7 +18,7 @@ allprojects {
         mavenCentral()  // should be already there
         maven {         // add this repo to use snapshots
           name 'ossrh-snapshot'
-          url 'http://oss.sonatype.org/content/repositories/snapshots'
+          url 'https://oss.sonatype.org/content/repositories/snapshots'
         }
     }
 }
@@ -171,7 +171,7 @@ allprojects {
         mavenCentral()
         maven {  // Only for snapshot artifacts
             name 'ossrh-snapshot'
-            url 'http://oss.sonatype.org/content/repositories/snapshots'
+            url 'https://oss.sonatype.org/content/repositories/snapshots'
         }
         flatDir {
             dirs 'libs'
@@ -205,7 +205,7 @@ allprojects {
         mavenCentral()
         maven {  // Only for snapshot artifacts
             name 'ossrh-snapshot'
-            url 'http://oss.sonatype.org/content/repositories/snapshots'
+            url 'https://oss.sonatype.org/content/repositories/snapshots'
         }
         mavenLocal()
     }

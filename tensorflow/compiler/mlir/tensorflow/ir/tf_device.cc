@@ -409,6 +409,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   // lengths.
   p->printOptionalAttrDict(op->getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
                                kOperandSegmentSizesAttr});
+  *p << ' ';
   p->printRegion(op.body(), /*printEntryBlockArgs=*/false);
 }
 
@@ -535,12 +536,12 @@ void BuildReplicateOp(
           VerifyCompatibleTypes(input.getType(), replicated_input.second)));
       state->addOperands(input);
     }
-    block.addArgument(replicated_input.second);
+    block.addArgument(replicated_input.second, state->location);
   }
 
   for (auto packed_input : packed_inputs) {
     state->addOperands(packed_input);
-    block.addArgument(packed_input.getType());
+    block.addArgument(packed_input.getType(), state->location);
   }
 
   // Add derived `operand_segment_sizes` attribute.
@@ -753,7 +754,7 @@ static LogicalResult EliminatePassThroughResults(ClusterOp op,
 }
 }  // anonymous namespace
 
-void ClusterOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ClusterOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
   results.insert(EliminatePassThroughResults);
 }
@@ -782,7 +783,7 @@ struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
 };
 }  // anonymous namespace
 
-void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void LaunchOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
   results.insert<DropEmptyLaunch>(context);
 }

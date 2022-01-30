@@ -34,8 +34,9 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionSupport.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
@@ -45,6 +46,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/types/dialect.h"
+#include "tensorflow/core/ir/utility.h"
 
 // Generated definitions.
 #include "tensorflow/core/ir/dialect.cc.inc"
@@ -58,14 +60,14 @@ namespace tfg {
 
 // TFGraph support for interacting with the AsmPrinter.
 // Gives prettier names to SSA values.
-struct TFGraphOpAsmInterface : public OpAsmDialectInterface {
-  using OpAsmDialectInterface::OpAsmDialectInterface;
+struct TFGraphOpAsmInterface
+    : public OpAsmOpInterface::FallbackModel<TFGraphOpAsmInterface> {
+  static bool classof(Operation *op) { return true; }
 
   // Name operation results with the operation name, except control outputs
   // which are named "ctl". MLIR will automatically use a numerical suffix to
   // unique.
-  void getAsmResultNames(Operation *op,
-                         OpAsmSetValueNameFn set_name_fn) const final {
+  void getAsmResultNames(Operation *op, OpAsmSetValueNameFn set_name_fn) const {
     // We only name the results when there are results to name, an op like
     // `print` which does not have results will just use the `ctl` name for the
     // control output.
@@ -79,6 +81,10 @@ struct TFGraphOpAsmInterface : public OpAsmDialectInterface {
       }
     }
   }
+  void getAsmBlockArgumentNames(Operation *op, Region &region,
+                                OpAsmSetValueNameFn setNameFn) const {
+    return;
+  }
 };
 
 // Dialect construction: there is one instance per context and it registers its
@@ -89,12 +95,12 @@ void TFGraphDialect::initialize() {
 #define GET_OP_LIST
 #include "tensorflow/core/ir/ops.cc.inc"
       >();
-  addInterfaces<TFGraphOpAsmInterface>();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.
   allowUnknownOperations();
 
+  fallbackOpAsmInterface_ = new TFGraphOpAsmInterface;
   // Caching some often used context-owned informations for fast-access.
   name_key_ = StringAttr::get(getContext(), getNameAttrKey());
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
@@ -102,6 +108,18 @@ void TFGraphDialect::initialize() {
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
   control_ty_ = ControlType::get(getContext());
 }
+
+// Provides a hook for op interface.
+void *TFGraphDialect::getRegisteredInterfaceForOp(mlir::TypeID interface,
+                                                  mlir::OperationName opName) {
+  if (interface == TypeID::get<mlir::OpAsmOpInterface>()) {
+    return fallbackOpAsmInterface_;
+  }
+
+  return nullptr;
+}
+
+TFGraphDialect::~TFGraphDialect() { delete fallbackOpAsmInterface_; }
 
 // Print an operation that belongs to this dialect, if unregistered.
 // The general syntax is:
@@ -331,8 +349,9 @@ static bool VerifyGenericTFGOperation(Operation &op) {
 //===----------------------------------------------------------------------===//
 
 static void PrintGraphOp(OpAsmPrinter &p, GraphOp op) {
-  p << " " << op.version();
+  p << ' ' << op.version();
   p.printOptionalAttrDictWithKeyword(op->getAttrs(), {"version"});
+  p << ' ';
   p.printRegion(op.getBodyRegion());
 }
 
@@ -582,10 +601,10 @@ static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
   assert(arg_attrs.size() == arg_types.size());
   assert(result_attrs.size() == result_types.size());
   result.attributes.append(
-      builder.getNamedAttr(function_like_impl::getArgDictAttrName(),
+      builder.getNamedAttr(FunctionOpInterface::getArgDictAttrName(),
                            builder.getArrayAttr(arg_attrs)));
   result.attributes.append(
-      builder.getNamedAttr(function_like_impl::getResultDictAttrName(),
+      builder.getNamedAttr(FunctionOpInterface::getResultDictAttrName(),
                            builder.getArrayAttr(result_attrs)));
 
   // Parse the function body.
@@ -593,6 +612,7 @@ static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   if (failed(parser.parseRegion(
           *body, entry_args, entry_args.empty() ? ArrayRef<Type>() : arg_types,
+          /*argLocations=*/{},
           /*enableNameShadowing=*/false)))
     return failure();
 
@@ -657,10 +677,11 @@ static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   // Print attributes.
   if (!op->getAttrs().empty()) {
     p.printNewline();
-    function_like_impl::printFunctionAttributes(
+    function_interface_impl::printFunctionAttributes(
         p, op, fnType.getNumInputs(), fnType.getNumResults(), {"generic"});
   }
   // Print body.
+  p << ' ';
   p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
 }
 
@@ -677,6 +698,18 @@ GraphFuncOp GraphFuncOp::getCalledFunction(Operation *op,
     if (callee) return callee;
   }
   return symbol_table.lookup<GraphFuncOp>(op->getName().stripDialect());
+}
+
+BlockArgument GraphFuncOp::getDataValueOf(BlockArgument ctl) {
+  return ctl.getOwner()->getArgument(ctl.getArgNumber() - 1);
+}
+
+BlockArgument GraphFuncOp::getControlTokenOf(BlockArgument data) {
+  return data.getOwner()->getArgument(data.getArgNumber() + 1);
+}
+
+BlockArgument GraphFuncOp::getDataValue(Region &region, unsigned idx) {
+  return region.getArgument(idx * 2);
 }
 
 // This is naming block arguments for GraphFuncOp, we rely on the arg attributes
@@ -792,6 +825,19 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
           << " does not match corresponding op result dtype: " << res_type);
     }
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CastOp
+
+LogicalResult CastOp::fold(ArrayRef<Attribute> operands,
+                           SmallVectorImpl<OpFoldResult> &results) {
+  // If the op has control operands, we can't fold.
+  if (!ctls().empty()) return failure();
+  if (getElementTypeOrSelf(x()) != getElementTypeOrSelf(y())) return failure();
+  results.push_back(x());
+  results.push_back(LookupControlDependency(x()));
   return success();
 }
 

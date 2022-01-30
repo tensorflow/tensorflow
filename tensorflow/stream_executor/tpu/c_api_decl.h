@@ -208,8 +208,13 @@ struct BoolList {
   int64_t size;
 };
 
+struct FloatListRef {
+  float_t* ptr;  // not owned
+  int64_t size;
+};
+
 typedef struct TpuEmbeddingEngineParameters {
-  FloatList** parameters[8];
+  FloatListRef** parameters[8];
   size_t num_tables;
 } TpuEmbeddingEngineParameters;
 

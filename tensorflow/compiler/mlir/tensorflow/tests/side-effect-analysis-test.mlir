@@ -1767,9 +1767,8 @@ func @send_recv_effect(
 
 // -----
 
-// Tests that we create a dependency between ops with
-// `TF_TPUCompileExecuteSideEffect`.
-func @tpu_compile_execute_effect(
+// Tests that we create a dependency between ops with `TF_TPUExecuteSideEffect`.
+func @tpu_execute_effect(
   // expected-remark@above {{ID: 7}}
   %arg0: tensor<!tf_type.string>,
   %arg1: tensor<!tf_type.string>) {
@@ -1800,9 +1799,8 @@ func @tpu_compile_execute_effect(
 
 // -----
 
-// Tests that we create a dependency between different ops with
-// `TF_TPUCompileExecuteSideEffect`.
-func @tpu_compile_execute_effect(
+// Tests that we don't create dependencies between TPU compile ops.
+func @tpu_compile_ops(
   // expected-remark@above {{ID: 7}}
   %arg0: tensor<!tf_type.string>,
   %arg1: tensor<!tf_type.string>) {
@@ -1813,14 +1811,10 @@ func @tpu_compile_execute_effect(
         // expected-remark@above {{Successors: {4}}}
         %0:2 = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<!tf_type.string>)
         // expected-remark@above {{ID: 0}}
-        // expected-remark@above {{Successors: {1}}}
-        "tf.TPUExecute"(%arg0, %arg0) : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
+        %1:2 = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<!tf_type.string>)
         // expected-remark@above {{ID: 1}}
-        // expected-remark@above {{Predecessors: {0}}}
-        // expected-remark@above {{Successors: {2}}}
         tf_executor.yield
         // expected-remark@above {{ID: 2}}
-        // expected-remark@above {{Predecessors: {1}}}
     }
     tf_executor.fetch %island : !tf_executor.control
     // expected-remark@above {{ID: 4}}
@@ -1850,6 +1844,37 @@ func @device_ordinal_placeholder_side_effect_free(
         tf_executor.yield
         // expected-remark@above {{ID: 2}}
         // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies from or to ops with `TF_MustExecute`
+// trait.
+func @must_execute_ops(
+  // expected-remark@above {{ID: 7}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<!tf_type.string>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        "tf._UnknownSideEffectingOp_"() : () -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        "tf._InternalTestMustExecuteTrait_"() : () -> ()
+        // expected-remark@above {{ID: 1}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0}}}
     }
     tf_executor.fetch %island : !tf_executor.control
     // expected-remark@above {{ID: 4}}

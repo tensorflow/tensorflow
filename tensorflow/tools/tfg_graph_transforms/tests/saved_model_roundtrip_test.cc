@@ -63,12 +63,12 @@ void RunRoundTrip(const std::string& input_file) {
 
   tensorflow::SavedModel original_model, final_model;
 
-  status = mlir::tfg::graph_transforms::ReadSavedModelProto(input_file,
-                                                            original_model);
+  status = mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
+      input_file, original_model);
   ASSERT_TRUE(status.ok());
 
-  status = mlir::tfg::graph_transforms::ReadSavedModelProto(output_file,
-                                                            final_model);
+  status = mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
+      output_file, final_model);
   ASSERT_TRUE(status.ok());
 
   tensorflow::MetaGraphDef* original_metagraph =

@@ -7,16 +7,16 @@ func @different_predicate_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
      }) {is_stateless = true} : (tensor<i1>) -> ()
-    "tf.IfRegion"(%1) ( {
+    "tf.IfRegion"(%1) ({
       %2 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -34,14 +34,14 @@ func @different_block_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
     %3 = "tf.A"() : () -> (tensor<?xf32>)
     %4 = "tf.B"() : () -> (tensor<i32>)
     "tf.WhileRegion"(%4, %3) ({
     ^bb0(%arg1: tensor<i32>, %arg2: tensor<?xf32>):
-      "tf.IfRegion"(%0) ( {
+      "tf.IfRegion"(%0) ({
         %2 = "tf.A"() : () -> (tensor<f32>)
         "tf.Yield"() : () -> ()
         }, {
@@ -50,7 +50,7 @@ func @different_block_no_merge() {
        "tf.Yield"(%1) : (tensor<i1>) -> ()
     }, {
     ^bb0(%arg1: tensor<i32>, %arg2: tensor<?xf32>):
-      "tf.IfRegion"(%0) ( {
+      "tf.IfRegion"(%0) ({
         %2 = "tf.B"() : () -> (tensor<f32>)
         "tf.Yield"() : () -> ()
         }, {
@@ -73,15 +73,15 @@ func @same_predicate_no_returns_merged() {
   // CHECK-SAME:   _then_func_name = "thenFunc1"
 
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
      }) {is_stateless = true, _else_func_name = "elseFunc1", _then_func_name = "thenFunc1"} : (tensor<i1>) -> ()
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -99,9 +99,9 @@ func @same_predicate_intermediate_dependency_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
@@ -110,7 +110,7 @@ func @same_predicate_intermediate_dependency_no_merge() {
      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %3 = "tf.D"(%1) : (tensor<f32>) -> (tensor<f32>)
     %4 = "tf.E"(%3) : (tensor<f32>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.B"(%4) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -128,9 +128,9 @@ func @same_predicate_side_effect_dependency_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
@@ -138,7 +138,7 @@ func @same_predicate_side_effect_dependency_no_merge() {
       "tf.Yield"(%2) : (tensor<f32>) -> ()
      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     "tf.D"(%1) : (tensor<f32>) -> ()
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %4 = "tf.B"(%1) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -157,16 +157,16 @@ func @same_predicate_stateless_merge() {
   // CHECK:        "tf.IfRegion"
   // CHECK:        is_stateless = false
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %4 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -192,16 +192,16 @@ func @same_predicate_returns_merged() {
   // CHECK-NOT:    "tf.IfRegion"
   // CHECK         "tf.E"(%[[IF_OUTPUT]]#0, %[[IF_OUTPUT]]#1)
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %3 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
       %3 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    %2 = "tf.IfRegion"(%0) ( {
+    %2 = "tf.IfRegion"(%0) ({
       %3 = "tf.B"() : () -> (tensor<i32>)
       "tf.Yield"(%3) : (tensor<i32>) -> ()
       }, {
@@ -228,16 +228,16 @@ func @same_predicate_returns_unused() {
   // CHECK-NOT:    "tf.IfRegion"
   // CHECK         "tf.E"(%[[IF_OUTPUT]])
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %3 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
       %3 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    %2 = "tf.IfRegion"(%0) ( {
+    %2 = "tf.IfRegion"(%0) ({
       %3 = "tf.B"() : () -> (tensor<i32>)
       "tf.Yield"(%3) : (tensor<i32>) -> ()
       }, {
@@ -263,16 +263,16 @@ func @same_predicate_dependency() {
   // CHECK-NOT:    "tf.IfRegion"
   // CHECK         "tf.E"(%[[IF_OUTPUT]])
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %3 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
       %3 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    %2 = "tf.IfRegion"(%0) ( {
+    %2 = "tf.IfRegion"(%0) ({
       %3 = "tf.B"(%1) : (tensor<f32>) -> (tensor<i32>)
       "tf.Yield"(%3) : (tensor<i32>) -> ()
       }, {
@@ -302,9 +302,9 @@ func @same_predicate_results_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>
   // CHECK         "tf.E"(%[[IF_OUTPUT#1]])
   // CHECK-NEXT    "tf.F"(%[[IF_OUTPUT#1]])
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %3 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
@@ -313,7 +313,7 @@ func @same_predicate_results_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>
      }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
     "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %4 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
-    %5 = "tf.IfRegion"(%0) ( {
+    %5 = "tf.IfRegion"(%0) ({
       %3 = "tf.B"(%4) : (tensor<f32>) -> (tensor<i32>)
       "tf.Yield"(%3) : (tensor<i32>) -> ()
       }, {
@@ -341,9 +341,9 @@ func @same_predicate_side_effect_moved(%arg0: tensor<!tf_type.resource<tensor<f3
   // CHECK-NOT:    "tf.IfRegion"
   // CHECK         "tf.ReadVariableOp(arg0)
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %3 = "tf.A"() : () -> (tensor<f32>)
       "tf.AssignVariableOp"(%arg0, %3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
       "tf.Yield"(%3) : (tensor<f32>) -> ()
@@ -353,7 +353,7 @@ func @same_predicate_side_effect_moved(%arg0: tensor<!tf_type.resource<tensor<f3
      }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
     %8 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> (tensor<f32>)
     %4 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> (tensor<f32>)
-    %5 = "tf.IfRegion"(%0) ( {
+    %5 = "tf.IfRegion"(%0) ({
       %3 = "tf.B"(%4) : (tensor<f32>) -> (tensor<i32>)
       "tf.Yield"(%3) : (tensor<i32>) -> ()
       }, {
@@ -374,21 +374,21 @@ func @same_predicate_3_ifregions() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
      }) { is_stateless = true } : (tensor<i1>) -> ()
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
     }) { is_stateless = true } : (tensor<i1>) -> ()
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -412,9 +412,9 @@ func @same_predicate_3_ifregions_only_merge2() {
   // CHECK:          "tf.E"
   // CHECK-NEXT:     "tf.G"
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
@@ -422,14 +422,14 @@ func @same_predicate_3_ifregions_only_merge2() {
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
     %3 = "tf.D"(%1) : (tensor<f32>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %4 = "tf.E"(%3) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.G"(%3) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -454,24 +454,24 @@ func @same_predicate_3_ifregions_reorder() {
   // CHECK-NEXT    "tf.IfRegion"
   // CHECK:          "tf.E"
   // CHECK-NOT:    "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%8) ( {
+    "tf.IfRegion"(%8) ({
       %4 = "tf.E"(%1) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.G"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -488,24 +488,24 @@ func @same_predicate_3_ifregions_reorder() {
 // CHECK-LABEL: func @same_predicate_3_ifregions_intermediate_dep
 func @same_predicate_3_ifregions_intermediate_dep() {
   // CHECK-COUNT-3:        "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    %9 = "tf.IfRegion"(%8) ( {
+    %9 = "tf.IfRegion"(%8) ({
       %4 = "tf.E"(%1) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.G"(%9) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -522,24 +522,24 @@ func @same_predicate_3_ifregions_intermediate_dep() {
 // CHECK-LABEL: func @same_predicate_3_ifregions_intermediate_side_effect
 func @same_predicate_3_ifregions_intermediate_side_effect() {
   // CHECK-COUNT-3:   "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
-    %9 = "tf.IfRegion"(%8) ( {
+    %9 = "tf.IfRegion"(%8) ({
       %4 = "tf.E"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.G"(%1) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
@@ -556,30 +556,30 @@ func @same_predicate_3_ifregions_intermediate_side_effect() {
 // CHECK-LABEL: func @side_effect_analysis_updated
 func @side_effect_analysis_updated() {
   // CHECK-COUNT-3:   "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
       }, {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
-    %9 = "tf.IfRegion"(%8) ( {
+    %9 = "tf.IfRegion"(%8) ({
       %4 = "tf.E"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
-    "tf.IfRegion"(%0) ( {
+    "tf.IfRegion"(%0) ({
       %5 = "tf.G"(%1) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
     }) { is_stateless = false} : (tensor<i1>) -> ()
-    "tf.IfRegion"(%8) ( {
+    "tf.IfRegion"(%8) ({
       %4 = "tf.E"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
@@ -597,9 +597,9 @@ func @side_effect_analysis_updated() {
 func @same_predicate_2_ifregions_multiple_side_effect_ops() {
   // CHECK:       "tf.IfRegion"
   // CHECK-NOT:   "tf.IfRegion"
-  "tf_device.cluster"() ( {
+  "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %1 = "tf.IfRegion"(%0) ( {
+    %1 = "tf.IfRegion"(%0) ({
       %2 = "tf.A"() : () -> (tensor<f32>)
       %3 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
@@ -607,13 +607,75 @@ func @same_predicate_2_ifregions_multiple_side_effect_ops() {
       %2 = "tf.C"() : () -> (tensor<f32>)
       "tf.Yield"(%2) : (tensor<f32>) -> ()
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
-    %9 = "tf.IfRegion"(%0) ( {
+    %9 = "tf.IfRegion"(%0) ({
       %4 = "tf.E"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
       %4 = "tf.F"() : () -> (tensor<f32>)
       "tf.Yield"(%4) : (tensor<f32>) -> ()
     }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// Check that the algorithm that moves ops to after the merged IfRegion is
+// reasonably efficient.
+
+// CHECK-LABEL: func @moved_ops_with_many_dependencies
+func @moved_ops_with_many_dependencies() {
+  // CHECK:      tf_device.cluster
+  // CHECK:        "tf.IfRegion"
+  // CHECK-NOT:    "tf.IfRegion"
+  "tf_device.cluster"() ( {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %2 = "tf.IfRegion"(%0) ( {
+      %1 = "tf.A"() : () -> (tensor<f32>)
+      "tf.Yield"(%1) : (tensor<f32>) -> ()
+      }, {
+      %1 = "tf.B"() : () -> (tensor<f32>)
+      "tf.Yield"(%1) : (tensor<f32>) -> ()
+     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %3 = "tf.D"(%2) : (tensor<f32>) -> (tensor<f32>)
+    %4 = "tf.D"(%2, %3) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %5 = "tf.D"(%2, %3, %4) : (tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %6 = "tf.D"(%2, %3, %4, %5) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %7 = "tf.D"(%2, %3, %4, %5, %6) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %8 = "tf.D"(%2, %3, %4, %5, %6, %7) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %9 = "tf.D"(%2, %3, %4, %5, %6, %7, %8) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %10 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %11 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %12 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %13 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %14 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %15 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %16 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %17 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %18 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %19 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %20 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %21 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %22 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %23 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %24 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %25 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %26 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %27 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %28 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %29 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %30 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28, %29) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %31 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28, %29, %30) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %32 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28, %29, %30, %31) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %33 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28, %29, %30, %31, %32) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %34 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28, %29, %30, %31, %32, %33) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %35 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28, %29, %30, %31, %32, %33, %34) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %36 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28, %29, %30, %31, %32, %33, %34, %35) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %37 = "tf.D"(%2, %3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14, %15, %16, %17, %18, %19, %20, %21, %22, %23, %24, %25, %26, %27, %28, %29, %30, %31, %32, %33, %34, %35, %36) : (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    "tf.IfRegion"(%0) ( {
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+     }) {is_stateless = true} : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return

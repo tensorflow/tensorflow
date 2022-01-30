@@ -57,6 +57,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
@@ -346,6 +347,66 @@ static LogicalResult Verify(CustomCallOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// DotOp
+//===----------------------------------------------------------------------===//
+namespace {
+bool dimCompatible(int64_t a, int64_t b) {
+  return ShapedType::kDynamicSize == a || ShapedType::kDynamicSize == b ||
+         a == b;
+}
+
+ShapedType inferDotReturnType(ShapedType lhs, ShapedType rhs) {
+  auto element_type = lhs.getElementType();
+  if (!lhs.hasRank() || !rhs.hasRank()) {
+    return UnrankedTensorType::get(element_type);
+  }
+
+  // vector dot vector
+  if (1 == lhs.getRank() && 1 == rhs.getRank() &&
+      dimCompatible(lhs.getDimSize(0), rhs.getDimSize(0))) {
+    return RankedTensorType::get({}, element_type);
+  }
+  // matrix dot vector
+  if (2 == lhs.getRank() && 1 == rhs.getRank() &&
+      dimCompatible(lhs.getDimSize(1), rhs.getDimSize(0))) {
+    return RankedTensorType::get({lhs.getDimSize(0)}, element_type);
+  }
+  // vector dot matrix
+  if (1 == lhs.getRank() && 2 == rhs.getRank() &&
+      dimCompatible(lhs.getDimSize(0), rhs.getDimSize(0))) {
+    return RankedTensorType::get({rhs.getDimSize(1)}, element_type);
+  }
+  // matrix dot matrix
+  if (2 == lhs.getRank() && 2 == rhs.getRank() &&
+      dimCompatible(lhs.getDimSize(1), rhs.getDimSize(0))) {
+    int64_t shape[2] = {lhs.getDimSize(0), rhs.getDimSize(1)};
+    return RankedTensorType::get(shape, element_type);
+  }
+  return {};
+}
+}  // namespace
+
+static LogicalResult Verify(DotOp op) {
+  auto lhs_type = op.lhs().getType().cast<ShapedType>();
+  auto rhs_type = op.rhs().getType().cast<ShapedType>();
+  auto result_type = op.getType().cast<ShapedType>();
+  auto expect_return_type = inferDotReturnType(lhs_type, rhs_type);
+  if (!expect_return_type) {
+    return op.emitError() << "Unexpected operands type: " << lhs_type << " and "
+                          << rhs_type;
+  }
+  if (result_type.hasRank() && expect_return_type.hasRank()) {
+    if (result_type.getShape() != expect_return_type.getShape()) {
+      return op.emitError()
+             << "Unexpected result type: has " << result_type
+             << " but inferred " << expect_return_type << " from operands "
+             << lhs_type << " and " << rhs_type;
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // DotGeneralOp
 //===----------------------------------------------------------------------===//
 
@@ -444,7 +505,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
   }
 };
 
-void GatherOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void GatherOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
   results.insert<GatherSlice>(context);
 }
@@ -818,7 +879,7 @@ OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
   if (!type) return {};
 
   int32_t dim = dimension();
-  if (ShapedType::isDynamic(dim)) return {};
+  if (type.isDynamicDim(dim)) return {};
   // The result type is always is a 0-d i32 tensor.
   return DenseIntElementsAttr::get<int32_t>(
       getResult().getType().cast<RankedTensorType>(), type.getDimSize(dim));
@@ -871,7 +932,7 @@ struct IotaBroadcast : public OpRewritePattern<IotaOp> {
   }
 };
 
-void IotaOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void IotaOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* context) {
   results.insert<IotaBroadcast>(context);
 }
@@ -961,8 +1022,8 @@ struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
 
 }  // namespace
 
-void DynamicIotaOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void DynamicIotaOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                MLIRContext* context) {
   results.insert<DynamicIotaIsStatic>(context);
   results.insert<DynamicIotaBroadcast>(context);
 }
@@ -1104,7 +1165,7 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-void ConvertOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ConvertOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
   results.insert<EliminateIdentityConvert>(context);
 }
@@ -1232,7 +1293,7 @@ struct UnpackRepackSameTuple : public OpRewritePattern<TupleOp> {
 
 }  // namespace
 
-void TupleOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void TupleOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
   results.insert<UnpackRepackSameTuple>(context);
 }
@@ -1558,12 +1619,12 @@ class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
             op.operand().getDefiningOp())) {
       auto new_indices =
           broadcast_in_dim_op.broadcast_dimensions()
-              .mapValues(
-                  op.broadcast_dimensions().DenseElementsAttr::getElementType(),
-                  [&bs_dim_indices](const APInt& dim) -> APInt {
-                    return APInt(dim.getBitWidth(),
-                                 bs_dim_indices[dim.getSExtValue()], true);
-                  })
+              .mapValues(op.broadcast_dimensions().getElementType(),
+                         [&bs_dim_indices](const APInt& dim) -> APInt {
+                           return APInt(dim.getBitWidth(),
+                                        bs_dim_indices[dim.getSExtValue()],
+                                        true);
+                         })
               .cast<DenseIntElementsAttr>();
       rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
           op, op.getType(), broadcast_in_dim_op.operand(), new_indices);
@@ -1573,8 +1634,8 @@ class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
   }
 };
 
-void BroadcastInDimOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void BroadcastInDimOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                   MLIRContext* context) {
   results.insert<BroadcastInDimSimplifier>(context);
 }
 
@@ -1703,7 +1764,7 @@ class ChainedDynamicBroadcastInDimCanonicalization
 }  // namespace
 
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+    RewritePatternSet& results, MLIRContext* context) {
   results.insert<ChainedDynamicBroadcastInDimCanonicalization,
                  DynamicBroadcastInDimOpNotActuallyDynamic,
                  DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
@@ -2016,8 +2077,8 @@ LogicalResult ConcatenateOp::inferReturnTypes(
   return success();
 }
 
-void ConcatenateOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void ConcatenateOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                MLIRContext* context) {
   results.insert<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
 }
 
@@ -2294,8 +2355,8 @@ class DynamicReshapeOpSameShapeOpResult
 };
 }  // namespace
 
-void DynamicReshapeOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void DynamicReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                   MLIRContext* context) {
   // clang-format off
   results.insert<
       DynamicReshapeOpNotActuallyDynamic,
@@ -2362,8 +2423,8 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
 
 }  // namespace
 
-void DynamicSliceOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void DynamicSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                 MLIRContext* context) {
   results.insert<DynamicSliceToSlice>(context);
 }
 
@@ -2478,8 +2539,8 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
 };
 }  // namespace
 
-void RealDynamicSliceOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void RealDynamicSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                     MLIRContext* context) {
   results.insert<RealDynamicSliceIsStatic, RealDSliceToSlice>(context);
 }
 
@@ -3020,6 +3081,7 @@ void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
         p << ") ";
       }
     }
+    p << ' ';
     p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
   }
 }
@@ -3572,7 +3634,7 @@ struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
   }
 };
 
-void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
   results.insert<LowerBoolSplatConstantsIntoRegion>(context);
 }
@@ -3933,8 +3995,8 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
 // DynamicPadOp
 //===----------------------------------------------------------------------===//
 
-void DynamicPadOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void DynamicPadOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                               MLIRContext* context) {
   results.insert<DPadToPad>(context);
 }
 
@@ -4092,7 +4154,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
   results.insert<IdentityBroadcastReshape, IdentityBroadcastInDimReshape,
                  EliminateRedundantReshape, EliminateIdentityReshape>(context);
@@ -4157,7 +4219,7 @@ static LogicalResult InlineIfConstantCondition(IfOp ifOp,
   return success();
 }
 
-void IfOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void IfOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                        MLIRContext* context) {
   results.add(&InlineIfConstantCondition);
 }
@@ -4196,7 +4258,7 @@ static LogicalResult InlineCaseConstantCondition(CaseOp caseOp,
   return success();
 }
 
-void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void CaseOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* context) {
   results.add(&InlineCaseConstantCondition);
 }
@@ -4759,7 +4821,7 @@ struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
 };
 }  // namespace
 
-void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void SliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
   results.insert<SimplifyConcatSlice>(context);
 }
@@ -4892,7 +4954,7 @@ static LogicalResult SortOpInferDefaultDimension(SortOp op,
   return success();
 }
 
-void SortOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void SortOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* /*context*/) {
   results.insert(SortDropEmptyUseArgs);
   results.insert(SortOpInferDefaultDimension);
@@ -4921,7 +4983,7 @@ static LogicalResult EliminateRedundantTranspse(TransposeOp op,
   auto operand_permutation = tranpose_operand.permutation().getValues<APInt>();
   auto new_permutation =
       op.permutation()
-          .mapValues(op.permutation().DenseElementsAttr::getElementType(),
+          .mapValues(op.permutation().getElementType(),
                      [&operand_permutation](const APInt& index) -> APInt {
                        return operand_permutation[index.getSExtValue()];
                      })
@@ -4959,7 +5021,7 @@ static LogicalResult EliminateBroadcastInDimTranspose(
   return success();
 }
 
-void TransposeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                               MLIRContext* /*context*/) {
   results.insert(EliminateRedundantTranspse);
   results.insert(EliminateBroadcastInDimTranspose);
@@ -5137,8 +5199,8 @@ void TupleOp::build(OpBuilder& builder, OperationState& result,
 // UnaryEinsumOp
 //===----------------------------------------------------------------------===//
 
-void UnaryEinsumOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
+void UnaryEinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                MLIRContext* context) {
   results.insert<UnaryEinsumToEinsum>(context);
 }
 
@@ -5540,9 +5602,9 @@ void printWhileOp(WhileOp op, OpAsmPrinter& p) {
   }
   p.printOptionalAttrDictWithKeyword(op->getAttrs());
   p.printNewline();
-  p << " cond";
+  p << " cond ";
   p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
-  p << " do";
+  p << " do ";
   p.printRegion(op->getRegion(1), /*printEntryBlockArgs=*/false);
 }
 
@@ -5637,7 +5699,7 @@ static LogicalResult whileCanonicalization(WhileOp whileOp,
   return success();
 }
 
-void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void WhileOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
   results.add(&whileCanonicalization);
 }
@@ -6386,7 +6448,7 @@ static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
                                               unsigned arg_index,
                                               Operation* op) {
   // The attribute can only be applied to function-like operations.
-  if (!op->hasTrait<mlir::OpTrait::FunctionLike>())
+  if (!isa<mlir::FunctionOpInterface>(op))
     return op->emitOpError() << "attribute " << attr_name
                              << " can only be used on function-like operations";
 
@@ -6402,7 +6464,8 @@ static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
   // Verify that the result index is not out of range. Since the attribute is a
   // function argument attribute, the argument index is always correct when this
   // verifier is called.
-  auto ftype = mlir::function_like_impl::getFunctionType(op);
+  FunctionOpInterface funcOp = cast<FunctionOpInterface>(op);
+  FunctionType ftype = funcOp.getType().cast<FunctionType>();
   if (alias_attr.getResultIndex() >= ftype.getNumResults())
     return op->emitOpError() << "attribute " << attr_name
                              << " result index is out of range, must be <"
@@ -6475,7 +6538,7 @@ LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,
 LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
                                                     NamedAttribute attr) {
   if (auto alias_attr = attr.getValue().dyn_cast<ArgResultAliasAttr>()) {
-    if (!op->hasTrait<mlir::OpTrait::FunctionLike>())
+    if (!isa<mlir::FunctionOpInterface>(op))
       return op->emitOpError()
              << "attribute " << attr.getName()
              << " can only be used on function-like operations";

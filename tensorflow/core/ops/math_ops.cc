@@ -1133,8 +1133,8 @@ REGISTER_OP("ArgMax")
     .Input("dimension: Tidx")
     .Output("output: output_type")
     .Attr("T: {numbertype, bool}")
-    .Attr("Tidx: {int32, int64} = DT_INT32")
-    .Attr("output_type: {int32, int64} = DT_INT64")
+    .Attr("Tidx: {int16, int32, int64} = DT_INT32")
+    .Attr("output_type: {int16, int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
 
 REGISTER_OP("ArgMin")

@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 namespace source_map_util {

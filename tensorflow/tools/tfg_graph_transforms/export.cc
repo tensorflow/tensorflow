@@ -32,6 +32,31 @@ namespace mlir {
 namespace tfg {
 namespace graph_transforms {
 
+namespace {
+
+template <class T>
+tensorflow::Status SerializeProto(T model_proto,
+                                  const std::string& output_file) {
+  auto output_dir = tensorflow::io::Dirname(output_file);
+
+  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->RecursivelyCreateDir(
+      {output_dir.data(), output_dir.length()}));
+  if (IsTextProto(output_file)) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        tensorflow::WriteTextProto(tensorflow::Env::Default(), output_file,
+                                   model_proto),
+        "Error while writing the resulting model proto");
+  } else {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        tensorflow::WriteBinaryProto(tensorflow::Env::Default(), output_file,
+                                     model_proto),
+        "Error while writing the resulting model proto");
+  }
+  return tensorflow::Status::OK();
+}
+
+}  // namespace
+
 tensorflow::Status ExportTFGToSavedModel(mlir::ModuleOp module,
                                          const std::string& input_file,
                                          const std::string& output_file) {
@@ -42,7 +67,7 @@ tensorflow::Status ExportTFGToSavedModel(mlir::ModuleOp module,
 
   tensorflow::SavedModel saved_model_proto;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ReadSavedModelProto(input_file, saved_model_proto),
+      ReadModelProto<tensorflow::SavedModel>(input_file, saved_model_proto),
       "loading saved model");
 
   if (saved_model_proto.meta_graphs_size() == 0) {
@@ -59,22 +84,18 @@ tensorflow::Status ExportTFGToSavedModel(mlir::ModuleOp module,
   *(saved_model_proto.mutable_meta_graphs(0)) = std::move(meta_graph_def);
 
   VLOG(1) << "Serializing resulting SavedModel to " << output_file;
-  auto output_dir = tensorflow::io::Dirname(output_file);
+  return SerializeProto<tensorflow::SavedModel>(saved_model_proto, output_file);
+}
 
-  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->RecursivelyCreateDir(
-      {output_dir.data(), output_dir.length()}));
-  if (IsTextProto(output_file)) {
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        tensorflow::WriteTextProto(tensorflow::Env::Default(), output_file,
-                                   saved_model_proto),
-        "Error while writing the resulting saved model proto");
-  } else {
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        tensorflow::WriteBinaryProto(tensorflow::Env::Default(), output_file,
-                                     saved_model_proto),
-        "Error while writing the resulting saved model proto");
-  }
-  return tensorflow::Status::OK();
+tensorflow::Status ExportTFGToGraphDef(mlir::ModuleOp module,
+                                       const std::string& output_file) {
+  tensorflow::GraphDef new_graphdef;
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      tensorflow::ExportMlirToGraphdef(module, &new_graphdef),
+      "while converting TFG to GraphDef");
+
+  VLOG(1) << "Serializing resulting GraphDef to " << output_file;
+  return SerializeProto<tensorflow::GraphDef>(new_graphdef, output_file);
 }
 
 }  // namespace graph_transforms

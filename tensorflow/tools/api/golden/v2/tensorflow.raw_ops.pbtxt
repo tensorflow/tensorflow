@@ -1330,7 +1330,7 @@ tf_module {
   }
   member_method {
     name: "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch"
-    argspec: "args=[\'sample_indices_or_row_lengths\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
+    argspec: "args=[\'sample_indices_or_row_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
     name: "DynamicPartition"
@@ -1398,7 +1398,7 @@ tf_module {
   }
   member_method {
     name: "EnqueueTPUEmbeddingArbitraryTensorBatch"
-    argspec: "args=[\'sample_indices_or_row_lengths\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'None\'], "
+    argspec: "args=[\'sample_indices_or_row_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'None\'], "
   }
   member_method {
     name: "EnqueueTPUEmbeddingIntegerBatch"

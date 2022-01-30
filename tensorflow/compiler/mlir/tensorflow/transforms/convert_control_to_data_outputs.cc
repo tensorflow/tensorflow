@@ -120,7 +120,7 @@ void CollectChainResources(
 //
 // For example,
 // ```
-// %merged_control = "tf_executor.island"(%control_a, %control_b) ( {
+// %merged_control = "tf_executor.island"(%control_a, %control_b) ({
 //   "tf.NoOp"() : () -> ()
 //   "tf_executor.yield"() : () -> ()
 // }) : (!tf_executor.control, !tf_executor.control) -> (!tf_executor.control)
@@ -190,11 +190,12 @@ bool RemoveAllControlOutputs(FuncOp func) {
 void AppendFunctionArguments(FuncOp func, int num_resources,
                              ShapedType chaining_data_type) {
   for (int i = 0; i < num_resources; ++i) {
-    func.getRegion().addArgument(chaining_data_type);
+    func.getRegion().addArgument(chaining_data_type, func.getLoc());
   }
 
-  FunctionType ftype = FunctionType::get(
-      func.getContext(), func.getArgumentTypes(), func.getType().getResults());
+  FunctionType ftype =
+      FunctionType::get(func.getContext(), func.getBody().getArgumentTypes(),
+                        func.getType().getResults());
   func.setType(ftype);
 }
 

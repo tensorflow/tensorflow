@@ -25,6 +25,7 @@ load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
+load("//tensorflow:tensorflow.bzl", "if_windows")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
@@ -56,6 +57,7 @@ visibility = [
     "//third_party/py/starcraft2:__subpackages__",
     "//third_party/py/tensorflow_gnn:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
+    "//third_party/py/tensorflow_privacy:__subpackages__",
 ]
 
 package(
@@ -986,8 +988,11 @@ py_library(
     visibility = visibility,
     deps = [
         ":array_ops_gen",
+        ":control_flow_util",
         ":math_ops_gen",
+        "//tensorflow/python/compat",
         "//tensorflow/python/framework:common_shapes",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -1265,6 +1270,7 @@ py_library(
     name = "control_flow_util_v2",
     srcs = ["ops/control_flow_util_v2.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//waymo/ml:__subpackages__"],
     deps = [
         ":control_flow_util",
         ":control_flow_v2_func_graphs",
@@ -1848,7 +1854,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/saved_model:registration",
+        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/util",
     ],
 )
@@ -2835,9 +2841,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "image_grad_deterministic_test",
+    name = "image_grad_d9m_test",
     size = "large",
-    srcs = ["ops/image_grad_deterministic_test.py"],
+    srcs = ["ops/image_grad_d9m_test.py"],
     python_version = "PY3",
     shard_count = 5,
     deps = [
@@ -3011,9 +3017,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "nn_fused_batchnorm_deterministic_test",
+    name = "nn_fused_batchnorm_d9m_test",
     size = "medium",
-    srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
+    srcs = ["ops/nn_fused_batchnorm_d9m_test.py"],
     python_version = "PY3",
     shard_count = 4,
     tags = [
@@ -3307,6 +3313,8 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/util:determinism",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/platform:enable_tf2_utils",
+    ]) + if_windows([
+        "//tensorflow/c:kernels_experimental",
     ]),
 )
 

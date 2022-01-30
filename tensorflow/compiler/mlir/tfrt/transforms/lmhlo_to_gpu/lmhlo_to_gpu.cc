@@ -82,7 +82,7 @@ void ConvertLmhloToGpuPass::runOnFunction() {
   populateGemmConversionPattern(patterns, converter);
   populateReplicaAndPartitionConversionPattern(patterns, converter);
   populateTriangularSolveConversionPattern(patterns, converter);
-  populateFunctionLikeTypeConversionPattern<FuncOp>(patterns, converter);
+  populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
   populateReturnOpTypeConversionPattern(patterns, converter);
 
   // Set of ops that need to be wrapped in tfrt_gpu_conversion.async.execute

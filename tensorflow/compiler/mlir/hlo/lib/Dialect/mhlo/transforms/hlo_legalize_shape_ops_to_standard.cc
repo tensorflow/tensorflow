@@ -201,16 +201,16 @@ struct HloLegalizeShapeOpsToStandardPass
                     tensor::TensorDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext& ctx = getContext();
-    OwningRewritePatternList patterns(&ctx);
+    RewritePatternSet patterns(&ctx);
     ConversionTarget target(ctx);
     target.addLegalDialect<arith::ArithmeticDialect, StandardOpsDialect,
                            tensor::TensorDialect, shape::ShapeDialect>();
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 
-    auto func = getFunction();
+    auto func = getOperation();
     mhlo::RemoveSignTypeConverter type_converter;
     mhlo::populateHLOShapeOpsToStandardConversionPattern(&ctx, type_converter,
                                                          &patterns);
@@ -226,7 +226,7 @@ namespace mhlo {
 
 void populateHLOShapeOpsToStandardConversionPattern(
     MLIRContext* context, TypeConverter& type_converter,
-    OwningRewritePatternList* patterns) {
+    RewritePatternSet* patterns) {
   // clang-format off
   patterns->insert<
       ComputeReshapeShapeConversion,

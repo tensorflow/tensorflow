@@ -387,7 +387,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/transforms:TopoSortPass",
+        "//tensorflow/core/transforms/toposort:Pass",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -830,6 +830,7 @@ cc_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineAnalysis",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -1257,7 +1258,6 @@ cc_library(
         ":unroll_batch_matmul_pass",
         ":verification_utils",
         ":verify_suitable_for_graph_export",
-        ":visitor_util",
         ":xla_sharding_util",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -1284,6 +1284,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineAnalysis",
+        "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
@@ -1327,7 +1329,6 @@ cc_library(
         "transforms/test_cluster_ops_by_policy.cc",
         "transforms/test_passes.h.inc",
         "transforms/test_side_effect_analysis.cc",
-        "transforms/test_visitor_util.cc",
         "transforms/tf_saved_model_freeze_variables_test_pass.cc",
     ],
     hdrs = [
@@ -1347,7 +1348,6 @@ cc_library(
         ":tf_saved_model_freeze_variables",
         ":tf_saved_model_passes",
         ":tf_test_passes_inc_gen",
-        ":visitor_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -2366,21 +2366,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
-    name = "visitor_util",
-    srcs = [
-        "utils/visitor_util.cc",
-    ],
-    hdrs = [
-        "utils/visitor_util.h",
-    ],
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )

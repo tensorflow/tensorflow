@@ -173,5 +173,46 @@ absl::Status ConvPowerVRTest(TestExecutionEnvironment* env) {
   return absl::OkStatus();
 }
 
+absl::Status ConvPowerVRGroupedTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 1, 1, 8);
+  src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+
+  Convolution2DAttributes attr;
+  attr.groups = 2;
+  attr.padding.prepended = HW(0, 0);
+  attr.padding.appended = HW(0, 0);
+  attr.strides = HW(1, 1);
+  attr.dilations = HW(1, 1);
+  attr.weights.shape = OHWI(8, 1, 1, 4);
+  attr.weights.data = {1.0f,  2.0f,  3.0f,  4.0f,  5.0f,  6.0f,  7.0f,  8.0f,
+                       9.0f,  10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                       17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f,
+                       25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0f, 31.0f, 32.0f};
+  attr.bias.shape = Linear(8);
+  attr.bias.data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+  for (auto storage : env->GetSupportedStorages()) {
+    for (auto precision : env->GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      ConvPowerVR operation =
+          CreateConvPowerVR(env->GetGpuInfo(), op_def, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, absl::make_unique<ConvPowerVR>(std::move(operation)),
+          BHWC(1, 1, 1, 8), &dst_tensor));
+      RETURN_IF_ERROR(PointWiseNear(
+          {20.0f, 44.0f, 68.0f, 92.0f, 412.0f, 500.0f, 588.0f, 676.0f},
+          dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace tflite

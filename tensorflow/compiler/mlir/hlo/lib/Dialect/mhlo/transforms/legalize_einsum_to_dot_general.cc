@@ -104,20 +104,20 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
 struct LegalizeEinsumToDotGeneralPass
     : public LegalizeEinsumToDotGeneralPassBase<
           LegalizeEinsumToDotGeneralPass> {
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     PopulateEinsumToDotGeneralPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 }  // namespace
 
 void PopulateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
-                                        OwningRewritePatternList *patterns) {
+                                        RewritePatternSet *patterns) {
   patterns->insert<EinsumToDotGeneralPattern>(context);
 }
 
-std::unique_ptr<FunctionPass> createLegalizeEinsumToDotGeneralPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeEinsumToDotGeneralPass() {
   return std::make_unique<LegalizeEinsumToDotGeneralPass>();
 }
 

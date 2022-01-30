@@ -134,7 +134,7 @@ class DequantizeConverter : public OpRewritePattern<SrcOp> {
 };
 
 void DecomposeHybridQuantizationPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   auto *ctx = &getContext();
   auto func = getFunction();
   patterns.insert<DequantizeConverter<TFL::Conv2DOp>,

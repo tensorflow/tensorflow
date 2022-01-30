@@ -351,18 +351,17 @@ static LogicalResult Verify(TFRFuncOp func) {
 }
 
 static ParseResult ParseFuncOp(OpAsmParser &parser, OperationState *result) {
-  auto build_func_type = [](Builder &builder, ArrayRef<Type> arg_types,
-                            ArrayRef<Type> results,
-                            function_like_impl::VariadicFlag, std::string &) {
-    return builder.getFunctionType(arg_types, results);
-  };
-  return function_like_impl::parseFunctionLikeOp(
+  auto build_func_type =
+      [](Builder &builder, ArrayRef<Type> arg_types, ArrayRef<Type> results,
+         function_interface_impl::VariadicFlag,
+         std::string &) { return builder.getFunctionType(arg_types, results); };
+  return function_interface_impl::parseFunctionOp(
       parser, *result, /*allowVariadic=*/false, build_func_type);
 }
 
 static void PrintFuncOp(OpAsmPrinter &p, TFRFuncOp op) {
   FunctionType fn_type = op.getType();
-  function_like_impl::printFunctionLikeOp(
+  function_interface_impl::printFunctionOp(
       p, op, fn_type.getInputs(), /*isVariadic=*/false, fn_type.getResults());
 }
 
@@ -840,53 +839,53 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
 
 }  // namespace
 
-void ConstantTensorOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void ConstantTensorOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                   MLIRContext *context) {
   results.insert<ConvertConstToTensorConst>(context);
 }
 
-void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void CastOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
   results.insert<RemoveRedundantCast>(context);
 }
 
-void GetShapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void GetShapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.insert<GetTensorShape>(context);
 }
 
-void GetElementOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void GetElementOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                               MLIRContext *context) {
   results.insert<RemoveRedundantGetElement>(context);
 }
 
-void GetLengthOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void GetLengthOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
   results.insert<RemoveRedundantGetLength>(context);
 }
 
-void BuildListOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void BuildListOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
   results.insert<BuildConstantListAsAttr>(context);
 }
 
-void TFRQuantRawDataOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void TFRQuantRawDataOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
   results.insert<RemoveRawDataOp>(context);
 }
 
-void TFRQuantQParamsOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void TFRQuantQParamsOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
   results.insert<RemoveQParamsOp>(context);
 }
 
-void TFRQuantRescaleOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void TFRQuantRescaleOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
   results.insert<RemoveRescaleOp>(context);
 }
 
 void TFRQuantScaleFactorOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+    RewritePatternSet &results, MLIRContext *context) {
   results.insert<RemoveScaleFactorOp>(context);
 }
 

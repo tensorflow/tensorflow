@@ -160,10 +160,10 @@ struct LegalizeTrigonometricToApproximationPass
     : public LegalizeTanhToApproximationPassBase<
           LegalizeTrigonometricToApproximationPass> {
   /// Perform the lowering of standard dialect operations to approximations.
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 
@@ -174,8 +174,8 @@ createLegalizeTrigonometricToApproximationPass() {
   return std::make_unique<LegalizeTrigonometricToApproximationPass>();
 }
 
-void PopulateTrigonometricToApproximationPatterns(
-    mlir::MLIRContext *context, OwningRewritePatternList *patterns) {
+void PopulateTrigonometricToApproximationPatterns(mlir::MLIRContext *context,
+                                                  RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<ApproximateTanhLowering>(context);
   // clang-format on

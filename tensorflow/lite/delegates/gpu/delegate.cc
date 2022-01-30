@@ -94,12 +94,12 @@ class Delegate {
     if (options_.max_delegated_partitions <= 0) {
       options_.max_delegated_partitions = 1;
     }
-    if (options->experimental_flags &
+    if (options_.experimental_flags &
             TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION &&
-        options->model_token && options->serialization_dir) {
+        options_.model_token && options_.serialization_dir) {
       SerializationParams params;
-      params.model_token = options->model_token;
-      params.cache_dir = options->serialization_dir;
+      params.model_token = options_.model_token;
+      params.cache_dir = options_.serialization_dir;
       serialization_.reset(new Serialization(params));
     }
   }

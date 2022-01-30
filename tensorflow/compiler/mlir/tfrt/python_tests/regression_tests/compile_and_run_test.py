@@ -88,8 +88,10 @@ class CompileAndRunTest(test.TestCase):
         module = ir.Module.parse(mlir_function)
         func = module.body.operations[0]
         function_name = ir.StringAttr(func.attributes['sym_name']).value
-        self.assertIn(_ARG_ATTRIBUTES_NAME, func.attributes)
-        arg_attrs = ir.ArrayAttr(func.attributes[_ARG_ATTRIBUTES_NAME])
+        # If the function has arguments, we expect argument attributes.
+        if func.regions[0].blocks[0].arguments:
+          self.assertIn(_ARG_ATTRIBUTES_NAME, func.attributes)
+          arg_attrs = ir.ArrayAttr(func.attributes[_ARG_ATTRIBUTES_NAME])
       logging.info(f'processing {filename}')
       start = time.perf_counter()
       compiled = jitrt.compile(

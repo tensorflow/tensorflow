@@ -20,11 +20,24 @@ limitations under the License.
 
 namespace xla {
 
+// HLO passes (HLO -> HLO).
 void RecordHloPassesDuration(uint64_t time_usecs);
 
+// Compiling HLO to LLVM.
 void RecordHloToLlvmDuration(uint64_t time_usecs);
 
+// The entire LLVM to PTX pipeline, including both LLVM optimization (LLVM ->
+// LLVM) and compiling LLVM -> PTX.
+void RecordLlvmPassesAndLlvmToPtxDuration(uint64_t time_usecs);
+
+// LLVM passes (linking and optimization) only (LLVM -> LLVM).
+void RecordLlvmPassesDuration(uint64_t time_usecs);
+
+// Compiling LLVM to PTX only.
 void RecordLlvmToPtxDuration(uint64_t time_usecs);
+
+// Compiling PTX to cubin.
+void RecordPtxToCubinDuration(uint64_t time_usecs);
 
 }  // namespace xla
 

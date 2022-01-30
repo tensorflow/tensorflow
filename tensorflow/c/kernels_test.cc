@@ -819,14 +819,17 @@ TEST(TestKernel, TestHostMemory) {
   EXPECT_EQ(TF_OK, TF_GetCode(status));
   KernelList list;
   list.ParseFromArray(buf->data, buf->length);
-  const auto expected_str = R"str(kernel {
+  KernelList expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      R"str(kernel {
   op: "HostMemoryOp"
   device_type: "FakeDeviceName1"
   host_memory_arg: "input2"
   host_memory_arg: "output1"
 }
-)str";
-  ASSERT_EQ(expected_str, list.DebugString());
+)str",
+      &expected_proto);
+  ASSERT_EQ(list.DebugString(), expected_proto.DebugString());
 
   TF_DeleteBuffer(buf);
   TF_DeleteStatus(status);

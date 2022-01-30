@@ -3797,6 +3797,27 @@ value of `input` in the unique output `output`. In other words:
   let hasOptions = 1;
 }
 
+def TFL_GeluOp: TFL_Op<"gelu", [
+    NoSideEffect,
+    SameOperandsAndResultShape,
+    QuantizableResult,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = "GELU activation function.";
+  let description = [{
+    Computes GELU activation function element-wise.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    DefaultValuedAttr<BoolAttr, "false">:$approximate
+  );
+
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
+
+  let hasOptions = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Quantization ops.
 //===----------------------------------------------------------------------===//

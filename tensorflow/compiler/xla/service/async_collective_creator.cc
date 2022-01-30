@@ -35,12 +35,12 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
     // iterating through them.
     std::vector<HloInstruction*> supported_collectives;
     for (HloInstruction* instruction : computation->instructions()) {
-      if ((convert_all_reduce_ &&
-           instruction->opcode() == HloOpcode::kAllReduce) ||
-          (convert_all_gather_ &&
-           instruction->opcode() == HloOpcode::kAllGather) ||
-          (convert_collective_permute_ &&
-           instruction->opcode() == HloOpcode::kCollectivePermute)) {
+      if ((instruction->opcode() == HloOpcode::kAllReduce &&
+           convert_all_reduce_(instruction)) ||
+          (instruction->opcode() == HloOpcode::kAllGather &&
+           convert_all_gather_(instruction)) ||
+          (instruction->opcode() == HloOpcode::kCollectivePermute &&
+           convert_collective_permute_(instruction))) {
         supported_collectives.push_back(instruction);
       }
     }

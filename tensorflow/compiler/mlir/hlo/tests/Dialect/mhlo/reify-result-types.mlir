@@ -5,9 +5,9 @@
 func @dynamic_broadcast_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
      -> index {
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK: %[[CAST:.*]] = arith.index_cast %arg0 : tensor<?xi32> to tensor<?xindex>
-  // CHECK: %[[RESULT:.*]] = tensor.extract %[[CAST]][%[[C0]]] : tensor<?xindex>
-  // CHECK: return %[[RESULT]]
+  // CHECK: %[[EXTRACT:.*]] = tensor.extract %arg0[%[[C0]]] : tensor<?xi32>
+  // CHECK: %[[CAST:.*]] = arith.index_cast %[[EXTRACT]] : i32 to index
+  // CHECK: return %[[CAST]]
   %c0 = arith.constant 0 : index
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %arg0)
        { broadcast_dimensions = dense<0> : tensor<1xi64> }
@@ -21,9 +21,9 @@ func @dynamic_broadcast_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
 // CHECK-LABEL: @dynamic_iota_i32_shape
 func @dynamic_iota_i32_shape(%arg0 : tensor<?xi32>) -> index {
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK: %[[CAST:.*]] = arith.index_cast %arg0 : tensor<?xi32> to tensor<?xindex>
-  // CHECK: %[[RESULT:.*]] = tensor.extract %[[CAST]][%[[C0]]] : tensor<?xindex>
-  // CHECK: return %[[RESULT]]
+  // CHECK: %[[EXTRACT:.*]] = tensor.extract %arg0[%[[C0]]] : tensor<?xi32>
+  // CHECK: %[[CAST:.*]] = arith.index_cast %[[EXTRACT]] : i32 to index
+  // CHECK: return %[[CAST]]
   %c0 = arith.constant 0 : index
   %0 = "mhlo.dynamic_iota"(%arg0)
        {iota_dimension = 0 : i64}
@@ -38,9 +38,9 @@ func @dynamic_iota_i32_shape(%arg0 : tensor<?xi32>) -> index {
 func @dynamic_reshape_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
      -> index {
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK: %[[CAST:.*]] = arith.index_cast %arg0 : tensor<?xi32> to tensor<?xindex>
-  // CHECK: %[[RESULT:.*]] = tensor.extract %[[CAST]][%[[C0]]] : tensor<?xindex>
-  // CHECK: return %[[RESULT]]
+  // CHECK: %[[EXTRACT:.*]] = tensor.extract %arg0[%[[C0]]] : tensor<?xi32>
+  // CHECK: %[[CAST:.*]] = arith.index_cast %[[EXTRACT]] : i32 to index
+  // CHECK: return %[[CAST]]
   %c0 = arith.constant 0 : index
   %0 = "mhlo.dynamic_reshape"(%arg1, %arg0)
        { broadcast_dimensions = dense<0> : tensor<1xi64> }

@@ -74,7 +74,8 @@ func @gpu_device(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<tensor<
 
 // CHECK-LABEL: func @tpu_device
 func @tpu_device(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<3x3xf32> {
-  // CHECK: corert.executeop.seq({{.*}}, {{.*}}) "tf.ReadVariableOp"
+  // CHECK-NOT: corert.executeop
+  // CHECK: tfrt_fallback_async.executeop.seq({{.*}}) key({{.*}}) cost({{.*}}) device("/device:TPU:0") "tf.ReadVariableOp"
   // CHECK: tfrt_fallback_async.executeop key({{.*}}) cost({{.*}}) device("/device:CPU:0") "tf.MatMul"
   %0 = "tf.ReadVariableOp"(%arg1) {device = "/device:TPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
   %1 = "tf.MatMul"(%arg0, %0) {T = f32, device = "/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>

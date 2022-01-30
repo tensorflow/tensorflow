@@ -8,7 +8,7 @@ compare {
   ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
-// CHECK:     define void @sort(i8* noalias align 64 dereferenceable(24) %[[VAL_0:.*]]) {
+// CHECK:     define void @sort(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_1:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
@@ -69,7 +69,7 @@ compare {
 // CHECK:         ret void
 // CHECK:       }
 
-// CHECK:     define void @sort__1(i8* noalias align 64 dereferenceable(24) %[[VAL_0:.*]]) {
+// CHECK:     define void @sort__1(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_1:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
@@ -116,7 +116,7 @@ compare {
 // CHECK:         br label %[[VAL_24]]
 // CHECK:       }
 
-// CHECK:     define void @sort__2(i8* noalias align 64 dereferenceable(24) %[[VAL_0:.*]]) {
+// CHECK:     define void @sort__2(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_1:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_2:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
@@ -181,7 +181,7 @@ compare {
   ROOT lt = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
 }
 
-// CHECK:     define void @sort(i8* noalias align 64 dereferenceable(24) %[[VAL_0:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_1:.*]]) {
+// CHECK:     define void @sort(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]], i8* noalias align 128 dereferenceable(24) %[[VAL_1:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
@@ -252,7 +252,7 @@ compare {
 // CHECK:         ret void
 // CHECK:       }
 
-// CHECK:     define void @sort__1(i8* noalias align 64 dereferenceable(24) %[[VAL_0:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_1:.*]]) {
+// CHECK:     define void @sort__1(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]], i8* noalias align 128 dereferenceable(24) %[[VAL_1:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0
@@ -309,7 +309,7 @@ compare {
 // CHECK:         br label %[[VAL_30]]
 // CHECK:       }
 
-// CHECK:     define void @sort__2(i8* noalias align 64 dereferenceable(24) %[[VAL_0:.*]], i8* noalias align 64 dereferenceable(24) %[[VAL_1:.*]]) {
+// CHECK:     define void @sort__2(i8* noalias align 128 dereferenceable(24) %[[VAL_0:.*]], i8* noalias align 128 dereferenceable(24) %[[VAL_1:.*]]) {
 // CHECK:       entry:
 // CHECK:         %[[VAL_3:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_4:.*]] = getelementptr inbounds i8, i8* %[[VAL_0]], i64 0

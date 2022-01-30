@@ -79,10 +79,10 @@ struct LegalizeToTensorOpPass
     : public LegalizeToTensorOpPassBase<LegalizeToTensorOpPass> {
   // Perform the lowering to remove bufferization.to_tensor ops inserted during
   // `mhlo-legalize-to-lmhlo`.
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
     auto* context = &getContext();
-    OwningRewritePatternList patterns(context);
+    RewritePatternSet patterns(context);
     patterns.insert<ForwardShapeOfOp, ForwardExtractOp>(context);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       func.emitError("applyPatternsAndFoldGreedily does not converge");

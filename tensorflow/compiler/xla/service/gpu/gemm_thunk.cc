@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 

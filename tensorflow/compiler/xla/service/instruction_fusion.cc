@@ -566,14 +566,14 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           should_fuse = ShouldFuse(instruction, i);
           if (should_fuse && consume_fuel()) {
             if (dump_fusion) {
-              TF_RETURN_IF_ERROR(RegisterFusionState(
+              RegisterFusionState(
                   *computation,
                   absl::StrCat("About to fuse |", operand->name(), "| into |",
                                instruction->name(),
                                "| inside InstructionFusion with may_duplicate=",
                                may_duplicate_),
                   /*consumer=*/*instruction,
-                  /*producer=*/operand));
+                  /*producer=*/operand);
             }
 
             fusion_queue->PreFusion(operand, instruction);
@@ -592,14 +592,14 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           if (can_fuse_mof) {
             if (consume_fuel()) {
               if (dump_fusion) {
-                TF_RETURN_IF_ERROR(RegisterFusionState(
+                RegisterFusionState(
                     *computation,
                     absl::StrCat(
                         "About to MOF-fuse |", operand->name(), "| into |",
                         instruction->name(),
                         "| inside InstructionFusion with may_duplicate=",
                         may_duplicate_),
-                    /*consumer=*/*instruction, /*producer=*/operand));
+                    /*consumer=*/*instruction, /*producer=*/operand);
               }
 
               fusion_queue->PreFusion(operand, instruction);
@@ -620,13 +620,12 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
             // generates a lot of noise.
             if (operand->opcode() != HloOpcode::kGetTupleElement &&
                 instruction->opcode() != HloOpcode::kGetTupleElement) {
-              TF_RETURN_IF_ERROR(RegisterFusionState(
-                  *computation,
-                  absl::StrCat("Not fusing |", operand->name(), "| into |",
-                               instruction->name(), "| as ",
-                               should_fuse.Explain()),
-                  /*consumer=*/*instruction,
-                  /*producer=*/operand));
+              RegisterFusionState(*computation,
+                                  absl::StrCat("Not fusing |", operand->name(),
+                                               "| into |", instruction->name(),
+                                               "| as ", should_fuse.Explain()),
+                                  /*consumer=*/*instruction,
+                                  /*producer=*/operand);
             }
           }
 
@@ -650,13 +649,13 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         }
 
         if (dump_fusion) {
-          TF_RETURN_IF_ERROR(RegisterFusionState(
+          RegisterFusionState(
               *computation,
               absl::StrCat("Fused |", producer_name, "| into |",
                            fusion_instruction->name(),
                            "| inside InstructionFusion with may_duplicate=",
                            may_duplicate_),
-              *fusion_instruction));
+              *fusion_instruction);
         }
 
         if (fusion_instruction != instruction) {
@@ -914,7 +913,8 @@ FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
   if (FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&
       !IsAlwaysDuplicable(*producer)) {
-    return "expensive producer would be duplicated";
+    return may_duplicate_ ? "expensive producer would be duplicated"
+                          : "fusion pass cannot duplicate";
   }
 
   if (NoFusionPossible fusible = !ShouldFuseInPlaceOp(producer, consumer)) {

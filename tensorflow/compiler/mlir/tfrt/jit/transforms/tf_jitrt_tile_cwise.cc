@@ -117,7 +117,7 @@ struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
                         return success(isNonTiledCwise(op));
                       });
 
-    mlir::OwningRewritePatternList patterns(func.getContext());
+    mlir::RewritePatternSet patterns(func.getContext());
     patterns.insert<TileCWisePattern>(tiling_options, filter,
                                       patterns.getContext());
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
