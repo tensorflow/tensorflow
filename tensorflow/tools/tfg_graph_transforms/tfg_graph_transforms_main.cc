@@ -118,7 +118,7 @@ tensorflow::Status RunOptimizationPasses(
 }
 
 // Import model to the TFG MLIR module.
-tensorflow::StatusOr<mlir::OwningModuleRef> ImportModel(
+tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
     DataFormat data_format, const std::string& input_file,
     mlir::MLIRContext* mlir_context) {
   switch (data_format) {
@@ -164,14 +164,15 @@ int main(int argc, char** argv) {
   mlir::MLIRContext context(registry);
 
   // Import model to the TFG MLIR module.
-  tensorflow::StatusOr<mlir::OwningModuleRef> module_ref_status =
+  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref_status =
       ImportModel(data_format, input_file, &context);
 
   if (!module_ref_status.ok()) {
     LOG(QFATAL) << "Model import failed: "
                 << module_ref_status.status().ToString();
   }
-  mlir::OwningModuleRef module_ref = std::move(module_ref_status.ValueOrDie());
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
+      std::move(module_ref_status.ValueOrDie());
 
   // Parse the optimization pipeline configuration and run requested graph
   // optimizations.
