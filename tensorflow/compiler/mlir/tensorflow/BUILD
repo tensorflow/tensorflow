@@ -1015,6 +1015,7 @@ cc_library(
         ":tensorflow_op_interfaces",
         ":tensorflow_side_effects",
         ":tensorflow_types",
+        "@com_google_absl//absl/container:node_hash_map",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",

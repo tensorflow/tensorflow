@@ -1594,7 +1594,7 @@ func @mixed_embedding_and_unknown_effects(
 // -----
 
 // Tests that we don't create dependencies between ops `EnqueueTPUEmbedding`
- // ops and other embedding ops that don't have a device ordinal.
+// ops and other embedding ops that don't have a device ordinal.
 func @mixed_embedding_and_unknown_effects(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
