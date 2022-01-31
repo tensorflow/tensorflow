@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
-#include "mlir/Dialect/StandardOps/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -182,7 +182,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
-  pm.addPass(mlir::createTensorConstantBufferizePass(/*alignment=*/64));
+  pm.addPass(mlir::arith::createConstantBufferizePass(/*alignment=*/64));
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

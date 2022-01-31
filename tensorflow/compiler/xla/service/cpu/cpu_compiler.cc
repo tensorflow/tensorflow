@@ -51,7 +51,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Dialect/Vector/VectorOps.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/literal.h"
