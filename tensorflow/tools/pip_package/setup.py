@@ -302,6 +302,8 @@ setup(
         'install_headers': InstallHeaders,
         'install': InstallCommand,
     },
+    # Supported Python versions
+    python_requires='>=3.7',
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
