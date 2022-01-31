@@ -996,6 +996,42 @@ func @map_memrefs(%arg0: memref<20xf32>, %arg1: memref<20xf32>, %arg_out: memref
 
 // -----
 
+func @pad_output_rank_error(%arg0: memref<1x2x3xf16>, %arg1: memref<f16>, %arg2: memref<4x5xf16>) {
+  // expected-error@+1{{output's rank(2) is not same as operand's rank(3)}}
+  "lmhlo.pad"(%arg0, %arg1, %arg2) {
+         edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+         edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+         interior_padding = dense<0> : tensor<3xi64>
+   } : (memref<1x2x3xf16>, memref<f16>, memref<4x5xf16>) -> ()
+   return
+}
+
+// -----
+
+func @pad_config_rank_error(%arg0: memref<1x2x3xf16>, %arg1: memref<f16>, %arg2: memref<2x4x5xf16>) {
+  // expected-error@+1{{pad configurations to be specified for all 3 dimensions}}
+  "lmhlo.pad"(%arg0, %arg1, %arg2) {
+         edge_padding_high = dense<[1, 1]> : tensor<2xi64>,
+         edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+         interior_padding = dense<0> : tensor<3xi64>
+   } : (memref<1x2x3xf16>, memref<f16>, memref<2x4x5xf16>) -> ()
+   return
+}
+
+// -----
+
+func @pad_config_error(%arg0: memref<2x2x3xf16>, %arg1: memref<f16>, %arg2: memref<2x4x5xf16>) {
+  // expected-error@+1{{expected 0-th dimension size after padding is 6 but found 2}}
+  "lmhlo.pad"(%arg0, %arg1, %arg2) {
+         edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+         edge_padding_low = dense<[1, 1, 2]> : tensor<3xi64>,
+         interior_padding = dense<[2, 0, 0]> : tensor<3xi64>
+   } : (memref<2x2x3xf16>, memref<f16>, memref<2x4x5xf16>) -> ()
+   return
+}
+
+// -----
+
 // CHECK-LABEL: func @rng_get_and_update_state_memrefs
 func @rng_get_and_update_state_memrefs(%state: memref<1xui64>) -> () {
   "lmhlo.rng_get_and_update_state"(%state) { delta = 1 : i64 } : (memref<1xui64>) -> ()
