@@ -177,12 +177,12 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // of bufferizing to memref dialect) we can remove the remaining references
   // to unsigned types.
   pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
-  // Turn tensor constants into global memrefs.
-  // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
-  pm.addPass(mlir::createTensorConstantBufferizePass(/*alignment=*/64));
   // Always run canonicalizer (which does dead code removal) before bufferizing
   // anything.
   pm.addPass(mlir::createCanonicalizerPass());
+  // Turn tensor constants into global memrefs.
+  // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
+  pm.addPass(mlir::createTensorConstantBufferizePass(/*alignment=*/64));
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
