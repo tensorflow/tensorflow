@@ -9944,6 +9944,32 @@ ENTRY entry {
               op::Shape("(f32[4,2,10])"));
 }
 
+TEST_F(SpmdPartitioningTest, GatherTrivialRestoreSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = bf16[250112,4096] parameter(0), sharding={replicated}
+  %cpy.input = bf16[250112,4096] copy(%input), sharding={
+    devices=[32,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,
+                    23,24,25,26,27,28,29,30,31}
+  %indices = s32[64,1,1] parameter(1), sharding={replicated}
+  %cpy.indices = s32[64,1,1] copy(%indices), sharding={replicated}
+  %gather = bf16[64,1,4096] gather(bf16[250112,4096] %cpy.input, s32[64,1,1] %cpy.indices),
+    offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=2, slice_sizes={1,4096}, sharding={replicated}
+  ROOT %copy = bf16[64,1,4096] copy(gather), sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/32));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("bf16[64,1,4096]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::AllReduce(op::Select(
+                  _, _, op::Gather(op::Shape("bf16[7816,4096]"), _)))));
+}
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
