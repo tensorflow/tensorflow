@@ -230,14 +230,14 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
       if (it != cache->while_nest_multiplier.end()) {
         while_nest_multiplier = it->second;
       } else {
-        while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
+        while_nest_multiplier = IPow<float>(
             options_.xla_tpu_memory_space_assignment_while_execution_count,
             CalculateComputationNestLevel(&instruction,
                                           /*while_only=*/true));
         cache->while_nest_multiplier[&instruction] = while_nest_multiplier;
       }
     } else {
-      while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
+      while_nest_multiplier = IPow<float>(
           options_.xla_tpu_memory_space_assignment_while_execution_count,
           CalculateComputationNestLevel(&instruction,
                                         /*while_only=*/true));
@@ -551,10 +551,9 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
         *instruction_and_logical_time.first);
     instructions_elapsed_time[logical_time] =
         elapsed_time *
-        tensorflow::MathUtil::IPow<float>(
-            cost_analysis_.options()
-                .xla_tpu_memory_space_assignment_while_execution_count,
-            while_nest_level);
+        IPow<float>(cost_analysis_.options()
+                        .xla_tpu_memory_space_assignment_while_execution_count,
+                    while_nest_level);
   }
   // As an optimization, create a cumulative sum vector of elapsed time.
   float cumsum = 0.0;
@@ -590,10 +589,10 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     while_nest_level_change_.push_back(change_idx);
   }
   for (int i = 0; i <= max_while_nest_level; ++i) {
-    while_execution_counts_.push_back(tensorflow::MathUtil::IPow<float>(
-        cost_analysis_.options()
-            .xla_tpu_memory_space_assignment_while_execution_count,
-        i));
+    while_execution_counts_.push_back(
+        IPow<float>(cost_analysis_.options()
+                        .xla_tpu_memory_space_assignment_while_execution_count,
+                    i));
   }
 }
 
@@ -1350,7 +1349,6 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
       AllocateCrossProgramPrefetchBuffer(module, prefetch_candidate);
     }
   }
-
 
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
           << options_.max_size_in_bytes;
@@ -3373,7 +3371,7 @@ float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
         options_.cost_analysis->GetInstructionElapsedInAlternateMemory(
             *instruction, operands_in_alternate_memory,
             outputs_in_alternate_memory);
-    float while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
+    float while_nest_multiplier = IPow<float>(
         options_.xla_tpu_memory_space_assignment_while_execution_count,
         options_.cost_analysis->CalculateComputationNestLevel(
             instruction,
