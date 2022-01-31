@@ -73,30 +73,6 @@ bazel test \
 //tensorflow/python/distribute:tf_function_test_2gpu \
 //tensorflow/python/distribute:vars_test_2gpu \
 //tensorflow/python/distribute:warm_starting_util_test_2gpu \
-<<<<<<< HEAD
-//tensorflow/python/keras/utils:multi_gpu_utils_test_2gpu \
-//tensorflow/python/keras/utils:multi_gpu_utils_test_xla_2gpu \
-=======
-//tensorflow/python/keras/distribute:collective_all_reduce_strategy_test_2gpu \
-//tensorflow/python/keras/distribute:collective_all_reduce_strategy_test_xla_2gpu \
-//tensorflow/python/keras/distribute:ctl_correctness_test_2gpu \
-//tensorflow/python/keras/distribute:custom_training_loop_optimizer_test_2gpu \
-//tensorflow/python/keras/distribute:keras_metrics_test_2gpu \
-//tensorflow/python/keras/distribute:keras_models_test_2gpu \
-//tensorflow/python/keras/distribute:keras_optimizer_v2_test_2gpu \
-//tensorflow/python/keras/distribute:keras_stateful_lstm_model_correctness_test_2gpu \
-//tensorflow/python/keras/distribute:mirrored_strategy_test_2gpu \
-//tensorflow/python/keras/distribute:mirrored_variable_test_2gpu \
-//tensorflow/python/keras/distribute:multi_worker_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:category_crossing_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:category_encoding_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:discretization_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:hashing_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:image_preprocessing_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:index_lookup_distribution_test_2gpu \
-//tensorflow/python/keras/layers/preprocessing:text_vectorization_distribution_test_2gpu \
-//tensorflow/python/kernel_tests:dynamic_partition_op_test_2gpu \
->>>>>>> upstream/master
 //tensorflow/python/training:saver_test_2gpu \
 
 
