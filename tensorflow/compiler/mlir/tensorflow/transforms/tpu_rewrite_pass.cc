@@ -94,7 +94,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
   llvm::SmallVector<FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
-  OwningModuleRef module_for_func =
+  OwningOpRef<mlir::ModuleOp> module_for_func =
       ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()));
   auto parent_module = entry_func->getParentOfType<ModuleOp>();
   auto versions_attr = parent_module->getAttr(kVersionsAttr);

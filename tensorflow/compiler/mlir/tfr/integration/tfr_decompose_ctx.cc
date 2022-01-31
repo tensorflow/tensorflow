@@ -111,7 +111,8 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
       llvm::StringRef(tfr_raw_text.data(), tfr_raw_text.size()));
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(memory_buffer), llvm::SMLoc());
-  mlir::OwningModuleRef module = mlir::parseSourceFile(source_mgr, mlir_ctx);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceFile(source_mgr, mlir_ctx);
   // The MLIRContext owns the module
   auto module_op = module.release();
 

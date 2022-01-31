@@ -332,7 +332,7 @@ std::vector<std::string> FindNamesForValidSignatures(
   return valid_signature_names;
 }
 
-StatusOr<mlir::OwningModuleRef> ImportSavedModel(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
     bool import_user_signatures, bool run_placer_grappler_on_functions) {
@@ -831,7 +831,8 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
   return tensorflow::Status::OK();
 }
 
-tensorflow::StatusOr<mlir::OwningModuleRef> SavedModelImpl::ImportSubgraph(
+tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+SavedModelImpl::ImportSubgraph(
     mlir::MLIRContext* context,
     const tensorflow::GraphImportConfig::InputArrays& input_nodes,
     const std::vector<std::string>& output_nodes,

@@ -903,7 +903,7 @@ static Status CompileModuleToLlvmIrImpl(
       .loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
                    mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
                    mlir::lmhlo_gpu::LmhloGpuDialect>();
-  mlir::OwningModuleRef mlir_module =
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       mlir::ModuleOp::create(mlir::Builder(&mlir_context).getUnknownLoc());
 
   TF_RETURN_IF_ERROR(

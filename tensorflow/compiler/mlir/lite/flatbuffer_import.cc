@@ -90,7 +90,7 @@ using mlir::MLIRContext;
 using mlir::OpBuilder;
 using mlir::Operation;
 using mlir::OperationState;
-using mlir::OwningModuleRef;
+using mlir::OwningOpRef;
 using mlir::RankedTensorType;
 using mlir::UnrankedTensorType;
 using mlir::Value;
@@ -1436,7 +1436,7 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
 }
 }  // namespace
 
-OwningModuleRef tflite::FlatBufferToMlir(
+OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     absl::string_view buffer, MLIRContext* context, Location base_loc,
     bool use_external_constant,
     const std::vector<std::string>& ordered_input_arrays,
@@ -1513,5 +1513,5 @@ OwningModuleRef tflite::FlatBufferToMlir(
     module.push_back(func_or_error.ConsumeValueOrDie());
   }
   AddRegionsForTflWhileOp(module);
-  return OwningModuleRef(module);
+  return OwningOpRef<mlir::ModuleOp>(module);
 }

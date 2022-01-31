@@ -133,7 +133,7 @@ MlirGpuTestBase::RunMlirModuleWithHostBuffers(
   return host_outputs;
 }
 
-StatusOr<mlir::OwningModuleRef> MlirGpuTestBase::ParseMlirModule(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> MlirGpuTestBase::ParseMlirModule(
     absl::string_view module_text, mlir::MLIRContext& context) {
   context
       .loadDialect<mlir::arith::ArithmeticDialect, mlir::lmhlo::LmhloDialect,
@@ -144,7 +144,7 @@ StatusOr<mlir::OwningModuleRef> MlirGpuTestBase::ParseMlirModule(
   llvm::raw_string_ostream os(diagnostic_str);
   mlir::SourceMgrDiagnosticHandler handler(source_mgr, &context, os);
 
-  mlir::OwningModuleRef module = parseSourceString(
+  mlir::OwningOpRef<mlir::ModuleOp> module = parseSourceString(
       llvm::StringRef(module_text.data(), module_text.size()), &context);
   if (!module) {
     return InvalidArgument("Failed to parse MLIR module: %s", diagnostic_str);
@@ -156,7 +156,7 @@ StatusOr<std::vector<std::vector<uint8_t>>>
 MlirGpuTestBase::RunMlirTextWithHostBuffers(
     absl::string_view module_text, std::vector<absl::Span<uint8_t>> arguments) {
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseMlirModule(module_text, context));
   return RunMlirModuleWithHostBuffers(*module, arguments);
 }
@@ -164,7 +164,7 @@ MlirGpuTestBase::RunMlirTextWithHostBuffers(
 StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirText(
     absl::string_view module_text) {
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseMlirModule(module_text, context));
   auto stream = backend_->BorrowStream(backend_->default_device_ordinal())
                     .ConsumeValueOrDie();

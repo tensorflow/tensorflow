@@ -959,7 +959,7 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
       host_compute_op->getAttrOfType<StringAttr>("host_mlir_module");
   if (host_module.getValue().empty()) return false;
 
-  mlir::OwningModuleRef module_for_func;
+  mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
   FuncOp func = host_compute_op.GetHostFunc(&module_for_func);
 
   // Update/use input shapes for function.

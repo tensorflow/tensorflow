@@ -489,7 +489,7 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module) {
 
 }  // namespace
 
-StatusOr<mlir::OwningModuleRef> SetupContextAndParseModule(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
     mlir::MLIRContext& context, llvm::StringRef tf_code) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
@@ -498,21 +498,22 @@ StatusOr<mlir::OwningModuleRef> SetupContextAndParseModule(
   mlir::registerNVVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);
   context.appendDialectRegistry(registry);
-  mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString(tf_code, &context);
   if (!module)
     return tensorflow::Status(tensorflow::error::Code::INVALID_ARGUMENT,
                               "invalid kernel IR");
   return module;
 }
 
-StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
     bool print_llvmir, bool enable_ftz, bool index_64bit, bool cpu_codegen,
     bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
-  TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       SetupContextAndParseModule(context, tf_code));
 
   if (jit_compile) {

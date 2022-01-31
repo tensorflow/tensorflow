@@ -947,12 +947,13 @@ tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
 }
 // Convert a Graph and function libs to a MLIR module containing the graph and
 // expressed in TFG dialect.
-tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
+tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
     MLIRContext* context, const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
   LoadDialects(context);
   // Create the graph operation in which we will convert the individual nodes.
-  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
+  OwningOpRef<mlir::ModuleOp> module =
+      ModuleOp::create(UnknownLoc::get(context));
   OpBuilder builder = OpBuilder::atBlockEnd(module->getBody());
 
   auto graph_op = builder.create<GraphOp>(
@@ -982,7 +983,7 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
 
 // Convert a GraphDef to a MLIR module containing the graph and expressed in TFG
 // dialect.
-tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
+tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphDefToMlir(
     MLIRContext* context, const GraphDebugInfo& debug_info,
     const GraphDef& graphdef) {
   VLOG(4) << "ConvertGraphdefToMlir begin";
