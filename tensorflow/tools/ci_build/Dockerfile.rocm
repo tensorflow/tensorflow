@@ -108,6 +108,7 @@ COPY install/install_pip_packages_by_version.sh /install/
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.7"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9"
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.7 1
 RUN /install/install_bazel.sh
 RUN /install/install_golang.sh
 
