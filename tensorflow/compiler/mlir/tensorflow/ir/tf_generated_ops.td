@@ -19875,7 +19875,7 @@ containing only non-negative values.}]>:$padding_interior
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF_XlaRecvFromHostOp : TF_Op<"XlaRecvFromHost", [TF_SendRecvSideEffect]> {
+def TF_XlaRecvFromHostOp : TF_Op<"XlaRecvFromHost", [TF_RecvSideEffect]> {
   let summary = "An op to receive a tensor from the host.";
 
   let description = [{
@@ -20117,7 +20117,7 @@ eigenvalue w[..., i].}]>:$v
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaSendToHostOp : TF_Op<"XlaSendToHost", [TF_SendRecvSideEffect]> {
+def TF_XlaSendToHostOp : TF_Op<"XlaSendToHost", [TF_SendSideEffect]> {
   let summary = "An op to send a tensor to the host.";
 
   let description = [{
@@ -20757,7 +20757,7 @@ expected to create these operators.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", [TF_SendRecvSideEffect]> {
+def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", [TF_RecvSideEffect, TF_SendSideEffect]> {
   let summary = [{
 A pseudo-op to represent host-side computation in an XLA program.
   }];
@@ -20785,7 +20785,7 @@ A pseudo-op to represent host-side computation in an XLA program.
   let verifier = [{ return Verify(*this); }];
 }
 
-def TF__XlaRecvAtHostOp : TF_Op<"_XlaRecvAtHost", [TF_SendRecvSideEffect]> {
+def TF__XlaRecvAtHostOp : TF_Op<"_XlaRecvAtHost", [TF_RecvSideEffect]> {
   let summary = [{
 A placeholder op to receive values from a running XLA computation.
   }];
@@ -20805,7 +20805,7 @@ execution the transfer corresponds to.}]>:$dynamic_key,
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF__XlaRecvAtHostV2Op : TF_Op<"_XlaRecvAtHostV2", [TF_SendRecvSideEffect]> {
+def TF__XlaRecvAtHostV2Op : TF_Op<"_XlaRecvAtHostV2", [TF_RecvSideEffect]> {
   let summary = [{
 A placeholder op to receive values from a running XLA computation with support for a runtime device ordinal.
   }];
@@ -20825,7 +20825,7 @@ execution the transfer corresponds to.}]>:$dynamic_key,
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF__XlaSendFromHostOp : TF_Op<"_XlaSendFromHost", [TF_SendRecvSideEffect]> {
+def TF__XlaSendFromHostOp : TF_Op<"_XlaSendFromHost", [TF_SendSideEffect]> {
   let summary = "A placeholder op to send values to a running XLA computation.";
 
   let arguments = (ins
@@ -20842,7 +20842,7 @@ execution the transfer corresponds to.}]>:$dynamic_key,
   TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
 }
 
-def TF__XlaSendFromHostV2Op : TF_Op<"_XlaSendFromHostV2", [TF_SendRecvSideEffect]> {
+def TF__XlaSendFromHostV2Op : TF_Op<"_XlaSendFromHostV2", [TF_SendSideEffect]> {
   let summary = [{
 A placeholder op to send values to a running XLA computation with support for a runtime device ordinal.
   }];

@@ -165,7 +165,8 @@ def TF_DatasetMemoryCacheResource : TF_ResourceBase<"DatasetMemoryCache">;
 def TF_DatasetIteratorResource : TF_ResourceBase<"DatasetIterator">;
 def TF_TPUEmbeddingResource : TF_ResourceBase<"TPUEmbedding">;
 def TF_GeneratorOpResource : TF_ResourceBase<"GeneratorOp">;
-def TF_SendRecvResource : TF_ResourceBase<"SendRecv">;
+def TF_SendResource : TF_ResourceBase<"Send">;
+def TF_RecvResource : TF_ResourceBase<"Recv">;
 def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
 def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
 
@@ -224,7 +225,9 @@ def TF_GeneratorOpSideEffect : MemoryEffects<[MemWrite<TF_GeneratorOpResource>]>
 def TF_TPUEmbeddingWriteEffect : MemoryEffects<[MemWrite<TF_TPUEmbeddingResource>]>;
 def TF_TPUEmbeddingReadEffect : MemoryEffects<[MemRead<TF_TPUEmbeddingResource>]>;
 
-def TF_SendRecvSideEffect : MemoryEffects<[MemWrite<TF_SendRecvResource>]>;
+def TF_SendSideEffect : MemoryEffects<[MemWrite<TF_SendResource>]>;
+def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
+
 def TF_TPUExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUExecuteResource>]>;
 
 def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
