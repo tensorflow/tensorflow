@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,24 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
-#define TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
+#ifndef TENSORFLOW_CORE_TRANSFORMS_CONST_DEDUPE_HOIST_PASS_H_
+#define TENSORFLOW_CORE_TRANSFORMS_CONST_DEDUPE_HOIST_PASS_H_
 
 #include <memory>
 
-#include "tensorflow/core/transforms/const_dedupe_hoist/pass.h"
-#include "tensorflow/core/transforms/drop_unregistered_attribute/output_shapes.h"
-#include "tensorflow/core/transforms/graph_to_func/graph_to_func_pass.h"
-#include "tensorflow/core/transforms/toposort/toposort_pass.h"
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
 namespace tfg {
 
-// Generate the code for registering passes for command-line parsing.
-#define GEN_PASS_REGISTRATION
-#include "tensorflow/core/transforms/passes.h.inc"
+std::unique_ptr<mlir::Pass> CreateDedupeAndHoistConstantPass();
 
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_TRANSFORMS_PASS_REGISTRATION_H_
+#endif  // TENSORFLOW_CORE_TRANSFORMS_CONST_DEDUPE_HOIST_PASS_H_

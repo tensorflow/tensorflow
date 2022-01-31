@@ -30,6 +30,30 @@ def TopoSort : Pass<"tfg-toposort"> {
   let constructor = "CreateTopoSortPass()";
 }
 
+def DedupeAndHoistConstant: Pass<"tfg-dedupe-hoist-constant"> {
+  let summary = "Dedupe and hoist constants";
+  let description = [{
+    Deduplicate small constants by utilizing single constant op per constant
+    value and removing/forwarding control dependencies to users.
+
+    This pass is restricted to operate on "small" constants currently as there
+    is no cost model nor attempt to limit the live range of values.
+
+    Currently it only performs this deduplication if there are no possible
+    function calls in the graph. This is to avoid changing strictness of the
+    execution.
+
+    Note: This pass does not aim to retain the names of nodes dedupe'd.
+  }];
+
+  let options = [
+    Option<"max_size_", "max-size", "int64_t",
+           /*default=*/"10",
+           "The maximum number of elements when considering whether a constant is small">
+  ];
+  let constructor = "CreateDedupeAndHoistConstantPass()";
+}
+
 def DropOutputShapesAttr : Pass<"tfg-drop-unregistered-output-shapes"> {
   let summary = "Drop _output_shapes attribute";
   let description = [{
