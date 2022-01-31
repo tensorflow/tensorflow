@@ -408,9 +408,27 @@ std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 // severity, filename, and line number.
 void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
+// Used on a function to trap bad calls: any call that matches the specified
+// condition will cause a compile-time error. This macro uses a clang-specific
+// "diagnose_if" attribute, as described at
+// https://clang.llvm.org/docs/AttributeReference.html#diagnose-if
+//
+// Example:
+//
+//   int compute_absolute_value(int c)
+//     XLA_DIAGNOSE_ERROR_IF(c >= 0, "'c' is already positive.");
+#if ABSL_HAVE_ATTRIBUTE(diagnose_if)
+#define XLA_DIAGNOSE_ERROR_IF(...) \
+  __attribute__((diagnose_if(__VA_ARGS__, "error")))
+#else
+#define XLA_DIAGNOSE_ERROR_IF(...)
+#endif
+
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
-constexpr inline T LsbMask(int width) {
+constexpr inline T LsbMask(int width)
+    XLA_DIAGNOSE_ERROR_IF(width < 0 || width >= std::numeric_limits<T>::digits,
+                          "width must be between [0, sizeof(T)*8)") {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
   return width == 0
