@@ -128,6 +128,22 @@ FuncOp _XlaHostComputeMlirOp::GetHostFunc(
   return (*mlir_module)->lookupSymbol<FuncOp>("host_func");
 }
 
+//===----------------------------------------------------------------------===//
+// XLA Send/Recv ops
+//===----------------------------------------------------------------------===//
+
+// For XLA Send/Recv ops the key corresponds to the resource instance.
+
+std::string _XlaRecvAtHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaRecvAtHostV2Op::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostV2Op::GetResourceInstanceStr() {
+  return key().str();
+}
+
 }  // namespace TF
 }  // namespace mlir
 

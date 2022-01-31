@@ -1732,9 +1732,10 @@ func @mixed_op_based_value_based_side_effects(
 
 // -----
 
-// Tests that we create dependencies between ops with `TF_RecvSideEffect`.
+// Tests that we create dependencies between `_XlaRecvAtHostV2` ops with equal
+// keys.
 !tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
-func @recv_effect(
+func @recv_equal_keys(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
   %arg1: tensor<i64>) {
@@ -1767,9 +1768,10 @@ func @recv_effect(
 
 // -----
 
-// Tests that we create dependencies between ops with `TF_SendSideEffect`.
+// Tests that we create dependencies between `_XlaSendFromHostV2` ops with equal
+// keys.
 !tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
-func @send_effect(
+func @send_equal_keys(
   // expected-remark@above {{ID: 8}}
   %arg0: tensor<!tf_type.string>,
   %arg1: tensor<i64>) {
@@ -1790,6 +1792,75 @@ func @send_effect(
         tf_executor.yield
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Predecessors: {2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Sinks: {6}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between `_XlaRecvAtHostV2` ops with
+// different keys (corresponding to different resources).
+!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+func @recv_different_keys(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<i64>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 6}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Successors: {5}}}
+        %0 = "tf._XlaRecvAtHostV2"(%arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_0_args"} : (tensor<!tf_type.string>, tensor<i64>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {3}}}
+        %const = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        %1 = "tf._XlaRecvAtHostV2"(%arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_1_args"} : (tensor<!tf_type.string>, tensor<i64>) -> tensor<f32>
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Successors: {3}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Predecessors: {0,2}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {4}}}
+  }
+  return
+  // expected-remark@above {{ID: 7}}
+  // expected-remark@above {{Sinks: {6}}}
+}
+// -----
+
+// Tests that we don't create dependencies between `_XlaSendFromHostV2` ops with
+// different keys (corresponding to different resources).
+!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+func @send_different_keys(
+  // expected-remark@above {{ID: 8}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<i64>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 6}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Successors: {5}}}
+        %const = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        "tf._XlaSendFromHostV2"(%const, %arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_0_retvals"} : (tensor<f32>, tensor<!tf_type.string>, tensor<i64>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {3}}}
+        "tf._XlaSendFromHostV2"(%const, %arg0, %arg1) {_xla_has_host_transfer = true, key = "host_compute_channel_1_retvals"} : (tensor<f32>, tensor<!tf_type.string>, tensor<i64>) -> ()
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Successors: {3}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Predecessors: {1,2}}}
     }
     tf_executor.fetch %island : !tf_executor.control
     // expected-remark@above {{ID: 5}}
