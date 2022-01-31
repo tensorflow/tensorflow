@@ -245,7 +245,7 @@ class FuseMatMulBiasAdd
 };
 
 void FusedKernelMatcherPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   auto func = getFunction();
   patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 

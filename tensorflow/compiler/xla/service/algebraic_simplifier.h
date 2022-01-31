@@ -399,10 +399,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
                           HloInstruction* operand = nullptr);
 
   // Replace old instruction with new instruction if old and new instructions
-  // have the same shape. Updates uses and root instruction. Returns whether a
-  // replacement was made.
-  bool ReplaceInstructionIfSameShape(HloInstruction* old_instruction,
-                                     HloInstruction* new_instruction);
+  // are compatible (have the same shape and replacement preserves sharding).
+  // Updates uses and root instruction. Returns whether a replacement was made.
+  bool ReplaceInstructionIfCompatible(HloInstruction* old_instruction,
+                                      HloInstruction* new_instruction);
 
   // Returns whether the shape of the output of the given instructions are the
   // same for the purposes of simplification. If options_.is_layout_sensitive()

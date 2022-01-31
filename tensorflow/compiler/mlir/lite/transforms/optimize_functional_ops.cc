@@ -155,7 +155,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
 };
 
 void OptimizeFunctionalOpsPass::runOnOperation() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
 
   patterns.insert<FoldIfOp>(&getContext());
 

@@ -127,7 +127,7 @@ class DecomposeTFOpsPass
 
 void DecomposeTFOpsPass::ApplyCanonicalization() {
   FuncOp func = getFunction();
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
 
   populateWithGenerated(patterns);
   populateCanonicalizationPatterns(func, patterns);

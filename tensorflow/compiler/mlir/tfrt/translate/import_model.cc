@@ -72,6 +72,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
     TfrtTpuCompileOptions tpu_compile_options;
     tpu_compile_options.move_resource_gather_to_host =
         options.tpu_move_resource_gather_to_host;
+    tpu_compile_options.gather_table_width_threshold_bytes =
+        options.tpu_gather_table_width_threshold_bytes;
 
     auto backward_compat_result =
         tensorflow::RunTPUBackwardCompatConversion(module, tpu_compile_options);

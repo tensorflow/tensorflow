@@ -79,8 +79,8 @@ void AddDynamicRangeQuantizationPasses(
       mlir::TFL::CreateQuantizePass(quant_specs));
   bool emit_quant_adaptor_ops =
       quant_specs.inference_type != quant_specs.inference_input_type;
-  pass_manager.addNestedPass<mlir::FuncOp>(
-      mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+  pass_manager.addNestedPass<mlir::FuncOp>(mlir::TFL::CreatePostQuantizePass(
+      emit_quant_adaptor_ops, quant_specs.custom_map));
   pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreateOptimizeOpOrderPass());
 }

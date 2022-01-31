@@ -433,6 +433,26 @@ void CopyExternals(const GraphFloat32& graph, GpuModel* gpu_model) {
   }
 }
 
+// Removing tensors that was fused in complex operations
+void RemoveUnusedTensors(GpuModel* gpu_model) {
+  absl::flat_hash_set<ValueId> used_tensors;
+  for (const auto& node : gpu_model->nodes) {
+    for (const auto& id : node.inputs) {
+      used_tensors.insert(id);
+    }
+    for (const auto& id : node.outputs) {
+      used_tensors.insert(id);
+    }
+  }
+  for (auto it = gpu_model->tensors.begin(); it != gpu_model->tensors.end();) {
+    if (used_tensors.find(it->first) == used_tensors.end()) {
+      gpu_model->tensors.erase(it++);
+    } else {
+      ++it;
+    }
+  }
+}
+
 // Serialized model will lose polymorphic properties for GpuOperations.
 // Here we will retrieve some information needed for generic execution of
 // GpuOperations. Specifically, BindArguments and RecalculateGridSize must be
@@ -493,6 +513,7 @@ absl::Status GraphToGpuModel(const GraphFloat32& graph,
                                     &tensor_reserver, gpu_model));
   RETURN_IF_ERROR(MergeNodes(gpu_model));
   gpu_model->tensors = std::move(tensor_reserver.reservations_);
+  RemoveUnusedTensors(gpu_model);
 
   for (auto& node : gpu_model->nodes) {
     RETURN_IF_ERROR(node.gpu_operation->AssembleCode(gpu_info));

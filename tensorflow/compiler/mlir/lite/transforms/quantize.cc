@@ -103,6 +103,12 @@ static llvm::cl::list<std::string> nodes_blocklist_flag(
     llvm::cl::desc("Names of location to blocklist from quantization"),
     llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated);
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<std::string> enable_custom_op_weight_only(
+    "tfl-enable-custom-op-weight-only",
+    llvm::cl::desc("Specifies which custom ops are weight-only."),
+    llvm::cl::ZeroOrMore);
+
 namespace mlir {
 namespace TFL {
 
@@ -125,31 +131,74 @@ struct TFLQuantizationBase
                                    NumericVerifyOp, RootOp>(ctx, quant_params) {
   }
 
-  static bool AllowDynamicRangeQuantizedOperand(Operation* quantized_op) {
+  static bool IsQuantizableCustomOp(Operation* op,
+                                    const CustomOpMap& custom_op_map) {
+    // In some cases, ops may need to be quantized even though their op trait is
+    // not quantizable. For example, for the case of custom op various ops can
+    // be categorized as cusom ops despite each of them may require different
+    // behaviors. In that case, these ops can be marked in the custom map and
+    // treated separately in this pass.
+
+    auto custom_op = llvm::dyn_cast_or_null<TFL::CustomOp>(op);
+    if (!custom_op) return false;
+
+    // Custom op which is marked in the custom op map is quantizable.
+    std::string op_name = custom_op.custom_code().str();
+    return (custom_op_map.find(op_name) == custom_op_map.end()) ? false : true;
+  }
+
+  static bool AllowDynamicRangeQuantizedOperand(
+      Operation* quantized_op, const CustomOpMap& custom_op_map) {
     // Collect the input if dynamic range quantization is on and the op supports
     // it.
 
     return quantization_trait == kDynamicRangeQuantization &&
-           dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op);
+           (dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op) ||
+            IsQuantizableCustomOp(quantized_op, custom_op_map));
   }
 
-  static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op) {
+  static bool AllowDynamicRangeQuantizedResult(
+      Operation* quantized_op, const CustomOpMap& custom_op_map) {
     // Collect the output if dynamic range quantization is on and the op
     // supports it.
 
     return quantization_trait == kDynamicRangeQuantization &&
-           dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op);
+           (dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op) ||
+            IsQuantizableCustomOp(quantized_op, custom_op_map));
   }
 
   static bool IsWeightOnlyOp(Operation* quantized_op, StringSet& ops_blocklist,
-                             bool weight_only_quantization) {
+                             bool weight_only_quantization,
+                             const CustomOpMap& custom_op_map) {
     // Check whether the quantized_op needs to be quantized in weight-only
     // manner.
-    const auto op_name = quantized_op->getName().getStringRef().str();
-    const bool is_blocklisted =
-        ops_blocklist.find(op_name) != ops_blocklist.end();
+    bool is_blocklisted = false;
 
-    return is_blocklisted || weight_only_quantization;
+    if (auto custom_op = dyn_cast_or_null<CustomOp>(quantized_op)) {
+      std::string custom_op_name = custom_op.custom_code().str();
+      auto custom_map_iter = custom_op_map.find(custom_op_name);
+
+      is_blocklisted =
+          ops_blocklist.find(custom_op_name) != ops_blocklist.end();
+
+      bool weight_only_custom_op = custom_map_iter != custom_op_map.end()
+                                       ? custom_map_iter->second.is_weight_only
+                                       : false;
+
+      return is_blocklisted || weight_only_custom_op ||
+             weight_only_quantization;
+    } else {
+      auto dynamic_range_op =
+          dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantized_op);
+
+      const auto op_name = quantized_op->getName().getStringRef().str();
+      is_blocklisted = ops_blocklist.find(op_name) != ops_blocklist.end();
+
+      bool kernel_support =
+          dynamic_range_op.GetDynamicRangeQuantKernelSupport();
+
+      return is_blocklisted || !kernel_support || weight_only_quantization;
+    }
   }
 };
 
@@ -226,6 +275,9 @@ struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
         StringSet(ops_blocklist_flag.begin(), ops_blocklist_flag.end());
     quant_specs.nodes_blocklist =
         StringSet(nodes_blocklist_flag.begin(), nodes_blocklist_flag.end());
+    ParseCustomOpSpecs(enable_custom_op_weight_only,
+                       CustomOpUpdateOptions::kWeightOnly,
+                       quant_specs.custom_map);
   }
 
   // Constructor used by manually creating the pass.
@@ -251,7 +303,7 @@ struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
 
 void QuantizePass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   auto func = getFunction();
   auto* ctx = func.getContext();
 
@@ -272,7 +324,7 @@ void QuantizePass::runOnFunction() {
 
   // Constant quantization is a lossy transformation, so they are applied only
   // after all the other patterns have been aplied.
-  OwningRewritePatternList patterns_2(&getContext());
+  RewritePatternSet patterns_2(&getContext());
   patterns_2.insert<QuantizeConstPattern>(ctx, quant_specs.legacy_float_scale);
   if (quant_params.numeric_verify_spec.whole_model_verify) {
     patterns_2.insert<quant::RemoveDebugAttrPattern>(ctx);
@@ -281,7 +333,6 @@ void QuantizePass::runOnFunction() {
 }
 }  // namespace
 
-#define UPDATE_STRING_SET(new_set, set) (!new_set.empty() ? new_set : set)
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
@@ -290,10 +341,12 @@ std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
   QuantizationSpecs updated_quant_specs;
   updated_quant_specs = quant_specs;
   // If there's new blocklists given, update quant_specs to use the new one.
-  updated_quant_specs.ops_blocklist =
-      UPDATE_STRING_SET(ops_blocklist, quant_specs.ops_blocklist);
-  updated_quant_specs.nodes_blocklist =
-      UPDATE_STRING_SET(nodes_blocklist, quant_specs.nodes_blocklist);
+  if (!ops_blocklist.empty()) {
+    updated_quant_specs.ops_blocklist = ops_blocklist;
+  }
+  if (!nodes_blocklist.empty()) {
+    updated_quant_specs.nodes_blocklist = nodes_blocklist;
+  }
   return std::make_unique<QuantizePass>(updated_quant_specs);
 }
 

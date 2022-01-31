@@ -57,6 +57,7 @@ visibility = [
     "//third_party/py/starcraft2:__subpackages__",
     "//third_party/py/tensorflow_gnn:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
+    "//third_party/py/tensorflow_privacy:__subpackages__",
 ]
 
 package(
@@ -1853,7 +1854,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/saved_model:registration",
+        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/util",
     ],
 )
@@ -2840,9 +2841,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "image_grad_deterministic_test",
+    name = "image_grad_d9m_test",
     size = "large",
-    srcs = ["ops/image_grad_deterministic_test.py"],
+    srcs = ["ops/image_grad_d9m_test.py"],
     python_version = "PY3",
     shard_count = 5,
     deps = [
@@ -3016,9 +3017,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "nn_fused_batchnorm_deterministic_test",
+    name = "nn_fused_batchnorm_d9m_test",
     size = "medium",
-    srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
+    srcs = ["ops/nn_fused_batchnorm_d9m_test.py"],
     python_version = "PY3",
     shard_count = 4,
     tags = [

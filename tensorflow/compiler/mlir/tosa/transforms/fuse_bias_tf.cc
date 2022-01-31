@@ -108,7 +108,7 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
 }
 
 void FuseBiasTF::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   auto* ctx = &getContext();
   auto func = getFunction();
 

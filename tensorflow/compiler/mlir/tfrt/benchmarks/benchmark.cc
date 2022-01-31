@@ -35,6 +35,9 @@ using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::MemrefType;
 
+const char* const kDefaultHostDeviceName =
+    "/job:localhost/replica:0/task:0/device:CPU:0";
+
 const bool kStaticDim = false;
 const bool kDynamicDim = true;
 
@@ -43,7 +46,8 @@ std::unique_ptr<HostContext> CreateSingleThreadedHostContext() {
       [](const tfrt::DecodedDiagnostic& diag) {
         LOG(FATAL) << "Runtime error: " << diag.message << "\n";
       },
-      tfrt::CreateMallocAllocator(), tfrt::CreateSingleThreadedWorkQueue());
+      tfrt::CreateMallocAllocator(), tfrt::CreateSingleThreadedWorkQueue(),
+      kDefaultHostDeviceName);
 }
 
 std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads) {
@@ -53,7 +57,8 @@ std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads) {
       },
       tfrt::CreateMallocAllocator(),
       tfrt::CreateMultiThreadedWorkQueue(num_threads,
-                                         /*num_blocking_threads=*/1));
+                                         /*num_blocking_threads=*/1),
+      kDefaultHostDeviceName);
 }
 
 mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,

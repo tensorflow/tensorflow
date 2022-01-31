@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
-#include "mlir/Dialect/StandardOps/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -80,15 +80,15 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       reduction_2d_tile_sizes));
 
-  if (options.fuse_fill) {
-    pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
-  }
   pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.vector_size));
   if (options.peel) {
     pm.addNestedPass<FuncOp>(CreatePeelTiledLoopsPass());
   }
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  if (options.fuse_fill) {
+    pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
+  }
   pm.addNestedPass<FuncOp>(CreateVectorizeTiledOpsPass());
 }
 
@@ -177,12 +177,12 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // of bufferizing to memref dialect) we can remove the remaining references
   // to unsigned types.
   pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
-  // Turn tensor constants into global memrefs.
-  // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
-  pm.addPass(mlir::createTensorConstantBufferizePass(/*alignment=*/64));
   // Always run canonicalizer (which does dead code removal) before bufferizing
   // anything.
   pm.addPass(mlir::createCanonicalizerPass());
+  // Turn tensor constants into global memrefs.
+  // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
+  pm.addPass(mlir::arith::createConstantBufferizePass(/*alignment=*/64));
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());

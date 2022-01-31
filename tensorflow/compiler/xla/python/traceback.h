@@ -83,8 +83,7 @@ class Traceback {
 
 template <typename H>
 H AbslHashValue(H h, const Traceback& traceback) {
-  h = H::combine_contiguous(std::move(h), traceback.raw_frames().begin(),
-                            traceback.raw_frames().size());
+  h = H::combine(std::move(h), traceback.raw_frames());
   return h;
 }
 

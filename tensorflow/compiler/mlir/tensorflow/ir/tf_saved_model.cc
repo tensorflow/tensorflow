@@ -491,7 +491,7 @@ class OptimizeSessionInitializerPattern
 };
 
 void SessionInitializerOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+    RewritePatternSet &results, MLIRContext *context) {
   results.insert<OptimizeSessionInitializerPattern>(context);
 }
 

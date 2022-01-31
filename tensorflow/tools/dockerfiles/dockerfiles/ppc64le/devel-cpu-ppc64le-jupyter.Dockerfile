@@ -92,17 +92,15 @@ RUN python3 -m pip --no-cache-dir install \
     portpicker \
     enum34
 
-# Build and install bazel
-ENV BAZEL_VERSION 4.2.2
-WORKDIR /
+# Installs bazelisk
 RUN mkdir /bazel && \
-    cd /bazel && \
-    curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-dist.zip && \
-    unzip bazel-$BAZEL_VERSION-dist.zip && \
-    bash ./compile.sh && \
-    cp output/bazel /usr/local/bin/ && \
-    rm -rf /bazel && \
-    cd -
+    curl -fSsL -o /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
+    mkdir /bazelisk && \
+    curl -fSsL -o /bazelisk/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazelisk/master/LICENSE" && \
+    mkdir -p "$HOME/bin" && \
+    curl -fSsL -o $HOME/bin/bazel "https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-linux-amd64" && \
+    chmod u+x "$HOME/bin/bazel" && \
+    export PATH="$HOME/bin:$PATH"
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

@@ -105,7 +105,7 @@ struct LegalizeEinsumToDotGeneralPass
     : public LegalizeEinsumToDotGeneralPassBase<
           LegalizeEinsumToDotGeneralPass> {
   void runOnOperation() override {
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     PopulateEinsumToDotGeneralPatterns(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
@@ -113,7 +113,7 @@ struct LegalizeEinsumToDotGeneralPass
 }  // namespace
 
 void PopulateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
-                                        OwningRewritePatternList *patterns) {
+                                        RewritePatternSet *patterns) {
   patterns->insert<EinsumToDotGeneralPattern>(context);
 }
 

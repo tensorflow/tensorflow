@@ -36,7 +36,7 @@ class OptimizeMhloPass : public OptimizeMhloPassBase<OptimizeMhloPass> {
 // Lowers the complex operations that can be represented using other operations.
 void OptimizeMhloPass::runOnOperation() {
   // Add lowering patterns to the list.
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   PopulateOptimizeMHLOPatterns(&getContext(), &patterns);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))

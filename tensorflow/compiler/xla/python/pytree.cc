@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -723,8 +724,7 @@ void BuildPytreeSubmodule(py::module& m) {
            [](const PyTreeDef& a, const PyTreeDef& b) { return a == b; })
       .def("__ne__",
            [](const PyTreeDef& a, const PyTreeDef& b) { return a != b; })
-      .def("__hash__",
-           [](const PyTreeDef& t) { return absl::Hash<PyTreeDef>()(t); });
+      .def("__hash__", [](const PyTreeDef& t) { return absl::HashOf(t); });
 
   pytree.def("register_node", [](py::object type, py::function to_iterable,
                                  py::function from_iterable) {

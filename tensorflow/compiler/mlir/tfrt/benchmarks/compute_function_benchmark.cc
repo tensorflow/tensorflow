@@ -386,5 +386,83 @@ BM(Jitrt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
 BM(JitrtV(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
 BM(Tfrt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
 
+static const char* const mlir_hitcat0 = R"(
+func @compute(%arg0: tensor<474xf32>,
+              %arg1: tensor<474xf32>,
+              %arg2: tensor<474xf32>,
+              %arg3: tensor<474xf32>,
+              %arg4: tensor<474xf32>,
+              %arg5: tensor<474xf32>,
+              %arg6: tensor<474xf32>,
+              %arg7: tensor<474x474xf32>) -> (tensor<474xf32>,
+                                              tensor<474x474xf32>) {
+    %cst = "tf.Const"()
+           {value = dense<0.000000e+00> : tensor<f32>,
+            device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+           : () -> tensor<f32>
+    %cst_0 = "tf.Const"()
+             {value = dense<1.000000e+00> : tensor<f32>,
+              device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+             : () -> tensor<f32>
+    %0 = "tf.Mul"(%arg0, %arg1)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %1 = "tf.AddV2"(%0, %arg2)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %2 = "tf.Mul"(%1, %arg0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %3 = "tf.AddV2"(%2, %arg3)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %4 = "tf.Mul"(%3, %arg0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %5 = "tf.AddV2"(%4, %arg4)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %6 = "tf.Mul"(%5, %arg0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %7 = "tf.AddV2"(%6, %arg5)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %8 = "tf.Mul"(%7, %arg0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %9 = "tf.AddV2"(%8, %arg6)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %10 = "tf.Minimum"(%9, %cst_0)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<474xf32>, tensor<f32>) -> tensor<474xf32>
+    %11 = "tf.Maximum"(%10, %cst)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<474xf32>, tensor<f32>) -> tensor<474xf32>
+    %12 = "tf.Mul"(%11, %arg7)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<474xf32>, tensor<474x474xf32>) -> tensor<474x474xf32>
+    return %11, %12 : tensor<474xf32>, tensor<474x474xf32>
+  }
+)";
+
+static llvm::SmallVector<InputTensorSpec> InputsHitcat2() {
+  return {
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg0
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg1
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg2
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg3
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg4
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg5
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg6
+      InputTensorSpec(DT_FLOAT, {474, 474}),  // %arg7
+  };
+}
+
+BM(Jitrt(Hitcat0, mlir_hitcat0, "compute", InputsHitcat2()));
+BM(JitrtV(Hitcat0, mlir_hitcat0, "compute", InputsHitcat2()));
+BM(Tfrt(Hitcat0, mlir_hitcat0, "compute", InputsHitcat2()));
+
 }  // namespace
 }  // namespace tensorflow

@@ -348,15 +348,43 @@ absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
                                                  int branch_count,
                                                  HloInstruction* conditional,
                                                  bool is_layout_sensitive) {
-  absl::flat_hash_set<int64_t> kspecial_convert;
+  absl::flat_hash_set<int64_t> special_convert;
+
+  // TODO(b/216487727): Allow hoisting converts that feed or fed by other
+  // converts by addressing possible duplicates left behind in the tuple output.
+  // The conditional code motion pass should handle these duplicates and hence,
+  // merging these snippets of code would be one alternative.
+  auto convert_invalid =
+      [](const HloInstruction* convert_set_candidate) -> bool {
+    bool invalid_user = absl::c_any_of(
+        convert_set_candidate->users(), [](const HloInstruction* user) -> bool {
+          return (user->opcode() == HloOpcode::kConvert);
+        });
+    bool invalid_producer =
+        absl::c_any_of(convert_set_candidate->operands(),
+                       [](const HloInstruction* operand) -> bool {
+                         return (operand->opcode() == HloOpcode::kConvert);
+                       });
+    return (invalid_user || invalid_producer);
+  };
+
   for (int64_t operand_num = 0; operand_num < old_root->operand_count();
        ++operand_num) {
     if (old_root->operand(operand_num)->opcode() != HloOpcode::kConvert) {
       continue;
     }
     bool replica = true;
-    HloInstruction* kspecial_convert_candidate =
+    HloInstruction* special_convert_candidate =
         old_root->mutable_operand(operand_num);
+    // TODO(b/216487727): Remove duplicates in tuple outputs while hoisting.
+    auto repeated =
+        absl::c_count_if(old_root->operands(),
+                         [&](const HloInstruction* operand) -> bool {
+                           return (special_convert_candidate == operand);
+                         }) > 1;
+    if (convert_invalid(special_convert_candidate) || repeated) {
+      continue;
+    }
     // Check whether an identical candidate appears in other branches
     for (int others = 1; others < branch_count; ++others) {
       HloInstruction* others_root =
@@ -364,13 +392,19 @@ absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
       bool eq_shape =
           is_layout_sensitive
               ? ShapeUtil::Equal(others_root->operand(operand_num)->shape(),
-                                 kspecial_convert_candidate->shape())
+                                 special_convert_candidate->shape())
               : ShapeUtil::Compatible(
                     others_root->operand(operand_num)->shape(),
-                    kspecial_convert_candidate->shape());
+                    special_convert_candidate->shape());
+      auto repeated =
+          absl::c_count_if(others_root->operands(),
+                           [&](const HloInstruction* operand) -> bool {
+                             return (special_convert_candidate == operand);
+                           }) > 1;
       if ((others_root->operand(operand_num)->opcode() ==
            HloOpcode::kConvert) &&
-          eq_shape) {
+          eq_shape && !convert_invalid(others_root->operand(operand_num)) &&
+          !repeated) {
         // Nothing to be done.
       } else {
         replica = false;
@@ -378,10 +412,10 @@ absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
       }
     }
     if (replica) {
-      kspecial_convert.insert(operand_num);
+      special_convert.insert(operand_num);
     }
   }
-  return kspecial_convert;
+  return special_convert;
 }
 
 // Restructuring the conditional instruction as follows:
@@ -460,11 +494,11 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
   };
 
   // Captures tuple indices refering to converts to be rematerialized/hoisted.
-  absl::flat_hash_set<int64_t> kspecial_convert = FindSpecialConverts(
+  absl::flat_hash_set<int64_t> special_convert = FindSpecialConverts(
       old_root, branch_count, conditional, is_layout_sensitive);
 
   // Exit if we cannot find any converts to be hoisted.
-  if (kspecial_convert.empty()) {
+  if (special_convert.empty()) {
     return false;
   }
 
@@ -485,7 +519,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
     for (int64_t operand_num = 0; operand_num < old_root->operand_count();
          ++operand_num) {
       HloInstruction* hoist = old_root->mutable_operand(operand_num);
-      if (!kspecial_convert.contains(operand_num)) {
+      if (!special_convert.contains(operand_num)) {
         new_operands[operand_num] = old_root->mutable_operand(operand_num);
         continue;
       }

@@ -271,7 +271,7 @@ class InitializableLookupTableBaseV1(InitializableLookupTableBase):
     return self._init_op
 
 
-@registration.register_serializable(
+@registration.register_tf_serializable(
     predicate=lambda obj: isinstance(obj, StaticHashTable))
 @tf_export("lookup.StaticHashTable", v1=[])
 class StaticHashTable(InitializableLookupTableBase):

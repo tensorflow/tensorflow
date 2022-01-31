@@ -33,9 +33,9 @@ constexpr float kNNAPIDefaultFixedValuedCost = 10000.0;
 
 constexpr char NNAPIHardware::kId[];  // Define kId.
 
-mlir::OwningRewritePatternList NNAPIHardware::GetTransformations(
+mlir::RewritePatternSet NNAPIHardware::GetTransformations(
     MLIRContext* context) const {
-  mlir::OwningRewritePatternList patterns(context);
+  mlir::RewritePatternSet patterns(context);
 
   patterns.insert<SquaredDifference, LowerPackIntoConcatReshape,
                   ReduceMeanToAvgPool, InsertRequantForReduceMean>(context);

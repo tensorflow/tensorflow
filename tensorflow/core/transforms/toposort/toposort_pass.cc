@@ -18,17 +18,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/RegionKindInterface.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/core//ir/ops.h"
+#include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
-
-namespace {
-
-#define GEN_PASS_CLASSES
-#include "tensorflow/core/transforms/passes.h.inc"
-
-}  // end namespace
 
 void SortTopologically(Block *block) {
   if (block->empty() || llvm::hasSingleElement(*block)) return;
@@ -81,22 +75,26 @@ void SortTopologically(Block *block) {
   }
 }
 
+namespace {
+
 // A pass that topologically sort Graph regions.
 struct TopoSortPass : TopoSortBase<TopoSortPass> {
   void runOnOperation() override {
     Operation *op = getOperation();
-    auto region_op = dyn_cast<RegionKindInterface>(*op);
+    auto region_op = dyn_cast<RegionKindInterface>(op);
     if (!region_op) return;
     for (int region : llvm::seq<int>(0, op->getNumRegions())) {
       if (!region_op.hasSSADominance(region) && !op->getRegion(region).empty())
-        (void)SortTopologically(&op->getRegion(region).front());
+        SortTopologically(&op->getRegion(region).front());
     }
   }
 };
 
+}  // namespace
+
+std::unique_ptr<Pass> CreateTopoSortPass() {
+  return std::make_unique<TopoSortPass>();
+}
+
 }  // namespace tfg
 }  // namespace mlir
-
-std::unique_ptr<mlir::Pass> mlir::tfg::CreateTopoSortPass() {
-  return std::make_unique<mlir::tfg::TopoSortPass>();
-}

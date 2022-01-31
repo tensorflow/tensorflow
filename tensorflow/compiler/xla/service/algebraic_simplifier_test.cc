@@ -8136,5 +8136,40 @@ TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {
               GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, GTETupleShardingLoss) {
+  // Verify the gte(tuple) folding does not happen if it loses sharding info.
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0), sharding={devices=[2]0,1}
+      t = (s32[10]) tuple(p0)
+      ROOT %gte = s32[10] get-tuple-element(t), index=0, sharding={replicated}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicSliceShapeLayout) {
+  // Verify we maintain layout when optimizing dynamic-slice
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = u32[]{:T(128)} parameter(0)
+      %constant.1 = s32[4]{0:T(128)} constant({0, 16, 32, 48})
+      %dynamic-slice = s32[1]{0:T(128)} dynamic-slice(s32[4]{0:T(128)} %constant.1, u32[] %p0), dynamic_slice_sizes={1}
+      ROOT t = (s32[1]{0:T(128)}) tuple(dynamic-slice)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  const Shape& slice_shape =
+      m.get()->entry_computation()->root_instruction()->operand(0)->shape();
+  EXPECT_TRUE(slice_shape.has_layout());
+  EXPECT_EQ(slice_shape.layout().tiles_size(), 1);
+}
+
 }  // namespace
 }  // namespace xla

@@ -491,7 +491,9 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              Register_RANDOM_STANDARD_NORMAL());
   AddBuiltin(BuiltinOperator_BUCKETIZE, Register_BUCKETIZE());
   AddBuiltin(BuiltinOperator_RANDOM_UNIFORM, Register_RANDOM_UNIFORM());
-  AddBuiltin(BuiltinOperator_GELU, Register_GELU());
+  AddBuiltin(BuiltinOperator_GELU, Register_GELU(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

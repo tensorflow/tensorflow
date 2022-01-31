@@ -28,6 +28,19 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_embedding_configuration_utils",
+    srcs = ["tpu_embedding_configuration_utils.cc"],
+    hdrs = ["tpu_embedding_configuration_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "tpu_embedding_optimization_parameters_utils",
     srcs = ["tpu_embedding_optimization_parameters_utils.cc"],
     hdrs = ["tpu_embedding_optimization_parameters_utils.h"],

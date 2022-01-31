@@ -341,7 +341,7 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
 
     // Stage 2: Remove extent 1 dims to ensure correct 1-ranked vectorization
     auto ctx = f.getContext();
-    OwningRewritePatternList patterns(ctx);
+    RewritePatternSet patterns(ctx);
     mlir::vector::populateCastAwayVectorLeadingOneDimPatterns(patterns);
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();

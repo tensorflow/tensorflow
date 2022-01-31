@@ -1473,6 +1473,7 @@ cc_library(
         ":userange_analysis",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LLVMDialect",
@@ -1490,6 +1491,7 @@ cc_library(
 cc_library(
     name = "all_passes",
     hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
         "include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h",
         "include/mlir-hlo/Transforms/register_passes.h",
@@ -1504,6 +1506,8 @@ cc_library(
         ":chlo_legalize_to_hlo",
         ":copy_removal",
         ":expand_hlo_tuples",
+        ":gml_st_passes_inc_gen",
+        ":greedy_tiling",
         ":group_reduction_dimensions",
         ":hlo_legalize_shape_ops_to_standard",
         ":hlo_legalize_to_lhlo",
@@ -1583,6 +1587,7 @@ cc_library(
         ":transforms_pass_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:Transforms",
@@ -1619,6 +1624,7 @@ cc_library(
         ":transforms_pass_inc_gen",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
@@ -1639,6 +1645,7 @@ cc_library(
         ":hlo",
         ":transforms_pass_inc_gen",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MemRefDialect",
@@ -1660,6 +1667,7 @@ cc_library(
         ":lhlo",
         ":transforms_pass_inc_gen",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
@@ -1737,6 +1745,7 @@ cc_binary(
     ],
     deps = [
         ":all_passes",
+        ":gml_st",
         ":hlo_dialect_registration",
         ":lhlo",
         ":lhlo_gpu",
@@ -1815,6 +1824,7 @@ td_library(
     compatible_with = get_compatible_with_cloud(),
     includes = ["include"],
     deps = [
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
     ],
 )
@@ -1832,6 +1842,22 @@ gentbl_cc_library(
             ["-gen-op-defs"],
             "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.cc.inc",
         ),
+        (
+            ["-gen-dialect-decls"],
+            "include/mlir-hlo/Dialect/gml_st/IR/gml_st_dialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir-hlo/Dialect/gml_st/IR/gml_st_dialect.cc.inc",
+        ),
+        (
+            ["-gen-typedef-decls"],
+            "include/mlir-hlo/Dialect/gml_st/IR/gml_st_types.h.inc",
+        ),
+        (
+            ["-gen-typedef-defs"],
+            "include/mlir-hlo/Dialect/gml_st/IR/gml_st_types.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.td",
@@ -1841,8 +1867,6 @@ gentbl_cc_library(
 cc_library(
     name = "gml_st",
     srcs = [
-        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.cc.inc",
-        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc",
         "lib/Dialect/gml_st/IR/gml_st_ops.cc",
     ],
     hdrs = [
@@ -1851,6 +1875,91 @@ cc_library(
     includes = ["include"],
     deps = [
         ":gml_st_ops_inc_gen",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:ViewLikeInterface",
+    ],
+)
+
+gentbl_cc_library(
+    name = "tiling_interface_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td",
+    deps = ["@llvm-project//mlir:OpBaseTdFiles"],
+)
+
+cc_library(
+    name = "tiling_interface",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.cc.inc",
+        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h.inc",
+        "lib/Dialect/gml_st/transforms/tiling_interface.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":hlo",
+        ":map_mhlo_to_scalar_op",
+        ":tiling_interface_inc_gen",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+gentbl_cc_library(
+    name = "gml_st_passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=GmlSt",
+            ],
+            "include/mlir-hlo/Dialect/gml_st/transforms/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "greedy_tiling",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
+        "lib/Dialect/gml_st/transforms/greedy_tiling.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":gml_st_passes_inc_gen",
+        ":hlo",
+        ":tiling_interface",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )

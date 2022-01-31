@@ -18,8 +18,8 @@ limitations under the License.
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/BufferUtils.h"
 
 namespace mlir {
 
@@ -32,7 +32,8 @@ struct TestUserangePass : public TestUserangeBase<TestUserangePass> {
 
   void runOnOperation() override {
     llvm::outs() << "Testing : " << getOperation().getName() << "\n";
-    UserangeAnalysis(getOperation(), BufferPlacementAllocs(getOperation()),
+    UserangeAnalysis(getOperation(),
+                     bufferization::BufferPlacementAllocs(getOperation()),
                      BufferViewFlowAnalysis(getOperation()))
         .dump(llvm::outs());
   }

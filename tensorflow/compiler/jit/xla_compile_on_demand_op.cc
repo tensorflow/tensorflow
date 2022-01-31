@@ -98,10 +98,24 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       GatherVariableInfo(ctx, *result, 0);
   TF_RETURN_IF_ERROR(variable_infos.status());
   TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(*variable_infos)));
+
+  if (cache_ == nullptr) {
+    rm_ = ctx->resource_manager();
+    TF_RETURN_IF_ERROR(rm_->LookupOrCreate<XlaConstantOutputResource>(
+        def().name(), def().name(), &cache_,
+        [](XlaConstantOutputResource** ret) {
+          *ret = new XlaConstantOutputResource();
+          return Status::OK();
+        }));
+  }
+  // Create a cache for each executable .
+  XlaConstOutputCache& const_output_cache =
+      cache_->FindConstOutput(executable->executable());
+
   TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
       ctx, result, execution_output.ConsumeResult(),
       /*missing_ctx_input_prefix=*/0, absl::MakeSpan(*variable_infos),
-      input_output_alias, snapshot_ptrs));
+      input_output_alias, snapshot_ptrs, const_output_cache));
   return Status::OK();
 }
 
@@ -181,6 +195,17 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
   OP_REQUIRES_OK(ctx, Run(ctx, cache, result, executable, variable_args));
+}
+
+XlaCompileOnDemandOp::~XlaCompileOnDemandOp() {
+  if (cache_ != nullptr) {
+    cache_->Unref();
+    if (!rm_->template Delete<XlaConstantOutputResource>(def().name(),
+                                                         def().name())
+             .ok()) {
+      // Do nothing; the resource can have been deleted by session resets.
+    }
+  }
 }
 
 }  // namespace tensorflow

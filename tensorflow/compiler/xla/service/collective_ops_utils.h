@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -166,8 +168,7 @@ struct RendezvousKey {
   template <typename H>
   friend H AbslHashValue(H h, const RendezvousKey& k) {
     return H::combine(std::move(h), k.run_id, k.global_devices,
-                      k.num_local_participants,
-                      static_cast<int>(k.collective_op_kind), k.op_id);
+                      k.num_local_participants, k.collective_op_kind, k.op_id);
   }
   friend bool operator==(const RendezvousKey& a, const RendezvousKey& b) {
     return a.run_id == b.run_id && a.global_devices == b.global_devices &&
@@ -328,7 +329,7 @@ class Rendezvous {
   // Initialize the rendezvous by the first ("primary") thread which reaches the
   // barrier. Returns whether this thread is primary.
   bool InitializationBarrier() {
-    tensorflow::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     if (!initialized_) {
       initialized_ = true;
       return true;
@@ -336,11 +337,11 @@ class Rendezvous {
     return false;
   }
 
-  tensorflow::mutex mu_;
+  absl::Mutex mu_;
 
-  bool initialized_ TF_GUARDED_BY(mu_) = false;
+  bool initialized_ ABSL_GUARDED_BY(mu_) = false;
 
-  std::vector<I> participants_ TF_GUARDED_BY(mu_);
+  std::vector<I> participants_ ABSL_GUARDED_BY(mu_);
 
  private:
   // Runs the all-reduce on the given thread.  If successful, returns
@@ -352,7 +353,7 @@ class Rendezvous {
   StatusOr<std::pair<O, std::shared_ptr<tensorflow::BlockingCounter>>>
   SubmitParticipant(const I& participant) {
     {
-      tensorflow::mutex_lock lock(mu_);
+      absl::MutexLock lock(&mu_);
       CHECK(!initialized_);
 
       // Spot check for consistent replica counts among submitting threads.

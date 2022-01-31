@@ -21,11 +21,11 @@ limitations under the License.
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/BufferUtils.h"
 
 namespace mlir {
 
@@ -182,7 +182,7 @@ class SortedPackingStrategy {
       : windowSize(windowSize), compare(compare) {}
 
   /// Optimize the buffer allocations.
-  void optimze(const mlir::BufferPlacementAllocs &allocs,
+  void optimze(const mlir::bufferization::BufferPlacementAllocs &allocs,
                const UserangeAnalysis &userangeAnalysis,
                std::vector<PackedBuffer> &packedBuffers) {
     AllocInfoList allocInfos;
@@ -293,9 +293,9 @@ class SortedPackingStrategy {
 
   /// Aggreagtes the allocation informations of the allocs and returns the
   /// maximal userange.
-  size_t computeAllocationInfos(AllocInfoList &allocInfos,
-                                const UserangeAnalysis &userangeAnalysis,
-                                const mlir::BufferPlacementAllocs &allocs) {
+  size_t computeAllocationInfos(
+      AllocInfoList &allocInfos, const UserangeAnalysis &userangeAnalysis,
+      const mlir::bufferization::BufferPlacementAllocs &allocs) {
     // Create allocInformations and store them in allocInfos.
     size_t maxUserangeId = 0;
 
@@ -347,7 +347,7 @@ class SortedPackingStrategy {
 /// Pass to pack buffer together to optimize the memeory consumption and to
 /// save allocation operations. A strategy must be passed as a template
 /// argument.
-class BufferPacking : BufferPlacementTransformationBase {
+class BufferPacking : bufferization::BufferPlacementTransformationBase {
  public:
   template <typename StrategyT>
   BufferPacking(Operation *op, StrategyT strategy)

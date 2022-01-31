@@ -45,7 +45,7 @@
 
   * Added TFLite builtin op support for the following TF ops:
     * `tf.math.argmin`/`tf.math.argmax` for input data type `tf.bool` on CPU.
-    * `tf.nn.gelu` op for output data type `tf.float32` on CPU.
+    * `tf.nn.gelu` op for output data type `tf.float32` and quantization on CPU.
 
 # Bug Fixes and Other Changes
 

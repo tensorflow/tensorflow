@@ -77,6 +77,7 @@ using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
     std::function<QuantParams(const std::vector<QuantParams>&, bool)>;
 using StringSet = absl::flat_hash_set<std::string>;
+using CustomMap = TFL::CustomOpMap;
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {
@@ -319,6 +320,7 @@ class QuantizationPattern : public RewritePattern {
         quant_params_.numeric_verify_spec.whole_model_verify;
     StringSet ops_blocklist = quant_params_.quant_spec.ops_blocklist;
     StringSet nodes_blocklist = quant_params_.quant_spec.nodes_blocklist;
+    CustomMap custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing
     // preceding dequantize ops and succeding quantize ops.
@@ -336,7 +338,9 @@ class QuantizationPattern : public RewritePattern {
         return failure();
       }
 
-      if (IsOpNotQuantizable(quantizing_op)) {
+      if (IsOpNotQuantizable(quantizing_op) &&
+          !static_cast<const ConcretTy*>(this)->IsQuantizableCustomOp(
+              quantizing_op, custom_map)) {
         if (!(enable_verify && enable_whole_model_verify)) {
           return failure();
         }
@@ -391,17 +395,14 @@ class QuantizationPattern : public RewritePattern {
 
         auto ele_type = operand.getType().cast<TensorType>().getElementType();
         if (static_cast<const ConcretTy*>(this)
-                ->AllowDynamicRangeQuantizedOperand(quantizing_op)) {
+                ->AllowDynamicRangeQuantizedOperand(quantizing_op,
+                                                    custom_map)) {
           auto dq_op = dyn_cast_or_null<DQ>(operand.getDefiningOp());
-          auto dynamic_range_op =
-              dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantizing_op);
 
-          // TODO(b/212514817): refactor mode checking to improve code quality
-          if (dq_op && dynamic_range_op &&
-              inference_type == tensorflow::DT_QINT8 &&
-              dynamic_range_op.GetDynamicRangeQuantKernelSupport() &&
+          if (dq_op && inference_type == tensorflow::DT_QINT8 &&
               !static_cast<const ConcretTy*>(this)->IsWeightOnlyOp(
-                  quantizing_op, ops_blocklist, weight_only_quantization)) {
+                  quantizing_op, ops_blocklist, weight_only_quantization,
+                  custom_map)) {
             // Dynamic range quantization is applied by having Q as an input.
             // Only int8 weight is supported for now.
             inputs.push_back(dq_op.input());
@@ -452,7 +453,8 @@ class QuantizationPattern : public RewritePattern {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else if (static_cast<const ConcretTy*>(this)
-                       ->AllowDynamicRangeQuantizedResult(quantizing_op)) {
+                       ->AllowDynamicRangeQuantizedResult(quantizing_op,
+                                                          custom_map)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else {

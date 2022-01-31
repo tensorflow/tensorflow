@@ -541,7 +541,7 @@ Status CompileSerializedMlirToXlaHlo(
   mlir::DialectRegistry mlir_registry;
   RegisterDialects(mlir_registry);
   mlir::MLIRContext mlir_context(mlir_registry);
-  mlir::OwningModuleRef mlir_module;
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
 
   TF_RETURN_IF_ERROR(
       DeserializeMlirModule(mlir_module_string, &mlir_context, &mlir_module));
@@ -706,7 +706,7 @@ Status CompileGraphToXlaHlo(
   return status;
 }
 
-xla::StatusOr<mlir::OwningModuleRef> GraphToModule(
+xla::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphToModule(
     const Graph& graph, llvm::ArrayRef<std::string> control_rets,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     mlir::MLIRContext* context) {
@@ -734,7 +734,7 @@ Status BuildHloFromGraph(
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
   TF_ASSIGN_OR_RETURN(
-      mlir::OwningModuleRef module,
+      mlir::OwningOpRef<mlir::ModuleOp> module,
       GraphToModule(graph, control_rets, flib_def, debug_info, &mlir_context));
   return BuildHloFromModule(module.get(), builder, xla_params, returns, args,
                             device_type, custom_legalization_passes);
@@ -751,7 +751,7 @@ Status CompileGraphToXlaHlo(
         custom_legalization_passes) {
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
-      mlir::OwningModuleRef module,
+      mlir::OwningOpRef<mlir::ModuleOp> module,
       GraphToModule(graph, control_rets, flib_def, debug_info, &context));
   return CompileGraphToXlaHlo(
       module.get(), args, device_type, use_tuple_args, analyse_graph,

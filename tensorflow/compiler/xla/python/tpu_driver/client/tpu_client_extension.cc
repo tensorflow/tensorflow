@@ -154,7 +154,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
               -> StatusOr<std::unique_ptr<PyTpuExecutable>> {
             py::gil_scoped_release gil_release;
             mlir::MLIRContext context;
-            TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+            TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                                 ParseMlirModuleString(mlir_module, context));
             return PyTpuExecutable::CompileMlir(
                 module.get(), options.argument_layouts,

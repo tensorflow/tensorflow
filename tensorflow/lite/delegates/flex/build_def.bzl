@@ -216,9 +216,6 @@ def tflite_flex_shared_library(
 
     tflite_cc_shared_object(
         name = name,
-        # Until we have more granular symbol export for the C++ API on Windows,
-        # export all symbols.
-        features = ["windows_export_all_symbols"],
         linkopts = select({
             "//tensorflow:macos": [
                 "-Wl,-exported_symbols_list,$(location //tensorflow/lite/delegates/flex:exported_symbols.lds)",

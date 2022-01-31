@@ -15,11 +15,15 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
+import java.io.File;
+import java.lang.reflect.Constructor;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
 
 /**
  * Interface to TensorFlow Lite model interpreter, excluding experimental methods.
@@ -31,7 +35,7 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <pre>{@code
  * try (InterpreterApi interpreter =
- *     new InterpreterFactory().create(file_of_a_tensorflowlite_model)) {
+ *     new InterpreterApi.create(file_of_a_tensorflowlite_model)) {
  *   interpreter.run(input, output);
  * }
  * }</pre>
@@ -45,7 +49,7 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * ith_output.order(ByteOrder.nativeOrder());
  * map_of_indices_to_outputs.put(i, ith_output);
  * try (InterpreterApi interpreter =
- *     new InterpreterFactory().create(file_of_a_tensorflowlite_model)) {
+ *     new InterpreterApi.create(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
  * }
  * }</pre>
@@ -56,7 +60,7 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * String[] input = {"foo", "bar"};  // Input tensor shape is [2].
  * String[] output = new String[3][2];  // Output tensor shape is [3, 2].
  * try (InterpreterApi interpreter =
- *     new InterpreterFactory().create(file_of_a_tensorflowlite_model)) {
+ *     new InterpreterApi.create(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(input, output);
  * }
  * }</pre>
@@ -79,8 +83,6 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <p>The TFLite library is built against NDK API 19. It may work for Android API levels below 19,
  * but is not guaranteed.
- *
- * @see InterpreterFactory
  */
 public interface InterpreterApi extends AutoCloseable {
 
@@ -95,6 +97,7 @@ public interface InterpreterApi extends AutoCloseable {
       this.useNNAPI = other.useNNAPI;
       this.allowCancellation = other.allowCancellation;
       this.delegates = new ArrayList<>(other.delegates);
+      this.runtime = other.runtime;
     }
 
     /**
@@ -178,12 +181,160 @@ public interface InterpreterApi extends AutoCloseable {
       return Collections.unmodifiableList(delegates);
     }
 
+    /** Enum to represent where to get the TensorFlow Lite runtime implementation from. */
+    public static enum TfLiteRuntime {
+      /**
+       * Use a TF Lite runtime implementation that is linked into the application. If there is no
+       * suitable TF Lite runtime implementation linked into the application, then attempting to
+       * create an InterpreterApi instance with this TfLiteRuntime setting will throw an
+       * IllegalStateException exception (even if the OS or system services could provide a TF Lite
+       * runtime implementation).
+       *
+       * <p>This is the default setting. This setting is also appropriate for apps that must run on
+       * systems that don't provide a TF Lite runtime implementation.
+       */
+      FROM_APPLICATION_ONLY,
+
+      /**
+       * Use a TF Lite runtime implementation provided by the OS or system services. This will be
+       * obtained from a system library / shared object / service, such as Google Play Services. It
+       * may be newer than the version linked into the application (if any). If there is no suitable
+       * TF Lite runtime implementation provided by the system, then attempting to create an
+       * InterpreterApi instance with this TfLiteRuntime setting will throw an IllegalStateException
+       * exception (even if there is a TF Lite runtime implementation linked into the application).
+       *
+       * <p>This setting is appropriate for code that will use a system-provided TF Lite runtime,
+       * which can reduce app binary size and can be updated more frequently.
+       */
+      FROM_SYSTEM_ONLY,
+
+      /**
+       * Use a system-provided TF Lite runtime implementation, if any, otherwise use the TF Lite
+       * runtime implementation linked into the application, if any. If no suitable TF Lite runtime
+       * can be found in any location, then attempting to create an InterpreterApi instance with
+       * this TFLiteRuntime setting will throw an IllegalStateException. If there is both a suitable
+       * TF Lite runtime linked into the application and also a suitable TF Lite runtime provided by
+       * the system, the one provided by the system will be used.
+       *
+       * <p>This setting is suitable for use in code that doesn't care where the TF Lite runtime is
+       * coming from (e.g. middleware layers).
+       */
+      PREFER_SYSTEM_OVER_APPLICATION,
+    };
+
+    /** Method for specifying where to get the TF Lite runtime implementation from. */
+    public Options setRuntime(TfLiteRuntime runtime) {
+      this.runtime = runtime;
+      return this;
+    }
+
+    /** Return where to get the TF Lite runtime implementation from. */
+    public TfLiteRuntime getRuntime() {
+      return runtime;
+    }
+
+    TfLiteRuntime runtime = TfLiteRuntime.FROM_APPLICATION_ONLY;
     int numThreads = -1;
     Boolean useNNAPI;
     Boolean allowCancellation;
 
     // See InterpreterApi.Options#addDelegate(boolean).
     final List<Delegate> delegates;
+  }
+
+  /**
+   * Constructs an {@link InterpreterApi} instance, using the specified model and options. The model
+   * will be loaded from a file.
+   *
+   * @param modelFile A file containing a pre-trained TF Lite model.
+   * @param options A set of options for customizing interpreter behavior.
+   * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
+   *     model.
+   */
+  @SuppressWarnings("StaticOrDefaultInterfaceMethod")
+  public static InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
+    InterpreterFactoryApi factory = getFactory(options);
+    return factory.create(modelFile, options);
+  }
+
+  /**
+   * Constructs an {@link InterpreterApi} instance, using the specified model and options. The model
+   * will be read from a {@code ByteBuffer}.
+   *
+   * @param byteBuffer A pre-trained TF Lite model, in binary serialized form. The ByteBuffer should
+   *     not be modified after the construction of an {@link InterpreterApi} instance. The {@code
+   *     ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   *     direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   * @param options A set of options for customizing interpreter behavior.
+   * @throws IllegalArgumentException if {@code byteBuffer} is not a {@code MappedByteBuffer} nor a
+   *     direct {@code ByteBuffer} of nativeOrder.
+   */
+  @SuppressWarnings("StaticOrDefaultInterfaceMethod")
+  public static InterpreterApi create(
+      @NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
+    InterpreterFactoryApi factory = getFactory(options);
+    return factory.create(byteBuffer, options);
+  }
+
+  @SuppressWarnings("StaticOrDefaultInterfaceMethod")
+  static InterpreterFactoryApi getFactory(InterpreterApi.Options options) {
+    InterpreterFactoryApi factory;
+    Exception exception = null;
+    if (options != null
+        && (options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
+            || options.runtime == TfLiteRuntime.FROM_SYSTEM_ONLY)) {
+      try {
+        Class<?> clazz = Class.forName("com.google.android.gms.tflite.InterpreterFactoryImpl");
+        Constructor<?> factoryConstructor = clazz.getDeclaredConstructor();
+        factoryConstructor.setAccessible(true);
+        factory = (InterpreterFactoryApi) factoryConstructor.newInstance();
+        if (factory != null) {
+          return factory;
+        }
+      } catch (Exception e1) {
+        exception = e1;
+      }
+    }
+    if (options == null
+        || options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
+        || options.runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
+      try {
+        Class<?> clazz = Class.forName("org.tensorflow.lite.InterpreterFactoryImpl");
+        factory = (InterpreterFactoryApi) clazz.getDeclaredConstructor().newInstance();
+        if (factory != null) {
+          return factory;
+        }
+      } catch (Exception e2) {
+        if (exception == null) {
+          exception = e2;
+        } else {
+          exception.addSuppressed(e2);
+        }
+      }
+    }
+    String message;
+    if (options == null || options.runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
+      message =
+          "You should declare a build dependency on org.tensorflow.lite:tensorflow-lite,"
+              + " or call .setRuntime with a value other than TfLiteRuntime.FROM_APPLICATION_ONLY"
+              + " (see docs for org.tensorflow.lite.InterpreterApi.Options#setRuntime).";
+    } else if (options.runtime == TfLiteRuntime.FROM_SYSTEM_ONLY) {
+      message =
+          "You should declare a build dependency on"
+              + " com.google.android.gms:play-services-tflite-java,"
+              + " or call .setRuntime with a value other than TfLiteRuntime.FROM_SYSTEM_ONLY "
+              + " (see docs for org.tensorflow.lite.InterpreterApi.Options#setRuntime).";
+    } else {
+      message =
+          "You should declare a build dependency on"
+              + " org.tensorflow.lite:tensorflow-lite or"
+              + " com.google.android.gms:play-services-tflite-java";
+    }
+    throw new IllegalStateException(
+        "Couldn't find TensorFlow Lite runtime's InterpreterFactoryImpl class --"
+            + " make sure your app links in the right TensorFlow Lite runtime. "
+            + message,
+        exception);
   }
 
   /**

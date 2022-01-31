@@ -40,8 +40,8 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//mlir:BufferizationTransforms",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
@@ -158,6 +158,7 @@ cc_library(
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefToLLVM",
+        "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",  # buildcleaner: keep
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
@@ -166,6 +167,7 @@ cc_library(
         "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",  # buildcleaner: keep
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:SCFToStandard",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:ShapeToStandard",

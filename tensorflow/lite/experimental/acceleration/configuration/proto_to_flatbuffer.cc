@@ -59,6 +59,8 @@ Delegate ConvertDelegate(proto::Delegate delegate) {
       return Delegate_EDGETPU;
     case proto::Delegate::EDGETPU_CORAL:
       return Delegate_EDGETPU_CORAL;
+    case proto::Delegate::CORE_ML:
+      return Delegate_CORE_ML;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -233,6 +235,28 @@ Offset<XNNPackSettings> ConvertXNNPackSettings(
                                /*num_threads=*/settings.num_threads());
 }
 
+Offset<CoreMLSettings> ConvertCoreMLSettings(
+    const proto::CoreMLSettings& settings, FlatBufferBuilder* builder) {
+  tflite::CoreMLSettings_::EnabledDevices enabled_devices =
+      tflite::CoreMLSettings_::EnabledDevices_DEVICES_ALL;
+  switch (settings.enabled_devices()) {
+    case proto::CoreMLSettings::DEVICES_ALL:
+      enabled_devices = tflite::CoreMLSettings_::EnabledDevices_DEVICES_ALL;
+      break;
+    case proto::CoreMLSettings::DEVICES_WITH_NEURAL_ENGINE:
+      enabled_devices =
+          tflite::CoreMLSettings_::EnabledDevices_DEVICES_WITH_NEURAL_ENGINE;
+      break;
+    default:
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Invalid devices enum: %d",
+                      settings.enabled_devices());
+  }
+
+  return CreateCoreMLSettings(
+      *builder, enabled_devices, settings.coreml_version(),
+      settings.max_delegated_partitions(), settings.min_nodes_per_partition());
+}
+
 Offset<CPUSettings> ConvertCPUSettings(const proto::CPUSettings& settings,
                                        FlatBufferBuilder* builder) {
   return CreateCPUSettings(*builder,
@@ -318,6 +342,7 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       ConvertGPUSettings(settings.gpu_settings(), builder),
       ConvertHexagonSettings(settings.hexagon_settings(), builder),
       ConvertXNNPackSettings(settings.xnnpack_settings(), builder),
+      ConvertCoreMLSettings(settings.coreml_settings(), builder),
       ConvertCPUSettings(settings.cpu_settings(), builder),
       /*max_delegated_partitions=*/settings.max_delegated_partitions(),
       ConvertEdgeTpuSettings(settings.edgetpu_settings(), builder),

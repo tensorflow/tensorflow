@@ -72,6 +72,11 @@ struct SendRecv : public ::mlir::SideEffects::Resource::Base<SendRecv> {
   StringRef getName() final { return "<SendRecv>"; }
 };
 
+struct RandomGenerator
+    : public ::mlir::SideEffects::Resource::Base<RandomGenerator> {
+  StringRef getName() final { return "<RandomGenerator>"; }
+};
+
 struct TPUExecute : public ::mlir::SideEffects::Resource::Base<TPUExecute> {
   StringRef getName() final { return "<TPUExecute>"; }
 };

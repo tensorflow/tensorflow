@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -35,7 +34,7 @@ inline int64_t MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
   const uint64_t uxy = ux * uy;
 
   // Check if we overflow uint64_t, using a cheap check if both inputs are small
-  if (TF_PREDICT_FALSE((ux | uy) >> 32 != 0)) {
+  if (ABSL_PREDICT_FALSE((ux | uy) >> 32 != 0)) {
     // Ensure nonnegativity.  Note that negative numbers will appear "large"
     // to the unsigned comparisons above.
     CHECK(x >= 0 && y >= 0);

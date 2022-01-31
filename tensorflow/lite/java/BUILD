@@ -203,6 +203,8 @@ android_library_with_tflite(
 # 'tensorflowlite-api' is the public android_library target for TF Lite Java
 # APIs. Only stable APIs are included. This library corresponds to the public
 # Maven package "org.tensorflow:tensorflow-lite-api".
+# This target does not include the TF Lite Runtime, which nevertheless is
+# required and must be provided via a separate dependency.
 android_library_with_tflite(
     name = "tensorflowlite_api",
     srcs = [":java_api_srcs"],
@@ -214,7 +216,7 @@ android_library_with_tflite(
 )
 
 # 'tensorflowlite_stable' is the public android_library target for the
-# TF Lite Java APIs, excluding experimental APIs.
+# TF Lite Java APIs & Runtime, excluding experimental APIs.
 android_library_with_tflite(
     name = "tensorflowlite_stable",
     # Note that we need to directly includes all the
@@ -293,7 +295,8 @@ android_library(
 
 #-----------------------------------------------------------------------------
 # java_library targets that include only Java source dependencies,
-# not native code.
+# not native code.  The corresponding native code is still required
+# and must be provided via a separate dependency.
 
 # Java source dependencies for all TF Lite Java APIs, including experimental APIs.
 java_library(
@@ -305,12 +308,11 @@ java_library(
     ],
 )
 
-# Java source dependencies for TF Lite Java APIs, excluding experimental APIs.
+# Java source dependencies for TF Lite Java APIs and Runtime, excluding experimental APIs.
 java_library(
     name = "tensorflowlite_javalib_stable",
     srcs = [":java_stable_runtime_srcs"],
     javacopts = JAVACOPTS,
-    visibility = ["//visibility:private"],
     exports = [
         ":tensorflowlite_api_javalib",
     ],
@@ -320,7 +322,7 @@ java_library(
     ],
 )
 
-# Java source dependencies for TF Lite Java experimental APIs.
+# Java source dependencies for TF Lite Java APIs and Runtime, including experimental APIs.
 java_library(
     name = "tensorflowlite_javalib_experimental",
     srcs = [":java_experimental_srcs"],
@@ -410,6 +412,13 @@ java_test_with_tflite(
         "src/test/java/org/tensorflow/lite/TestInit.java",
     ],
     javacopts = JAVACOPTS,
+    # We want to ensure that every test case in the test also verifies that the
+    # native libraries get loaded.  But Java doesn't provide a way to unload
+    # native libraries: there's no System.unloadLibrary().  So instead, we just
+    # run every test case in this test in a separate shard, which ensures that
+    # they run in a separate process that doesn't have the native libraries
+    # loaded yet.
+    shard_count = 3,
     tags = [
         "v1only",
     ],
@@ -800,9 +809,8 @@ jni_binary_with_tflite(
 )
 
 # JNI shared libary containing Java API native code, excluding experimental APIs.
-# Unlike libtensorflowlite_jni.so, this will NOT get loaded automatically by
-# TensorFlowLite.init(); instead this library should be explicitly loaded by the
-# client code, using System.LoadLibrary, before TensorFlowLite.init() is called.
+# This library will get automatically loaded by TensorFlowLite.init(),
+# if libtensorflowlite_jni.so isn't found.
 jni_binary_with_tflite(
     name = "libtensorflowlite_jni_stable.so",
     linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),

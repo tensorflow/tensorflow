@@ -14,6 +14,8 @@
 # ==============================================================================
 """Composes one or more `LinearOperators`."""
 
+import warnings
+
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -173,9 +175,12 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
       is_non_singular = True
 
     # Initialization.
+
     graph_parents = []
-    for operator in operators:
-      graph_parents.extend(operator.graph_parents)
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore")
+      for operator in operators:
+        graph_parents.extend(operator.graph_parents)
 
     if name is None:
       name = "_o_".join(operator.name for operator in operators)
