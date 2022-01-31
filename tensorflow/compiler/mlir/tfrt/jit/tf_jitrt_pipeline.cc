@@ -80,15 +80,15 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       reduction_2d_tile_sizes));
 
-  if (options.fuse_fill) {
-    pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
-  }
   pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.vector_size));
   if (options.peel) {
     pm.addNestedPass<FuncOp>(CreatePeelTiledLoopsPass());
   }
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  if (options.fuse_fill) {
+    pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
+  }
   pm.addNestedPass<FuncOp>(CreateVectorizeTiledOpsPass());
 }
 
