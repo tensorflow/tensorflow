@@ -2407,27 +2407,37 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
 
       return clamp_op.getResult();
     } else if (fused_activation_fn.getValue() == "RELU6") {
-      int32_t quantized_0 = input_qtype.getZeroPoint();
-      int32_t quantized_6 = std::llround((6.0f / input_qtype.getScale()) +
+      int64_t quantized_0 = input_qtype.getZeroPoint();
+      int64_t quantized_6 = std::llround((6.0f / input_qtype.getScale()) +
                                          input_qtype.getZeroPoint());
+      int64_t quantized_min = input_qtype.getStorageTypeMin();
+      int64_t quantized_max = input_qtype.getStorageTypeMax();
+
+      int64_t clamp_min = std::max(quantized_0, quantized_min);
+      int64_t clamp_max = std::min(quantized_6, quantized_max);
 
       auto clamp_op = CreateOpAndInfer<tosa::ClampOp>(
           rewriter, op->getLoc(), input_type, input_value,
-          rewriter.getI64IntegerAttr(quantized_0),
-          rewriter.getI64IntegerAttr(quantized_6), rewriter.getF32FloatAttr(0),
+          rewriter.getI64IntegerAttr(clamp_min),
+          rewriter.getI64IntegerAttr(clamp_max), rewriter.getF32FloatAttr(0),
           rewriter.getF32FloatAttr(0));
 
       return clamp_op.getResult();
     } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
-      int32_t quantized_n1 = std::llround((-1.0f / input_qtype.getScale()) +
+      int64_t quantized_max = input_qtype.getStorageTypeMax();
+      int64_t quantized_min = input_qtype.getStorageTypeMin();
+      int64_t quantized_n1 = std::llround((-1.0f / input_qtype.getScale()) +
                                           input_qtype.getZeroPoint());
-      int32_t quantized_1 = std::llround((1.0f / input_qtype.getScale()) +
+      int64_t quantized_1 = std::llround((1.0f / input_qtype.getScale()) +
                                          input_qtype.getZeroPoint());
+
+      int64_t clamp_min = std::max(quantized_n1, quantized_min);
+      int64_t clamp_max = std::min(quantized_1, quantized_max);
 
       auto clamp_op = CreateOpAndInfer<tosa::ClampOp>(
           rewriter, op->getLoc(), input_type, input_value,
-          rewriter.getI64IntegerAttr(quantized_n1),
-          rewriter.getI64IntegerAttr(quantized_1), rewriter.getF32FloatAttr(0),
+          rewriter.getI64IntegerAttr(clamp_min),
+          rewriter.getI64IntegerAttr(clamp_max), rewriter.getF32FloatAttr(0),
           rewriter.getF32FloatAttr(0));
 
       return clamp_op.getResult();

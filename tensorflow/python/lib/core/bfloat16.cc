@@ -1285,7 +1285,15 @@ struct NextAfter {
   }
 };
 
-// TODO(phawkins): implement spacing
+struct Spacing {
+  bfloat16 operator()(bfloat16 x) {
+    // Compute the distance between the input and the next number with greater
+    // magnitude. The result should have the sign of the input.
+    bfloat16 away(std::copysign(std::numeric_limits<float>::infinity(),
+                                static_cast<float>(x)));
+    return NextAfter()(x, away) - x;
+  }
+};
 
 }  // namespace ufuncs
 
@@ -1611,7 +1619,9 @@ bool Initialize() {
       RegisterUFunc<UnaryUFunc<bfloat16, bfloat16, ufuncs::Trunc>>(numpy.get(),
                                                                    "trunc") &&
       RegisterUFunc<BinaryUFunc<bfloat16, bfloat16, ufuncs::NextAfter>>(
-          numpy.get(), "nextafter");
+          numpy.get(), "nextafter") &&
+      RegisterUFunc<UnaryUFunc<bfloat16, bfloat16, ufuncs::Spacing>>(
+          numpy.get(), "spacing");
 
   return ok;
 }

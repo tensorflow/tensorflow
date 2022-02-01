@@ -77,7 +77,7 @@ class RewriteXlaHostComputeMlir
     SymbolTable manager(op->getParentOfType<ModuleOp>());
     StringRef host_module = op.host_mlir_module();
     if (!host_module.empty()) {
-      mlir::OwningModuleRef module_for_func;
+      mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
 
       FuncOp func = op.GetHostFunc(&module_for_func);
 

@@ -1673,15 +1673,15 @@ Status HloToLhloModule(const BufferAssignment& assignment,
   return status_handler.ConsumeStatus();
 }
 
-OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
-                                               MLIRContext* context,
-                                               bool optimize_xla_hlo) {
+OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
+    llvm::StringRef input, MLIRContext* context, bool optimize_xla_hlo) {
   StatusOr<std::unique_ptr<HloModule>> maybe_module =
       xla::ParseAndReturnUnverifiedModule(
           absl::string_view(input.data(), input.size()));
   TF_CHECK_OK(maybe_module.status());
 
-  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
+  OwningOpRef<mlir::ModuleOp> module =
+      ModuleOp::create(UnknownLoc::get(context));
 
   TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(maybe_module.ConsumeValueOrDie(),
                                            module.get(), "Host",

@@ -3707,38 +3707,39 @@ HloInstruction* SpmdPartitioner::AllGatherShardsInternal(
     return operand;
   }
   CHECK(!sharding.IsTileMaximal());
-  // Add one leading dimension to gather all partitions.
-  std::vector<int64_t> shape;
-  shape.push_back(1);
-  for (int64_t dim : operand->shape().dimensions()) {
-    shape.push_back(dim);
-  }
-  auto reshape = b->AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(operand->shape().element_type(), shape), operand));
-  HloInstruction* result = reshape;
-  if (per_dim_ag) {
+  if (per_dim_ag || selected_dims.size() == 1) {
+    HloInstruction* result = operand;
+    Shape result_shape = operand->shape();
     for (auto it = selected_dims.rbegin(); it != selected_dims.rend(); ++it) {
       if (sharding.tile_assignment().dim(*it) == 1) {
         continue;
       }
       auto partition_subgroups =
           GetPartitionGroupsForReplication(sharding, {*it});
-      shape[0] *= partition_subgroups[0].size();
+      result_shape.set_dimensions(
+          *it, result_shape.dimensions(*it) * partition_subgroups[0].size());
       result = collectives_creator.create_cross_partition_all_gather(
-          b, result,
-          ShapeUtil::MakeShape(operand->shape().element_type(), shape),
-          partition_subgroups, (*next_channel_id)++,
-          /*all_gather_dimension=*/0);
+          b, result, result_shape, partition_subgroups, (*next_channel_id)++,
+          /*all_gather_dimension=*/*it);
     }
-  } else {
-    auto partition_subgroups =
-        GetPartitionGroupsForReplication(sharding, selected_dims);
-    shape[0] *= partition_subgroups[0].size();
-    result = collectives_creator.create_cross_partition_all_gather(
-        b, result, ShapeUtil::MakeShape(operand->shape().element_type(), shape),
-        partition_subgroups, (*next_channel_id)++,
-        /*all_gather_dimension=*/0);
+    return result;
   }
+  std::vector<int64_t> shape;
+  shape.push_back(1);
+  for (int64_t dim : operand->shape().dimensions()) {
+    shape.push_back(dim);
+  }
+  // Add one leading dimension to gather all partitions.
+  auto reshape = b->AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(operand->shape().element_type(), shape), operand));
+  HloInstruction* result = reshape;
+  auto partition_subgroups =
+      GetPartitionGroupsForReplication(sharding, selected_dims);
+  shape[0] *= partition_subgroups[0].size();
+  result = collectives_creator.create_cross_partition_all_gather(
+      b, result, ShapeUtil::MakeShape(operand->shape().element_type(), shape),
+      partition_subgroups, (*next_channel_id)++,
+      /*all_gather_dimension=*/0);
   // If n > 1 dimensions are partitioned, split the leading dimension to n.
   std::vector<int64_t> tiled_dims;
   for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {

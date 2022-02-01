@@ -252,52 +252,57 @@ struct HloToLhloDotGeneralOpConverter
   }
 };
 
-struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
+template <typename HloOpTy>
+struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
  public:
-  using BaseOpConversion<mhlo::ReduceOp>::BaseOpConversion;
+  using BaseOpConversion<HloOpTy>::BaseOpConversion;
 
   LogicalResult matchAndRewrite(
-      mhlo::ReduceOp op, OpAdaptor adaptor,
+      HloOpTy hloOp, typename HloOpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    auto loc = op.getLoc();
-    if (!llvm::hasSingleElement(op.body())) {
-      return op.emitOpError()
+    Operation* op = hloOp.getOperation();
+    auto loc = op->getLoc();
+    if (!llvm::hasSingleElement(hloOp.body())) {
+      return op->emitOpError()
              << "tensor to buffer conversion expects a single block "
                 "in the region containing the operation";
     }
     SmallVector<Value, 4> buffer_args(adaptor.getOperands());
     if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
-    auto new_op = rewriter.create<lmhlo::ReduceOp>(loc, llvm::None, buffer_args,
-                                                   op->getAttrs());
+    auto new_op = rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(
+        loc, llvm::None, buffer_args, op->getAttrs());
 
     // Copy over the operations inside the region.
-    rewriter.inlineRegionBefore(op.body(), new_op.body(), new_op.body().end());
+    rewriter.inlineRegionBefore(hloOp.body(), new_op.body(),
+                                new_op.body().end());
 
     // Convert the region signature to memref and add extra result.
     auto& entry_block = new_op.body().front();
     TypeConverter::SignatureConversion sig_conversion(
         adaptor.getOperands().size());
     for (auto arg : entry_block.getArguments()) {
-      auto old_type = arg.getType().cast<TensorType>();
+      auto old_type = arg.getType().template cast<TensorType>();
       auto new_type =
           MemRefType::get(old_type.getShape(), old_type.getElementType());
       sig_conversion.addInputs(arg.getArgNumber(), new_type);
     }
     auto return_op = cast<mhlo::ReturnOp>(entry_block.getTerminator());
-    if (auto tuple_ty =
-            return_op.results().front().getType().dyn_cast<TupleType>()) {
+    if (auto tuple_ty = return_op.results()
+                            .front()
+                            .getType()
+                            .template dyn_cast<TupleType>()) {
       auto* tuple_op = return_op.getODSOperands(0).front().getDefiningOp();
       return_op.getOperation()->dropAllReferences();
       rewriter.eraseOp(tuple_op);
       return_op.getOperation()->setOperands(tuple_op->getOperands());
       for (auto ty : tuple_ty) {
-        auto tensor_ty = ty.cast<TensorType>();
+        auto tensor_ty = ty.template cast<TensorType>();
         sig_conversion.addInputs(
             MemRefType::get(tensor_ty.getShape(), tensor_ty.getElementType()));
       }
     } else {
       auto result_type =
-          return_op.results().front().getType().cast<TensorType>();
+          return_op.results().front().getType().template cast<TensorType>();
       sig_conversion.addInputs({MemRefType::get(result_type.getShape(),
                                                 result_type.getElementType())});
     }
@@ -495,6 +500,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::Atan2Op>,
       HloToLhloOpConverter<mhlo::BroadcastInDimOp>,
       HloToLhloOpConverter<mhlo::CeilOp>,
+      HloToLhloOpConverter<mhlo::ClampOp>,
       HloToLhloOpConverter<mhlo::CompareOp>,
       HloToLhloOpConverter<mhlo::ComplexOp>,
       HloToLhloOpConverter<mhlo::ConcatenateOp>,
@@ -537,7 +543,8 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::TanhOp>,
       HloToLhloOpConverter<mhlo::TransposeOp>,
       HloToLhloOpConverter<mhlo::XorOp>,
-      HloToLhloReduceOpConverter,
+      HloToLhloReduceLikeOpConverter<mhlo::ReduceOp>,
+      HloToLhloReduceLikeOpConverter<mhlo::ReduceWindowOp>,
       HloToLhloReturnOpConverter
   >(*converter, context);
   // clang-format on

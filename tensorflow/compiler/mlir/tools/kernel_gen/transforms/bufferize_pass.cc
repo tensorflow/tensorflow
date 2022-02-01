@@ -42,7 +42,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/Vector/VectorOps.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -279,13 +279,12 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     // TODO(springerm): Add dialects to this filter as more and more
     // `populate...BufferizePatterns` functions will disappear with recent
     // changes to bufferization.
-    options
-        ->addToDialectFilter<arith::ArithmeticDialect, tensor::TensorDialect>();
+    options->addToDialectFilter<arith::ArithmeticDialect, StandardOpsDialect,
+                                tensor::TensorDialect>();
     bufferization::AlwaysCopyBufferizationState bufferizationState(*options);
     bufferization::populateBufferizationPattern(bufferizationState, patterns);
 
     linalg::populateLinalgBufferizePatterns(converter, patterns);
-    populateStdBufferizePatterns(converter, patterns);
     populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
     populateExtraBufferizePatterns(&getContext(), &converter, &patterns);
     populateShapeStructuralTypeConversionsAndLegality(converter, patterns,

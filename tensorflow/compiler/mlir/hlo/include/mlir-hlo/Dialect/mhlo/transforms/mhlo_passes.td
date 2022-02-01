@@ -178,6 +178,11 @@ def GroupReductionDimensionsPass
     "operations and realize them through equivalent 1D or 2D reductions, if "
     "possible.";
   let constructor = "createGroupReductionDimensionsPass()";
+  let options = [
+    Option<"prefer_columns_reductions_", "prefer-columns-reductions", "bool",
+           /*default=*/"true", "When simplifying reductions, prefer to use "
+           "column reductions over row reductions.">,
+  ];
 }
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {

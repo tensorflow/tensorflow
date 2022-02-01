@@ -38,35 +38,40 @@ ABSL_CONST_INIT extern const char kImportModelDefaultGraphFuncName[];
 
 // Given a GraphDef, returns a MLIR module containing the graph, expressed with
 // tf_executor dialect.
-stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
-    const GraphDef& graphdef, const GraphDebugInfo& debug_info,
-    const GraphImportConfig& specs, mlir::MLIRContext* context,
-    bool add_default_attributes = true);
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ConvertGraphdefToMlir(const GraphDef& graphdef,
+                      const GraphDebugInfo& debug_info,
+                      const GraphImportConfig& specs,
+                      mlir::MLIRContext* context,
+                      bool add_default_attributes = true);
 
 // Given a Graph, returns a MLIR module containing the graph, expressed with
 // tf_executor dialect.
-stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
-    const Graph& graph, const GraphDebugInfo& debug_info,
-    const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
-    mlir::MLIRContext* context);
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ConvertGraphToMlir(const Graph& graph, const GraphDebugInfo& debug_info,
+                   const FunctionLibraryDefinition& flib_def,
+                   const GraphImportConfig& specs, mlir::MLIRContext* context);
 
 // [Experimental]
 // Given a Function, returns a MLIR module containing the graph, expressed with
 // tf_executor dialect.
-stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
-    const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
-    mlir::MLIRContext* context);
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ConvertFunctionToMlir(const FunctionBody* fbody,
+                      const FunctionLibraryDefinition& flib_def,
+                      mlir::MLIRContext* context);
 
 // Given a SavedModel, returns a MLIR module containing the functions, expressed
 // with tf_executor dialect.
-stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
-    SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
-    absl::Span<std::string> exported_names, bool add_default_attributes = true,
-    bool unconditionally_use_set_output_shapes = false);
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ConvertSavedModelToMlir(SavedModelV2Bundle* saved_model,
+                        mlir::MLIRContext* context,
+                        absl::Span<std::string> exported_names,
+                        bool add_default_attributes = true,
+                        bool unconditionally_use_set_output_shapes = false);
 
 // Given a V1 SavedModel, returns a MLIR module containing the functions,
 // expressed with tf_executor dialect.
-stream_executor::port::StatusOr<mlir::OwningModuleRef>
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
                           absl::Span<std::string> exported_names,
                           mlir::MLIRContext* context, MLIRImportOptions options,
@@ -82,7 +87,7 @@ ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
 // ConvertSavedModelV1ToMlir(), and is not related to TFLite.
 //
 // TODO(b/179683149): Rename this class to avoid confusion with TFLite.
-stream_executor::port::StatusOr<mlir::OwningModuleRef>
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 ConvertSavedModelV1ToMlirLite(
     const MetaGraphDef& meta_graph_def, const GraphDebugInfo& debug_info,
     absl::optional<absl::Span<const std::string>> exported_names,
@@ -133,7 +138,7 @@ class SavedModelMLIRImportInput {
 // ConvertSavedModelV1ToMlir(), and is not related to TFLite.
 //
 // TODO(b/179683149): Rename this class to avoid confusion with TFLite.
-stream_executor::port::StatusOr<mlir::OwningModuleRef>
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 ConvertSavedModelV1ToMlirLite(
     SavedModelMLIRImportInput& input,
     absl::optional<absl::Span<const std::string>> exported_names,

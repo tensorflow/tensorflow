@@ -184,5 +184,19 @@ std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs) {
   return std::make_pair(totalSize, allocCounter);
 }
 
+DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
+  RankedTensorType ty =
+      RankedTensorType::get(static_cast<int64_t>(attr.size()),
+                            IntegerType::get(attr.getContext(), 64));
+  return DenseIntElementsAttr::get(ty, attr.getValue());
+}
+
+DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                        Builder* builder) {
+  RankedTensorType ty = RankedTensorType::get(
+      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get(ty, values);
+}
+
 }  // namespace hlo
 }  // namespace mlir
