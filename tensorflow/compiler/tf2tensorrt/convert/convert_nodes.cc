@@ -76,19 +76,6 @@ limitations under the License.
 // would work!
 #define TFTRT_CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
 
-#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                           \
-  do {                                                               \
-    return errors::Internal("TFTRT::", __FUNCTION__, ":", __LINE__,  \
-                            " failed to add TRT layer, at: ", node); \
-  } while (0)
-
-#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
-  do {                                           \
-    if (ptr == nullptr) {                        \
-      TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
-    }                                            \
-  } while (0)
-
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -3884,30 +3871,6 @@ UnaryOperationMap() {
   return m;
 }
 
-Status ConvertUnary(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  auto op_pair = UnaryOperationMap()->find(node_def.op());
-  if (op_pair == UnaryOperationMap()->end()) {
-    return errors::Unimplemented("Unary op: ", node_def.op(), " not supported");
-  }
-  if (params->validation_only) return Status::OK();
-
-  // Start conversion.
-  ITensorProxyPtr tensor = inputs.at(0).tensor();
-  nvinfer1::IUnaryLayer* layer = params->converter->network()->addUnary(
-      *tensor->trt_tensor(), op_pair->second);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->converter->SetLayerName(layer, node_def);
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
-
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return Status::OK();
-}
-
 Status ConvertSquare(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -6670,13 +6633,7 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertStridedSlice, "StridedSlice");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTopK, "TopKV2");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTranspose, "Transpose");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertUnpack, "Unpack");
-template <typename T>
-absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
-  absl::InlinedVector<std::string, 10> result;
-  absl::c_transform(set, std::back_inserter(result),
-                    [](const auto x) { return x.first; });
-  return result;
-}
+
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBinary,
                                   GetOperationNames(kBinaryOperations));
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertActivation,
@@ -6685,8 +6642,6 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool, {"MaxPool", "AvgPool"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFusedBatchNorm,
                                   {"FusedBatchNorm", "FusedBatchNormV2",
                                    "FusedBatchNormV3"});
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertUnary,
-                                  GetOperationNames(*UnaryOperationMap()));
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertReduce,
                                   {"Sum", "Prod", "Max", "Min", "Mean"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertArgMinMax, {"ArgMin", "ArgMax"});

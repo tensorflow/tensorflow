@@ -40,6 +40,19 @@ limitations under the License.
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 
+#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                           \
+  do {                                                               \
+    return errors::Internal("TFTRT::", __FUNCTION__, ":", __LINE__,  \
+                            " failed to add TRT layer, at: ", node); \
+  } while (0)
+
+#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
+  do {                                           \
+    if (ptr == nullptr) {                        \
+      TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
+    }                                            \
+  } while (0)
+
 namespace tensorflow {
 namespace tensorrt {
 
@@ -492,6 +505,12 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims);
 
+// Checks that the number of inputs match and enforces that the inputs marked
+// as true are constant weights.
+Status CheckInputsWeights(
+    const OpConverterParams& params,
+    const std::vector<std::pair<string, bool>>& inputs_is_weight);
+
 // Map of all supported UnaryOperations
 const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
 // Map of all supported ActivationTypes
@@ -513,6 +532,14 @@ constexpr std::array<std::pair<const char*, nvinfer1::ElementWiseOperation>, 10>
         {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
         {"Pow", nvinfer1::ElementWiseOperation::kPOW},
     }};
+
+template <typename T>
+absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
+  absl::InlinedVector<std::string, 10> result;
+  absl::c_transform(set, std::back_inserter(result),
+                    [](const auto x) { return x.first; });
+  return result;
+}
 
 }  // namespace convert
 }  // namespace tensorrt
