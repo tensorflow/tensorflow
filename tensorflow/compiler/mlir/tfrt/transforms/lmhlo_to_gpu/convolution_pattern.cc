@@ -117,9 +117,9 @@ Value CreateBuildUnfusedConvOp(Value input, Value output, Value handle,
   auto get_element_type = [](Value value) {
     return value.getType().cast<mlir::MemRefType>().getElementType();
   };
-  cudnnDataType_t input_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType input_type = MlirTypeToDnnDataType(
       get_element_type(input), config.input_descriptor.layout());
-  cudnnDataType_t output_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType output_type = MlirTypeToDnnDataType(
       get_element_type(output), config.output_descriptor.layout());
 
   int vector_size, vector_dim;
@@ -217,12 +217,12 @@ Value CreateBuildFusedConvOp(Value input, Value output, Value bias,
   auto get_element_type = [](Value value) {
     return value.getType().cast<mlir::MemRefType>().getElementType();
   };
-  cudnnDataType_t input_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType input_type = MlirTypeToDnnDataType(
       get_element_type(input), config.input_descriptor.layout());
-  cudnnDataType_t output_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType output_type = MlirTypeToDnnDataType(
       get_element_type(output), config.output_descriptor.layout());
-  cudnnDataType_t bias_type =
-      MlirTypeToCudnnDataType(get_element_type(bias), bias_descriptor.layout());
+  tfrt::gpu::wrapper::DnnDataType bias_type =
+      MlirTypeToDnnDataType(get_element_type(bias), bias_descriptor.layout());
 
   int vector_size, vector_dim;
   std::tie(vector_size, vector_dim) =

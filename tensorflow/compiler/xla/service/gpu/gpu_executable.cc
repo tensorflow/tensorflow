@@ -558,7 +558,11 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
 static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
     stream_executor::DeviceMemoryBase* data) {
   tfrt::gpu::wrapper::Pointer<void> pointer(data->opaque(),
+#if TENSORFLOW_USE_ROCM
+                                            tfrt::gpu::wrapper::Platform::ROCm);
+#else
                                             tfrt::gpu::wrapper::Platform::CUDA);
+#endif
   auto allocator =
       tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuOneShotAllocator<void>>(
           pointer);
