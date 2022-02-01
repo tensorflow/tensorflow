@@ -22,6 +22,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
@@ -110,6 +111,22 @@ class SummaryV2Test(test.TestCase):
     self.assertEqual(tensor.numpy(), b'')
     self.assertEqual(tensor.dtype, dtypes.string)
     mock_scalar_v2.assert_called_once_with('float', data=i, step=1024)
+
+  @test_util.run_v2_only
+  def test_image_summary_v2(self):
+    """Tests image v2 invocation."""
+    with test.mock.patch.object(
+        summary_v2, 'image', autospec=True) as mock_image_v2:
+      with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default(
+          step=2):
+        i = array_ops.ones((5, 4, 4, 3))
+        with ops.name_scope_v2('outer'):
+          tensor = summary_lib.image('image', i, max_outputs=3, family='family')
+    # Returns empty string.
+    self.assertEqual(tensor.numpy(), b'')
+    self.assertEqual(tensor.dtype, dtypes.string)
+    mock_image_v2.assert_called_once_with(
+        'family/outer/family/image', data=i, step=2, max_outputs=3)
 
 
 if __name__ == '__main__':
