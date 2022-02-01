@@ -34,7 +34,7 @@ class ConvertUnary : public OpConverterBase<ConvertUnary> {
 
   static constexpr std::array<InputArgSpec, 1> InputSpec() {
     return std::array<InputArgSpec, 1>{
-        InputArgSpec::Create("my_unary", TrtInputArg::kBoth)};
+        InputArgSpec::Create("x", TrtInputArg::kTensor)};
   }
 
   Status Validate() {
