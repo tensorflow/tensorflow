@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
@@ -224,8 +225,10 @@ struct TiledLoopBufferizePass
     // Configure legality.
     auto isLegalOp = [&](Operation* op) { return converter.isLegal(op); };
     target.addDynamicallyLegalDialect<linalg::LinalgDialect>(isLegalOp);
-    target.addDynamicallyLegalOp<CallOp, vector::TransferWriteOp,
-                                 vector::TransferReadOp>(isLegalOp);
+    target
+        .addDynamicallyLegalOp<CallOp, LLVM::InlineAsmOp,
+                               vector::TransferWriteOp, vector::TransferReadOp>(
+            isLegalOp);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
