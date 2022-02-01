@@ -56,8 +56,8 @@ void AttachCostPerDevice(mlir::ModuleOp module,
         cost = target_hardware->GetOpCost(op);
       }
 
-      mlir::Identifier device_identifier =
-          mlir::Identifier::get(device, module.getContext());
+      mlir::StringAttr device_identifier =
+          mlir::StringAttr::get(module.getContext(), device);
       auto float_type = mlir::FloatType::getF32(module.getContext());
       auto float_attr =
           mlir::FloatAttr::get(float_type, static_cast<float>(cost));
@@ -72,7 +72,7 @@ void AttachCostPerDevice(mlir::ModuleOp module,
 }  // namespace
 
 //////////// Importer ////////////
-absl::StatusOr<OwningModuleRef> TfLiteImporter::Import() {
+absl::StatusOr<OwningOpRef<mlir::ModuleOp>> TfLiteImporter::Import() {
   source_mgr_handler_ = std::make_unique<mlir::SourceMgrDiagnosticHandler>(
       source_mgr_, &context_);
   return ImportFlatbufferOrMlir(options_.file_name, options_.input_mlir,

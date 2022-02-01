@@ -36,9 +36,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
@@ -56,25 +53,6 @@ bool IsBufferBased(const TensorStorageType& type) {
          type == TensorStorageType::SINGLE_TEXTURE_2D;
 }
 
-bool HasIntersection(const std::vector<ValueId>& vec_ids,
-                     const std::set<ValueId>& ids) {
-  for (ValueId id : vec_ids) {
-    if (ids.find(id) != ids.end()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool IsReady(const std::set<ValueId>& ready_tensors, const GpuNode& node) {
-  for (const ValueId in_id : node.inputs) {
-    if (ready_tensors.find(in_id) == ready_tensors.end()) {
-      return false;
-    }
-  }
-  return true;
-}
-
 void AddUsage(ValueId id, int task_index,
               std::map<ValueId, int2>* usage_records) {
   auto it = usage_records->find(id);
@@ -87,382 +65,24 @@ void AddUsage(ValueId id, int task_index,
     (*usage_records)[id].y = task_index;
   }
 }
-
-// Generic add is add that have several runtime inputs and they are not
-// broadcasted, i.e. pointwise add for N tensors where N > 1.
-bool IsGenericAdd(const Node& node, const std::vector<Value*>& inputs,
-                  const std::vector<Value*>& outputs) {
-  if (inputs.size() == 1) {
-    return false;
-  }
-  const OperationType op_type = OperationTypeFromString(node.operation.type);
-  if (op_type != OperationType::ADD) {
-    return false;
-  }
-
-  const auto dst_shape = outputs[0]->tensor.shape;
-  for (int i = 0; i < inputs.size(); ++i) {
-    const auto src_shape = inputs[i]->tensor.shape;
-    if (dst_shape.b != src_shape.b && src_shape.b == 1) {
-      return false;
-    }
-    if (dst_shape.h != src_shape.h && src_shape.h == 1) {
-      return false;
-    }
-    if (dst_shape.w != src_shape.w && src_shape.w == 1) {
-      return false;
-    }
-    if (dst_shape.c != src_shape.c && src_shape.c == 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
-absl::Status MergeGpuNodes(GpuNode* src, GpuNode* dst) {
-  for (int j = 1; j < src->inputs.size(); ++j) {
-    dst->inputs.push_back(src->inputs[j]);
-  }
-  dst->outputs[0] = src->outputs[0];
-  dst->name += " linked : " + src->name;
-  return dst->gpu_operation->AddOperation(src->gpu_operation.get());
-}
-
-// Helper class for creating descriptors for appropriate tensors from
-// GraphFloat32
-// Also allows to create descriptors for new tensors(not present in
-// GraphFloat32)
-class TensorReserver {
- public:
-  TensorReserver() : next_(0) {}
-  ValueId Add(const TensorDescriptor& dummy) {
-    reservations_[next_] = dummy;
-    return next_++;
-  }
-  void Add(ValueId id, const TensorDescriptor& dummy) {
-    reservations_[id] = dummy;
-  }
-  void SetNext(ValueId id) { next_ = id; }
-  TensorDescriptor Get(ValueId id) { return reservations_[id]; }
-
- public:
-  absl::flat_hash_map<ValueId, TensorDescriptor> reservations_;
-  ValueId next_;
-};
-
-absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
-                                            const TensorDescriptor& tensor_desc,
-                                            const BHWC& shape,
-                                            DataType data_type) {
-  if (tensor_desc.data_type != data_type) {
-    return absl::InvalidArgumentError(
-        "Global precision and precision of predefined/external tensors must be "
-        "synchronized.");
-  }
-  const bool tensor_supported_layout = tensor_desc.layout == Layout::HWDC ||
-                                       tensor_desc.layout == Layout::BHWDC ||
-                                       tensor_desc.layout == Layout::HWC ||
-                                       tensor_desc.layout == Layout::BHWC;
-  if (!tensor_supported_layout) {
-    return absl::InvalidArgumentError(
-        "Currently no support of this layouts for spatial tensors.");
-  }
-  const bool has_depth =
-      tensor_desc.layout == Layout::HWDC || tensor_desc.layout == Layout::BHWDC;
-  if (has_depth) {
-    return absl::InvalidArgumentError(
-        "Currently no support of Depth dimension in predefined/external "
-        "tensors.");
-  }
-  const bool has_batch =
-      tensor_desc.layout == Layout::BHWC || tensor_desc.layout == Layout::BHWDC;
-  if (has_batch && shape.b == 1) {
-    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
-  }
-  if (!has_batch && shape.b != 1) {
-    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
-  }
-  if (!CanCreateTensorWithShape(gpu_info, shape, tensor_desc).ok()) {
-    return absl::UnavailableError(
-        "Current device can not allocate tensor with this shape for "
-        "predefined/external descriptor.");
-  }
-  return absl::OkStatus();
-}
-
-absl::Status ReserveGraphTensors(
-    const InferenceContext::CreateInferenceInfo& create_info,
-    const GpuInfo& gpu_info, const GraphFloat32& graph,
-    TensorReserver* tensor_reserver) {
-  ValueId max_id = 0;
-  auto tensors = graph.values();
-  auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
-  for (auto& t : tensors) {
-    const auto shape = graph.GetValue(t->id)->tensor.shape;
-    auto it_immutable_external =
-        create_info.external_immutable_tensors.find(t->id);
-    auto it_mutable_external = create_info.external_mutable_tensors.find(t->id);
-    TensorDescriptor tensor_desc;
-    if (it_immutable_external != create_info.external_immutable_tensors.end()) {
-      if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
-        return absl::InvalidArgumentError(
-            "Currently external tensors can be used only for graph "
-            "inputs/outputs");
-      }
-      tensor_desc = it_immutable_external->second->GetDescriptor();
-      RETURN_IF_ERROR(CheckExternalTensorDescription(gpu_info, tensor_desc,
-                                                     shape, data_type));
-    } else if (it_mutable_external !=
-               create_info.external_mutable_tensors.end()) {
-      if (!(graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id))) {
-        return absl::InvalidArgumentError(
-            "Currently external tensors can be used only for graph "
-            "inputs/outputs");
-      }
-      tensor_desc = it_mutable_external->second;
-      RETURN_IF_ERROR(CheckExternalTensorDescription(
-          gpu_info, it_mutable_external->second, shape, data_type));
-    } else {
-      TensorStorageType storage_type = create_info.storage_type;
-      Layout layout = shape.b == 1 ? Layout::HWC : Layout::BHWC;
-      if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
-        if (shape.c < 4 &&
-            CanCreateTensorWithShape(
-                gpu_info, shape,
-                TensorDescriptor{data_type,
-                                 TensorStorageType::SINGLE_TEXTURE_2D, layout})
-                .ok()) {
-          storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
-        }
-      }
-      RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
-                                            data_type, layout, &storage_type));
-      tensor_desc = TensorDescriptor{data_type, storage_type, layout};
-      if (storage_type == TensorStorageType::TEXTURE_2D) {
-        tensor_desc.use_buffer_for_write_only_2d_texture = true;
-      }
-    }
-    tensor_desc.shape = BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
-    tensor_reserver->Add(t->id, tensor_desc);
-    max_id = std::max(max_id, t->id);
-  }
-  tensor_reserver->SetNext(max_id + 1);
-  return absl::OkStatus();
-}
-
-absl::Status ConvertOperations(
-    const GpuInfo& gpu_info, const GraphFloat32& graph,
-    const InferenceContext::CreateInferenceInfo& create_info,
-    TensorReserver* tensor_reserver, InferenceContext::GpuModel* gpu_model) {
-  std::map<ValueId, TensorDescriptor> tensor_descriptors;
-  const auto values = graph.values();
-  for (auto value : values) {
-    tensor_descriptors[value->id] = tensor_reserver->Get(value->id);
-  }
-  std::set<NodeId> consumed_nodes;
-  std::map<ValueId, int>
-      tensor_usages;  // keeps latest index of operation that updated tensor
-  for (const auto& input : gpu_model->input_ids_and_refs) {
-    tensor_usages[input.first] = -1;  // so as inputs "updated" before operation
-                                      // 0, we will mark them with -1
-  }
-  std::vector<Node*> graph_nodes = graph.nodes();
-  for (int i = 0; i < graph_nodes.size(); ++i) {
-    const Node& node = *graph_nodes[i];
-    if (consumed_nodes.find(node.id) != consumed_nodes.end()) {
-      continue;
-    }
-    auto op_type = OperationTypeFromString(node.operation.type);
-    if (op_type == OperationType::CONSTANT) {
-      auto attr =
-          absl::any_cast<ConstTensorAttributes>(node.operation.attributes);
-      auto outputs = graph.FindOutputs(node.id);
-      gpu_model->const_tensors[outputs[0]->id] =
-          tensor_reserver->Get(outputs[0]->id);
-      gpu_model->const_tensors[outputs[0]->id].UploadData(attr.tensor);
-      continue;
-    }
-    GPUOperationsSubgraph gpu_subgraph;
-    if (create_info.hints.Check(ModelHints::kAllowSpecialKernels) &&
-        GPUSubgraphFromGraph(gpu_info, create_info.precision, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
-            .ok()) {
-      // Mapping of subgraph (set of nodes) to GPU operations. Should happen
-      // before straigtforward mapping.
-    } else {
-      // Straigtforward mapping of one graph node to GPU operations.
-      auto inputs = graph.FindInputs(node.id);
-      auto outputs = graph.FindOutputs(node.id);
-      // Reordering of input ids and updating of temporary tensors_usage struct.
-      // This stage is necessary because we are building OperationDef that rely
-      // on order of input ids. But we also should have input id on first
-      // position that potentially can be "linking" tensor and as result
-      // eliminated(unused) We apply it only for ADD operation, because of ADD
-      // associativity and ADD can be linked. In current approach "linking"
-      // tensor can be only latest written tensor(during linear order of
-      // execution) among input tensors.
-      if (IsGenericAdd(node, inputs, outputs)) {
-        int latest_written_tensor_index = 0;
-        int last_usage = tensor_usages[inputs[0]->id];
-        for (int j = 1; j < inputs.size(); ++j) {
-          if (tensor_usages[inputs[j]->id] > last_usage) {
-            last_usage = tensor_usages[inputs[j]->id];
-            latest_written_tensor_index = j;
-          }
-        }
-        std::swap(inputs[0], inputs[latest_written_tensor_index]);
-      }
-      consumed_nodes.insert(node.id);
-      OperationDef op_def;
-      op_def.precision = create_info.precision;
-      for (int j = 0; j < inputs.size(); ++j) {
-        op_def.src_tensors.push_back(tensor_reserver->Get(inputs[j]->id));
-      }
-      for (int j = 0; j < outputs.size(); ++j) {
-        op_def.dst_tensors.push_back(tensor_reserver->Get(outputs[j]->id));
-      }
-      RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, create_info.hints,
-                                           inputs, outputs, node,
-                                           &gpu_subgraph));
-    }
-    std::map<int, ValueId> mapping_to_global_ids;
-    for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
-      const auto& t = gpu_subgraph.new_tensors[j];
-      TensorDescriptor td = t.second;
-      td.shape = BHWDC(t.first.b, t.first.h, t.first.w, 1, t.first.c);
-      auto global_id = tensor_reserver->Add(td);
-      mapping_to_global_ids[j] = global_id;
-    }
-    for (auto& gpu_op : gpu_subgraph.operations) {
-      GpuNode gpu_node;
-      gpu_node.gpu_operation = std::move(gpu_op.operation);
-      gpu_node.inputs.resize(gpu_op.input_ids.size());
-      for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
-        int id = gpu_op.input_ids[j];
-        if (id >= 0) {
-          gpu_node.inputs[j] = id;
-        } else {
-          gpu_node.inputs[j] = mapping_to_global_ids[-(id + 1)];
-        }
-      }
-      gpu_node.outputs.resize(gpu_op.output_ids.size());
-      for (int j = 0; j < gpu_op.output_ids.size(); ++j) {
-        int id = gpu_op.output_ids[j];
-        if (id >= 0) {
-          gpu_node.outputs[j] = id;
-          tensor_usages[id] = i;
-        } else {
-          gpu_node.outputs[j] = mapping_to_global_ids[-(id + 1)];
-        }
-      }
-      gpu_node.name = gpu_op.name;
-      gpu_model->nodes.push_back(std::move(gpu_node));
-    }
-  }
-  return absl::OkStatus();
-}
-
-absl::Status Merge(InferenceContext::GpuModel* gpu_model) {
-  std::set<ValueId> ready_tensors;
-  for (const auto& input : gpu_model->input_ids_and_refs) {
-    ready_tensors.insert(input.first);
-  }
-  auto& nodes = gpu_model->nodes;
-  for (int i = 0; i < nodes.size(); ++i) {
-    auto& node = nodes[i];
-    for (const auto& out_id : node.outputs) {
-      ready_tensors.insert(out_id);
-    }
-    if (node.outputs.size() != 1) {
-      continue;
-    }
-    std::vector<int> next_nodes;
-    int link_index = 0;
-    for (int j = i + 1; j < nodes.size(); ++j) {
-      for (int k = 0; k < nodes[j].inputs.size(); ++k) {
-        if (nodes[j].inputs[k] == node.outputs[0]) {
-          next_nodes.push_back(j);
-          link_index = k;
-        }
-      }
-    }
-    if (next_nodes.size() != 1 || link_index != 0) {
-      continue;
-    }
-    auto& linkable_node = nodes[next_nodes[0]];
-    if (!linkable_node.gpu_operation->IsLinkable() ||
-        linkable_node.outputs.size() != 1 ||
-        !IsReady(ready_tensors, linkable_node)) {
-      continue;
-    }
-    const auto& original_dst_def =
-        node.gpu_operation->GetDefinition().dst_tensors[0];
-    const auto& link_dst_def =
-        linkable_node.gpu_operation->GetDefinition().dst_tensors[0];
-    if (original_dst_def != link_dst_def) {
-      continue;
-    }
-    RETURN_IF_ERROR(MergeGpuNodes(&linkable_node, &node));
-    nodes.erase(nodes.begin() + next_nodes[0]);
-    i -= 1;
-  }
-  return absl::OkStatus();
-}
-
-void CopyExternals(const GraphFloat32& graph,
-                   InferenceContext::GpuModel* gpu_model) {
-  const auto inputs = graph.inputs();
-  for (const auto& value : inputs) {
-    gpu_model->input_ids_and_refs.push_back({value->id, value->tensor.ref});
-  }
-
-  const auto variable_inputs = graph.variable_inputs();
-  for (const auto& value : variable_inputs) {
-    gpu_model->variable_ids_and_refs.push_back({value->id, value->tensor.ref});
-  }
-
-  const auto outputs = graph.outputs();
-  for (const auto& value : outputs) {
-    gpu_model->output_ids_and_refs.push_back({value->id, value->tensor.ref});
-  }
-}
-
-absl::Status GraphToGpuModel(
-    const InferenceContext::CreateInferenceInfo& create_info,
-    const GraphFloat32& graph, const GpuInfo& gpu_info,
-    InferenceContext::GpuModel* gpu_model) {
-  TensorReserver tensor_reserver;
-  RETURN_IF_ERROR(
-      ReserveGraphTensors(create_info, gpu_info, graph, &tensor_reserver));
-  CopyExternals(graph, gpu_model);
-  RETURN_IF_ERROR(ConvertOperations(gpu_info, graph, create_info,
-                                    &tensor_reserver, gpu_model));
-  RETURN_IF_ERROR(Merge(gpu_model));
-  gpu_model->tensors = std::move(tensor_reserver.reservations_);
-
-  for (auto& node : gpu_model->nodes) {
-    RETURN_IF_ERROR(node.gpu_operation->AssembleCode(gpu_info));
-  }
-  return absl::OkStatus();
-}
 }  // namespace
 
 absl::Status InferenceContext::InitFromGraphWithTransforms(
-    const CreateInferenceInfo& create_info, GraphFloat32* graph,
+    const CreateGpuModelInfo& create_info, GraphFloat32* graph,
     id<MTLDevice> device_id) {
-  RETURN_IF_ERROR(RunGraphTransforms(graph));
+  RETURN_IF_ERROR(RunGraphTransformsForGpuModel(graph));
   RETURN_IF_ERROR(InitFromGraph(create_info, *graph, device_id));
   return absl::OkStatus();
 }
 
 absl::Status InferenceContext::InitFromGraph(
-    const CreateInferenceInfo& create_info, const GraphFloat32& graph,
+    const CreateGpuModelInfo& create_info, const GraphFloat32& graph,
     id<MTLDevice> device_id) {
   device_ = device_id;
   MetalDevice metal_device(device_id);
   GpuModel gpu_model;
   RETURN_IF_ERROR(
-      GraphToGpuModel(create_info, graph, metal_device.GetInfo(), &gpu_model));
+      GraphToGpuModel(graph, create_info, metal_device.GetInfo(), &gpu_model));
 
   for (const auto& input : gpu_model.input_ids_and_refs) {
     input_ids_.push_back(input.first);
@@ -898,6 +518,14 @@ uint64_t InferenceContext::GetIntermediateTensorsSize() const {
   return total_memory;
 }
 
+uint64_t InferenceContext::GetConstantTensorsSize() const {
+  uint64_t total_size = 0;
+  for (const auto& node : nodes_) {
+    total_size += node.task.GetGpuOperation().const_args_size_;
+  }
+  return total_size;
+}
+
 void InferenceContext::EncodeWithCommandBuffer(
     id<MTLCommandBuffer> command_buffer) {
   for (int i = 0; i < nodes_.size(); ++i) {
@@ -970,24 +598,6 @@ void InferenceContext::PrepareExternal() {
       }
     }
   }
-}
-
-absl::Status RunGraphTransforms(GraphFloat32* graph) {
-  auto merge_padding_transform = NewMergePaddingWithAdd();
-  auto add_bias_transform = NewAddBias();
-  auto pooling_to_reduce_op = NewGlobalPoolingToReduceOp();
-  ModelTransformer transformer(graph);
-  if (!transformer.Apply("add_bias", add_bias_transform.get())) {
-    return absl::InternalError("Invalid add_bias transform");
-  }
-  if (!transformer.Apply("merge_padding", merge_padding_transform.get())) {
-    return absl::InternalError("Invalid merge_padding transform");
-  }
-  if (!transformer.Apply("global pooling to mean",
-                         pooling_to_reduce_op.get())) {
-    return absl::InternalError("Invalid global pooling to mean transform");
-  }
-  return absl::OkStatus();
 }
 
 }  // namespace metal

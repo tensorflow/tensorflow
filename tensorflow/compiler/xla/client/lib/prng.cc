@@ -38,8 +38,8 @@ namespace {
 
 // Rotates a 32-bit integer 'v' left by 'distance' bits.
 XlaOp RotateLeftU32(XlaOp v, int distance) {
-  return (v << ConstantR0<uint32>(v.builder(), distance)) |
-         ShiftRightLogical(v, ConstantR0<uint32>(v.builder(), 32 - distance));
+  return (v << ConstantR0<uint32_t>(v.builder(), distance)) |
+         ShiftRightLogical(v, ConstantR0<uint32_t>(v.builder(), 32 - distance));
 }
 
 // The internal state of the Three Fry implementation.
@@ -59,7 +59,7 @@ ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
 
   std::array<XlaOp, 3> ks;
   // 0x1BD11BDA is a parity constant specified by the ThreeFry2x32 algorithm.
-  ks[2] = ConstantR0<uint32>(builder, 0x1BD11BDA);
+  ks[2] = ConstantR0<uint32_t>(builder, 0x1BD11BDA);
   for (int i = 0; i < 2; ++i) {
     ks[i] = key[i];
     x[i] = input[i];
@@ -85,40 +85,40 @@ ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
   x = round(x, rotations[2]);
   x = round(x, rotations[3]);
   x[0] = x[0] + ks[1];
-  x[1] = x[1] + ks[2] + ConstantR0<uint32>(builder, 1);
+  x[1] = x[1] + ks[2] + ConstantR0<uint32_t>(builder, 1);
 
   x = round(x, rotations[4]);
   x = round(x, rotations[5]);
   x = round(x, rotations[6]);
   x = round(x, rotations[7]);
   x[0] = x[0] + ks[2];
-  x[1] = x[1] + ks[0] + ConstantR0<uint32>(builder, 2);
+  x[1] = x[1] + ks[0] + ConstantR0<uint32_t>(builder, 2);
 
   x = round(x, rotations[0]);
   x = round(x, rotations[1]);
   x = round(x, rotations[2]);
   x = round(x, rotations[3]);
   x[0] = x[0] + ks[0];
-  x[1] = x[1] + ks[1] + ConstantR0<uint32>(builder, 3);
+  x[1] = x[1] + ks[1] + ConstantR0<uint32_t>(builder, 3);
 
   x = round(x, rotations[4]);
   x = round(x, rotations[5]);
   x = round(x, rotations[6]);
   x = round(x, rotations[7]);
   x[0] = x[0] + ks[1];
-  x[1] = x[1] + ks[2] + ConstantR0<uint32>(builder, 4);
+  x[1] = x[1] + ks[2] + ConstantR0<uint32_t>(builder, 4);
 
   x = round(x, rotations[0]);
   x = round(x, rotations[1]);
   x = round(x, rotations[2]);
   x = round(x, rotations[3]);
   x[0] = x[0] + ks[2];
-  x[1] = x[1] + ks[0] + ConstantR0<uint32>(builder, 5);
+  x[1] = x[1] + ks[0] + ConstantR0<uint32_t>(builder, 5);
 
   return x;
 }
 
-// Converts a uint64 to two uint32s.
+// Converts a uint64_t to two uint32s.
 std::array<XlaOp, 2> Uint64ToUint32s(XlaOp u64) {
   XlaBuilder* builder = u64.builder();
   XlaOp const32 = ConstantR0WithType(builder, U64, 32);
@@ -127,7 +127,7 @@ std::array<XlaOp, 2> Uint64ToUint32s(XlaOp u64) {
   return {fst, snd};
 }
 
-// Converts two uint32s to a uint64.
+// Converts two uint32s to a uint64_t.
 XlaOp Uint32sToUint64(std::array<XlaOp, 2> u32s) {
   XlaBuilder* builder = u32s[0].builder();
   return ConvertElementType(u32s[0], U64) |
@@ -272,10 +272,10 @@ using Philox4x32State = std::array<XlaOp, 4>;
 // Computes the Philox4x32 algorithm using 10 rounds.
 Philox4x32State Philox4x32(Philox4x32State state, Philox4x32Key key) {
   // Constants specified by the Philox algorithm.
-  static const uint32 kPhiloxW32A = 0x9E3779B9;
-  static const uint32 kPhiloxW32B = 0xBB67AE85;
-  static const uint32 kPhiloxM4x32A = 0xD2511F53;
-  static const uint32 kPhiloxM4x32B = 0xCD9E8D57;
+  static const uint32_t kPhiloxW32A = 0x9E3779B9;
+  static const uint32_t kPhiloxW32B = 0xBB67AE85;
+  static const uint32_t kPhiloxM4x32A = 0xD2511F53;
+  static const uint32_t kPhiloxM4x32B = 0xCD9E8D57;
 
   struct HighLowPair {
     XlaOp high;
@@ -283,7 +283,7 @@ Philox4x32State Philox4x32(Philox4x32State state, Philox4x32Key key) {
   };
 
   // Compute the high and low words from multiplying two 32-bit integers.
-  auto mul_hi_low = [](XlaOp x, uint32 k) {
+  auto mul_hi_low = [](XlaOp x, uint32_t k) {
     auto product =
         ConvertElementType(x, U64) * ConstantR0<uint64_t>(x.builder(), k);
     auto low = ConvertElementType(product, U32);
@@ -303,8 +303,8 @@ Philox4x32State Philox4x32(Philox4x32State state, Philox4x32Key key) {
   // Update the key after a round of Philox algorithm.
   auto raise_key = [](Philox4x32Key key) {
     XlaBuilder* builder = key[0].builder();
-    return Philox4x32Key{key[0] + ConstantR0<uint32>(builder, kPhiloxW32A),
-                         key[1] + ConstantR0<uint32>(builder, kPhiloxW32B)};
+    return Philox4x32Key{key[0] + ConstantR0<uint32_t>(builder, kPhiloxW32A),
+                         key[1] + ConstantR0<uint32_t>(builder, kPhiloxW32B)};
   };
 
   static const int kNumRounds = 10;
@@ -327,10 +327,10 @@ std::pair<Philox4x32State, Philox4x32Key> ScramblePhiloxKey(Philox4x32Key key) {
       ConvertElementType(key1, U32),
       ConvertElementType(key1 >> ScalarLike(key1, 32), U32),
   };
-  key = {ConstantR0<uint32>(builder, 0x3ec8f720),
-         ConstantR0<uint32>(builder, 0x02461e29)};
+  key = {ConstantR0<uint32_t>(builder, 0x3ec8f720),
+         ConstantR0<uint32_t>(builder, 0x02461e29)};
   state = Philox4x32(state, key);
-  XlaOp zero = ConstantR0<uint32>(builder, 0);
+  XlaOp zero = ConstantR0<uint32_t>(builder, 0);
   return {Philox4x32State{zero, zero, state[2], state[3]},
           Philox4x32Key{state[0], state[1]}};
 }
@@ -428,7 +428,7 @@ RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state,
   numbers = Slice(numbers, /*start_indices=*/{0},
                   /*limit_indices=*/{num_elems},
                   /*strides=*/{1});
-  return {Reshape(numbers, AsInt64Slice(shape.dimensions())), new_state};
+  return {Reshape(numbers, shape.dimensions()), new_state};
 }
 
 // Generates an array of primitive type U64 with the given shape containing
@@ -461,7 +461,7 @@ RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state,
   numbers = Slice(numbers, /*start_indices=*/{0},
                   /*limit_indices=*/{num_elems},
                   /*strides=*/{1});
-  return {Reshape(numbers, AsInt64Slice(shape.dimensions())), new_state};
+  return {Reshape(numbers, shape.dimensions()), new_state};
 }
 
 XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,

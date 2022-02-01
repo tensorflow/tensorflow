@@ -75,6 +75,7 @@ objc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -151,6 +152,7 @@ objc_library(
         ":compute_task",
         ":metal_device",
         ":metal_spatial_tensor",
+        "//tensorflow/lite/delegates/gpu/common:gpu_model",
         "//tensorflow/lite/delegates/gpu/common:memory_management",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_hints",
@@ -165,9 +167,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/task:profiling_info",
         "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
         "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
-        "//tensorflow/lite/delegates/gpu/common/transformations:add_bias",
-        "//tensorflow/lite/delegates/gpu/common/transformations:global_pooling_to_reduce_op",
-        "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/time",
     ],

@@ -23,7 +23,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export(v1=["ragged.RaggedTensorValue"])
 @dispatch.register_dispatchable_type
-class RaggedTensorValue(object):
+class RaggedTensorValue:
   """Represents the value of a `RaggedTensor`.
 
   Warning: `RaggedTensorValue` should only be used in graph mode; in

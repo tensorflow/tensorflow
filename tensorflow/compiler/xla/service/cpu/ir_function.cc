@@ -42,7 +42,7 @@ static std::vector<llvm::Type*> GetComputeFunctionParams(
   return compute_function_params;
 }
 
-IrFunction::IrFunction(const string& function_name,
+IrFunction::IrFunction(const std::string& function_name,
                        llvm::Function::LinkageTypes linkage,
                        const HloModuleConfig& module_config,
                        llvm::Module* llvm_module, llvm::IRBuilder<>* b,
@@ -68,7 +68,7 @@ DynamicLoopBounds IrFunction::GetDynamicLoopBounds() {
   return dynamic_loop_bounds;
 }
 
-void IrFunction::Initialize(const string& function_name,
+void IrFunction::Initialize(const std::string& function_name,
                             llvm::Function::LinkageTypes linkage,
                             const HloModuleConfig& module_config) {
   // The function signature is:
@@ -252,7 +252,7 @@ Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
     const std::vector<int64_t>& dimension_partition_counts,
     llvm::IRBuilder<>* b, llvm::Function* parallel_function,
-    const string& name) {
+    const std::string& name) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
 
   // Build ParallelForkJoin function type.

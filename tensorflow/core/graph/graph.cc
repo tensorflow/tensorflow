@@ -244,10 +244,25 @@ void Node::RunForwardTypeInference() {
   }
 
   const auto infer_type = props_->fwd_type_fn(input_types);
+  if (!infer_type.ok()) {
+    // TODO(mdan): Turn this into an error, once all offenders are clean.
+    LOG(WARNING) << name()
+                 << " failed type inference; this is likely caused by"
+                    " a graph in which inconsistent types went "
+                    "undetected. This will become an error in the "
+                    "future.\nNode information:\n"
+                 << props_->node_def.DebugString()
+                 << "\nType inference error:\n"
+                 << infer_type.status().ToString();
+    props_->node_def.clear_experimental_type();
+    return;
+  }
   const FullTypeDef infer_typedef = infer_type.ValueOrDie();
   if (infer_typedef.type_id() != TFT_UNSET) {
     MaybeCopyOnWrite();
     *(props_->node_def.mutable_experimental_type()) = infer_typedef;
+  } else {
+    props_->node_def.clear_experimental_type();
   }
 }
 
@@ -509,6 +524,15 @@ std::unique_ptr<Graph> Graph::Clone() {
   std::unique_ptr<Graph> new_graph(new Graph(flib_def()));
   new_graph->Copy(*this);
   return new_graph;
+}
+
+void Graph::Clear() {
+  // Do a direct iteration clearing nodes removing the RemoveNode helper method.
+  // This could avoid this helper and clear directly if it becomes performance
+  // sensitive.
+  for (Node* n : nodes()) {
+    if (!n->IsSource() && !n->IsSink()) RemoveNode(n);
+  }
 }
 
 const VersionDef& Graph::versions() const { return *versions_; }

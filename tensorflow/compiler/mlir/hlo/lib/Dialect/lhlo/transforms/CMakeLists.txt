@@ -18,14 +18,9 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_mlir_library(LmhloPasses
-  fusion_utils.cc
-  input_inline_fusion_pass.cc
   legalize_to_tensor_op.cc
   lhlo_elemental_utils.cc
   lhlo_fuse_linalg.cc
-  lhlo_fusion.cc
-  lhlo_fusion_inliner.cc
-  lhlo_legalize_roots_to_loops.cc
   lhlo_legalize_to_affine.cc
   lhlo_legalize_to_gpu.cc
   lhlo_legalize_to_parallel_loops.cc

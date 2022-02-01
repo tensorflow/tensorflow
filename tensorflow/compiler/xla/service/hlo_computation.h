@@ -20,7 +20,6 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -39,8 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -67,7 +64,7 @@ class HloComputation {
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(const string& name,
+    explicit Builder(const std::string& name,
                      HloInstruction* fusion_instruction = nullptr)
         : name_(name),
           last_added_instruction_(nullptr),
@@ -97,13 +94,18 @@ class HloComputation {
       return Status::OK();
     }
 
+    HloInstruction* last_added_instruction() const {
+      return last_added_instruction_;
+    }
+
    private:
-    const string name_;
+    const std::string name_;
     HloInstruction* last_added_instruction_;
     HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(Builder);
+    Builder(const Builder&) = delete;
+    Builder& operator=(const Builder&) = delete;
   };
 
   // Helper class to automatically set the OpMetadata for every instruction
@@ -216,7 +218,7 @@ class HloComputation {
     return param_instructions_;
   }
 
-  const string& name() const { return name_; }
+  const std::string& name() const { return name_; }
 
   // Use the given NameUniquer to select a unique name for the computation based
   // on the computation's existing name.
@@ -226,11 +228,11 @@ class HloComputation {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  string ToString() const { return ToString(HloPrintOptions()); }
-  string ToString(const HloPrintOptions& options) const;
+  std::string ToString() const { return ToString(HloPrintOptions()); }
+  std::string ToString(const HloPrintOptions& options) const;
 
   // Overload which accepts an order to emit the instructions in.
-  string ToString(
+  std::string ToString(
       const HloPrintOptions& options,
       absl::Span<const HloInstruction* const> instruction_order) const;
 
@@ -247,6 +249,19 @@ class HloComputation {
       const HloComputationProto& proto,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
       bool prohibit_empty_literal = true);
+
+  // Generates a hash value of an HLO computation. Hash considers
+  // information on opcode, shape, operands, and typically a root instruction.
+  // This function returns the same hash value for equivalent HLO computations,
+  // with respect to HloComputation::Equal() method.
+  template <typename H>
+  friend H AbslHashValue(H h, const HloComputation& computation) {
+    auto instructions = computation.MakeInstructionPostOrder();
+    for (auto* instruction : instructions) {
+      h = H::combine(std::move(h), *instruction);
+    }
+    return H::combine(std::move(h), instructions.size());
+  }
 
   using InstructionSequence = tensorflow::gtl::iterator_range<
       UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;
@@ -358,12 +373,25 @@ class HloComputation {
   // Replace old instruction with new instruction.  Updates uses and root
   // instruction. Removes old instruction from computation. Precondition:
   // old_instruction and new_instruction must have the compatible shapes.
-  // If |new_instruction| doesn't have any sharding information it will
-  // receive the sharding information of |old_instruction|.
+  // If preserve_sharding is true, the replacement will fail if both new and old
+  // instruction have sharding that is not compatible, and the function will
+  // return false. Otherwise, when the replacement happens, if |new_instruction|
+  // doesn't have any sharding information it will receive the sharding
+  // information of |old_instruction|, and function will return true.
+  StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
+                                    HloInstruction* new_instruction,
+                                    bool preserve_sharding);
+
+  // Same as above, with preserve_sharding=false. Since this replacement always
+  // happens, it returns just a Status as opposed to StatusOr<bool>
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
 
-  // As ReplaceInstruction, but the new instruction can have a different shape.
+  // Same as ReplaceInstruction, but the new instruction can have a different
+  // shape.
+  StatusOr<bool> ReplaceInstructionWithDifferentShape(
+      HloInstruction* old_instruction, HloInstruction* new_instruction,
+      bool preserve_sharding);
   Status ReplaceInstructionWithDifferentShape(HloInstruction* old_instruction,
                                               HloInstruction* new_instruction);
 
@@ -398,7 +426,7 @@ class HloComputation {
   // If the clone context is specified, it will be populated with the cloned
   // object mappings, and its module() will be used to add new computations
   // into.
-  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone",
+  std::unique_ptr<HloComputation> Clone(const std::string& suffix = "clone",
                                         HloCloneContext* context = nullptr);
 
   // Like Clone(), but if an instruction is present in replacement_map, we use
@@ -419,7 +447,7 @@ class HloComputation {
                           std::unique_ptr<HloInstruction>>
           replacements,
       absl::Span<const HloInstruction* const> extra_parameters = {},
-      HloCloneContext* context = nullptr, const string& suffix = "clone",
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone",
       const HloInstruction* new_root = nullptr);
 
   // Convenience overloads for CloneWithReplacements.  You want to do
@@ -433,16 +461,16 @@ class HloComputation {
   //
   std::unique_ptr<HloComputation> CloneWithReplacementPairs(
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
-      HloCloneContext* context = nullptr, const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone");
   std::unique_ptr<HloComputation> CloneWithReplacementPairs(
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r2,
-      HloCloneContext* context = nullptr, const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone");
   std::unique_ptr<HloComputation> CloneWithReplacementPairs(
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r2,
       std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r3,
-      HloCloneContext* context = nullptr, const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const std::string& suffix = "clone");
 
   // Returns true if the given instruction can be removed from the computation.
   // Parameter instructions cannot be removed without violating invariants of
@@ -531,7 +559,7 @@ class HloComputation {
 
  private:
   explicit HloComputation(
-      const string& name, int parameter_count,
+      const std::string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
       HloInstruction* root_instruction, HloInstruction* fusion_instruction);
 
@@ -572,7 +600,7 @@ class HloComputation {
   Status RemoveInstructionImpl(HloInstruction* instruction,
                                bool ignore_safety_check);
 
-  string name_;
+  std::string name_;
   int64_t unique_id_;
   HloInstruction* root_instruction_;
 
@@ -613,7 +641,8 @@ class HloComputation {
 
   std::vector<HloInstruction*> param_instructions_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HloComputation);
+  HloComputation(const HloComputation&) = delete;
+  HloComputation& operator=(const HloComputation&) = delete;
 };
 
 template <typename HloInstructionPtr>

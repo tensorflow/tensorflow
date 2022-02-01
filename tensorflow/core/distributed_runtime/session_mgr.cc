@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/core/protobuf/coordination_service.pb.h"
 #include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -209,8 +210,7 @@ Status SessionMgr::CreateSession(
     TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&agent_cache));
     coordination_service_agent_ = CreateCoordinationServiceAgent();
     TF_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
-        worker_env_->env, worker_env_->device_mgr, server_def,
-        std::move(agent_cache),
+        worker_env_->env, server_def, std::move(agent_cache),
         /*error_fn=*/[](Status s) {
           LOG(ERROR) << "Coordination agent is set to error: " << s;
         }));

@@ -43,13 +43,14 @@ class CpuUnaryIntrinsicTest
     : public CpuCodegenTest,
       public ::testing::WithParamInterface<IntrinsicTestSpec> {
  public:
-  static string Name(const ::testing::TestParamInfo<IntrinsicTestSpec>& info) {
+  static std::string Name(
+      const ::testing::TestParamInfo<IntrinsicTestSpec>& info) {
     auto spec = info.param;
 
-    string opcode = HloOpcodeString(spec.opcode);
+    std::string opcode = HloOpcodeString(spec.opcode);
     opcode[0] = toupper(opcode[0]);
 
-    string triple{spec.triple.data(), spec.triple.size()};
+    std::string triple{spec.triple.data(), spec.triple.size()};
     if (triple == kTriple_x86_64) {
       triple = "x86_64";
     } else if (triple == kTriple_android_arm) {
@@ -58,7 +59,7 @@ class CpuUnaryIntrinsicTest
       triple = "Unknown";
     }
 
-    string features{spec.features.data(), spec.features.size()};
+    std::string features{spec.features.data(), spec.features.size()};
     if (!features.empty()) {
       std::replace_if(
           features.begin(), features.end(),
@@ -99,8 +100,8 @@ TEST_P(CpuUnaryIntrinsicTest, DoIt) {
       HloInstruction::CreateUnary(param_shape, spec.opcode, param));
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  string triple{spec.triple.data(), spec.triple.size()};
-  string features{spec.features.data(), spec.features.size()};
+  std::string triple{spec.triple.data(), spec.triple.size()};
+  std::string features{spec.features.data(), spec.features.size()};
 
   CpuAotCompilationOptions options{
       /*triple=*/triple, /*cpu_name=*/"", /*features=*/features,
@@ -110,7 +111,7 @@ TEST_P(CpuUnaryIntrinsicTest, DoIt) {
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  string check_lines{spec.check_lines.data(), spec.check_lines.size()};
+  std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
 
   CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options, check_lines,
                                 /*match_optimized_ir=*/true);

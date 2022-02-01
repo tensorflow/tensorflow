@@ -921,7 +921,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
           .IgnoreError();
     }
 
-    RETURN_IF_ERROR(RunGraphTransforms(&model));
+    RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&model));
     InferenceContext context;
     CreateGpuModelInfo create_info;
     create_info.precision = GetPrecision(environment_, options);
@@ -954,7 +954,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
           .IgnoreError();
     }
 
-    RETURN_IF_ERROR(RunGraphTransforms(&model));
+    RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&model));
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
     RETURN_IF_ERROR(
         builder_impl->Initialize(resolved_options, options_, model));

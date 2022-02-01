@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -1722,11 +1721,11 @@ llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* base,
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPredBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
   // Per the reference interpreter, pred arithmetic should behave like
-  // `int8(x) OP int8(y) != 0`.  For most permitted ops, we can just emit the
-  // underlying i8 op to achieve this (e.g. kAnd, kOr, kXor, kMultiply).  In the
-  // case of kAdd, we would need to insert a comparison instruction after the
-  // addition, but it's both easier and faster to emit a bitwise or instruction
-  // instead.
+  // `int8_t(x) OP int8_t(y) != 0`.  For most permitted ops, we can just emit
+  // the underlying i8 op to achieve this (e.g. kAnd, kOr, kXor, kMultiply).  In
+  // the case of kAdd, we would need to insert a comparison instruction after
+  // the addition, but it's both easier and faster to emit a bitwise or
+  // instruction instead.
   //
   // For several of these ops, a faster bitwise implementation is available, but
   // LLVM is unlikely to be able to see it, since it gets IR that e.g. loads i8s
@@ -2053,7 +2052,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
   llvm::Type* index_type = index.GetType();
   std::vector<llvm::Value*> slice_start_multi_index(rank);
   for (int64_t i = 0; i < rank; ++i) {
-    auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
     llvm_ir::IrArray::Index zero_index(index_type);
@@ -2225,7 +2224,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
 
   for (int64_t i = 0; i < rank; ++i) {
     llvm::Type* index_type = index[0]->getType();
-    auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
 
@@ -2372,7 +2371,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   int64_t rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
   llvm::Type* index_type = dot_result_index.GetType();
-  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+  auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_type, c);
   };
 
@@ -2813,7 +2812,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   }
 
   llvm::Type* index_type = index.GetType();
-  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+  auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
     return index.GetConstantWithIndexType(c);
   };
 

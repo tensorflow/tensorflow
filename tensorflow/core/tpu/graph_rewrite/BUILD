@@ -19,9 +19,11 @@ cc_library(
     name = "tpu_rewrite_pass_registration",
     srcs = ["tpu_rewrite_pass_registration.cc"],
     deps = [
+        ":combine_tpu_embedding_load_retrieve_pass",
         ":distributed_tpu_configuration_rewrite_pass",
         ":distributed_tpu_rewrite_pass",
         ":encapsulate_tpu_computations_pass",
+        ":tpu_embedding_software_deduplication_rewrite_pass",
         ":variable_merger_pass",
         "//tensorflow/core:core_cpu",
     ],
@@ -95,6 +97,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/jit:encapsulate_util",
+        "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -241,6 +244,46 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_embedding_rewrite_pass_utils",
+    srcs = ["tpu_embedding_rewrite_pass_utils.cc"],
+    hdrs = ["tpu_embedding_rewrite_pass_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "combine_tpu_embedding_load_retrieve_pass",
+    srcs = ["combine_tpu_embedding_load_retrieve_pass.cc"],
+    hdrs = ["combine_tpu_embedding_load_retrieve_pass.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_embedding_rewrite_pass_utils",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
+        "//tensorflow/core/tpu/ops:tpu_embedding_ops",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
     name = "configure_tpu_embedding_rewrite_pass",
     srcs = [
         "configure_tpu_embedding_rewrite_pass.cc",
@@ -269,4 +312,26 @@ cc_library(
         "//tensorflow/core:core_cpu",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_embedding_software_deduplication_rewrite_pass",
+    srcs = ["tpu_embedding_software_deduplication_rewrite_pass.cc"],
+    hdrs = ["tpu_embedding_software_deduplication_rewrite_pass.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/core/tpu:tpu_embedding_configuration_utils",
+        "//tensorflow/core/tpu/graph_rewrite:tpu_embedding_rewrite_pass_utils",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )

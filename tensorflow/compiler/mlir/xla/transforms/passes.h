@@ -66,14 +66,14 @@ std::unique_ptr<OperationPass<void>> CreateLegalizeTfTypesPass();
 /// `MlirLegalizedUnderPreferTf2XlaSet`. `!prefer_tf2xla` mean an op will be
 /// included iff it is in `IsOpAllowedTf2XlaFallback`.
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          OwningRewritePatternList& patterns,
+                                          RewritePatternSet& patterns,
                                           MLIRContext* ctx,
                                           bool prefer_tf2xla = false);
 
 /// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
 /// list.
 void PopulateLegalizeTfPatterns(MLIRContext* context,
-                                OwningRewritePatternList* patterns);
+                                RewritePatternSet* patterns);
 
 /// Checks whether the op is supported by the Tf2Xla fallback for legalization.
 bool IsOpAllowedTf2XlaFallback(Operation* op);

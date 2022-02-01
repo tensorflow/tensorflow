@@ -65,7 +65,7 @@ std::unique_ptr<HloComputation> HloComputation::Builder::Build(
 }
 
 HloComputation::HloComputation(
-    const string& name, int parameter_count,
+    const std::string& name, int parameter_count,
     std::vector<std::unique_ptr<HloInstruction>>* instructions,
     HloInstruction* root_instruction, HloInstruction* fusion_instruction)
     : name_(NameUniquer::GetSanitizedName(name)),
@@ -576,16 +576,16 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   return post_order;
 }
 
-string HloComputation::ToString(const HloPrintOptions& options) const {
+std::string HloComputation::ToString(const HloPrintOptions& options) const {
   return ToString(options, MakeInstructionPostOrder());
 }
 
-string HloComputation::ToString(
+std::string HloComputation::ToString(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
   CHECK_EQ(instruction_order.size(), instruction_count());
 
-  const string tab(2 * options.indent_amount(), ' ');
+  const std::string tab(2 * options.indent_amount(), ' ');
 
   std::ostringstream s;
   s << tab;
@@ -656,7 +656,7 @@ string HloComputation::ToString(
     new_options.set_indent_amount(options.indent_amount() + 1)
         .set_is_in_nested_computation(true);
 
-    const string new_tab(2 * new_options.indent_amount(), ' ');
+    const std::string new_tab(2 * new_options.indent_amount(), ' ');
 
     CanonicalNameMap name_map;
 
@@ -944,17 +944,35 @@ Status HloComputation::ReplaceWithNewEntryComputationParameter(
                                                  std::move(new_instruction)));
 }
 
-Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
-                                          HloInstruction* new_instruction) {
+StatusOr<bool> HloComputation::ReplaceInstruction(
+    HloInstruction* old_instruction, HloInstruction* new_instruction,
+    bool preserve_sharding) {
   TF_RET_CHECK(
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
       << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
       << ShapeUtil::HumanString(new_instruction->shape());
-  return ReplaceInstructionWithDifferentShape(old_instruction, new_instruction);
+  return ReplaceInstructionWithDifferentShape(old_instruction, new_instruction,
+                                              preserve_sharding);
 }
 
-Status HloComputation::ReplaceInstructionWithDifferentShape(
-    HloInstruction* old_instruction, HloInstruction* new_instruction) {
+Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
+                                          HloInstruction* new_instruction) {
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      ReplaceInstruction(old_instruction, new_instruction,
+                                         /*preserve_sharding=*/false));
+  DCHECK(changed);
+  return Status::OK();
+}
+
+StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
+    HloInstruction* old_instruction, HloInstruction* new_instruction,
+    bool preserve_sharding) {
+  if (preserve_sharding && new_instruction->has_sharding() &&
+      old_instruction->has_sharding() &&
+      !new_instruction->has_compatible_sharding(old_instruction)) {
+    VLOG(10) << "Skipping replacement due to incompatible sharding";
+    return false;
+  }
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
   // Try to add metadata for HLO instructions that are created to replace
@@ -997,7 +1015,17 @@ Status HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->SetAndSanitizeName(old_instruction->name());
   }
 
-  return RemoveInstructionAndUnusedOperands(old_instruction);
+  TF_RETURN_IF_ERROR(RemoveInstructionAndUnusedOperands(old_instruction));
+  return true;
+}
+
+Status HloComputation::ReplaceInstructionWithDifferentShape(
+    HloInstruction* old_instruction, HloInstruction* new_instruction) {
+  TF_ASSIGN_OR_RETURN(bool changed, ReplaceInstructionWithDifferentShape(
+                                        old_instruction, new_instruction,
+                                        /*preserve_sharding=*/false));
+  DCHECK(changed);
+  return Status::OK();
 }
 
 std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
@@ -1011,7 +1039,7 @@ std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   }
   VLOG(3) << "Unreachable roots:"
           << absl::StrJoin(unreachable_roots, "\n\t",
-                           [](string* out, const HloInstruction* hlo) {
+                           [](std::string* out, const HloInstruction* hlo) {
                              absl::StrAppend(out, hlo->ToString());
                            });
   return unreachable_roots;
@@ -1034,7 +1062,7 @@ Status HloComputation::AcceptWithOperandOrder(
 }
 
 std::unique_ptr<HloComputation> HloComputation::Clone(
-    const string& suffix, HloCloneContext* context) {
+    const std::string& suffix, HloCloneContext* context) {
   return CloneWithReplacements(
       /*replacements=*/absl::flat_hash_map<const HloInstruction*,
                                            std::unique_ptr<HloInstruction>>(),
@@ -1043,7 +1071,7 @@ std::unique_ptr<HloComputation> HloComputation::Clone(
 
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
-    HloCloneContext* context, const string& suffix) {
+    HloCloneContext* context, const std::string& suffix) {
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   replacements.emplace(std::move(r1));
@@ -1054,7 +1082,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
 std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r2,
-    HloCloneContext* context, const string& suffix) {
+    HloCloneContext* context, const std::string& suffix) {
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   replacements.emplace(std::move(r1));
@@ -1067,7 +1095,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacementPairs(
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r1,
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r2,
     std::pair<const HloInstruction*, std::unique_ptr<HloInstruction>> r3,
-    HloCloneContext* context, const string& suffix) {
+    HloCloneContext* context, const std::string& suffix) {
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   replacements.emplace(std::move(r1));
@@ -1081,7 +1109,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements,
     absl::Span<const HloInstruction* const> extra_parameters,
-    HloCloneContext* context, const string& suffix,
+    HloCloneContext* context, const std::string& suffix,
     const HloInstruction* new_root) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {

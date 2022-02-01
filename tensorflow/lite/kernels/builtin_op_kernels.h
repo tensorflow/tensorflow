@@ -75,7 +75,6 @@ TfLiteRegistration* Register_FLOOR_MOD();
 TfLiteRegistration* Register_FULLY_CONNECTED();
 TfLiteRegistration* Register_GATHER();
 TfLiteRegistration* Register_GATHER_ND();
-// TODO(b/206869911): Implement GELU registerar.
 TfLiteRegistration* Register_GELU();
 TfLiteRegistration* Register_GREATER();
 TfLiteRegistration* Register_GREATER_EQUAL();

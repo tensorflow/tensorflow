@@ -28,10 +28,12 @@ def make_multinomial_tests(options):
   """Make a set of tests to do multinomial."""
   test_parameters = [{
       "logits_shape": [[1, 2], [2, 5]],
+      "dtype": [tf.int64, tf.int32],
       "seed": [None, 1234],
       "seed2": [5678],
   }, {
       "logits_shape": [[1, 2]],
+      "dtype": [tf.int64, tf.int32],
       "seed": [1234],
       "seed2": [None]
   }]
@@ -44,7 +46,10 @@ def make_multinomial_tests(options):
     num_samples_tf = tf.compat.v1.placeholder(
         name="num_samples", dtype=tf.int32, shape=None)
     out = tf.random.categorical(
-        logits=logits_tf, num_samples=num_samples_tf, seed=parameters["seed2"])
+        logits=logits_tf,
+        num_samples=num_samples_tf,
+        dtype=parameters["dtype"],
+        seed=parameters["seed2"])
     return [logits_tf, num_samples_tf], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

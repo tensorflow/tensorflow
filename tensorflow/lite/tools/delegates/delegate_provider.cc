@@ -19,6 +19,10 @@ limitations under the License.
 namespace tflite {
 namespace tools {
 
+TfLiteDelegatePtr CreateNullDelegate() {
+  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
 void ProvidedDelegateList::AddAllDelegateParams() const {
   for (const auto& provider : providers_) {
     params_->Merge(provider->DefaultParams());

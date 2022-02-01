@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 namespace cpu {
@@ -39,7 +38,7 @@ class XfeedBuffer {
  public:
   virtual ~XfeedBuffer() = default;
 
-  virtual int32 length() = 0;
+  virtual int32_t length() = 0;
   virtual void* data() = 0;
 
   // The 'shape' parameter reflects what shape the embedded program was
@@ -51,7 +50,7 @@ class XfeedBuffer {
 // Reusable component for managing the infeed and outfeed queue state.
 class XfeedQueueManager {
  public:
-  XfeedQueueManager(string queue_name) : queue_name_(queue_name) {}
+  XfeedQueueManager(std::string queue_name) : queue_name_(queue_name) {}
 
   // Calls the completion callback for any enqueued buffers that have
   // not been dequeued by the runtime, and empties the
@@ -86,13 +85,13 @@ class XfeedQueueManager {
   void ReleaseCurrentBuffer(int32_t length, void* data, StatusOr<Shape> shape);
 
  private:
-  const string queue_name_;
+  const std::string queue_name_;
 
-  tensorflow::mutex mu_;
+  absl::Mutex mu_;
 
   // Condition variable that is signaled every time a buffer is
   // enqueued to an empty queue.
-  tensorflow::condition_variable cv_;
+  absl::CondVar cv_;
 
   // XfeedBuffer* queue contents are not owned, but buffer->Done must
   // be called when the buffer is no longer needed by the runtime.

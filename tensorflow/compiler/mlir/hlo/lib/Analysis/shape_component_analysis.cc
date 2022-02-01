@@ -283,7 +283,7 @@ struct ShapeVisitor {
     auto reduceOp = op.getDefiningOp<mhlo::ReduceOp>();
     if (reduceOp.inputs().size() != 1) return forwardUnknownShape(op);
     auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(op));
-    for (auto dim : llvm::enumerate(lookup(
+    for (const auto &dim : llvm::enumerate(lookup(
              ShapeOrValueInfo::getShapeInfoOf(reduceOp.inputs().back())))) {
       if (!llvm::is_contained(reduceOp.dimensions(), dim.index()))
         dims.push_back(dim.value());
@@ -321,13 +321,13 @@ struct ShapeVisitor {
         ShapeOrValueInfo::getShapeInfoOf(v.getDefiningOp()->getOperand(0)));
   }
   void backwardBlockArgumentShape(BlockArgument argument) {
-    // CPURT uses cpurt.symbolic_shape to describe identical dimensions. Make
+    // JitRT uses jitrt.symbolic_shape to describe identical dimensions. Make
     // use of that when it exists.
     //
     // Example:
     //   func @compute(
-    //     %arg0: tensor<?xf32> {cpurt.symbolic_shape = dense<-2> :
-    //     tensor<1xi64>}, %arg1: tensor<?xf32> {cpurt.symbolic_shape =
+    //     %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2> :
+    //     tensor<1xi64>}, %arg1: tensor<?xf32> {jitrt.symbolic_shape =
     //     dense<-2> : tensor<1xi64>})
     //   } { ... }
     //
@@ -335,15 +335,15 @@ struct ShapeVisitor {
     // is not known at compile time, and in this particular example it is only
     // known that both arguments have the same shape.
     //
-    // TODO(ezhulenev): Add symbolic shape attribute verifier to the cpurt
+    // TODO(ezhulenev): Add symbolic shape attribute verifier to the jitrt
     // dialect.
     if (auto func =
             dyn_cast_or_null<FuncOp>(argument.getOwner()->getParentOp())) {
       if (auto shape = func.getArgAttrOfType<DenseIntElementsAttr>(
-              argument.getArgNumber(), "cpurt.symbolic_shape")) {
+              argument.getArgNumber(), "jitrt.symbolic_shape")) {
         auto &dims = insert(ShapeOrValueInfo::getShapeInfoOf(argument));
         auto id = getAffineSymbolExpr(0, argument.getContext());
-        for (auto symbol : llvm::enumerate(shape.getValues<ssize_t>())) {
+        for (const auto &symbol : llvm::enumerate(shape.getValues<ssize_t>())) {
           dims.emplace_back();
           auto &dim = dims.back();
           if (symbol.value() >= 0) {
@@ -745,7 +745,7 @@ void SymbolicExpr::dump(llvm::raw_ostream &os) const {
   if (!symbols.empty()) os << " with";
   os << "\n";
   if (symbols.empty()) return;
-  for (auto sym : llvm::enumerate(symbols)) {
+  for (const auto &sym : llvm::enumerate(symbols)) {
     os.indent(4);
     os << 's' << sym.index() << " = ";
     if (!sym.value().source.isValueInfo()) os << "shapeof(";

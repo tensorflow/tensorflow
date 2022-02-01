@@ -100,7 +100,7 @@ struct OptimizeOpOrderPass
 };
 
 void OptimizeOpOrderPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   auto func = getFunction();
   auto* ctx = func.getContext();
   patterns.insert<PushDownDequantize>(ctx);

@@ -133,7 +133,7 @@ absl::Status TestCorrectnessVsTfliteCPU(const std::unique_ptr<FlatBufferModel>& 
     precision = CalculationsPrecision::F32;
   }
 
-  InferenceContext::CreateInferenceInfo create_info;
+  CreateGpuModelInfo create_info;
   create_info.precision = precision;
   create_info.storage_type = GetFastestStorageType(gpu_info);
   create_info.hints.Add(ModelHints::kAllowSpecialKernels);
@@ -200,7 +200,7 @@ absl::Status GPUBenchmark(GraphFloat32* graph, int num_tests, int iterations,
     precision = CalculationsPrecision::F32;
   }
 
-  InferenceContext::CreateInferenceInfo create_info;
+  CreateGpuModelInfo create_info;
   create_info.precision = precision;
   create_info.storage_type = GetFastestStorageType(gpu_info);
   create_info.hints.Add(ModelHints::kAllowSpecialKernels);
@@ -214,9 +214,14 @@ absl::Status GPUBenchmark(GraphFloat32* graph, int num_tests, int iterations,
     inference_context.Profile(device, &profiling_info);
     std::cout << profiling_info.GetDetailedReport() << std::endl;
   }
-  uint64_t mem_bytes = inference_context.GetIntermediateTensorsSize();
-  std::cout << "Memory for intermediate tensors - " << mem_bytes / 1024.0 / 1024.0 << " MB"
+  uint64_t runtime_mem_bytes = inference_context.GetIntermediateTensorsSize();
+  std::cout << "Memory for intermediate tensors - " << runtime_mem_bytes / 1024.0 / 1024.0 << " MB"
             << std::endl;
+  const uint64_t const_mem_bytes = inference_context.GetConstantTensorsSize();
+  std::cout << "Memory for constant tensors - " << const_mem_bytes / 1024.0 / 1024.0 << " MB"
+            << std::endl;
+  std::cout << "Total tensors memory(const + intermediate) - "
+            << (const_mem_bytes + runtime_mem_bytes) / 1024.0 / 1024.0 << " MB" << std::endl;
   const std::string precision_str = use_fp16 ? "FP16" : "FP32";
   std::cout << "Measuring started: (" << num_tests << " tests, " << iterations
       << " iterations every test, " << precision_str << " precision)" << std::endl;

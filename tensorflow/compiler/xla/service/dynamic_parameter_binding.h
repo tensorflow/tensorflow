@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PARAMETER_BINDING_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PARAMETER_BINDING_H_
 
+#include <functional>
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -103,7 +105,7 @@ class DynamicParameterBinding {
   static StatusOr<DynamicParameterBinding> CreateFromProto(
       const DynamicParameterBindingProto& proto);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Verifies that the given binding is valid for the given module.
   // Specifically, the binding's parameter and parameter size should be valid.

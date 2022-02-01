@@ -113,6 +113,10 @@ tf_module {
     argspec: "args=[\'devices\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "AnonymousMultiDeviceIteratorV3"
+    argspec: "args=[\'devices\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "AnonymousMutableDenseHashTable"
     argspec: "args=[\'empty_key\', \'deleted_key\', \'value_dtype\', \'value_shape\', \'initial_num_buckets\', \'max_load_factor\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'131072\', \'0.8\', \'None\'], "
   }
@@ -1326,7 +1330,7 @@ tf_module {
   }
   member_method {
     name: "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch"
-    argspec: "args=[\'sample_indices_or_row_lengths\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
+    argspec: "args=[\'sample_indices_or_row_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
     name: "DynamicPartition"
@@ -1394,7 +1398,7 @@ tf_module {
   }
   member_method {
     name: "EnqueueTPUEmbeddingArbitraryTensorBatch"
-    argspec: "args=[\'sample_indices_or_row_lengths\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'None\'], "
+    argspec: "args=[\'sample_indices_or_row_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'None\'], "
   }
   member_method {
     name: "EnqueueTPUEmbeddingIntegerBatch"

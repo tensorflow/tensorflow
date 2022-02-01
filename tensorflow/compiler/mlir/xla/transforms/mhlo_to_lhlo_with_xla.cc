@@ -704,10 +704,6 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     return EmitDnnConvolution(custom_call_instr);
   }
 
-  if (xla::gpu::IsCustomCallToDnnBatchNorm(*instr)) {
-    return EmitDnnBatchNorm(custom_call_instr);
-  }
-
   // For custom call, if there are any token operands or results, they will not
   // be represented in LHLO so we need to remember the mapping. First create
   // operands where each token is replaced with a null Value.
@@ -989,51 +985,6 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
       return set_common_conv_attributes(cnn_fused_side_input);
     }
   }
-}
-
-StatusOr<Operation*> LhloDialectEmitter::EmitDnnBatchNorm(
-    const HloCustomCallInstruction* custom_call) {
-  const int64_t num_operands = custom_call->operand_count();
-  auto set_batchnorm_attributes = [&](auto op) -> StatusOr<Operation*> {
-    // The last 2 operands of a custom call for batch norm are the epsilon and
-    // feature_index.
-    const HloInstruction* epsilon = custom_call->operand(num_operands - 2);
-    TF_RET_CHECK(epsilon->IsConstant());
-    float epsilon_value = epsilon->literal().Get<float>({});
-
-    const HloInstruction* feature_index =
-        custom_call->operand(num_operands - 1);
-    TF_RET_CHECK(feature_index->IsConstant());
-    int64_t feature_index_value = feature_index->literal().Get<int64_t>({});
-
-    op.epsilonAttr(builder_.getF32FloatAttr(epsilon_value));
-    op.feature_indexAttr(builder_.getI64IntegerAttr(feature_index_value));
-    return op.getOperation();
-  };
-
-  const std::string& target = custom_call->custom_call_target();
-  if (target == xla::gpu::kCudnnBatchNormForwardTrainingCallTarget) {
-    TF_ASSIGN_OR_RETURN(auto fwd_training,
-                        CreateOpWithoutAttrs<lmhlo_gpu::BatchNormTrainingOp>(
-                            custom_call, num_operands - 2));
-    return set_batchnorm_attributes(fwd_training);
-  }
-
-  if (target == xla::gpu::kCudnnBatchNormBackwardCallTarget) {
-    TF_ASSIGN_OR_RETURN(auto backward,
-                        CreateOpWithoutAttrs<lmhlo_gpu::BatchNormGradOp>(
-                            custom_call, num_operands - 2));
-    return set_batchnorm_attributes(backward);
-  }
-
-  if (target == xla::gpu::kCudnnBatchNormForwardInferenceCallTarget) {
-    TF_ASSIGN_OR_RETURN(auto fwd_inference,
-                        CreateOpWithoutAttrs<lmhlo_gpu::BatchNormInferenceOp>(
-                            custom_call, num_operands - 2));
-    return set_batchnorm_attributes(fwd_inference);
-  }
-
-  return xla::Unimplemented("Unsupported batch norm operation");
 }
 
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.
@@ -1695,7 +1646,7 @@ Status HloToLhloModule(const BufferAssignment& assignment,
                     lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
 
   module->setLoc(mlir::NameLoc::get(
-      mlir::Identifier::get(hlo_module.name(), module.getContext())));
+      mlir::StringAttr::get(module.getContext(), hlo_module.name())));
 
   // Store the HloModule's unique_id in the MLIR module.
   Builder builder(module.getContext());
@@ -1722,15 +1673,15 @@ Status HloToLhloModule(const BufferAssignment& assignment,
   return status_handler.ConsumeStatus();
 }
 
-OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
-                                               MLIRContext* context,
-                                               bool optimize_xla_hlo) {
+OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
+    llvm::StringRef input, MLIRContext* context, bool optimize_xla_hlo) {
   StatusOr<std::unique_ptr<HloModule>> maybe_module =
       xla::ParseAndReturnUnverifiedModule(
           absl::string_view(input.data(), input.size()));
   TF_CHECK_OK(maybe_module.status());
 
-  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
+  OwningOpRef<mlir::ModuleOp> module =
+      ModuleOp::create(UnknownLoc::get(context));
 
   TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(maybe_module.ConsumeValueOrDie(),
                                            module.get(), "Host",

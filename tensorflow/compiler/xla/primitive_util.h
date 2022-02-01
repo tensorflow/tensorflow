@@ -65,17 +65,17 @@ inline PrimitiveType NativeToPrimitiveType<bool>() {
 
 // Unsigned integer
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint8>() {
+inline PrimitiveType NativeToPrimitiveType<uint8_t>() {
   return U8;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint16>() {
+inline PrimitiveType NativeToPrimitiveType<uint16_t>() {
   return U16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<uint32>() {
+inline PrimitiveType NativeToPrimitiveType<uint32_t>() {
   return U32;
 }
 
@@ -86,17 +86,17 @@ inline PrimitiveType NativeToPrimitiveType<uint64_t>() {
 
 // Signed integer
 template <>
-inline PrimitiveType NativeToPrimitiveType<int8>() {
+inline PrimitiveType NativeToPrimitiveType<int8_t>() {
   return S8;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int16>() {
+inline PrimitiveType NativeToPrimitiveType<int16_t>() {
   return S16;
 }
 
 template <>
-inline PrimitiveType NativeToPrimitiveType<int32>() {
+inline PrimitiveType NativeToPrimitiveType<int32_t>() {
   return S32;
 }
 
@@ -288,38 +288,38 @@ struct PrimitiveTypeToNative<PRED> {
 // Unsigned integer
 template <>
 struct PrimitiveTypeToNative<U8> {
-  using type = uint8;
+  using type = uint8_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<U16> {
-  using type = uint16;
+  using type = uint16_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<U32> {
-  using type = uint32;
+  using type = uint32_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<U64> {
-  using type = uint64;
+  using type = uint64_t;
 };
 
 // Signed integer
 template <>
 struct PrimitiveTypeToNative<S8> {
-  using type = int8;
+  using type = int8_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<S16> {
-  using type = int16;
+  using type = int16_t;
 };
 
 template <>
 struct PrimitiveTypeToNative<S32> {
-  using type = int32;
+  using type = int32_t;
 };
 
 template <>
@@ -358,7 +358,7 @@ struct PrimitiveTypeToNative<C128> {
 };
 
 // Returns the lower-case name of the given primitive type.
-const string& LowercasePrimitiveTypeName(PrimitiveType s);
+const std::string& LowercasePrimitiveTypeName(PrimitiveType s);
 
 // Returns the PrimitiveType matching the given name. The given name is expected
 // to be lower-case.

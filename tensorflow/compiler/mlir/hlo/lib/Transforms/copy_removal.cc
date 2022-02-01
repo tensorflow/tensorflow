@@ -17,21 +17,21 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/BufferUtils.h"
 
 namespace mlir {
 
 namespace {
 
-class CopyRemoval : BufferPlacementTransformationBase {
+class CopyRemoval : bufferization::BufferPlacementTransformationBase {
  public:
   explicit CopyRemoval(Operation *op)
       : BufferPlacementTransformationBase(op),
         userange_(op, allocs, aliases),
         dominators_(op) {}
 
-  void removeCopy(Operation *op) {
+  void removeCopy() {
     // A set with the copy Operations to process.
     llvm::SetVector<Operation *> toProcess;
     fillProcessSet(toProcess);
@@ -82,8 +82,7 @@ class CopyRemoval : BufferPlacementTransformationBase {
           getOrInsert(copyTarget, updatedUsepositions, lambdaUsePosUpdate);
 
       // Check if the currentOp dominates all uses of the copyTarget.
-      if (!checkDominance(currentOp, copyTarget, targetUsePosList, toErase))
-        continue;
+      if (!checkDominance(currentOp, targetUsePosList, toErase)) continue;
 
       // Merge the Useranges.
       UseInterval::intervalMerge(sourceInterval, targetInterval);
@@ -99,10 +98,11 @@ class CopyRemoval : BufferPlacementTransformationBase {
       toErase.insert(currentOp);
     }
     // Erase the copy operations.
-    for (auto eraseOp : toErase) eraseOp->erase();
+    for (auto *eraseOp : toErase) eraseOp->erase();
 
     // Erase all allocs without uses.
-    for (const BufferPlacementAllocs::AllocEntry &entry : allocs) {
+    for (const bufferization::BufferPlacementAllocs::AllocEntry &entry :
+         allocs) {
       Value alloc = std::get<0>(entry);
       if (alloc.use_empty()) alloc.getDefiningOp()->erase();
     }
@@ -117,7 +117,8 @@ class CopyRemoval : BufferPlacementTransformationBase {
     SmallPtrSet<Value, 16U> processedAliases;
 
     // Iterate over the allocs.
-    for (const BufferPlacementAllocs::AllocEntry &entry : allocs) {
+    for (const bufferization::BufferPlacementAllocs::AllocEntry &entry :
+         allocs) {
       Value allocValue = std::get<0>(entry);
 
       // Resolve the aliases of the current alloc and iterate over them.
@@ -161,7 +162,7 @@ class CopyRemoval : BufferPlacementTransformationBase {
   /// Insert the original userange intervals of the operation in the map.
   UseInterval::Vector &insertUserangeInterval(
       Value v, DenseMap<Value, UseInterval::Vector> &updateMap) {
-    auto original = userange_.getUserangeInterval(v).getValue();
+    const auto *original = userange_.getUserangeInterval(v).getValue();
     auto &entry = updateMap[v];
     entry = *original;
     return entry;
@@ -170,7 +171,7 @@ class CopyRemoval : BufferPlacementTransformationBase {
   /// Insert the original use positions of the operation in the map.
   UserangeAnalysis::UsePositionList &insertUserangePositions(
       Value v, DenseMap<Value, UserangeAnalysis::UsePositionList> &updateMap) {
-    auto original = userange_.getUserangePositions(v).getValue();
+    const auto *original = userange_.getUserangePositions(v).getValue();
     auto &entry = updateMap[v];
     entry = *original;
     return entry;
@@ -178,7 +179,7 @@ class CopyRemoval : BufferPlacementTransformationBase {
 
   /// Check if all uses of the target Value are dominated by given Operation.
   /// Note: The target has always at least one use which is the copy operation.
-  bool checkDominance(Operation *useOp, Value v,
+  bool checkDominance(Operation *useOp,
                       const UserangeAnalysis::UsePositionList &usePosList,
                       SmallPtrSet<Operation *, 16> &ignoreSet) {
     Block *useBlock = useOp->getBlock();
@@ -213,16 +214,16 @@ class CopyRemoval : BufferPlacementTransformationBase {
 };
 
 struct CopyRemovalPass : public CopyRemovalBase<CopyRemovalPass> {
-  void runOnFunction() override {
-    Operation *funcOp = getFunction();
+  void runOnOperation() override {
+    Operation *funcOp = getOperation();
     CopyRemoval removal(funcOp);
-    removal.removeCopy(funcOp);
+    removal.removeCopy();
   }
 };
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createCopyRemovalPass() {
+std::unique_ptr<OperationPass<FuncOp>> createCopyRemovalPass() {
   return std::make_unique<CopyRemovalPass>();
 }
 

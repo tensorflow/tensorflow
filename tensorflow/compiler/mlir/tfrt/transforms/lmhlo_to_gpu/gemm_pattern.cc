@@ -82,11 +82,11 @@ Type MlirComputationType(Type element_type,
 // operation itself.
 template <class GemmOp>
 Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
-                    Value stream, int64_t batch_size, mlir::Type element_type,
-                    MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
-                    MatrixDescriptor output_matrix, llvm::APFloat alpha_real,
-                    llvm::APFloat alpha_imaginary, llvm::APFloat beta_real,
-                    cublasGemmAlgo_t algorithm,
+                    Value stream, int64_t batch_size, mlir::Type input_type,
+                    mlir::Type output_type, MatrixDescriptor lhs_matrix,
+                    MatrixDescriptor rhs_matrix, MatrixDescriptor output_matrix,
+                    llvm::APFloat alpha_real, llvm::APFloat alpha_imaginary,
+                    llvm::APFloat beta_real, cublasGemmAlgo_t algorithm,
                     ConversionPatternRewriter& rewriter) {
   auto loc = op.getLoc();
   if (auto bias = GetBias(adaptor)) {
@@ -96,7 +96,7 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
 
   auto k_val = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
 
-  const Type mlir_compute_type = MlirComputationType(element_type, rewriter);
+  const Type mlir_compute_type = MlirComputationType(output_type, rewriter);
 
   auto m = rewriter.create<tfrt::compiler::ConstantI32Op>(
       loc, output_matrix.num_rows);
@@ -105,9 +105,9 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
   auto k = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, k_val);
 
   // Scale type must match compute type, except for complex types, where
-  // it must match the element type
+  // it must match the output type
   const Type mlir_scale_type =
-      element_type.isa<mlir::ComplexType>() ? element_type : mlir_compute_type;
+      output_type.isa<mlir::ComplexType>() ? output_type : mlir_compute_type;
 
   auto const_alpha = MakeScalingFactorConstant(rewriter, loc, mlir_scale_type,
                                                alpha_real, alpha_imaginary);
@@ -126,12 +126,14 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
 
   auto algo = rewriter.create<tfrt::gpu::BlasGemmAlgoOp>(loc, algorithm);
 
-  auto blas_handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, stream);
+  Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
+  auto handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, context);
 
   auto lhs_op = lhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
   auto rhs_op = rhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
 
-  const auto data_type = MlirTypeToCudaDataType(element_type);
+  const auto input_data_type = MlirTypeToCudaDataType(input_type);
+  const auto output_data_type = MlirTypeToCudaDataType(output_type);
   const auto compute_type = MlirTypeToCublasComputeType(mlir_compute_type);
 
   if (batch_size != 1) {
@@ -145,20 +147,20 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
         rewriter.create<tfrt::compiler::ConstantI32Op>(loc, batch_size);
     return rewriter
         .create<tfrt::gpu::BlasGemmBatchExOp>(
-            loc, chain.getType(), blas_handle, lhs_op, rhs_op, m, n, k,
-            const_alpha, lhs_matrix.data, data_type, lda, lhs_stride,
-            rhs_matrix.data, data_type, ldb, rhs_stride, const_beta,
-            output_matrix.data, data_type, ldc, output_stride, batch,
+            loc, chain.getType(), handle, stream, lhs_op, rhs_op, m, n, k,
+            const_alpha, lhs_matrix.data, input_data_type, lda, lhs_stride,
+            rhs_matrix.data, input_data_type, ldb, rhs_stride, const_beta,
+            output_matrix.data, output_data_type, ldc, output_stride, batch,
             compute_type, algo, chain)
         .getResult();
   }
 
   return rewriter
       .create<tfrt::gpu::BlasGemmOp>(
-          loc, chain.getType(), blas_handle, lhs_op, rhs_op, m, n, k,
-          const_alpha, lhs_matrix.data, data_type, lda, rhs_matrix.data,
-          data_type, ldb, const_beta, output_matrix.data, data_type, ldc,
-          compute_type, algo, chain)
+          loc, chain.getType(), handle, stream, lhs_op, rhs_op, m, n, k,
+          const_alpha, lhs_matrix.data, input_data_type, lda, rhs_matrix.data,
+          input_data_type, ldb, const_beta, output_matrix.data,
+          output_data_type, ldc, compute_type, algo, chain)
       .getResult();
 }
 
@@ -170,10 +172,10 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
   auto get_element_type = [](Value value) {
     return value.getType().cast<mlir::MemRefType>().getElementType();
   };
-  mlir::Type element_type = get_element_type(op.output());
-  if (element_type != get_element_type(op.lhs()) ||
-      element_type != get_element_type(op.rhs())) {
-    return rewriter.notifyMatchFailure(op, "Element type mismatch.");
+  mlir::Type output_type = get_element_type(op.output());
+  mlir::Type input_type = get_element_type(op.lhs());
+  if (get_element_type(op.rhs()) != input_type) {
+    return rewriter.notifyMatchFailure(op, "Input element type mismatch.");
   }
 
   const xla::Shape output_shape = xla::gpu::GetShape(op.output());
@@ -182,10 +184,10 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
   const mlir::mhlo::DotDimensionNumbersAttr dim_nums =
       op.dot_dimension_numbers();
   absl::Span<const int64_t> output_batch_dims =
-      xla::AsInt64Slice((dim_nums.getLhsBatchingDimensions().size() >
-                         dim_nums.getRhsBatchingDimensions().size())
-                            ? dim_nums.getLhsBatchingDimensions()
-                            : dim_nums.getRhsBatchingDimensions());
+      (dim_nums.getLhsBatchingDimensions().size() >
+       dim_nums.getRhsBatchingDimensions().size())
+          ? dim_nums.getLhsBatchingDimensions()
+          : dim_nums.getRhsBatchingDimensions();
 
   int64_t batch_size = op.batch_size();
   int64_t output_row_dim = output_batch_dims.size();
@@ -309,9 +311,10 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
   auto algorithm = static_cast<cublasGemmAlgo_t>(
       op.algorithm().getValueOr(CUBLAS_GEMM_DEFAULT));
 
-  return CreateTfrtOps(op, adaptor, chain, stream, batch_size, element_type,
-                       lhs_matrix, rhs_matrix, output_matrix, op.alpha_real(),
-                       op.alpha_imag(), beta_real, algorithm, rewriter);
+  return CreateTfrtOps(op, adaptor, chain, stream, batch_size, input_type,
+                       output_type, lhs_matrix, rhs_matrix, output_matrix,
+                       op.alpha_real(), op.alpha_imag(), beta_real, algorithm,
+                       rewriter);
 }
 
 template <class GemmOpType>

@@ -1690,7 +1690,7 @@ class LowerSoftmaxOp : public OpRewritePattern<OpTy> {
 }  // namespace
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
-                                OwningRewritePatternList *patterns) {
+                                RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
       LowerAddNOp,
@@ -1712,7 +1712,7 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
 }
 
 void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
-                                         OwningRewritePatternList *patterns) {
+                                         RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
       ConvertFakeQuantWithMinMaxVarsOp,
@@ -1769,7 +1769,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
 }
 
 void PopulateLoweringQuantizedPatterns(MLIRContext *context,
-                                       OwningRewritePatternList *patterns) {
+                                       RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<
       LowerDequantizeOp>(context);

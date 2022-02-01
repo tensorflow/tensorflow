@@ -28,11 +28,13 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -54,16 +56,14 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
 class HloComputation;
 class HloModule;
 
-string PrintName(const string& name, bool print_ids);
+std::string PrintName(const std::string& name, bool print_ids);
 
 // A bunch of switches that control how the hlo text should be printed.
 class HloPrintOptions {
@@ -134,8 +134,7 @@ class HloPrintOptions {
   // Options to produce a fingerprint of an HLO.
   static HloPrintOptions Fingerprint() {
     return HloPrintOptions()
-        .set_print_subcomputation_mode(
-            PrintSubcomputationMode::kNonSequentialBodies)
+        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_print_infeed_outfeed_config(false)
@@ -295,8 +294,8 @@ class HloPrintOptions {
   // the indentation level of the resulting block, and a
   // bool variable indicating whether the instruction is root or not. The return
   // value is a string which is used for this instruction during printing.
-  using FormatInstructionFunc =
-      std::function<string(const HloInstruction*, const string&, int, bool)>;
+  using FormatInstructionFunc = std::function<std::string(
+      const HloInstruction*, const std::string&, int, bool)>;
 
   HloPrintOptions& set_format_instruction(FormatInstructionFunc callback) {
     format_instruction_ = callback;
@@ -357,9 +356,9 @@ class HloPrintOptions {
   int leading_and_trailing_instructions_number() const {
     return leading_and_trailing_instructions_number_;
   }
-  string format_instruction(const HloInstruction* instr,
-                            const string& instr_name, int indent,
-                            bool is_root) const {
+  std::string format_instruction(const HloInstruction* instr,
+                                 const std::string& instr_name, int indent,
+                                 bool is_root) const {
     return format_instruction_(instr, instr_name, indent, is_root);
   }
   bool print_instruction(const HloInstruction* instr) const {
@@ -395,9 +394,9 @@ class HloPrintOptions {
   bool print_extra_attributes_;
   int leading_and_trailing_instructions_number_ = 3;
   FormatInstructionFunc format_instruction_ = [](const HloInstruction* instr,
-                                                 const string& instr_name,
+                                                 const std::string& instr_name,
                                                  int indent, bool is_root) {
-    return absl::StrCat(string(2 * indent, ' '), is_root ? "ROOT " : "",
+    return absl::StrCat(std::string(2 * indent, ' '), is_root ? "ROOT " : "",
                         instr_name);
   };
   HloInstructionPredicate print_instruction_ = [](const HloInstruction* instr) {
@@ -415,13 +414,13 @@ class CanonicalNameMap {
  public:
   CanonicalNameMap() : index(0) {}
 
-  string LookupOrInsert(const string& old_name) {
+  std::string LookupOrInsert(const std::string& old_name) {
     auto iter = canonical_name_map.find(old_name);
     if (iter != canonical_name_map.end()) {
       return iter->second;
     }
 
-    string new_name = absl::StrCat("tmp_", index++);
+    std::string new_name = absl::StrCat("tmp_", index++);
     canonical_name_map[old_name] = new_name;
     return new_name;
   }
@@ -432,7 +431,7 @@ class CanonicalNameMap {
 
  private:
   int64_t index;
-  absl::flat_hash_map<string, string> canonical_name_map;
+  absl::flat_hash_map<std::string, std::string> canonical_name_map;
 };
 
 // HLO instructions are the atomic unit of the high-level compiler's IR.
@@ -545,7 +544,7 @@ class HloInstruction {
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(
-      int64_t parameter_number, const Shape& shape, const string& name);
+      int64_t parameter_number, const Shape& shape, const std::string& name);
 
   // Creates a literal constant instruction.
   static std::unique_ptr<HloInstruction> CreateConstant(Literal literal);
@@ -563,7 +562,7 @@ class HloInstruction {
       HloInstruction* operand, int64_t index);
 
   // Creates a trace instruction that logs the input operand in the computation.
-  static std::unique_ptr<HloInstruction> CreateTrace(const string& tag,
+  static std::unique_ptr<HloInstruction> CreateTrace(const std::string& tag,
                                                      HloInstruction* operand);
 
   // Creates a random number generation instruction that fills a shape with
@@ -838,7 +837,7 @@ class HloInstruction {
   // is a tuple containing the infeed_shape and the TOKEN.
   static std::unique_ptr<HloInstruction> CreateInfeed(
       const Shape& infeed_shape, HloInstruction* token_operand,
-      const string& config);
+      const std::string& config);
 
   // Creates an outfeed instruction, which outputs data. outfeed_shape is the
   // shape of the data being outfed *not* the shape of the outfeed instruction
@@ -1038,7 +1037,7 @@ class HloInstruction {
   // computation, and the initial value for the input of the computations. For
   // example, shape: S32, condition: i -> i < 1000, body: i -> i * 2, init: 1
   // corresponds to the C code below.
-  // int32 i = 1; int32 result = while(i < 1000) { i = i * 2 }
+  // int32_t i = 1; int32_t result = while(i < 1000) { i = i * 2 }
   static std::unique_ptr<HloInstruction> CreateWhile(const Shape& shape,
                                                      HloComputation* condition,
                                                      HloComputation* body,
@@ -1097,14 +1096,14 @@ class HloInstruction {
   // backend-specific interpretation. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      absl::string_view custom_call_target, string opaque = "",
+      absl::string_view custom_call_target, std::string opaque = "",
       CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
   // Overload with a to_apply computation.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* to_apply, absl::string_view custom_call_target,
-      string opaque = "",
+      std::string opaque = "",
       CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
   // Overload with multiple computations. The called computations can have
@@ -1112,7 +1111,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<HloComputation* const> called_computations,
-      absl::string_view custom_call_target, string opaque = "",
+      absl::string_view custom_call_target, std::string opaque = "",
       CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
   // Overload which constrains the layouts of the operand and result. 'shape'
@@ -1122,7 +1121,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::string_view custom_call_target,
-      absl::Span<const Shape> operand_shapes_with_layout, string opaque = "",
+      absl::Span<const Shape> operand_shapes_with_layout,
+      std::string opaque = "",
       CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
   // Creates a tuple instruction with the given elements. This is a convenience
@@ -1284,15 +1284,25 @@ class HloInstruction {
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO instructions,
   // with respect to HloInstruction::Identical() method.
-  //
-  // Uses hash_operand function to compute hash values of its operands.
-  // At the very top level, hash_operand should be non-recursive to prevent
-  // non-termination.
-  uint64 Hash(
-      const std::function<uint64(const HloInstruction*)>& hash_operand) const;
+  // TODO(majnemer): Make the comment here more crisp & accurate.
+  template <typename H>
+  friend H AbslHashValue(H h, const HloInstruction& hlo) {
+    h = H::combine(std::move(h), hlo.opcode(), hlo.shape());
 
-  // Calls the above method with non-recursive hash_operand function.
-  uint64 Hash() const;
+    if (!hlo.IsCrossModuleAllReduce()) {
+      for (size_t i = 0; i < hlo.operands().size(); ++i) {
+        h = H::combine(std::move(h), hlo.operand(i)->shape());
+      }
+      h = H::combine(std::move(h), hlo.operand_count());
+    }
+
+    if (hlo.opcode() == HloOpcode::kFusion) {
+      h = H::combine(std::move(h), *hlo.fused_expression_root(),
+                     hlo.fusion_kind(), hlo.fused_instruction_count(),
+                     hlo.fused_parameters().size());
+    }
+    return h;
+  }
 
   // Returns whether the instruction has a constant operand.
   bool HasConstantOperand() const;
@@ -1435,7 +1445,7 @@ class HloInstruction {
 
   // Returns a string for the signature of this instruction if considered as a
   // function, e.g. the signature of an F32 add is (F32, F32) -> F32.
-  string SignatureString() const;
+  std::string SignatureString() const;
 
   // Returns a debugging string that represents this instruction.
   //
@@ -1445,27 +1455,27 @@ class HloInstruction {
   // TODO(b/73348663): Make ToString() adaptive to the size of the string by
   // default, backing off on providing full information for very large strings,
   // or provide a different name for a ToString-like function that does that.
-  string ToString() const { return ToString(HloPrintOptions()); }
-  string ToString(const HloPrintOptions& options) const;
+  std::string ToString() const { return ToString(HloPrintOptions()); }
+  std::string ToString(const HloPrintOptions& options) const;
 
   // Components of the ToString() representation:
 
   // Returns a string representation of the operand list.
-  string OperandsToString(const HloPrintOptions& options) const;
+  std::string OperandsToString(const HloPrintOptions& options) const;
 
   // Returns string representation of op-specific attributes.
-  std::vector<string> ExtraAttributesToString(
+  std::vector<std::string> ExtraAttributesToString(
       const HloPrintOptions& options) const;
 
   // As ToString, but returns a shorter string.
-  string ToShortString() const;
+  std::string ToShortString() const;
 
   // Prints an instruction to a string.
   //
   // The canonical string representation needs to name operands and instruction
   // names in a consistent way. This is implemented through the
   // canonical_name_map.
-  string ToStringWithCanonicalNameMap(
+  std::string ToStringWithCanonicalNameMap(
       const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
 
@@ -1474,7 +1484,7 @@ class HloInstruction {
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
-  virtual string ToCategory() const;
+  virtual std::string ToCategory() const;
 
   // Returns a logging instruction, if the output of this instruction is logged.
   //
@@ -1555,11 +1565,12 @@ class HloInstruction {
   // the instruction to form the name of the cloned instruction.
   // Ignores the control predecessors and successors of this HLO instruction.
   std::unique_ptr<HloInstruction> Clone(
-      const string& suffix = "clone", HloCloneContext* context = nullptr) const;
+      const std::string& suffix = "clone",
+      HloCloneContext* context = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape.
   std::unique_ptr<HloInstruction> CloneWithNewShape(
-      const Shape& shape, const string& suffix = "clone",
+      const Shape& shape, const std::string& suffix = "clone",
       HloCloneContext* context = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape and operands.
@@ -1637,7 +1648,7 @@ class HloInstruction {
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
   // Gets the string identifier for this instruction.
-  const string& name() const { return name_; }
+  const std::string& name() const { return name_; }
 
   // Sets the string identifier for this instruction. Name will be sanitized to
   // match the regexp "[a-zA-Z_][a-zA-Z0-9_.-]*".
@@ -1701,8 +1712,10 @@ class HloInstruction {
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
-  const string& raw_backend_config_string() const { return backend_config_; }
-  void set_raw_backend_config_string(string config_str) {
+  const std::string& raw_backend_config_string() const {
+    return backend_config_;
+  }
+  void set_raw_backend_config_string(std::string config_str) {
     backend_config_ = std::move(config_str);
   }
 
@@ -1718,7 +1731,7 @@ class HloInstruction {
   //   TF_RETURN_IF_ERROR(instr.set_backend_config(proto));
   //   return instr.raw_backend_config_string();
   //
-  static StatusOr<string> BackendConfigToRawString(
+  static StatusOr<std::string> BackendConfigToRawString(
       const tensorflow::protobuf::Message& proto);
 
   // Returns the information used to tell the implementation information about
@@ -1849,7 +1862,7 @@ class HloInstruction {
                         const ShapeIndex& shape_index = {});
 
   // Delegates to HloTraceInstruction::TracingTag.
-  string TracingTag() const;
+  std::string TracingTag() const;
 
   // Delegates to HloFusionInstruction::AddFusionOperand.
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
@@ -1926,22 +1939,22 @@ class HloInstruction {
   void set_tuple_index(int64_t new_tuple_index);
 
   // Delegates to HloReducePrecisionInstruction::exponent_bits.
-  int32 exponent_bits() const;
+  int32_t exponent_bits() const;
 
   // Delegates to HloReducePrecisionInstruction::mantissa_bits.
-  int32 mantissa_bits() const;
+  int32_t mantissa_bits() const;
 
   // Delegates to HloInfeedInstruction::infeed_config.
-  string infeed_config() const;
+  std::string infeed_config() const;
 
   // Delegates to HloInfeedInstruction::set_infeed_config.
-  void set_infeed_config(const string& config);
+  void set_infeed_config(const std::string& config);
 
   // Returns the config for the Outfeed instruction.
-  const string& outfeed_config() const;
+  const std::string& outfeed_config() const;
 
   // Delegates to HloOutfeedInstruction::set_outfeed_config.
-  void set_outfeed_config(const string& config);
+  void set_outfeed_config(const std::string& config);
 
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;
@@ -2004,7 +2017,8 @@ class HloInstruction {
   void set_scatter(HloComputation* computation);
 
   // Delegates to HloCustomCallInstruction::custom_call_target.
-  const string& custom_call_target() const;
+  const std::string& custom_call_target() const;
+  void set_custom_call_target(absl::string_view target);
 
   // Delegates to HloPadInstruction::padding_config.
   const PaddingConfig& padding_config() const;
@@ -2149,7 +2163,7 @@ class HloInstruction {
   }
 
   // Implementation for non-common logic of ExtraAttributesToString.
-  virtual std::vector<string> ExtraAttributesToStringImpl(
+  virtual std::vector<std::string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const {
     return {};
   }
@@ -2163,7 +2177,7 @@ class HloInstruction {
       const absl::optional<int64_t>& operand_idx) const;
 
   // Prints an operand to a string. Accessed by friend class HloInstruction.
-  virtual string OperandsToStringWithCanonicalNameMap(
+  virtual std::string OperandsToStringWithCanonicalNameMap(
       const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
 
@@ -2172,10 +2186,6 @@ class HloInstruction {
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const;
-
-  // Generates a hash value specific to a particular type of an instruction.
-  // This function typically considers the inner root instruction.
-  virtual uint64 InnerHash() const;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(
@@ -2251,7 +2261,7 @@ class HloInstruction {
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
-  string backend_config_;
+  std::string backend_config_;
 
   // Attributes passed from the frontend to give hints to the backend about
   // how to compile this HLO.
@@ -2274,7 +2284,7 @@ class HloInstruction {
   bool cleaned_up_ = false;
 
   // String identifier for instruction.
-  string name_;
+  std::string name_;
 
   // Metadata for debugging.
   OpMetadata metadata_;
@@ -2287,7 +2297,8 @@ class HloInstruction {
   // been marked as dead.
   bool marked_as_dead_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
+  HloInstruction(const HloInstruction&) = delete;
+  HloInstruction& operator=(const HloInstruction&) = delete;
 };
 
 // Explicit instantiations in hlo_instruction.cc.
@@ -2296,26 +2307,28 @@ extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
 extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
-string ToString(HloInstruction::FusionKind kind);
+std::string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
-    const string& kind_name);
+    const std::string& kind_name);
 
 // Custom (de)stringification functions for protos that live inside
 // HloInstruction.
-string PaddingConfigToString(const PaddingConfig& padding);
-string FrontendAttributesToString(
+std::string PaddingConfigToString(const PaddingConfig& padding);
+std::string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
-string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
-string RandomDistributionToString(const RandomDistribution& distribution);
-string PrecisionToString(const PrecisionConfig::Precision& precision);
-string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
-string ConvolutionDimensionNumbersToString(
+std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
+std::string RandomDistributionToString(const RandomDistribution& distribution);
+std::string PrecisionToString(const PrecisionConfig::Precision& precision);
+std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
+std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
-string ReplicaGroupsToString(absl::Span<const ReplicaGroup> replica_groups);
+std::string ReplicaGroupsToString(
+    absl::Span<const ReplicaGroup> replica_groups);
 
-StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name);
-StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
-StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);
+StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const std::string& name);
+StatusOr<RandomDistribution> StringToRandomDistribution(
+    const std::string& name);
+StatusOr<PrecisionConfig::Precision> StringToPrecision(const std::string& name);
 StatusOr<CustomCallSchedule> StringToCustomCallSchedule(absl::string_view name);
 StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
     absl::string_view name);

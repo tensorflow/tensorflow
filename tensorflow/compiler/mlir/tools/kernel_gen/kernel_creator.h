@@ -35,16 +35,17 @@ namespace kernel_gen {
 
 // Parses tf_code to create a module. An MLIRContext is taken in case any
 // unexpected dialects are needed.
-StatusOr<mlir::OwningModuleRef> SetupContextAndParseModule(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
     mlir::MLIRContext& context, llvm::StringRef tf_code);
 
 // Converts TF code to LLVM with or without GPU support.
-StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
-    bool print_llvmir, bool enable_ftz, bool cpu_codegen, bool jit_compile);
+    bool print_llvmir, bool enable_ftz, bool index_64bit, bool cpu_codegen,
+    bool jit_compile, bool jit_i64_indexed_for_large_tensors);
 
 }  // namespace kernel_gen
 }  // namespace tensorflow

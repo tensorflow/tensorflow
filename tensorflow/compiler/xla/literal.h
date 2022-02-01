@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LITERAL_H_
 #define TENSORFLOW_COMPILER_XLA_LITERAL_H_
 
+#include <algorithm>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -44,9 +46,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -86,34 +86,34 @@ class LiteralBase {
 
   // Returns this literal's data as a string. This literal must be a rank-1 U8
   // array.
-  string GetR1U8AsString() const;
+  std::string GetR1U8AsString() const;
 
   // Returns a string representation of the literal value. The Shape of the
   // literal is a prefix of the literal value in the string.
 
   // Warning: this function can take minutes for multi-million
   // element Literals.
-  string ToString() const;
+  std::string ToString() const;
 
   // Similar to ToString, but return the result in a compact
   // one-line form.
-  string ToStringOneline() const;
+  std::string ToStringOneline() const;
 
   // Returns a string representation of the literal value which does *not*
   // include the shape string.
-  string ToStringWithoutShape() const;
+  std::string ToStringWithoutShape() const;
 
   // Similar to ToStringWithoutShape, but return the result in a compact
   // one-line form.
-  string ToStringWithoutShapeOneline() const;
+  std::string ToStringWithoutShapeOneline() const;
 
   // Returns a string representation of the literal value which includes the
   // shape string with its layout.does *not* include the shape string.
-  string ToStringWithLayout() const;
+  std::string ToStringWithLayout() const;
 
   // Similar to ToStringWithLayout, but return the result in a compact
   // one-line form.
-  string ToStringWithLayoutOneline() const;
+  std::string ToStringWithLayoutOneline() const;
 
   // Gets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
@@ -126,21 +126,22 @@ class LiteralBase {
   NativeT Get(absl::Span<const int64_t> multi_index) const;
 
   // Get the dynamic size on dim_index in the literal at the given shape_index.
-  int32 GetDynamicSize(int64_t dim_index, const ShapeIndex& shape_index) const;
-  int32 GetDynamicSize(int64_t dim_index) const;
+  int32_t GetDynamicSize(int64_t dim_index,
+                         const ShapeIndex& shape_index) const;
+  int32_t GetDynamicSize(int64_t dim_index) const;
 
   // Returns the element value at index (0, ..., 0), however many zeroes are
   // required for that index.
   template <typename NativeT>
   NativeT GetFirstElement() const;
 
-  // As above but returns any integer type casted to an int64.
+  // As above but returns any integer type casted to an int64_t.
   absl::optional<int64_t> GetFirstInteger() const;
 
   // As Get(), but determines the correct type and converts the value
   // into text.
-  string GetAsString(absl::Span<const int64_t> multi_index,
-                     const ShapeIndex& shape_index = {}) const;
+  std::string GetAsString(absl::Span<const int64_t> multi_index,
+                          const ShapeIndex& shape_index = {}) const;
 
   // Return whether the value at the specified index is equal to the provided
   // generic `value` (T must be an arithmetic type).
@@ -169,7 +170,7 @@ class LiteralBase {
   }
 
   // As Get(), but determines the correct type and converts the value into
-  // int64.  This literal must be an array.
+  // int64_t.  This literal must be an array.
   absl::optional<int64_t> GetIntegralAsS64(
       absl::Span<const int64_t> multi_index) const;
 
@@ -196,48 +197,54 @@ class LiteralBase {
   // This literal must have a dense layout.
   void EachCellAsString(
       const std::function<void(absl::Span<const int64_t> indices,
-                               const string& value)>& per_cell) const;
+                               const std::string& value)>& per_cell) const;
   template <typename NativeT>
   void EachCell(
       std::function<void(absl::Span<const int64_t> indices, NativeT value)>
           per_cell) const;
 
+  // Checks whether all of this literal's values are equal to the given scalar
+  // literal.
+  //
+  // If `this` is not an array (e.g. it's a tuple), returns false.  This is
+  // simpler than trying to handle subshapes here, and it's almost always what
+  // you want.
+  //
+  // Preconditions:
+  //  - `scalar` is a scalar.
+  //  - `scalar` has the same element-type as `this`.
+  bool IsAll(const Literal& scalar) const;
+
   // Returns whether every element in this literal is equal to value.
   //
-  // value is an int8 because we expect this to be called with small
+  // value is an int8_t because we expect this to be called with small
   // compile-time constants (0, -1, etc.) and so that whatever value you pass
   // can be represented exactly by floating-point types as small as 16 bits.
   //
   // If value doesn't fit in this literal's type, returns false.  Values of 1/0
   // are considered equal to true/false; other values are not considered equal
-  // to true. Also if this literal is not array-shaped false is returned.
+  // to true.
+  //
+  // Returns false if this literal is not array-shaped.
   bool IsAll(int8_t value) const;
 
-  // Like IsAll(const Literal&, int8), except we check whether the literal is
-  // equal to a particular floating-point number.
+  // Like IsAll(int8_t), except we check whether the literal is equal to a
+  // particular floating-point or complex number.
   //
-  // If the literal is not a floating-point value, this always returns false.
+  // Returns false if this literal is not a floating-point / complex value, or
+  // if it's not an array.
   //
-  // This casts value to the type of literal, then compares using ==.  The usual
-  // admonishments about floating-point equality checks apply.  We expect you to
-  // use this to check for values that can be expressed precisely as a float,
-  // e.g. -0.5.  Also if this literal is not array-shaped false is returned.
+  // This casts value to the type of literal, then compares using ==, with the
+  // caveat that NaNs are considered equal.  The usual admonishments about
+  // floating-point equality checks apply.  We expect you to use this to check
+  // for values that can be expressed precisely as a float, e.g. -0.5.
   bool IsAllFloat(float value) const;
-
-  // Like IsAll(const Literal&, int8), except we check whether the literal is
-  // equal to a particular complex number.
-  //
-  // If the literal is not a complex value, this always returns false.
-  //
-  // This casts value to the type of literal, then compares using ==.  The usual
-  // admonishments about floating-point equality checks apply.  We expect you to
-  // use this to check for complex values that can be expressed precisely as
-  // float pairs e.g. (-0.5, 1.0).
-  //
-  // This literal must have a dense layout.
   bool IsAllComplex(complex64 value) const;
 
-  // Literal consists entirely of the first element of the literal.
+  // Deetermines if this literal consists entirely of the first element of the
+  // literal.
+  //
+  // Returns false if this literal is not an array.
   bool IsAllFirst() const;
 
   // Literal consists entirely of an iota.
@@ -261,7 +268,32 @@ class LiteralBase {
   }
 
   // Compute a hash for this literal.
-  size_t Hash(int64_t byte_limit = std::numeric_limits<int64_t>::max()) const;
+  template <typename H>
+  friend H AbslHashValue(H state, const LiteralBase& value) {
+    return LiteralBase::Hash(std::move(state), value);
+  }
+
+  template <typename H, bool kIsLayoutSensitive = true,
+            int64_t kByteLimit = std::numeric_limits<int64_t>::max()>
+  static H Hash(H state, const LiteralBase& literal) {
+    state =
+        Shape::Hash<H, kIsLayoutSensitive>(std::move(state), literal.shape());
+
+    ShapeUtil::ForEachSubshape(
+        literal.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (!subshape.IsArray()) {
+            return;
+          }
+
+          CHECK(LayoutUtil::IsDense(subshape.layout()));
+          auto data = absl::MakeConstSpan(
+              static_cast<const char*>(literal.untyped_data(index)),
+              std::min(kByteLimit, literal.size_bytes(index)));
+          state = H::combine(std::move(state), data);
+        });
+
+    return std::move(state);
+  }
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.
@@ -351,6 +383,16 @@ class LiteralBase {
   template <typename NativeT>
   Literal Replicate(int64_t times) const;
 
+  // Returns true if the leaf arrays of the literal within the given shape index
+  // are all determined.
+  // See comments on ArrayValueState for detailed explanation.
+  bool IsDetermined(const ShapeIndex& shape_index = {}) const;
+
+  // Returns true if the leaf arrays of the literal within the given shape index
+  // are all known.
+  // See comments on ArrayValueState for detailed explanation.
+  bool IsKnown(const ShapeIndex& shape_index = {}) const;
+
   // Creates a new Literal object with the shape specified as parameter.
   // The content of the literal values is the default value of the primitive
   // type of literal itself (0 for numeric types, and false for predicates).
@@ -362,12 +404,33 @@ class LiteralBase {
   // MutableLiteralBase::Populate can be used instead.
   static Literal CreateFromShape(const Shape& shape);
 
+  // WARNING: These two functions are only supposed to be used by HloEvaluator.
+  // The rest of XLA assumes all literals are known.
+  // Similar to CreateFromShape() but marks all leaf arrays as unknown.
+  static Literal CreateFromShapeWithUnknownLeafArrays(const Shape& shape);
+  // Similar to CreateFromShape() but marks all leaf arrays as undetermined.
+  static Literal CreateFromShapeWithUndeterminedLeafArrays(const Shape& shape);
+
  protected:
+  // Array literals could be in one of the following three states:
+  //   1) Known: we have evaluated and known the value of the array literal.
+  //   2) Unknown: we have tried to evaluate the array literal, but its value
+  //               cannot be evaluated statically.
+  //   3) Undetermined: we haven't tried to evaluate the array literal.
+  //  Unknown and Undetermined states are only meant to be used within
+  //  HloEvaluator. The rest of XLA assumes array literals are all known.
+  //  Literals that are unknown or undetermined can be copied from, using
+  //  CopyFrom and Clone, or moved from using move constructor. Accessing values
+  //  of such literals causes undefined behavior.
+  enum class ArrayValueState { kKnown = 0, kUnknown = 1, kUndetermined = 2 };
+
   // A data structure representing a subshape at a particular ShapeIndex within
   // the literal. For array-shaped ShapeIndexes, this data structure holds the
   // pointer to the memory allocated for the array data.
   class Piece {
    public:
+    ArrayValueState get_array_value_state();
+    void set_array_value_state(ArrayValueState state);
     // Returns the buffer holding the array data for this piece as an array
     // slice. This piece must be array-shaped.
     template <typename NativeT>
@@ -388,20 +451,22 @@ class LiteralBase {
     template <typename NativeT>
     void Set(absl::Span<const int64_t> index, NativeT value);
 
-    int32 GetDynamicSize(int64_t dim_index) const;
+    int32_t GetDynamicSize(int64_t dim_index) const;
     void SetDynamicSize(int64_t dim_index, int32_t size);
+    void AllocateBuffers();
+    void DeallocateBuffers();
     // Gets/sets the buffer holding the array data.
     char* buffer() const { return buffer_; }
     void set_buffer(char* buffer) { buffer_ = buffer; }
 
     // Gets/sets the buffer holding dynamic sizes.
-    int32* dynamic_size_buffer() const { return dynamic_size_buffer_; }
-    void set_dynamic_size_buffer(int32* dynamic_size_buffer) {
+    int32_t* dynamic_size_buffer() const { return dynamic_size_buffer_; }
+    void set_dynamic_size_buffer(int32_t* dynamic_size_buffer) {
       dynamic_size_buffer_ = dynamic_size_buffer;
     }
 
     int64_t dynamic_size_buffer_bytes() const {
-      return subshape().dimensions_size() * sizeof(int32);
+      return subshape().dimensions_size() * sizeof(int32_t);
     }
 
     // Gets or sets the subshape of this piece. This reference points to a
@@ -479,6 +544,15 @@ class LiteralBase {
           func, const_cast<xla::LiteralBase::Piece*>(this), &index);
     }
 
+    // Checks whether all elements of this Piece are equal to the given literal.
+    //
+    // Returns false if this Piece is not an array.
+    //
+    // Preconditions:
+    //  - `scalar` is a scalar.
+    //  - `scalar`'s type matches that of `this`.
+    bool IsAll(const Literal& scalar) const;
+
     // Returns true if this piece and 'other' contain the same data. This piece
     // and 'other' must be array-shaped and compatible. If a literal has dynamic
     // shape, comparison is done only for the valid elements.
@@ -499,6 +573,11 @@ class LiteralBase {
     // Copies the data from the given proto into this piece. The shape of this
     // piece must be equal (not just compatible) to the shape of the proto.
     Status CopyFromProto(const LiteralProto& proto);
+
+    // See comments on ArrayValueState for detailed explanation.
+    bool IsDetermined() const;
+
+    bool IsKnown() const;
 
    private:
     // Helpers for traversing the piece via ForEachSubpiece rooted at 'index'.
@@ -556,7 +635,7 @@ class LiteralBase {
     // For array-shaped pieces, this is the buffer holding the literal data.
     char* buffer_ = nullptr;
 
-    int32* dynamic_size_buffer_ = nullptr;
+    int32_t* dynamic_size_buffer_ = nullptr;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
@@ -564,6 +643,8 @@ class LiteralBase {
 
     // Children pieces for tuple shaped pieces.
     std::vector<Piece> children_ = {};
+
+    ArrayValueState array_value_state_ = ArrayValueState::kKnown;
   };  // class Piece
 
   const Piece& piece(const ShapeIndex& shape_index) const {
@@ -680,7 +761,7 @@ class MutableLiteralBase : public LiteralBase {
   //   literal.PopulateR2FromArray2D(values);
   //
   //   // Populate with int32s.
-  //   literal.PopulateR2<int32>({{1, 2}, {3, 4}});
+  //   literal.PopulateR2<int32_t>({{1, 2}, {3, 4}});
   //
   // The shape and element type of this literal must match given values. For
   // example, in the call above to literal.PopulateR2(), 'literal' must be a 2x2
@@ -801,7 +882,8 @@ class Literal : public MutableLiteralBase {
   // 'allocate_arrays' indicates whether to allocate memory for the arrays in
   // the shape. If false, buffer pointers inside of the Literal::Pieces are set
   // to nullptr.
-  Literal(const Shape& shape, bool allocate_arrays);
+  Literal(const Shape& shape, bool allocate_arrays,
+          ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
   Literal& operator=(Literal&& other);
 
   // Similar to CopyFrom, but with move semantics. The subshape of this literal
@@ -830,7 +912,9 @@ class Literal : public MutableLiteralBase {
   // Recursively sets the subshapes and buffers of all subpieces rooted at
   // 'piece'. If 'allocate_array' is true, memory is allocated for the arrays in
   // the shape.
-  void SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays);
+  void SetPiece(
+      const Shape& shape, Piece* piece, bool allocate_arrays,
+      ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
 };
 
 // The underlying buffer is not owned by this class and is always owned by
@@ -1016,7 +1100,6 @@ void MutableLiteralBase::MutableEachCell(
     return;
   }
   std::vector<int64_t> indices(shape().rank(), 0);
-
   Shape shape_dynamic = shape();
   for (int64_t i = 0; i < shape_dynamic.rank(); ++i) {
     shape_dynamic.set_dimensions(i, GetDynamicSize(i));
@@ -1106,8 +1189,7 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
              primitive_util::NativeToPrimitiveType<NativeT>());
   absl::Span<NativeT> literal_data = data<NativeT>();
   if (rank > 0) {
-    StrideConfig stride_config(this_shape, this_shape,
-                               AsInt64Slice(this_shape.dimensions()));
+    StrideConfig stride_config(this_shape, this_shape, this_shape.dimensions());
     int64_t minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 

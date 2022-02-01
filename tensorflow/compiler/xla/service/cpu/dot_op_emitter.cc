@@ -120,7 +120,7 @@ DotImplementationStrategy GetDotImplementationStrategy(
 // Helper class for emitting LLVM IR to perform the dot operation.
 class DotOpEmitter {
  public:
-  explicit DotOpEmitter(DotInfo dot_info, string dot_hlo_name,
+  explicit DotOpEmitter(DotInfo dot_info, std::string dot_hlo_name,
                         const llvm_ir::IrArray& target_array,
                         const llvm_ir::IrArray& lhs_array,
                         const llvm_ir::IrArray& rhs_array,
@@ -218,7 +218,7 @@ class DotOpEmitter {
   }
 
   DotInfo dot_info_;
-  string dot_hlo_name_;
+  std::string dot_hlo_name_;
   const llvm_ir::IrArray& target_array_;
   const llvm_ir::IrArray& lhs_array_;
   const llvm_ir::IrArray& rhs_array_;
@@ -232,9 +232,9 @@ class DotOpEmitter {
 }  // namespace
 
 DotOpEmitter::DotOpEmitter(
-    DotInfo dot_info, string dot_hlo_name, const llvm_ir::IrArray& target_array,
-    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    const llvm_ir::IrArray* addend_array,
+    DotInfo dot_info, std::string dot_hlo_name,
+    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
+    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
     mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features)
@@ -752,9 +752,9 @@ Status DotOpEmitter::EmitCallToRuntime() {
   // The signature of the Eigen runtime matmul function is:
   //
   //   (void)(void* run_options, float* out, float* lhs, float* rhs,
-  //          int64_t m, int64_t n, int64_t k, int32 transpose_lhs,
-  //          int32 transpose_rhs);
-  // The two transpose_... parameters are actually booleans, but we use int32
+  //          int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
+  //          int32_t transpose_rhs);
+  // The two transpose_... parameters are actually booleans, but we use int32_t
   // to avoid target-dependent calling convention details.
 
   bool multi_threaded = ShouldUseMultiThreadedEigen(hlo_module_config_);
@@ -1072,9 +1072,9 @@ DotImplementationStrategy GetDotImplementationStrategy(
 }
 
 Status EmitNonBatchDotOperation(
-    DotInfo dot_info, string hlo_name, const llvm_ir::IrArray& target_array,
-    const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    const llvm_ir::IrArray* addend_array,
+    DotInfo dot_info, std::string hlo_name,
+    const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
+    const llvm_ir::IrArray& rhs_array, const llvm_ir::IrArray* addend_array,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
     mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {

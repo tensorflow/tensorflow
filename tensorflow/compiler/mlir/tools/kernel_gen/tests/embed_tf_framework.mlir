@@ -81,6 +81,6 @@ func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
   %0 = tf_framework.jit_compile_from_str "placeholder" {
       architectures = ["sm_123", "sm_456"], tileSizes = [1, 2, 3],
       unrollFactors = [4], maxSupportedRank = 3 : i64, enableFtz = false,
-      cpuCodegen = false }
+      index64Bit = false, cpuCodegen = false }
   return %0 : !tf_framework.jit_callable
 }

@@ -548,7 +548,7 @@ class RangeTest(test.TestCase):
   def testLargeStarts(self):
     # Test case for GitHub issue 46899.
     with self.session():
-      with self.assertRaises(errors_impl.InvalidArgumentError):
+      with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
         v = math_ops.range(start=-1e+38, limit=1)
         self.evaluate(v)
 

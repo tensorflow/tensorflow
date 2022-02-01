@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/resource_base.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
@@ -69,7 +70,7 @@ class CheckpointCallbackManager : public ResourceBase {
                               SaveCallback callback);
 
   // Checks if a registered save callback exists for an extension.
-  bool DoesSaveCallbackExist(absl::string_view file_extension) const;
+  bool DoesSaveCallbackExist(absl::string_view file_extension);
 
   // Register a restore callback.
   // The passed file_extension is used to generate a file name together with
@@ -79,7 +80,7 @@ class CheckpointCallbackManager : public ResourceBase {
                                  RestoreCallback callback);
 
   // Checks if a registered restore callback exists for an extension.
-  bool DoesRestoreCallbackExist(absl::string_view file_extension) const;
+  bool DoesRestoreCallbackExist(absl::string_view file_extension);
 
   // Should be triggered from SaveV2()::Compute().
   void Save(absl::string_view prefix);
@@ -88,8 +89,19 @@ class CheckpointCallbackManager : public ResourceBase {
   void Restore(absl::string_view prefix);
 
  private:
+  mutable mutex mu_;
+
   absl::flat_hash_map<std::string, SaveCallback> save_callbacks_;
   absl::flat_hash_map<std::string, RestoreCallback> restore_callbacks_;
+
+  // Checkpoint save and restore could happen before save / restore callbacks
+  // are registered. The last checkpoint information is kept in these variables
+  // to trigger the registered callback lazily.
+  std::pair<std::string, std::string> last_restored_checkpoint_id_and_dir_
+      TF_GUARDED_BY(mu_);
+
+  std::pair<std::string, std::string> last_saved_checkpoint_id_and_dir_
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace checkpoint

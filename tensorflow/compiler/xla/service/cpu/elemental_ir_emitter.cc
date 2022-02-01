@@ -36,14 +36,14 @@ namespace cpu {
 StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs,
     absl::string_view /*name*/) {
-  string function_name;
+  std::string function_name;
   bool cast_result_to_fp16 = false;
   switch (prim_type) {
     case F16:
       cast_result_to_fp16 = true;
       lhs = FPCast(lhs, b()->getFloatTy());
       rhs = FPCast(rhs, b()->getFloatTy());
-      TF_FALLTHROUGH_INTENDED;
+      ABSL_FALLTHROUGH_INTENDED;
     case F32:
       function_name = "atan2f";
       break;
@@ -73,12 +73,12 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
 StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
                                                        llvm::Value* value) {
   bool cast_result_to_fp16 = false;
-  string function_name;
+  std::string function_name;
   switch (prim_type) {
     case F16:
       cast_result_to_fp16 = true;
       value = FPCast(value, b()->getFloatTy());
-      TF_FALLTHROUGH_INTENDED;
+      ABSL_FALLTHROUGH_INTENDED;
     case F32:
       function_name = "tanhf";
       break;

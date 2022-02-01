@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -844,6 +845,51 @@ bool IntArgsAndRetvalsOnDevice(EagerOperation* op) {
   return op->Name() == "IteratorGetNext";
 }
 
+StatusOr<Fprint128> GetKernelCacheKey(
+    const EagerOperation& op, const Fprint128& op_cache_key,
+    const std::vector<Device*>& input_dev_ptrs,
+    const std::unordered_map<int, DtypeAndPartialTensorShape>&
+        input_resource_variable_dtypes_and_shapes) {
+  EagerContext& ctx = op.EagerContext();
+
+  Fprint128 cache_key = op_cache_key;
+  /// Include soft placement policy in cache key since the placement strategy
+  // can change and thus affect which kernel is picked.
+  cache_key = FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
+
+  // Include run_eager_op_as_function policy in cache key since the execution
+  // strategy can change and affect which kernel is picked.
+  VLOG(3) << "ctx.RunEagerOpAsFunction(): " << ctx.RunEagerOpAsFunction();
+  cache_key = FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
+
+  // When running in eager_op_as_function mode Send/Recv ops need to be
+  // placed on the same rendezvous to match the behaviour of eager mode.
+  bool reuse_rendezvous_for_functions =
+      (ctx.RunEagerOpAsFunction() && !op.is_function()) ||
+      ctx.GetReuseRendezvousForFunctions();
+  // The launch-time rendezvous reuse setting is bundled with the kernel, so we
+  // need to include it in the cache key.
+  cache_key = FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
+
+  for (int i = 0, end = input_dev_ptrs.size(); i < end; ++i) {
+    cache_key =
+        FingerprintCat128(cache_key, Fingerprint128(input_dev_ptrs[i]->name()));
+
+    auto input_resource = input_resource_variable_dtypes_and_shapes.find(i);
+    if (input_resource != input_resource_variable_dtypes_and_shapes.end()) {
+      // const DtypeAndPartialTensorShape& dtype_and_shape
+      const DtypeAndPartialTensorShape& dtype_and_shape =
+          input_resource->second;
+      // Add _Arg index, dtype and shape to "cache_key".
+      cache_key = FingerprintCat128(cache_key, i);
+      cache_key = FingerprintCat128(cache_key, dtype_and_shape.dtype);
+      AppendTensorShapeToFingerprint(dtype_and_shape.shape, &cache_key);
+    }
+  }
+
+  return cache_key;
+}
+
 Status GetOrCreateKernelAndDevice(
     EagerOperation* op, TensorHandle** retvals, int* num_retvals,
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
@@ -859,24 +905,55 @@ Status GetOrCreateKernelAndDevice(
       (ctx.RunEagerOpAsFunction() && !op->is_function()) ||
       reuse_rendezvous_for_functions_original_value;
 
-  Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
-  /// Include soft placement policy in cache key since the placement strategy
-  // can change and thus affect which kernel is picked.
-  cache_key = FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
-
-  // Include run_eager_op_as_function policy in cache key since the execution
-  // strategy can change and affect which kernel is picked.
-  VLOG(3) << "ctx.RunEagerOpAsFunction(): " << ctx.RunEagerOpAsFunction();
-  cache_key = FingerprintCat128(cache_key, ctx.RunEagerOpAsFunction());
-
-  // The launch-time rendezvous reuse setting is bundled with the kernel, so we
-  // need to include it in the cache key.
-  cache_key = FingerprintCat128(cache_key, reuse_rendezvous_for_functions);
-
   std::vector<Device*> input_dev_ptrs;
   absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_variable_dtypes_and_shapes;
+  if (op->is_function() || ctx.RunEagerOpAsFunction()) {
+    profiler::TraceMe activity("EagerCopyToDevice",
+                               profiler::TraceMeLevel::kInfo);
+    input_dev_ptrs.reserve(op->Inputs().size());
+    const absl::InlinedVector<TensorHandle*, 4>* inputs;
+    TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
+    for (int i = 0, end = inputs->size(); i < end; ++i) {
+      TensorHandle* input = (*inputs)[i];
+
+      Device* input_device;
+      TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &input_device));
+      VLOG(1) << op->Name() << ":input:" << i << " " << input_device->name();
+      input_dev_ptrs.push_back(input_device);
+      CompositeDevice* composite_device = nullptr;
+      if (ctx.FindCompositeDeviceFromName(input_device->name(),
+                                          &composite_device)
+              .ok()) {
+        composite_devices[input_device->name()] =
+            composite_device->underlying_devices();
+      }
+      if (input->dtype == DT_RESOURCE) {
+        // We only care about data type and shape for resource variable inputs.
+        // But we have no way to tell if input is resource variable (other than
+        // looking it up in ResourceMgr, which is slow). So we just get
+        // resource_dtypes_and_shapes for all DT_RESOURCE inputs. If
+        // resource_dtypes_and_shapes is not empty, take the first element.
+        std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
+        TF_RETURN_IF_ERROR(input->GetResourceHandleDtypesAndShapes(
+            &resource_dtypes_and_shapes));
+        if (!resource_dtypes_and_shapes.empty()) {
+          const DtypeAndPartialTensorShape& dtype_and_shape =
+              resource_dtypes_and_shapes.at(0);
+          input_resource_variable_dtypes_and_shapes[i] = dtype_and_shape;
+        }
+      }
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      Fprint128 cache_key,
+      GetKernelCacheKey(*op, op->MutableAttrs()->CacheKey(op->DeviceName()),
+                        input_dev_ptrs,
+                        input_resource_variable_dtypes_and_shapes));
+  core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
+  AbstractOperationPtr wrapped_op_releaser;
   // We can eliminate some overhead by running simple functions using regular
   // CallOp kernel. However, it is tricky to figure out which functions should
   // be run using CallOp. Also, currently CallOp runs neither optimization
@@ -892,58 +969,6 @@ Status GetOrCreateKernelAndDevice(
   //  - Function has a node or a (node) attribute that can potentially make
   //    the function multi-device after a rewrite pass (e.g. various XLA/TPU
   //    special nodes and attributes)
-  if (op->is_function() || ctx.RunEagerOpAsFunction()) {
-    profiler::TraceMe activity("EagerCopyToDeviceAndAddCacheKey",
-                               profiler::TraceMeLevel::kInfo);
-    input_dev_ptrs.reserve(op->Inputs().size());
-    const absl::InlinedVector<TensorHandle*, 4>* inputs;
-    TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-    for (int i = 0, end = inputs->size(); i < end; i++) {
-      TensorHandle* input = (*inputs)[i];
-
-      // Get device for this input, and add it to 'cache_key'.
-      Device* input_device;
-      TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &input_device));
-      VLOG(1) << op->Name() << ":input:" << i << " " << input_device->name();
-      input_dev_ptrs.push_back(input_device);
-      CompositeDevice* composite_device = nullptr;
-      if (ctx.FindCompositeDeviceFromName(input_device->name(),
-                                          &composite_device)
-              .ok()) {
-        composite_devices[input_device->name()] =
-            composite_device->underlying_devices();
-      }
-      cache_key =
-          FingerprintCat128(cache_key, Fingerprint128(input_device->name()));
-
-      // If input is a ResourceHandle, get its resource handle dtypes and shapes
-      // and add them to 'cache_key'.
-      if (input->dtype == DT_RESOURCE) {
-        // We only care about data type and shape for resource variable inputs.
-        // But we have no way to tell if input is resource variable (other than
-        // looking it up in ResourceMgr, which is slow). So we just get
-        // resource_dtypes_and_shapes for all DT_RESOURCE inputs. If
-        // resource_dtypes_and_shapes is not empty, take the first element.
-        std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
-        TF_RETURN_IF_ERROR(input->GetResourceHandleDtypesAndShapes(
-            &resource_dtypes_and_shapes));
-        if (!resource_dtypes_and_shapes.empty()) {
-          const DtypeAndPartialTensorShape& dtype_and_shape =
-              resource_dtypes_and_shapes.at(0);
-          input_resource_variable_dtypes_and_shapes[i] = dtype_and_shape;
-
-          // Add _Arg index, dtype and shape to "cache_key".
-          cache_key = FingerprintCat128(cache_key, i);
-          DataType dtype = dtype_and_shape.dtype;
-          cache_key = FingerprintCat128(cache_key, dtype);
-          AppendTensorShapeToFingerprint(dtype_and_shape.shape, &cache_key);
-        }
-      }
-    }
-  }
-
-  core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
-  AbstractOperationPtr wrapped_op_releaser;
   if (kernel == nullptr) {
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
             << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
@@ -1308,7 +1333,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 // Run a Pack op to pack the tensors pointed by a packed input TensorHandle if
 // the op is a primitive op.
 Status MaybePackInputTensor(EagerOperation* op) {
-  if (op->is_function()) {
+  if (op->is_function() || op->EagerContext().RunEagerOpAsFunction()) {
     // Functions could take packed TensorHandles as inputs.
     return Status::OK();
   }

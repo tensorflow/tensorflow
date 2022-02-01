@@ -154,7 +154,7 @@ struct DecomposeResourceOpsPass
     : public DecomposeResourceOpsPassBase<DecomposeResourceOpsPass> {
   void runOnFunction() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
 
     if (failed(
@@ -170,7 +170,7 @@ struct DecomposeResourceOpsInClusterPass
           DecomposeResourceOpsInClusterPass> {
   void runOnOperation() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
     FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 

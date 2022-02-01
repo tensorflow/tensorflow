@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/client/value_inference.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
@@ -293,7 +293,7 @@ using Visit2D = std::function<StatusOr<Literal>(Literal, Literal)>;
 
 // A postorder dfs node can be visited once its dependency requests are all
 // fulfilled.
-struct TF_MUST_USE_RESULT PostorderDFSNode {
+struct ABSL_MUST_USE_RESULT PostorderDFSNode {
   PostorderDFSNode& AddDependency(int64_t handle, PostorderDFSNodeType type,
                                   InferenceContext context,
                                   std::string annotation = "") {
@@ -657,7 +657,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
           handle_to_instruction(operand_handle).ValueOrDie();
       return PostorderDFSNode().AddVisit(
           [operand_proto, dimension]() -> StatusOr<Literal> {
-            return LiteralUtil::CreateR0<int32>(
+            return LiteralUtil::CreateR0<int32_t>(
                 operand_proto->shape().dimensions(dimension));
           });
     }
@@ -827,9 +827,9 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
       return PostorderDFSNode().AddVisit(
           [dimension, operand_proto]() -> StatusOr<Literal> {
             if (operand_proto->shape().is_dynamic_dimension(dimension)) {
-              return LiteralUtil::CreateR0<int32>(0);
+              return LiteralUtil::CreateR0<int32_t>(0);
             } else {
-              return LiteralUtil::CreateR0<int32>(
+              return LiteralUtil::CreateR0<int32_t>(
                   operand_proto->shape().dimensions(dimension));
             }
           });
@@ -921,7 +921,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
               // out later.
               return CreateGarbageLiteral(Shape(root->shape()));
             } else {
-              return LiteralUtil::CreateR0<int32>(
+              return LiteralUtil::CreateR0<int32_t>(
                   operand_proto->shape().dimensions(dimension));
             }
           });
@@ -1235,57 +1235,56 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       // Each branch i has 2 dependenices:
       // 2*i: Branch result value
       // 2*i + 1: Branch value is dynamic.
-      return node.AddVisit(
-          [root, branch_size,
-           context](absl::Span<Literal> operands) -> StatusOr<Literal> {
-            int64_t pred_is_dynamic = operands[1].Get<bool>({});
-            auto result = CreatePredLiteral(
-                true, ShapeUtil::GetSubshape(Shape(root->shape()),
-                                             context.shape_index));
-            if (pred_is_dynamic) {
-              VLOG(1) << "predict is dynamic value" << result.ToString();
-              // If predicate is dynamic, the result is only static if all
-              // branches are static and return the same value.
-              result.MutableEachCell<bool>(
-                  [&](absl::Span<const int64_t> indices, bool value) {
-                    string branch_value = operands[2].GetAsString(indices, {});
-                    for (int64_t i = 0; i < branch_size; ++i) {
-                      const int64_t branch_value_index = 2 + 2 * i;
-                      const int64_t branch_dynamism_index = 2 + 2 * i + 1;
-                      auto branch_is_dynamic =
-                          operands[branch_dynamism_index].Get<bool>(indices);
-                      if (branch_is_dynamic) {
-                        return true;
-                      }
+      return node.AddVisit([root, branch_size,
+                            context](absl::Span<Literal> operands)
+                               -> StatusOr<Literal> {
+        int64_t pred_is_dynamic = operands[1].Get<bool>({});
+        auto result = CreatePredLiteral(
+            true,
+            ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
+        if (pred_is_dynamic) {
+          VLOG(1) << "predict is dynamic value" << result.ToString();
+          // If predicate is dynamic, the result is only static if all
+          // branches are static and return the same value.
+          result.MutableEachCell<bool>(
+              [&](absl::Span<const int64_t> indices, bool value) {
+                std::string branch_value = operands[2].GetAsString(indices, {});
+                for (int64_t i = 0; i < branch_size; ++i) {
+                  const int64_t branch_value_index = 2 + 2 * i;
+                  const int64_t branch_dynamism_index = 2 + 2 * i + 1;
+                  auto branch_is_dynamic =
+                      operands[branch_dynamism_index].Get<bool>(indices);
+                  if (branch_is_dynamic) {
+                    return true;
+                  }
 
-                      if (branch_value !=
-                          operands[branch_value_index].GetAsString(indices,
-                                                                   {})) {
-                        return true;
-                      }
-                    }
-                    // Value of the branch is static.
-                    return false;
-                  });
-              return result;
-            } else {
-              VLOG(1) << "predict is constant value";
-              // If predicate is static, return true if given branch result
-              // value is dynamic.
-              int64_t branch_index = 0;
-              if (operands[0].shape().element_type() == PRED) {
-                if (operands[0].Get<bool>({})) {
-                  branch_index = 0;
-                } else {
-                  branch_index = 1;
+                  if (branch_value !=
+                      operands[branch_value_index].GetAsString(indices, {})) {
+                    return true;
+                  }
                 }
-              } else {
-                branch_index = operands[0].GetIntegralAsS64({}).value();
-              }
-              const int64_t branch_dynamism_index = 2 + 2 * branch_index + 1;
-              return std::move(operands[branch_dynamism_index]);
+                // Value of the branch is static.
+                return false;
+              });
+          return result;
+        } else {
+          VLOG(1) << "predict is constant value";
+          // If predicate is static, return true if given branch result
+          // value is dynamic.
+          int64_t branch_index = 0;
+          if (operands[0].shape().element_type() == PRED) {
+            if (operands[0].Get<bool>({})) {
+              branch_index = 0;
+            } else {
+              branch_index = 1;
             }
-          });
+          } else {
+            branch_index = operands[0].GetIntegralAsS64({}).value();
+          }
+          const int64_t branch_dynamism_index = 2 + 2 * branch_index + 1;
+          return std::move(operands[branch_dynamism_index]);
+        }
+      });
     }
     case HloOpcode::kGetTupleElement: {
       int64_t operand_handle = root->operand_ids(0);
@@ -1619,9 +1618,7 @@ StatusOr<absl::optional<int64_t>> ValueInference::CseOpHandle(int64_t handle) {
   if (opcode != HloOpcode::kGetDimensionSize) {
     return {absl::nullopt};
   }
-  int64_t hash = inst->operand_ids(0);
-  hash = tensorflow::Hash64Combine(hash,
-                                   std::hash<int64_t>()(inst->dimensions(0)));
+  int64_t hash = absl::HashOf(inst->operand_ids(0), inst->dimensions(0));
   auto lookup = cse_map_.find(hash);
   if (lookup == cse_map_.end()) {
     cse_map_[hash] = handle;

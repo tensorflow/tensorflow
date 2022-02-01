@@ -125,7 +125,7 @@ static LogicalResult Verify(ReduceScatterOp op) {
 //===----------------------------------------------------------------------===//
 
 void CaseOp::getSuccessorRegions(Optional<unsigned> index,
-                                 ArrayRef<Attribute> operands,
+                                 ArrayRef<Attribute> /*operands*/,
                                  SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the CaseOp, branch to all other branches.
   if (!index.hasValue()) {
@@ -173,7 +173,7 @@ struct EraseConstOp : public OpRewritePattern<ConstOp> {
   }
 };
 
-void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
   results.insert<EraseConstOp>(context);
 }
@@ -255,9 +255,12 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
     if (!the_only_copy) return failure();
 
     auto new_reduce = rewriter.cloneWithoutRegions(reduce);
-    Block* new_block =
-        rewriter.createBlock(&new_reduce.body(), new_reduce.body().end(),
-                             reduce.body().front().getArgumentTypes());
+    auto& old_reduce_body = reduce.body().front();
+    Block* new_block = rewriter.createBlock(
+        &new_reduce.body(), new_reduce.body().end(),
+        old_reduce_body.getArgumentTypes(),
+        SmallVector<Location>(old_reduce_body.getNumArguments(),
+                              reduce.getLoc()));
 
     mlir::BlockAndValueMapping bvm;
     for (auto item : llvm::zip(reduce.body().front().getArguments(),
@@ -278,7 +281,7 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
   }
 };
 
-void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
   results.insert<RemoveCopyInReduceBody>(context);
 }
@@ -299,7 +302,7 @@ static LogicalResult Verify(ReduceWindowOp op) {
 //===----------------------------------------------------------------------===//
 
 void WhileOp::getSuccessorRegions(Optional<unsigned> index,
-                                  ArrayRef<Attribute> operands,
+                                  ArrayRef<Attribute> /*operands*/,
                                   SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the WhileOp or the body region, branch into the
   // cond region.
@@ -320,7 +323,7 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
 }
 
 LogicalResult WhileOp::moveOutOfLoop(ArrayRef<Operation*> ops) {
-  for (auto op : ops) op->moveBefore(*this);
+  for (auto* op : ops) op->moveBefore(*this);
   return success();
 }
 
@@ -348,7 +351,7 @@ void FusionOp::build(OpBuilder& builder, OperationState& result,
 }
 
 void FusionOp::getSuccessorRegions(Optional<unsigned> index,
-                                   ArrayRef<Attribute> operands,
+                                   ArrayRef<Attribute> /*operands*/,
                                    SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the fusion region, jump back to the parent op.
   if (index.hasValue()) {

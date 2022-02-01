@@ -203,12 +203,12 @@
 // CHECK-NEXT: }
 
 func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
-  %0:2 = "tfl.while"(%arg0, %arg1) ( {
-  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):  // no predecessors
+  %0:2 = "tfl.while"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
     %1 = call @cond(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> tensor<i1>
     "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):  // no predecessors
+  ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
     %1:2 = call @body(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
     "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>)

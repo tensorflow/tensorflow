@@ -15,8 +15,11 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
+import org.tensorflow.lite.annotations.UsedByReflection;
+
 /** Wrapper for a native TensorFlow Lite XNNPACK Delegate. */
 class XnnpackDelegate implements Delegate, AutoCloseable {
+  @UsedByReflection("nativeinterpreterwrapper_jni.cc")
   XnnpackDelegate(long nativeHandle, long deleteFunction) {
     this.nativeHandle = nativeHandle;
     this.deleteFunction = deleteFunction;

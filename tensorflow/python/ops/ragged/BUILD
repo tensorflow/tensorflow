@@ -1,4 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
@@ -19,6 +21,7 @@ py_library(
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
         ":ragged_batch_gather_with_default_op",
+        ":ragged_check_ops",
         ":ragged_concat_ops",
         ":ragged_config",
         ":ragged_conversion_ops",
@@ -51,16 +54,34 @@ py_library(
     deps = [
         ":ragged_functional_ops",
         ":ragged_math_ops",
+        ":ragged_shape",
         ":ragged_tensor",
         ":ragged_util",
         ":segment_id_ops",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:ragged_array_ops_gen",
         "//tensorflow/python:sort_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_library(
+    name = "ragged_check_ops",
+    srcs = ["ragged_check_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":ragged_tensor",
+        "//tensorflow/python:check_ops",
     ],
 )
 
@@ -232,6 +253,7 @@ py_library(
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
         ":ragged_batch_gather_with_default_op",
+        ":ragged_check_ops",
         ":ragged_concat_ops",
         ":ragged_config",  # fixdeps: keep
         ":ragged_conversion_ops",
@@ -533,6 +555,7 @@ py_test(
     name = "ragged_tensor_test",
     srcs = ["ragged_tensor_test.py"],
     python_version = "PY3",
+    shard_count = 8,
     srcs_version = "PY3",
     tags = [
         "no_windows",
@@ -1109,18 +1132,25 @@ py_test(
         ":ragged_tensor",
         ":ragged_tensor_test_ops",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:image_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:random_seed",
+        "//tensorflow/python/util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -1449,6 +1479,43 @@ py_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/platform:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "ragged_factory_ops_test",
+    size = "small",
+    srcs = ["ragged_factory_ops_test.py"],
+    tags = [
+        "no_gpu",  # TODO(b/213596871): times out
+    ],
+    deps = [
+        ":ragged_functional_ops",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_test(
+    name = "ragged_bitcast_op_test",
+    srcs = ["ragged_bitcast_op_test.py"],
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_factory_ops",
+        ":ragged_tensor",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

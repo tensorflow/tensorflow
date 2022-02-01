@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <ostream>
 #include <set>
 #include <string>
-#include <unordered_set>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -941,13 +941,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
-    int64_t parameter_number, const Shape& shape, const string& name) {
+    int64_t parameter_number, const Shape& shape, const std::string& name) {
   return absl::make_unique<HloParameterInstruction>(parameter_number, shape,
                                                     name);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTrace(
-    const string& tag, HloInstruction* operand) {
+    const std::string& tag, HloInstruction* operand) {
   return absl::make_unique<HloTraceInstruction>(tag, operand);
 }
 
@@ -1021,6 +1021,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kCopy:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kClz:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -1295,7 +1296,7 @@ HloInstruction::CreateCollectivePermuteStart(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
     const Shape& infeed_shape, HloInstruction* token_operand,
-    const string& config) {
+    const std::string& config) {
   return absl::make_unique<HloInfeedInstruction>(infeed_shape, token_operand,
                                                  config);
 }
@@ -1790,7 +1791,7 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, string opaque,
+    absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version) {
   return absl::make_unique<HloCustomCallInstruction>(
       shape, operands, custom_call_target, std::move(opaque), api_version);
@@ -1799,7 +1800,7 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* to_apply, absl::string_view custom_call_target,
-    string opaque, CustomCallApiVersion api_version) {
+    std::string opaque, CustomCallApiVersion api_version) {
   return absl::make_unique<HloCustomCallInstruction>(
       shape, operands, to_apply, custom_call_target, std::move(opaque),
       api_version);
@@ -1808,7 +1809,7 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<HloComputation* const> called_computations,
-    absl::string_view custom_call_target, string opaque,
+    absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version) {
   return absl::make_unique<HloCustomCallInstruction>(
       shape, operands, called_computations, custom_call_target,
@@ -1818,7 +1819,7 @@ bool HloInstruction::HasSideEffect() const {
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target,
-    absl::Span<const Shape> operand_shapes_with_layout, string opaque,
+    absl::Span<const Shape> operand_shapes_with_layout, std::string opaque,
     CustomCallApiVersion api_version) {
   return absl::make_unique<HloCustomCallInstruction>(
       shape, operands, custom_call_target, std::move(opaque),
@@ -1947,6 +1948,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kClz:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
@@ -2094,7 +2096,8 @@ void HloInstruction::DetachFromOperandsAndUsers() {
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
-    const Shape& shape, const string& suffix, HloCloneContext* context) const {
+    const Shape& shape, const std::string& suffix,
+    HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape, operands_, context);
   if (suffix.empty()) {
@@ -2104,15 +2107,15 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
     // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
     // suffix. Specifically, the clone of foo.suffix is named foo.suffix2, the
     // clone of foo.suffix2 is named foo.suffix3 and so on.
-    const string dot_suffix = "." + suffix;
+    const std::string dot_suffix = "." + suffix;
     size_t index = name().rfind(dot_suffix);
-    if (index == string::npos) {
+    if (index == std::string::npos) {
       // Existing name does not include ".suffix".
       clone->name_ = name() + dot_suffix;
     } else {
       // Existing name includes ".suffix". Determine if substring after
       // ".suffix" is numeric and should be replaced with an incremented number.
-      string after_suffix = name().substr(index + dot_suffix.size());
+      std::string after_suffix = name().substr(index + dot_suffix.size());
       if (after_suffix.empty()) {
         // Existing name ends in ".suffix". New name should end in ".suffix2".
         clone->name_ = name() + "2";
@@ -2134,7 +2137,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::Clone(
-    const string& suffix, HloCloneContext* context) const {
+    const std::string& suffix, HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewShape(shape_, suffix, context);
   return clone;
@@ -2466,6 +2469,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kPad:
@@ -2483,36 +2487,6 @@ bool HloInstruction::IdenticalSlowPath(
   }
   return false;
 }
-
-static uint64 HashOperand(const HloInstruction* hlo) {
-  return ShapeUtil::Hash(hlo->shape());
-}
-
-uint64 HloInstruction::Hash(
-    const std::function<uint64(const HloInstruction*)>& hash_operand) const {
-  using tensorflow::Hash64Combine;
-
-  uint64 hash_value = Hash64Combine(0, static_cast<uint64_t>(opcode()));
-  hash_value = Hash64Combine(hash_value, ShapeUtil::Hash(shape()));
-
-  if (!IsCrossModuleAllReduce()) {
-    if (!operands().empty()) {
-      for (size_t i = 0; i < operands().size(); ++i) {
-        hash_value = Hash64Combine(hash_value, hash_operand(operand(i)));
-      }
-    }
-  }
-
-  hash_value = Hash64Combine(hash_value, InnerHash());
-  return hash_value;
-}
-
-uint64 HloInstruction::Hash() const {
-  // Use HashOperand as an argument to prevent non-termination.
-  return Hash(HashOperand);
-}
-
-uint64 HloInstruction::InnerHash() const { return 13; }
 
 void HloInstruction::RemoveUser(HloInstruction* user) {
   auto map_it = user_map_.find(user);
@@ -2772,15 +2746,15 @@ void HloInstruction::set_branch_computation(int b,
   called_computations_[b] = computation;
 }
 
-string HloInstruction::SignatureString() const {
-  string operands =
-      StrJoin(operands_, ", ", [](string* out, HloInstruction* operand) {
+std::string HloInstruction::SignatureString() const {
+  std::string operands =
+      StrJoin(operands_, ", ", [](std::string* out, HloInstruction* operand) {
         StrAppend(out, ShapeUtil::HumanString(operand->shape()));
       });
   return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
-string PrintName(const string& name, bool print_ids) {
+std::string PrintName(const std::string& name, bool print_ids) {
   if (print_ids) {
     return name;
   } else {
@@ -2793,7 +2767,8 @@ namespace {
 
 using DFSStack = absl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
 
-string PrintNameInternal(const string& name, const HloPrintOptions& options) {
+std::string PrintNameInternal(const std::string& name,
+                              const HloPrintOptions& options) {
   return StrCat(options.print_percent() ? "%" : "",
                 PrintName(name, options.print_ids()));
 }
@@ -2839,7 +2814,7 @@ void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
 
 }  // namespace
 
-string HloInstruction::ToString(const HloPrintOptions& options) const {
+std::string HloInstruction::ToString(const HloPrintOptions& options) const {
   CanonicalNameMap new_map;
   return ToStringWithCanonicalNameMap(options, &new_map);
 }
@@ -2927,10 +2902,10 @@ bool HloInstruction::IsCrossReplicaAllReduce() const {
   return opcode() == HloOpcode::kAllReduce && !channel_id();
 }
 
-string HloInstruction::ToStringWithCanonicalNameMap(
+std::string HloInstruction::ToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  string result = "";
+  std::string result = "";
 
   // Logic to print the instruction name (e.g. "%foo = ").
   if (options.canonicalize_instruction_names()) {
@@ -2962,7 +2937,7 @@ string HloInstruction::ToStringWithCanonicalNameMap(
 
   // Print additional attributes. If an instruction contains a subcomputation,
   // the subcomputation is also printed here.
-  for (const string& extra : ExtraAttributesToString(options)) {
+  for (const std::string& extra : ExtraAttributesToString(options)) {
     StrAppend(&result, ", ", extra);
   }
 
@@ -2977,15 +2952,16 @@ string HloInstruction::ToStringWithCanonicalNameMap(
   return result;
 }
 
-string HloInstruction::OperandsToString(const HloPrintOptions& options) const {
+std::string HloInstruction::OperandsToString(
+    const HloPrintOptions& options) const {
   CanonicalNameMap new_map;
   return OperandsToStringWithCanonicalNameMap(options, &new_map);
 }
 
-string HloInstruction::OperandsToStringWithCanonicalNameMap(
+std::string HloInstruction::OperandsToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  string operands;
+  std::string operands;
   absl::Span<HloInstruction* const> slice(operands_);
   const int64_t kMaxOperandsToShowIfCompact = 4;
   if (options.compact_operands() &&
@@ -3006,7 +2982,7 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
       StrAppend(&operands, "null ");
       continue;
     }
-    std::vector<string> str;
+    std::vector<std::string> str;
     if (options.print_operand_shape()) {
       if (options.include_layout_in_shapes()) {
         str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
@@ -3048,11 +3024,11 @@ bool IsSequentialCall(HloOpcode opcode) {
 
 }  // namespace
 
-std::vector<string> HloInstruction::ExtraAttributesToString(
+std::vector<std::string> HloInstruction::ExtraAttributesToString(
     const HloPrintOptions& options) const {
-  std::vector<string> extra = options.print_extra_attributes()
-                                  ? ExtraAttributesToStringImpl(options)
-                                  : std::vector<string>();
+  std::vector<std::string> extra = options.print_extra_attributes()
+                                       ? ExtraAttributesToStringImpl(options)
+                                       : std::vector<std::string>();
 
   const auto subcomputation_mode = options.print_subcomputation_mode();
   if (subcomputation_mode ==
@@ -3079,7 +3055,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
         extra.push_back(StrCat(
             "branch_computations={",
             StrJoin(branch_computations(), ", ",
-                    [&](string* out, const HloComputation* computation) {
+                    [&](std::string* out, const HloComputation* computation) {
                       StrAppend(
                           out, PrintNameInternal(computation->name(), options));
                     }),
@@ -3100,7 +3076,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
         extra.push_back(StrCat(
             "called_computations={",
             StrJoin(called_computations(), ", ",
-                    [&](string* out, const HloComputation* computation) {
+                    [&](std::string* out, const HloComputation* computation) {
                       StrAppend(
                           out, PrintNameInternal(computation->name(), options));
                     }),
@@ -3110,7 +3086,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
       extra.push_back(StrCat(
           "calls=",
           StrJoin(called_computations(), ", ",
-                  [&](string* out, const HloComputation* computation) {
+                  [&](std::string* out, const HloComputation* computation) {
                     StrAppend(out,
                               PrintNameInternal(computation->name(), options));
                   })));
@@ -3142,7 +3118,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
           extra.push_back(StrCat(
               "branch_computations={\n",
               StrJoin(branch_computations(), ",\n",
-                      [&](string* out, const HloComputation* computation) {
+                      [&](std::string* out, const HloComputation* computation) {
                         StrAppend(out, computation->ToString(new_options));
                       }),
               "\n}"));
@@ -3164,7 +3140,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
           extra.push_back(StrCat(
               "calls=\n",
               StrJoin(called_computations(), ", ",
-                      [&](string* out, const HloComputation* computation) {
+                      [&](std::string* out, const HloComputation* computation) {
                         StrAppend(out, computation->ToString(new_options));
                       })));
         }
@@ -3188,7 +3164,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (options.print_control_dependencies() && !control_predecessors_.empty()) {
     extra.push_back(StrCat("control-predecessors={",
                            StrJoin(control_predecessors_, ", ",
-                                   [&](string* out, HloInstruction* pre) {
+                                   [&](std::string* out, HloInstruction* pre) {
                                      StrAppend(out, PrintNameInternal(
                                                         pre->name(), options));
                                    }),
@@ -3198,10 +3174,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   return extra;
 }
 
-string HloInstruction::ToShortString() const {
+std::string HloInstruction::ToShortString() const {
   return StrCat("%", name(), " = ", HloOpcodeString(opcode()), "(",
                 StrJoin(operands_, ", ",
-                        [](string* out, HloInstruction* operand) {
+                        [](std::string* out, HloInstruction* operand) {
                           StrAppend(out, "%", operand->name());
                         }),
                 ")");
@@ -3245,7 +3221,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   return proto;
 }
 
-string HloInstruction::ToCategory() const {
+std::string HloInstruction::ToCategory() const {
   if (opcode() == HloOpcode::kTranspose || opcode() == HloOpcode::kCopy ||
       opcode() == HloOpcode::kReshape ||
       opcode() == HloOpcode::kDynamicReshape) {
@@ -3553,6 +3529,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleTriangularSolve(this);
     case HloOpcode::kCholesky:
       return visitor->HandleCholesky(this);
+    case HloOpcode::kOptimizationBarrier:
+      return visitor->HandleOptimizationBarrier(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:
@@ -3639,7 +3617,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
 
     const size_t old_dfs_stack_size = dfs_stack.size();
     for (HloInstruction* child : current_node->operands()) {
-      if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
+      if (!ABSL_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
         PrintCycle(child, &dfs_stack);
         return FailedPrecondition(
             "A cycle is detected while visiting instruction %s",
@@ -3649,7 +3627,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
 
     if (!ignore_control_predecessors) {
       for (HloInstruction* child : current_node->control_predecessors()) {
-        if (!TF_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
+        if (!ABSL_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
           PrintCycle(child, &dfs_stack);
           return FailedPrecondition(
               "A cycle is detected while visiting instruction %s",
@@ -3910,7 +3888,7 @@ HloInstruction::ReshapeMerelyInsertsOrDeletes1SizedDimensions() const {
                                                       shape_);
 }
 
-string ToString(HloInstruction::FusionKind kind) {
+std::string ToString(HloInstruction::FusionKind kind) {
   switch (kind) {
     case HloInstruction::FusionKind::kLoop:
       return "kLoop";
@@ -3924,7 +3902,7 @@ string ToString(HloInstruction::FusionKind kind) {
 }
 
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
-    const string& kind_name) {
+    const std::string& kind_name) {
   if (kind_name == "kLoop") {
     return HloInstruction::FusionKind::kLoop;
   }
@@ -3940,22 +3918,22 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
   return InvalidArgument("Unknown fusion kind: %s", kind_name);
 }
 
-string FrontendAttributesToString(
+std::string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes) {
-  std::vector<std::pair<string, string>> sorted_attributes(
+  std::vector<std::pair<std::string, std::string>> sorted_attributes(
       frontend_attributes.map().begin(), frontend_attributes.map().end());
   absl::c_sort(sorted_attributes);
   // Frontend attribute is a comma-separated list of attribute="value" pairs,
-  // e.g., frontend_attributes={name="value_a",type="int32"}.
-  const auto formatter = [](string* out,
-                            const std::pair<string, string>& item) {
+  // e.g., frontend_attributes={name="value_a",type="int32_t"}.
+  const auto formatter = [](std::string* out,
+                            const std::pair<std::string, std::string>& item) {
     absl::StrAppend(out, item.first, "=\"", item.second, "\"");
   };
   return absl::StrFormat("{%s}",
                          absl::StrJoin(sorted_attributes, ",", formatter));
 }
 
-string PaddingConfigToString(const PaddingConfig& padding) {
+std::string PaddingConfigToString(const PaddingConfig& padding) {
   bool has_interior_padding =
       absl::c_any_of(padding.dimensions(),
                      [](const PaddingConfig::PaddingConfigDimension& dim) {
@@ -3963,35 +3941,36 @@ string PaddingConfigToString(const PaddingConfig& padding) {
                      });
   return StrJoin(
       padding.dimensions(), "x",
-      [&](string* out, const PaddingConfig::PaddingConfigDimension& dim) {
+      [&](std::string* out, const PaddingConfig::PaddingConfigDimension& dim) {
         StrAppend(
             out, dim.edge_padding_low(), "_", dim.edge_padding_high(),
             has_interior_padding ? StrCat("_", dim.interior_padding()) : "");
       });
 }
 
-string RandomDistributionToString(const RandomDistribution& distribution) {
+std::string RandomDistributionToString(const RandomDistribution& distribution) {
   return absl::AsciiStrToLower(RandomDistribution_Name(distribution));
 }
-string RandomAlgorithmToString(const RandomAlgorithm& algorithm) {
+std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm) {
   return absl::AsciiStrToLower(RandomAlgorithm_Name(algorithm));
 }
 
-string PrecisionToString(const PrecisionConfig::Precision& precision) {
+std::string PrecisionToString(const PrecisionConfig::Precision& precision) {
   return absl::AsciiStrToLower(PrecisionConfig::Precision_Name(precision));
 }
 
-static string CustomCallScheduleToString(const CustomCallSchedule& schedule) {
+static std::string CustomCallScheduleToString(
+    const CustomCallSchedule& schedule) {
   return absl::AsciiStrToLower(CustomCallSchedule_Name(schedule));
 }
 
-static string CustomCallApiVersionToString(
+static std::string CustomCallApiVersionToString(
     const CustomCallApiVersion& schedule) {
   return absl::AsciiStrToLower(CustomCallApiVersion_Name(schedule));
 }
 
-string DotDimensionNumbersToString(const DotDimensionNumbers& dnums) {
-  std::vector<string> result;
+std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums) {
+  std::vector<std::string> result;
   if (!dnums.lhs_batch_dimensions().empty()) {
     result.push_back(StrCat("lhs_batch_dims={",
                             StrJoin(dnums.lhs_batch_dimensions(), ","), "}"));
@@ -4011,7 +3990,7 @@ string DotDimensionNumbersToString(const DotDimensionNumbers& dnums) {
   return StrJoin(result, ", ");
 }
 
-string ConvolutionDimensionNumbersToString(
+std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums) {
   auto len_required = [](int64_t a, int64_t b, absl::Span<const int64_t> cs) {
     return std::max({a, b, cs.empty() ? 0 : *absl::c_max_element(cs)}) + 1;
@@ -4019,17 +3998,18 @@ string ConvolutionDimensionNumbersToString(
 
   // lhs_dims[i] is the symbol of the logical dimension i for the lhs
   // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
-  std::vector<string> lhs_dims(len_required(dnums.input_batch_dimension(),
-                                            dnums.input_feature_dimension(),
-                                            dnums.input_spatial_dimensions()),
-                               "?");
+  std::vector<std::string> lhs_dims(
+      len_required(dnums.input_batch_dimension(),
+                   dnums.input_feature_dimension(),
+                   dnums.input_spatial_dimensions()),
+      "?");
   lhs_dims[dnums.input_batch_dimension()] = 'b';
   lhs_dims[dnums.input_feature_dimension()] = 'f';
   for (int64_t i = 0; i < dnums.input_spatial_dimensions().size(); ++i) {
     lhs_dims[dnums.input_spatial_dimensions(i)] = StrCat(i);
   }
 
-  std::vector<string> rhs_dims(
+  std::vector<std::string> rhs_dims(
       len_required(dnums.kernel_input_feature_dimension(),
                    dnums.kernel_output_feature_dimension(),
                    dnums.kernel_spatial_dimensions()),
@@ -4040,7 +4020,7 @@ string ConvolutionDimensionNumbersToString(
     rhs_dims[dnums.kernel_spatial_dimensions(i)] = StrCat(i);
   }
 
-  std::vector<string> output_dims(
+  std::vector<std::string> output_dims(
       len_required(dnums.output_batch_dimension(),
                    dnums.output_feature_dimension(),
                    dnums.output_spatial_dimensions()),
@@ -4055,8 +4035,9 @@ string ConvolutionDimensionNumbersToString(
                 StrJoin(output_dims, ""));
 }
 
-string ReplicaGroupsToString(absl::Span<const ReplicaGroup> replica_groups) {
-  std::vector<string> replica_group_str;
+std::string ReplicaGroupsToString(
+    absl::Span<const ReplicaGroup> replica_groups) {
+  std::vector<std::string> replica_group_str;
   replica_group_str.reserve(replica_groups.size());
   for (const ReplicaGroup& group : replica_groups) {
     replica_group_str.push_back(
@@ -4065,9 +4046,9 @@ string ReplicaGroupsToString(absl::Span<const ReplicaGroup> replica_groups) {
   return StrCat("{", StrJoin(replica_group_str, ","), "}");
 }
 
-StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name) {
-  static std::unordered_map<string, RandomAlgorithm>* map = [] {
-    static auto* map = new std::unordered_map<string, RandomAlgorithm>;
+StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const std::string& name) {
+  static absl::flat_hash_map<std::string, RandomAlgorithm>* map = [] {
+    static auto* map = new absl::flat_hash_map<std::string, RandomAlgorithm>;
     for (int i = 0; i < RandomAlgorithm_ARRAYSIZE; i++) {
       if (RandomAlgorithm_IsValid(i)) {
         auto value = static_cast<RandomAlgorithm>(i);
@@ -4083,9 +4064,10 @@ StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name) {
   return found->second;
 }
 
-StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
-  static std::unordered_map<string, RandomDistribution>* map = [] {
-    static auto* map = new std::unordered_map<string, RandomDistribution>;
+StatusOr<RandomDistribution> StringToRandomDistribution(
+    const std::string& name) {
+  static absl::flat_hash_map<std::string, RandomDistribution>* map = [] {
+    static auto* map = new absl::flat_hash_map<std::string, RandomDistribution>;
     for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
       if (RandomDistribution_IsValid(i)) {
         auto value = static_cast<RandomDistribution>(i);
@@ -4101,18 +4083,20 @@ StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
   return found->second;
 }
 
-StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name) {
-  static std::unordered_map<string, PrecisionConfig::Precision>* map = [] {
-    static auto* map =
-        new std::unordered_map<string, PrecisionConfig::Precision>;
-    for (int i = 0; i < PrecisionConfig::Precision_ARRAYSIZE; i++) {
-      if (PrecisionConfig::Precision_IsValid(i)) {
-        auto value = static_cast<PrecisionConfig::Precision>(i);
-        (*map)[PrecisionToString(value)] = value;
-      }
-    }
-    return map;
-  }();
+StatusOr<PrecisionConfig::Precision> StringToPrecision(
+    const std::string& name) {
+  static absl::flat_hash_map<std::string, PrecisionConfig::Precision>* map =
+      [] {
+        static auto* map =
+            new absl::flat_hash_map<std::string, PrecisionConfig::Precision>;
+        for (int i = 0; i < PrecisionConfig::Precision_ARRAYSIZE; i++) {
+          if (PrecisionConfig::Precision_IsValid(i)) {
+            auto value = static_cast<PrecisionConfig::Precision>(i);
+            (*map)[PrecisionToString(value)] = value;
+          }
+        }
+        return map;
+      }();
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown distribution");
@@ -4122,8 +4106,8 @@ StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name) {
 
 StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
     absl::string_view name) {
-  static const absl::flat_hash_map<string, CustomCallSchedule>* map = [] {
-    static auto* map = new absl::flat_hash_map<string, CustomCallSchedule>;
+  static const absl::flat_hash_map<std::string, CustomCallSchedule>* map = [] {
+    static auto* map = new absl::flat_hash_map<std::string, CustomCallSchedule>;
     for (int i = 0; i < CustomCallSchedule_ARRAYSIZE; i++) {
       if (CustomCallSchedule_IsValid(i)) {
         auto value = static_cast<CustomCallSchedule>(i);
@@ -4141,16 +4125,18 @@ StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
 
 StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
     absl::string_view name) {
-  static const absl::flat_hash_map<string, CustomCallApiVersion>* map = [] {
-    static auto* map = new absl::flat_hash_map<string, CustomCallApiVersion>;
-    for (int i = 0; i < CustomCallApiVersion_ARRAYSIZE; i++) {
-      if (CustomCallApiVersion_IsValid(i)) {
-        auto value = static_cast<CustomCallApiVersion>(i);
-        (*map)[CustomCallApiVersionToString(value)] = value;
-      }
-    }
-    return map;
-  }();
+  static const absl::flat_hash_map<std::string, CustomCallApiVersion>* map =
+      [] {
+        static auto* map =
+            new absl::flat_hash_map<std::string, CustomCallApiVersion>;
+        for (int i = 0; i < CustomCallApiVersion_ARRAYSIZE; i++) {
+          if (CustomCallApiVersion_IsValid(i)) {
+            auto value = static_cast<CustomCallApiVersion>(i);
+            (*map)[CustomCallApiVersionToString(value)] = value;
+          }
+        }
+        return map;
+      }();
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown API version");
@@ -4200,13 +4186,13 @@ Status HloInstruction::set_backend_config(
   return Status::OK();
 }
 
-/* static */ StatusOr<string> HloInstruction::BackendConfigToRawString(
+/* static */ StatusOr<std::string> HloInstruction::BackendConfigToRawString(
     const tensorflow::protobuf::Message& proto) {
-  string ret;
+  std::string ret;
   // Pass ignore_accuracy_loss = true because estimated_cycles field can be
   // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
   // INT64_MAX, JsonFormat will return an error status, although there is no
-  // accuracy loss for int64.
+  // accuracy loss for int64_t.
   TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(
       proto, &ret, /*ignore_accuracy_loss=*/true));
   return ret;
@@ -4244,7 +4230,7 @@ HloModule* HloInstruction::GetModule() const {
 }
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
-  string parent_str = parent() == nullptr ? "noparent" : parent()->name();
+  std::string parent_str = parent() == nullptr ? "noparent" : parent()->name();
   name_ = name_uniquer->GetUniqueName(name_);
 }
 
@@ -4339,7 +4325,7 @@ void HloInstruction::RelayoutConstant(const Layout& new_layout,
   Cast<HloConstantInstruction>(this)->RelayoutConstant(new_layout, shape_index);
 }
 
-string HloInstruction::TracingTag() const {
+std::string HloInstruction::TracingTag() const {
   return Cast<HloTraceInstruction>(this)->TracingTag();
 }
 
@@ -4456,19 +4442,19 @@ void HloInstruction::set_tuple_index(int64_t new_tuple_index) {
       new_tuple_index);
 }
 
-int32 HloInstruction::exponent_bits() const {
+int32_t HloInstruction::exponent_bits() const {
   return Cast<HloReducePrecisionInstruction>(this)->exponent_bits();
 }
 
-int32 HloInstruction::mantissa_bits() const {
+int32_t HloInstruction::mantissa_bits() const {
   return Cast<HloReducePrecisionInstruction>(this)->mantissa_bits();
 }
 
-string HloInstruction::infeed_config() const {
+std::string HloInstruction::infeed_config() const {
   return Cast<HloInfeedInstruction>(this)->infeed_config();
 }
 
-void HloInstruction::set_infeed_config(const string& config) {
+void HloInstruction::set_infeed_config(const std::string& config) {
   return Cast<HloInfeedInstruction>(this)->set_infeed_config(config);
 }
 
@@ -4480,11 +4466,11 @@ Shape* HloInstruction::mutable_outfeed_shape() {
   return Cast<HloOutfeedInstruction>(this)->mutable_outfeed_shape();
 }
 
-const string& HloInstruction::outfeed_config() const {
+const std::string& HloInstruction::outfeed_config() const {
   return Cast<HloOutfeedInstruction>(this)->outfeed_config();
 }
 
-void HloInstruction::set_outfeed_config(const string& config) {
+void HloInstruction::set_outfeed_config(const std::string& config) {
   return Cast<HloOutfeedInstruction>(this)->set_outfeed_config(config);
 }
 
@@ -4573,8 +4559,11 @@ void HloInstruction::set_scatter(HloComputation* computation) {
   return Cast<HloSelectAndScatterInstruction>(this)->set_scatter(computation);
 }
 
-const string& HloInstruction::custom_call_target() const {
+const std::string& HloInstruction::custom_call_target() const {
   return Cast<HloCustomCallInstruction>(this)->custom_call_target();
+}
+void HloInstruction::set_custom_call_target(absl::string_view target) {
+  Cast<HloCustomCallInstruction>(this)->set_custom_call_target(target);
 }
 
 const PaddingConfig& HloInstruction::padding_config() const {

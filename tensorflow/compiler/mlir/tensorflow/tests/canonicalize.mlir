@@ -1186,7 +1186,7 @@ func @foldIfRegionMismatchedTypes(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>, %a
 func @eliminatePassThroughIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<!tf_type.resource>) -> (tensor<f32>) {
   // CHECK: %[[PRED:.*]] = "tf._SomeOp"() : () -> tensor<i1>
   %pred = "tf._SomeOp"() : () -> tensor<i1>
-  // CHECK: %[[IF_OUTPUT:.*]] = "tf.IfRegion"(%[[PRED]]) ( {
+  // CHECK: %[[IF_OUTPUT:.*]] = "tf.IfRegion"(%[[PRED]]) ({
   // CHECK:   %[[MUL:.*]] = "tf.Mul"(%[[ARG0]], %[[ARG1]])
   // CHECK:   "tf.Yield"(%[[MUL]]) : (tensor<f32>)
   // CHECK:  },  {
@@ -1213,7 +1213,7 @@ func @eliminatePassThroughIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2
 func @eliminatePassThroughCaseRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<!tf_type.resource>) -> (tensor<f32>) {
   // CHECK: %[[INDEX:.*]] = "tf._SomeOp"() : () -> tensor<i32>
   %index = "tf._SomeOp"() : () -> tensor<i32>
-  // CHECK: %[[CASE_OUTPUT:.*]] = "tf.CaseRegion"(%[[INDEX]]) ( {
+  // CHECK: %[[CASE_OUTPUT:.*]] = "tf.CaseRegion"(%[[INDEX]]) ({
   // CHECK:   %[[MUL:.*]] = "tf.Mul"(%[[ARG0]], %[[ARG1]])
   // CHECK:   "tf.Yield"(%[[MUL]]) : (tensor<f32>)
   // CHECK:  },  {
@@ -1776,13 +1776,14 @@ func @testFoldStridedSliceShapeWithEmptySlice(%arg0: tensor<?x1x2x3xf32>) -> (te
 }
 
 // CHECK-LABEL: testFoldEnsureShapeOp
-func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>, tensor<20x10xf32>) {
+func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>, tensor<10x20xf32>, tensor<20x10xf32>) {
   %0 = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<10x20>} : (tensor<10x20xf32>) -> tensor<10x20xf32>
+  %1 = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<?x20>} : (tensor<10x20xf32>) -> tensor<10x20xf32>
   // Failing case which should not be folded.
   // CHECK: %[[NF:.*]] = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<20x10>}
-  %1 = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<20x10>} : (tensor<10x20xf32>) -> tensor<20x10xf32>
-  // CHECK: return %arg0, %[[NF]]
-  return %0, %1: tensor<10x20xf32>, tensor<20x10xf32>
+  %2 = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<20x10>} : (tensor<10x20xf32>) -> tensor<20x10xf32>
+  // CHECK: return %arg0, %arg0, %[[NF]]
+  return %0, %1, %2: tensor<10x20xf32>, tensor<10x20xf32>, tensor<20x10xf32>
 }
 
 // CHECK-LABEL: testConvertPackToReshapeAxis0
@@ -1820,14 +1821,14 @@ func @while_with_id_passthrough(%arg0: tensor<7xf32> {tf._user_specified_name = 
   %3 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
   %4 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %5 = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  %6:4 = "tf.WhileRegion"(%0, %1, %arg0, %2) ( {
-    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):  // no predecessors
+  %6:4 = "tf.WhileRegion"(%0, %1, %arg0, %2) ({
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):
       %8 = "tf.Less"(%arg1, %arg2) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
       %9 = "tf.LogicalAnd"(%8, %3) {device = ""} : (tensor<i1>, tensor<i1>) -> tensor<i1>
       %10 = "tf.Identity"(%9) {device = ""} : (tensor<i1>) -> tensor<i1>
       "tf.Yield"(%10) : (tensor<i1>) -> ()
     },  {
-    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):  // no predecessors
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):
       %8 = "tf.Identity"(%arg4) {device = ""} : (tensor<1xi32>) -> tensor<1xi32>
       // CHECK: tf.RandomStandardNormal{{.*}}(%[[SHAPE]])
       %9 = "tf.RandomStandardNormal"(%arg4) {device = "", seed = 87654321 : i64, seed2 = 0 : i64} : (tensor<1xi32>) -> tensor<?xf32>
@@ -1979,13 +1980,25 @@ func @testComplexDivNoNanOpWithNonConstantY(%arg0: tensor<2xcomplex<f32>>, %arg1
   return %res1, %res2, %res3 : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
 }
 
+// CHECK-LABEL: testXlaReduceToXlaVariadicReduceToV2
+func @testXlaReduceToXlaVariadicReduceToV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
+  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  %0 = "tf.XlaReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+func private @sum1(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
 // CHECK-LABEL: testXlaVariadicReduceToV2
-func @testXlaVariadicReduceToV2(%arg0: tensor<3x4xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1", outputs = "_retval0"}} {
-  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum_reducer} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
-  %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {_XlaHasReferenceVars = false, device = "/job:localhost/replica:0/task:0/device:XLA_CPU:0", dimensions_to_reduce = [], reducer = @sum_reducer} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+func @testXlaVariadicReduceToV2(%arg0: tensor<3x4xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {
+  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   return %0 : tensor<?x?xf32>
 }
-func private @sum_reducer(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> attributes {tf._disable_call_shape_inference = true} {
+func private @sum2(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }

@@ -1,32 +1,11 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
-    default_visibility = [":friends"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "//babelfish/device/...",
-        "//learning/brain/experimental/dtensor/...",
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/kernels/...",
-        "//learning/brain/google/xla/mlir/...",
-        "//learning/deepmind/partir/...",
-        "//learning/pathways/data_parallel/tf2xla/...",
-        "//platforms/darwinn/contrib/waymo/...",
-        "//platforms/xla/...",
-        "//tensorflow/compiler/mlir/...",
-        "//tensorflow/compiler/tf2xla/...",
-        "//tensorflow/compiler/xla/...",
-        "//third_party/auroraml/...",
-        "//third_party/iree/...",
-        "//third_party/mlir_edge/...",
-    ],
 )
 
 gentbl_cc_library(
@@ -119,19 +98,36 @@ gentbl_cc_library(
 cc_library(
     name = "xla_passes",
     srcs = [
+        "transforms/outline_with_xla_framework.cc",
         "transforms/prepare_for_export.cc",
+        "transforms/xla_framework_to_llvm_pass.cc",
         "transforms/xla_passes_detail.h",
     ],
     hdrs = [
         "transforms/xla_passes.h",
     ],
     deps = [
+        ":legalize_tf",
+        ":xla_framework",
         ":xla_passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticToLLVM",
+        "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMCommonConversion",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:MathToLLVM",
+        "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -706,6 +702,7 @@ tf_cc_binary(
         ":adjust_layout",  # buildcleaner: keep
         ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
         ":tf_xla_passes",  # buildcleaner: keep
+        ":xla_framework",
         ":xla_legalize_tf",  # buildcleaner: keep
         ":xla_legalize_tf_no_fallback",  # buildcleaner: keep
         ":xla_passes",  # buildcleaner: keep
@@ -729,6 +726,7 @@ tf_cc_binary(
         ":adjust_layout",  # buildcleaner: keep
         ":mhlo_to_lhlo_with_xla",  # buildcleaner: keep
         ":tf_xla_passes",  # buildcleaner: keep
+        ":xla_framework",  # buildcleaner: keep
         ":xla_legalize_tf",  # buildcleaner: keep
         ":xla_legalize_tf_no_fallback",  # buildcleaner: keep
         ":xla_passes",  # buildcleaner: keep
@@ -741,5 +739,70 @@ tf_cc_binary(
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
+    ],
+)
+
+td_library(
+    name = "td_files",
+    srcs = [
+        "ir/xla_framework_ops.td",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "xla_framework_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "ir/xla_framework.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "ir/xla_framework.cc.inc",
+        ),
+        (
+            ["-gen-dialect-decls"],
+            "ir/xla_framework_dialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "ir/xla_framework_dialect.cc.inc",
+        ),
+        (
+            ["-gen-typedef-decls"],
+            "ir/xla_framework_types.h.inc",
+        ),
+        (
+            ["-gen-typedef-defs"],
+            "ir/xla_framework_types.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/xla_framework_ops.td",
+    deps = [":td_files"],
+)
+
+cc_library(
+    name = "xla_framework",
+    srcs = [
+        "ir/xla_framework.cc",
+        "ir/xla_framework.cc.inc",
+        "ir/xla_framework.h.inc",
+    ],
+    hdrs = ["ir/xla_framework.h"],
+    deps = [
+        ":xla_framework_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Support",
     ],
 )

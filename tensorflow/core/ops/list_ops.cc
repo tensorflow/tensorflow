@@ -374,6 +374,7 @@ REGISTER_OP("TensorListFromTensor")
     .Attr("shape_type: {int32, int64}")
     .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
                                                         "element_dtype"))
+    .SetForwardTypeFn(full_type::UnaryContainerCreate(TFT_ARRAY, 0))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       DataType element_dtype;
@@ -493,6 +494,10 @@ REGISTER_OP("TensorListSetItem")
     .Attr("element_dtype: type")
     .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_ARRAY,
                                                         "element_dtype"))
+    .SetForwardTypeFn(full_type::UnaryContainerAdd(TFT_ARRAY,
+                                                   /*container_idx=*/0,
+                                                   /*element_idx=*/2,
+                                                   /*homogeneous=*/true))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       DataType element_dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));

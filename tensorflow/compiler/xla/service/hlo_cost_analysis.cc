@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 
 #include <cmath>
+#include <cstdint>
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
@@ -118,7 +118,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
   return Status::OK();
 }
 
-/*static*/ float HloCostAnalysis::GetProperty(const string& key,
+/*static*/ float HloCostAnalysis::GetProperty(const std::string& key,
                                               const Properties& properties,
                                               const float default_value) {
   auto key_value = properties.find(key);
@@ -126,7 +126,7 @@ Status HloCostAnalysis::HandleElementwiseOp(
 }
 
 /*static*/ float HloCostAnalysis::GetPropertyForHlo(
-    const HloInstruction& hlo, const string& key,
+    const HloInstruction& hlo, const std::string& key,
     const HloToProperties& hlo_to_properties) {
   auto it = hlo_to_properties.find(&hlo);
   if (it == hlo_to_properties.end()) {
@@ -718,7 +718,7 @@ Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   constexpr int kFmaPerComplexMul = 4;
   int64_t log_factors = 1;
   for (int64_t dim : fft->fft_length()) {
-    log_factors *= tensorflow::Log2Floor(dim);
+    log_factors *= Log2Floor<uint64_t>(dim);
   }
   current_properties_[kFlopsKey] = kFmaFlops * kFmaPerComplexMul * log_factors *
                                    ShapeUtil::ElementsIn(real_shape);
@@ -757,6 +757,11 @@ Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
   int64_t elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
   elems *= ShapeUtil::ElementsIn(a_shape);
   current_properties_[kFlopsKey] = elems / 3;
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleOptimizationBarrier(
+    const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 
@@ -1022,7 +1027,7 @@ Status HloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     //  - cudnn may use complex conv algorithms that do fewer (or more!) flops
     //    than we calculate.
     //
-    //  - for int8 convs, these aren't *fl*ops, but we fudge it.
+    //  - for int8_t convs, these aren't *fl*ops, but we fudge it.
     current_properties_[kFlopsKey] = GetConvolutionFlops(custom_call);
 
     // conv custom-calls return a tuple (real_output, temp_bytes).  Count just
@@ -1055,7 +1060,7 @@ Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
   // This assumes a comparison based N*log(N) algorithm. As for all ops, the
   // actual properties of the op depend on the backend implementation.
   int64_t elements = ShapeUtil::ElementsIn(sort->operand(0)->shape());
-  current_properties_[kFlopsKey] = elements * tensorflow::Log2Ceiling(elements);
+  current_properties_[kFlopsKey] = elements * Log2Ceiling<uint64_t>(elements);
   return Status::OK();
 }
 

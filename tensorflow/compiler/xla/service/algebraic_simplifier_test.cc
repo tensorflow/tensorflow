@@ -369,7 +369,7 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0s32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0s32, HloOpcode::kMultiply, param0, zero));
 
@@ -1881,6 +1881,178 @@ ENTRY ZeroSizedReduceWindow {
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::Broadcast(m::Constant()),
                                   m::Broadcast(m::Constant()))));
+}
+
+TEST_F(AlgebraicSimplifierTest, NopMax) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY test {
+  p_s8   = s8[]   parameter(0)
+  p_u8   = u8[]   parameter(1)
+  p_s16  = s16[]  parameter(2)
+  p_u16  = u16[]  parameter(3)
+  p_s32  = s32[]  parameter(4)
+  p_u32  = u32[]  parameter(5)
+  p_s64  = s64[]  parameter(6)
+  p_u64  = u64[]  parameter(7)
+  p_f16  = f16[]  parameter(8)
+  p_bf16 = bf16[] parameter(9)
+  p_f32  = f32[]  parameter(10)
+  p_f64  = f64[]  parameter(11)
+
+  const_s8   = s8[]   constant(-128)
+  const_u8   = u8[]   constant(0)
+  const_s16  = s16[]  constant(-32768)
+  const_u16  = u16[]  constant(0)
+  const_s32  = s32[]  constant(-2147483648)
+  const_u32  = u32[]  constant(0)
+  const_s64  = s64[]  constant(-9223372036854775808)
+  const_u64  = u64[]  constant(0)
+  const_f16  = f16[]  constant(-inf)
+  const_bf16 = bf16[] constant(-inf)
+  const_f32  = f32[]  constant(-inf)
+  const_f64  = f64[]  constant(-inf)
+
+  max_s8   = s8[]   maximum(p_s8, const_s8)
+  max_u8   = u8[]   maximum(p_u8, const_u8)
+  max_s16  = s16[]  maximum(p_s16, const_s16)
+  max_u16  = u16[]  maximum(p_u16, const_u16)
+  max_s32  = s32[]  maximum(p_s32, const_s32)
+  max_u32  = u32[]  maximum(p_u32, const_u32)
+  max_s64  = s64[]  maximum(p_s64, const_s64)
+  max_u64  = u64[]  maximum(p_u64, const_u64)
+  max_f16  = f16[]  maximum(p_f16, const_f16)
+  max_bf16 = bf16[] maximum(p_bf16, const_bf16)
+  max_f32  = f32[]  maximum(p_f32, const_f32)
+  max_f64  = f64[]  maximum(p_f64, const_f64)
+
+  max2_s8   = s8[]   maximum(const_s8, p_s8)
+  max2_u8   = u8[]   maximum(const_u8, p_u8)
+  max2_s16  = s16[]  maximum(const_s16, p_s16)
+  max2_u16  = u16[]  maximum(const_u16, p_u16)
+  max2_s32  = s32[]  maximum(const_s32, p_s32)
+  max2_u32  = u32[]  maximum(const_u32, p_u32)
+  max2_s64  = s64[]  maximum(const_s64, p_s64)
+  max2_u64  = u64[]  maximum(const_u64, p_u64)
+  max2_f16  = f16[]  maximum(const_f16, p_f16)
+  max2_bf16 = bf16[] maximum(const_bf16, p_bf16)
+  max2_f32  = f32[]  maximum(const_f32, p_f32)
+  max2_f64  = f64[]  maximum(const_f64, p_f64)
+
+  ROOT tuple = tuple(max_s8, max_u8, max_s16, max_u16, max_s32, max_u32,
+                     max_s64, max_u64, max_f16, max_bf16, max_f32, max_f64,
+                     max2_s8, max2_u8, max2_s16, max2_u16, max2_s32, max2_u32,
+                     max2_s64, max2_u64, max2_f16, max2_bf16, max2_f32, max2_f64)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  // We can't write GmockMatch(m::Tuple(m::Parameter(0), m::Parameter(1), ...)
+  // because this generates a template expression that's too complicated for our
+  // MSVC to compile.  :(
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* root;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Op(&root).WithOpcode(HloOpcode::kTuple).WithNumOperands(24)));
+  for (int i = 0; i < root->operand_count(); i++) {
+    SCOPED_TRACE(absl::StrCat("operand ", i));
+    const HloInstruction* operand = root->operand(i);
+    ASSERT_EQ(operand->opcode(), HloOpcode::kParameter);
+    EXPECT_EQ(operand->parameter_number(), i % 12);
+  }
+}
+
+TEST_F(AlgebraicSimplifierTest, NopMin) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY test {
+  p_s8   = s8[]   parameter(0)
+  p_u8   = u8[]   parameter(1)
+  p_s16  = s16[]  parameter(2)
+  p_u16  = u16[]  parameter(3)
+  p_s32  = s32[]  parameter(4)
+  p_u32  = u32[]  parameter(5)
+  p_s64  = s64[]  parameter(6)
+  p_u64  = u64[]  parameter(7)
+  p_f16  = f16[]  parameter(8)
+  p_bf16 = bf16[] parameter(9)
+  p_f32  = f32[]  parameter(10)
+  p_f64  = f64[]  parameter(11)
+
+  const_s8   = s8[]   constant(127)
+  const_u8   = u8[]   constant(255)
+  const_s16  = s16[]  constant(32767)
+  const_u16  = u16[]  constant(65535)
+  const_s32  = s32[]  constant(2147483647)
+  const_u32  = u32[]  constant(4294967295)
+  const_s64  = s64[]  constant(9223372036854775807)
+  const_u64  = u64[]  constant(18446744073709551615)
+  const_f16  = f16[]  constant(inf)
+  const_bf16 = bf16[] constant(inf)
+  const_f32  = f32[]  constant(inf)
+  const_f64  = f64[]  constant(inf)
+
+  min_s8   = s8[]   minimum(p_s8, const_s8)
+  min_u8   = u8[]   minimum(p_u8, const_u8)
+  min_s16  = s16[]  minimum(p_s16, const_s16)
+  min_u16  = u16[]  minimum(p_u16, const_u16)
+  min_s32  = s32[]  minimum(p_s32, const_s32)
+  min_u32  = u32[]  minimum(p_u32, const_u32)
+  min_s64  = s64[]  minimum(p_s64, const_s64)
+  min_u64  = u64[]  minimum(p_u64, const_u64)
+  min_f16  = f16[]  minimum(p_f16, const_f16)
+  min_bf16 = bf16[] minimum(p_bf16, const_bf16)
+  min_f32  = f32[]  minimum(p_f32, const_f32)
+  min_f64  = f64[]  minimum(p_f64, const_f64)
+
+  min2_s8   = s8[]   minimum(const_s8, p_s8)
+  min2_u8   = u8[]   minimum(const_u8, p_u8)
+  min2_s16  = s16[]  minimum(const_s16, p_s16)
+  min2_u16  = u16[]  minimum(const_u16, p_u16)
+  min2_s32  = s32[]  minimum(const_s32, p_s32)
+  min2_u32  = u32[]  minimum(const_u32, p_u32)
+  min2_s64  = s64[]  minimum(const_s64, p_s64)
+  min2_u64  = u64[]  minimum(const_u64, p_u64)
+  min2_f16  = f16[]  minimum(const_f16, p_f16)
+  min2_bf16 = bf16[] minimum(const_bf16, p_bf16)
+  min2_f32  = f32[]  minimum(const_f32, p_f32)
+  min2_f64  = f64[]  minimum(const_f64, p_f64)
+
+  ROOT tuple = tuple(min_s8, min_u8, min_s16, min_u16, min_s32, min_u32,
+                     min_s64, min_u64, min_f16, min_bf16, min_f32, min_f64,
+                     min2_s8, min2_u8, min2_s16, min2_u16, min2_s32, min2_u32,
+                     min2_s64, min2_u64, min2_f16, min2_bf16, min2_f32, min2_f64)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  SCOPED_TRACE(m->ToString());
+
+  // We can't write GmockMatch(m::Tuple(m::Parameter(0), m::Parameter(1), ...)
+  // because this generates a template expression that's too complicated for our
+  // MSVC to compile.  :(
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* root;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Op(&root).WithOpcode(HloOpcode::kTuple).WithNumOperands(24)));
+  for (int i = 0; i < root->operand_count(); i++) {
+    SCOPED_TRACE(absl::StrCat("operand ", i));
+    const HloInstruction* operand = root->operand(i);
+    ASSERT_EQ(operand->opcode(), HloOpcode::kParameter);
+    EXPECT_EQ(operand->parameter_number(), i % 12);
+  }
 }
 
 TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Add) {
@@ -4004,16 +4176,16 @@ struct ConvPaddingTestcase {
         expected_conv_window(expected_conv_window),
         pad_value(pad_value) {}
 
-  string ToString() const {
+  std::string ToString() const {
     return absl::StrFormat(
         "padding=%s, orig_conv_window=%s, expected_conv_window=%s, "
         "pad_value=%f",
         padding, orig_conv_window, expected_conv_window, pad_value);
   }
 
-  string padding;
-  string orig_conv_window;
-  string expected_conv_window;
+  std::string padding;
+  std::string orig_conv_window;
+  std::string expected_conv_window;
   float pad_value;
 };
 
@@ -4285,7 +4457,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
   // Builds a convolution from <options> and runs algebraic simplification on
   // the computation. Returns a string description of the result of
   // simplification.
-  auto build_and_simplify = [&]() -> string {
+  auto build_and_simplify = [&]() -> std::string {
     HloComputation::Builder b(TestName());
 
     Window window;
@@ -4560,7 +4732,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
 // reshape(transpose(reshape(op))) can simplify to
 // reshape(concat(slice(op), ..., slice(op))).
 TEST_F(AlgebraicSimplifierTest, TransposeReshapeToConcatSlice) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TransposeReshapeDepthToSpace
 
 ENTRY entry {
@@ -4587,7 +4759,7 @@ ENTRY entry {
 // reshape(transpose(reshape(op))) with a large number of chunks
 // is not rewritten.
 TEST_F(AlgebraicSimplifierTest, TransposeReshapeTooLarge) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TransposeReshapeDepthToSpaceBig
 
 ENTRY entry {
@@ -4607,7 +4779,7 @@ ENTRY entry {
 // Test that a reshape(transpose(reshape(op))) that does not constitute a
 // depth-to-space transformation is not rewritten.
 TEST_F(AlgebraicSimplifierTest, TransposeReshapeNotDepthToSpace) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TransposeReshapeDepthToSpace
 
 ENTRY entry {
@@ -4626,7 +4798,7 @@ ENTRY entry {
 
 // Test that ReduceWindow(Pad(op, x), y) can simplify to ReduceWindow(op, x).
 TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule test
 fn {
   p0 = f32[] parameter(0)
@@ -4664,7 +4836,7 @@ ENTRY entry {
 // Test that ReduceWindow(Convert(Pad(op, x)), y) can simplify to
 // ReduceWindow(Convert(op), x).
 TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule test
 fn {
   p0 = f32[] parameter(0)
@@ -4804,7 +4976,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantDynamicSlice) {
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 3; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(2 << (i + 1)))));
+        LiteralUtil::CreateR0<int32_t>(2 << (i + 1)))));
   }
   Shape ds_shape = ShapeUtil::MakeShape(F32, {2, 20, 200});
   builder.AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -5412,7 +5584,7 @@ struct PadReduceWindowEffectiveBroadcastCase {
   bool prepend_a;
   bool should_become_broadcast;
 
-  string ToTestCaseName() const {
+  std::string ToTestCaseName() const {
     return absl::StrCat(absl::StrJoin(input_spatials, ","), ";",
                         absl::StrJoin(symmetric_pad_spatials, ","), ";",
                         absl::StrJoin(reduce_window_spatials, ","), ";",
@@ -6037,9 +6209,9 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   int32_t start_col = (spec.lcd == 0) ? spec.s : 0;
   std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_row))),
+          LiteralUtil::CreateR0<int32_t>(start_row))),
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_col)))};
+          LiteralUtil::CreateR0<int32_t>(start_col)))};
   int64_t slice_row_size = (spec.lcd == 0) ? spec.k : 1;
   int64_t slice_col_size = (spec.lcd == 0) ? 1 : spec.k;
   std::vector<int64_t> slice_sizes = {slice_row_size, slice_col_size};
@@ -6118,9 +6290,9 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   int32_t start_col = (spec.rcd == 0) ? spec.s : 0;
   std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_row))),
+          LiteralUtil::CreateR0<int32_t>(start_row))),
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_col)))};
+          LiteralUtil::CreateR0<int32_t>(start_col)))};
   int64_t slice_row_size = (spec.rcd == 0) ? spec.k : 1;
   int64_t slice_col_size = (spec.rcd == 0) ? 1 : spec.k;
   std::vector<int64_t> slice_sizes = {slice_row_size, slice_col_size};
@@ -7962,6 +8134,41 @@ TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, GTETupleShardingLoss) {
+  // Verify the gte(tuple) folding does not happen if it loses sharding info.
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0), sharding={devices=[2]0,1}
+      t = (s32[10]) tuple(p0)
+      ROOT %gte = s32[10] get-tuple-element(t), index=0, sharding={replicated}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicSliceShapeLayout) {
+  // Verify we maintain layout when optimizing dynamic-slice
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = u32[]{:T(128)} parameter(0)
+      %constant.1 = s32[4]{0:T(128)} constant({0, 16, 32, 48})
+      %dynamic-slice = s32[1]{0:T(128)} dynamic-slice(s32[4]{0:T(128)} %constant.1, u32[] %p0), dynamic_slice_sizes={1}
+      ROOT t = (s32[1]{0:T(128)}) tuple(dynamic-slice)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  const Shape& slice_shape =
+      m.get()->entry_computation()->root_instruction()->operand(0)->shape();
+  EXPECT_TRUE(slice_shape.has_layout());
+  EXPECT_EQ(slice_shape.layout().tiles_size(), 1);
 }
 
 }  // namespace

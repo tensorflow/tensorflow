@@ -38,7 +38,7 @@ TEST_F(CpuDynamicShapeTest, DynamicShapeR2) {
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
 
-  string filecheck_pattern = R"(
+  std::string filecheck_pattern = R"(
 ; CHECK: %[[dyn_dim_size:.*]] = load i32, i32*
 ; CHECK: %[[i64_dyn_dim_size:.*]] = sext i32 %[[dyn_dim_size:.*]] to i64
 ; CHECK: icmp uge i64 %[[custom:.*]], %[[i64_dyn_dim_size:.*]]

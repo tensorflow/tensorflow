@@ -472,12 +472,12 @@ MatchBackwardInput(HloInstruction* conv) {
       reverse_filter->IsConstant()) {
     // Create a double-reverse, which is a nop.
     HloComputation* c = conv->parent();
-    reverse_filter = c->AddInstruction(HloInstruction::CreateReverse(
-        reverse_filter->shape(), reverse_filter,
-        AsInt64Slice(dnums.kernel_spatial_dimensions())));
-    reverse_filter = c->AddInstruction(HloInstruction::CreateReverse(
-        reverse_filter->shape(), reverse_filter,
-        AsInt64Slice(dnums.kernel_spatial_dimensions())));
+    reverse_filter = c->AddInstruction(
+        HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
+                                      dnums.kernel_spatial_dimensions()));
+    reverse_filter = c->AddInstruction(
+        HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
+                                      dnums.kernel_spatial_dimensions()));
     TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_num=*/1, reverse_filter));
   }
 
@@ -686,45 +686,6 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
 
   // If all else fails, try a forward convolution.
   if (conv_matchers::CanImplementAsGpuForwardConv(conv)) {
-    if (primitive_util::IsIntegralType(
-            conv->operand(0)->shape().element_type())) {
-      // In addition to replacing a convolution instruction with
-      // a custom call, integer convolutions must have this pattern to match
-      // CuDNN semantics:
-      // conv<InputT=int32, ResultT=int32>(
-      //   convert<int32>(int8_x), convert<int32>(int8_y))
-      // We transform it to:
-      // custom_call<int32>(int8_x, int8_y, target=cudnnConvolutionForward)
-      //
-      // We will error out, if the pattern is not found for integer
-      // convolution.
-      const auto is_int8_to_int32_cast =
-          [](const HloInstruction* instr) -> bool {
-        return (instr->opcode() == HloOpcode::kConvert &&
-                instr->operand(0)->shape().element_type() == S8 &&
-                instr->shape().element_type() == S32);
-      };
-      HloInstruction* input_convert = conv->mutable_operand(0);
-      HloInstruction* kernel_convert = conv->mutable_operand(1);
-      if (conv->shape().element_type() != S32 ||
-          !is_int8_to_int32_cast(input_convert) ||
-          !is_int8_to_int32_cast(kernel_convert)) {
-        return Unimplemented(
-            "Integer convolutions for CuDNN must have this pattern: "
-            "conv<InputT=int32, ResultT=int32>(convert<int32>(int8_x), "
-            "convert<int32>(int8_y))");
-      }
-      // Bypass the convert<int32> for both inputs.
-      TF_RETURN_IF_ERROR(conv->ReplaceOperandWithDifferentShape(
-          0, input_convert->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(
-          conv->parent()->RemoveInstructionAndUnusedOperands(input_convert));
-      TF_RETURN_IF_ERROR(conv->ReplaceOperandWithDifferentShape(
-          1, kernel_convert->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(
-          conv->parent()->RemoveInstructionAndUnusedOperands(kernel_convert));
-    }
-
     if (conv->batch_group_count() > 1) {
       conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
     }

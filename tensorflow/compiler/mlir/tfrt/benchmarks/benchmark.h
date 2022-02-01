@@ -25,9 +25,9 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
+#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
@@ -41,9 +41,12 @@ namespace tensorflow {
 
 using ::tfrt::HostContext;
 using ::tfrt::RemainingResults;
-using ::tfrt::cpu::jit::JitExecutable;
-using ::tfrt::cpu::jit::MemrefDesc;
-using ::tfrt::cpu::jit::Type;
+using ::tfrt::jitrt::JitExecutable;
+using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::Type;
+
+// The name of the default host device for running fallback kernels.
+ABSL_CONST_INIT extern const char* const kDefaultHostDeviceName;
 
 // Constants to make shape specification more readable.
 // kStaticDim refers to the static shape in IR taken from ARGS of the benchmark.
@@ -69,7 +72,7 @@ Eigen::Tensor<T, rank, Eigen::RowMajor> GenRandomTensor(
 }
 
 // -------------------------------------------------------------------------- //
-// Run benchmark by compiling MLIR function using TFRT CPURT API.
+// Run benchmark by compiling MLIR function using TFRT JitRt API.
 // -------------------------------------------------------------------------- //
 
 // Do not record any information about operands for the results conversion.
@@ -90,7 +93,7 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
                                    llvm::StringRef mlir_input,
                                    llvm::StringRef function_name,
                                    bool lower_from_tensorflow,
-                                   const TfCpuRtPipelineOptions& tf_cpurt_opts);
+                                   const TfJitRtPipelineOptions& tf_jitrt_opts);
 
 // Converts Eigen Tensor to Memref descriptor.
 template <typename T, int rank>

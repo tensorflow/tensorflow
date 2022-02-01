@@ -113,9 +113,9 @@ class GpuAlarmClock {
       id<MTLComputePipelineState> program;
       // TODO(impjdi): Properly handle returned status.
       CreateComputeProgram(device_,
-                           @"kernel void ComputeFunction(device int* output_buffer [[buffer(0)]]) "
-                           @"{ output_buffer[0] = 0; }",
-                           @"ComputeFunction", nullptr, &program)
+                           "kernel void ComputeFunction(device int* output_buffer [[buffer(0)]]) { "
+                           "output_buffer[0] = 0; }",
+                           "ComputeFunction", {}, &program)
           .IgnoreError();
       stub_program_ = program;
       stub_buffer_ = [device_ newBufferWithLength:sizeof(int) * 4
@@ -183,7 +183,7 @@ class Delegate {
     command_queue_ = [metal_device_ newCommandQueue];
     if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive) {
       gpu_alarm_clock_ = std::unique_ptr<GpuAlarmClock>(new GpuAlarmClock(command_queue_));
-      NSString* code = @R"(
+      const std::string code = R"(
           kernel void ComputeFunction(device int* output_buffer [[buffer(0)]],
                                       constant int& value [[buffer(1)]]) {
             output_buffer[0] = value;
@@ -192,7 +192,7 @@ class Delegate {
       NSString* error;
       id<MTLComputePipelineState> signal_program;
       // TODO(impjdi): Properly handle returned status.
-      CreateComputeProgram(metal_device_, code, @"ComputeFunction", nullptr, &signal_program)
+      CreateComputeProgram(metal_device_, code, "ComputeFunction", {}, &signal_program)
           .IgnoreError();
       signal_program_ = signal_program;
       signal_buffer_ = [metal_device_ newBufferWithLength:sizeof(int) * 4
@@ -356,7 +356,7 @@ class Delegate {
       precision = CalculationsPrecision::F32;
     }
 
-    InferenceContext::CreateInferenceInfo create_info;
+    CreateGpuModelInfo create_info;
     create_info.precision = precision;
     create_info.storage_type = GetFastestStorageType(gpu_info);
     create_info.hints.Add(ModelHints::kAllowSpecialKernels);

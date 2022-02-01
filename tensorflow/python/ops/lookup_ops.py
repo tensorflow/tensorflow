@@ -18,8 +18,6 @@ import collections
 import functools
 import uuid
 
-import six
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -273,7 +271,7 @@ class InitializableLookupTableBaseV1(InitializableLookupTableBase):
     return self._init_op
 
 
-@registration.register_serializable(
+@registration.register_tf_serializable(
     predicate=lambda obj: isinstance(obj, StaticHashTable))
 @tf_export("lookup.StaticHashTable", v1=[])
 class StaticHashTable(InitializableLookupTableBase):
@@ -582,7 +580,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
 
 
 @tf_export("lookup.TextFileIndex")
-class TextFileIndex(object):
+class TextFileIndex:
   """The key and value content to get from each line.
 
   This class defines the key and value used for `tf.lookup.TextFileInitializer`.
@@ -1259,7 +1257,8 @@ class StaticVocabularyTable(LookupInterface):
       initializer: A `TableInitializerBase` object that contains the data used
         to initialize the table. If None, then we only use out-of-vocab buckets.
       num_oov_buckets: Number of buckets to use for out-of-vocabulary keys. Must
-        be greater than zero.
+        be greater than zero. If out-of-vocab buckets are not required, use
+        `StaticHashTable` instead.
       lookup_key_dtype: Data type of keys passed to `lookup`. Defaults to
         `initializer.key_dtype` if `initializer` is specified, otherwise
         `tf.string`. Must be string or integer, and must be castable to
@@ -1278,7 +1277,7 @@ class StaticVocabularyTable(LookupInterface):
         integer or string. Also when initializer.value_dtype != int64.
     """
     if num_oov_buckets <= 0:
-      raise ValueError("`num_oov_buckets` must be > 0.")
+      raise ValueError("`num_oov_buckets` must be > 0; use StaticHashTable.")
     # If a name ends with a '/' it is a "name scope", remove all trailing '/'
     # characters to use as table name.
     if name:
@@ -1489,8 +1488,8 @@ def index_table_from_file(vocabulary_file=None,
     ValueError: If `num_oov_buckets` is negative or `vocab_size` is not greater
       than zero.
   """
-  if vocabulary_file is None or (isinstance(vocabulary_file, six.string_types)
-                                 and not vocabulary_file):
+  if vocabulary_file is None or (isinstance(vocabulary_file, str) and
+                                 not vocabulary_file):
     raise ValueError(
         "`vocabulary_file` must be specified and must not be empty.")
   if num_oov_buckets < 0:
@@ -1700,8 +1699,8 @@ def index_to_string_table_from_file(vocabulary_file,
     ValueError: when `vocabulary_file` is empty.
     ValueError: when `vocab_size` is invalid.
   """
-  if vocabulary_file is None or (isinstance(vocabulary_file, six.string_types)
-                                 and not vocabulary_file):
+  if vocabulary_file is None or (isinstance(vocabulary_file, str) and
+                                 not vocabulary_file):
     raise ValueError(
         "`vocabulary_file` must be specified and must not be empty.")
 

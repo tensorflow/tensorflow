@@ -190,7 +190,7 @@ def _show_defined_functions(saved_model_dir):
   with ops_lib.Graph().as_default():
     trackable_object = load.load(saved_model_dir)
 
-  print('\nDefined Functions:', end='')
+  print('\nConcrete Functions:', end='')
   children = list(
       save._AugmentedGraphView(trackable_object)  # pylint: disable=protected-access
       .list_children(trackable_object))

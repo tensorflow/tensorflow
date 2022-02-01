@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/FunctionSupport.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -97,7 +97,7 @@ static Status GetValueName(Value operand, std::string &name, Type control_ty) {
     // Function arguments are coming as pair: the even are the actual tensors
     // while the odd position are the associated control input.
     if (is_control) name = "^";
-    DictionaryAttr arg_attrs = function_like_impl::getArgAttrDict(
+    DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
         block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
     if (!arg_attrs)
       return InvalidArgument("Missing attribute for argument #", arg_num);
@@ -368,9 +368,85 @@ Status BuildFunctionSignature(GraphFuncOp func_op, FunctionDef &fdef) {
   return Status::OK();
 }
 
-// Export a GraphFunc operation as a new entry in the function library.
-static Status ExportFunction(GraphFuncOp func_op,
-                             tensorflow::FunctionLibraryDefinition &flib) {
+// Given an MLIR module, returns a GraphDef.
+Status ExportMlirToGraphdefImpl(ModuleOp module, GraphDef *graphdef) {
+  // Check that this module is valid for export: it should only contains at most
+  // a single Graph operation and one or more GraphFunc operations.
+  GraphOp graph_op;
+  for (Operation &op : *module.getBody()) {
+    if (isa<GraphFuncOp>(op)) continue;
+    if (auto new_graph_op = dyn_cast<GraphOp>(op)) {
+      if (graph_op) {
+        return InvalidArgument(
+            "Can't export module with two different tfg.graph");
+      }
+      graph_op = new_graph_op;
+      continue;
+    }
+    return InvalidArgument(
+        absl::StrCat("Can't export module with other ops than tfg.graph or "
+                     "tfg.func, has: ",
+                     op.getName().getStringRef().data()));
+  }
+  if (graph_op) {
+    // A graph is mostly a flat "sea of nodes" to export.
+    auto control_ty = tfg::ControlType::get(graph_op.getContext());
+    VersionDef *version = graphdef->mutable_versions();
+    tfg::VersionAttr versionAttr = graph_op.version();
+    version->set_producer(versionAttr.getProducer());
+    version->set_min_consumer(versionAttr.getMinConsumer());
+    for (int32_t bad_consumer : versionAttr.getBadConsumers())
+      version->add_bad_consumers(bad_consumer);
+    for (Operation &op : *graph_op.getBody()) {
+      NodeDef *node = graphdef->add_node();
+      TF_RETURN_IF_ERROR(ConvertOperationToNode(
+          op, node, [&](Value operand, std::string &output_name) {
+            return GetValueName(operand, output_name, control_ty);
+          }));
+    }
+  }
+
+  tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
+                                             *graphdef->mutable_library());
+  // Export the functions, if any.
+  for (GraphFuncOp func_op :
+       llvm::reverse(module.getBody()->getOps<GraphFuncOp>())) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Exporting function @" << func_op.getName() << "\n");
+    if (flib.Find(func_op.getName().str())) continue;
+    if (!func_op.generic()) {
+      // Export only the signature here, we'll export these below.
+      FunctionDef fdef;
+      TF_RETURN_IF_ERROR(BuildFunctionSignature(func_op, fdef));
+      TF_RETURN_IF_ERROR(flib.AddFunctionDef(fdef));
+      continue;
+    }
+    // We can immediately export generic functions, because they don't need to
+    // go through a "Graph" and aren't sensitive to importing called function
+    // first.
+    TF_ASSIGN_OR_RETURN(FunctionDef fdef,
+                        ConvertGenericFunctionToFunctionDef(func_op));
+    if (flib.Find(fdef.signature().name()))
+      TF_RETURN_IF_ERROR(flib.ReplaceFunction(fdef.signature().name(), fdef));
+    else
+      TF_RETURN_IF_ERROR(flib.AddFunctionDef(fdef));
+  }
+  for (GraphFuncOp func_op :
+       llvm::reverse(module.getBody()->getOps<GraphFuncOp>())) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Exporting function @" << func_op.getName() << "\n");
+    if (func_op.generic()) continue;
+    TF_RETURN_IF_ERROR(ExportFunction(func_op, flib));
+  }
+  *graphdef->mutable_library() = flib.ToProto();
+
+  return Status::OK();
+}
+
+}  // namespace
+
+Status ExportFunction(GraphFuncOp func_op,
+                      tensorflow::FunctionLibraryDefinition &flib) {
   const std::string func_name = func_op.getName().str();
   // The function->gradient mapping is stored separately in the library.
   if (auto gradient_attr =
@@ -451,7 +527,7 @@ static Status ExportFunction(GraphFuncOp func_op,
     // Odd position are just for control dependencies.
     if (arg_num % 2) continue;
     DictionaryAttr arg_attrs =
-        function_like_impl::getArgAttrDict(func_op, arg_num);
+        function_interface_impl::getArgAttrDict(func_op, arg_num);
     OpDef::ArgDef *arg = signature->mutable_input_arg(arg_num / 2);
     StringAttr description = arg_attrs.getAs<StringAttr>("tfg.description");
     if (description) arg->set_description(description.getValue().str());
@@ -542,82 +618,6 @@ static Status ExportFunction(GraphFuncOp func_op,
   return {};
 }
 
-// Given an MLIR module, returns a GraphDef.
-Status ExportMlirToGraphdefImpl(ModuleOp module, GraphDef *graphdef) {
-  // Check that this module is valid for export: it should only contains at most
-  // a single Graph operation and one or more GraphFunc operations.
-  GraphOp graph_op;
-  for (Operation &op : *module.getBody()) {
-    if (isa<GraphFuncOp>(op)) continue;
-    if (auto new_graph_op = dyn_cast<GraphOp>(op)) {
-      if (graph_op) {
-        return InvalidArgument(
-            "Can't export module with two different tfg.graph");
-      }
-      graph_op = new_graph_op;
-      continue;
-    }
-    return InvalidArgument(
-        absl::StrCat("Can't export module with other ops than tfg.graph or "
-                     "tfg.func, has: ",
-                     op.getName().getStringRef().data()));
-  }
-  if (graph_op) {
-    // A graph is mostly a flat "sea of nodes" to export.
-    auto control_ty = tfg::ControlType::get(graph_op.getContext());
-    VersionDef *version = graphdef->mutable_versions();
-    tfg::VersionAttr versionAttr = graph_op.version();
-    version->set_producer(versionAttr.getProducer());
-    version->set_min_consumer(versionAttr.getMinConsumer());
-    for (int32_t bad_consumer : versionAttr.getBadConsumers())
-      version->add_bad_consumers(bad_consumer);
-    for (Operation &op : *graph_op.getBody()) {
-      NodeDef *node = graphdef->add_node();
-      TF_RETURN_IF_ERROR(ConvertOperationToNode(
-          op, node, [&](Value operand, std::string &output_name) {
-            return GetValueName(operand, output_name, control_ty);
-          }));
-    }
-  }
-
-  tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
-                                             *graphdef->mutable_library());
-  // Export the functions, if any.
-  for (GraphFuncOp func_op :
-       llvm::reverse(module.getBody()->getOps<GraphFuncOp>())) {
-    LLVM_DEBUG(llvm::errs()
-               << "Exporting function @" << func_op.getName() << "\n");
-    if (flib.Find(func_op.getName().str())) continue;
-    if (!func_op.generic()) {
-      // Export only the signature here, we'll export these below.
-      FunctionDef fdef;
-      TF_RETURN_IF_ERROR(BuildFunctionSignature(func_op, fdef));
-      TF_RETURN_IF_ERROR(flib.AddFunctionDef(fdef));
-      continue;
-    }
-    // We can immediately export generic functions, because they don't need to
-    // go through a "Graph" and aren't sensitive to importing called function
-    // first.
-    TF_ASSIGN_OR_RETURN(FunctionDef fdef,
-                        ConvertGenericFunctionToFunctionDef(func_op));
-    if (flib.Find(fdef.signature().name()))
-      TF_RETURN_IF_ERROR(flib.ReplaceFunction(fdef.signature().name(), fdef));
-    else
-      TF_RETURN_IF_ERROR(flib.AddFunctionDef(fdef));
-  }
-  for (GraphFuncOp func_op :
-       llvm::reverse(module.getBody()->getOps<GraphFuncOp>())) {
-    LLVM_DEBUG(llvm::errs()
-               << "Exporting function @" << func_op.getName() << "\n");
-    if (func_op.generic()) continue;
-    TF_RETURN_IF_ERROR(ExportFunction(func_op, flib));
-  }
-  *graphdef->mutable_library() = flib.ToProto();
-
-  return Status::OK();
-}
-
-}  // namespace
 }  // namespace tfg
 }  // namespace mlir
 

@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt %s -detensorize-linalg | FileCheck %s
+// RUN: tf-tfrt-opt %s -tf-jitrt-detensorize-linalg | FileCheck %s
 
 #id = affine_map<(d0) -> (d0)>
 #empty = affine_map<(d0) -> ()>
@@ -6,14 +6,12 @@
 // CHECK-LABEL: func @detensorize
 func @detensorize(%arg : tensor<100xi32>) -> (tensor<100xi1>) attributes {} {
   %c10 = arith.constant 10 : i32
-  %tensor = tensor.from_elements %c10 : tensor<1xi32>
-  %collapse = tensor.collapse_shape %tensor []
-    : tensor<1xi32> into tensor<i32>
+  %tensor = tensor.from_elements %c10 : tensor<i32>
   %init = linalg.init_tensor [100] : tensor<100xi1>
   %result = linalg.generic {
       indexing_maps = [#id, #empty, #id],
       iterator_types = ["parallel"]}
-      ins(%arg, %collapse : tensor<100xi32>, tensor<i32>)
+      ins(%arg, %tensor : tensor<100xi32>, tensor<i32>)
       outs(%init : tensor<100xi1>) {
     ^bb0(%arg0: i32, %arg1: i32, %arg2: i1):
       %0 = arith.cmpi slt, %arg0, %arg1 : i32

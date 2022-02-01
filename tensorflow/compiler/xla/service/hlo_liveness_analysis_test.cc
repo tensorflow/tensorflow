@@ -40,7 +40,7 @@ class HloLivenessAnalysisTest : public HloTestBase {
     return *liveness_;
   }
 
-  HloInstruction* GetInstruction(HloModule* module, const string& name) {
+  HloInstruction* GetInstruction(HloModule* module, const std::string& name) {
     HloInstruction* to_return = nullptr;
     for (auto* comp : module->computations()) {
       for (auto* inst : comp->instructions()) {

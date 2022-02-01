@@ -76,43 +76,43 @@ TEST_F(TransposeTest, Transpose2x2) {
 XLA_TEST_F(TransposeTest, Transpose0x2x3_2x3x0) {
   XlaBuilder builder("Transpose");
   auto operand =
-      ConstantR3FromArray3D<int32>(&builder, Array3D<int32>(0, 2, 3));
+      ConstantR3FromArray3D<int32_t>(&builder, Array3D<int32_t>(0, 2, 3));
   Transpose(operand, {1, 2, 0});
 
-  ComputeAndCompareR3<int32>(&builder, Array3D<int32>(2, 3, 0), {});
+  ComputeAndCompareR3<int32_t>(&builder, Array3D<int32_t>(2, 3, 0), {});
 }
 
 TEST_F(TransposeTest, Transpose1x2x3_2x3x1) {
   XlaBuilder builder("Transpose");
   auto operand =
-      ConstantR3FromArray3D<int32>(&builder, {{{1, 2, 3}, {4, 5, 6}}});
+      ConstantR3FromArray3D<int32_t>(&builder, {{{1, 2, 3}, {4, 5, 6}}});
   Transpose(operand, {1, 2, 0});
 
-  Array3D<int32> expected({{{1}, {2}, {3}}, {{4}, {5}, {6}}});
+  Array3D<int32_t> expected({{{1}, {2}, {3}}, {{4}, {5}, {6}}});
 
-  ComputeAndCompareR3<int32>(&builder, expected, {});
+  ComputeAndCompareR3<int32_t>(&builder, expected, {});
 }
 
 TEST_F(TransposeTest, Transpose1x2x3_3x2x1) {
   XlaBuilder builder("Transpose");
   auto operand =
-      ConstantR3FromArray3D<int32>(&builder, {{{1, 2, 3}, {4, 5, 6}}});
+      ConstantR3FromArray3D<int32_t>(&builder, {{{1, 2, 3}, {4, 5, 6}}});
   Transpose(operand, {2, 1, 0});
 
-  Array3D<int32> expected({{{1}, {4}}, {{2}, {5}}, {{3}, {6}}});
+  Array3D<int32_t> expected({{{1}, {4}}, {{2}, {5}}, {{3}, {6}}});
 
-  ComputeAndCompareR3<int32>(&builder, expected, {});
+  ComputeAndCompareR3<int32_t>(&builder, expected, {});
 }
 
 TEST_F(TransposeTest, Transpose1x2x3_1x2x3) {
   XlaBuilder builder("Transpose");
   auto operand =
-      ConstantR3FromArray3D<int32>(&builder, {{{1, 2, 3}, {4, 5, 6}}});
+      ConstantR3FromArray3D<int32_t>(&builder, {{{1, 2, 3}, {4, 5, 6}}});
   Transpose(operand, {0, 1, 2});
 
-  Array3D<int32> expected({{{1, 2, 3}, {4, 5, 6}}});
+  Array3D<int32_t> expected({{{1, 2, 3}, {4, 5, 6}}});
 
-  ComputeAndCompareR3<int32>(&builder, expected, {});
+  ComputeAndCompareR3<int32_t>(&builder, expected, {});
 }
 
 TEST_F(TransposeTest, MultiTranspose3x2) {
@@ -155,8 +155,8 @@ TEST_F(TransposeTest, Small_2x2) {
 }
 
 void TransposeTest::TestTransposeConstant021(size_t n1, size_t n2, size_t n3) {
-  Array3D<int32> aoperand(n1, n2, n3);
-  Array3D<int32> expected(n1, n3, n2);
+  Array3D<int32_t> aoperand(n1, n2, n3);
+  Array3D<int32_t> expected(n1, n3, n2);
   for (size_t i = 0; i < n1; ++i) {
     for (size_t j = 0; j < n2; ++j) {
       for (size_t k = 0; k < n3; ++k) {
@@ -170,7 +170,7 @@ void TransposeTest::TestTransposeConstant021(size_t n1, size_t n2, size_t n3) {
   auto operand = ConstantR3FromArray3D(&builder, aoperand);
   Transpose(operand, {0, 2, 1});
 
-  ComputeAndCompareR3<int32>(&builder, expected, {});
+  ComputeAndCompareR3<int32_t>(&builder, expected, {});
 }
 
 TEST_F(TransposeTest, TransposeConstant021_SingleIncompleteTilePerLayer) {

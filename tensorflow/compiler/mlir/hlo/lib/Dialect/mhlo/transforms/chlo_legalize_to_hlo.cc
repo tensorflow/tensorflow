@@ -1458,7 +1458,7 @@ class ConvertDynamicReshapeOp
 }  // namespace
 
 void PopulateChloBroadcastingPatterns(MLIRContext *context,
-                                      OwningRewritePatternList *patterns) {
+                                      RewritePatternSet *patterns) {
   // Instantiate conversion templates for conforming binary elementwise ops
   // that do not have different dtypes between operands and results and do
   // not have special attributes that need to be preserved.
@@ -1472,7 +1472,7 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
 }
 
 void PopulateDecomposeChloPatterns(MLIRContext *context,
-                                   OwningRewritePatternList *patterns) {
+                                   RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
 
   // Other patterns.

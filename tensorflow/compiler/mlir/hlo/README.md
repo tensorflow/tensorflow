@@ -264,3 +264,17 @@ ninja MLIRHLOPythonModules
 export PYTHONPATH=$PWD/tools/mlir_hlo/python_packages/mlir_hlo
 python -c "import mlir.dialects.mhlo"
 ```
+
+## External projects that depend on mlir-hlo
+
+External projects that need to depend on `mlir-hlo` (for example via a git
+submodule) can use the following setting in their cmake configuration in order
+for `find_package(MHLO)` to import all mlir-hlo cmake targets into their build
+setup and have access to the required include and lib variables (see generated
+`MHLOConfig.cmake`).
+
+```
+...
+   -DMHLO_DIR=<path to mlir-hlo build dir>/lib/cmake/mlir-hlo
+   ...
+```

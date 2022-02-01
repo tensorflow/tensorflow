@@ -365,25 +365,16 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim);
 // The shape is represented as a Python tuple of integers.
 PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 
-// Encodes the object as a tuple that is meant to be used as part of the key
-// for the defun function cache.  If `include_tensor_ranks_only` is true,
-// then the encoding only stores tensor ranks, and the key is
-// agnostic to dimension sizes.  Otherwise, full tensor shape encodings are
-// returned.
-PyObject* TFE_Py_EncodeArg(PyObject* arg, PyObject* signature_context,
-                           bool include_tensor_ranks_only,
-                           bool encode_variable_by_resource_id,
-                           bool use_full_trace_type);
-
 void TFE_Py_EnableInteractivePythonLogging();
 
-// Sets `python_context` as the current eager Context object (defined
+// Sets the current Python eager Context object (defined
 // in eager/context.py). This function must be called at least once before
 // eager tensors are created.
 // If an error is encountered, sets python error and returns NULL. Else, returns
 // Py_None.
 //
-// This function is not thread-safe.
+// Not thread-safe.
+// TODO(mdan): Retire this - non-Python users should only need the EagerContext.
 PyObject* TFE_Py_SetEagerContext(PyObject* py_context);
 
 // Returns the current eager Context object (defined in eager/context.py)
@@ -392,6 +383,23 @@ PyObject* TFE_Py_SetEagerContext(PyObject* py_context);
 // The returned PyObject is "new", i.e. the caller must call Py_DECREF on it at
 // some point.
 PyObject* GetPyEagerContext();
+
+// Sets the EagerContext owned by the current Python eager Context (see
+// TFE_Py_SetEagerContext). This is always called in tandem with
+// TFE_Py_SetEagerContext (but not called by it, because its py_context
+// argument is opaque).
+//
+// Do not use this function in production. It is only intended for testing.
+// (see _reset_context in context.py).
+//
+// Not thread-safe.
+void TFE_Py_SetCEagerContext(TFE_Context* ctx);
+
+// Returns the EagerContext owned by the current Python eager Context (see
+// TFE_Py_SetEagerContext).
+//
+// Not thread-safe.
+TFE_Context* GetCEagerContext();
 
 // These are exposed since there is SWIG code that calls these.
 // Returns a pre-allocated status if it exists.

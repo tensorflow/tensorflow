@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_METADATA_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_METADATA_H_
 
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -36,9 +40,18 @@ class ShardingMetadata : public DomainMetadata {
 
   bool Matches(const DomainMetadata& other) const override;
 
-  size_t Hash() const override;
+  template <typename H>
+  friend H AbslHashValue(H h, const ShardingMetadata& sharding_metadata) {
+    const bool has_sharding = sharding_metadata.sharding_ != nullptr;
+    if (has_sharding) {
+      h = H::combine(std::move(h), *sharding_metadata.sharding_);
+    }
+    return H::combine(std::move(h), has_sharding);
+  }
 
-  string ToString() const override;
+  size_t Hash() const override { return absl::HashOf(*this); }
+
+  std::string ToString() const override;
 
   const HloSharding* sharding() const { return sharding_.get(); }
 
@@ -77,12 +90,18 @@ class ShardingDomainCreator {
     std::shared_ptr<const HloSharding> sharding;
 
     bool operator==(const DomainCseMapKey& other) const;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const DomainCseMapKey& key) {
+      h = H::combine(std::move(h), key.instruction);
+      const bool has_sharding = key.sharding != nullptr;
+      if (has_sharding) {
+        h = H::combine(std::move(h), *key.sharding);
+      }
+      return H::combine(std::move(h), has_sharding);
+    }
   };
-  struct DomainCseMapHasher {
-    size_t operator()(const DomainCseMapKey& key) const;
-  };
-  std::unordered_map<DomainCseMapKey, HloInstruction*, DomainCseMapHasher>
-      domain_cse_map_;
+  absl::flat_hash_map<DomainCseMapKey, HloInstruction*> domain_cse_map_;
 };
 
 }  // namespace xla

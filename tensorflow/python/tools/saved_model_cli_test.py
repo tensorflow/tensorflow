@@ -210,7 +210,7 @@ signature_def['serving_default']:
         name: PartitionedCall:0
   Method name is: tensorflow/serving/predict
 
-Defined Functions:
+Concrete Functions:
   Function Name: '__call__'
     Option #1
       Callable with:
@@ -295,7 +295,7 @@ signature_def['serving_default']:
         name: PartitionedCall:0
   Method name is: tensorflow/serving/predict
 
-Defined Functions:
+Concrete Functions:
   Function Name: 'pure_concrete_function'
     Option #1
       Callable with:

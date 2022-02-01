@@ -18,12 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -42,12 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
 
@@ -58,17 +55,17 @@ namespace {
 // An array that is indexed by PrimitiveType, and returns
 // the size of each element of that primitive type, or 0
 // if the PrimitiveType is not a primitive type
-constexpr uint8 primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
+constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     0,                  // PRIMITIVE_TYPE_INVALID = 0,
-    sizeof(int8),       // PRED = 1
-    sizeof(int8),       // S8 = 2
-    sizeof(int16),      // S16 = 3
-    sizeof(int32),      // S32 = 4
+    sizeof(int8_t),     // PRED = 1
+    sizeof(int8_t),     // S8 = 2
+    sizeof(int16_t),    // S16 = 3
+    sizeof(int32_t),    // S32 = 4
     sizeof(int64_t),    // S64 = 5
-    sizeof(uint8),      // U8 = 6
-    sizeof(uint16),     // U16 = 7
-    sizeof(uint32),     // U32 = 8
-    sizeof(uint64),     // U64 = 9
+    sizeof(uint8_t),    // U8 = 6
+    sizeof(uint16_t),   // U16 = 7
+    sizeof(uint32_t),   // U32 = 8
+    sizeof(uint64_t),   // U64 = 9
     sizeof(float) / 2,  // F16 = 10
     sizeof(float),      // F32 = 11
     sizeof(double),     // F64 = 12
@@ -82,9 +79,11 @@ constexpr uint8 primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
 constexpr int64_t kAnnotationPrintInterval = 5;
 }  // namespace
 
-string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
+std::string ShapeIndex::ToString() const {
+  return ShapeIndexView(*this).ToString();
+}
 
-string ShapeIndexView::ToString() const {
+std::string ShapeIndexView::ToString() const {
   return StrCat("{", absl::StrJoin(indices_, ","), "}");
 }
 
@@ -628,9 +627,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return IsScalar(shape) && shape.element_type() == element_type;
 }
 
-/* static */ string ShapeUtil::HumanString(const Shape& shape) {
+/* static */ std::string ShapeUtil::HumanString(const Shape& shape) {
   if (shape.IsTuple()) {
-    string text = "(";
+    std::string text = "(";
     const auto& tuple_shapes = shape.tuple_shapes();
     for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
       const Shape& elem_shape = tuple_shapes[i];
@@ -645,7 +644,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     text += ")";
     return text;
   }
-  std::vector<string> dim_elements;
+  std::vector<std::string> dim_elements;
   const auto dimensions_size = shape.dimensions_size();
   dim_elements.reserve(dimensions_size);
   for (int i = 0; i < dimensions_size; ++i) {
@@ -660,9 +659,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       absl::StrJoin(dim_elements, ","), "]");
 }
 
-/* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
+/* static */ std::string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
   if (shape.IsTuple()) {
-    string text = "(";
+    std::string text = "(";
     const auto& tuple_shapes = shape.tuple_shapes();
     for (int64_t i = 0; i < tuple_shapes.size(); ++i) {
       const Shape& elem_shape = tuple_shapes[i];
@@ -677,9 +676,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     text += ")";
     return text;
   }
-  string result = HumanString(shape);
+  std::string result = HumanString(shape);
   if (IsScalar(shape)) {
-    string layout_str = LayoutUtil::HumanString(shape.layout());
+    std::string layout_str = LayoutUtil::HumanString(shape.layout());
     // Don't print "{}" as layout for scalars.
     if (layout_str != "{}") {
       StrAppend(&result, layout_str);
@@ -690,8 +689,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return result;
 }
 
-/* static */ string ShapeUtil::HumanString(const ProgramShape& program_shape) {
-  std::vector<string> parameters;
+/* static */ std::string ShapeUtil::HumanString(
+    const ProgramShape& program_shape) {
+  std::vector<std::string> parameters;
   const auto& shape_parameters = program_shape.parameters();
   parameters.reserve(shape_parameters.size());
   for (const auto& shape : shape_parameters) {
@@ -765,23 +765,23 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     PrimitiveType primitive_type) {
   switch (primitive_type) {
     case PRED:
-      return sizeof(int8);
+      return sizeof(int8_t);
     case S8:
-      return sizeof(int8);
+      return sizeof(int8_t);
     case S16:
-      return sizeof(int16);
+      return sizeof(int16_t);
     case S32:
-      return sizeof(int32);
+      return sizeof(int32_t);
     case S64:
       return sizeof(int64_t);
     case U8:
-      return sizeof(uint8);
+      return sizeof(uint8_t);
     case U16:
-      return sizeof(uint16);
+      return sizeof(uint16_t);
     case U32:
-      return sizeof(uint32);
+      return sizeof(uint32_t);
     case U64:
-      return sizeof(uint64);
+      return sizeof(uint64_t);
     case BF16:
       return sizeof(float) / 2;
     case F16:
@@ -908,8 +908,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       return dense_shape_size;
     }
 
-    absl::Span<const int64_t> shape_max_dimensions =
-        AsInt64Slice(shape.dimensions());
+    absl::Span<const int64_t> shape_max_dimensions = shape.dimensions();
     for (int64_t dim : shape_max_dimensions) {
       dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, dim);
       if (dense_shape_size < 0) {
@@ -922,7 +921,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }();
 
   if (shape_size < 0) {
-    return InvalidArgument("Shape %s size may overflow int64.",
+    return InvalidArgument("Shape %s size may overflow int64_t.",
                            ShapeUtil::HumanString(shape));
   }
 
@@ -1167,8 +1166,8 @@ Status ForEachMutableSubshapeHelper(
     Layout* new_layout = new_shape.mutable_layout();
     new_layout->set_format(DENSE);
     new_layout->clear_minor_to_major();
-    for (auto index : ComposePermutations(
-             inv_permutation, AsInt64Slice(shape.layout().minor_to_major()))) {
+    for (auto index : ComposePermutations(inv_permutation,
+                                          shape.layout().minor_to_major())) {
       new_layout->add_minor_to_major(index);
     }
     // The permutation accepted by TransposeIsBitcast is the inverse of the
@@ -1249,8 +1248,8 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   CHECK(output_shape.IsArray());
 
   // Unmodified dimensions are merely common factors of rank 1.
-  auto common_factors = CommonFactors(AsInt64Slice(input_shape.dimensions()),
-                                      AsInt64Slice(output_shape.dimensions()));
+  auto common_factors =
+      CommonFactors(input_shape.dimensions(), output_shape.dimensions());
   for (size_t i = 0; i < common_factors.size() - 1;) {
     if (1 != common_factors[i + 1].first - common_factors[i].first ||
         1 != common_factors[i + 1].second - common_factors[i].second) {
@@ -1317,7 +1316,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   //   input_dimensions = dimension_mapping * output_dimensions
   return absl::c_equal(
       ComposePermutations(dimension_mapping,
-                          AsInt64Slice(output_shape.layout().minor_to_major())),
+                          output_shape.layout().minor_to_major()),
       input_shape.layout().minor_to_major());
 }
 
@@ -1450,9 +1449,9 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     // shapes are used for conversion between logical linear indices and
     // multi-dimensional indices.
     Shape input_shape_dim0_major = MakeShapeWithDescendingLayout(
-        input_shape.element_type(), AsInt64Slice(input_shape.dimensions()));
+        input_shape.element_type(), input_shape.dimensions());
     Shape output_shape_dim0_major = MakeShapeWithDescendingLayout(
-        output_shape.element_type(), AsInt64Slice(output_shape.dimensions()));
+        output_shape.element_type(), output_shape.dimensions());
 
     for (int64_t input_dim = 0; input_dim < input_shape.rank(); ++input_dim) {
       if (input_shape.dimensions(input_dim) <= 1) {
@@ -1623,8 +1622,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   }
   CHECK_EQ(output_layout.size(), output_rank);
   Shape output_shape_with_layout = MakeShapeWithLayout(
-      output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
-      output_layout);
+      output_shape.element_type(), output_shape.dimensions(), output_layout);
   CHECK(ReshapeIsBitcast(input_shape, output_shape_with_layout))
       << "reshape is not a bitcast for input_shape: "
       << ShapeUtil::HumanStringWithLayout(input_shape)
@@ -1698,31 +1696,6 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
   return shape;
 }
 
-/*static*/ size_t ShapeUtil::Hash(const Shape& shape) {
-  using tensorflow::hash;
-  using tensorflow::Hash64Combine;
-
-  size_t hash_value = hash<PrimitiveType>()(shape.element_type());
-
-  if (shape.tuple_shapes().empty()) {
-    for (int i = 0; i < shape.dimensions_size(); ++i) {
-      hash_value =
-          Hash64Combine(hash_value, hash<int64_t>()(shape.dimensions(i)));
-      hash_value = Hash64Combine(hash_value,
-                                 hash<bool>()(shape.is_dynamic_dimension(i)));
-    }
-
-    hash_value = Hash64Combine(hash_value, LayoutUtil::Hash(shape.layout()));
-  } else {
-    hash_value = 0;
-    for (const Shape& subshape : shape.tuple_shapes()) {
-      hash_value = Hash64Combine(hash_value, ShapeUtil::Hash(subshape));
-    }
-  }
-
-  return hash_value;
-}
-
 // Returns the indices of the first elements of all consecutive subarrays of the
 // given array. For example:
 // ConsecutiveSegments({m, m+1, m+2, n, k, k+1}) = {0, 3, 4}
@@ -1776,8 +1749,7 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
     Shape descending_layout_shape =
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(a);
     Shape normalized_shape = MergeDimensions(segments, descending_layout_shape);
-    absl::Span<const int64_t> normalized_dims =
-        AsInt64Slice(normalized_shape.dimensions());
+    absl::Span<const int64_t> normalized_dims = normalized_shape.dimensions();
     std::vector<int64_t> dims_021;
     if (2 == segments.size()) {
       // The logical component-0 is of size one.

@@ -20,6 +20,7 @@ limitations under the License.
 #include <map>
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include "absl/strings/match.h"
 #include "absl/strings/substitute.h"
@@ -34,31 +35,25 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-int3 GetWorkGroupsCount(int grid_dimension, const int3& grid_size,
-                        const int3& work_group_size,
-                        const int3& work_group_launch_order) {
-  int3 work_groups_count;
-  if (grid_dimension == 1) {
-    work_groups_count.x = DivideRoundUp(grid_size.x, work_group_size.x);
-    work_groups_count.y = 1;
-    work_groups_count.z = 1;
-  } else if (grid_dimension == 2) {
-    int3 wgs;
-    wgs.x = DivideRoundUp(grid_size.x, work_group_size.x);
-    wgs.y = DivideRoundUp(grid_size.y, work_group_size.y);
-    work_groups_count.x = wgs[work_group_launch_order[0]];
-    work_groups_count.y = wgs[work_group_launch_order[1]];
-    work_groups_count.z = 1;
-  } else {  // grid_dimension == 3
-    int3 wgs;
-    wgs.x = DivideRoundUp(grid_size.x, work_group_size.x);
-    wgs.y = DivideRoundUp(grid_size.y, work_group_size.y);
-    wgs.z = DivideRoundUp(grid_size.z, work_group_size.z);
-    work_groups_count.x = wgs[work_group_launch_order[0]];
-    work_groups_count.y = wgs[work_group_launch_order[1]];
-    work_groups_count.z = wgs[work_group_launch_order[2]];
+bool IsWordSymbol(char symbol) {
+  return absl::ascii_isalnum(symbol) || symbol == '_';
+}
+
+void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
+                     std::string* str) {
+  size_t position = str->find(old_word);
+  while (position != std::string::npos) {
+    const char prev = position == 0 ? ' ' : (*str)[position - 1];
+    const char next = position + old_word.size() < str->size()
+                          ? (*str)[position + old_word.size()]
+                          : ' ';
+    if (IsWordSymbol(prev) || IsWordSymbol(next)) {
+      position = str->find(old_word, position + 1);
+      continue;
+    }
+    str->replace(position, old_word.size(), new_word);
+    position = str->find(old_word, position + new_word.size());
   }
-  return work_groups_count;
 }
 }  // namespace
 
@@ -123,6 +118,11 @@ absl::Status ComputeTask::Compile(MetalDevice* device) {
 
   operation_->args_.ReleaseCPURepresentation();
 
+  // manually resolving this defines, so as Metal has reserved words for them
+  ReplaceAllWords("float16", "float4x4", &operation_->code_);
+  ReplaceAllWords("half16", "half4x4", &operation_->code_);
+  ReplaceAllWords("float8", "float2x4", &operation_->code_);
+  ReplaceAllWords("half8", "half2x4", &operation_->code_);
   return CompileProgram(device, operation_->GetDefinition().precision,
                         operation_->code_);
 }
@@ -130,102 +130,92 @@ absl::Status ComputeTask::Compile(MetalDevice* device) {
 absl::Status ComputeTask::CompileProgram(MetalDevice* device,
                                          CalculationsPrecision precision,
                                          const std::string& kernel_code) {
-  NSString* barrier;
+  std::string simdgroup_barrier;
   // simdgroup_barrier is supported since Metal shading language version 2.0
   if (device->IsLanguageVersion2orHigher()) {
-    barrier = @"simdgroup_barrier";
+    simdgroup_barrier = "simdgroup_barrier";
   } else {
-    barrier = @"threadgroup_barrier";
+    simdgroup_barrier = "threadgroup_barrier";
   }
-  NSString* storageType;
-  NSString* accumulatorType;
-  NSString* toAccumulatorType4 = @"";
+  std::string storage_type;
+  std::string accumulator_type;
+  std::string to_accumulator_type4;
   if (precision == CalculationsPrecision::F32) {
-    storageType = @"float";
-    accumulatorType = @"float";
+    storage_type = "float";
+    accumulator_type = "float";
   } else {
     // FP16
-    storageType = @"half";
+    storage_type = "half";
     if (precision == CalculationsPrecision::F32_F16) {
-      accumulatorType = @"float";
-      toAccumulatorType4 = @"float4";
+      accumulator_type = "float";
+      to_accumulator_type4 = "float4";
     } else {
-      accumulatorType = @"half";
+      accumulator_type = "half";
     }
   }
-  NSDictionary<NSString*, NSString*>* macros = @{
-    @"float16" : @"float4x4",
-    @"half16" : @"half4x4",
-    @"float8" : @"float2x4",
-    @"half8" : @"half2x4",
-    @"FLT16_0123(V)" : @"V[0]",
-    @"FLT16_4567(V)" : @"V[1]",
-    @"FLT16_89ab(V)" : @"V[2]",
-    @"FLT16_cdef(V)" : @"V[3]",
-    @"FLT" : storageType,
-    @"FLT2" : [NSString stringWithFormat:@"%@2", storageType],
-    @"FLT3" : [NSString stringWithFormat:@"%@3", storageType],
-    @"FLT4" : [NSString stringWithFormat:@"%@4", storageType],
-    @"ACCUM_FLT" : accumulatorType,
-    @"ACCUM_FLT2" : [NSString stringWithFormat:@"%@2", accumulatorType],
-    @"ACCUM_FLT3" : [NSString stringWithFormat:@"%@3", accumulatorType],
-    @"ACCUM_FLT4" : [NSString stringWithFormat:@"%@4", accumulatorType],
-    @"INIT_ACCUM_FLT4(value)" :
-        [NSString stringWithFormat:@"%@4(value)", accumulatorType],
-    @"TO_ACCUM_TYPE" : toAccumulatorType4,
-    @"TO_ACCUM_FLT" : accumulatorType,
-    @"TO_ACCUM_FLT2" : [NSString stringWithFormat:@"%@2", accumulatorType],
-    @"TO_ACCUM_FLT3" : [NSString stringWithFormat:@"%@3", accumulatorType],
-    @"TO_ACCUM_FLT4" : [NSString stringWithFormat:@"%@4", accumulatorType],
-    @"TO_FLT4" : [NSString stringWithFormat:@"%@4", storageType],
-    @"SIMDGROUP_BARRIER" : barrier,
-    @"SIMD_LOCAL_MEM_BARRIER" : barrier,
-    @"MAIN_FUNCTION" : @"\"kernel void ComputeFunction\"",
-    @"GLOBAL_ID_0" : @"static_cast<int>(reserved_gid.x)",
-    @"GLOBAL_ID_1" : @"static_cast<int>(reserved_gid.y)",
-    @"GLOBAL_ID_2" : @"static_cast<int>(reserved_gid.z)",
-    @"LOCAL_ID_0" : @"static_cast<int>(reserved_lid.x)",
-    @"LOCAL_ID_1" : @"static_cast<int>(reserved_lid.y)",
-    @"LOCAL_ID_2" : @"static_cast<int>(reserved_lid.z)",
-    @"GROUP_ID_0" : @"static_cast<int>(reserved_group_id.x)",
-    @"GROUP_ID_1" : @"static_cast<int>(reserved_group_id.y)",
-    @"GROUP_ID_2" : @"static_cast<int>(reserved_group_id.z)",
-    @"GROUP_SIZE_0" : @"static_cast<int>(reserved_group_size.x)",
-    @"GROUP_SIZE_1" : @"static_cast<int>(reserved_group_size.y)",
-    @"GROUP_SIZE_2" : @"static_cast<int>(reserved_group_size.z)",
-    @"SUB_GROUP_LOCAL_ID" : @"static_cast<int>(reserved_simd_id)",
-    @"\"SUB_GROUP_BROADCAST(V, ID)\"" : @"\"simd_broadcast(V, ID)\"",
-    @"__local" : @"threadgroup",
-    @"__global" : @"device",
-    @"__constant" : @"constant",
-    @"LOCAL_MEM_BARRIER" : @"threadgroup_barrier(mem_flags::mem_threadgroup)",
-    @"INIT_FLT(value)" : [NSString stringWithFormat:@"%@(value)", storageType],
-    @"INIT_FLT4(value)" :
-        [NSString stringWithFormat:@"%@4(value)", storageType],
-    @"\"INIT_FLT4v4(v0, v1, v2, v3)\"" :
-        [NSString stringWithFormat:@"\"%@4(v0, v1, v2, v3)\"", storageType],
-    @"INIT_FLOAT(value)" : @"float(value)",
-    @"INIT_FLOAT2(value)" : @"float2(value)",
-    @"\"INIT_FLOAT2v2(v0, v1)\"" : @"\"float2(v0, v1)\"",
-    @"INIT_FLOAT3(value)" : @"float3(value)",
-    @"\"INIT_FLOAT3v3(v0, v1, v2)\"" : @"\"float3(v0, v1, v2)\"",
-    @"INIT_FLOAT4(value)" : @"float4(value)",
-    @"\"INIT_FLOAT4v4(v0, v1, v2, v3)\"" : @"\"float4(v0, v1, v2, v3)\"",
-    @"INIT_INT(value)" : @"int(value)",
-    @"\"INIT_INT2v2(v0, v1)\"" : @"\"int2(v0, v1)\"",
-    @"\"INIT_INT4v4(v0, v1, v2, v3)\"" : @"\"int4(v0, v1, v2, v3)\"",
-    @"CONVERT_TO_INT4(value)" : @"int4(value)",
-    @"\"SELECT_BY_INDEX_FROM_FLT4(value, index)\"" : @"\"(value)[index]\"",
+  std::map<std::string, std::string> macros = {
+      {"FLT16_0123(V)", "V[0]"},
+      {"FLT16_4567(V)", "V[1]"},
+      {"FLT16_89ab(V)", "V[2]"},
+      {"FLT16_cdef(V)", "V[3]"},
+      {"FLT", storage_type},
+      {"FLT2", storage_type + "2"},
+      {"FLT3", storage_type + "3"},
+      {"FLT4", storage_type + "4"},
+      {"ACCUM_FLT", accumulator_type},
+      {"ACCUM_FLT2", accumulator_type + "2"},
+      {"ACCUM_FLT3", accumulator_type + "3"},
+      {"ACCUM_FLT4", accumulator_type + "4"},
+      {"INIT_ACCUM_FLT4(value)", accumulator_type + "4(value)"},
+      {"TO_ACCUM_TYPE", to_accumulator_type4},
+      {"TO_ACCUM_FLT", accumulator_type},
+      {"TO_ACCUM_FLT2", accumulator_type + "2"},
+      {"TO_ACCUM_FLT3", accumulator_type + "3"},
+      {"TO_ACCUM_FLT4", accumulator_type + "4"},
+      {"TO_FLT4", storage_type + "4"},
+      {"SIMDGROUP_BARRIER", simdgroup_barrier},
+      {"SIMD_LOCAL_MEM_BARRIER", simdgroup_barrier},
+      {"MAIN_FUNCTION", "kernel void ComputeFunction"},
+      {"GLOBAL_ID_0", "static_cast<int>(reserved_gid.x)"},
+      {"GLOBAL_ID_1", "static_cast<int>(reserved_gid.y)"},
+      {"GLOBAL_ID_2", "static_cast<int>(reserved_gid.z)"},
+      {"LOCAL_ID_0", "static_cast<int>(reserved_lid.x)"},
+      {"LOCAL_ID_1", "static_cast<int>(reserved_lid.y)"},
+      {"LOCAL_ID_2", "static_cast<int>(reserved_lid.z)"},
+      {"GROUP_ID_0", "static_cast<int>(reserved_group_id.x)"},
+      {"GROUP_ID_1", "static_cast<int>(reserved_group_id.y)"},
+      {"GROUP_ID_2", "static_cast<int>(reserved_group_id.z)"},
+      {"GROUP_SIZE_0", "static_cast<int>(reserved_group_size.x)"},
+      {"GROUP_SIZE_1", "static_cast<int>(reserved_group_size.y)"},
+      {"GROUP_SIZE_2", "static_cast<int>(reserved_group_size.z)"},
+      {"SUB_GROUP_LOCAL_ID", "static_cast<int>(reserved_simd_id)"},
+      {"SUB_GROUP_BROADCAST(V, ID)", "simd_broadcast(V, ID)"},
+      {"__local", "threadgroup"},
+      {"__global", "device"},
+      {"__constant", "constant"},
+      {"LOCAL_MEM_BARRIER", "threadgroup_barrier(mem_flags::mem_threadgroup)"},
+      {"INIT_FLT(value)", storage_type + "(value)"},
+      {"INIT_FLT4(value)", storage_type + "4(value)"},
+      {"INIT_FLT4v4(v0, v1, v2, v3)", storage_type + "4(v0, v1, v2, v3)"},
+      {"INIT_FLOAT(value)", "float(value)"},
+      {"INIT_FLOAT2(value)", "float2(value)"},
+      {"INIT_FLOAT2v2(v0, v1)", "float2(v0, v1)"},
+      {"INIT_FLOAT3(value)", "float3(value)"},
+      {"INIT_FLOAT3v3(v0, v1, v2)", "float3(v0, v1, v2)"},
+      {"INIT_FLOAT4(value)", "float4(value)"},
+      {"INIT_FLOAT4v4(v0, v1, v2, v3)", "float4(v0, v1, v2, v3)"},
+      {"INIT_INT(value)", "int(value)"},
+      {"INIT_INT2v2(v0, v1)", "int2(v0, v1)"},
+      {"INIT_INT4v4(v0, v1, v2, v3)", "int4(v0, v1, v2, v3)"},
+      {"CONVERT_TO_INT4(value)", "int4(value)"},
+      {"SELECT_BY_INDEX_FROM_FLT4(value, index)", "(value)[index]"},
   };
 
-  NSString* code =
-      [NSString stringWithCString:kernel_code.c_str()
-                         encoding:[NSString defaultCStringEncoding]];
   if (use_arguments_buffer_) {
     if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
       id<MTLFunction> function;
-      RETURN_IF_ERROR(CreateFunction(device->device(), code, @"ComputeFunction",
-                                     macros, &function));
+      RETURN_IF_ERROR(CreateFunction(device->device(), kernel_code,
+                                     "ComputeFunction", macros, &function));
       arguments_encoder_ = [function newArgumentEncoderWithBufferIndex:0];
       if (!arguments_encoder_) {
         return absl::InternalError("Failed to get MTLArgumentEncoder.");
@@ -265,8 +255,8 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
     }
   } else {
     id<MTLComputePipelineState> program;
-    RETURN_IF_ERROR(CreateComputeProgram(device->device(), code,
-                                         @"ComputeFunction", macros, &program));
+    RETURN_IF_ERROR(CreateComputeProgram(device->device(), kernel_code,
+                                         "ComputeFunction", macros, &program));
     if (!program) {
       return absl::InternalError("Unknown shader compilation error");
     }

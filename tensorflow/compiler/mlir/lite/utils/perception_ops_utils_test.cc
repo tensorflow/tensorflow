@@ -39,7 +39,7 @@ FuncOp createMaxUnpoolingFunc(
     const SmallVector<mlir::Type, NOutput>& output_types) {
   auto func_type = builder->getFunctionType(input_types, output_types);
   auto func =
-      FuncOp::create(mlir::NameLoc::get(builder->getIdentifier("fused_func")),
+      FuncOp::create(mlir::NameLoc::get(builder->getStringAttr("fused_func")),
                      "fused_func", func_type, {});
 
   func.addEntryBlock();
@@ -85,13 +85,13 @@ mlir::TF::FuncAttr createMaxUnpoolingAttr(mlir::MLIRContext* context,
                                           const ArrayAttr& strides) {
   SmallVector<::mlir::NamedAttribute, 3> fields;
 
-  auto padding_id = ::mlir::Identifier::get("padding", context);
+  auto padding_id = ::mlir::StringAttr::get(context, "padding");
   fields.emplace_back(padding_id, StringAttr::get(context, padding));
 
-  auto pool_size_id = ::mlir::Identifier::get("pool_size", context);
+  auto pool_size_id = ::mlir::StringAttr::get(context, "pool_size");
   fields.emplace_back(pool_size_id, pool_size);
 
-  auto strides_id = ::mlir::Identifier::get("strides", context);
+  auto strides_id = ::mlir::StringAttr::get(context, "strides");
   fields.emplace_back(strides_id, strides);
 
   DictionaryAttr dict = DictionaryAttr::get(context, fields);

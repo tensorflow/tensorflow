@@ -97,14 +97,15 @@ static llvm::Error MakeError(xla::Status status) {
 
 // Clones `op` into a function within a module with `arguments`.
 // The `get_global_ops` are the def ops of `arguments`, or null otherwise.
-static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
-    Operation* op, mlir::ValueRange arguments,
-    mlir::MutableArrayRef<GetGlobalOp> get_global_ops) {
+static std::tuple<mlir::OwningOpRef<mlir::ModuleOp>, mlir::FuncOp>
+CloneToModule(Operation* op, mlir::ValueRange arguments,
+              mlir::MutableArrayRef<GetGlobalOp> get_global_ops) {
   auto loc = op->getLoc();
   auto* context = op->getContext();
   mlir::OpBuilder builder(context);
 
-  mlir::OwningModuleRef module_op = builder.create<mlir::ModuleOp>(loc);
+  mlir::OwningOpRef<mlir::ModuleOp> module_op =
+      builder.create<mlir::ModuleOp>(loc);
   builder.setInsertionPointToEnd(module_op->getBody());
   // Clone and annotate the memref.global ops that the memref.get_global ops
   // refer to. The lmhlo.alloc index refers to one of the function arguments.
@@ -138,7 +139,7 @@ static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
     mapping.map(get_global_op, builder.clone(*get_global_op)->getResult(0));
   }
   auto* clone = builder.clone(*op, mapping);
-  auto name_loc = mlir::NameLoc::get(builder.getIdentifier(func_name));
+  auto name_loc = mlir::NameLoc::get(builder.getStringAttr(func_name));
   clone->setLoc(mlir::FusedLoc::get(context, {loc, name_loc}));
   builder.create<mlir::lmhlo::TerminatorOp>(loc);
 
@@ -186,15 +187,14 @@ Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
   gpu_device_info.block_dim_limit_x = 2147483647;
   gpu_device_info.block_dim_limit_y = 65535;
   gpu_device_info.block_dim_limit_z = 65535;
-  const xla::HloProfileIndexMap* profile_index_map = nullptr;
 
   llvm_module->setTargetTriple(target_triple);
   llvm_module->setDataLayout(data_layout);
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, profile_index_map,
-      func_op->getContext(), llvm_module);
+      gpu_device_info, cuda_compute_capability, func_op->getContext(),
+      llvm_module);
 
   ir_emitter_context.set_allocations(allocations);
 

@@ -78,7 +78,7 @@ void HexagonDelegateProvider::LogParams(const ToolParams& params,
 
 TfLiteDelegatePtr HexagonDelegateProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
-  TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
+  TfLiteDelegatePtr delegate = CreateNullDelegate();
 #if defined(TFLITE_ENABLE_HEXAGON)
   if (params.Get<bool>("use_hexagon")) {
     TfLiteHexagonDelegateOptions options = {0};

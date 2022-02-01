@@ -64,7 +64,7 @@ FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln, bool cifg) {
   auto func_type = builder->getFunctionType(input_types, output_type);
 
   auto func =
-      FuncOp::create(mlir::NameLoc::get(builder->getIdentifier("fused_func")),
+      FuncOp::create(mlir::NameLoc::get(builder->getStringAttr("fused_func")),
                      "fused_func", func_type, {});
   func.addEntryBlock();
 

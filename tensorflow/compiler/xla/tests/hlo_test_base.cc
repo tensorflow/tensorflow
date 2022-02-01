@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -111,12 +110,12 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
 }
 
 std::unique_ptr<HloModule> HloTestBase::CreateNewUnverifiedModule(
-    const string& name) {
+    const std::string& name) {
   return absl::make_unique<HloModule>(name, GetModuleConfigForTest());
 }
 
 std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
-    const string& name, int64_t replica_count) {
+    const std::string& name, int64_t replica_count) {
   return absl::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(replica_count), verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
@@ -145,10 +144,12 @@ HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
 /* static */
 StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
                                        HloModule* module) {
-  const string module_str_before_run = module->ToProto().ShortDebugString();
+  const std::string module_str_before_run =
+      module->ToProto().ShortDebugString();
   const auto status_or = hlo_pass->Run(module);
   if (status_or.status().ok()) {
-    const string module_str_after_run = module->ToProto().ShortDebugString();
+    const std::string module_str_after_run =
+        module->ToProto().ShortDebugString();
     if (!status_or.ValueOrDie()) {
       // Check that the proto remains same.
       EXPECT_EQ(module_str_after_run, module_str_before_run);
@@ -470,7 +471,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 ::testing::AssertionResult HloTestBase::Run(string_view hlo_string,
                                             bool run_hlo_passes,
                                             ExecutionProfile* profile,
-                                            string backend_config) {
+                                            std::string backend_config) {
   auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
@@ -515,10 +516,9 @@ HloTestBase::RunAndCompareTwoModulesInternal(
              : ::testing::AssertionFailure() << output.status().error_message();
 }
 
-::testing::AssertionResult HloTestBase::RunReplicated(string_view hlo_string,
-                                                      bool run_hlo_passes,
-                                                      int64_t num_replicas,
-                                                      string backend_config) {
+::testing::AssertionResult HloTestBase::RunReplicated(
+    string_view hlo_string, bool run_hlo_passes, int64_t num_replicas,
+    std::string backend_config) {
   auto module_or_status =
       ParseAndReturnVerifiedModule(hlo_string, num_replicas);
   if (!module_or_status.ok()) {
@@ -558,7 +558,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::RunMultipleTimes(
     string_view hlo_string, bool run_hlo_passes,
-    std::vector<ExecutionProfile>* profiles, string backend_config,
+    std::vector<ExecutionProfile>* profiles, std::string backend_config,
     bool assert_determinism) {
   int n = profiles->size();
   std::vector<std::vector<Literal*>> fake_argument_ptrs(n);
@@ -632,7 +632,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareFromFile(
-    const string& filename, const absl::optional<ErrorSpec>& error,
+    const std::string& filename, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
@@ -658,7 +658,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPassesFromFile(
-    const string& filename, const absl::optional<ErrorSpec>& error,
+    const std::string& filename, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
       HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
@@ -710,7 +710,7 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
 Backend& HloTestBase::backend() { return test_runner_.backend(); }
 
 /* static */
-string HloTestBase::TestName() {
+std::string HloTestBase::TestName() {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 

@@ -62,7 +62,7 @@ class CpuHardware : public TargetHardware {
            kCrossHardwareTransferFixedCost;
   }
 
-  mlir::OwningRewritePatternList GetTransformations(
+  mlir::RewritePatternSet GetTransformations(
       MLIRContext* context) const override {
     return {context};
   }

@@ -1133,8 +1133,8 @@ REGISTER_OP("ArgMax")
     .Input("dimension: Tidx")
     .Output("output: output_type")
     .Attr("T: {numbertype, bool}")
-    .Attr("Tidx: {int32, int64} = DT_INT32")
-    .Attr("output_type: {int32, int64} = DT_INT64")
+    .Attr("Tidx: {int16, int32, int64} = DT_INT32")
+    .Attr("output_type: {int16, int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
 
 REGISTER_OP("ArgMin")
@@ -1489,6 +1489,13 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
                       Eigen::numext::abs(delta))
                    : (Eigen::numext::ceil(
                          Eigen::numext::abs((limit - start) / delta))));
+
+  // Undefined behaviour if size will not fit into int64_t
+  if (size > std::numeric_limits<int64_t>::max()) {
+    return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                   std::numeric_limits<int64_t>::max());
+  }
+
   c->set_output(0, c->Vector(static_cast<int64_t>(size)));
   return Status::OK();
 }

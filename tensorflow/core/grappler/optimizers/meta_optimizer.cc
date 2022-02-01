@@ -1161,7 +1161,7 @@ string MetaOptimizer::GetResultString() const {
   return result_string;
 }
 
-void MetaOptimizer::PrintResult() { LOG(INFO) << GetResultString(); }
+void MetaOptimizer::PrintResult() { VLOG(1) << GetResultString(); }
 
 bool MetaOptimizerEnabled(const ConfigProto& cfg) {
   const auto& rewrite_cfg = cfg.graph_options().rewrite_options();

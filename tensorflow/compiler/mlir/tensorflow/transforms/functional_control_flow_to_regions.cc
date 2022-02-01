@@ -62,8 +62,10 @@ YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
   OpBuilder builder(caller_region);
   Block* entry = builder.createBlock(&caller_region);
 
+  auto loc = op->getLoc();
   if (use_region_args) {
-    entry->addArguments(func.getType().getInputs());
+    auto inputs = func.getType().getInputs();
+    entry->addArguments(inputs, SmallVector<Location>(inputs.size(), loc));
     args = entry->getArguments();
   }
   llvm::SmallVector<Value, 4> casted_args;
@@ -72,13 +74,13 @@ YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
     Value arg = std::get<0>(ArgAndType);
     Type expected_type = std::get<1>(ArgAndType);
     if (arg.getType() != expected_type) {
-      arg = builder.create<CastOp>(op->getLoc(), expected_type, arg,
+      arg = builder.create<CastOp>(loc, expected_type, arg,
                                    /*Truncate=*/builder.getBoolAttr(false));
     }
     casted_args.push_back(arg);
   }
-  auto call = builder.create<CallOp>(op->getLoc(), func, casted_args);
-  return builder.create<YieldOp>(op->getLoc(), call.getResults());
+  auto call = builder.create<CallOp>(loc, func, casted_args);
+  return builder.create<YieldOp>(loc, call.getResults());
 }
 
 // Converts the condition for an IfOp/WhileOp to a boolean value.

@@ -290,7 +290,7 @@ class ReductionTest(PForTestCase):
   def test_reduce_class(self):
     x = random_ops.random_uniform([8, 3])
 
-    class LoopFn(object):
+    class LoopFn:
 
       def __init__(self):
         pass

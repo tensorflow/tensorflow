@@ -82,6 +82,23 @@ StatusOr<TensorShape> GetTensorShapeFromXlaArgument(const XlaArgument& arg) {
   }
 }
 
+Status MaybeRewriteLayoutWithShardedShape(
+    mlir::StringAttr sharding,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    xla::Shape* shape) {
+  if (!sharding) return Status::OK();
+
+  xla::OpSharding op_sharding;
+  if (!op_sharding.ParseFromString(sharding.getValue().str()))
+    return errors::InvalidArgument("failed to parse sharding '",
+                                   sharding.getValue().str(), "'");
+  absl::optional<xla::HloSharding> hlo_sharding;
+  TF_ASSIGN_OR_RETURN(hlo_sharding, xla::HloSharding::FromProto(op_sharding));
+  TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
+      hlo_sharding, /*use_fast_memory=*/false, shape_representation_fn, shape));
+  return Status::OK();
+}
+
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
 Status GetXlaInputShapes(
     mlir::ModuleOp module, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
@@ -113,18 +130,8 @@ Status GetXlaInputShapes(
     // Rewrite layout with sharding, if sharding is set.
     auto sharding =
         main_func.getArgAttrOfType<mlir::StringAttr>(i, "mhlo.sharding");
-    if (!sharding) continue;
-
-    absl::optional<xla::HloSharding> arg_sharding;
-    xla::OpSharding op_sharding;
-    if (!op_sharding.ParseFromString(sharding.getValue().str()))
-      return errors::InvalidArgument("failed to parse argument sharding ", i,
-                                     " '", sharding.getValue().str(), "'");
-
-    TF_ASSIGN_OR_RETURN(arg_sharding, xla::HloSharding::FromProto(op_sharding));
-    TF_RETURN_IF_ERROR(
-        RewriteLayoutWithShardedShape(arg_sharding, /*use_fast_memory=*/false,
-                                      shape_representation_fn, &xla_shape));
+    TF_RETURN_IF_ERROR(MaybeRewriteLayoutWithShardedShape(
+        sharding, shape_representation_fn, &xla_shape));
   }
   if (use_tuple_args) {
     xla_input_shapes->push_back(
@@ -171,6 +178,12 @@ Status GetOutputInfo(
         xla::Shape shape,
         xla::TypeToShape(type_and_idx.value(),
                          shape_representation_fn_no_fast_memory));
+
+    auto sharding = main_func.getResultAttrOfType<mlir::StringAttr>(
+        type_and_idx.index(), "mhlo.sharding");
+    TF_RETURN_IF_ERROR(MaybeRewriteLayoutWithShardedShape(
+        sharding, shape_representation_fn, &shape));
+
     auto tensor_type = type_and_idx.value().dyn_cast<mlir::RankedTensorType>();
     shapes.push_back(shape);
 
@@ -528,7 +541,7 @@ Status CompileSerializedMlirToXlaHlo(
   mlir::DialectRegistry mlir_registry;
   RegisterDialects(mlir_registry);
   mlir::MLIRContext mlir_context(mlir_registry);
-  mlir::OwningModuleRef mlir_module;
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
 
   TF_RETURN_IF_ERROR(
       DeserializeMlirModule(mlir_module_string, &mlir_context, &mlir_module));
@@ -664,8 +677,11 @@ Status BuildHloFromModule(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
   llvm::SmallVector<TensorOrResourceShape, 4> arg_shapes;
   TF_RETURN_IF_ERROR(
       CompileGraphSetup(module_op, args, &remaining_params, arg_shapes));
-  return BuildHloFromTf(module_op, builder, xla_params, returns, arg_shapes,
-                        device_type, custom_legalization_passes);
+  // Passing down only remaining (non-constant) xla_params.
+  llvm::SmallVector<xla::XlaOp, 2> remaining_xla_params;
+  for (auto i : remaining_params) remaining_xla_params.push_back(xla_params[i]);
+  return BuildHloFromTf(module_op, builder, remaining_xla_params, returns,
+                        arg_shapes, device_type, custom_legalization_passes);
 }
 
 Status CompileGraphToXlaHlo(
@@ -690,7 +706,7 @@ Status CompileGraphToXlaHlo(
   return status;
 }
 
-xla::StatusOr<mlir::OwningModuleRef> GraphToModule(
+xla::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphToModule(
     const Graph& graph, llvm::ArrayRef<std::string> control_rets,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     mlir::MLIRContext* context) {
@@ -718,7 +734,7 @@ Status BuildHloFromGraph(
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
   TF_ASSIGN_OR_RETURN(
-      mlir::OwningModuleRef module,
+      mlir::OwningOpRef<mlir::ModuleOp> module,
       GraphToModule(graph, control_rets, flib_def, debug_info, &mlir_context));
   return BuildHloFromModule(module.get(), builder, xla_params, returns, args,
                             device_type, custom_legalization_passes);
@@ -735,7 +751,7 @@ Status CompileGraphToXlaHlo(
         custom_legalization_passes) {
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
-      mlir::OwningModuleRef module,
+      mlir::OwningOpRef<mlir::ModuleOp> module,
       GraphToModule(graph, control_rets, flib_def, debug_info, &context));
   return CompileGraphToXlaHlo(
       module.get(), args, device_type, use_tuple_args, analyse_graph,

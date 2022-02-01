@@ -27,8 +27,7 @@ namespace TFR {
 
 // Scans the func op and adds all the canonicalization patterns of the ops
 // except the tf ops, inside the function.
-void populateCanonicalizationPatterns(FuncOp func,
-                                      OwningRewritePatternList &patterns);
+void populateCanonicalizationPatterns(FuncOp func, RewritePatternSet &patterns);
 
 // Decompose ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(

@@ -129,8 +129,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   string status_payload;
   // Construct payload if compile_status is not ok and there's no payload for
   // compilation yet.
-  if (!compile_status.ok() &&
-      !compile_status
+  if (!compile_status
            .GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
            .has_value()) {
     tpu::CompilationResultProto proto;
@@ -138,8 +137,6 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
     proto.set_status_error_message(compile_status.error_message());
     status_payload = proto.SerializeAsString();
   }
-  metrics::UpdateTpuErrorCounter("TpuCompileOp",
-                                 error_name(compile_status.code()));
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
                                 TpuCompileInterface::kTpuCompileErrorPayloadKey,
                                 status_payload, compile_status);
@@ -181,6 +178,8 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
             << session_name << " took " << duration << " and "
             << (compile_status.ok() ? "succeeded" : "failed");
   tpu_program_group->LogProgramMemorySummary();
+  metrics::UpdateTpuErrorCounter("TpuCompileOp",
+                                 error_name(compile_status.code()));
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
 

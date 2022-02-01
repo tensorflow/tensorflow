@@ -215,7 +215,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 
   // Return an MLIR location for an HLO instruction.
   Location getLocation(const xla::HloInstruction* inst) {
-    return NameLoc::get(builder_.getIdentifier(inst->name()));
+    return NameLoc::get(builder_.getStringAttr(inst->name()));
   }
 
   // This map provides access to MLIR buffers for each HLO buffer allocation.
@@ -278,9 +278,8 @@ tensorflow::Status HloToLhloModule(const xla::BufferAssignment& assignment,
 tensorflow::Status OptimizeAndConvertHloToLmhlo(
     std::unique_ptr<xla::HloModule> hlo_module, ModuleOp module,
     StringRef platform_name, bool optimize_xla_hlo);
-OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
-                                               MLIRContext* context,
-                                               bool optimize_xla_hlo);
+OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
+    llvm::StringRef input, MLIRContext* context, bool optimize_xla_hlo);
 
 // This register the MLIR pass with the command line.
 void RegisterMhloToLhloWithXlaPass();

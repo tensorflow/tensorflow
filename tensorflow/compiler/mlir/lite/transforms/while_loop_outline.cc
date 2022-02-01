@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -137,7 +136,7 @@ FuncOp CreateOutlineFunc(StringRef name, Region& region,
   new_args.reserve(extern_values.size());
   Block& block = func_region.front();
   for (Value value : extern_values) {
-    auto arg = block.addArgument(value.getType());
+    auto arg = block.addArgument(value.getType(), loc);
     replaceAllUsesInRegionWith(value, arg, func_region);
     new_args.push_back(arg);
   }
@@ -191,7 +190,7 @@ void ReplaceRegionWithCall(StringRef name, Region& region,
   SmallVector<Value, 4> new_operands;
   new_operands.reserve(types.size());
   for (Type t : llvm::makeArrayRef(types).drop_back(extern_values.size()))
-    new_operands.push_back(block->addArgument(t));
+    new_operands.push_back(block->addArgument(t, loc));
   for (Value v : extern_values) new_operands.push_back(v);
   auto call = b.create<CallOp>(loc, func, new_operands);
   b.create<YieldOp>(loc, call.getResults());

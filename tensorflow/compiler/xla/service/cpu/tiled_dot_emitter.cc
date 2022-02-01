@@ -129,15 +129,16 @@ class GemvConfig {
   int64_t k() const { return k_; }
   bool has_addend() const { return has_addend_; }
 
-  string GetCacheKey() const {
+  std::string GetCacheKey() const {
     return absl::StrCat(name_, "_", PrimitiveType_Name(scalar_type()), "_",
                         tile_rows(), "_", tile_cols(), "_", m(), "_", k(),
                         has_addend() ? "_with_addend" : "");
   }
 
  protected:
-  explicit GemvConfig(string name, PrimitiveType scalar_type, int64_t tile_rows,
-                      int64_t tile_cols, int64_t m, int64_t k, bool has_addend)
+  explicit GemvConfig(std::string name, PrimitiveType scalar_type,
+                      int64_t tile_rows, int64_t tile_cols, int64_t m,
+                      int64_t k, bool has_addend)
       : name_(std::move(name)),
         scalar_type_(scalar_type),
         tile_rows_(tile_rows),
@@ -147,7 +148,7 @@ class GemvConfig {
         has_addend_(has_addend) {}
 
  private:
-  string name_;
+  std::string name_;
   PrimitiveType scalar_type_;
   int64_t tile_rows_;
   int64_t tile_cols_;
@@ -629,7 +630,9 @@ class TiledSmallGemmEmitter {
     int64_t k() const { return k_; }
     int64_t n() const { return n_; }
 
-    string ToString() const { return absl::StrCat(m(), "x", k(), "x", n()); }
+    std::string ToString() const {
+      return absl::StrCat(m(), "x", k(), "x", n());
+    }
 
    private:
     const int64_t m_;
@@ -671,7 +674,7 @@ class TiledSmallGemmEmitter {
           tile_size_m_(tile_size_m),
           tile_size_k_(tile_size_k) {}
 
-    string GetCacheKey() const {
+    std::string GetCacheKey() const {
       return absl::StrCat("gemm_", PrimitiveType_Name(scalar_type()), "_",
                           dims().ToString(), "_", max_vectorization_width(),
                           "_", min_vectorization_width(), "_", tile_size_m(),

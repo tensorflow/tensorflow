@@ -47,7 +47,7 @@ OBJECT_CONFIG_JSON_KEY = "OBJECT_CONFIG_JSON"
 
 
 @enum.unique
-class SaveType(enum.Enum):
+class SaveType(str, enum.Enum):
   SAVEDMODEL = "savedmodel"
   CHECKPOINT = "checkpoint"
 
@@ -220,7 +220,7 @@ class PythonStateSaveable(saveable_object.SaveableObject):
 class PythonStringStateSaveable(PythonStateSaveable):
   """Saves Python state in a checkpoint."""
 
-  def __init__(self, name, state_callback, restore_callback=None):
+  def __init__(self, name, state_callback, restore_callback):
     """Configure saving.
 
     Args:
@@ -228,11 +228,8 @@ class PythonStringStateSaveable(PythonStateSaveable):
       state_callback: A function taking no arguments which returns a string.
         This function is run every time a checkpoint is written.
       restore_callback: A function taking a Python string, used to restore
-        state. Optional; defaults to doing nothing, in which case it is ignored
-        by status assertions such as assert_consumed().
+        state.
     """
-    self._has_trivial_state_callback = (restore_callback is None)
-
     def _state_callback_wrapper():
       with ops.init_scope():
         return state_callback()
@@ -245,11 +242,6 @@ class PythonStringStateSaveable(PythonStateSaveable):
         self._save_string, "", name, dtype=dtypes.string)
     super(PythonStringStateSaveable, self).__init__(self._save_string, [spec],
                                                     name)
-
-  @property
-  def optional_restore(self):
-    """For values with no restore, relaxes assert_consumed()."""
-    return self._has_trivial_state_callback
 
   def feed_dict_additions(self):
     """When running a graph, indicates fresh state to feed."""
@@ -466,9 +458,8 @@ class CheckpointPosition(object):
           # added or deleted. Stores unused attributes so an exception can be
           # raised if the user decides to check that everything in the
           # checkpoint was loaded.
-          if not serialized_tensor.optional_restore:
-            self._checkpoint.unused_attributes.setdefault(
-                self._proto_id, []).append(serialized_tensor.name)
+          self._checkpoint.unused_attributes.setdefault(
+              self._proto_id, []).append(serialized_tensor.name)
           continue
         if callable(saveable_factory):
           saveable = saveable_factory(name=serialized_tensor.checkpoint_key)
@@ -1470,6 +1461,7 @@ class Trackable(object):
     Returns:
       Dictionary mapping names to child trackables.
     """
+    self._maybe_initialize_trackable()
     # TODO(kathywu): Migrate `_checkpoint_dependencies` overrides to
     # `_trackable_children`.
     if save_type == SaveType.CHECKPOINT:

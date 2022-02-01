@@ -160,7 +160,7 @@ def wrap_cached_variables(concrete_function):
       None, wrap_function, args=tuple(args), kwargs={},
       func_graph=outer_graph)
   fn = defun.ConcreteFunction(
-      outer_graph, function_spec=concrete_function._function_spec)  # pylint: disable=protected-access
+      outer_graph, spec=concrete_function._function_spec)  # pylint: disable=protected-access
   fn._arg_keywords = concrete_function._arg_keywords  # pylint: disable=protected-access
   fn._num_positional_args = concrete_function._num_positional_args  # pylint: disable=protected-access
 

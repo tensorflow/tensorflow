@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt %s -fission | FileCheck %s --dump-input=always
+// RUN: tf-tfrt-opt %s -tf-jitrt-fission | FileCheck %s --dump-input=always
 
 // CHECK-LABEL: @matmul_bias_add
 func @matmul_bias_add(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>)

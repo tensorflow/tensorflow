@@ -14,65 +14,65 @@
 # limitations under the License.
 # ==============================================================================
 
+# Called like install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10"
 PIP="$1"
 PIP_INSTALL=("${PIP}" "install" "--prefer-binary" --upgrade)
 
-if [[ ! -x "$(which "${PIP}")" ]]; then
-  # Python2 doesn't ship with pip by default.
-  PYTHON="${PIP/pip/python}"
-  wget "https://bootstrap.pypa.io/get-pip.py"
-  "${PYTHON}" "get-pip.py"
-  rm "get-pip.py"
-fi
+PYTHON="${PIP/pip/python}"
+wget "https://bootstrap.pypa.io/get-pip.py"
+"${PYTHON}" "get-pip.py" --force-reinstall
+rm "get-pip.py"
+"${PYTHON}" -m ensurepip --upgrade
+
+# TODO(mihaimaruseac): Assume Python3. Need to redo logic when Python4 is released
+PYTHON_VERSION=$(echo ${PIP##*.})  # only the last number, eg. 10
 
 PACKAGES=(
-  # NOTE: As numpy has releases that break semver guarantees and several other
-  # deps depend on numpy without an upper bound, we must install numpy before
-  # everything else.
-  "numpy~=1.19.2"
-  "auditwheel"
-  "wheel"
-  "setuptools"
-  "virtualenv"
-  "six"
-  "future"
   "absl-py"
-  "werkzeug"
-  "bleach"
-  "markdown"
-  "protobuf"
-  "scipy"
-  "scikit-learn"
-  "pandas"
-  "psutil"
-  "py-cpuinfo"
-  "pylint==2.7.4"
-  "pycodestyle"
-  "portpicker"
-  "grpcio"
+  "argparse"
   "astor"
+  "auditwheel"
+  "bleach"
+  "dill"
+  "dm-tree"
+  "future"
   "gast"
-  "termcolor"
+  "grpcio"
+  "h5py"
   "keras-nightly"
   "keras_preprocessing"
-  "h5py"
-  "tf-estimator-nightly"
-  "tb-nightly"
-  "argparse"
-  "dm-tree"
-  "dill"
-  "tblib"
-  "pybind11"
   "libclang"
+  "markdown"
+  "pandas"
+  "portpicker"
+  "protobuf"
+  "psutil"
+  "py-cpuinfo"
+  "pybind11"
+  "pycodestyle"
+  "pylint==2.7.4"
+  "scikit-learn"
+  "scipy"
+  "six"
+  "tb-nightly"
+  "tblib"
+  "termcolor"
+  "tf-estimator-nightly"
+  "werkzeug"
+  "wheel"
 )
-
-# tf.mock require the following for python2:
-if [[ "${PIP}" == *pip2* ]]; then
-  PACKAGES+=("mock")
-fi
 
 # Get the latest version of pip so it recognize manylinux2010
 "${PIP}" "install" "--upgrade" "pip"
+"${PIP}" "install" "--upgrade" "setuptools" "virtualenv"
 
 "${PIP_INSTALL[@]}" "${PACKAGES[@]}"
+
+# Special casing by version of Python
+# E.g., numpy supports py3.10 only from 1.21.3
+if [[ ${PYTHON_VERSION} -eq 10 ]]; then
+  "${PIP_INSTALL[@]}" "numpy==1.21.3"
+else
+  "${PIP_INSTALL[@]}" "numpy==1.19"
+fi
 

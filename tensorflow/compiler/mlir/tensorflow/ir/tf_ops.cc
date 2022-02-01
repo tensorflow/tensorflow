@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/APFloat.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -111,7 +111,7 @@ void MultiDeviceProcessInlinedCallBlocks(
 
   // Duplicate of the logic in MultiDeviceFunctionBodyPlacer::BodyNodeDevice
   // LINT.IfChange
-  auto device_id = Identifier::get("device", call->getContext());
+  auto device_id = StringAttr::get(call->getContext(), "device");
   auto caller_device = call->getAttrOfType<StringAttr>(device_id);
   if (!caller_device) return;
 
@@ -296,11 +296,18 @@ bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
   return true;
 }
 
-std::vector<TensorFlowDialect::AdditionalOpFunction>
-    *TensorFlowDialect::GetAdditionalOperationHooks() {
-  static auto *const additional_operation_hooks =
-      new std::vector<TensorFlowDialect::AdditionalOpFunction>();
-  return additional_operation_hooks;
+// Hook functions which may add additional operations to the dialect.
+// These are invoked at construction time.
+static DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>
+    &GetAdditionalOperationHooks() {
+  static auto *additional_operation_hooks =
+      new DenseMap<TypeID, TensorFlowDialect::AdditionalOpFunction>();
+  return *additional_operation_hooks;
+}
+
+void TensorFlowDialect::RegisterAdditionalOperationHook(
+    TypeID id, AdditionalOpFunction fn) {
+  GetAdditionalOperationHooks().try_emplace(id, std::move(fn));
 }
 
 TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
@@ -326,8 +333,8 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // registered.
   allowUnknownOperations();
 
-  for (const auto &hook : *GetAdditionalOperationHooks()) {
-    hook(*this);
+  for (auto &hook : GetAdditionalOperationHooks()) {
+    hook.second(*this);
   }
 }
 

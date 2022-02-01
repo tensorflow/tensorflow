@@ -47,7 +47,9 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace quant {
@@ -69,11 +71,13 @@ constexpr double kNearZeroTolerance = 1.0e-6;
 enum QuantizationTrait { FullyQuantizable, NotQuantizable };
 
 using QuantParams = quant::QuantizedType;
+using QuantSpec = mlir::TFL::QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
     std::function<QuantParams(const std::vector<QuantParams>&, bool)>;
 using StringSet = absl::flat_hash_set<std::string>;
+using CustomMap = TFL::CustomOpMap;
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {
@@ -117,13 +121,10 @@ struct NumericVerifySpec {
 // Used in TFL Quantize Pass
 struct QuantPassSpec {
   // Variables to control TFL Numeric Verify
-  NumericVerifySpec numeric_verify;
+  NumericVerifySpec numeric_verify_spec;
 
-  // Names of ops to block from quantization
-  StringSet ops_blocklist;
-
-  // Names of locations to block from quantization
-  StringSet nodes_blocklist;
+  // Variables related to quantization
+  QuantSpec quant_spec;
 };
 
 // A function signature for getting the particular OpQuantSpec for the provided
@@ -278,12 +279,7 @@ class QuantizationPattern : public RewritePattern {
                                const QuantPassSpec& quant_params)
       // Set the score to a large number so it is always preferred.
       : RewritePattern(RootOp::getOperationName(), 300, context),
-        enable_verify_(quant_params.numeric_verify.verify_numeric),
-        error_tolerance_(quant_params.numeric_verify.error_tolerance),
-        whole_model_verify_(quant_params.numeric_verify.whole_model_verify),
-        log_if_failed_(quant_params.numeric_verify.log_if_failed_flag),
-        ops_blocklist_(quant_params.ops_blocklist),
-        nodes_blocklist_(quant_params.nodes_blocklist) {}
+        quant_params_(quant_params) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
@@ -315,6 +311,17 @@ class QuantizationPattern : public RewritePattern {
       }
     }
 
+    tensorflow::DataType inference_type =
+        quant_params_.quant_spec.inference_type;
+    bool weight_only_quantization =
+        quant_params_.quant_spec.weight_only_quantization;
+    bool enable_verify = quant_params_.numeric_verify_spec.verify_numeric;
+    bool enable_whole_model_verify =
+        quant_params_.numeric_verify_spec.whole_model_verify;
+    StringSet ops_blocklist = quant_params_.quant_spec.ops_blocklist;
+    StringSet nodes_blocklist = quant_params_.quant_spec.nodes_blocklist;
+    CustomMap custom_map = quant_params_.quant_spec.custom_map;
+
     // Rewrite the floating-point ops to the quantized version, by fusing
     // preceding dequantize ops and succeding quantize ops.
     for (Operation* quantizing_op : quantizing_ops) {
@@ -331,8 +338,10 @@ class QuantizationPattern : public RewritePattern {
         return failure();
       }
 
-      if (IsOpNotQuantizable(quantizing_op)) {
-        if (!(enable_verify_ && whole_model_verify_)) {
+      if (IsOpNotQuantizable(quantizing_op) &&
+          !static_cast<const ConcretTy*>(this)->IsQuantizableCustomOp(
+              quantizing_op, custom_map)) {
+        if (!(enable_verify && enable_whole_model_verify)) {
           return failure();
         }
         if (quantizing_op->hasAttr(kDebugModeOpQuantAttrName) ||
@@ -349,17 +358,19 @@ class QuantizationPattern : public RewritePattern {
         return success();
       }
 
-      if (!ops_blocklist_.empty() &&
-          (ops_blocklist_.find(quantizing_op->getName().getStringRef().str()) !=
-           ops_blocklist_.end())) {
+      // Blocklist op is checked in advance for non-dynamic range quantization
+      // case.
+      if (!quant_params_.quant_spec.weight_quantization &&
+          (ops_blocklist.find(quantizing_op->getName().getStringRef().str()) !=
+           ops_blocklist.end())) {
         return failure();
       }
 
-      if (!nodes_blocklist_.empty()) {
+      if (!nodes_blocklist.empty()) {
         if (auto name_loc = quantizing_op->getLoc().dyn_cast<NameLoc>()) {
           std::string sloc = name_loc.getName().str();
           if (!sloc.empty() &&
-              (nodes_blocklist_.find(sloc) != nodes_blocklist_.end())) {
+              (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
             return failure();
           }
         }
@@ -367,7 +378,7 @@ class QuantizationPattern : public RewritePattern {
 
       // An op with float inputs and outputs are expected when it's used by a
       // NumericVerify op. Skip this op.
-      if (enable_verify_ && usedByVerifier(quantizing_op)) {
+      if (enable_verify && usedByVerifier(quantizing_op)) {
         continue;
       }
 
@@ -384,13 +395,16 @@ class QuantizationPattern : public RewritePattern {
 
         auto ele_type = operand.getType().cast<TensorType>().getElementType();
         if (static_cast<const ConcretTy*>(this)
-                ->AllowDynamicRangeQuantizedOperand(quantizing_op)) {
+                ->AllowDynamicRangeQuantizedOperand(quantizing_op,
+                                                    custom_map)) {
           auto dq_op = dyn_cast_or_null<DQ>(operand.getDefiningOp());
-          auto dynamic_range_op =
-              dyn_cast_or_null<DynamicRangeQuantizedOpInterface>(quantizing_op);
-          if (dq_op && dynamic_range_op &&
-              dynamic_range_op.GetDynamicRangeQuantKernelSupport()) {
+
+          if (dq_op && inference_type == tensorflow::DT_QINT8 &&
+              !static_cast<const ConcretTy*>(this)->IsWeightOnlyOp(
+                  quantizing_op, ops_blocklist, weight_only_quantization,
+                  custom_map)) {
             // Dynamic range quantization is applied by having Q as an input.
+            // Only int8 weight is supported for now.
             inputs.push_back(dq_op.input());
           } else {
             // Otherwise, it's the case where the operand is activations or the
@@ -439,7 +453,8 @@ class QuantizationPattern : public RewritePattern {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else if (static_cast<const ConcretTy*>(this)
-                       ->AllowDynamicRangeQuantizedResult(quantizing_op)) {
+                       ->AllowDynamicRangeQuantizedResult(quantizing_op,
+                                                          custom_map)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else {
@@ -472,7 +487,7 @@ class QuantizationPattern : public RewritePattern {
       // To verify the numericals, the original floating-point ops are
       // preserved in the graph. The result of these floating-point ops are sent
       // to a numeric verifier op as the reference.
-      if (enable_verify_) {
+      if (enable_verify) {
         // For constant operands, the floating-point constant is duplicated in
         // case it is quantized.
         for (int i = 0, e = quantized_op->getNumOperands(); i < e; ++i) {
@@ -497,15 +512,17 @@ class QuantizationPattern : public RewritePattern {
             continue;
           }
           rewriter.setInsertionPointAfter(quantized_op);
-          FloatAttr tolerance = rewriter.getF32FloatAttr(error_tolerance_);
-          BoolAttr log = rewriter.getBoolAttr(log_if_failed_);
+          FloatAttr tolerance = rewriter.getF32FloatAttr(
+              quant_params_.numeric_verify_spec.error_tolerance);
+          BoolAttr log = rewriter.getBoolAttr(
+              quant_params_.numeric_verify_spec.log_if_failed_flag);
           // Verify the quantized value by sending the result to the verifier.
           rewriter.create<VERIFIER>(
               quantizing_op->getLoc(), quantized_op->getResult(i).getType(),
               quantized_op->getResult(i), quantizing_op->getResult(i),
               tolerance, log);
 
-          if (whole_model_verify_) {
+          if (enable_whole_model_verify) {
             RewireFloatModelBackbone(quantized_op, quantizing_op);
           }
         }
@@ -575,12 +592,7 @@ class QuantizationPattern : public RewritePattern {
     }
   }
 
-  bool enable_verify_;
-  float error_tolerance_;
-  bool whole_model_verify_;
-  bool log_if_failed_;
-  const StringSet ops_blocklist_;
-  const StringSet nodes_blocklist_;
+  QuantPassSpec quant_params_;
 };
 
 // A pattern that removes debug attributes that are annotated to ops during

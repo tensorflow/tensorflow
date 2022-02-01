@@ -24,6 +24,29 @@ func @single_bcast(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
 
 // -----
 
+// CHECK-LABEL: @single_bcast_ensure_order
+// CHECK-SAME:  %[[ARG0:.*]]: tensor<16x?xf32>, %[[ARG1:.*]]: tensor<16x?xf32>, %[[SHAPE:.*]]: tensor<3xindex>
+func @single_bcast_ensure_order(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
+    %shape : tensor<3xindex>) -> tensor<?x16x?xf32> {
+  // CHECK-DAG: %[[BCASTED_ARG0:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[SHAPE]])
+  // CHECK-DAG: %[[BCASTED_ARG1:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[SHAPE]])
+  // CHECK-DAG: %[[ADD:.*]] = mhlo.add %[[BCASTED_ARG0]], %[[BCASTED_ARG1]] : [[BCASTED_TY:tensor<\?x16x\?xf32>]]
+  // CHECK-DAG: %[[MUL:.*]] = mhlo.multiply %[[ADD]], %[[ADD]] : [[BCASTED_TY]]
+  // CHECK-DAG: %[[SUB:.*]] = mhlo.subtract %[[MUL]], %[[MUL]] : [[BCASTED_TY]]
+  // CHECK-DAG: %[[DIV:.*]] = mhlo.divide %[[ADD]], %[[SUB]] : [[BCASTED_TY]]
+  // CHECK: return %[[DIV]] : [[BCASTED_TY]]
+  %0 = mhlo.add %arg0, %arg1 : tensor<16x?xf32>
+  %1 = mhlo.multiply %0, %0 : tensor<16x?xf32>
+  %2 = mhlo.subtract %1, %1 : tensor<16x?xf32>
+  %3 = mhlo.divide %0, %2 : tensor<16x?xf32>
+  %4 = "mhlo.dynamic_broadcast_in_dim"(%3, %shape) {
+      broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} :
+      (tensor<16x?xf32>, tensor<3xindex>) -> tensor<?x16x?xf32>
+  return %4 : tensor<?x16x?xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @double_bcasts
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<16x?xf32>, %[[ARG1:.*]]: tensor<16x?xf32>, %[[SHAPE0:.*]]: tensor<3xindex>, %[[SHAPE1:.*]]: tensor<3xindex>
 func @double_bcasts(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
@@ -59,16 +82,68 @@ func @double_bcasts(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
 
 // CHECK-LABEL: @late_output_dimensions
 // CHECK: %[[ARG0:.*]]: tensor<?x32xf32>, %[[ARG1:.*]]: tensor<?x32xf32>, %[[ARG2:.*]]: tensor<?x?x?xf32>
-func @late_output_dimensions(%arg0: tensor<?x32xf32>, %arg1: tensor<?x32xf32>,
-    %arg2: tensor<?x?x?xf32>) -> tensor<?x?x32xf32> {
-  // CHECK-DAG: %[[SUB:.*]] = mhlo.subtract %[[ARG0]], %[[ARG1]] : tensor<?x32xf32>
+func @late_output_dimensions(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
+    %arg2 : tensor<?x?x?xf32>) -> tensor<?x?x32xf32> {
   // CHECK-DAG: %[[SHAPE:.*]] = shape.shape_of %[[ARG2]]
-  // CHECK-DAG: %[[BCASTED_SUB:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[SUB]], %[[SHAPE]])
-  // CHECK-DAG: %[[ADD:.*]] = mhlo.add %[[BCASTED_SUB]], %[[BCASTED_SUB]] : tensor<?x?x32xf32>
-  // CHECK-DAG: return %[[ADD]]
+  // CHECK-DAG: %[[BCASTED_ARG0:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[SHAPE]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK-DAG: %[[BCASTED_ARG1:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[SHAPE]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK-DAG: %[[SUB:.*]] = mhlo.subtract %[[BCASTED_ARG0]], %[[BCASTED_ARG1]] : [[BCAST_TY:tensor<\?x\?x32xf32>]]
+  // CHECK-DAG: %[[ADD:.*]] = mhlo.add %[[SUB]], %[[SUB]] : [[BCAST_TY]]
+  // CHECK:     return %[[ADD]] : [[BCAST_TY]]
   %0 = mhlo.subtract %arg0, %arg1 : tensor<?x32xf32>
   %1 = shape.shape_of %arg2 : tensor<?x?x?xf32> -> tensor<3xindex>
-  %2 = "mhlo.dynamic_broadcast_in_dim"(%0, %1) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x32xf32>, tensor<3xindex>) -> tensor<?x?x32xf32>
+  %2 = "mhlo.dynamic_broadcast_in_dim"(%0, %1)
+      {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} :
+      (tensor<?x32xf32>, tensor<3xindex>) -> tensor<?x?x32xf32>
   %3 = mhlo.add %2, %2 : tensor<?x?x32xf32>
   return %3 : tensor<?x?x32xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @very_late_output_dimensions
+// CHECK: (%[[ARG0:.*]]: tensor<?x32xf32>, %[[ARG1:.*]]: tensor<?x32xf32>, %[[ARG2:.*]]: tensor<?x?x?xf32>)
+func @very_late_output_dimensions(%arg0 : tensor<?x32xf32>,
+    %arg1 : tensor<?x32xf32>, %arg2 : tensor<?x?x?xf32>) -> tensor<?x?x32xf32> {
+  // CHECK: %[[S:.*]] = shape.shape_of %[[ARG2:.*]]
+  // CHECK: %[[BCASTED_ARG0:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[S]])
+  // CHECK: %[[BCASTED_ARG1:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[S]])
+  // CHECK: %[[ACC0:.*]] = mhlo.add %[[BCASTED_ARG0]], %[[BCASTED_ARG1]]
+  // CHECK: %[[ACC1:.*]] = mhlo.multiply %[[ACC0]], %[[BCASTED_ARG1]]
+  // CHECK: %[[ACC2:.*]] = mhlo.subtract %[[ACC1]], %[[BCASTED_ARG1]]
+  // CHECK: %[[ACC3:.*]] = mhlo.divide %[[ACC2]], %[[BCASTED_ARG1]]
+  // CHECK: return %[[ACC3]]
+  %acc0 = mhlo.add %arg0, %arg1 : tensor<?x32xf32>
+  %acc1 = mhlo.multiply %acc0, %arg1 : tensor<?x32xf32>
+  %acc2 = mhlo.subtract %acc1, %arg1 : tensor<?x32xf32>
+  %acc3 = mhlo.divide %acc2, %arg1 : tensor<?x32xf32>
+  %1 = shape.shape_of %arg2 : tensor<?x?x?xf32> -> tensor<3xindex>
+  %3 = "mhlo.dynamic_broadcast_in_dim"(%acc3, %1) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x32xf32>, tensor<3xindex>) -> tensor<?x?x32xf32>
+  return %3 : tensor<?x?x32xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @propagate_within_block
+// CHECK: (%[[ARG0:.*]]: tensor<?x32xf32>, %[[ARG1:.*]]: tensor<?x32xf32>, %[[ARG2:.*]]: tensor<?x32xf32>, %[[W:.*]]: !shape.witness, %[[SHAPE:.*]]: tensor<3xindex>)
+func @propagate_within_block(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
+    %arg2 : tensor<?x32xf32>, %w : !shape.witness, %shape : tensor<3xindex>)
+    -> tensor<?x?x32xf32> {
+  // CHECK-DAG: %[[SUB:.*]] = mhlo.subtract %[[ARG0]], %[[ARG1]] : tensor<?x32xf32>
+  // CHECK:     %[[RESULT:.*]] = shape.assuming %[[W]]
+  // CHECK-DAG:   %[[BCASTED_ARG2:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG2]], %[[SHAPE]])
+  // CHECK-DAG:   %[[BCASTED_SUB:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[SUB]], %[[SHAPE]])
+  // CHECK-DAG:   %[[ADD:.*]] = mhlo.add %[[BCASTED_SUB]], %[[BCASTED_ARG2]] : tensor<?x?x32xf32>
+  // CHECK:       shape.assuming_yield %[[ADD]]
+  // CHECK:     }
+  // CHECK:     return %[[RESULT]]
+  %sub = mhlo.subtract %arg0, %arg1 : tensor<?x32xf32>
+  %result = shape.assuming %w -> tensor<?x?x32xf32> {
+    %add = mhlo.add %sub, %arg2 : tensor<?x32xf32>
+    %bcasted = "mhlo.dynamic_broadcast_in_dim"(%add, %shape)
+        {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} :
+        (tensor<?x32xf32>, tensor<3xindex>) -> tensor<?x?x32xf32>
+    shape.assuming_yield %bcasted : tensor<?x?x32xf32>
+  }
+  return %result : tensor<?x?x32xf32>
 }

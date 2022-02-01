@@ -69,6 +69,9 @@ class CollectiveReduceV2Op : public XlaOpKernel {
         ctx, final_op_name_ == "Id",
         errors::InvalidArgument("Only 'Id' is supported as a final operation "
                                 "for all-reduce tf2xla lowering"));
+    VLOG(2) << "Emitting xla::AllReduce on channel " << *channel_id
+            << " for Op " << ctx->op_kernel().name()
+            << " group_size=" << group_size << " group_key=" << group_key;
     xla::ChannelHandle channel_handle;
     channel_handle.set_type(xla::ChannelHandle::DEVICE_TO_DEVICE);
     channel_handle.set_handle(*channel_id);

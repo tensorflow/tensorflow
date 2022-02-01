@@ -81,6 +81,7 @@ MAP_HLO_TO_LHLO(PowOp);
 MAP_HLO_TO_LHLO(RealDynamicSliceOp);
 MAP_HLO_TO_LHLO(RealOp);
 MAP_HLO_TO_LHLO(ReduceOp);
+MAP_HLO_TO_LHLO(ReduceWindowOp);
 MAP_HLO_TO_LHLO(ReshapeOp);
 MAP_HLO_TO_LHLO(RemOp);
 MAP_HLO_TO_LHLO(RsqrtOp);

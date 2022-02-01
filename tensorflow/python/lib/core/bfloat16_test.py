@@ -455,6 +455,37 @@ class Bfloat16NumPyTest(parameterized.TestCase):
           np.nextafter(
               np.array(a, dtype=bfloat16), np.array(b, dtype=bfloat16)))
 
+  def testSpacing(self):
+    # Sweep a variety of binades to see that spacing gives the proper ULP.
+    # All subnormals have a fixed distance of 2^-133.
+    with self.subTest(name="Subnormals"):
+      for i in range(-133, -126):
+        power_of_two = bfloat16(2.0**i)
+        distance = float.fromhex("0x1p-133")
+        np.testing.assert_equal(np.spacing(power_of_two), distance)
+        np.testing.assert_equal(np.spacing(-power_of_two), -distance)
+    # Normals have a distance which depends on their binade.
+    with self.subTest(name="Normals"):
+      for i in range(-126, 127):
+        power_of_two = bfloat16(2.0**i)
+        distance = epsilon * power_of_two
+        np.testing.assert_equal(np.spacing(power_of_two), distance)
+        np.testing.assert_equal(np.spacing(-power_of_two), -distance)
+    inf = bfloat16(float("inf"))
+    nan = bfloat16(float("nan"))
+    # Check that spacing agrees with arithmetic involving nextafter.
+    with self.subTest(name="NextAfter"):
+      for x in FLOAT_VALUES:
+        x_bfloat16 = bfloat16(x)
+        spacing = np.spacing(x_bfloat16)
+        toward = np.copysign(inf, x_bfloat16)
+        nextup = np.nextafter(x_bfloat16, toward)
+        np.testing.assert_equal(spacing, nextup - x_bfloat16)
+    # Check that spacing for special values gives the correct answer.
+    with self.subTest(name="NonFinite"):
+      np.testing.assert_equal(np.spacing(nan), np.spacing(np.float32(nan)))
+      np.testing.assert_equal(np.spacing(inf), np.spacing(np.float32(inf)))
+
 
 if __name__ == "__main__":
   absltest.main()

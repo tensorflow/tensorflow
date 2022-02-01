@@ -37,7 +37,7 @@ VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
   vector_pointer_type_ = llvm::PointerType::getUnqual(vector_type_);
 }
 
-static string TypeToString(llvm::Type* type) {
+static std::string TypeToString(llvm::Type* type) {
   std::string o;
   llvm::raw_string_ostream ostream(o);
   type->print(ostream);

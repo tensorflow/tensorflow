@@ -168,7 +168,20 @@ XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
       resources_(resources),
       function_(function),
       platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
-      has_ref_vars_(has_ref_vars) {}
+      has_ref_vars_(has_ref_vars),
+      cache_(nullptr),
+      rm_(nullptr) {}
+
+XlaLocalLaunchBase::~XlaLocalLaunchBase() {
+  if (cache_ != nullptr) {
+    cache_->Unref();
+    if (!rm_->template Delete<XlaConstantOutputResource>(def().name(),
+                                                         def().name())
+             .ok()) {
+      // Do nothing; the resource can have been deleted by session resets.
+    }
+  }
+}
 
 static Status CompileToLocalExecutable(
     OpKernelContext* ctx, const NameAttrList& function, bool has_ref_vars,
@@ -277,9 +290,13 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   xla::gpu::GpuExecutableRunOptions gpu_options;
   xla::DeviceAssignment device_assignment;
   xla::ExecutableRunOptions run_options;
-  OP_REQUIRES_OK(ctx, ResolveDeviceAssignment(
-                          ctx, compilation_result->collective_info, run_options,
-                          device_assignment, gpu_options));
+  if (compilation_result->collective_info.has_value()) {
+    OP_REQUIRES_OK(ctx, ResolveDeviceAssignment(
+                            ctx, *compilation_result->collective_info,
+                            run_options, device_assignment, gpu_options));
+  } else {
+    VLOG(2) << "No collective info provided: skipping device assignment";
+  }
 
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);
@@ -307,11 +324,25 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
+
+  if (cache_ == nullptr) {
+    rm_ = ctx->resource_manager();
+    OP_REQUIRES_OK(ctx, rm_->LookupOrCreate<XlaConstantOutputResource>(
+                            def().name(), def().name(), &cache_,
+                            [](XlaConstantOutputResource** ret) {
+                              *ret = new XlaConstantOutputResource();
+                              return Status::OK();
+                            }));
+  }
+  // Create a cache for each executable .
+  XlaConstOutputCache& const_output_cache =
+      cache_->FindConstOutput(executable->executable());
+
   OP_REQUIRES_OK(
       ctx, launch_context.PopulateOutputs(
                ctx, compilation_result, execution_output->ConsumeResult(),
                /*missing_ctx_input_prefix=*/0, absl::MakeSpan(variable_infos),
-               input_output_alias, resource_var_ptrs));
+               input_output_alias, resource_var_ptrs, const_output_cache));
 
   VLOG(1) << "Done";
 }
@@ -481,7 +512,21 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
 }
 
 XlaRunOp::XlaRunOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), platform_info_(XlaPlatformInfoFromDevice(ctx->device())) {}
+    : OpKernel(ctx),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
+      cache_(nullptr),
+      rm_(nullptr) {}
+
+XlaRunOp::~XlaRunOp() {
+  if (cache_ != nullptr) {
+    cache_->Unref();
+    if (!rm_->template Delete<XlaConstantOutputResource>(def().name(),
+                                                         def().name())
+             .ok()) {
+      // Do nothing; the resource can have been deleted by session resets.
+    }
+  }
+}
 
 void XlaRunOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaRunOp " << def().name();
@@ -562,12 +607,27 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       ctx, *closure.compilation_result(), closure.num_constant_args());
   OP_REQUIRES_OK(ctx, variable_infos.status());
   OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(*variable_infos)));
+
+  if (cache_ == nullptr) {
+    rm_ = ctx->resource_manager();
+    OP_REQUIRES_OK(ctx, rm_->LookupOrCreate<XlaConstantOutputResource>(
+                            def().name(), def().name(), &cache_,
+                            [](XlaConstantOutputResource** ret) {
+                              *ret = new XlaConstantOutputResource();
+                              return Status::OK();
+                            }));
+  }
+  // Create a cache for each executable .
+  XlaConstOutputCache& const_output_cache =
+      cache_->FindConstOutput(closure.executable()->executable());
+
   OP_REQUIRES_OK(
       ctx,
       launch_context.PopulateOutputs(
           ctx, closure.compilation_result(), execution_output->ConsumeResult(),
           /*missing_ctx_input_prefix=*/closure.num_constant_args(),
-          absl::MakeSpan(*variable_infos), input_output_alias, snapshot_ptrs));
+          absl::MakeSpan(*variable_infos), input_output_alias, snapshot_ptrs,
+          const_output_cache));
 }
 
 XlaMergeOp::XlaMergeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}

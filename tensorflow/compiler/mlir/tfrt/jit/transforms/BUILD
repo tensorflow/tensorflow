@@ -8,59 +8,60 @@ package(
 )
 
 tfrt_cc_library(
-    name = "clustering",
-    srcs = ["clustering.cc"],
-    hdrs = ["clustering.h"],
+    name = "tf_jitrt_clustering",
+    srcs = ["tf_jitrt_clustering.cc"],
+    hdrs = ["tf_jitrt_clustering.h"],
     deps = [
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@tf_runtime//backends/cpu:cpurt_support",
+        "@tf_runtime//backends/jitrt:support",
     ],
 )
 
 gentbl_cc_library(
-    name = "passes_inc_gen",
+    name = "tf_jitrt_passes_inc_gen",
     tbl_outs = [
         (
             [
                 "-gen-pass-decls",
-                "-name=TFCPURT",
+                "-name=TfJitRt",
             ],
-            "passes.h.inc",
+            "tf_jitrt_passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "passes.td",
+    td_file = "tf_jitrt_passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
 cc_library(
-    name = "passes",
+    name = "tf_jitrt_passes",
     srcs = [
-        "buffer_forwarding.cc",
-        "clustering_pass.cc",
-        "codegen_cwise.cc",
-        "codegen_reduction.cc",
-        "copy_removal.cc",
-        "detensorize_linalg.cc",
-        "fission.cc",
-        "fuse_fill_into_tiled_reduction.cc",
-        "fusion.cc",
-        "legalize_i1_type.cc",
-        "math_approximation.cc",
-        "passes.cc",
-        "peel_tiled_loops.cc",
-        "sink_unused_outputs.cc",
-        "symbolic_shape_optimization.cc",
-        "vectorize_tiled_ops.cc",
+        "tf_jitrt_buffer_forwarding.cc",
+        "tf_jitrt_clustering_pass.cc",
+        "tf_jitrt_copy_removal.cc",
+        "tf_jitrt_detensorize_linalg.cc",
+        "tf_jitrt_fission.cc",
+        "tf_jitrt_fuse_fill_into_tiled_reduction.cc",
+        "tf_jitrt_fusion.cc",
+        "tf_jitrt_legalize_i1_type.cc",
+        "tf_jitrt_math_approximation.cc",
+        "tf_jitrt_passes.cc",
+        "tf_jitrt_peel_tiled_loops.cc",
+        "tf_jitrt_rewrite_vector_multi_reduction.cc",
+        "tf_jitrt_symbolic_shape_optimization.cc",
+        "tf_jitrt_tile_cwise.cc",
+        "tf_jitrt_tile_reduction.cc",
+        "tf_jitrt_vectorize_tiled_ops.cc",
     ],
-    hdrs = ["passes.h"],
+    hdrs = ["tf_jitrt_passes.h"],
     deps = [
-        ":clustering",
-        ":passes_inc_gen",
+        ":tf_jitrt_clustering",
+        ":tf_jitrt_passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
         "//tensorflow/compiler/mlir/hlo:shape_component_analysis",
@@ -70,6 +71,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineAnalysis",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:DialectUtils",
@@ -83,35 +85,37 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorOps",
+        "@llvm-project//mlir:VectorTransforms",
     ],
     alwayslink = 1,
 )
 
 gentbl_cc_library(
-    name = "test_passes_inc_gen",
+    name = "tf_jitrt_test_passes_inc_gen",
     tbl_outs = [
         (
             [
                 "-gen-pass-decls",
-                "-name=TFCPURTTest",
+                "-name=TfJitRtTest",
             ],
-            "test_passes.h.inc",
+            "tf_jitrt_test_passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "test_passes.td",
+    td_file = "tf_jitrt_test_passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
 cc_library(
-    name = "test_passes",
-    srcs = ["test_passes.cc"],
-    hdrs = ["test_passes.h"],
+    name = "tf_jitrt_test_passes",
+    srcs = ["tf_jitrt_test_passes.cc"],
+    hdrs = ["tf_jitrt_test_passes.h"],
     deps = [
-        ":clustering",
-        ":test_passes_inc_gen",
+        ":tf_jitrt_clustering",
+        ":tf_jitrt_test_passes_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",

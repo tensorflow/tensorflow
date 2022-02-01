@@ -53,8 +53,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
@@ -279,15 +277,23 @@ class PjRtStreamExecutorClient : public PjRtClient {
     notifier(Unimplemented("Cross host receives not implemented."));
   }
 
-  virtual Status CopyToRemoteDevice(
-      PjRtBuffer* buffer, absl::string_view serialized_descriptor) const {
-    return Unimplemented("Cross host sends not implemented.");
+  virtual void CopyToRemoteDevice(
+      PjRtBuffer* buffer, absl::string_view serialized_descriptor,
+      PjRtBuffer::RemoteSendCallback on_done) const {
+    on_done(Unimplemented("Cross host sends not implemented."),
+            /*sends_were_enqueued=*/false);
   }
 
-  virtual Status CopyToRemoteDeviceScattered(
-      PjRtBuffer* buffer, absl::Span<const std::string> serialized_descriptors,
+  virtual void CopyToRemoteDeviceScattered(
+      PjRtBuffer* buffer,
+      absl::Span<const std::pair<std::string, PjRtBuffer::RemoteSendCallback>>
+          serialized_descriptors_and_callbacks,
       const PjRtBuffer::ScatterDetails& scatter_details) const {
-    return Unimplemented("Scattered cross host sends not implemented.");
+    for (const auto& d_and_cb : serialized_descriptors_and_callbacks) {
+      d_and_cb.second(
+          Unimplemented("Scattered cross host sends not implemented."),
+          /*sends_were_enqueued=*/false);
+    }
   }
 
   virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
@@ -589,10 +595,12 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
-  Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override;
+  void CopyToRemoteDevice(absl::string_view serialized_descriptor,
+                          RemoteSendCallback on_done) override;
 
-  Status CopyToRemoteDeviceScattered(
-      absl::Span<const std::string> serialized_descriptors,
+  void CopyToRemoteDeviceScattered(
+      absl::Span<const std::pair<std::string, RemoteSendCallback>>
+          serialized_descriptors_and_callbacks,
       const ScatterDetails& scatter_details) override;
 
   Status BlockHostUntilReady() override;
@@ -668,9 +676,9 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   PjRtStreamExecutorDevice* const device_;
 
   mutable absl::Mutex mu_;
-  std::shared_ptr<TrackedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<TrackedDeviceBuffer> device_buffer_ ABSL_GUARDED_BY(mu_);
   // Count of holds on the buffer.
-  std::array<int, ScopedHold::Type::kMaxValue> holds_ TF_GUARDED_BY(mu_);
+  std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
 };
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by

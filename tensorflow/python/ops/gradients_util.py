@@ -17,8 +17,6 @@
 import collections
 import contextlib
 
-from six.moves import zip  # pylint: disable=redefined-builtin
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
@@ -886,7 +884,7 @@ def _MultiDeviceAddN(tensor_list, gradient_uid):
 
 
 @tf_export("AggregationMethod")
-class AggregationMethod(object):
+class AggregationMethod:
   """A class listing aggregation methods used to combine gradients.
 
   Computing partial derivatives can require aggregating gradient

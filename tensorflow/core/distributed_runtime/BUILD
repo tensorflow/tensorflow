@@ -156,6 +156,7 @@ cc_library(
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
     ],
 )
@@ -437,6 +438,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

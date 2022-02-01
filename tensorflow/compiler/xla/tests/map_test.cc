@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -217,9 +216,9 @@ TEST_F(MapTest, MapEachF32ElementToS32Constant) {
       client_->TransferToServer(param0_literal).ConsumeValueOrDie();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
-  Map(&builder, {param}, CreateScalarOne<int32>(), {0});
+  Map(&builder, {param}, CreateScalarOne<int32_t>(), {0});
 
-  ComputeAndCompareR1<int32>(&builder, {1, 1, 1, 1}, {param0_data.get()});
+  ComputeAndCompareR1<int32_t>(&builder, {1, 1, 1, 1}, {param0_data.get()});
 }
 
 TEST_F(MapTest, MapEachF32ElementToU32Constant) {
@@ -230,9 +229,9 @@ TEST_F(MapTest, MapEachF32ElementToU32Constant) {
       client_->TransferToServer(param0_literal).ConsumeValueOrDie();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
-  Map(&builder, {param}, CreateScalarOne<uint32>(), {0});
+  Map(&builder, {param}, CreateScalarOne<uint32_t>(), {0});
 
-  ComputeAndCompareR1<uint32>(&builder, {1, 1, 1, 1}, {param0_data.get()});
+  ComputeAndCompareR1<uint32_t>(&builder, {1, 1, 1, 1}, {param0_data.get()});
 }
 
 TEST_F(MapTest, MapEachElemLongerChainR1) {
@@ -380,24 +379,24 @@ XLA_TEST_F(MapTest, AddWithMixedLayouts) {
   Map(&builder, {param0, param1}, CreateScalarAddComputation(S32, &builder),
       {0, 1});
 
-  Array2D<int32> expected(2, 2);
+  Array2D<int32_t> expected(2, 2);
   expected(0, 0) = 11;
   expected(0, 1) = 22;
   expected(1, 0) = 33;
   expected(1, 1) = 44;
-  ComputeAndCompareR2<int32>(&builder, expected,
-                             {param0_data.get(), param1_data.get()});
+  ComputeAndCompareR2<int32_t>(&builder, expected,
+                               {param0_data.get(), param1_data.get()});
 }
 
 XLA_TEST_F(MapTest, AddR3_3x0x2) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
-      LiteralUtil::CreateR3FromArray3D<int32>(Array3D<int32>(3, 0, 2));
+      LiteralUtil::CreateR3FromArray3D<int32_t>(Array3D<int32_t>(3, 0, 2));
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(param0_literal).ConsumeValueOrDie();
 
   Literal param1_literal =
-      LiteralUtil::CreateR3FromArray3D<int32>(Array3D<int32>(3, 0, 2));
+      LiteralUtil::CreateR3FromArray3D<int32_t>(Array3D<int32_t>(3, 0, 2));
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(param1_literal).ConsumeValueOrDie();
 
@@ -406,8 +405,8 @@ XLA_TEST_F(MapTest, AddR3_3x0x2) {
   Map(&builder, {param0, param1}, CreateScalarAddComputation(S32, &builder),
       {0, 1, 2});
 
-  ComputeAndCompareR3<int32>(&builder, Array3D<int32>(3, 0, 2),
-                             {param0_data.get(), param1_data.get()});
+  ComputeAndCompareR3<int32_t>(&builder, Array3D<int32_t>(3, 0, 2),
+                               {param0_data.get(), param1_data.get()});
 }
 
 TEST_F(MapTest, MapTernaryAdder) {

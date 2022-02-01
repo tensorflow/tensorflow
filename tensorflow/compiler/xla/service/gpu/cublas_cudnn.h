@@ -47,7 +47,7 @@ enum class CudnnConvKind {
 StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
 
 // Converts a CudnnConvKind value to a string.
-string CudnnConvKindToString(CudnnConvKind kind);
+std::string CudnnConvKindToString(CudnnConvKind kind);
 
 // Matrix multiplication rewritten into a GEMM custom call.
 // All matrix multiplications should be rewritten as such custom calls
@@ -56,31 +56,6 @@ bool IsCublasGemm(const HloInstruction& hlo);
 
 // A call to cuBLAS general matrix multiplication API.
 extern const char* const kGemmCallTarget;
-
-// A call to cuDNN for batch normalization is represented as CustomCall HLO with
-// a call target equal to one of these strings.
-//
-// The operands to and outputs of these calls are the same as those of the
-// corresponding HLOs, except:
-//
-//  - epsilon and feature_index are proper operands, at the end of the operands
-//    list.  They must be HLO constants.
-//  - The cuDNN forward training call returns inv_stddev =
-//    1/sqrt(variance + epsilon) in place of plain variance.
-//  - Similarly, BatchNormGrad accepts inv_stddev in place of the variance
-//    operand.
-extern const char* const kCudnnBatchNormForwardInferenceCallTarget;
-extern const char* const kCudnnBatchNormForwardTrainingCallTarget;
-extern const char* const kCudnnBatchNormBackwardCallTarget;
-
-// Returns true if `hlo` will be implemented as a call to a cuDNN batch
-// normalization routine.
-//
-// This returns true if `hlo` is a CustomCall HLO with a call target equal to
-// one of the kCudnnBatchNormFoo constants above, but returns *false* for HLOs
-// with one of the kBatchNorm opcodes, because these are lowered either to a
-// sequence of generic HLOs or to a cuDNN CustomCall.
-bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 
 // A call to cuDNN for convolution (forward, backward filter, or backward input)
 // is represented as a CustomCall HLO with a call target equal to one of these

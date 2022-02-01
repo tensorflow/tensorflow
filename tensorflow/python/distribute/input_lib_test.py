@@ -1092,6 +1092,8 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
   def testRaggedSparse(self, distribution, input_type, drop_remainder,
                        defun_type):
     """Test with `RaggedTensor`s and `SparseTensor`s."""
+    self.skipTest("b/213596871, b/214574707")
+
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
 

@@ -19,9 +19,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 
+#include <functional>
 #include <initializer_list>
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
@@ -38,9 +40,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -109,7 +108,7 @@ class ShapeIndex {
     return indices_ < other.indices_;
   }
 
-  string ToString() const;
+  std::string ToString() const;
 
   template <typename H>
   friend H AbslHashValue(H h, const ShapeIndex& index) {
@@ -165,7 +164,7 @@ class ShapeIndexView {
   bool operator==(const ShapeIndexView& other) const;
   bool operator!=(const ShapeIndexView& other) const;
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns true if this shape index starts with 'prefix'.
   bool StartsWith(ShapeIndexView prefix) const;
@@ -238,13 +237,13 @@ class ShapeUtil {
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
-  static string HumanString(const Shape& shape);
-  static string HumanStringWithLayout(const Shape& shape);
+  static std::string HumanString(const Shape& shape);
+  static std::string HumanStringWithLayout(const Shape& shape);
 
   // As above, but for program shapes, returns a string for the form:
   //
   // (param_name: f32[42x12], ...) -> f32[24x42]
-  static string HumanString(const ProgramShape& program_shape);
+  static std::string HumanString(const ProgramShape& program_shape);
 
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.
@@ -747,8 +746,8 @@ class ShapeUtil {
     std::vector<int64_t> base(shape.dimensions_size());
     std::vector<int64_t> incr(shape.dimensions_size(), 1);
     return ForEachIndexWithStatus(shape, base,
-                                  /*count=*/AsInt64Slice(shape.dimensions()),
-                                  incr, visitor_function);
+                                  /*count=*/shape.dimensions(), incr,
+                                  visitor_function);
   }
 
   template <typename FnType>
@@ -781,9 +780,6 @@ class ShapeUtil {
               /*parallel=*/true)
               .ok());
   }
-
-  // Compute a hash for `shape`.
-  static size_t Hash(const Shape& shape);
 
   // About 0-2-1 transpose:
   //
@@ -859,7 +855,7 @@ class ShapeUtil {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
     }
 
-    tensorflow::mutex mu;
+    absl::Mutex mu;
     Status status;  // Guarded by mu
 
     while (n < rank) {
@@ -867,7 +863,7 @@ class ShapeUtil {
         pool->Schedule([indexes, &visitor_function, &mu, &status] {
           StatusOr<bool> result = visitor_function(indexes);
           if (!result.ok()) {
-            tensorflow::mutex_lock lock(mu);
+            absl::MutexLock lock(&mu);
             status = status.ok() ? result.status() : status;
           }
         });
@@ -893,7 +889,8 @@ class ShapeUtil {
     return status;
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);
+  ShapeUtil(const ShapeUtil&) = delete;
+  ShapeUtil& operator=(const ShapeUtil&) = delete;
 };
 
 }  // namespace xla

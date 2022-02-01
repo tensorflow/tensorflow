@@ -14,14 +14,26 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/tpu/graph_rewrite/combine_tpu_embedding_load_retrieve_pass.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_configuration_rewrite_pass.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass.h"
 #include "tensorflow/core/tpu/graph_rewrite/encapsulate_tpu_computations_pass.h"
+#include "tensorflow/core/tpu/graph_rewrite/tpu_embedding_software_deduplication_rewrite_pass.h"
 #include "tensorflow/core/tpu/graph_rewrite/variable_merger_pass.h"
 
 namespace tensorflow {
 namespace {
 
+// PRE_PLACEMENT passes:
+// This pass uses the TPUEmbeddingConfiguration from the
+// RecvTPUEmbeddingActivations or the SendTPUEmbeddingGradients ops.
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 2,
+                      TPUEmbeddingSoftwareDeduplicationRewritePass);
+// CombineTPUEmbeddingLoadRetrievePass pass needs the TPUEmbeddingConfiguration
+// in ConfigureDistributedTPU, which is removed by
+// DistributedTPUConfigurationRewritePass.
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 11,
+                      CombineTPUEmbeddingLoadRetrievePass);
 // This pass removes the TPUEmbeddingConfiguration in ConfigureDistributedTPU.
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 20,
                       DistributedTPUConfigurationRewritePass);
@@ -33,6 +45,8 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 39,
                       ExtractOutsideCompilationPass);
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 40,
                       DistributedTPURewritePass);
+
+// POST_REWRITE_FOR_EXEC pass
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 0,
                       VariableMergerPass);
 }  // namespace

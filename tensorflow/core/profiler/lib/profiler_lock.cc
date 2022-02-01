@@ -16,17 +16,26 @@ limitations under the License.
 
 #include <atomic>
 
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace profiler {
+namespace {
 
 // Track whether there's an active profiler session.
 // Prevents another profiler session from creating ProfilerInterface(s).
-std::atomic<bool> session_active = ATOMIC_VAR_INIT(false);
+std::atomic<int> g_session_active = ATOMIC_VAR_INIT(0);
 
-bool AcquireProfilerLock() {
+// g_session_active implementation must be lock-free for faster execution of
+// the ProfilerLock API.
+static_assert(ATOMIC_INT_LOCK_FREE == 2, "Assumed atomic<int> was lock free");
+
+}  // namespace
+
+/*static*/ StatusOr<ProfilerLock> ProfilerLock::Acquire() {
   // Use environment variable to permanently lock the profiler.
   // This allows running TensorFlow under an external profiling tool with all
   // built-in profiling disabled.
@@ -36,14 +45,23 @@ bool AcquireProfilerLock() {
     return disabled;
   }();
   if (TF_PREDICT_FALSE(tf_profiler_disabled)) {
-    LOG(WARNING) << "TensorFlow Profiler is permanently disabled by env var "
-                    "TF_DISABLE_PROFILING.";
-    return false;
+    return errors::AlreadyExists(
+        "TensorFlow Profiler is permanently disabled by env var "
+        "TF_DISABLE_PROFILING.");
   }
-  return !session_active.exchange(true);
+  int already_active = g_session_active.exchange(1, std::memory_order_acq_rel);
+  if (already_active) {
+    return errors::AlreadyExists("Another profiling session active.");
+  }
+  return ProfilerLock(/*active=*/true);
 }
 
-void ReleaseProfilerLock() { session_active.store(false); }
+void ProfilerLock::ReleaseIfActive() {
+  if (active_) {
+    g_session_active.store(0, std::memory_order_release);
+    active_ = false;
+  }
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

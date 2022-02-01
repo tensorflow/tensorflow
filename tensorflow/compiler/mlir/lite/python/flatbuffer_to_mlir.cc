@@ -36,7 +36,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-static mlir::OwningModuleRef FlatBufferFileToMlirTranslation(
+static mlir::OwningOpRef<mlir::ModuleOp> FlatBufferFileToMlirTranslation(
     llvm::SourceMgr* source_mgr, mlir::MLIRContext* context) {
   const llvm::MemoryBuffer* input =
       source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
@@ -84,7 +84,7 @@ std::string FlatBufferFileToMlir(const std::string& model_file_or_buffer,
   llvm::SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(input), llvm::SMLoc());
 
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       FlatBufferFileToMlirTranslation(&sourceMgr, &context);
   if (!module || failed(verify(*module))) return "";
 

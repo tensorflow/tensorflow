@@ -20,6 +20,7 @@ limitations under the License.
 #if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #endif
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"

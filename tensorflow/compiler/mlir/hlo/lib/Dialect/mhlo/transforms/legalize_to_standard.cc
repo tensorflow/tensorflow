@@ -187,7 +187,7 @@ struct LegalizeToStandardPass
   }
 
   /// Perform the lowering to Standard dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 }  // end anonymous namespace
 
@@ -195,17 +195,17 @@ std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandardPass>();
 }
 
-void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
+void PopulateMhloToStdPatterns(RewritePatternSet *patterns,
                                mlir::MLIRContext *ctx) {
   mlir::populateWithGenerated(*patterns);
   patterns->insert<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
 }
 
 /// Perform the lowering to standard dialect.
-void LegalizeToStandardPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void LegalizeToStandardPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
-  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }
 
 }  // end namespace mhlo

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COST_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COST_ANALYSIS_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -24,8 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -39,7 +38,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Each HLO is associated to a vector of properties with the indices given
   // below. Sub-classes can add further properties.
   // MSVC 14.0 limitation requires the consts.
-  typedef std::map<string, float> Properties;
+  typedef std::map<std::string, float> Properties;
   static constexpr const char kFlopsKey[] = "flops";
   static constexpr const char kTranscendentalsKey[] = "transcendentals";
   static constexpr const char kBytesAccessedKey[] = "bytes accessed";
@@ -76,6 +75,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleFft(const HloInstruction* fft) override;
   Status HandleTriangularSolve(const HloInstruction* hlo) override;
   Status HandleCholesky(const HloInstruction* hlo) override;
+  Status HandleOptimizationBarrier(const HloInstruction* hlo) override;
   Status HandleAllGather(const HloInstruction* hlo) override;
   Status HandleAllGatherStart(const HloInstruction* hlo) override;
   Status HandleAllGatherDone(const HloInstruction* hlo) override;
@@ -180,12 +180,12 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       absl::optional<int64_t> memory_space = absl::nullopt) const;
 
   const Properties& properties() const { return properties_sum_; }
-  const float property(const string& key) const {
+  const float property(const std::string& key) const {
     return GetProperty(key, properties());
   }
 
   // Returns the specified per-second rate used by cost analysis.
-  const float per_second_rate(const string& key) const {
+  const float per_second_rate(const std::string& key) const {
     return GetProperty(key, per_second_rates_);
   }
 
@@ -203,7 +203,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
                              const DotDimensionNumbers& dnums);
 
  protected:
-  typedef std::unordered_map<const HloInstruction*, Properties> HloToProperties;
+  typedef absl::flat_hash_map<const HloInstruction*, Properties>
+      HloToProperties;
 
   // An FMA counts as two floating point operations in these analyzes.
   static constexpr int64_t kFmaFlops = 2;
@@ -226,13 +227,14 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Returns the default value if the key is not present in the
   // properties. Otherwise, returns the value that the key maps to from the
   // properties parameter.
-  static float GetProperty(const string& key, const Properties& properties,
+  static float GetProperty(const std::string& key, const Properties& properties,
                            float default_value = 0.0f);
 
   // Returns 0.0f if the hlo is not present in hlo_to_properties or if the key
   // is not present in hlo_to_properties[hlo]. Otherwise, returns the value that
   // the key maps to in the properties of the given hlo.
-  static float GetPropertyForHlo(const HloInstruction& hlo, const string& key,
+  static float GetPropertyForHlo(const HloInstruction& hlo,
+                                 const std::string& key,
                                  const HloToProperties& hlo_to_properties);
 
   // Traverses a fusion operand to find the actual bytes accessed by the fusion
@@ -272,7 +274,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // second. Is empty if no rates have been set.
   Properties per_second_rates_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HloCostAnalysis);
+  HloCostAnalysis(const HloCostAnalysis&) = delete;
+  HloCostAnalysis& operator=(const HloCostAnalysis&) = delete;
 };
 
 }  // namespace xla

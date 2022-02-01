@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/device_transform.h"
 
+#include <string>
+
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -37,8 +39,8 @@ namespace {
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/generated_transform_patterns.inc"
 }  // namespace
 
-OwningRewritePatternList GetHardwareRewritePatterns(
-    MLIRContext* context, const std::string& hardware) {
+RewritePatternSet GetHardwareRewritePatterns(MLIRContext* context,
+                                             const std::string& hardware) {
   auto* devce_hardware = GetTargetHardware(hardware);
   if (devce_hardware == nullptr) return {context};
   return devce_hardware->GetTransformations(context);
@@ -204,7 +206,7 @@ struct RemoveUnusedQuant : public OpRewritePattern<TFL::QuantizeOp> {
 };
 
 void OptimizeQuantizedOpToFloat(FuncOp func, MLIRContext* context) {
-  OwningRewritePatternList patterns(func.getContext());
+  RewritePatternSet patterns(func.getContext());
   patterns.insert<FoldQuantizedI32ToFloat, FoldQuantizeDequantize,
                   RemoveUnusedQuant>(context);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));

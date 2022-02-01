@@ -129,11 +129,8 @@ MATCHER(LayerNamesNonEmpty, "") {
 // Example: EXPECT_THAT(my_weights,
 //                      ShapedWeightsHasDimsAndValues({1, 2},{1.0f, 2.0f}))
 MATCHER_P2(ShapedWeightsHasDimsAndValuesHelper, dims_vec, expected_values, "") {
-  nvinfer1::Dims dims;
-  dims.nbDims =
-      std::min(static_cast<int>(dims_vec.size()), nvinfer1::Dims::MAX_DIMS);
-  std::copy_n(dims_vec.begin(), dims.nbDims, dims.d);
-  if (arg.shape_ != dims) {
+  DimsAdapter dims(dims_vec);
+  if (arg.Shape() != dims) {
     return false;
   }
   if (arg.count() != expected_values.size()) {

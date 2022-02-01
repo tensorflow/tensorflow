@@ -40,7 +40,7 @@ StatusOr<tfrt::gpu::Program> ConvertXlaGpuToGpuProgram(
   mlir::MLIRContext context(registry);
   context.loadAllAvailableDialects();
 
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 
   std::string entry_name = hlo_module->entry_computation()->name();

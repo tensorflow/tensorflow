@@ -141,11 +141,11 @@ class AlgebraicSimplifierOptions {
 
   int64_t very_small_gather_size() const { return very_small_gather_size_; }
 
-  void set_cudnn_batchnorm_forward_training_metadata(const string& c) {
+  void set_cudnn_batchnorm_forward_training_metadata(const std::string& c) {
     metadata_.cudnn_batchnorm_forward_training_metadata = c;
   }
 
-  const string& get_cudnn_batchnorm_forward_training_metadata() const {
+  const std::string& get_cudnn_batchnorm_forward_training_metadata() const {
     return metadata_.cudnn_batchnorm_forward_training_metadata;
   }
 
@@ -178,6 +178,13 @@ class AlgebraicSimplifierOptions {
     return replace_transpose_with_bitcast_;
   }
 
+  // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
+  //
+  // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
+  // true.
+  bool minmax_propagate_nan() const { return minmax_propagate_nan_; }
+  void set_minmax_propagate_nan(bool val) { minmax_propagate_nan_ = val; }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplierOptions that can be later used in an
@@ -188,7 +195,7 @@ class AlgebraicSimplifierOptions {
   // guaranteed to be postive. This property has been used to recursively
   // determine if the operand of an instruction is always positive.
   struct Metadata {
-    string cudnn_batchnorm_forward_training_metadata{""};
+    std::string cudnn_batchnorm_forward_training_metadata{""};
     Metadata() {}
   };
   ReshapeIsBitcastCallback reshape_is_bitcast_callback_;
@@ -206,6 +213,7 @@ class AlgebraicSimplifierOptions {
   bool enable_sink_broadcast_{true};
   bool replace_transpose_with_bitcast_{true};
   int64_t very_small_gather_size_{4};
+  bool minmax_propagate_nan_{true};
   Metadata metadata_;
 };
 
@@ -391,10 +399,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
                           HloInstruction* operand = nullptr);
 
   // Replace old instruction with new instruction if old and new instructions
-  // have the same shape. Updates uses and root instruction. Returns whether a
-  // replacement was made.
-  bool ReplaceInstructionIfSameShape(HloInstruction* old_instruction,
-                                     HloInstruction* new_instruction);
+  // are compatible (have the same shape and replacement preserves sharding).
+  // Updates uses and root instruction. Returns whether a replacement was made.
+  bool ReplaceInstructionIfCompatible(HloInstruction* old_instruction,
+                                      HloInstruction* new_instruction);
 
   // Returns whether the shape of the output of the given instructions are the
   // same for the purposes of simplification. If options_.is_layout_sensitive()

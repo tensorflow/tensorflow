@@ -21,10 +21,13 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/hash/hash.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -41,10 +44,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -60,7 +61,7 @@ constexpr int kMinimumAlignment = 64;
 // Converts between little and big endian.
 //
 // Precondition: size % 2 == 0 (elements in the array are 16 bits long)
-void ConvertEndianShort(string* bytes) {
+void ConvertEndianShort(std::string* bytes) {
   CHECK_EQ(bytes->size() % 2, 0);
   for (int64_t i = 0, end = bytes->size(); i < end; i += 2) {
     std::swap((*bytes)[i], (*bytes)[i + 1]);
@@ -74,9 +75,9 @@ void ConvertEndianShort(char* bytes, int64_t size) {
   }
 }
 
-string CompactOneline(const string& input) {
-  string result;
-  std::vector<string> v = absl::StrSplit(input, absl::ByAnyChar("\n "));
+std::string CompactOneline(const std::string& input) {
+  std::string result;
+  std::vector<std::string> v = absl::StrSplit(input, absl::ByAnyChar("\n "));
   bool first = true;
   // Concatenate elements in "v" with spaces separating them, but ignoring
   // empty entries.
@@ -96,8 +97,8 @@ template <typename T>
 T GetRawValue(T val) {
   return val;
 }
-uint16 GetRawValue(Eigen::half val) {
-  return Eigen::numext::bit_cast<uint16>(val);
+uint16_t GetRawValue(Eigen::half val) {
+  return Eigen::numext::bit_cast<uint16_t>(val);
 }
 
 bool LiteralProtoHasValues(const LiteralProto& proto) {
@@ -145,7 +146,8 @@ MutableLiteralBase::StrideConfig::StrideConfig(
 Literal::Literal(const Shape& shape)
     : Literal(shape, /*allocate_arrays=*/true) {}
 
-void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
+void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
+                       ArrayValueState leaf_array_value_state) {
   if (shape.IsTuple()) {
     for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       const Shape& subshape = shape.tuple_shapes(i);
@@ -153,20 +155,15 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
       auto child_piece = Piece();
       child_piece.set_subshape(&subshape);
 
-      SetPiece(subshape, &child_piece, allocate_arrays);
+      SetPiece(subshape, &child_piece, allocate_arrays, leaf_array_value_state);
 
       piece->emplace_back(std::move(child_piece));
     }
   } else if (shape.IsArray()) {
-    if (allocate_arrays) {
-      piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
-          piece->size_bytes(), kMinimumAlignment)));
-      if (shape.is_dynamic()) {
-        CHECK_EQ(piece->dynamic_size_buffer(), nullptr);
-        piece->set_dynamic_size_buffer(
-            static_cast<int32*>(tensorflow::port::AlignedMalloc(
-                piece->dynamic_size_buffer_bytes(), kMinimumAlignment)));
-      }
+    piece->set_array_value_state(leaf_array_value_state);
+    if (leaf_array_value_state == LiteralBase::ArrayValueState::kKnown &&
+        allocate_arrays) {
+      piece->AllocateBuffers();
     }
   } else {
     // If the shape is neither an array nor tuple, then it must be
@@ -175,15 +172,17 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
   }
 }
 
-Literal::Literal(const Shape& shape, bool allocate_arrays)
+Literal::Literal(const Shape& shape, bool allocate_arrays,
+                 ArrayValueState leaf_array_value_state)
     : MutableLiteralBase() {
   shape_ = absl::make_unique<Shape>(shape);
-  CHECK(LayoutUtil::HasLayout(*shape_));
+  CHECK(leaf_array_value_state != ArrayValueState::kKnown ||
+        LayoutUtil::HasLayout(*shape_));
   root_piece_ = new Piece();
   root_piece_->set_subshape(shape_.get());
   CHECK(&root_piece_->subshape() == shape_.get());
 
-  SetPiece(*shape_, root_piece_, allocate_arrays);
+  SetPiece(*shape_, root_piece_, allocate_arrays, leaf_array_value_state);
 }
 
 Literal::~Literal() {
@@ -196,12 +195,7 @@ Literal::~Literal() {
 void Literal::DeallocateBuffers() {
   root_piece_->ForEachMutableSubpiece(
       [&](const ShapeIndex& index, Piece* piece) {
-        if (piece->buffer() != nullptr) {
-          tensorflow::port::AlignedFree(piece->buffer());
-        }
-        if (piece->dynamic_size_buffer() != nullptr) {
-          tensorflow::port::AlignedFree(piece->dynamic_size_buffer());
-        }
+        piece->DeallocateBuffers();
       });
 }
 
@@ -230,23 +224,35 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
   return literal;
 }
 
-int32 LiteralBase::GetDynamicSize(int64_t dim_index) const {
+Literal LiteralBase::CreateFromShapeWithUnknownLeafArrays(const Shape& shape) {
+  Literal literal(shape, /*allocate_arrays=*/false, ArrayValueState::kUnknown);
+  return literal;
+}
+
+Literal LiteralBase::CreateFromShapeWithUndeterminedLeafArrays(
+    const Shape& shape) {
+  Literal literal(shape, /*allocate_arrays=*/false,
+                  ArrayValueState::kUndetermined);
+  return literal;
+}
+
+int32_t LiteralBase::GetDynamicSize(int64_t dim_index) const {
   return GetDynamicSize(dim_index, {});
 }
 
-int32 LiteralBase::GetDynamicSize(int64_t dim_index,
-                                  const ShapeIndex& shape_index) const {
+int32_t LiteralBase::GetDynamicSize(int64_t dim_index,
+                                    const ShapeIndex& shape_index) const {
   return piece(shape_index).GetDynamicSize(dim_index);
 }
 
 absl::optional<int64_t> LiteralBase::GetFirstInteger() const {
   switch (shape().element_type()) {
     case U8:
-      return GetFirstElement<uint8>();
+      return GetFirstElement<uint8_t>();
     case U16:
-      return GetFirstElement<uint16>();
+      return GetFirstElement<uint16_t>();
     case U32:
-      return GetFirstElement<uint32>();
+      return GetFirstElement<uint32_t>();
     case U64: {
       int64_t v = GetFirstElement<uint64_t>();
       if (v < 0) {
@@ -255,11 +261,11 @@ absl::optional<int64_t> LiteralBase::GetFirstInteger() const {
       return v;
     }
     case S8:
-      return GetFirstElement<int8>();
+      return GetFirstElement<int8_t>();
     case S16:
-      return GetFirstElement<int16>();
+      return GetFirstElement<int16_t>();
     case S32:
-      return GetFirstElement<int32>();
+      return GetFirstElement<int32_t>();
     case S64:
       return GetFirstElement<int64_t>();
     default:
@@ -466,7 +472,7 @@ void CopyElementsBetween(absl::Span<NativeT> dest,
 }
 }  // namespace
 
-int32 LiteralBase::Piece::GetDynamicSize(int64_t dim_index) const {
+int32_t LiteralBase::Piece::GetDynamicSize(int64_t dim_index) const {
   CHECK(LayoutUtil::IsDenseArray(subshape()));
   if (!subshape_->is_dynamic_dimension(dim_index)) {
     // This is a static dimension, return size.
@@ -481,8 +487,9 @@ void LiteralBase::Piece::SetDynamicSize(int64_t dim_index, int32_t size) {
   CHECK(subshape_->is_dynamic_dimension(dim_index));
   if (dynamic_size_buffer() == nullptr) {
     // Lazily initialize the dynamic size buffer.
-    set_dynamic_size_buffer(static_cast<int32*>(tensorflow::port::AlignedMalloc(
-        dynamic_size_buffer_bytes(), kMinimumAlignment)));
+    set_dynamic_size_buffer(
+        static_cast<int32_t*>(tensorflow::port::AlignedMalloc(
+            dynamic_size_buffer_bytes(), kMinimumAlignment)));
     /*for (int64_t i = 0; i < subshape().rank(); ++i) {
       // Initialized to -1 to help debug.
       dynamic_size_buffer_[i] = -1;
@@ -491,10 +498,49 @@ void LiteralBase::Piece::SetDynamicSize(int64_t dim_index, int32_t size) {
   dynamic_size_buffer_[dim_index] = size;
 }
 
+void LiteralBase::Piece::AllocateBuffers() {
+  CHECK_EQ(buffer(), nullptr);
+  set_buffer(static_cast<char*>(
+      tensorflow::port::AlignedMalloc(size_bytes(), kMinimumAlignment)));
+  if (subshape().is_dynamic()) {
+    CHECK_EQ(dynamic_size_buffer(), nullptr);
+    set_dynamic_size_buffer(
+        static_cast<int32_t*>(tensorflow::port::AlignedMalloc(
+            dynamic_size_buffer_bytes(), kMinimumAlignment)));
+  }
+}
+
+void LiteralBase::Piece::DeallocateBuffers() {
+  if (buffer_ != nullptr) {
+    tensorflow::port::AlignedFree(buffer_);
+    buffer_ = nullptr;
+  }
+  if (dynamic_size_buffer_ != nullptr) {
+    tensorflow::port::AlignedFree(dynamic_size_buffer_);
+    dynamic_size_buffer_ = nullptr;
+  }
+}
+
 Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
                                     bool only_dynamic_bound) {
   CHECK(subshape_ != nullptr);
   CHECK(src.subshape_ != nullptr);
+  if (src.array_value_state_ == ArrayValueState::kUnknown ||
+      src.array_value_state_ == ArrayValueState::kUndetermined) {
+    if (array_value_state_ == ArrayValueState::kKnown) {
+      DeallocateBuffers();
+    }
+    array_value_state_ = src.array_value_state_;
+    return Status::OK();
+  } else {
+    CHECK(src.array_value_state_ == ArrayValueState::kKnown);
+    if (array_value_state_ == ArrayValueState::kUndetermined ||
+        array_value_state_ == ArrayValueState::kUnknown) {
+      AllocateBuffers();
+    }
+    array_value_state_ = src.array_value_state_;
+  }
+
   if (ShapeUtil::Equal(subshape(), src.subshape())) {
     // If the layouts are equal it's faster just to memcpy.
     memcpy(buffer(), src.buffer(), src.size_bytes());
@@ -510,13 +556,13 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
                                     subshape(), src.subshape());            \
     }                                                                       \
     break;
-      COPY_ELEMENTS(U8, uint8);
-      COPY_ELEMENTS(U16, uint16);
-      COPY_ELEMENTS(U32, uint32);
-      COPY_ELEMENTS(U64, uint64);
-      COPY_ELEMENTS(S8, int8);
-      COPY_ELEMENTS(S16, int16);
-      COPY_ELEMENTS(S32, int32);
+      COPY_ELEMENTS(U8, uint8_t);
+      COPY_ELEMENTS(U16, uint16_t);
+      COPY_ELEMENTS(U32, uint32_t);
+      COPY_ELEMENTS(U64, uint64_t);
+      COPY_ELEMENTS(S8, int8_t);
+      COPY_ELEMENTS(S16, int16_t);
+      COPY_ELEMENTS(S32, int32_t);
       COPY_ELEMENTS(S64, int64_t);
       COPY_ELEMENTS(F16, half);
       COPY_ELEMENTS(BF16, bfloat16);
@@ -659,26 +705,26 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
 
   switch (shape().element_type()) {
     case U8:
-      return CopySliceFromInternal<uint8>(src_literal, src_base, dest_base,
-                                          copy_size);
+      return CopySliceFromInternal<uint8_t>(src_literal, src_base, dest_base,
+                                            copy_size);
     case U16:
-      return CopySliceFromInternal<uint16>(src_literal, src_base, dest_base,
-                                           copy_size);
+      return CopySliceFromInternal<uint16_t>(src_literal, src_base, dest_base,
+                                             copy_size);
     case U32:
-      return CopySliceFromInternal<uint32>(src_literal, src_base, dest_base,
-                                           copy_size);
+      return CopySliceFromInternal<uint32_t>(src_literal, src_base, dest_base,
+                                             copy_size);
     case U64:
       return CopySliceFromInternal<uint64_t>(src_literal, src_base, dest_base,
                                              copy_size);
     case S8:
-      return CopySliceFromInternal<int8>(src_literal, src_base, dest_base,
-                                         copy_size);
+      return CopySliceFromInternal<int8_t>(src_literal, src_base, dest_base,
+                                           copy_size);
     case S16:
-      return CopySliceFromInternal<int16>(src_literal, src_base, dest_base,
-                                          copy_size);
+      return CopySliceFromInternal<int16_t>(src_literal, src_base, dest_base,
+                                            copy_size);
     case S32:
-      return CopySliceFromInternal<int32>(src_literal, src_base, dest_base,
-                                          copy_size);
+      return CopySliceFromInternal<int32_t>(src_literal, src_base, dest_base,
+                                            copy_size);
     case S64:
       return CopySliceFromInternal<int64_t>(src_literal, src_base, dest_base,
                                             copy_size);
@@ -798,8 +844,8 @@ StatusOr<Literal> LiteralBase::Broadcast(
                  result_shape.dimensions(dimensions[i]));
   }
 
+  TF_RET_CHECK(result_shape.element_type() == shape().element_type());
   Literal result(result_shape);
-
   // scratch_source_index is temporary storage space for the computed index into
   // the input literal.  We put it here to avoid allocating an std::vector in
   // every iteration of ShapeUtil::ForEachIndex.
@@ -809,7 +855,6 @@ StatusOr<Literal> LiteralBase::Broadcast(
   const char* source_data = static_cast<const char*>(untyped_data());
   const int64_t primitive_size =
       ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
-
   for (int64_t i = 0; i < dimensions.size(); ++i) {
     int64_t dynamic_size = GetDynamicSize(i);
     result.SetDynamicSize(dimensions[i], dynamic_size);
@@ -947,19 +992,19 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
     case PRED:
       return SliceInternal<bool>(result_shape, start_indices);
     case U8:
-      return SliceInternal<uint8>(result_shape, start_indices);
+      return SliceInternal<uint8_t>(result_shape, start_indices);
     case U16:
-      return SliceInternal<uint16>(result_shape, start_indices);
+      return SliceInternal<uint16_t>(result_shape, start_indices);
     case U32:
-      return SliceInternal<uint32>(result_shape, start_indices);
+      return SliceInternal<uint32_t>(result_shape, start_indices);
     case U64:
       return SliceInternal<uint64_t>(result_shape, start_indices);
     case S8:
-      return SliceInternal<int8>(result_shape, start_indices);
+      return SliceInternal<int8_t>(result_shape, start_indices);
     case S16:
-      return SliceInternal<int16>(result_shape, start_indices);
+      return SliceInternal<int16_t>(result_shape, start_indices);
     case S32:
-      return SliceInternal<int32>(result_shape, start_indices);
+      return SliceInternal<int32_t>(result_shape, start_indices);
     case S64:
       return SliceInternal<int64_t>(result_shape, start_indices);
     case F16:
@@ -992,27 +1037,35 @@ std::unique_ptr<Literal> LiteralBase::CloneToUnique() const {
   return result;
 }
 
-string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
-                                const ShapeIndex& shape_index) const {
+bool LiteralBase::IsDetermined(const ShapeIndex& shape_index) const {
+  return piece(shape_index).IsDetermined();
+}
+
+bool LiteralBase::IsKnown(const ShapeIndex& shape_index) const {
+  return piece(shape_index).IsKnown();
+}
+
+std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
+                                     const ShapeIndex& shape_index) const {
   const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
   CHECK(LayoutUtil::IsDenseArray(subshape));
   switch (subshape.element_type()) {
     case PRED:
       return Get<bool>(multi_index, shape_index) ? "true" : "false";
     case S8:
-      return StrCat(Get<int8>(multi_index, shape_index));
+      return StrCat(Get<int8_t>(multi_index, shape_index));
     case S16:
-      return StrCat(Get<int16>(multi_index, shape_index));
+      return StrCat(Get<int16_t>(multi_index, shape_index));
     case S32:
-      return StrCat(Get<int32>(multi_index, shape_index));
+      return StrCat(Get<int32_t>(multi_index, shape_index));
     case S64:
       return StrCat(Get<int64_t>(multi_index, shape_index));
     case U8:
-      return StrCat(Get<uint8>(multi_index, shape_index));
+      return StrCat(Get<uint8_t>(multi_index, shape_index));
     case U16:
-      return StrCat(Get<uint16>(multi_index, shape_index));
+      return StrCat(Get<uint16_t>(multi_index, shape_index));
     case U32:
-      return StrCat(Get<uint32>(multi_index, shape_index));
+      return StrCat(Get<uint32_t>(multi_index, shape_index));
     case U64:
       return StrCat(Get<uint64_t>(multi_index, shape_index));
     case F16:
@@ -1045,17 +1098,17 @@ absl::optional<int64_t> LiteralBase::GetIntegralAsS64(
     case PRED:
       return Get<bool>(multi_index);
     case S8:
-      return Get<int8>(multi_index);
+      return Get<int8_t>(multi_index);
     case U8:
-      return Get<uint8>(multi_index);
+      return Get<uint8_t>(multi_index);
     case S16:
-      return Get<int16>(multi_index);
+      return Get<int16_t>(multi_index);
     case U16:
-      return Get<uint16>(multi_index);
+      return Get<uint16_t>(multi_index);
     case S32:
-      return Get<int32>(multi_index);
+      return Get<int32_t>(multi_index);
     case U32:
-      return Get<uint32>(multi_index);
+      return Get<uint32_t>(multi_index);
     case S64:
       return Get<int64_t>(multi_index);
     case U64:
@@ -1098,31 +1151,10 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
     case C128:
       return {Get<complex128>(multi_index)};
     case S8:
-      return {Get<int8>(multi_index)};
+      return {Get<int8_t>(multi_index)};
     default:
       return absl::nullopt;
   }
-}
-
-size_t LiteralBase::Hash(int64_t byte_limit) const {
-  using tensorflow::Hash64;
-  using tensorflow::Hash64Combine;
-
-  size_t hash_value = ShapeUtil::Hash(shape());
-
-  ShapeUtil::ForEachSubshape(
-      shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) {
-          return;
-        }
-
-        CHECK(LayoutUtil::IsDense(subshape.layout()));
-        hash_value = Hash64Combine(
-            hash_value, Hash64(static_cast<const char*>(untyped_data(index)),
-                               std::min(byte_limit, size_bytes(index))));
-      });
-
-  return hash_value;
 }
 
 Status MutableLiteralBase::SetIntegralAsS64(
@@ -1133,16 +1165,16 @@ Status MutableLiteralBase::SetIntegralAsS64(
       Set<bool>(multi_index, value);
       break;
     case U8:
-      Set<uint8>(multi_index, value);
+      Set<uint8_t>(multi_index, value);
       break;
     case S32:
-      Set<int32>(multi_index, value);
+      Set<int32_t>(multi_index, value);
       break;
     case S64:
       Set<int64_t>(multi_index, value);
       break;
     case U32:
-      Set<uint32>(multi_index, value);
+      Set<uint32_t>(multi_index, value);
       break;
     case U64:
       Set<uint64_t>(multi_index, value);
@@ -1179,27 +1211,27 @@ Status MutableLiteralBase::SetFromDouble(absl::Span<const int64_t> multi_index,
 
 namespace {
 
-string ShapeToString(bool print_layout, const Shape& shape) {
+std::string ShapeToString(bool print_layout, const Shape& shape) {
   return print_layout ? ShapeUtil::HumanStringWithLayout(shape)
                       : ShapeUtil::HumanString(shape);
 }
 
 void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
                     bool print_shape, bool print_layout,
-                    std::vector<string>* pieces);
+                    std::vector<std::string>* pieces);
 
 void TupleToStringHelper(const LiteralBase& literal,
                          const ShapeIndex& shape_index, bool print_shape,
-                         bool print_layout, std::vector<string>* pieces) {
+                         bool print_layout, std::vector<std::string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   pieces->push_back("(\n");
-  std::vector<string> tuple_pieces;
+  std::vector<std::string> tuple_pieces;
   const auto tuple_element_count = ShapeUtil::TupleElementCount(subshape);
   tuple_pieces.reserve(tuple_element_count);
   for (int i = 0; i < ShapeUtil::TupleElementCount(subshape); ++i) {
     ShapeIndex element_index = shape_index;
     element_index.push_back(i);
-    std::vector<string> element_pieces;
+    std::vector<std::string> element_pieces;
     ToStringHelper(literal, element_index, print_shape, print_layout,
                    &element_pieces);
     tuple_pieces.push_back(absl::StrJoin(element_pieces, ""));
@@ -1210,7 +1242,8 @@ void TupleToStringHelper(const LiteralBase& literal,
 
 void DenseArrayToStringHelper(const LiteralBase& literal,
                               const ShapeIndex& shape_index, bool print_shape,
-                              bool print_layout, std::vector<string>* pieces) {
+                              bool print_layout,
+                              std::vector<std::string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   int64_t rank = subshape.rank();
 
@@ -1223,7 +1256,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
         // Their sum is equal to the rank of the tensor.
         CHECK_EQ(rank, dimensions.size() + accum_indices->size());
 
-        auto brace_to_string = [&](string brace) -> string {
+        auto brace_to_string = [&](std::string brace) -> std::string {
           // Handle 1D tensor
           if (rank == 1) {
             return brace;
@@ -1251,7 +1284,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
 
         if (dimensions.empty()) {
           // Display predicates as 0s and 1s so that the string is more dense.
-          string elem;
+          std::string elem;
           if (subshape.element_type() == PRED && rank > 0) {
             elem = literal.Get<bool>(*accum_indices, shape_index) ? "1" : "0";
           } else {
@@ -1261,9 +1294,9 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
         } else {
           pieces->push_back(brace_to_string("{"));
           for (int i = 0; i < dimensions[0]; ++i) {
-            std::vector<int64_t> cloned_indices(*accum_indices);
-            cloned_indices.push_back(i);
-            to_string_recursive(dimensions.subspan(1), &cloned_indices);
+            accum_indices->push_back(i);
+            to_string_recursive(dimensions.subspan(1), accum_indices);
+            accum_indices->pop_back();
             if (i < dimensions[0] - 1) {
               pieces->push_back(",");
               pieces->push_back(dimensions.size() > 1 ? "\n" : " ");
@@ -1298,7 +1331,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
 
 void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
                     bool print_shape, bool print_layout,
-                    std::vector<string>* pieces) {
+                    std::vector<std::string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   CHECK(LayoutUtil::HasLayout(literal.shape()));
   CHECK(LayoutUtil::HasLayout(subshape));
@@ -1309,52 +1342,62 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
     pieces->push_back("token");
   } else {
     CHECK(LayoutUtil::IsDenseArray(subshape));
-    DenseArrayToStringHelper(literal, shape_index, print_shape, print_layout,
-                             pieces);
+    if (literal.IsKnown(shape_index)) {
+      DenseArrayToStringHelper(literal, shape_index, print_shape, print_layout,
+                               pieces);
+    } else {
+      pieces->push_back(ShapeToString(print_layout, subshape));
+      pieces->push_back(" ");
+      if (literal.IsDetermined(shape_index)) {
+        pieces->push_back("unknown");
+      } else {
+        pieces->push_back("undetermined");
+      }
+    }
   }
 }
 
 }  // namespace
 
-string LiteralBase::ToString() const {
-  std::vector<string> pieces;
+std::string LiteralBase::ToString() const {
+  std::vector<std::string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/true,
                  /*print_layout=*/false, &pieces);
   return absl::StrJoin(pieces, "");
 }
 
-string LiteralBase::ToStringOneline() const {
+std::string LiteralBase::ToStringOneline() const {
   return CompactOneline(ToString());
 }
 
-string LiteralBase::ToStringWithoutShape() const {
-  std::vector<string> pieces;
+std::string LiteralBase::ToStringWithoutShape() const {
+  std::vector<std::string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/false,
                  /*print_layout=*/false, &pieces);
   return absl::StrJoin(pieces, "");
 }
 
-string LiteralBase::ToStringWithoutShapeOneline() const {
+std::string LiteralBase::ToStringWithoutShapeOneline() const {
   return CompactOneline(ToStringWithoutShape());
 }
 
-string LiteralBase::ToStringWithLayout() const {
-  std::vector<string> pieces;
+std::string LiteralBase::ToStringWithLayout() const {
+  std::vector<std::string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/true,
                  /*print_layout=*/true, &pieces);
   return absl::StrJoin(pieces, "");
 }
 
-string LiteralBase::ToStringWithLayoutOneline() const {
+std::string LiteralBase::ToStringWithLayoutOneline() const {
   return CompactOneline(ToStringWithLayout());
 }
 
 void LiteralBase::EachCellAsString(
     const std::function<void(absl::Span<const int64_t> indices,
-                             const string& value)>& per_cell) const {
+                             const std::string& value)>& per_cell) const {
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
@@ -1465,7 +1508,7 @@ BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   // cast to unsigned short first.
   auto converter = [](NativeSrcT src) {
     return Eigen::numext::bit_cast<Eigen::half>(
-        absl::bit_cast<uint16>(GetRawValue(src)));
+        absl::bit_cast<uint16_t>(GetRawValue(src)));
   };
   return ConvertBetweenNativeTypesWithConverter<NativeSrcT, Eigen::half>(
       src_literal, converter);
@@ -1715,19 +1758,19 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
     case PRED:
       return EqualElementsInternal<bool>(other, &multi_index);
     case S8:
-      return EqualElementsInternal<int8>(other, &multi_index);
+      return EqualElementsInternal<int8_t>(other, &multi_index);
     case S16:
-      return EqualElementsInternal<int16>(other, &multi_index);
+      return EqualElementsInternal<int16_t>(other, &multi_index);
     case S32:
-      return EqualElementsInternal<int32>(other, &multi_index);
+      return EqualElementsInternal<int32_t>(other, &multi_index);
     case S64:
       return EqualElementsInternal<int64_t>(other, &multi_index);
     case U8:
-      return EqualElementsInternal<uint8>(other, &multi_index);
+      return EqualElementsInternal<uint8_t>(other, &multi_index);
     case U16:
-      return EqualElementsInternal<uint16>(other, &multi_index);
+      return EqualElementsInternal<uint16_t>(other, &multi_index);
     case U32:
-      return EqualElementsInternal<uint32>(other, &multi_index);
+      return EqualElementsInternal<uint32_t>(other, &multi_index);
     case U64:
       return EqualElementsInternal<uint64_t>(other, &multi_index);
     case F32:
@@ -1783,216 +1826,204 @@ bool LiteralBase::operator==(const LiteralBase& other) const {
       });
 }
 
-namespace {
+template <typename NativeT>
+static bool EqualIncludingNan(NativeT a, NativeT b) {
+  // msvc can't compile std::isnan(a) where `a` is uint8_t.  This is a bug
+  // according to https://en.cppreference.com/w/cpp/numeric/math/isnan, but it's
+  // easy to work around.
+  return a == b || (std::isnan(static_cast<double>(a)) &&
+                    std::isnan(static_cast<double>(b)));
+}
+
+template <typename T>
+static bool EqualIncludingNan(std::complex<T> a, std::complex<T> b) {
+  return EqualIncludingNan(a.real(), b.real()) &&
+         EqualIncludingNan(a.imag(), b.imag());
+}
 
 template <typename NativeT>
 static bool AllElementsEqualValue(absl::Span<const NativeT> data,
                                   NativeT value) {
   for (int64_t i = 0; i < data.size(); ++i) {
-    if (data[i] != value) {
+    if (!EqualIncludingNan(data[i], value)) {
       return false;
     }
   }
   return true;
 }
 
-}  // namespace
+bool Literal::Piece::IsAll(const Literal& scalar) const {
+  CHECK(ShapeUtil::IsScalar(scalar.shape()));
+  if (!subshape().IsArray()) {
+    return false;
+  }
 
-bool LiteralBase::IsAll(int8_t value) const {
-  return root_piece().ForEachSubpieceWithBool([&](const ShapeIndex& index,
-                                                  const Piece& piece) {
-    if (!piece.subshape().IsArray()) {
-      return true;
-    }
-
-    auto piece_is_all = [&]() {
-      switch (shape().element_type()) {
-        case U8:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint8>(piece.data<uint8>(), value);
-          }
-          return false;
-        case U16:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint16>(piece.data<uint16>(), value);
-          }
-          return false;
-        case U32:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint32>(piece.data<uint32>(), value);
-          }
-          return false;
-        case U64:
-          if (value >= 0) {
-            return AllElementsEqualValue<uint64_t>(piece.data<uint64_t>(),
-                                                   value);
-          }
-          return false;
-        case S8:
-          return AllElementsEqualValue<int8>(piece.data<int8>(), value);
-        case S16:
-          return AllElementsEqualValue<int16>(piece.data<int16>(), value);
-        case S32:
-          return AllElementsEqualValue<int32>(piece.data<int32>(), value);
-        case S64:
-          return AllElementsEqualValue<int64_t>(piece.data<int64_t>(), value);
-        case F32:
-          return AllElementsEqualValue<float>(piece.data<float>(), value);
-        case F64:
-          return AllElementsEqualValue<double>(piece.data<double>(), value);
-        case F16:
-          return AllElementsEqualValue<half>(piece.data<half>(),
-                                             static_cast<half>(value));
-        case BF16:
-          return AllElementsEqualValue<bfloat16>(piece.data<bfloat16>(),
-                                                 static_cast<bfloat16>(value));
-        case PRED:
-          if (value == 0) {
-            return AllElementsEqualValue<bool>(piece.data<bool>(), false);
-          }
-          if (value == 1) {
-            return AllElementsEqualValue<bool>(piece.data<bool>(), true);
-          }
-          return false;
-        default:
-          return false;
-      }
-      return false;
-    };
-
-    if (!piece_is_all()) {
-      return false;
-    }
-    return true;
-  });
-}
-
-bool LiteralBase::IsAllFloat(float value) const {
-  return root_piece().ForEachSubpieceWithBool(
-      [&](const ShapeIndex& index, const Piece& piece) {
-        if (!piece.subshape().IsArray()) {
-          return true;
-        }
-
-        switch (shape().element_type()) {
-          case F32:
-            return AllElementsEqualValue<float>(piece.data<float>(), value);
-          case F64:
-            return AllElementsEqualValue<double>(piece.data<double>(), value);
-          case F16:
-            return AllElementsEqualValue<half>(piece.data<half>(),
-                                               static_cast<half>(value));
-          case BF16:
-            return AllElementsEqualValue<bfloat16>(
-                piece.data<bfloat16>(), static_cast<bfloat16>(value));
-          default:
-            return false;
-        }
-      });
-}
-
-bool LiteralBase::IsAllComplex(complex64 value) const {
-  switch (shape().element_type()) {
+  CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
+  switch (subshape().element_type()) {
+    case U8:
+      return AllElementsEqualValue(data<uint8_t>(),
+                                   scalar.GetFirstElement<uint8_t>());
+    case U16:
+      return AllElementsEqualValue(data<uint16_t>(),
+                                   scalar.GetFirstElement<uint16_t>());
+    case U32:
+      return AllElementsEqualValue(data<uint32_t>(),
+                                   scalar.GetFirstElement<uint32_t>());
+    case U64:
+      return AllElementsEqualValue(data<uint64_t>(),
+                                   scalar.GetFirstElement<uint64_t>());
+    case S8:
+      return AllElementsEqualValue(data<int8_t>(),
+                                   scalar.GetFirstElement<int8_t>());
+    case S16:
+      return AllElementsEqualValue(data<int16_t>(),
+                                   scalar.GetFirstElement<int16_t>());
+    case S32:
+      return AllElementsEqualValue(data<int32_t>(),
+                                   scalar.GetFirstElement<int32_t>());
+    case S64:
+      return AllElementsEqualValue(data<int64_t>(),
+                                   scalar.GetFirstElement<int64_t>());
+    case PRED:
+      return AllElementsEqualValue(data<bool>(),
+                                   scalar.GetFirstElement<bool>());
+    case F16:
+      return AllElementsEqualValue(data<half>(),
+                                   scalar.GetFirstElement<half>());
+    case BF16:
+      return AllElementsEqualValue(data<bfloat16>(),
+                                   scalar.GetFirstElement<bfloat16>());
+    case F32:
+      return AllElementsEqualValue(data<float>(),
+                                   scalar.GetFirstElement<float>());
+    case F64:
+      return AllElementsEqualValue(data<double>(),
+                                   scalar.GetFirstElement<double>());
     case C64:
-      return AllElementsEqualValue<complex64>(root_piece().data<complex64>(),
-                                              value);
+      return AllElementsEqualValue(data<complex64>(),
+                                   scalar.GetFirstElement<complex64>());
     case C128:
-      return AllElementsEqualValue<complex128>(root_piece().data<complex128>(),
-                                               value);
+      return AllElementsEqualValue(data<complex128>(),
+                                   scalar.GetFirstElement<complex128>());
     default:
       return false;
   }
 }
 
+bool LiteralBase::IsAll(const Literal& scalar) const {
+  return root_piece().IsAll(scalar);
+}
+
+bool LiteralBase::IsAll(int8_t value) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType ty = shape().element_type();
+  if (primitive_util::IsFloatingPointType(ty)) {
+    return IsAllFloat(value);
+  }
+  if (primitive_util::IsUnsignedIntegralType(ty) && value < 0) {
+    return false;
+  }
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  switch (ty) {
+    case U8:
+      scalar.Set<uint8_t>({}, value);
+      break;
+    case U16:
+      scalar.Set<uint16_t>({}, value);
+      break;
+    case U32:
+      scalar.Set<uint32_t>({}, value);
+      break;
+    case U64:
+      scalar.Set<uint64_t>({}, value);
+      break;
+    case S8:
+      scalar.Set<int8_t>({}, value);
+      break;
+    case S16:
+      scalar.Set<int16_t>({}, value);
+      break;
+    case S32:
+      scalar.Set<int32_t>({}, value);
+      break;
+    case S64:
+      scalar.Set<int64_t>({}, value);
+      break;
+    case PRED:
+      if (value == 0) {
+        scalar.Set<bool>({}, false);
+      } else if (value == 1) {
+        scalar.Set<bool>({}, true);
+      } else {
+        return false;
+      }
+      break;
+    default:
+      return false;
+  }
+  return root_piece().IsAll(scalar);
+}
+
+bool LiteralBase::IsAllFloat(float value) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType ty = shape().element_type();
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  switch (ty) {
+    case F16:
+      scalar.Set<half>({}, static_cast<half>(value));
+      break;
+    case BF16:
+      scalar.Set<bfloat16>({}, static_cast<bfloat16>(value));
+      break;
+    case F32:
+      scalar.Set<float>({}, value);
+      break;
+    case F64:
+      scalar.Set<double>({}, value);
+      break;
+    default:
+      return false;
+  }
+  return root_piece().IsAll(scalar);
+}
+
+bool LiteralBase::IsAllComplex(complex64 value) const {
+  if (!shape().IsArray()) {
+    return false;
+  }
+  PrimitiveType ty = shape().element_type();
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  switch (ty) {
+    case C64:
+      scalar.Set<complex64>({}, value);
+      break;
+    case C128:
+      scalar.Set<complex128>({}, value);
+      break;
+    default:
+      return false;
+  }
+  return root_piece().IsAll(scalar);
+}
+
 bool LiteralBase::IsAllFirst() const {
-  return root_piece().ForEachSubpieceWithBool(
-      [&](const ShapeIndex& index, const Piece& piece) {
-        if (!piece.subshape().IsArray()) {
-          return true;
-        }
+  if (!shape().IsArray()) {
+    return false;
+  }
 
-        // Empty shapes are not all the first element since there is no first
-        // element.
-        if (ShapeUtil::IsZeroElementArray(piece.subshape())) {
-          return false;
-        }
-        auto piece_is_all = [&]() {
-          switch (piece.subshape().element_type()) {
-            case PRED: {
-              auto data = piece.data<bool>();
-              return AllElementsEqualValue<bool>(data, data[0]);
-            }
-            // 8 bit types
-            case S8: {
-              auto data = piece.data<int8>();
-              return AllElementsEqualValue<int8>(data, data[0]);
-            }
-            case U8: {
-              auto data = piece.data<uint8>();
-              return AllElementsEqualValue<uint8>(data, data[0]);
-            }
-            // 16 bit types
-            case BF16: {
-              auto data = piece.data<bfloat16>();
-              return AllElementsEqualValue<bfloat16>(data, data[0]);
-            }
-            case F16: {
-              auto data = piece.data<half>();
-              return AllElementsEqualValue<half>(data, data[0]);
-            }
-            case S16: {
-              auto data = piece.data<int16>();
-              return AllElementsEqualValue<int16>(data, data[0]);
-            }
-            case U16: {
-              auto data = piece.data<uint16>();
-              return AllElementsEqualValue<uint16>(data, data[0]);
-            }
-            // 32 bit types
-            case F32: {
-              auto data = piece.data<float>();
-              return AllElementsEqualValue<float>(data, data[0]);
-            }
-            case U32: {
-              auto data = piece.data<uint32>();
-              return AllElementsEqualValue<uint32>(data, data[0]);
-            }
-            case S32: {
-              auto data = piece.data<int32>();
-              return AllElementsEqualValue<int32>(data, data[0]);
-            }
-            // 64 bit types
-            case C64: {
-              auto data = piece.data<complex64>();
-              return AllElementsEqualValue<complex64>(data, data[0]);
-            }
-            case F64: {
-              auto data = piece.data<double>();
-              return AllElementsEqualValue<double>(data, data[0]);
-            }
-            case S64: {
-              auto data = piece.data<int64_t>();
-              return AllElementsEqualValue<int64_t>(data, data[0]);
-            }
-            case U64: {
-              auto data = piece.data<uint64_t>();
-              return AllElementsEqualValue<uint64_t>(data, data[0]);
-            }
+  // Empty shapes are not all the first element since there is no first element.
+  if (ShapeUtil::IsZeroElementArray(shape())) {
+    return false;
+  }
 
-            case C128: {
-              auto data = piece.data<complex128>();
-              return AllElementsEqualValue<complex128>(data, data[0]);
-            }
-            default:
-              return false;
-          }
-        };
-
-        if (!piece_is_all()) {
-          return false;
-        }
-        return true;
-      });
+  absl::InlinedVector<int64_t, 4> start_indices(/*n=*/shape().rank(), 0);
+  absl::InlinedVector<int64_t, 4> end_indices(/*n=*/shape().rank(), 1);
+  Literal first = Slice(start_indices, end_indices);
+  return IsAll(first.Reshape({}).ValueOrDie());
 }
 
 bool LiteralBase::IsR1Iota() const {
@@ -2007,19 +2038,19 @@ bool LiteralBase::IsR1Iota() const {
   auto is_iota_at_idx = [&](const int64_t idx) {
     switch (shape().element_type()) {
       case U8:
-        return static_cast<int64_t>(Get<uint8>({idx})) == idx;
+        return static_cast<int64_t>(Get<uint8_t>({idx})) == idx;
       case U16:
-        return static_cast<int64_t>(Get<uint16>({idx})) == idx;
+        return static_cast<int64_t>(Get<uint16_t>({idx})) == idx;
       case U32:
-        return static_cast<int64_t>(Get<uint32>({idx})) == idx;
+        return static_cast<int64_t>(Get<uint32_t>({idx})) == idx;
       case U64:
         return static_cast<int64_t>(Get<uint64_t>({idx})) == idx;
       case S8:
-        return Get<int8>({idx}) == idx;
+        return Get<int8_t>({idx}) == idx;
       case S16:
-        return Get<int16>({idx}) == idx;
+        return Get<int16_t>({idx}) == idx;
       case S32:
-        return Get<int32>({idx}) == idx;
+        return Get<int32_t>({idx}) == idx;
       case S64:
         return Get<int64_t>({idx}) == idx;
       case F32:
@@ -2067,19 +2098,19 @@ absl::optional<int64_t> LiteralBase::IsR1StridedIota() const {
   auto get_element_at = [&](const int64_t idx) -> int64_t {
     switch (type) {
       case U8:
-        return static_cast<int64_t>(Get<uint8>({idx}));
+        return static_cast<int64_t>(Get<uint8_t>({idx}));
       case U16:
-        return static_cast<int64_t>(Get<uint16>({idx}));
+        return static_cast<int64_t>(Get<uint16_t>({idx}));
       case U32:
-        return static_cast<int64_t>(Get<uint32>({idx}));
+        return static_cast<int64_t>(Get<uint32_t>({idx}));
       case U64:
         return static_cast<int64_t>(Get<uint64_t>({idx}));
       case S8:
-        return Get<int8>({idx});
+        return Get<int8_t>({idx});
       case S16:
-        return Get<int16>({idx});
+        return Get<int16_t>({idx});
       case S32:
-        return Get<int32>({idx});
+        return Get<int32_t>({idx});
       case S64:
         return Get<int64_t>({idx});
       default:
@@ -2108,19 +2139,19 @@ bool LiteralBase::IsZero(absl::Span<const int64_t> indices) const {
   CHECK(shape().IsArray());
   switch (shape().element_type()) {
     case U8:
-      return Get<uint8>(indices) == 0;
+      return Get<uint8_t>(indices) == 0;
     case U16:
-      return Get<uint16>(indices) == 0;
+      return Get<uint16_t>(indices) == 0;
     case U32:
-      return Get<uint32>(indices) == 0;
+      return Get<uint32_t>(indices) == 0;
     case U64:
       return Get<uint64_t>(indices) == 0;
     case S8:
-      return Get<int8>(indices) == 0;
+      return Get<int8_t>(indices) == 0;
     case S16:
-      return Get<int16>(indices) == 0;
+      return Get<int16_t>(indices) == 0;
     case S32:
-      return Get<int32>(indices) == 0;
+      return Get<int32_t>(indices) == 0;
     case S64:
       return Get<int64_t>(indices) == 0;
     case F32:
@@ -2152,6 +2183,14 @@ void CopyToRepeatedField(RepeatedFieldT* dest,
 
 }  // namespace
 
+void LiteralBase::Piece::set_array_value_state(ArrayValueState state) {
+  array_value_state_ = state;
+}
+
+LiteralBase::ArrayValueState LiteralBase::Piece::get_array_value_state() {
+  return array_value_state_;
+}
+
 void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
   *proto->mutable_shape() = subshape().ToProto();
   switch (subshape().element_type()) {
@@ -2159,48 +2198,48 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
       break;
     case S8:
-      proto->set_s8s(static_cast<const signed char*>(data<int8>().data()),
+      proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
                      element_count());
       break;
     case U8:
-      proto->set_u8s(static_cast<const unsigned char*>(data<uint8>().data()),
+      proto->set_u8s(static_cast<const unsigned char*>(data<uint8_t>().data()),
                      element_count());
       break;
     case U32:
-      CopyToRepeatedField(proto->mutable_u32s(), data<uint32>());
+      CopyToRepeatedField(proto->mutable_u32s(), data<uint32_t>());
       break;
     case U64:
       CopyToRepeatedField(proto->mutable_u64s(), data<uint64_t>());
       break;
     case S32:
-      CopyToRepeatedField(proto->mutable_s32s(), data<int32>());
+      CopyToRepeatedField(proto->mutable_s32s(), data<int32_t>());
       break;
     case S64:
       CopyToRepeatedField(proto->mutable_s64s(), data<int64_t>());
       break;
     case U16:
-      *proto->mutable_u16s() = string(
+      *proto->mutable_u16s() = std::string(
           reinterpret_cast<const char*>(data<uint16_t>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_u16s());
       }
       break;
     case S16:
-      *proto->mutable_s16s() = string(
+      *proto->mutable_s16s() = std::string(
           reinterpret_cast<const char*>(data<int16_t>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_s16s());
       }
       break;
     case F16:
-      *proto->mutable_f16s() = string(
+      *proto->mutable_f16s() = std::string(
           reinterpret_cast<const char*>(data<half>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_f16s());
       }
       break;
     case BF16:
-      *proto->mutable_bf16s() = string(
+      *proto->mutable_bf16s() = std::string(
           reinterpret_cast<const char*>(data<bfloat16>().data()), size_bytes());
       if (!kLittleEndian) {
         ConvertEndianShort(proto->mutable_bf16s());
@@ -2274,29 +2313,29 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
       break;
     case S8: {
-      auto s8_data = data<int8>();
+      auto s8_data = data<int8_t>();
       TF_RET_CHECK(proto.s8s().size() == s8_data.size());
       std::copy(proto.s8s().begin(), proto.s8s().end(), s8_data.begin());
     } break;
     case U8: {
-      auto u8_data = data<uint8>();
+      auto u8_data = data<uint8_t>();
       TF_RET_CHECK(proto.u8s().size() == u8_data.size());
       std::copy(proto.u8s().begin(), proto.u8s().end(), u8_data.begin());
     } break;
     case S32:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int32>(), proto.s32s()));
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int32_t>(), proto.s32s()));
       break;
     case S64:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<int64_t>(), proto.s64s()));
       break;
     case U32:
-      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32>(), proto.u32s()));
+      TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint32_t>(), proto.u32s()));
       break;
     case U64:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64_t>(), proto.u64s()));
       break;
     case S16: {
-      const string& s(proto.s16s());
+      const std::string& s(proto.s16s());
       TF_RET_CHECK(data<int16_t>().size() * sizeof(int16_t) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2304,7 +2343,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case U16: {
-      const string& s(proto.u16s());
+      const std::string& s(proto.u16s());
       TF_RET_CHECK(data<uint16_t>().size() * sizeof(uint16_t) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2312,7 +2351,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case F16: {
-      const string& s(proto.f16s());
+      const std::string& s(proto.f16s());
       TF_RET_CHECK(data<half>().size() * sizeof(half) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2321,7 +2360,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     } break;
 
     case BF16: {
-      const string& s(proto.bf16s());
+      const std::string& s(proto.bf16s());
       TF_RET_CHECK(data<bfloat16>().size() * sizeof(bfloat16) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {
@@ -2362,6 +2401,42 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   return Status::OK();
 }
 
+bool LiteralBase::Piece::IsKnown() const {
+  if (array_value_state_ != ArrayValueState::kKnown) {
+    return false;
+  }
+  if (subshape().IsTuple()) {
+    bool are_all_leaf_arrays_known = true;
+    ForEachSubpiece([&are_all_leaf_arrays_known](const ShapeIndex& index,
+                                                 const Piece& piece) {
+      if (!piece.subshape().IsArray()) {
+        return;
+      }
+      are_all_leaf_arrays_known &= piece.IsKnown();
+    });
+    return are_all_leaf_arrays_known;
+  }
+  return true;
+}
+
+bool LiteralBase::Piece::IsDetermined() const {
+  if (array_value_state_ == ArrayValueState::kUndetermined) {
+    return false;
+  }
+  if (subshape().IsTuple()) {
+    bool are_all_leaf_arrays_determined = true;
+    ForEachSubpiece([&are_all_leaf_arrays_determined](const ShapeIndex& index,
+                                                      const Piece& piece) {
+      if (!piece.subshape().IsArray()) {
+        return;
+      }
+      are_all_leaf_arrays_determined &= piece.IsDetermined();
+    });
+    return are_all_leaf_arrays_determined;
+  }
+  return true;
+}
+
 LiteralProto LiteralBase::ToProto() const {
   LiteralProto proto;
   root_piece().ForEachSubpiece(
@@ -2391,12 +2466,12 @@ int64_t LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
   return piece(shape_index).size_bytes();
 }
 
-string LiteralBase::GetR1U8AsString() const {
+std::string LiteralBase::GetR1U8AsString() const {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(shape().element_type(), U8);
-  return string(absl::bit_cast<const char*>(data<uint8>().data()),
-                ShapeUtil::ElementsIn(shape()));
+  return std::string(absl::bit_cast<const char*>(data<uint8_t>().data()),
+                     ShapeUtil::ElementsIn(shape()));
 }
 
 void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
@@ -2407,6 +2482,7 @@ void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
       << ShapeUtil::HumanString(src_piece->subshape())
       << "dest_piece has shape: "
       << ShapeUtil::HumanString(dest_piece->subshape());
+  dest_piece->set_array_value_state(src_piece->get_array_value_state());
   if (shape.IsTuple()) {
     for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       const Shape& subshape = shape.tuple_shapes(i);

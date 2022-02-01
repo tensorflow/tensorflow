@@ -23,8 +23,8 @@ message Update {
     ClientHeartbeatUpdate client_heartbeat = 10;
     CreateTaskUpdate create_task = 3;
     FinishTaskUpdate finish_task = 4;
-    SetElementSpecUpdate set_element_spec = 13;
   }
+  reserved 13;
 }
 
 // Next tag: 4
@@ -139,10 +139,4 @@ message CreateTaskUpdate {
 // Next tag: 2
 message FinishTaskUpdate {
   int64 task_id = 1;
-}
-
-// Next tag: 3
-message SetElementSpecUpdate {
-  int64 dataset_id = 1;
-  bytes element_spec = 2;
 }

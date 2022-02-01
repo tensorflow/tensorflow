@@ -83,12 +83,12 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
 
   if (options.squash_64bit_types) {
     try {
-      data_int32 = py::cast<int32>(obj);
+      data_int32 = py::cast<int32_t>(obj);
     } catch (const std::exception& e) {
       return InvalidArgument(
           "Unable to convert Python scalar to %s. This most likely means the "
           "value (%s) overflows the range of the type.",
-          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int32>()),
+          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int32_t>()),
           py::repr(obj));
     }
     ptr = &data_int32;
