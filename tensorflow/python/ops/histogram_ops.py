@@ -71,7 +71,7 @@ def histogram_fixed_width_bins(values,
   array([0, 0, 1, 2, 4, 4], dtype=int32)
   """
   if nbins < 0:
-    raise ValueError("nbins should be a positive number.")
+    raise ValueError(f'nbins should be positive number, but got \'{nbins}\'.')
     
   with ops.name_scope(name, 'histogram_fixed_width_bins',
                       [values, value_range, nbins]):
@@ -128,7 +128,7 @@ def histogram_fixed_width(values,
     TypeError: If any unsupported dtype is provided.
     tf.errors.InvalidArgumentError: If value_range does not
         satisfy value_range[0] < value_range[1].
-    ValueError: If the value of nbins is negative.
+    tf.errors.InvalidArgumentError: If the value of nbins is negative.
 
   Examples:
 
@@ -141,9 +141,6 @@ def histogram_fixed_width(values,
   >>> hist.numpy()
   array([2, 1, 1, 0, 2], dtype=int32)
   """
-  if nbins < 0:
-    raise ValueError("nbins should be a positive number.")
-
   with ops.name_scope(name, 'histogram_fixed_width',
                       [values, value_range, nbins]) as name:
     # pylint: disable=protected-access
