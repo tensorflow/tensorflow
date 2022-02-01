@@ -11541,13 +11541,13 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   }];
 
   let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint32]>, [{0-D (scalar). First entry in the sequence.}]>:$start,
-    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint32]>, [{0-D (scalar). Upper limit of sequence, exclusive.}]>:$limit,
-    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint32]>, [{0-D (scalar). Optional. Default is 1. Number that increments `start`.}]>:$delta
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32]>, [{0-D (scalar). First entry in the sequence.}]>:$start,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32]>, [{0-D (scalar). Upper limit of sequence, exclusive.}]>:$limit,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32]>, [{0-D (scalar). Optional. Default is 1. Number that increments `start`.}]>:$delta
   );
 
   let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint32]>, [{1-D.}]>:$output
+    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32]>, [{1-D.}]>:$output
   );
 
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
@@ -18607,7 +18607,7 @@ https://www.tensorflow.org/api_docs/python/tf/tensor_scatter_nd_update) function
 
   let arguments = (ins
     Arg<TF_Tensor, [{Tensor to copy/update.}]>:$tensor,
-    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{Index tensor.}]>:$indices,
+    Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64, TF_Uint16]>, [{Index tensor.}]>:$indices,
     Arg<TF_Tensor, [{Updates to scatter into output.}]>:$updates
   );
 
