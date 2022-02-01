@@ -437,12 +437,12 @@ Status CoordinationServiceAgentImpl::StartWatchKey(
     const std::string& key,
     CoordinationServiceAgentImpl::ChangedKeyValuesCallback on_change) {
   return errors::Unimplemented(
-      "CoordinationServviceAgent::StartWatchKey is not implemented.");
+      "CoordinationServiceAgent::StartWatchKey is not implemented.");
 }
 
 Status CoordinationServiceAgentImpl::StopWatchKey(const std::string& key) {
   return errors::Unimplemented(
-      "CoordinationServviceAgent::StopWatchKey is not implemented.");
+      "CoordinationServiceAgent::StopWatchKey is not implemented.");
 }
 
 void CoordinationServiceAgentImpl::SetError(const Status& error) {
@@ -457,7 +457,7 @@ void CoordinationServiceAgentImpl::SetError(const Status& error) {
 Status CoordinationServiceAgentImpl::ActivateWatch(
     const std::string& key, const std::map<std::string, std::string>& kvs) {
   return errors::Unimplemented(
-      "CoordinationServviceAgent::ActivateWatch is not implemented.");
+      "CoordinationServiceAgent::ActivateWatch is not implemented.");
 }
 
 }  // namespace
