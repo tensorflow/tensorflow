@@ -216,7 +216,7 @@ struct SparseSplitFunctor<GPUDevice, T> {
     using Index = int64_t;
 
     const Index input_nnz = input_indices.dim_size(0);
-    const Index split_dim_size = dense_shape.dim_size((int)axis);
+    const Index split_dim_size = dense_shape.dim_size(static_cast<int>(axis));
     const int rank = dense_shape.dims();
 
     const Index* input_indices_ptr = input_indices.matrix<Index>().data();
