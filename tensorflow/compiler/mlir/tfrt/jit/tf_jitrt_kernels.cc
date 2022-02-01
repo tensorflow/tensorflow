@@ -71,6 +71,7 @@ using ::tfrt::AsyncValueRef;
 using ::tfrt::Attribute;
 using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
+using ::tfrt::DecodedDiagnostic;
 using ::tfrt::DType;
 using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
@@ -92,7 +93,6 @@ using ::tfrt::TaskFunction;
 using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
-using ::tfrt::jitrt::EmitErrors;
 using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::JitExecutableCache;
@@ -100,6 +100,7 @@ using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::OperandConstraint;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnAsyncStridedMemref;
+using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConverter;
 using ::tfrt::jitrt::SpecializationListener;
@@ -513,6 +514,15 @@ struct DebugListener : public SpecializationListener {
   }
 };
 
+// Emits diagnostics for the kernel invocation and returns error for all
+// remaining results.
+template <typename Error>
+static void ReturnErrors(RemainingResults results, Error error,
+                         const ExecutionContext& exec_ctx) {
+  EmitError(exec_ctx, StrCat(error));
+  ReturnErrors(results, std::move(error));
+}
+
 static void ExecuteImpl(Executable& executable,
                         const llvm::SmallVectorImpl<MemrefDesc>& memrefs,
                         RepeatedArguments<FallbackTensor> operands,
@@ -547,7 +557,7 @@ static void ExecuteImpl(Executable& executable,
   Expected<Eigen::ThreadPoolInterface*> worker_threads =
       GetWorkerThreads(exec_ctx);
   if (auto err = worker_threads.takeError())
-    return EmitErrors(results, std::move(err), exec_ctx);
+    return ReturnErrors(results, std::move(err), exec_ctx);
 
   // Override async runtime worker threads with fallback Eigen thread pool.
   Executable::ExecuteOpts opts;
@@ -555,8 +565,12 @@ static void ExecuteImpl(Executable& executable,
   // Pass kernel context pointer to be emitted in the compiled function.
   opts.kernel_context = &converter.context();
 
-  // Error propagation happens in the result converter.
-  if (auto err = executable.Execute(memrefs, converter, exec_ctx, opts)) return;
+  // Execution error automatically forwarded to all results, we only need to
+  // notify the HostContext to emit the diagnostics for the kernel invocation.
+  if (auto err = executable.Execute(memrefs, converter, exec_ctx, opts)) {
+    EmitError(exec_ctx, StrCat(err));
+    return;
+  }
 
   // If executable is async keep operands and conversion context alive until
   // results become available.
@@ -583,12 +597,12 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   Expected<AsyncValuePtr<Executable>> executable = jit_executable.GetExecutable(
       memrefs, exec_ctx, debug ? &debug_listener : nullptr);
   if (auto err = executable.takeError())
-    return EmitErrors(results, std::move(err), exec_ctx);
+    return ReturnErrors(results, std::move(err), exec_ctx);
 
   // If executable is available execute it inline.
   if (executable->IsAvailable()) {
     if (executable->IsError()) {
-      EmitErrors(results, executable->GetError(), exec_ctx);
+      ReturnErrors(results, executable->GetError(), exec_ctx);
     } else {
       ExecuteImpl(executable->get(), memrefs, operands, results, exec_ctx);
     }
@@ -618,7 +632,7 @@ static void ExecuteImpl(JitExecutable& jit_executable,
     RemainingResults results(results_storage);
 
     if (executable.IsError()) {
-      EmitErrors(results, executable.GetError(), exec_ctx);
+      ReturnErrors(results, executable.GetError(), exec_ctx);
     } else {
       ExecuteImpl(*executable, memrefs, operands, results, exec_ctx);
     }
@@ -642,12 +656,12 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
       CompileImpl(kernel, exec_ctx, opts);
 
   if (auto err = jit_executable.takeError())
-    return EmitErrors(results, std::move(err), exec_ctx);
+    return ReturnErrors(results, std::move(err), exec_ctx);
 
   // If kernel is available execute it inline.
   if (jit_executable->IsAvailable()) {
     if (jit_executable->IsError()) {
-      EmitErrors(results, jit_executable->GetError(), exec_ctx);
+      ReturnErrors(results, jit_executable->GetError(), exec_ctx);
     } else {
       ExecuteImpl(**jit_executable, operands, results, exec_ctx, debug);
     }
@@ -676,7 +690,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
     RemainingResults results(results_storage);
 
     if (jit_executable.IsError()) {
-      EmitErrors(results, jit_executable.GetError(), exec_ctx);
+      ReturnErrors(results, jit_executable.GetError(), exec_ctx);
     } else {
       ExecuteImpl(*jit_executable, operands, results, exec_ctx, debug);
     }
