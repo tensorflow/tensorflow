@@ -214,3 +214,25 @@ func @test_transfer_read_of_one_dim_expand_shape_different_shape(
 }
 // CHECK-LABEL: func @test_transfer_read_of_one_dim_expand_shape_different_shape
 // CHECK: %{{.*}} = tensor.expand_shape
+
+// -----
+
+func @do_not_vectorize_large_untiled_fill() -> tensor<2x1000xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %init = linalg.init_tensor [2, 1000] : tensor<2x1000xf32>
+  %out = linalg.fill(%cst, %init) : f32, tensor<2x1000xf32> -> tensor<2x1000xf32>
+  return %out : tensor<2x1000xf32>
+}
+// CHECK-LABEL: func @do_not_vectorize_large_untiled_fill
+// CHECK: linalg.fill
+
+// -----
+
+func @vectorize_small_untiled_fill() -> tensor<128xf32> {
+  %cst = arith.constant 0.000000e+00 : f32
+  %init = linalg.init_tensor [128] : tensor<128xf32>
+  %out = linalg.fill(%cst, %init) : f32, tensor<128xf32> -> tensor<128xf32>
+  return %out : tensor<128xf32>
+}
+// CHECK-LABEL: func @vectorize_small_untiled_fill
+// CHECK: vector.transfer_write
