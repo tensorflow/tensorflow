@@ -2169,9 +2169,9 @@ def adjust_brightness(image, delta):
     else:
       flt_image = convert_image_dtype(image, dtypes.float32)
     
-    if tf.math.reduce_min(image)/255 < 0:
+    if tf.math.reduce_min(flt_image)/255 < 0:
      pass
-    elif tf.math.reduce_max(image)/255 >=1:
+    elif tf.math.reduce_max(flt_image)/255 >=1:
      pass
     else:
      if delta < -1:
