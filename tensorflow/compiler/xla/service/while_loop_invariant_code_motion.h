@@ -68,6 +68,17 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
   }
   StatusOr<bool> Run(HloModule* module) override;
 
+  // Copies `to_hoist` to the computation containing `while_instr`, hoisting its
+  // operands as needed.  All of its transitive operands are expected to be
+  // either in `hoisted_instructions` or `unhoisted_invariant_instructions`.
+  // This function hoists the operands in `unhoisted_invariant_instructions` and
+  // moves them into `hoisted_instructions`.
+  static void CreateLoopInvariantCopy(
+      absl::flat_hash_map<HloInstruction*, HloInstruction*>*
+          hoisted_instructions,
+      absl::flat_hash_set<HloInstruction*>* unhoisted_invariant_instructions,
+      HloInstruction* while_instr, HloInstruction* to_hoist);
+
  private:
   bool NotWorthHoistingIndividually(const HloInstruction& instruction);
   StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
