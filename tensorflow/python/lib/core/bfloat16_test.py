@@ -225,6 +225,42 @@ class Bfloat16Test(parameterized.TestCase):
     sorted_bf16 = np.sort(values_to_sort.astype(bfloat16))  # pylint: disable=too-many-function-args
     np.testing.assert_equal(sorted_f32, np.float32(sorted_bf16))
 
+  def testArgmax(self):
+    values_to_sort = np.float32(bfloat16(np.float32(FLOAT_VALUES)))
+    argmax_f32 = np.argmax(values_to_sort)
+    argmax_bf16 = np.argmax(values_to_sort.astype(bfloat16))  # pylint: disable=too-many-function-args
+    np.testing.assert_equal(argmax_f32, argmax_bf16)
+
+  def testArgmaxOnNan(self):
+    """Ensures we return the right thing for multiple NaNs."""
+    one_with_nans = np.array(
+        [1.0, float("nan"), float("nan")], dtype=np.float32)
+    np.testing.assert_equal(
+        np.argmax(one_with_nans.astype(bfloat16)), np.argmax(one_with_nans))
+
+  def testArgmaxOnNegativeInfinity(self):
+    """Ensures we return the right thing for negative infinities."""
+    inf = np.array([float("-inf")], dtype=np.float32)
+    np.testing.assert_equal(np.argmax(inf.astype(bfloat16)), np.argmax(inf))
+
+  def testArgmin(self):
+    values_to_sort = np.float32(bfloat16(np.float32(FLOAT_VALUES)))
+    argmin_f32 = np.argmin(values_to_sort)
+    argmin_bf16 = np.argmin(values_to_sort.astype(bfloat16))  # pylint: disable=too-many-function-args
+    np.testing.assert_equal(argmin_f32, argmin_bf16)
+
+  def testArgminOnNan(self):
+    """Ensures we return the right thing for multiple NaNs."""
+    one_with_nans = np.array(
+        [1.0, float("nan"), float("nan")], dtype=np.float32)
+    np.testing.assert_equal(
+        np.argmin(one_with_nans.astype(bfloat16)), np.argmin(one_with_nans))
+
+  def testArgminOnPositiveInfinity(self):
+    """Ensures we return the right thing for positive infinities."""
+    inf = np.array([float("inf")], dtype=np.float32)
+    np.testing.assert_equal(np.argmin(inf.astype(bfloat16)), np.argmin(inf))
+
   def testDtypeFromString(self):
     assert np.dtype("bfloat16") == np.dtype(bfloat16)
 
