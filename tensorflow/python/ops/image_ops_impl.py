@@ -2169,13 +2169,17 @@ def adjust_brightness(image, delta):
     else:
       flt_image = convert_image_dtype(image, dtypes.float32)
     
-    flag = True
-    for i in ((x.numpy().ravel())/255):
-     if i < 0 or i >= 1:
-        flag = False
-    if flag:
-     if delta < -1 or delta > 1:
-      raise ValueError('delta must be in the range [-1,1].')
+    if tf.math.reduce_min(x)/255 < 0:
+     pass
+    elif tf.math.reduce_max(x)/255 >=1:
+     pass
+    else:
+     if delta < -1:
+        raise ValueError('delta must be in the range [-1,1].')
+     elif delta > 1:
+        raise ValueError('delta must be in the range [-1,1].')
+     else:
+        pass
 
     adjusted = math_ops.add(
         flt_image, math_ops.cast(delta, flt_image.dtype), name=name)
@@ -2728,8 +2732,12 @@ def adjust_hue(image, delta, name=None):
     else:
       flt_image = convert_image_dtype(image, dtypes.float32)
       
-    if delta < -1 or delta > 1:
+    if delta < -1:
       raise ValueError('delta must be in the range [-1,1].')
+    elif delta > 1:
+      raise ValueError('delta must be in the range [-1,1].')
+    else:
+      pass
 
     rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
 
