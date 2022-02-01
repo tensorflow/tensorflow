@@ -738,6 +738,44 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
 };
 #else
 
+// Helper class to reindex equations to contain only characters.
+class ReIndexer {
+ public:
+  // Initializes the index map with existing lowercase labels.
+  ReIndexer(std::string eq) {
+    for (char c : eq) {
+      if (islower(c)) {
+        idx_map_[c] = c;
+      }
+    }
+  }
+  // Finds new character for uppercase character c.
+  char operator()(char c) {
+    if (!std::isupper(c)) return c;
+    if (idx_map_.count(c) > 0) return idx_map_[c];
+    char new_idx = std::tolower(c);
+    if (idx_map_.count(new_idx) == 0) {
+      idx_map_[c] = new_idx;
+      idx_map_[new_idx] = new_idx;  // mark that new_idx is taken
+      return new_idx;
+    }
+    for (char k = 'a'; k <= 'z'; k++) {
+      if (idx_map_.count(k) == 0) {
+        new_idx = k;
+        idx_map_[c] = new_idx;
+        idx_map_[new_idx] = new_idx;  // mark that new_idx is taken
+        break;
+      }
+    }
+    return new_idx;
+  }
+
+ private:
+  // Each key is an index used in the original or in the reindexed equation.
+  // The values are the corresponding new lowercase indices.
+  std::map<char, char> idx_map_;
+};
+
 class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
  public:
   explicit ConvertEinsum(OpConverterParams* params)
@@ -759,11 +797,63 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
             InputArgSpec::Create("input_b", TrtInputArg::kBoth)};
   }
 
+  std::string MakeLowerCase(const std::string& eq) {
+    std::string res = eq;
+    ReIndexer reindexer(eq);
+    std::transform(eq.begin(), eq.end(), res.begin(), reindexer);
+    VLOG(2) << "Lowercase equation " << res;
+    return res;
+  }
+
+  // Checks if the equation is supported by TRT.
+  Status ValidateEinsumEquation(const std::string& eq) {
+    const auto& inputs = params_->inputs;
+    OperandLabels input_labels;
+    Labels output_labels;
+    std::vector<EinsumHelper::DimensionType> label_types;
+    OperandLabelCounts input_label_counts;
+    LabelCounts output_label_counts;
+    absl::InlinedVector<bool, 2> input_has_ellipsis;
+    bool output_has_ellipsis;
+    VLOG(2) << "Parsing equation " << eq;
+    TF_RETURN_IF_ERROR(EinsumHelper::ParseEquation(
+        eq, &input_labels, &output_labels, &label_types, &input_label_counts,
+        &output_label_counts, &input_has_ellipsis, &output_has_ellipsis));
+
+    Status unimplemented =
+        errors::Unimplemented("No conversion for einsum equation.");
+    if (input_has_ellipsis[0] || (inputs.size() > 1 && input_has_ellipsis[1]) ||
+        output_has_ellipsis) {
+      VLOG(2) << "Ellipsis not yet supported";
+      return unimplemented;
+    }
+    for (int i = 0; i < input_label_counts.size(); i++) {
+      for (int k = 0; k < input_label_counts[i].size(); k++) {
+        if (input_label_counts[i][k] > 1) {
+          VLOG(2) << "Diagonal operation or reduction not yet supported";
+          return unimplemented;
+        }
+      }
+    }
+    // Check if it is a dot product
+    if (input_label_counts.size() == 2 && input_label_counts[0].size() == 1 &&
+        input_label_counts[0][0] == 1 && input_label_counts[1][0] == 1 &&
+        output_label_counts[0] == 0) {
+      VLOG(2) << "Dot product not supported";
+      return unimplemented;
+    }
+    // Check for outer product
+    if (input_label_counts.size() == 2 && output_label_counts.size() == 2 &&
+        output_label_counts[0] == 1 && output_label_counts[1] == 1) {
+      VLOG(2) << "Outer product not supported";
+      return unimplemented;
+    }
+    return Status::OK();
+  }
+
   Status Validate() {
     VLOG(2) << "Running validation using the new einsum "
                "converter";
-    const auto& inputs = params_->inputs;
-    const auto& node_def = params_->node_def;
     if (params_->use_implicit_batch) {
       return errors::Unimplemented(
           "Einsum converter requires dynamic shape mode");
@@ -772,26 +862,10 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
     StatusOr<std::string> eq = GetAttrValue<std::string>("equation");
     TRT_ENSURE_OK(eq);
 
-    OperandLabels input_labels;
-    Labels output_labels;
-    std::vector<EinsumHelper::DimensionType> label_types;
-    OperandLabelCounts input_label_counts;
-    LabelCounts output_label_counts;
-    absl::InlinedVector<bool, 2> input_has_ellipsis;
-    bool output_has_ellipsis;
-    VLOG(2) << "Parsing equation " << *eq;
-    TF_RETURN_IF_ERROR(EinsumHelper::ParseEquation(
-        *eq, &input_labels, &output_labels, &label_types, &input_label_counts,
-        &output_label_counts, &input_has_ellipsis, &output_has_ellipsis));
+    TF_RETURN_IF_ERROR(ValidateEinsumEquation(*eq));
 
-    if (input_has_ellipsis[0] || (inputs.size() > 1 && input_has_ellipsis[1]) ||
-        output_has_ellipsis) {
-      VLOG(2) << "Ellipsis not yet supported";
-      return errors::Unimplemented("No conversion for einsum equation.");
-    }
+    equation = MakeLowerCase(*eq);
 
-    // todo handle case sensitive EQ
-    equation = *eq;
     return Status::OK();
   }
 
@@ -812,7 +886,6 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
         TRT_ENSURE_PTR_OK(const_layer);
         ptr = (*const_layer)->getOutput(0);
       }
-      VLOG(2) << "Adding Einsum input " << ptr->trt_tensor();
       trt_input.push_back(ptr->trt_tensor());
     }
 
@@ -820,7 +893,7 @@ class ConvertEinsum : public OpConverterBase<ConvertEinsum> {
     nvinfer1::IEinsumLayer* layer = params_->converter->network()->addEinsum(
         trt_input.data(), trt_input.size(), equation.c_str());
     TRT_ENSURE(layer);
-    VLOG(2) << "Einsum layer added";
+
     ITensorProxyPtr output = layer->getOutput(0);
     this->AddOutput(output);
     return Status::OK();
