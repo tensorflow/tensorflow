@@ -11,6 +11,9 @@ load(
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
@@ -5912,6 +5915,7 @@ cc_library(
         "custom_call_status_internal.h",
     ],
     hdrs = ["custom_call_status.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings",
@@ -5926,6 +5930,7 @@ cc_library(
     hdrs = [
         "custom_call_status_internal.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         ":__subpackages__",
         "//tensorflow/compiler/tf2xla:__pkg__",

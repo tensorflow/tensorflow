@@ -830,6 +830,7 @@ cc_library(
 cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
@@ -871,6 +872,7 @@ cc_library(
     name = "eigen_contraction_kernel_no_mkl",
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",
         "//third_party/eigen3",
@@ -926,6 +928,7 @@ cc_library(
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":eigen_contraction_kernel",
         ":eigen_convolution_helpers",
