@@ -49,6 +49,11 @@ class BinValuesFixedWidth(test.TestCase):
           values, value_range, nbins=5, dtype=dtypes.int64)
       self.assertEqual(dtypes.int32, bins.dtype)
       self.assertAllClose(expected_bins, self.evaluate(bins))
+      
+  def test_with_negative_nbins(self):
+    values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+    with self.assertRaisesRegex(ValueError, "nbins should be positive number"):
+      histogram_ops.histogram_fixed_width_bins(values, [1.0, 5.0], nbins=-5)
 
   def test_1d_float64_values_int32_output(self):
     # Bins will be:
