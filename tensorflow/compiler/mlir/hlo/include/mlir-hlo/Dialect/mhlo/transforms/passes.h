@@ -62,6 +62,9 @@ createLegalizeHloShapeOpsToStandardPass();
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
 
+// Lowers from HLO dialects dim operations.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeShapeComputationsPass();
+
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();

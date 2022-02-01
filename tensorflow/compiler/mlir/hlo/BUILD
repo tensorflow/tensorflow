@@ -888,6 +888,29 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_shape_computations",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_shape_computations.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":map_mhlo_to_scalar_op",
+        ":mhlo_pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "hlo_legalize_shape_ops_to_standard",
     srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_shape_ops_to_standard.cc"],
     hdrs = [
@@ -1518,6 +1541,7 @@ cc_library(
         ":legalize_control_flow",
         ":legalize_einsum_to_dot_general",
         ":legalize_gather_to_torch_index_select",
+        ":legalize_shape_computations",
         ":legalize_to_linalg",
         ":legalize_to_standard",
         ":legalize_to_tensor_op",

@@ -73,6 +73,11 @@ def HloLegalizeToLinalgPass : Pass<"hlo-legalize-to-linalg", "FuncOp"> {
   let constructor = "createLegalizeHloToLinalgPass()";
 }
 
+def HloLegalizeShapeComputationsPass : Pass<"hlo-legalize-shape-computations", "FuncOp"> {
+  let summary = "Legalize HLOs shape operations to core-mlir operations.";
+  let constructor = "createLegalizeShapeComputationsPass()";
+}
+
 def LegalizeToStandardPass : Pass<"mhlo-legalize-to-std", "FuncOp"> {
   let summary = "Legalize from MHLO dialect to standard dialect.";
   let constructor = "createLegalizeToStdPass()";
