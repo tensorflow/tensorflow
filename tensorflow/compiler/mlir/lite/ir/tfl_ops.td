@@ -5197,6 +5197,7 @@ Read variable data identified by 'resource_id'.
 def TFL_Conv3DOp : TFL_Op<"conv_3d", [
     NoSideEffect,
     AccumulatorUniformScale<2, 0, 1>,
+    QuantizableResult,
     AffineQuantizedOpInterface,
     AffineOpCoefficient<4, 1>,
     TFL_OperandHasRank<0, 5>,
