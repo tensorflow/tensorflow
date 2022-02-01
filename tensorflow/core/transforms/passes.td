@@ -18,7 +18,7 @@ include "mlir/Pass/PassBase.td"
 def TopoSort : Pass<"tfg-toposort"> {
   let summary = "Topologically sort graph and function regions";
   let description = [{
-    This part performs a topological sort of the body of a graph or function.
+    This pass performs a topological sort of the body of a graph or function.
     The main purpose is readability, as well as potentially faster processing
     of the body by analyses/transformation as it'll ensure that all uses appear
     after the producer (but note that cycles are allowed in TensorFlow graphs).
