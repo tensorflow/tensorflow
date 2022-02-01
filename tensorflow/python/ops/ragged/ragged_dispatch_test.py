@@ -908,7 +908,8 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       dict(
           op=array_ops.bitcast,
           kwargs={
-              'input': ragged_factory_ops.constant_value([[1, 2], [-1]]),
+              'input': ragged_factory_ops.constant_value([[1, 2], [-1]],
+                                                         dtype=dtypes.int64),
               'type': dtypes.uint64
           },
           expected=ragged_factory_ops.constant_value([[1, 2], [-1]],
