@@ -42,8 +42,9 @@ def HloLegalizeToMemrefPass :Pass<"hlo-legalize-to-memref", "FuncOp"> {
 }
 
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "FuncOp"> {
-  let summary = "Legalize from MHLO control flow to CFG control flow.";
+  let summary = "Legalize from MHLO control flow to SCF control flow.";
   let constructor = "createLegalizeControlFlowPass()";
+  let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
 }
 
 def LegalizeEinsumToDotGeneralPass : Pass<"mhlo-legalize-einsum-to-dot-general", "FuncOp"> {

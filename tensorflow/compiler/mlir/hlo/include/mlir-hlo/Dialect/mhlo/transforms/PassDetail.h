@@ -25,6 +25,9 @@ class SCFDialect;
 namespace memref {
 class MemRefDialect;
 }
+namespace tensor {
+class TensorDialect;
+}
 
 namespace mhlo {
 class MhloDialect;
