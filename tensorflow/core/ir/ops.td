@@ -37,7 +37,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def TFGraph_GraphOp : TFGraph_Op<"graph",
     [HasOnlyGraphRegion, SingleBlock, IsolatedFromAbove,
-     OpAsmOpInterface, OpTraitList<GraphRegionNoTerminator.traits>]> {
+     OpAsmOpInterface, TraitList<GraphRegionNoTerminator.traits>]> {
   let summary = "Define a flat graph of operations";
   let description = [{
     This operation is modeling a unordered list of nodes forming a TensorFlow
@@ -257,7 +257,7 @@ def TFGraph_CastOp : TFGraph_Op<"Cast", [NoSideEffect]> {
 }
 
 // Base class for TFGraph concrete ops.
-class TFGraph_ConcreteOp<string mnemonic, list<OpTrait> traits = []> :
+class TFGraph_ConcreteOp<string mnemonic, list<Trait> traits = []> :
     TFGraph_Op<mnemonic, traits>;
 
 // Base class for TFGraph if-like operations.

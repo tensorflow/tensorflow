@@ -48,7 +48,7 @@ def TfDevice_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 
 // Base class for the operation in this dialect.
-class TfDevice_Op<string mnemonic, list<OpTrait> traits = []> :
+class TfDevice_Op<string mnemonic, list<Trait> traits = []> :
     Op<TfDevice_Dialect, mnemonic, traits> { }
 
 def TfDevice_LaunchOp : TfDevice_Op<"launch",

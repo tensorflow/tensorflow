@@ -122,7 +122,7 @@ def TFGraphDialect : Dialect {
 include "tensorflow/core/ir/types/types.td"
 
 // Base class for the operations in this dialect.
-class TFGraph_Op<string mnemonic, list<OpTrait> traits = []> :
+class TFGraph_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFGraphDialect, mnemonic, traits>;
 
 #endif // TFG_DIALECT

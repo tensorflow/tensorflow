@@ -117,7 +117,7 @@ class TF_AllTypesMatch<list<string> names> :
 // might lead to incorrect execution order, while if not used where it should
 // be, it can only lead to reduced performance due to conservative ordering.
 // Example op where the invariant is not true: `TF_VarHandleOp`.
-def TF_UniqueResourceAllocation: OpTraitList<[
+def TF_UniqueResourceAllocation: TraitList<[
     TF_ResourceHandleAllocatorInterface,
     NativeOpTrait<"TF::UniqueResourceAllocation">
 ]>;
@@ -244,7 +244,7 @@ def TF_MustExecute : MemoryEffects<[MemWrite<TF_MustExecuteResource>]>;
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//
 
-class TF_Op<string mnemonic, list<OpTrait> traits = []> :
+class TF_Op<string mnemonic, list<Trait> traits = []> :
     Op<TF_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//

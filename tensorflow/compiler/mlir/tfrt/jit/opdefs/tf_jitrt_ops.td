@@ -48,7 +48,7 @@ def TF_JITRT_Dialect : Dialect {
 // TF CPU Runtime op definitions
 //===----------------------------------------------------------------------===//
 
-class TF_JITRT_Op<string mnemonic, list<OpTrait> traits = []> :
+class TF_JITRT_Op<string mnemonic, list<Trait> traits = []> :
       Op<TF_JITRT_Dialect, mnemonic, traits> {
 }
 
