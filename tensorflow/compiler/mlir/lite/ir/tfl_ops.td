@@ -2258,7 +2258,8 @@ def TFL_OneHotOp : TFL_Op<"one_hot", [
 def TFL_RoundOp: TFL_Op<"round", [
     NoSideEffect,
     SameOperandsAndResultShape,
-    SameOperandsAndResultType]> {
+    TFL_SameFirstOperandAndFirstResultElementType,
+    FixedOutputRangeInterface]> {
   let summary = "Round operator";
 
   let description = [{
