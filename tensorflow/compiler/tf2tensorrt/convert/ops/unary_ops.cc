@@ -43,7 +43,7 @@ class ConvertUnary : public OpConverterBase<ConvertUnary> {
       return errors::Unimplemented("Unary op: ", op, " not supported");
     }
 
-    return CheckInputsWeights(*params_, {{"x", false}});
+    return Status::OK();
   }
 
   Status Convert() {

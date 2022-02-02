@@ -505,12 +505,6 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims);
 
-// Checks that the number of inputs match and enforces that the inputs marked
-// as true are constant weights.
-Status CheckInputsWeights(
-    const OpConverterParams& params,
-    const std::vector<std::pair<string, bool>>& inputs_is_weight);
-
 // Map of all supported UnaryOperations
 const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
 // Map of all supported ActivationTypes
