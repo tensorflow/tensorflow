@@ -42,7 +42,8 @@ namespace TFL {
 namespace {
 
 // Applies all the clean up steps after quantization.
-class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
+class PostQuantizePass
+    : public PassWrapper<PostQuantizePass, OperationPass<FuncOp>> {
  public:
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
   explicit PostQuantizePass() : emit_quant_adaptor_ops_(false) {
@@ -66,7 +67,7 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
     return "Apply post quantization clean up after quantization";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   // Set this flag to true if the inputs and outputs are in floating point. The
@@ -79,7 +80,7 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
 
 // Cleans up unnecessary QDQ pattern for input/output ops.
 class PostQuantizeRemoveQDQPass
-    : public PassWrapper<PostQuantizeRemoveQDQPass, FunctionPass> {
+    : public PassWrapper<PostQuantizeRemoveQDQPass, OperationPass<FuncOp>> {
  public:
   // Constructor used by the PassRegistration. This will remove QDQ ops.
   explicit PostQuantizeRemoveQDQPass() {}
@@ -94,7 +95,7 @@ class PostQuantizeRemoveQDQPass
     return "Remove qdq from input and output nodes after quantization";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // TODO(fengliuai): migrate to use modify_io_nodes pass.
@@ -250,9 +251,9 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
-void PostQuantizePass::runOnFunction() {
+void PostQuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
+  auto func = getOperation();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(patterns);
   patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
@@ -266,7 +267,7 @@ void PostQuantizePass::runOnFunction() {
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
-    RemoveQuantizationAdaptorOps(getFunction());
+    RemoveQuantizationAdaptorOps(getOperation());
   }
 
   RewritePatternSet phase_2_patterns(&getContext());
@@ -276,9 +277,9 @@ void PostQuantizePass::runOnFunction() {
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
-void PostQuantizeRemoveQDQPass::runOnFunction() {
+void PostQuantizeRemoveQDQPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
+  auto func = getOperation();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(patterns);
   patterns.insert<RemoveVolatileOps<kPreserveNone>>(ctx);

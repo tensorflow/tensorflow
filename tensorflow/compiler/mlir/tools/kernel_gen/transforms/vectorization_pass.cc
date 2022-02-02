@@ -292,12 +292,12 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
                     scf::SCFDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     // This functions in 2 passes:
     // 1. Tile, promote, and vectorize to create elementwise operations on
     //    <(1x)*4xty> memrefs
     // 2. cast <(1x)*4xty> memrefs to <4xty>
-    auto f = getFunction();
+    auto f = getOperation();
 
     // Stage 1: Vectorize to form static shaped computations
     auto tiling_options =
@@ -350,7 +350,7 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateVectorizationPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateVectorizationPass() {
   return std::make_unique<VectorizationPass>();
 }
 
@@ -361,14 +361,14 @@ struct VectorizationCleanupPass
                     vector::VectorDialect>();
   }
 
-  void runOnFunction() override {
-    getFunction().walk([](scf::ForOp op) { SplitSCFForOp(op); });
+  void runOnOperation() override {
+    getOperation().walk([](scf::ForOp op) { SplitSCFForOp(op); });
 
-    RemoveDeadMemrefCode(getFunction());
+    RemoveDeadMemrefCode(getOperation());
   }
 };
 
-std::unique_ptr<FunctionPass> CreateVectorizationCleanupPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateVectorizationCleanupPass() {
   return std::make_unique<VectorizationCleanupPass>();
 }
 

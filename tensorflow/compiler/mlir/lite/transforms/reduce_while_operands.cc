@@ -53,7 +53,7 @@ namespace TFL {
 namespace {
 
 struct ReduceWhileOperandsPass
-    : public PassWrapper<ReduceWhileOperandsPass, FunctionPass> {
+    : public PassWrapper<ReduceWhileOperandsPass, OperationPass<FuncOp>> {
  public:
   StringRef getArgument() const final { return "tfl-reduce-while"; }
   StringRef getDescription() const final {
@@ -64,7 +64,7 @@ struct ReduceWhileOperandsPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect, TF::TensorFlowDialect>();
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 LogicalResult FindImplicityProducers(
@@ -288,8 +288,8 @@ bool ReduceWhileOperands(TFL::WhileOp while_op) {
   return erase_indices.any();
 }
 
-void ReduceWhileOperandsPass::runOnFunction() {
-  auto fn = getFunction();
+void ReduceWhileOperandsPass::runOnOperation() {
+  auto fn = getOperation();
   fn.walk([&](TFL::WhileOp while_op) { ReduceWhileOperands(while_op); });
 }
 

@@ -73,7 +73,7 @@ constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
 constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
 
 // Legalize operations in functions.
-class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+class LegalizeTF : public PassWrapper<LegalizeTF, OperationPass<FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<quant::QuantizationDialect, TFL::TensorFlowLiteDialect>();
   }
@@ -96,7 +96,7 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   }
 
   /// Performs the lowering to TFLite dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   Option<bool> run_tfl_runtime_verification_{
@@ -933,9 +933,9 @@ bool applyPatterns(FuncOp func, ConversionTarget& target,
   return true;
 }
 
-void LegalizeTF::runOnFunction() {
+void LegalizeTF::runOnOperation() {
   auto* context = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
 
   ConversionTarget target(*context);
   // It is legal to have TF ops in the graph still which can be

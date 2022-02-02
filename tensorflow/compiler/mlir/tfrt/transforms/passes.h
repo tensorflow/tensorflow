@@ -108,7 +108,8 @@ CreateRemoveDeviceAttributePass();
 
 // Create an operation pass that inserts corert.transfer op to make sure any
 // argument of any op is on the same device of the op itself.
-std::unique_ptr<mlir::FunctionPass> CreateCrossDeviceTransferPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateCrossDeviceTransferPass();
 
 struct TfrtPipelineOptions
     : public mlir::PassPipelineOptions<TfrtPipelineOptions> {

@@ -196,7 +196,7 @@ struct TiledLoopBufferizePass
     registry.insert<memref::MemRefDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
@@ -309,7 +309,7 @@ CreateComputeOpAndFuncBufferizePass() {
   return std::make_unique<ComputeOpAndFuncBufferizePass>();
 }
 
-std::unique_ptr<FunctionPass> CreateTiledLoopBufferizePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTiledLoopBufferizePass() {
   return std::make_unique<TiledLoopBufferizePass>();
 }
 

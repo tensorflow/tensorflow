@@ -85,12 +85,12 @@ class ConvertTFBatchMatMulToEinsumOp
 
 struct BatchMatMulToEinsumPass
     : public BatchMatMulToEinsumPassBase<BatchMatMulToEinsumPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void BatchMatMulToEinsumPass::runOnFunction() {
+void BatchMatMulToEinsumPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
+  auto func = getOperation();
 
   patterns.insert<ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulOp>,
                   ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulV2Op>>(

@@ -316,8 +316,8 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
 struct FuseFillIntoTiledReductionPass
     : public FuseFillIntoTiledReductionBase<FuseFillIntoTiledReductionPass> {
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
     auto context = func.getContext();
 
     mlir::RewritePatternSet patterns(context);
@@ -328,7 +328,8 @@ struct FuseFillIntoTiledReductionPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateFuseFillIntoTiledReductionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateFuseFillIntoTiledReductionPass() {
   return std::make_unique<FuseFillIntoTiledReductionPass>();
 }
 

@@ -55,7 +55,7 @@ namespace {
 class StripQuantTypes : public TosaStripQuantTypesPassBase<StripQuantTypes> {
  public:
   explicit StripQuantTypes() {}
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 class QuantTypeConverter : public TypeConverter {
@@ -124,7 +124,7 @@ static bool isIllegalType(Type type) {
   return false;
 }
 
-void StripQuantTypes::runOnFunction() {
+void StripQuantTypes::runOnOperation() {
   QuantTypeConverter converter;
   ConversionTarget target(getContext());
 
@@ -149,7 +149,7 @@ void StripQuantTypes::runOnFunction() {
   });
 
   auto* ctx = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
 
   RewritePatternSet patterns(&getContext());
   patterns.insert<GenericTypeConvert>(ctx, converter);

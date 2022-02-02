@@ -78,7 +78,7 @@ class LayoutAssignmentPass
 
   LayoutAssignmentPass(const LayoutAssignmentPass& pass) {}
 
-  void runOnFunction() final;
+  void runOnOperation() final;
 };
 
 // MoveTransposesPass moves all Transpose ops to the beginning or to the end of
@@ -94,13 +94,13 @@ class MoveTransposesPass : public MoveTransposesPassBase<MoveTransposesPass> {
   }
   MoveTransposesPass(const MoveTransposesPass& pass) {}
 
-  void runOnFunction() final;
+  void runOnOperation() final;
 };
 
 using Permutation = SmallVector<int64_t, 4>;
 
-void LayoutAssignmentPass::runOnFunction() {
-  FuncOp func = getFunction();
+void LayoutAssignmentPass::runOnOperation() {
+  FuncOp func = getOperation();
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
@@ -431,8 +431,8 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
   }
 }
 
-void MoveTransposesPass::runOnFunction() {
-  FuncOp func = getFunction();
+void MoveTransposesPass::runOnOperation() {
+  FuncOp func = getOperation();
 
   SmallVector<Operation*, 8> work_list;
 
@@ -486,7 +486,7 @@ void CreateLayoutOptimizationPipeline(
       MoveTransposeDirection::kEnd, !options.skip_fold_transpose_in_ops));
 }
 
-std::unique_ptr<FunctionPass> CreateLayoutAssignmentPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLayoutAssignmentPass() {
   // This static is kind of hack, it hooks the pipeline registration for the
   // command line and piggy-back to the TableGen generated registration code.
   static mlir::PassPipelineRegistration<LayoutOptimizationPipelineOptions>
@@ -497,7 +497,7 @@ std::unique_ptr<FunctionPass> CreateLayoutAssignmentPass() {
   return std::make_unique<LayoutAssignmentPass>();
 }
 
-std::unique_ptr<FunctionPass> CreateMoveTransposesPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateMoveTransposesPass() {
   return std::make_unique<MoveTransposesPass>();
 }
 

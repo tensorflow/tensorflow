@@ -244,15 +244,15 @@ struct TFToJITInvocationPass
     jit_i64_indexed_for_large_tensors_ = jit_i64_indexed_for_large_tensors;
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
     PopulateTFToJITInvocationPatterns(ctx, &patterns, tile_sizes_,
                                       unroll_factors_, max_supported_rank_,
                                       enable_ftz_, index_64bit_, cpu_codegen_,
                                       jit_i64_indexed_for_large_tensors_);
-    if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
       return signalPassFailure();
     }
   }
@@ -345,7 +345,7 @@ void PopulateTFToJITInvocationPatterns(
       index_64bit_if_jit_compiling, cpu_codegen);
 }
 
-std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
+std::unique_ptr<OperationPass<FuncOp>> CreateTFToJITInvocationPass(
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
     bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {

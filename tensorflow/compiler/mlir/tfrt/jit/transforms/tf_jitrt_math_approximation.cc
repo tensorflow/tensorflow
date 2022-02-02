@@ -258,10 +258,10 @@ struct MathApproximationPass
     this->oplist = approx_oplist;
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void MathApproximationPass::runOnFunction() {
+void MathApproximationPass::runOnOperation() {
   mlir::RewritePatternSet patterns(&getContext());
   populateMathApproximationPatterns(patterns, oplist);
   if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
@@ -271,7 +271,7 @@ void MathApproximationPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateMathApproximationPass(
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateMathApproximationPass(
     ArrayRef<std::string> oplist) {
   return std::make_unique<MathApproximationPass>(oplist);
 }

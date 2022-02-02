@@ -2151,7 +2151,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
 
 class LegalizeHloToTf : public TF::LegalizeHloToTfPassBase<LegalizeHloToTf> {
   /// Performs the legalization to the TF dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Returns the shape of the given value in a Constant Op.
@@ -2636,7 +2636,7 @@ arith::ConstantOp ExpandedShape(PatternRewriter &rewriter, Value input,
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"
 
 /// Performs the lowering to XLA dialect.
-void LegalizeHloToTf::runOnFunction() {
+void LegalizeHloToTf::runOnOperation() {
   MLIRContext &context = getContext();
 
   // Add legalization patterns to the list.
@@ -2647,9 +2647,9 @@ void LegalizeHloToTf::runOnFunction() {
   target.addLegalDialect<TensorFlowDialect>();
   target.addLegalOp<CallOp, ConstantOp, arith::ConstantOp>();
   target.addLegalOp<mhlo::TupleOp>();
-  if (failed(
-          applyPartialConversion(getFunction(), target, std::move(patterns)))) {
-    getFunction().emitError("mhlo to TF legalization failed.");
+  if (failed(applyPartialConversion(getOperation(), target,
+                                    std::move(patterns)))) {
+    getOperation().emitError("mhlo to TF legalization failed.");
     signalPassFailure();
   }
 }

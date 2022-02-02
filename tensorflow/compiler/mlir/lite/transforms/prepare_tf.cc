@@ -98,7 +98,7 @@ static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
+class PrepareTFPass : public PassWrapper<PrepareTFPass, OperationPass<FuncOp>> {
  public:
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
@@ -121,7 +121,7 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
     return "Prepare TF for legalization to TensorFlow Lite dialect";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, quant::QuantizationDialect,
@@ -1367,11 +1367,11 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
   }
 };
 
-void PrepareTFPass::runOnFunction() {
+void PrepareTFPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   RewritePatternSet phase_2_patterns(ctx);
-  auto func = getFunction();
+  auto func = getOperation();
 
   // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
   // PrepareTFPass is the very first TFLite pass in the pipeline.

@@ -91,8 +91,8 @@ struct VectorizeTiledOpsPass
     registry.insert<mlir::vector::VectorDialect>();
   }
 
-  void runOnFunction() override {
-    auto funcOp = getFunction();
+  void runOnOperation() override {
+    auto funcOp = getOperation();
 
     // Vectorize linalg.fill and linalg.generic operations.
     mlir::OpPassManager dynamicPM("builtin.func");
@@ -143,7 +143,8 @@ struct VectorizeTiledOpsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateVectorizeTiledOpsPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateVectorizeTiledOpsPass() {
   return std::make_unique<VectorizeTiledOpsPass>();
 }
 

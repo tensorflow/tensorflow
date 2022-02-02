@@ -313,8 +313,8 @@ struct TileReductionPass : public TileReductionBase<TileReductionPass> {
     reduction_1d_tile_size = reduction_1d_tile;
     reduction_2d_tile_sizes = reduction_2d_tiles;
   }
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
     auto context = func.getContext();
 
     auto filter = LinalgTransformationFilter(
@@ -348,11 +348,11 @@ struct TileReductionPass : public TileReductionBase<TileReductionPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass() {
   return std::make_unique<TileReductionPass>();
 }
 
-std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass(
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass(
     int64_t reduction_vector_size, int64_t reduction_1d_tile_size,
     llvm::ArrayRef<int64_t> reduction_2d_tile_sizes) {
   return std::make_unique<TileReductionPass>(

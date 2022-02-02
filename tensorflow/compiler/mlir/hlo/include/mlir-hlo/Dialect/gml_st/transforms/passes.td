@@ -15,7 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def GreedyTilingPass : FunctionPass<"gml-greedy-tiling"> {
+def GreedyTilingPass : Pass<"gml-greedy-tiling", "mlir::FuncOp"> {
   let summary = "Tile producers of gml_st.materialize operations";
   let constructor = "::mlir::gml_st::createGreedyTilingPass()";
 }

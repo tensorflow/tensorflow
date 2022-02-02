@@ -115,9 +115,10 @@ bool IsSmallAlloc(Value alloc) {
 }
 
 struct CollapseParallelLoopsTo1D
-    : public mlir::PassWrapper<CollapseParallelLoopsTo1D, mlir::FunctionPass> {
-  void runOnFunction() override {
-    getFunction().walk([&](ParallelOp op) {
+    : public mlir::PassWrapper<CollapseParallelLoopsTo1D,
+                               mlir::OperationPass<mlir::FuncOp>> {
+  void runOnOperation() override {
+    getOperation().walk([&](ParallelOp op) {
       unsigned num_loops = op.getNumLoops();
       if (num_loops == 1) return;
       std::vector<unsigned> combinedLoops;
@@ -130,7 +131,8 @@ struct CollapseParallelLoopsTo1D
   }
 };
 
-class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
+class TileLoops
+    : public mlir::PassWrapper<TileLoops, mlir::OperationPass<mlir::FuncOp>> {
  public:
   explicit TileLoops(llvm::ArrayRef<int64_t> tile_sizes,
                      llvm::ArrayRef<int64_t> unroll_factors) {
@@ -147,9 +149,9 @@ class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
     }
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     llvm::SmallVector<ParallelOp, 2> innermostPloops;
-    mlir::getInnermostParallelLoops(this->getFunction().getOperation(),
+    mlir::getInnermostParallelLoops(this->getOperation().getOperation(),
                                     innermostPloops);
     auto is_simple_access_pattern = [](ParallelOp ploop) {
       for (mlir::Operation& nested : ploop.getBody()->without_terminator()) {

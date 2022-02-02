@@ -30,22 +30,25 @@ limitations under the License.
 namespace tensorflow {
 
 // Pass for trivial buffer forwarding for the linalg.generic operations.
-std::unique_ptr<mlir::FunctionPass> CreateLinalgTrivialBufferForwardingPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateLinalgTrivialBufferForwardingPass();
 
 // Pass for trivial copy removal of memref.copy operations.
-std::unique_ptr<mlir::FunctionPass> CreateLinalgTrivialCopyRemovalPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateLinalgTrivialCopyRemovalPass();
 
 // Pass to optimize padding in tiled loops by peeling the final loop iteration.
-std::unique_ptr<mlir::FunctionPass> CreatePeelTiledLoopsPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreatePeelTiledLoopsPass();
 
 // Pass to tile and fuse linalg.generic on tensors that models reduction.
-std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass();
-std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass(
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass(
     int64_t reduction_vector_size, int64_t reduction_1d_tile_size,
     llvm::ArrayRef<int64_t> reduction_2d_tile_sizes);
 
 // Pass to fuse `linalg.fill` into a tiled reduction.
-std::unique_ptr<mlir::FunctionPass> CreateFuseFillIntoTiledReductionPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateFuseFillIntoTiledReductionPass();
 
 // Pass to replace 'i1' tensor types with 'i8' tensor types. This pass is a
 // temporary workaround to avoid the problem of vectorizing 'i1' tensors (see
@@ -54,37 +57,41 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateJitRtLegalizeI1TypesPass();
 
 // Pass to vectorize linalg ops.
-std::unique_ptr<mlir::FunctionPass> CreateVectorizeTiledOpsPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateVectorizeTiledOpsPass();
 
 // Rewrite `vector.multi_reduction` into a sequence of `vector.reduction` ops.
-std::unique_ptr<mlir::FunctionPass> createRewriteVectorMultiReductionPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+createRewriteVectorMultiReductionPass();
 
 // Pass to tile elementwise ops on tensors.
-std::unique_ptr<mlir::FunctionPass> CreateTileCWisePass();
-std::unique_ptr<mlir::FunctionPass> CreateTileCWisePass(
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass(
     int64_t cwise_tile_size);
 
 // Pass to split _Fused Tensorflow kernels into primitives.
-std::unique_ptr<mlir::FunctionPass> CreateFissionPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateFissionPass();
 
 // Pass to fuse Linalg generic operations on Tensors.
-std::unique_ptr<mlir::FunctionPass> CreateFusionPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateFusionPass();
 
 // Pass to optimize broadcasts based on the symbolic shape constraints.
-std::unique_ptr<mlir::FunctionPass> CreateSymbolicShapeOptimizationPass(
-    bool constraints_only = false);
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateSymbolicShapeOptimizationPass(bool constraints_only = false);
 
 // Pass to replace 0-d tensor inputs to LinalgOp with extracted elements.
-std::unique_ptr<mlir::FunctionPass> CreateDetensorizeLinalgPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateDetensorizeLinalgPass();
 
 // Creates `tf_device.cluster` operations according to the TF JitRt clustering
 // policy.
-std::unique_ptr<mlir::FunctionPass> CreateTfJitRtClusteringPass();
-std::unique_ptr<mlir::FunctionPass> CreateTfJitRtClusteringPass(
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateTfJitRtClusteringPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTfJitRtClusteringPass(
     llvm::ArrayRef<std::string> oplist, int min_cluster_size);
 
 // Pass to replace math ops with approximations.
-std::unique_ptr<mlir::FunctionPass> CreateMathApproximationPass(
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateMathApproximationPass(
     llvm::ArrayRef<std::string> oplist = {});
 
 // Returns true if the `value` type is a memref that is contiguous in memory.

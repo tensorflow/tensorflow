@@ -21,8 +21,8 @@ namespace TFL {
 namespace {
 
 struct IdentifyDilatedConvPass
-    : public PassWrapper<IdentifyDilatedConvPass, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<IdentifyDilatedConvPass, OperationPass<FuncOp>> {
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -35,9 +35,9 @@ struct IdentifyDilatedConvPass
   }
 };
 
-void IdentifyDilatedConvPass::runOnFunction() {
+void IdentifyDilatedConvPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
+  auto func = getOperation();
 
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(
