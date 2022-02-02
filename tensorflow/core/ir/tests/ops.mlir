@@ -85,3 +85,15 @@ tfg.func @many_args(%a0: !tf_type.tensor {tfg.name = "a0"},
     -> (!tf_type.tensor) {
   return(%a0) : !tf_type.tensor
 }
+
+// CHECK-LABEL: tfg.func private @vis(%arg0: tensor<*xi32>,
+// CHECK-NEXT:                        %arg2: tensor<*xi32>)
+// CHECK-NEXT:      -> (tensor<*xi32> {tfg.name = "result1"})
+// CHECK-NEXT: {
+// CHECK-NEXT:   return(%arg0) : tensor<*xi32>
+// CHECK-NEXT: }
+"tfg.func"() ({
+^bb0(%arg0: tensor<*xi32>, %arg1: !tf_type.control, %arg2: tensor<*xi32>, %arg3: !tf_type.control):
+  "tfg.return"(%arg0) : (tensor<*xi32>) -> ()
+}) {arg_attrs = [{}, {}, {}, {}], res_attrs = [{tfg.name = "result1"}], sym_name = "vis", sym_visibility = "private", type = (tensor<*xi32>, !tf_type.control, tensor<*xi32>, !tf_type.control) -> tensor<*xi32>} : () -> ()
+
