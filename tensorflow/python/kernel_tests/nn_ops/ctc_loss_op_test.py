@@ -936,18 +936,20 @@ class CTCLossTestV2(test.TestCase):
           [[1.0, 2.0], [5.0, 8.0], [14.0, 20.0]], out)
 
 
-def _ctc_loss_v3(labels, logits, label_length, logit_length, use_gpu):
+def _ctc_loss_v3(labels, logits, label_length, logit_length, use_gpu,
+                 sparse=True):
   with test_util.device(use_gpu=use_gpu):
-    sparse_labels = ctc_ops.dense_labels_to_sparse(labels, label_length)
+    if sparse:
+      labels = ctc_ops.dense_labels_to_sparse(labels, label_length)
     with backprop.GradientTape() as t:
       t.watch(logits)
       ref_loss = ctc_ops.ctc_loss_v3(
-          labels=sparse_labels,
+          labels=labels,
           logits=logits,
           label_length=label_length,
           logit_length=logit_length,
           blank_index=0)
-    ref_grad = t.gradient(ref_loss, [logits])
+    ref_grad = t.gradient(ref_loss, logits)
     return ref_loss, ref_grad
 
 
@@ -999,6 +1001,43 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(loss, ref_loss, atol=1e-6)
     self.assertAllClose(grad, ref_grad, atol=2e-6)
+
+  @parameterized.parameters([False, True])
+  def testCtcLossFp16(self, sparse_logits):
+    batch_size = 8
+    num_labels = 6
+    max_label_length = 5
+    num_frames = 12
+
+    labels = np.random.randint(1, num_labels, [batch_size, max_label_length])
+    labels = ops.convert_to_tensor(labels, dtypes.int64)
+    fp16_logits = np.random.uniform(size=[num_frames, batch_size, num_labels])
+    fp16_logits = ops.convert_to_tensor(fp16_logits, dtypes.float16)
+    label_length = np.random.randint(2, max_label_length, [batch_size])
+    label_length = ops.convert_to_tensor(label_length, dtypes.int64)
+
+    label_mask = array_ops.sequence_mask(
+        label_length, maxlen=max_label_length, dtype=label_length.dtype)
+    labels *= label_mask
+    logit_length = [num_frames] * batch_size
+
+    fp16_loss, fp16_grad = _ctc_loss_v3(
+        labels, fp16_logits, label_length, logit_length, use_gpu=True,
+        sparse=sparse_logits)
+    fp32_loss, fp32_grad = _ctc_loss_v3(
+        labels, math_ops.cast(fp16_logits, dtypes.float32), label_length,
+        logit_length, use_gpu=True, sparse=sparse_logits)
+
+    self.assertEqual(fp16_loss.dtype, dtypes.float16)
+    self.assertEqual(fp16_grad.dtype, dtypes.float16)
+    self.assertAllClose(
+        self.evaluate(fp16_loss),
+        self.evaluate(math_ops.cast(fp32_loss, dtypes.float16))
+    )
+    self.assertAllClose(
+        self.evaluate(fp16_grad),
+        self.evaluate(math_ops.cast(fp32_grad, dtypes.float16))
+    )
 
   @test_util.run_v2_only
   def testCtcLossAlgorithmFallback(self):
