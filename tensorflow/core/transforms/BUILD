@@ -7,6 +7,7 @@ package(
     default_visibility = [
         ":__subpackages__",
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

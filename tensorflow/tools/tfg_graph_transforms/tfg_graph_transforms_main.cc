@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/transforms/pass_registration.h"
 #include "tensorflow/tools/tfg_graph_transforms/export.h"
 #include "tensorflow/tools/tfg_graph_transforms/import.h"
 
@@ -152,6 +153,8 @@ int main(int argc, char** argv) {
   mlir::registerAsmPrinterCLOptions();
   mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
+  mlir::tfg::registerTFGraphPasses();
+
   mlir::PassPipelineCLParser pass_pipeline("", "TFG passes to run");
   llvm::cl::ParseCommandLineOptions(argc, argv, "TFG optimization tool\n");
 
