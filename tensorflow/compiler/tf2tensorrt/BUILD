@@ -960,11 +960,11 @@ pybind_extension(
     deps = [
         ":common_utils",
         ":py_utils",
+        "@pybind11",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
-        "//tensorflow/stream_executor",
-        "@pybind11",
+        # "//tensorflow/stream_executor",
     ],
 )
 
