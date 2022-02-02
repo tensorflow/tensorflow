@@ -227,8 +227,9 @@ struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {
   LogicalResult matchAndRewrite(ConcreteOpType op,
                                 PatternRewriter &rewriter) const override {
     if (EqualsZero(op.bias())) {
-      auto none_value = rewriter.create<mlir::ConstantOp>(
-          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      auto none_value = rewriter.create<TFL::NoValueOp>(
+          rewriter.getUnknownLoc(), rewriter.getNoneType(),
+          rewriter.getUnitAttr());
       op.biasMutable().assign(none_value);
     }
 
@@ -2431,14 +2432,16 @@ struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
   LogicalResult matchAndRewrite(LSTMOp op,
                                 PatternRewriter &rewriter) const override {
     if (EqualsZero(op.input_gate_bias())) {
-      auto none_value = rewriter.create<mlir::ConstantOp>(
-          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      auto none_value = rewriter.create<TFL::NoValueOp>(
+          rewriter.getUnknownLoc(), rewriter.getNoneType(),
+          rewriter.getUnitAttr());
       op.input_gate_biasMutable().assign(none_value);
     }
 
     if (EqualsZero(op.projection_bias())) {
-      auto none_value = rewriter.create<mlir::ConstantOp>(
-          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      auto none_value = rewriter.create<TFL::NoValueOp>(
+          rewriter.getUnknownLoc(), rewriter.getNoneType(),
+          rewriter.getUnitAttr());
       op.projection_biasMutable().assign(none_value);
     }
 
@@ -2778,9 +2781,10 @@ struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
       rewriter.replaceOpWithNewOp<arith::ConstantOp>(const_op,
                                                      const_op.value());
       return success();
-    } else if (ConstantOp::isBuildableWith(const_op.value(),
-                                           const_op.getType())) {
-      rewriter.replaceOpWithNewOp<ConstantOp>(const_op, const_op.value());
+    } else if (TFL::NoValueOp::isBuildableWith(const_op.value(),
+                                               const_op.getType())) {
+      rewriter.replaceOpWithNewOp<NoValueOp>(const_op, rewriter.getNoneType(),
+                                             const_op.value().cast<UnitAttr>());
       return success();
     }
     return failure();
@@ -3686,6 +3690,18 @@ OpFoldResult PadV2Op::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// NoValueOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult NoValueOp::fold(ArrayRef<Attribute> operands) {
+  return valueAttr();
+}
+
+bool NoValueOp::isBuildableWith(Attribute value, Type type) {
+  return value.isa<UnitAttr>() && type.isa<NoneType>();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
@@ -3712,8 +3728,8 @@ Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
   if (arith::ConstantOp::isBuildableWith(value, type))
     return builder.create<arith::ConstantOp>(loc, type, value);
-  if (ConstantOp::isBuildableWith(value, type))
-    return builder.create<ConstantOp>(loc, type, value);
+  if (NoValueOp::isBuildableWith(value, type))
+    return builder.create<NoValueOp>(loc, type, value.cast<UnitAttr>());
   return nullptr;
 }
 

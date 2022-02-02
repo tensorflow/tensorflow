@@ -5397,6 +5397,26 @@ or unnormalized log-probabilities provided for all classes.
   let customOption = "RandomOptions";
 }
 
+def TFL_NoValueOp : Op<TFL_Dialect, "no_value", [ConstantLike, NoSideEffect]> {
+  let summary = "constant representing no value.";
+
+  let description = [{
+No value constant op.
+  }];
+
+  let arguments = (ins UnitAttr:$value);
+
+  let results = (outs NoneType:$none_val);
+
+  let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true if a constant operation can be built with the given value
+    /// and result type.
+    static bool isBuildableWith(Attribute value, Type type);
+  }];
+}
+
 
 #endif // TFL_OPS
 

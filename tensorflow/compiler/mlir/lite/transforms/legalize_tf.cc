@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Threading.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
@@ -264,7 +265,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   }
 
   Type output_type = tf_matmul_op.getResult().getType();
-  auto no_input = rewriter.create<ConstantOp>(
+  auto no_input = rewriter.create<TFL::NoValueOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
   auto fc_op = rewriter.create<FullyConnectedOp>(
       op->getLoc(), ArrayRef<Type>{output_type},
@@ -359,7 +360,7 @@ LogicalResult ConvertTFConv3DOp::matchAndRewrite(
 
   // TensorFlow Conv3D has no bias, optimization patterns will fuse Conv3D
   // with other ops can fill the bias.
-  Value none = rewriter.create<mlir::ConstantOp>(
+  Value none = rewriter.create<TFL::NoValueOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
   rewriter.replaceOpWithNewOp<TFL::Conv3DOp>(
@@ -399,7 +400,7 @@ LogicalResult ConvertTFConv3DBackpropInputV2Op::matchAndRewrite(
 
   // TensorFlow Conv3D has no bias, optimization patterns will fuse Conv3D
   // with other ops can fill the bias.
-  Value none = rewriter.create<mlir::ConstantOp>(
+  Value none = rewriter.create<TFL::NoValueOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
   Value output_shape =
@@ -518,7 +519,7 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
     }
 
     // Optional input placeholder.
-    Value none = rewriter.create<mlir::ConstantOp>(
+    Value none = rewriter.create<TFL::NoValueOp>(
         op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
     // Populate inputs.
@@ -943,6 +944,7 @@ void LegalizeTF::runOnOperation() {
   // graph.
   target.addLegalOp<mlir::arith::ConstantOp>();
   target.addLegalOp<mlir::ConstantOp>();
+  target.addLegalOp<TFL::NoValueOp>();
   target.addLegalOp<ConstOp>();
   target.addLegalOp<DequantizeOp>();
   target.addLegalOp<QConstOp>();
