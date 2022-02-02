@@ -1341,8 +1341,12 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
 
   NodeDef init_const_ndef;
   init_const_ndef.set_name("initial_value");
+#if defined(LIBTPU_ON_GCE)  // TODO(b/217559071) - Remove once _TPUConst is OSS
+  init_const_ndef.set_op("Const");
+#else
   init_const_ndef.set_op("_TPUConst");
   AddNodeAttr("memory_space", "HBM", &init_const_ndef);
+#endif
   init_const_ndef.set_device(device);
   AddNodeAttr("dtype", var->tensor()->dtype(), &init_const_ndef);
   AddNodeAttr("value", *var->tensor(), &init_const_ndef);
