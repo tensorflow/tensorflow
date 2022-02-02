@@ -30,6 +30,7 @@ package_group(
         "//smartass/brain/ops/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
+        "//third_party/auroraml/...",
     ]),
 )
 
