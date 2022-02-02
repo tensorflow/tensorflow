@@ -968,6 +968,8 @@ def split(value: ragged_tensor.Ragged,
       `axis` is a negative integer.
   """
   with ops.name_scope(name, 'RaggedSplit'):
+    value = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        value, name='value')
     if isinstance(num_or_size_splits, int) and num_or_size_splits == 1:
       return [value]
 
