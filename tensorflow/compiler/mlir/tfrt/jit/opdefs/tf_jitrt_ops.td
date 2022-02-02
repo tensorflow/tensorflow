@@ -83,6 +83,30 @@ def FallbackCompileOp : TF_JITRT_Op<"fallback.compile",
   }];
 }
 
+def FallbackWaitForCompilationOp : TF_JITRT_Op<"fallback.wait_for_compilation",
+    [TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
+  let summary = "waits for the completion of all compilation tasks";
+  let description = [{
+    `tf_jitrt.fallback.wait_for_compilation` waits for the completion of all
+    specialization compilation tasks related to the given kernel.
+
+    This kernel is intended for use in tests to deterministically call
+    specialized kernels when specialization is done lazily.
+    ```
+  }];
+
+  let arguments = (ins
+    SymbolRefAttr:$kernel,
+    TFRT_ChainType:$chain
+  );
+
+  let results = (outs TFRT_ChainType:$scheduled);
+
+  let assemblyFormat = [{
+    $kernel `(` $chain `)` attr-dict
+  }];
+}
+
 def FallbackExecuteOp : TF_JITRT_Op<"fallback.execute",
     [NoSideEffect, DeclareOpInterfaceMethods<TFRT_CostFunctionInterface>]> {
   let summary = "jitrt execute operation with a fallback runtime interop";
