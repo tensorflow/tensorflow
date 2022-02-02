@@ -256,7 +256,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleOptimizationBarrier(HloInstruction* barrier) override;
 
   std::string ToString() const;
 
