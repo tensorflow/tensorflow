@@ -15,6 +15,8 @@ limitations under the License.
 
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
+#include <utility>
+
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
@@ -558,7 +560,8 @@ struct LhloLegalizeToAffinePass
     auto func = getOperation();
     RewritePatternSet patterns(&getContext());
     populateLHLOToAffineConversionPattern(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+      return signalPassFailure();
   }
 };
 
