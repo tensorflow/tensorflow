@@ -188,15 +188,11 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     mutex_lock l(mu_);
     if (!model_thread_) {
       model_thread_ = ctx->StartThread("tf_data_model", [this]() {
-        auto algorithm = dataset()->params_.autotune_algorithm;
-        if (algorithm == model::AutotuneAlgorithm::DEFAULT &&
-            GetExperiments().contains("max_parallelism_v2")) {
-          algorithm = model::AutotuneAlgorithm::MAX_PARALLELISM;
-        }
-        Status status = model_->OptimizeLoop(
-            algorithm, dataset()->params_.autotune_cpu_budget,
-            dataset()->params_.autotune_ram_budget,
-            cancellation_manager_.get());
+        Status status =
+            model_->OptimizeLoop(dataset()->params_.autotune_algorithm,
+                                 dataset()->params_.autotune_cpu_budget,
+                                 dataset()->params_.autotune_ram_budget,
+                                 cancellation_manager_.get());
         if (!status.ok()) {
           LOG(WARNING) << "Optimization loop failed: " << status.ToString();
         }
