@@ -4402,11 +4402,6 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "is_training", &is_training));
 
-  if (data_format != "NCHW") {
-    return errors::Unimplemented(node_def.op(),
-                                 " only supports data_format=NCHW");
-  }
-
   if (is_training) {
     // Trying to use batchnorm in training mode is a very common problem.
     // Because the error message will only be printed in VLOG(1) by the
@@ -4420,7 +4415,7 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
                                  " only supports is_training=false");
   }
   ITensorProxyPtr tensor = inputs.at(0).tensor();
-  if (!params->use_implicit_batch && tensor->getDimensions().d[1] == -1) {
+  if (!params->use_implicit_batch) {
     // This check is to make sure that channel dimension is known during
     // conversion.
     //
@@ -4429,7 +4424,10 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     // known shapes during conversion even though the shapes may not be known
     // during segmentation (see the actual argument for input_shapes when
     // ConvertGraphDefToEngine is called from TRTEngineOp::BuildEngine).
-    return errors::InvalidArgument("Channel dimension must be static");
+    int channel_dim = (data_format == "NCHW" ? 1 : 3);
+    if (tensor->getDimensions().d[channel_dim] == -1) {
+      return errors::InvalidArgument("Channel dimension must be static");
+    }
   }
   //  Check parameter types
   auto parameter_type = inputs.at(1).weights().TrtDType();
@@ -4515,14 +4513,43 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     }
   }
 
-  nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
-  nvinfer1::IScaleLayer* layer = params->converter->network()->addScale(
-      *tensor->trt_tensor(), mode, combined_offset_weights->GetTrtWeights(),
-      combined_scale_weights->GetTrtWeights(),
-      nvinfer1::Weights{nvinfer1::DataType::kFLOAT, nullptr, 0});
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->converter->SetLayerName(layer, node_def);
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
+  ITensorProxyPtr output_tensor;
+
+  if (data_format == "NCHW") {
+    // IScaleLayer CHANNEL mode requires NCHW format.
+    nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
+    nvinfer1::IScaleLayer* layer = params->converter->network()->addScale(
+        *tensor->trt_tensor(), mode, combined_offset_weights->GetTrtWeights(),
+        combined_scale_weights->GetTrtWeights(),
+        nvinfer1::Weights{nvinfer1::DataType::kFLOAT, nullptr, 0});
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    params->converter->SetLayerName(layer, node_def);
+    output_tensor = layer->getOutput(0);
+  }
+  if (data_format == "NHWC") {
+    // nweight is the number of channels. TensorRT IElementWiseLayer supports
+    // implicit broadcasting for dimensions of size 1.
+    nvinfer1::Dims dims = tensor->getDimensions();
+    for (int i = 0; i < dims.nbDims - 1; i++) {
+      dims.d[i] = 1;
+    }
+    dims.d[dims.nbDims - 1] = nweight;
+    StatusOr<TRTNetworkBuilder> builder = TRTNetworkBuilder::Create(
+        params->converter->network(), params->weight_store);
+    TRT_ENSURE_OK(builder);
+    auto scale_constant_layer = builder->WeightsToConstant(
+        combined_scale_weights->GetTrtWeights(), dims);
+    ITensorProxyPtr scale_constant = (*scale_constant_layer)->getOutput(0);
+    auto scale_layer =
+        builder->Mul(tensor->trt_tensor(), scale_constant->trt_tensor());
+    auto offset_constant_layer = builder->WeightsToConstant(
+        combined_offset_weights->GetTrtWeights(), dims);
+    ITensorProxyPtr offset_constant = (*offset_constant_layer)->getOutput(0);
+    auto offset_layer = builder->Add((*scale_layer)->getOutput(0),
+                                     offset_constant->trt_tensor());
+    output_tensor = (*offset_layer)->getOutput(0);
+  }
+
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
