@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -3176,7 +3177,8 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
     if (!slice.constant_name.empty()) {
       loc = ir_emitter_context_->llvm_module()->getGlobalVariable(
           slice.constant_name);
-      CHECK_NE(loc, nullptr);
+      CHECK_NE(loc, nullptr)
+          << "Could not find variable '" << slice.constant_name << "'";
     } else {
       CHECK(!buffer_slice.allocation()->is_constant());
       loc = InBoundsGEP(kernel_args.at(buffer_slice.allocation()),
