@@ -17,7 +17,7 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=4.2.2
+LATEST_BAZEL_VERSION=5.0.0
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
@@ -263,9 +263,10 @@ function install_macos_pip_deps {
   ${PIP_CMD} list
   ${PIP_CMD} uninstall -y keras
   ${PIP_CMD} install -r tensorflow/tools/ci_build/release/requirements_mac.txt
-  # LINT.ThenChange(:linux_pip_installations_orig)
-  # LINT.ThenChange(:install_macos_pip_deps_no_venv)
-  # LINT.ThenChange(:linux_pip_installations)
+  # LINT.ThenChange(
+  #   :linux_pip_installations_orig,
+  #   :install_macos_pip_deps_no_venv,
+  #   :linux_pip_installations)
 }
 
 # This hack is unfortunately necessary for MacOS builds that use pip_new.sh

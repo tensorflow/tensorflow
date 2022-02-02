@@ -32,6 +32,14 @@ class JitRuntimeDialect : public mlir::Dialect {
   static mlir::StringRef getDialectNamespace() { return "tf_jitrt"; }
 };
 
+// Returns the maximum size of ranked tensor argument of the `func`. Returns `1`
+// if all arguments are unranked.
+//
+// To get the cost of the `tf_jitrt.execute` operations, when compiled cluster
+// has unranked inputs, we use the maximum size of the arguments of the parent
+// function as an estimate (see TFRT_CostFunctionInterface).
+int64_t GetMaxArgSize(mlir::FuncOp func);
+
 }  // namespace tf_jitrt
 }  // namespace mlir
 

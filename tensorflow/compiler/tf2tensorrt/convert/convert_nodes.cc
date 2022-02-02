@@ -548,19 +548,6 @@ Status ConvertAxis(int tf_axis, int trt_nb_dims, absl::string_view node_name,
   return Status::OK();
 }
 
-inline bool DimsEqual(const nvinfer1::Dims& dim_l,
-                      const nvinfer1::Dims& dim_r) {
-  if (dim_l.nbDims != dim_r.nbDims) {
-    return false;
-  }
-  for (int i = 0; i < dim_l.nbDims; i++) {
-    if (dim_l.d[i] != dim_r.d[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool AllLengthsEqual(const std::vector<std::vector<int>>& inputs) {
   if (inputs.size() == 0) return true;
   int length = inputs.at(0).size();

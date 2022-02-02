@@ -49,7 +49,7 @@ include "mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.td"
 // LMHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-class LHLO_Op<string mnemonic, list<OpTrait> traits> :
+class LHLO_Op<string mnemonic, list<Trait> traits> :
   Op<LHLO_Dialect, mnemonic,
     !listconcat([MemoryEffects<[MemRead, MemWrite]>,
     LmhloStructuredInterface], traits)>;
@@ -83,7 +83,7 @@ def LHLO_IotaOp : LHLO_Op<"iota", []> {
 
 class LHLO_UnaryElementwiseOp<string mnemonic,
                               Type BufferType = LHLO_Buffer,
-                              list<OpTrait> traits = [SameTypeOperands, Elementwise]>
+                              list<Trait> traits = [SameTypeOperands, Elementwise]>
     : LHLO_Op<mnemonic, traits> {
   let arguments = (ins Arg<BufferType, "", [MemRead]>:$input,
                        Arg<BufferType, "", [MemWrite]>:$output);
@@ -344,7 +344,7 @@ def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh", LHLO_FpOrComplexBuffer> {
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class LHLO_BinaryElementwiseOp<string mnemonic, Type BufferType = LHLO_Buffer,
-                               list<OpTrait> traits = [SameTypeOperands, Elementwise]> :
+                               list<Trait> traits = [SameTypeOperands, Elementwise]> :
         LHLO_Op<mnemonic, traits> {
   let arguments = (ins
       Arg<BufferType, "", [MemRead]>:$lhs,
@@ -1072,7 +1072,7 @@ def LHLO_ReducePrecisionOp: LHLO_Op<"reduce_precision", [SameTypeOperands]> {
 }
 
 // Common base class for AllReduce, AllGather, and AllToAll.
-class LHLO_CollectiveCommunicationOp<string name, list<OpTrait> traits = []> :
+class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
   LHLO_Op<name, !listconcat(traits, [SameVariadicOperandSize])> {
   dag arguments_base = (ins
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,

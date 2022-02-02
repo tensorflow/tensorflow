@@ -892,31 +892,6 @@ class HloDynamicBroadcastInDimConverter
   }
 };
 
-// Extract dimension from the tensor, converts to an i32, and pack in a tensor.
-class GetDimSizeConverter
-    : public OpConversionPattern<mhlo::GetDimensionSizeOp> {
- public:
-  using OpConversionPattern<mhlo::GetDimensionSizeOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      mhlo::GetDimensionSizeOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    Location loc = op.getLoc();
-    auto result_ty = op.getType();
-    auto element_ty = getElementTypeOrSelf(result_ty);
-    auto dim_attr = rewriter.getIndexAttr(op.dimension());
-    auto dim_const = rewriter.create<arith::ConstantOp>(loc, dim_attr);
-
-    Value dim_op = rewriter.create<tensor::DimOp>(loc, rewriter.getIndexType(),
-                                                  op.operand(), dim_const);
-
-    // Cast to the correct element type and convert to a tensor.
-    Value cast = rewriter.create<arith::IndexCastOp>(loc, element_ty, dim_op);
-    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, result_ty, cast);
-    return success();
-  }
-};
-
 template <typename OpTy>
 class TransposeConverter
     : public DataMovementOpConverter<TransposeConverter<OpTy>, OpTy> {
@@ -935,6 +910,96 @@ class TransposeConverter
     return {
         AffineMap::get(nloops, /*symbolCount=*/0, input_exprs, b->getContext()),
         b->getMultiDimIdentityMap(nloops)};
+  }
+};
+
+/// Lowers mhlo.RealDynamicSliceOp to tensor.extract_slice and other
+/// arith/tensor dialect ops.
+class RealDynamicSliceConverter
+    : public OpConversionPattern<mhlo::RealDynamicSliceOp> {
+ public:
+  using OpConversionPattern<mhlo::RealDynamicSliceOp>::OpConversionPattern;
+
+  /// Computes size of a slice as :-
+  /// size = ceil((limit - start)/stride)
+  static Value computeSize(Location loc, Value start, Value limit, Value stride,
+                           ConversionPatternRewriter& rewriter) {
+    Value delta = rewriter.create<arith::SubIOp>(loc, limit, start);
+    return rewriter.create<arith::CeilDivUIOp>(loc, delta, stride);
+  }
+
+  LogicalResult matchAndRewrite(
+      mhlo::RealDynamicSliceOp real_dynamic_slice_op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    Location loc = real_dynamic_slice_op.getLoc();
+    auto arg_type = adaptor.operand().getType().dyn_cast<ShapedType>();
+    if (!arg_type || !arg_type.hasRank()) {
+      return rewriter.notifyMatchFailure(real_dynamic_slice_op,
+                                         "require known-rank args");
+    }
+    auto result_type =
+        this->typeConverter->convertType(real_dynamic_slice_op.getType())
+            .cast<RankedTensorType>();
+    Value zero =
+        rewriter.create<arith::ConstantOp>(loc, rewriter.getI64IntegerAttr(0));
+    Type i64_type = rewriter.getI64Type();
+    SmallVector<OpFoldResult, 4> offsets, sizes, strides;
+    SmallVector<Type, 3> clamp_type(3, i64_type);
+    for (auto i : llvm::seq<unsigned>(0, arg_type.getRank())) {
+      Value dim = rewriter.create<arith::ConstantIndexOp>(loc, i);
+      Value start =
+          rewriter.create<tensor::ExtractOp>(loc, adaptor.start_indices(), dim);
+      Value limit =
+          rewriter.create<tensor::ExtractOp>(loc, adaptor.limit_indices(), dim);
+      Value stride =
+          rewriter.create<tensor::ExtractOp>(loc, adaptor.strides(), dim);
+
+      // Compute i-th dimension size of the result : size[i].
+      // If the i-th dimension of the result type is known, we go ahead with it
+      // else we compute it using limit, start and stride values.
+      int64_t result_dim_size = result_type.getDimSize(i);
+      Value size;
+      if (ShapedType::isDynamic(result_dim_size)) {
+        size = computeSize(loc, start, limit, stride, rewriter);
+      } else {
+        size = rewriter.create<arith::ConstantIndexOp>(loc, result_dim_size);
+      }
+
+      // Fetch i-th dimension size of the operand and calculate upper bound as
+      // :-
+      //    ub = operand_dim[i] - size[i]
+      Value operand_dim_size =
+          rewriter.createOrFold<tensor::DimOp>(loc, adaptor.operand(), dim);
+      Value upper_bound =
+          rewriter.createOrFold<arith::SubIOp>(loc, operand_dim_size, size);
+
+      // We clamp the start_index to keep it bounded as :-
+      // start index : 0 <= start_index[i] <= ub
+      // ClampOp lowering does not support index type, so we cast it into
+      // integer type.
+      start = rewriter.create<arith::IndexCastOp>(loc, i64_type, start);
+      upper_bound =
+          rewriter.create<arith::IndexCastOp>(loc, i64_type, upper_bound);
+      start = mhlo::MhloOpToStdScalarOp::map<mhlo::ClampOp>(
+          loc, i64_type, clamp_type, ValueRange{zero, start, upper_bound},
+          &rewriter);
+
+      offsets.push_back(
+          rewriter
+              .create<arith::IndexCastOp>(loc, rewriter.getIndexType(), start)
+              .getResult());
+      if (ShapedType::isDynamic(result_dim_size)) {
+        sizes.push_back(size);
+      } else {
+        sizes.push_back(rewriter.getI64IntegerAttr(result_dim_size));
+      }
+      strides.push_back(stride);
+    }
+
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+        real_dynamic_slice_op, result_type, adaptor.operand(), offsets, sizes,
+        strides);
+    return success();
   }
 };
 
@@ -1754,9 +1819,9 @@ static Value applyPad(Location loc, Value input, ArrayRef<int64_t> pad,
 
   Value padValue = rewriter.create<arith::ConstantOp>(loc, padAttr);
 
-  return tensor::createPadScalarOp(
-      RankedTensorType::get(paddedShape, inputETy), input, padValue, lowIndices,
-      highIndices, /*nofold=*/false, loc, rewriter);
+  return tensor::createPadScalarOp(RankedTensorType::get(paddedShape, inputETy),
+                                   input, padValue, lowIndices, highIndices,
+                                   /*nofold=*/false, loc, rewriter);
 }
 
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
@@ -2753,7 +2818,7 @@ struct HloLegalizeToLinalgPass
 
   void runOnOperation() override {
     MLIRContext& ctx = getContext();
-    OwningRewritePatternList patterns(&ctx);
+    RewritePatternSet patterns(&ctx);
     ConversionTarget target(ctx);
     target.addLegalDialect<arith::ArithmeticDialect, complex::ComplexDialect,
                            linalg::LinalgDialect, math::MathDialect,
@@ -2777,7 +2842,7 @@ namespace mhlo {
 
 void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           TypeConverter& type_converter,
-                                          OwningRewritePatternList* patterns) {
+                                          RewritePatternSet* patterns) {
   // clang-format off
   patterns->insert<
       BroadcastConverter<mhlo::BroadcastOp>, ConcatenateConverter,
@@ -2829,12 +2894,12 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::SubOp>,
       PointwiseToLinalgConverter<mhlo::TanhOp>,
       PointwiseToLinalgConverter<mhlo::XorOp>,
+      RealDynamicSliceConverter,
       ReshapeOpConverter,
       ReverseConverter,
       SliceConverter,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
-      GetDimSizeConverter,
       TransposeConverter<mhlo::TransposeOp>,
       DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
       DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,

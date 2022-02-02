@@ -92,7 +92,7 @@ CreateConvertReferenceVariableToResourceVariablePass();
 // reusing the pass logic in a custom pass with additional conversions.
 mlir::LogicalResult TFSavedModelToCoreRTConversionPassRun(
     mlir::MLIRContext* context, mlir::FuncOp func,
-    mlir::ConversionTarget* target, mlir::OwningRewritePatternList* patterns,
+    mlir::ConversionTarget* target, mlir::RewritePatternSet* patterns,
     CoreRTConverter* corert_converter);
 
 // Create an operation pass that converts each tfrt_dist.remote_execute_func op

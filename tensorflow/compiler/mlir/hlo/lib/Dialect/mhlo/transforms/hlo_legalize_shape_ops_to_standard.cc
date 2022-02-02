@@ -203,7 +203,7 @@ struct HloLegalizeShapeOpsToStandardPass
 
   void runOnOperation() override {
     MLIRContext& ctx = getContext();
-    OwningRewritePatternList patterns(&ctx);
+    RewritePatternSet patterns(&ctx);
     ConversionTarget target(ctx);
     target.addLegalDialect<arith::ArithmeticDialect, StandardOpsDialect,
                            tensor::TensorDialect, shape::ShapeDialect>();
@@ -226,7 +226,7 @@ namespace mhlo {
 
 void populateHLOShapeOpsToStandardConversionPattern(
     MLIRContext* context, TypeConverter& type_converter,
-    OwningRewritePatternList* patterns) {
+    RewritePatternSet* patterns) {
   // clang-format off
   patterns->insert<
       ComputeReshapeShapeConversion,

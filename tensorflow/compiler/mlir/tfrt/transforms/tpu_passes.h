@@ -61,7 +61,7 @@ inline void RegisterTPUDialects(mlir::DialectRegistry *registry) {}
 
 // Adds a target dialect and a set of rewrite patterns for TFRT TPU lowering.
 inline void AddTPUTargetDialectAndPatterns(
-    mlir::ConversionTarget *target, mlir::OwningRewritePatternList *patterns,
+    mlir::ConversionTarget *target, mlir::RewritePatternSet *patterns,
     mlir::MLIRContext *context, CoreRTConverter *corert_converter,
     tfrt_compiler::FallbackConverter *fallback_converter,
     const TfrtTpuExecuteOpConversionOptions &tpu_exec_conv_opts,

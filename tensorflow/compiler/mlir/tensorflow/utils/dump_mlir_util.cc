@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/core/platform/crash_analysis.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -178,6 +179,31 @@ Status CreateFileForDumping(llvm::StringRef name,
   }
   *os = std::make_unique<WritableFileRawStream>(std::move(file));
   return Status();
+}
+
+std::string DumpCrashReproducerToFile(llvm::StringRef name,
+                                      const mlir::PassManager& pm,
+                                      mlir::Operation* op,
+                                      llvm::StringRef dirname) {
+  std::unique_ptr<llvm::raw_ostream> os;
+  std::string filepath;
+  Status result = CreateFileForDumping(name, &os, &filepath, dirname);
+  if (!result.ok()) return result.error_message();
+
+  std::string str;
+  llvm::raw_string_ostream passOS(str);
+  llvm::interleaveComma(pm.getPasses(), passOS, [&](mlir::Pass& pass) {
+    pass.printAsTextualPipeline(passOS);
+  });
+  *os << "// configuration: -pass-pipeline='" << passOS.str() << "'";
+  if (op->getContext()->isMultithreadingEnabled())
+    *os << " -mlir-disable-threading";
+  *os << " -verify-each";
+  *os << "\n";
+  op->print(*os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
+  LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
+            << "' to '" << filepath << "'";
+  return filepath;
 }
 
 std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,

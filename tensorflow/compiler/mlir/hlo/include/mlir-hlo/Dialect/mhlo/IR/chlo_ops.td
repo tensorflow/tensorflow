@@ -56,7 +56,7 @@ def HLOClient_Dialect : Dialect {
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
-class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
+class HLOClient_Op<string mnemonic, list<Trait> traits> :
     Op<HLOClient_Dialect, mnemonic, traits> {
   // TODO(b/129012527) Much of this custom verification should be expressed as
   // type constraints.
@@ -86,7 +86,7 @@ def HLOClient_Broadcasting : HLOClient_NativeOpTrait<"Broadcasting"> {
 //===----------------------------------------------------------------------===//
 
 class HLOClient_BroadcastBinaryElementwiseOp<
-  string mnemonic, list<OpTrait> traits> : HLOClient_Op<mnemonic, traits # [
+  string mnemonic, list<Trait> traits> : HLOClient_Op<mnemonic, traits # [
       HLO_BroadcastingElementwise, HLOClient_Broadcasting,
       DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
       "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
@@ -449,7 +449,7 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 // Unary op
 //===----------------------------------------------------------------------===//
 
-class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
+class HLOClient_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     Type ArgTensorType, Type ResultTensorType> : HLOClient_Op<mnemonic,
     traits # [InferShapeEqualityOpInterface, NoSideEffect, Elementwise,
     SameOperandsAndResultShape, InferShapedTypeOpInterface]> {

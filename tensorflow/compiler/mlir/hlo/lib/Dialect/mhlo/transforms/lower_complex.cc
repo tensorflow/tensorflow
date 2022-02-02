@@ -52,7 +52,7 @@ class LowerComplexPass : public LowerComplexPassBase<LowerComplexPass> {
 // Lowers the complex operations that can be represented using other operations.
 void LowerComplexPass::runOnOperation() {
   // Add lowering patterns to the list.
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
   (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
@@ -62,8 +62,8 @@ void LowerComplexPass::runOnOperation() {
 }  // end namespace mhlo
 }  // end namespace mlir
 
-void mlir::mhlo::PopulateComplexLoweringPatterns(
-    MLIRContext* /*context*/, OwningRewritePatternList* patterns) {
+void mlir::mhlo::PopulateComplexLoweringPatterns(MLIRContext* /*context*/,
+                                                 RewritePatternSet* patterns) {
   populateWithGenerated(*patterns);
 }
 

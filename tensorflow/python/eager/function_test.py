@@ -3771,7 +3771,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           cf(d, y=e),  # structured signature w/ kwarg
           cf(y=e, x=d),  # structured signature w/ 2 kwargs
           cf(a, b, c),  # flat signature
-          cf(x=a, x_1=b, y=c)  # flat signature w/ kwargs
       ]:
         self.assertIsInstance(output, tuple)
         self.assertLen(output, 2)

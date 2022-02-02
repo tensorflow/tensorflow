@@ -830,6 +830,7 @@ cc_library(
 cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
@@ -871,6 +872,7 @@ cc_library(
     name = "eigen_contraction_kernel_no_mkl",
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",
         "//third_party/eigen3",
@@ -926,6 +928,7 @@ cc_library(
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":eigen_contraction_kernel",
         ":eigen_convolution_helpers",
@@ -4133,7 +4136,7 @@ tf_kernel_library(
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
-    ]),
+    ]) + if_cuda_or_rocm([":gpu_utils"]),
 )
 
 tf_kernel_library(
@@ -6876,6 +6879,7 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@fft2d",
         "@gemmlowp",
+        "@icu//:common",
     ],
     alwayslink = 1,
 )

@@ -494,6 +494,8 @@ struct ConvolutionRewritePattern
     Location loc = op->getLoc();
 
     // Create a function that returns the convolution plan.
+    mlir::SymbolTable symbol_table(
+        op->template getParentOfType<mlir::ModuleOp>());
     rewriter.setInsertionPoint(op->template getParentOfType<mlir::FuncOp>());
     mlir::Type handle_type = rewriter.getType<tfrt::gpu::DnnHandleType>();
     mlir::Type conv_plan_type =
@@ -503,6 +505,7 @@ struct ConvolutionRewritePattern
     mlir::FuncOp conv_plan_func = rewriter.create<mlir::FuncOp>(
         loc, function_name,
         rewriter.getFunctionType(handle_type, conv_plan_type));
+    symbol_table.insert(conv_plan_func);
     rewriter.setInsertionPointToEnd(conv_plan_func.addEntryBlock());
     Value conv_plan = CreateBuildConvOp(op, conv_plan_func.getArgument(0),
                                         config, backend_type, rewriter);

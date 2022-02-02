@@ -64,16 +64,16 @@ struct PeelTiledLoopsPass : public PeelTiledLoopsBase<PeelTiledLoopsPass> {
     // Apply some canonicalizations before loop splitting confuses the
     // situation.
     // TODO(tpopp): See if this is still necessary in the integrated version.
-    mlir::OwningRewritePatternList canonicalizations(func_op.getContext());
+    mlir::RewritePatternSet canonicalizations(func_op.getContext());
     mlir::linalg::TiledLoopOp::getCanonicalizationPatterns(
         canonicalizations, func_op.getContext());
     mlir::linalg::populateLinalgTilingCanonicalizationPatterns(
         canonicalizations);
     (void)applyPatternsAndFoldGreedily(func_op, std::move(canonicalizations));
 
-    mlir::OwningRewritePatternList loopPeeling(func_op.getContext());
-    loopPeeling.insert<PeelTiledLoop>(func_op.getContext());
-    (void)applyPatternsAndFoldGreedily(func_op, std::move(loopPeeling));
+    mlir::RewritePatternSet loop_peeling(func_op.getContext());
+    loop_peeling.insert<PeelTiledLoop>(func_op.getContext());
+    (void)applyPatternsAndFoldGreedily(func_op, std::move(loop_peeling));
 
     func_op->walk([&](mlir::linalg::TiledLoopOp op) {
       if (op->hasAttr(kWasPeeledAttr)) op->removeAttr(kWasPeeledAttr);

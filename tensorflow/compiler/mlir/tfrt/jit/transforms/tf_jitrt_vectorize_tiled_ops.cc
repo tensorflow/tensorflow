@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
@@ -30,10 +32,16 @@ using mlir::failure;
 using mlir::success;
 using mlir::arith::ConstantIndexOp;
 using mlir::linalg::CodegenStrategy;
+using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::TiledLoopOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
+
+// The upper limit for vectorization of untiled `linalg.fill`. If a tensor has a
+// static shape with more elements, then `linalg.fill` won't be vectorized. It
+// is expected that such operations are tiled to get to small static shapes.
+constexpr int64_t kNumElementsThreshold = 1024;
 
 // Rewrite `vector.transfer_read(linalg.expand_shape)` as
 // `vector.shape_cast(vector.transfer_read)`.
@@ -86,41 +94,45 @@ struct VectorizeTiledOpsPass
   void runOnFunction() override {
     auto funcOp = getFunction();
 
-    // Vector transfer options.
-    mlir::VectorTransferToSCFOptions vector_transfer_opts;
-
     // Vectorize linalg.fill and linalg.generic operations.
     mlir::OpPassManager dynamicPM("builtin.func");
     CodegenStrategy strategy;
-    strategy.vectorize(mlir::linalg::FillOp::getOperationName())
-        .vectorLowering(
-            mlir::linalg::LinalgVectorLoweringOptions()
-                .setVectorTransferToSCFOptions(vector_transfer_opts));
+    strategy.vectorize(FillOp::getOperationName(), [](mlir::Operation *op) {
+      auto fill = mlir::dyn_cast<FillOp>(op);
+      if (!fill) return failure();
+
+      if (op->getParentOfType<TiledLoopOp>()) return success();
+
+      // Allow vectorization for static shapes with low number of elements.
+      auto output_type = fill.output().getType().cast<mlir::RankedTensorType>();
+      if (output_type.hasStaticShape() &&
+          output_type.getNumElements() < kNumElementsThreshold)
+        return success();
+
+      return failure();
+    });
+
     strategy.configurePassPipeline(dynamicPM, funcOp.getContext());
     if (failed(runPipeline(dynamicPM, funcOp))) return signalPassFailure();
 
     mlir::OpPassManager dynamicPM2("builtin.func");
     CodegenStrategy strategy2;
-    strategy2
-        .vectorize(GenericOp::getOperationName(),
-                   [](mlir::Operation *op) {
-                     auto generic = mlir::dyn_cast<GenericOp>(op);
-                     if (!generic) return failure();
+    strategy2.vectorize(GenericOp::getOperationName(), [](mlir::Operation *op) {
+      auto generic = mlir::dyn_cast<GenericOp>(op);
+      if (!generic) return failure();
 
-                     if (op->getParentOfType<TiledLoopOp>()) return success();
+      if (op->getParentOfType<TiledLoopOp>()) return success();
 
-                     // Allow vectorization of 1D reductions.
-                     return success(generic.getNumLoops() == 1 &&
-                                    generic.getNumReductionLoops() == 1);
-                   })
-        .vectorLowering(
-            mlir::linalg::LinalgVectorLoweringOptions()
-                .setVectorTransferToSCFOptions(vector_transfer_opts));
+      // Allow vectorization of 1D reductions.
+      return success(generic.getNumLoops() == 1 &&
+                     generic.getNumReductionLoops() == 1);
+    });
+
     strategy2.configurePassPipeline(dynamicPM2, funcOp.getContext());
     if (failed(runPipeline(dynamicPM2, funcOp))) return signalPassFailure();
 
     // Vectorize padding.
-    mlir::OwningRewritePatternList patterns(funcOp.getContext());
+    mlir::RewritePatternSet patterns(funcOp.getContext());
     mlir::linalg::populatePadOpVectorizationPatterns(patterns);
     mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(
         patterns);

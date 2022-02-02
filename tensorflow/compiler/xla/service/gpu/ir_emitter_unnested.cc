@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -120,7 +121,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -2701,7 +2701,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   }
 
   uint64_t dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
-  int64_t num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
+  int64_t num_stages = Log2Ceiling(dimension_to_sort_bound);
   VLOG(2) << context.name << " requires " << num_stages << " stages.";
   CHECK_GE(1ULL << num_stages, dimension_to_sort_bound);
   CHECK_LT(1ULL << (num_stages - 1), dimension_to_sort_bound);
@@ -3177,7 +3177,8 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
     if (!slice.constant_name.empty()) {
       loc = ir_emitter_context_->llvm_module()->getGlobalVariable(
           slice.constant_name);
-      CHECK_NE(loc, nullptr);
+      CHECK_NE(loc, nullptr)
+          << "Could not find variable '" << slice.constant_name << "'";
     } else {
       CHECK(!buffer_slice.allocation()->is_constant());
       loc = InBoundsGEP(kernel_args.at(buffer_slice.allocation()),
@@ -4768,7 +4769,7 @@ int64_t NearestPowerOfTwo(int64_t v) {
   if (v < 0) {
     return 0;
   }
-  int64_t upper = tensorflow::NextPowerOfTwo64(v);
+  int64_t upper = absl::bit_ceil<uint64_t>(v);
   int64_t lower = upper >> 1;
   return upper - v < v - lower ? upper : lower;
 }

@@ -153,7 +153,7 @@ struct LegalizeTfTypesPass
 
 void LegalizeTfTypesPass::runOnOperation() {
   TfTypeConverter converter;
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   patterns.insert<TfTypePattern>(&getContext(), converter);
   populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
   TfTypeConversionTarget target(getContext(), converter);

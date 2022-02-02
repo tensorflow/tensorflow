@@ -1461,6 +1461,7 @@ class Trackable(object):
     Returns:
       Dictionary mapping names to child trackables.
     """
+    self._maybe_initialize_trackable()
     # TODO(kathywu): Migrate `_checkpoint_dependencies` overrides to
     # `_trackable_children`.
     if save_type == SaveType.CHECKPOINT:

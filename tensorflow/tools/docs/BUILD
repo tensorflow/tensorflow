@@ -24,7 +24,6 @@ tpu_module = [
 ]
 
 keras_module = [
-    # TODO(scottzhu): Move the Keras docstring test to Keras repo.
     "keras.",
 ]
 

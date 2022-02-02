@@ -62,6 +62,9 @@ createLegalizeHloShapeOpsToStandardPass();
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
 
+// Lowers from HLO dialects dim operations.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeShapeComputationsPass();
+
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
@@ -85,8 +88,9 @@ std::unique_ptr<OperationPass<FuncOp>> createBroadcastPropagationPass();
 std::unique_ptr<OperationPass<FuncOp>> createMergeAssumingOpsPass();
 
 // Group reduction and parallel dimensions of reduction operations and realize
-// them through equivalent 1D or 2D reductions, if possible.
-std::unique_ptr<OperationPass<FuncOp>> createGroupReductionDimensionsPass();
+// them through equivalent 1D or 2D reductions.
+std::unique_ptr<OperationPass<FuncOp>> createGroupReductionDimensionsPass(
+    bool prefer_columns_reductions = true);
 
 /// Rank specialization passes:
 ///   - Find compatible operations and group them together in one rank

@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 
-using mlir::OwningRewritePatternList;
+using mlir::RewritePatternSet;
 
 namespace mlir {
 namespace mhlo {
@@ -165,7 +165,7 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
 }  // end anonymous namespace
 
 void PopulateOptimizeMHLOPatterns(MLIRContext* context,
-                                  OwningRewritePatternList* patterns) {
+                                  RewritePatternSet* patterns) {
   patterns->insert<GatherIsSlice>(context);
 }
 }  // end namespace mhlo

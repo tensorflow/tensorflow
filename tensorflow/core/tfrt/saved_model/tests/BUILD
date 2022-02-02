@@ -12,6 +12,7 @@ package_group(
     name = "internal",
     packages = [
         "//learning/brain/tfrt/tfrt_session/...",
+        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
     ],
 )

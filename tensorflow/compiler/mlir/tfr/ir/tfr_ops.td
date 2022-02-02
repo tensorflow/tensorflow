@@ -111,7 +111,7 @@ def TFR_allowedListResultType : Type<Or<[
 // Op classes
 //===----------------------------------------------------------------------===//
 
-class TFR_Op<string mnemonic, list<OpTrait> traits> :
+class TFR_Op<string mnemonic, list<Trait> traits> :
     Op<TFR_Dialect, mnemonic, traits>;
 
 def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {

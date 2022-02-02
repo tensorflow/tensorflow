@@ -1854,7 +1854,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/saved_model:registration",
+        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/util",
     ],
 )

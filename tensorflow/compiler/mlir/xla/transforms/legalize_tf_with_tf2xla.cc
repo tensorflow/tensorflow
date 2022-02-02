@@ -737,7 +737,7 @@ class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
   LegalizeTF(const LegalizeTF&) {}
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     patterns.insert<Tf2XlaRewritePattern>(
         &getContext(), device_type_, prefer_tf2xla_, legalize_test_only_ops_);
     if (failed(
@@ -751,7 +751,7 @@ class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
 }  // end namespace
 
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          OwningRewritePatternList& patterns,
+                                          RewritePatternSet& patterns,
                                           MLIRContext* ctx,
                                           bool prefer_tf2xla) {
   patterns.insert<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 #include <array>
+#include <limits>
 #include <locale>
 // Place `<locale>` before <Python.h> to avoid a build failure in macOS.
 #include <Python.h>
@@ -547,11 +548,18 @@ int NPyBfloat16_CompareFunc(const void* v1, const void* v2, void* arr) {
 int NPyBfloat16_ArgMaxFunc(void* data, npy_intp n, npy_intp* max_ind,
                            void* arr) {
   const bfloat16* bdata = reinterpret_cast<const bfloat16*>(data);
-  float max_val = -std::numeric_limits<float>::infinity();
+  // Start with a max_val of NaN, this results in the first iteration preferring
+  // bdata[0].
+  float max_val = std::numeric_limits<float>::quiet_NaN();
   for (npy_intp i = 0; i < n; ++i) {
-    if (static_cast<float>(bdata[i]) > max_val) {
+    // This condition is chosen so that NaNs are always considered "max".
+    if (!(static_cast<float>(bdata[i]) <= max_val)) {
       max_val = static_cast<float>(bdata[i]);
       *max_ind = i;
+      // NumPy stops at the first NaN.
+      if (Eigen::numext::isnan(max_val)) {
+        break;
+      }
     }
   }
   return 0;
@@ -560,11 +568,18 @@ int NPyBfloat16_ArgMaxFunc(void* data, npy_intp n, npy_intp* max_ind,
 int NPyBfloat16_ArgMinFunc(void* data, npy_intp n, npy_intp* min_ind,
                            void* arr) {
   const bfloat16* bdata = reinterpret_cast<const bfloat16*>(data);
-  float min_val = std::numeric_limits<float>::infinity();
+  float min_val = std::numeric_limits<float>::quiet_NaN();
+  // Start with a min_val of NaN, this results in the first iteration preferring
+  // bdata[0].
   for (npy_intp i = 0; i < n; ++i) {
-    if (static_cast<float>(bdata[i]) < min_val) {
+    // This condition is chosen so that NaNs are always considered "min".
+    if (!(static_cast<float>(bdata[i]) >= min_val)) {
       min_val = static_cast<float>(bdata[i]);
       *min_ind = i;
+      // NumPy stops at the first NaN.
+      if (Eigen::numext::isnan(min_val)) {
+        break;
+      }
     }
   }
   return 0;
@@ -1285,7 +1300,15 @@ struct NextAfter {
   }
 };
 
-// TODO(phawkins): implement spacing
+struct Spacing {
+  bfloat16 operator()(bfloat16 x) {
+    // Compute the distance between the input and the next number with greater
+    // magnitude. The result should have the sign of the input.
+    bfloat16 away(std::copysign(std::numeric_limits<float>::infinity(),
+                                static_cast<float>(x)));
+    return NextAfter()(x, away) - x;
+  }
+};
 
 }  // namespace ufuncs
 
@@ -1611,7 +1634,9 @@ bool Initialize() {
       RegisterUFunc<UnaryUFunc<bfloat16, bfloat16, ufuncs::Trunc>>(numpy.get(),
                                                                    "trunc") &&
       RegisterUFunc<BinaryUFunc<bfloat16, bfloat16, ufuncs::NextAfter>>(
-          numpy.get(), "nextafter");
+          numpy.get(), "nextafter") &&
+      RegisterUFunc<UnaryUFunc<bfloat16, bfloat16, ufuncs::Spacing>>(
+          numpy.get(), "spacing");
 
   return ok;
 }

@@ -29,12 +29,12 @@ namespace graph_transforms {
 // Converts a saved model from `saved_model_file` to a MLIR module expressed in
 // TFG dialect. Only the GraphDef portion of the saved model gets imported into
 // MLIR TFG dialect.
-tensorflow::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
+tensorflow::StatusOr<mlir::OwningOpRef<ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const std::string& saved_model_file);
 
 // Converts a GraphDef from `model_file` to a MLIR module expressed in
 // TFG dialect.
-tensorflow::StatusOr<mlir::OwningModuleRef> ImportGraphDef(
+tensorflow::StatusOr<mlir::OwningOpRef<ModuleOp>> ImportGraphDef(
     mlir::MLIRContext* context, const std::string& model_file);
 
 }  // namespace graph_transforms

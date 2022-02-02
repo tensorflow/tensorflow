@@ -240,7 +240,8 @@ Status MlirFunctionOptimizationPass::Run(
   metrics::UpdateTfMlirGraphOptimizationPassStateCounter("",
                                                          kGraphImportSuccess);
 
-  mlir::OwningModuleRef module_ref = std::move(module_ref_status.ValueOrDie());
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
+      std::move(module_ref_status.ValueOrDie());
   AddDevicesToOp(*module_ref, &device_set);
 
   int per_pass_state_index = 0;
@@ -369,7 +370,8 @@ Status MlirV1CompatGraphOptimizationPass::Run(
                : Status::OK();
   }
 
-  mlir::OwningModuleRef module_ref = std::move(module_ref_status.ValueOrDie());
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
+      std::move(module_ref_status.ValueOrDie());
   AddDevicesToOp(*module_ref, options.device_set);
 
   llvm::StringRef name = pass->name();

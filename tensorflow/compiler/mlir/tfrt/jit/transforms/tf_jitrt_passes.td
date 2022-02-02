@@ -39,13 +39,13 @@ def LinalgTrivialBufferForwarding
 
 def LinalgTrivialCopyRemoval
     : FunctionPass<"tf-jitrt-linalg-trivial-copy-removal"> {
-  let summary = "Trivial removal of linalg.copy operations";
+  let summary = "Trivial removal of memref.copy operations";
   let constructor = "tensorflow::CreateLinalgTrivialCopyRemovalPass()";
   let description = [{
     A simple pass that replaces patterns of the form
 
     %1 = memref.alloc() : memref<1x1xf32>
-    linalg.copy(%0, %1) : memref<1x1xf32>, memref<1x1xf32>
+    memref.copy(%0, %1) : memref<1x1xf32>, memref<1x1xf32>
     memref.dealloc %0 : memref<1x1xf32>
 
     by replacing uses of %1 with %0 and dropping the copy.

@@ -88,7 +88,7 @@ static LogicalResult Verify(_XlaHostComputeMlirOp op) {
 
   if (host_module.empty()) return success();
 
-  mlir::OwningModuleRef module_for_func;
+  mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
   tensorflow::Status status = tensorflow::DeserializeMlirModule(
       host_module.str(), op->getContext(), &module_for_func);
   if (!status.ok()) {
@@ -119,12 +119,29 @@ static LogicalResult Verify(_XlaHostComputeMlirOp op) {
   return success();
 }
 
-FuncOp _XlaHostComputeMlirOp::GetHostFunc(mlir::OwningModuleRef* mlir_module) {
+FuncOp _XlaHostComputeMlirOp::GetHostFunc(
+    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   if (!tensorflow::DeserializeMlirModule(host_mlir_module().str(),
                                          this->getContext(), mlir_module)
            .ok())
     return nullptr;
   return (*mlir_module)->lookupSymbol<FuncOp>("host_func");
+}
+
+//===----------------------------------------------------------------------===//
+// XLA Send/Recv ops
+//===----------------------------------------------------------------------===//
+
+// For XLA Send/Recv ops the key corresponds to the resource instance.
+
+std::string _XlaRecvAtHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaRecvAtHostV2Op::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostV2Op::GetResourceInstanceStr() {
+  return key().str();
 }
 
 }  // namespace TF

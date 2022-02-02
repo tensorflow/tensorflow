@@ -127,12 +127,7 @@ class SegmentReductionOp : public OpKernel {
                 errors::InvalidArgument("segment ids must be >= 0"));
     auto output_flat = output->flat_outer_dims<T>();
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::DSizes<Eigen::DenseIndex, 1> dims_to_reduce;
-    dims_to_reduce[0] = 0;
-#else
     Eigen::IndexList<Eigen::type2index<0> > dims_to_reduce;
-#endif
     Index start = 0, end = 1;
 
     Index uninitialized_index = 0;  // Index from which the output is not set.

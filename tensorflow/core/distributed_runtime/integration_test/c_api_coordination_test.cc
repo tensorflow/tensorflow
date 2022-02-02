@@ -294,7 +294,7 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
     // Setting next_key errors out because it has been set by another worker
     const std::string& next_key = tensorflow::strings::StrCat("key", next_id);
     TFE_InsertConfigKeyValue(ctx, next_key.c_str(), "some_value", status);
-    EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status)) << TF_Message(status);
+    EXPECT_EQ(TF_ALREADY_EXISTS, TF_GetCode(status)) << TF_Message(status);
     // Getting next_key returns the value set by another worker
     TF_Buffer* value_buf = TF_NewBuffer();
     TFE_GetConfigKeyValue(ctx, next_key.c_str(), value_buf, status);

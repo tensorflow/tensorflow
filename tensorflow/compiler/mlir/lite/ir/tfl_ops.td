@@ -478,7 +478,7 @@ def TFL_ComparisonBinaryBuilder :
 // TFL op base class.
 //===----------------------------------------------------------------------===//
 
-class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
+class TFL_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFL_Dialect, mnemonic, !listconcat(traits,
       [DeclareOpInterfaceMethods<TFL_RuntimeVerification>])> {
   // FlatBuffer generation specific information.
@@ -501,7 +501,7 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 }
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index,
-                 list<OpTrait> additional_traits = []> :
+                 list<Trait> additional_traits = []> :
     TFL_Op<mnemonic,[NoSideEffect,
                      AccumulatorUniformScale<2, 0, 1>,
                      AffineQuantizedOpInterface,

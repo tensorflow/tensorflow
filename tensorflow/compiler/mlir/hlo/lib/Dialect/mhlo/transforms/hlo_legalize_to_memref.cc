@@ -314,7 +314,7 @@ struct HloLegalizeToMemrefPass
  public:
   void runOnOperation() override {
     auto& context = getContext();
-    OwningRewritePatternList patterns(&context);
+    RewritePatternSet patterns(&context);
     ConversionTarget target(context);
 
     bufferization::BufferizeTypeConverter converter;
@@ -339,7 +339,7 @@ struct HloLegalizeToMemrefPass
 
 void populateHLOToMemrefConversionPattern(
     bufferization::BufferizeTypeConverter* converter,
-    RemoveSignTypeConverter* sign_converter, OwningRewritePatternList* patterns,
+    RemoveSignTypeConverter* sign_converter, RewritePatternSet* patterns,
     const std::function<bool(Operation*)>& enforce_identity_maps) {
   MLIRContext* context = patterns->getContext();
   patterns->insert<HloToMemrefDynamicBroadcastInDimOpConverter>(

@@ -92,7 +92,7 @@ def TfSavedModel_Dialect : Dialect {
 // Op definitions
 //===----------------------------------------------------------------------===//
 
-class TfSavedModel_Op<string mnemonic, list<OpTrait> traits = []> :
+class TfSavedModel_Op<string mnemonic, list<Trait> traits = []> :
     Op<TfSavedModel_Dialect, mnemonic, traits> {
 }
 

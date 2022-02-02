@@ -1120,3 +1120,23 @@ def zeros(shape: ragged_shape.RaggedShape,
       flat_values, shape.row_partitions)
 
 # TODO(martinz): consider implementing a variant of tf.fill
+
+
+#===============================================================================
+# bitcast
+#===============================================================================
+@dispatch.dispatch_for_api(array_ops.bitcast)
+def bitcast(
+    input: ragged_tensor.RaggedOrDense,  # pylint: disable=redefined-builtin
+    type,  # pylint: disable=redefined-builtin
+    name=None) -> ragged_tensor.RaggedOrDense:
+  """RaggedTensor dispatch override for tf.bitcast."""
+  type = dtypes.as_dtype(type)
+  with ops.name_scope(name, 'Bitcast', [input]):
+    input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        input, name='input')
+    if (input.dtype.size < type.size and input.flat_values.shape.rank < 2):
+      raise ValueError('`input.flat_values` is required to have rank >= 2 when '
+                       'input.dtype.size < type.size. Actual rank: '
+                       f'{input.flat_values.shape.rank}')
+    return input.with_flat_values(array_ops.bitcast(input.flat_values, type))

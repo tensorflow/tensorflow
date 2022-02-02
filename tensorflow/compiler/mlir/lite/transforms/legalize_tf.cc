@@ -901,7 +901,7 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
   }
 };
 
-void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
+void addPatterns(MLIRContext* context, RewritePatternSet& patterns) {
   // Add TF->TF lowering patterns.
   TF::PopulateLoweringTFPatterns(context, &patterns);
 
@@ -957,7 +957,7 @@ void LegalizeTF::runOnFunction() {
     target.addLegalDialect<TensorFlowLiteDialect>();
   }
 
-  OwningRewritePatternList stage1Patterns(&getContext());
+  RewritePatternSet stage1Patterns(&getContext());
 
   addPatterns(context, stage1Patterns);
 
@@ -968,7 +968,7 @@ void LegalizeTF::runOnFunction() {
   // Explict BroadcastTo addition for left-over broadcast-able ops.
   // The following pattern matchings should be done after the other legalization
   // rules in order not to add unnecessary BroadcastTo ops.
-  OwningRewritePatternList stage2Patterns(&getContext());
+  RewritePatternSet stage2Patterns(&getContext());
 
   addPatterns(context, stage2Patterns);
 

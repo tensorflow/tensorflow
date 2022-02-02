@@ -207,7 +207,7 @@ bool AlternativeSubgraphPass::IsAllSupportedbySpec(
 void AlternativeSubgraphPass::Optimize(FuncOp func,
                                        const std::string& hardware) {
   auto* ctx = &getContext();
-  OwningRewritePatternList patterns = GetHardwareRewritePatterns(ctx, hardware);
+  RewritePatternSet patterns = GetHardwareRewritePatterns(ctx, hardware);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

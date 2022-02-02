@@ -768,31 +768,31 @@ class TensorShape(object):
       TypeError: If dims cannot be converted to a list of dimensions.
     """
     if isinstance(dims, (tuple, list)):  # Most common case.
-      self._dims = [Dimension(d) for d in dims]
+      self._dims = tuple(as_dimension(d).value for d in dims)
     elif dims is None:
       self._dims = None
     elif isinstance(dims, tensor_shape_pb2.TensorShapeProto):
       if dims.unknown_rank:
         self._dims = None
       else:
-        self._dims = [
+        self._dims = tuple(
             # Protos store variable-size dimensions as -1
-            as_dimension(dim.size if dim.size != -1 else None)
+            dim.size if dim.size != -1 else None
             for dim in dims.dim
-        ]
+            )
     elif isinstance(dims, TensorShape):
-      self._dims = dims.dims
+      self._dims = dims._dims
     else:
       try:
         dims_iter = iter(dims)
       except TypeError:
         # Treat as a singleton dimension
-        self._dims = [as_dimension(dims)]
+        self._dims = (as_dimension(dims).value,)
       else:
         self._dims = []
         for d in dims_iter:
           try:
-            self._dims.append(as_dimension(d))
+            self._dims.append(as_dimension(d).value)
           except TypeError as e:
             six.raise_from(
                 TypeError(
@@ -801,6 +801,7 @@ class TensorShape(object):
                     "either be single dimension (e.g. 10), or an iterable of "
                     "dimensions (e.g. [1, 10, None])."
                     .format(dims, d)), e)
+        self._dims = tuple(self._dims)
 
   @property
   def _v2_behavior(self):
@@ -811,25 +812,25 @@ class TensorShape(object):
   def __repr__(self):
     if self._v2_behavior:
       if self._dims is not None:
-        return "TensorShape(%r)" % [dim.value for dim in self._dims]
+        return f"TensorShape({list(self._dims)})"
       else:
         return "TensorShape(None)"
     else:
-      return "TensorShape(%r)" % self._dims
+      return f"TensorShape({self.dims})"
 
   def __str__(self):
     if self.rank is None:
       return "<unknown>"
     elif self.rank == 1:
       if self._v2_behavior:
-        return "(%s,)" % self._dims[0].value
-      else:
         return "(%s,)" % self._dims[0]
+      else:
+        return "(%s,)" % self.dims[0]
     else:
       if self._v2_behavior:
-        return "(%s)" % ", ".join(str(d.value) for d in self._dims)
-      else:
         return "(%s)" % ", ".join(str(d) for d in self._dims)
+      else:
+        return "(%s)" % ", ".join(str(d) for d in self.dims)
 
   @property
   def rank(self):
@@ -848,7 +849,9 @@ class TensorShape(object):
       A list containing `tf.compat.v1.Dimension`s, or None if the shape is
       unspecified.
     """
-    return self._dims
+    if self._dims is None:
+      return None
+    return [as_dimension(d) for d in self._dims]
 
   @property
   def ndims(self):
@@ -874,9 +877,9 @@ class TensorShape(object):
       raise ValueError("Cannot iterate over a shape with unknown rank.")
     else:
       if self._v2_behavior:
-        return iter(d.value for d in self._dims)
-      else:
         return iter(d for d in self._dims)
+      else:
+        return iter(d for d in self.dims)
 
   def __getitem__(self, key):
     """Returns the value of a dimension or a shape, depending on the key.
@@ -899,9 +902,9 @@ class TensorShape(object):
         return TensorShape(self._dims[key])
       else:
         if self._v2_behavior:
-          return self._dims[key].value
-        else:
           return self._dims[key]
+        else:
+          return self.dims[key]
     else:
       if isinstance(key, slice):
         start = key.start if key.start is not None else 0
@@ -972,7 +975,7 @@ class TensorShape(object):
       ValueError: If `self` and `other` are not compatible.
     """
     other = as_shape(other)
-    if self._dims is None:
+    if self.dims is None:
       return other
     if other.dims is None:
       return self
@@ -981,7 +984,7 @@ class TensorShape(object):
         self.assert_same_rank(other)
         new_dims = [
             dim.merge_with(other_dim)
-            for dim, other_dim in zip(self._dims, other.dims)
+            for dim, other_dim in zip(self.dims, other.dims)
         ]
         return TensorShape(new_dims)
       except ValueError:
@@ -1013,10 +1016,10 @@ class TensorShape(object):
     # TODO(mrry): Handle the case where we concatenate a known shape with a
     # completely unknown shape, so that we can use the partial information.
     other = as_shape(other)
-    if self._dims is None or other.dims is None:
+    if self.dims is None or other.dims is None:
       return unknown_shape()
     else:
-      return TensorShape(self._dims + other.dims)
+      return TensorShape(self.dims + other.dims)
 
   def assert_same_rank(self, other):
     """Raises an exception if `self` and `other` do not have compatible ranks.
@@ -1143,10 +1146,10 @@ class TensorShape(object):
 
     """
     other = as_shape(other)
-    if self._dims is not None and other.dims is not None:
+    if self.dims is not None and other.dims is not None:
       if self.rank != other.rank:
         return False
-      for x_dim, y_dim in zip(self._dims, other.dims):
+      for x_dim, y_dim in zip(self.dims, other.dims):
         if not x_dim.is_compatible_with(y_dim):
           return False
     return True
@@ -1187,19 +1190,19 @@ class TensorShape(object):
     """
 
     other = as_shape(other)
-    if self._dims is None or other.dims is None or self.rank != other.rank:
+    if self.dims is None or other.dims is None or self.rank != other.rank:
       return unknown_shape()
 
     dims = [
         d1 if d1 is not None and d2 is not None and d1 == d2 else None
-        for d1, d2 in zip(self._dims, other.dims)
+        for d1, d2 in zip(self.dims, other.dims)
     ]
     return TensorShape(dims)
 
   def is_fully_defined(self):
     """Returns True iff `self` is fully defined in every dimension."""
     return (self._dims is not None and
-            all(dim.value is not None for dim in self._dims))
+            all(dim is not None for dim in self._dims))
 
   def assert_is_fully_defined(self):
     """Raises an exception if `self` is not fully defined in every dimension.
@@ -1221,7 +1224,7 @@ class TensorShape(object):
     """
     if self._dims is None:
       raise ValueError("as_list() is not defined on an unknown TensorShape.")
-    return [dim.value for dim in self._dims]
+    return list(self._dims)
 
   def as_proto(self):
     """Returns this shape as a `TensorShapeProto`."""
@@ -1230,7 +1233,7 @@ class TensorShape(object):
     else:
       return tensor_shape_pb2.TensorShapeProto(dim=[
           tensor_shape_pb2.TensorShapeProto.Dim(
-              size=-1 if d.value is None else d.value) for d in self._dims
+              size=-1 if d is None else d) for d in self._dims
       ])
 
   def __eq__(self, other):
@@ -1252,12 +1255,15 @@ class TensorShape(object):
     >>> t_a.__eq__(t_c)
     False
 
-    * Two *Partially-known* shapes, return False.
+    * Two *Partially-known* shapes, return True iff each element is equal.
     >>> p_a = tf.TensorShape([1,None])
-    >>> p_b = tf.TensorShape([2,None])
+    >>> p_b = tf.TensorShape([1,None])
+    >>> p_c = tf.TensorShape([2,None])
     >>> p_a.__eq__(p_b)
-    False
+    True
     >>> t_a.__eq__(p_a)
+    True
+    >>> p_a.__eq__(p_c)
     False
 
     * Two *Unknown shape*, return True.
@@ -1282,22 +1288,14 @@ class TensorShape(object):
       other = as_shape(other)
     except TypeError:
       return NotImplemented
-    return self._dims == other.dims
 
-  def __ne__(self, other):
-    """Returns True if `self` is known to be different from `other`."""
-    try:
-      other = as_shape(other)
-    except TypeError:
-      return NotImplemented
-    if self.rank is None or other.rank is None:
-      raise ValueError("The inequality of unknown TensorShapes is undefined.")
-    if self.rank != other.rank:
-      return True
-    return self._dims != other.dims
+    return self._dims == other._dims
+
+  def __hash__(self):
+    return hash(self._dims)
 
   def __reduce__(self):
-    return TensorShape, (self._dims,)
+    return TensorShape, (self.dims,)
 
   def __concat__(self, other):
     return self.concatenate(other)

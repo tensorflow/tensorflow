@@ -68,7 +68,7 @@ struct UnrollBatchMatMulPass
 };
 
 void UnrollBatchMatMulPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   auto func = getFunction();
   PopulateUnrollTfBatchMatMul(&getContext(), patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
@@ -291,7 +291,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass() {
 }  // namespace mlir
 
 void mlir::TF::PopulateUnrollTfBatchMatMul(MLIRContext* context,
-                                           OwningRewritePatternList& patterns) {
+                                           RewritePatternSet& patterns) {
   patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                   ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>,
                   ConvertTFBatchMatMulOp<TF::BatchMatMulV3Op>>(context);

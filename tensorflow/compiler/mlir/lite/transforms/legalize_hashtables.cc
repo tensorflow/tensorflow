@@ -191,7 +191,7 @@ class LegalizeHashTables
       return;
     }
 
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     patterns.insert<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
                     LegalizeHashTableImportOpPattern,
                     LegalizeHashTableSizeOpPattern>(&getContext());

@@ -32,6 +32,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/summary/writer",
+        "//tensorflow/python/training:training_util",
         "//tensorflow/python/util",
         "@six_archive//:six",
     ],
@@ -60,5 +61,6 @@ py_tests(
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/summary/writer",
+        "//tensorflow/python/training:training_util",
     ],
 )

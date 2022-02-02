@@ -1037,6 +1037,56 @@ func @test_add_1d(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> ten
 
 // -----
 
+// CHECK-LABEL: func @test_fused_activation_relun_clamp
+func @test_fused_activation_relun_clamp(
+    %arg0: tensor<10x!quant.uniform<i8:f32, 0.1:-127>>,
+    %arg1: tensor<10x!quant.uniform<i8:f32, 0.1:-127>>) ->
+    tensor<10x!quant.uniform<i8:f32, 0.1:-127>> {
+  %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: "tosa.clamp"(%{{.+}}) {max_fp = 0.000000e+00 : f32, max_int = -67 : i64, min_fp = 0.000000e+00 : f32, min_int = -127 : i64}
+  %0 = "tfl.add"(%arg0, %arg0)  {fused_activation_function = "RELU6"} : (tensor<10x!quant.uniform<i8:f32, 0.1:-127>>, tensor<10x!quant.uniform<i8:f32, 0.1:-127>>) -> tensor<10x!quant.uniform<i8:f32, 0.1:-127>>
+  return %0 : tensor<10x!quant.uniform<i8:f32, 0.1:-127>>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_fused_activation_relun_noclamp
+func @test_fused_activation_relun_noclamp(
+    %arg0: tensor<10x!quant.uniform<i8:f32, 0.01:-129>>,
+    %arg1: tensor<10x!quant.uniform<i8:f32, 0.01:-129>>) ->
+    tensor<10x!quant.uniform<i8:f32, 0.01:-129>> {
+  %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: "tosa.clamp"(%{{.+}}) {max_fp = 0.000000e+00 : f32, max_int = 127 : i64, min_fp = 0.000000e+00 : f32, min_int = -128 : i64}
+  %0 = "tfl.add"(%arg0, %arg0)  {fused_activation_function = "RELU6"} : (tensor<10x!quant.uniform<i8:f32, 0.01:-129>>, tensor<10x!quant.uniform<i8:f32, 0.01:-129>>) -> tensor<10x!quant.uniform<i8:f32, 0.01:-129>>
+  return %0 : tensor<10x!quant.uniform<i8:f32, 0.01:-129>>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_fused_activation_relun1to1_noclamp
+func @test_fused_activation_relun1to1_noclamp(
+                         %arg0: tensor<10x!quant.uniform<i8:f32, 0.001:-120>>,
+                         %arg1: tensor<10x!quant.uniform<i8:f32, 0.001:-120>>) -> tensor<10x!quant.uniform<i8:f32, 0.001:-120>> {
+  %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK:  "tosa.clamp"(%{{.}}) {max_fp = 0.000000e+00 : f32, max_int = 127 : i64, min_fp = 0.000000e+00 : f32, min_int = -128 : i64}
+  %0 = "tfl.add"(%arg0, %arg0)  {fused_activation_function = "RELU_N1_TO_1"}  : (tensor<10x!quant.uniform<i8:f32, 0.001:-120>>, tensor<10x!quant.uniform<i8:f32, 0.001:-120>>) -> tensor<10x!quant.uniform<i8:f32, 0.001:-120>>
+  return %0 : tensor<10x!quant.uniform<i8:f32, 0.001:-120>>
+}
+
+// -----
+
+// CHECK-LABEL: func @test_fused_activation_relun1to1_clamp
+func @test_fused_activation_relun1to1_clamp(
+                         %arg0: tensor<10x!quant.uniform<i8:f32, 0.01:-10>>,
+                         %arg1: tensor<10x!quant.uniform<i8:f32, 0.01:-10>>) -> tensor<10x!quant.uniform<i8:f32, 0.01:-10>> {
+  %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK:  "tosa.clamp"(%{{.}}) {max_fp = 0.000000e+00 : f32, max_int = 90 : i64, min_fp = 0.000000e+00 : f32, min_int = -110 : i64}
+  %0 = "tfl.add"(%arg0, %arg0)  {fused_activation_function = "RELU_N1_TO_1"}  : (tensor<10x!quant.uniform<i8:f32, 0.01:-10>>, tensor<10x!quant.uniform<i8:f32, 0.01:-10>>) -> tensor<10x!quant.uniform<i8:f32, 0.01:-10>>
+  return %0 : tensor<10x!quant.uniform<i8:f32, 0.01:-10>>
+}
+
+// -----
+
 // CHECK-LABEL: test_split
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 0, 0]}
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.slice"(%arg0) {size = [13, 7, 3], start = [0, 7, 0]}

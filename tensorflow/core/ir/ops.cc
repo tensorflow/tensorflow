@@ -519,6 +519,15 @@ static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
   MLIRContext *context = builder.getContext();
 
+  // Parse visibility.
+  StringRef visibility;
+  if (!parser.parseOptionalKeyword(&visibility,
+                                   {"public", "private", "nested"})) {
+    StringAttr visibility_attr = parser.getBuilder().getStringAttr(visibility);
+    result.attributes.push_back(parser.getBuilder().getNamedAttr(
+        SymbolTable::getVisibilityAttrName(), visibility_attr));
+  }
+
   if (succeeded(parser.parseOptionalKeyword("generic")))
     result.addAttribute("generic", builder.getUnitAttr());
 
@@ -626,12 +635,18 @@ static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
 static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   // Print the operation and the function name.
   p << " ";
+  int argIndentSize = op->getName().getStringRef().size() + 3;
+  StringRef visibility_attr_name = SymbolTable::getVisibilityAttrName();
+  if (auto visibility = op->getAttrOfType<StringAttr>(visibility_attr_name)) {
+    p << visibility.getValue() << ' ';
+    argIndentSize += visibility.getValue().size() + 1;
+  }
   if (op.generic()) p << "generic ";
   auto funcName =
       op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
           .getValue();
   p.printSymbolName(funcName);
-  int argIndentSize = op->getName().getStringRef().size() + funcName.size() + 3;
+  argIndentSize += funcName.size();
   std::string indent(argIndentSize, ' ');
   Region &body = op->getRegion(0);
   FunctionType fnType = op.getType();
@@ -678,7 +693,8 @@ static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   if (!op->getAttrs().empty()) {
     p.printNewline();
     function_interface_impl::printFunctionAttributes(
-        p, op, fnType.getNumInputs(), fnType.getNumResults(), {"generic"});
+        p, op, fnType.getNumInputs(), fnType.getNumResults(),
+        {"generic", SymbolTable::getVisibilityAttrName()});
   }
   // Print body.
   p << ' ';

@@ -37,7 +37,7 @@ namespace mlir {
 namespace TFL {
 namespace tac {
 
-absl::StatusOr<mlir::OwningModuleRef> ImportFlatbufferOrMlir(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
     const std::string& input_filename, bool input_mlir,
     llvm::SourceMgr* source_mgr, mlir::MLIRContext* context) {
   std::string error;
@@ -54,7 +54,8 @@ absl::StatusOr<mlir::OwningModuleRef> ImportFlatbufferOrMlir(
                     mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect>();
     context->appendDialectRegistry(registry);
     source_mgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
-    return mlir::OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
+    return mlir::OwningOpRef<mlir::ModuleOp>(
+        mlir::parseSourceFile(*source_mgr, context));
   }
 
   mlir::Location loc =

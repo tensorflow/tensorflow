@@ -2,6 +2,9 @@
 #    LLVM-based CPU backend for XLA.
 
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -331,6 +334,7 @@ cc_library(
 cc_library(
     name = "runtime_lightweight_check",
     hdrs = ["runtime_lightweight_check.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
 )
 
@@ -384,7 +388,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:xla_debug_info_manager",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
@@ -853,14 +856,41 @@ cc_library(
 )
 
 cc_library(
-    name = "runtime_single_threaded_matmul",
+    name = "runtime_single_threaded_matmul_impl",
     srcs = ["runtime_single_threaded_matmul.cc"],
     hdrs = ["runtime_single_threaded_matmul.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
+    copts = runtime_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:private"],
+    deps = [
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "runtime_single_threaded_matmul",
+    hdrs = ["runtime_single_threaded_matmul.h"],
+    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":runtime_single_threaded_matmul_impl",
         "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "runtime_single_threaded_matmul_nomkl",
+    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_single_threaded_matmul_impl",
+        "//tensorflow/core/kernels:eigen_contraction_kernel_no_mkl",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
     ],

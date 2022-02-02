@@ -75,7 +75,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -1535,7 +1534,7 @@ IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
   llvm::Type* element_ir_type =
       llvm_ir::PrimitiveTypeToIrType(element_type, module_);
 
-  for (int i = 0, e = 1 + tensorflow::Log2Ceiling(element_count); i < e; i++) {
+  for (int i = 0, e = 1 + Log2Ceiling(element_count); i < e; i++) {
     // For every power of two present in element_count, we generate one or more
     // vector or scalar types.
     const unsigned current_size_fragment = 1u << i;
