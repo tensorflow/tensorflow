@@ -64,18 +64,38 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
     return DenseElementsAttr::get(scalar_ty, value);
   }
   if (auto int_ty = ty.dyn_cast<IntegerType>()) {
-    APInt value(int_ty.getWidth(), static_cast<int64_t>(raw_value), true);
+    APInt value(int_ty.getWidth(), static_cast<int64_t>(raw_value),
+                /*isSigned=*/true);
     return DenseElementsAttr::get(scalar_ty, value);
   }
   if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
-    Type complex_element_ty = complex_ty.getElementType();
-    if (complex_element_ty.isF32()) {
-      return DenseElementsAttr::get(
-          scalar_ty, static_cast<std::complex<float>>(raw_value));
+    if (auto float_ty = complex_ty.getElementType().cast<FloatType>()) {
+      APFloat real(float_ty.getFloatSemantics(), raw_value);
+      APFloat imag = APFloat::getZero(float_ty.getFloatSemantics());
+      return DenseElementsAttr::get(scalar_ty,
+                                    std::complex<APFloat>(real, imag));
     }
-    if (complex_element_ty.isF64()) {
-      return DenseElementsAttr::get(
-          scalar_ty, static_cast<std::complex<double>>(raw_value));
+  }
+  llvm_unreachable("unsupported type");
+}
+
+DenseElementsAttr GetScalarNegZeroOfType(Type ty) {
+  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+
+  if (auto float_ty = ty.dyn_cast<FloatType>()) {
+    APFloat neg_zero =
+        APFloat::getZero(float_ty.getFloatSemantics(), /*Negative=*/true);
+    return DenseElementsAttr::get(scalar_ty, neg_zero);
+  }
+  if (auto int_ty = ty.dyn_cast<IntegerType>()) {
+    return DenseElementsAttr::get(scalar_ty, APInt::getZero(int_ty.getWidth()));
+  }
+  if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
+    if (auto float_ty = complex_ty.getElementType().cast<FloatType>()) {
+      APFloat neg_zero =
+          APFloat::getZero(float_ty.getFloatSemantics(), /*Negative=*/true);
+      return DenseElementsAttr::get(scalar_ty,
+                                    std::complex<APFloat>(neg_zero, neg_zero));
     }
   }
   llvm_unreachable("unsupported type");

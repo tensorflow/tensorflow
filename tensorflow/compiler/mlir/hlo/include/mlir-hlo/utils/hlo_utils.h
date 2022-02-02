@@ -67,6 +67,11 @@ static ElementsAttr getSplat(Builder* b, Value val, T constant) {
 // Requires `ty` to be either FloatType, IntegerType, or ComplexType.
 DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value);
 
+// Returns DenseElementsAttr of rank zero with the given element type and the
+// value which is the neutral element for additions.
+// Requires `ty` to be either FloatType, IntegerType, or ComplexType.
+DenseElementsAttr GetScalarNegZeroOfType(Type ty);
+
 // Enum type used to specify scalar argument to GetScalarLimitOfType.
 enum ScalarLimit {
   kLowest,          // The scalar corresponding to numeric_limits<T>::lowest.

@@ -47,6 +47,8 @@ void BuildReduceBody(Type element_type, Region* body, OpBuilder* builder) {
 ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
                              OpBuilder* builder);
 
+ConstOp GetScalarNegZeroOfType(Type ty, Location loc, OpBuilder* builder);
+
 // Converts an ArrayAttr to a 1D 64-bit dense elements attribute.
 DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr);
 DenseIntElementsAttr GetI64ElementsAttr(llvm::ArrayRef<int64_t> values,

@@ -4294,7 +4294,7 @@ class ConvertMeanOp
   using GenericConvertReductionOp::GenericConvertReductionOp;
   static Value GetInitialValue(Type reduce_element_type, Location loc,
                                PatternRewriter *rewriter) {
-    return GetScalarConstOfType(reduce_element_type, loc, 0, rewriter);
+    return GetScalarNegZeroOfType(reduce_element_type, loc, rewriter);
   }
 };
 
@@ -4310,7 +4310,8 @@ class ConvertSumOp
 
   static Value GetInitialValue(Type reduce_element_type, Location loc,
                                PatternRewriter *rewriter) {
-    return GetScalarConstOfType(reduce_element_type, loc, 0, rewriter);
+    // The neutral element of fp addition is -0.0, not 0.0: '0.0 + -0.0 = 0.0'.
+    return GetScalarNegZeroOfType(reduce_element_type, loc, rewriter);
   }
 };
 
