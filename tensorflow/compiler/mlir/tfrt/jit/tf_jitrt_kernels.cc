@@ -350,7 +350,13 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
         return TraceMeEncode({{"src", serialized_operation}});
       });
 
+      auto compile_start_time = absl::Now();
       compile();
+      auto compile_duration = absl::Now() - compile_start_time;
+
+      LOG(INFO) << "JitExecutable specialization compilation for " << name
+                << " took " << absl::ToInt64Milliseconds(compile_duration)
+                << " ms";
     });
   };
 
@@ -418,8 +424,14 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     auto module = kernel.serialized_operation();
 
     // Instantiate new JitExecutable from the MLIR source.
+    auto compile_start_time = absl::Now();
     Expected<JitExecutable> jit_executable =
         JitExecutable::Instantiate(module, entrypoint, std::move(opts), runner);
+    auto compile_duration = absl::Now() - compile_start_time;
+
+    LOG(INFO) << "JitExecutable instantiation for "
+              << kernel.root_symbol().str() << " took "
+              << absl::ToInt64Milliseconds(compile_duration) << " ms";
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
