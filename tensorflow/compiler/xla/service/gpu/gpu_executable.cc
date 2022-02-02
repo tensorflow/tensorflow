@@ -412,7 +412,8 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   absl::flat_hash_map<int64_t, se::DeviceMemoryBase> globals;
   if (executor->platform_kind() == se::PlatformKind::kCuda &&
       module_spec.cuda_ptx_in_memory() == nullptr) {
-    // No custom PTX => no globals.
+    // No custom PTX means no globals. And the CUDA driver can't load an empty
+    // PTX anyway.
     return &module_globals_.emplace(executor, std::move(globals)).first->second;
   }
 
@@ -425,6 +426,10 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
     VLOG(3) << "Resolved global " << info.symbol_name << " to "
             << global.opaque();
 
+    // Some globals that are declared in the PTX will have initializers and
+    // some won't. The globals without initializers must be initialized by XLA
+    // here. The initialization value is stored in 'content'; for constants
+    // that don't need to be initialized here, 'content' will be empty.
     if (!info.content.empty()) {
       stream->ThenMemcpy(&global, info.content.data(), info.content.size());
     }
