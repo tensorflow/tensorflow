@@ -201,7 +201,6 @@ TFE_Py_TensorShapeOnDevice
 TFE_Py_EnableInteractivePythonLogging
 TFE_Py_SetEagerContext
 TFE_Py_SetCEagerContext
-GetCEagerContext
 tensorflow::MakeEagerContextThreadLocalData
 tensorflow::GetEagerContextThreadLocalData
 tensorflow::DestroyEagerContextThreadLocalData
@@ -215,6 +214,8 @@ tensorflow::Set_TF_Status_from_Status
 
 [//tensorflow/core/common_runtime/eager:context] # tfe
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
+tensorflow::SetCEagerContext
+tensorflow::GetCEagerContext
 
 [//tensorflow/compiler/mlir/python:mlir] # mlir
 tensorflow::ExperimentalRunPassPipeline
