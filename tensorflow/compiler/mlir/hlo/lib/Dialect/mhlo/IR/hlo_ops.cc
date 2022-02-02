@@ -1087,8 +1087,7 @@ OpFoldResult DynamicUpdateSliceOp::fold(ArrayRef<Attribute> operands) {
   for (Value index : this->start_indices()) {
     DenseIntElementsAttr de_attr;
     if (!matchPattern(index, m_Constant(&de_attr))) return {};
-    int start_val = de_attr.getSplatValue<IntegerAttr>().getInt();
-    if (start_val != 0) return {};
+    if (!de_attr.getSplatValue<IntegerAttr>().getValue().isZero()) return {};
   }
   return this->update();
 }
