@@ -32,7 +32,7 @@ namespace tensorflow {
 // Pass for trivial buffer forwarding for the linalg.generic operations.
 std::unique_ptr<mlir::FunctionPass> CreateLinalgTrivialBufferForwardingPass();
 
-// Pass for trivial copy removal of linalg.copy operations.
+// Pass for trivial copy removal of memref.copy operations.
 std::unique_ptr<mlir::FunctionPass> CreateLinalgTrivialCopyRemovalPass();
 
 // Pass to optimize padding in tiled loops by peeling the final loop iteration.
