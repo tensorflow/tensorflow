@@ -2595,18 +2595,35 @@ LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
 // InfeedOp
 //===----------------------------------------------------------------------===//
 
-// Checks that the result type is of the form `tuple< any_type, token >`.
+// Checks that the result type is of the form `zero_or_more_type(s),
+// mhlo::token`
 static LogicalResult Verify(InfeedOp op) {
-  auto result_ty = op.getResult().getType().cast<TupleType>();
-  auto subtypes = result_ty.getTypes();
-  if (subtypes.size() != 2)
-    return op.emitOpError()
-           << "result is expected to be a tuple of size 2, but got "
-           << subtypes.size();
-  if (!subtypes[1].isa<TokenType>())
-    return op.emitOpError() << "second element of result tuple is expected to "
-                               "be of token type, but got "
-                            << subtypes[1];
+  auto result_ty = op.getResult(0).getType().dyn_cast<TupleType>();
+  if (result_ty) {
+    // TODO(@sdasgup): The current branch need to be removed once the
+    // allowance of tuple-return-type for infeed is revoked.
+    auto subtypes = result_ty.getTypes();
+    if (subtypes.size() != 2)
+      return op.emitOpError()
+             << "result is expected to be a tuple of size 2, but got "
+             << subtypes.size();
+    if (!subtypes[1].isa<TokenType>())
+      return op.emitOpError()
+             << "second element of result tuple is expected to "
+                "be of token type, but got "
+             << subtypes[1];
+  } else {
+    auto result_types = op.getResultTypes();
+    if (result_types.empty())
+      return op.emitOpError()
+             << "result is expected to be at least of size 1, but got "
+             << result_types.size();
+    if (!result_types[result_types.size() - 1].isa<TokenType>())
+      return op.emitOpError() << "last element of result types is expected to "
+                                 "be of token type, but got "
+                              << result_types[result_types.size() - 1];
+  }
+
   return success();
 }
 
@@ -2829,18 +2846,18 @@ OpFoldResult MapOp::fold(ArrayRef<Attribute> operands) {
 // RecvOp
 //===----------------------------------------------------------------------===//
 
-// Checks that the result type is of the form `tuple<any_type, mhlo::token>`
+// Checks that the result type is of the form `zero_or_more_type(s),
+// mhlo::token`
 static LogicalResult Verify(RecvOp op) {
-  auto result_ty = op.getResult().getType().cast<TupleType>();
-  auto subtypes = result_ty.getTypes();
-  if (subtypes.size() != 2)
+  auto result_types = op.getResultTypes();
+  if (result_types.empty())
     return op.emitOpError()
-           << "result is expected to be a tuple of size 2, but got "
-           << subtypes.size();
-  if (!subtypes[1].isa<TokenType>())
-    return op.emitOpError() << "second element of result tuple is expected to "
+           << "result is expected to be at least of size 1, but got "
+           << result_types.size();
+  if (!result_types[result_types.size() - 1].isa<TokenType>())
+    return op.emitOpError() << "last element of result types is expected to "
                                "be of token type, but got "
-                            << subtypes[1];
+                            << result_types[result_types.size() - 1];
   return success();
 }
 

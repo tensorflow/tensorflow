@@ -646,18 +646,11 @@ func @imag_fp_input(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
-func @infeed_invalid_number_of_results(%token: !mhlo.token) -> tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>> {
-  // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
-  %0 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout = [[[0]], unit, [0]]} : (!mhlo.token) -> tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>>
-  return %0 : tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>>
-}
-
-// -----
-
-func @infeed_non_token_second_result(%token: !mhlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>> {
-  // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
-  %0 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout = [[[0]], [0]]} : (!mhlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>>
-  return %0 : tuple<tuple<tensor<i32>>, tensor<i32>>
+func @infeed_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<i32>, tensor<i32>> {
+  // expected-error@+1 {{last element of result types is expected to be of token type, but got 'tensor<i32>'}}
+  %0:2 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout = [[[0]], [0]]} : (!mhlo.token) -> (tensor<i32>, tensor<i32>)
+  %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>>
+  return %1 : tuple<tensor<i32>, tensor<i32>>
 }
 
 // -----
@@ -794,30 +787,17 @@ func @real_fp_input(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
-func @recv_invalid_number_of_results(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !mhlo.token> {
-  // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
-  %0 = "mhlo.recv"(%token) {
-    channel_handle = {
-      handle = 5 : i64,
-      type = 3 : i64  // Host to device channel
-    },
-    is_host_transfer = true
-  } : (!mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !mhlo.token>
-  return %0 : tuple<tensor<3x4xi32>, tensor<i32>, !mhlo.token>
-}
-
-// -----
-
 func @recv_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>> {
-  // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
-  %0 = "mhlo.recv"(%token) {
+  // expected-error@+1 {{last element of result types is expected to be of token type, but got 'tensor<i32>'}}
+  %0:2 = "mhlo.recv"(%token) {
     channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },
     is_host_transfer = true
-  } : (!mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>>
-  return %0 : tuple<tensor<3x4xi32>, tensor<i32>>
+  } : (!mhlo.token) -> (tensor<3x4xi32>, tensor<i32>)
+  %1 =  "mhlo.tuple"(%0#0, %0#1) : (tensor<3x4xi32>, tensor<i32>) -> tuple<tensor<3x4xi32>, tensor<i32>>
+  return %1 : tuple<tensor<3x4xi32>, tensor<i32>>
 }
 
 // -----

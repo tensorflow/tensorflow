@@ -170,6 +170,24 @@ mlir::Operation* HloFunctionImporter::CreateTupleFromOpResults(
   return tupleOp;
 }
 
+static bool IsNestedTupleInData(Type type) {
+  auto tuple_type = type.dyn_cast<mlir::TupleType>();
+  if (!tuple_type) return false;
+
+  assert(tuple_type.getType(1).isa<mlir::mhlo::TokenType>() &&
+         "Infeed: Non token type");
+  auto data_type = tuple_type.getType(0);
+
+  auto data_tuple_type = data_type.dyn_cast<mlir::TupleType>();
+  if (!data_tuple_type) return false;
+
+  for (auto child_type : data_tuple_type.getTypes()) {
+    if (child_type.isa<mlir::TupleType>()) return true;
+  }
+
+  return false;
+}
+
 void HloFunctionImporter::FlattenTupleType(
     Type type, llvm::SmallVectorImpl<Type>& flattened_types) {
   auto tuple_type = type.dyn_cast<mlir::TupleType>();
@@ -674,24 +692,46 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kInfeed: {
+      if (IsNestedTupleInData(result_type)) {
+        result_type.dump();
+        assert(0 && "InfeedWithTokenInternal: nested tuple found");
+      }
       attributes.push_back(builder_->getNamedAttr(
           "infeed_config",
           mlir::StringAttr::get(builder_->getContext(),
                                 instruction->infeed_config())));
-      TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
-                          ConvertShapeToMlirLayout(instruction->shape()));
-      attributes.push_back(builder_->getNamedAttr("layout", layout));
-      return func_builder
-          ->create<mlir::mhlo::InfeedOp>(loc, result_type, operands, attributes)
-          .getOperation();
+
+      llvm::SmallVector<mlir::Attribute> flattened_attr;
+      TF_RETURN_IF_ERROR(
+          ConvertShapeToMlirLayout(instruction->shape(), flattened_attr));
+      attributes.push_back(builder_->getNamedAttr(
+          "layout", builder_->getArrayAttr(makeArrayRef(flattened_attr))));
+
+      // Flatten the return-type if they are tuple-typed.
+      llvm::SmallVector<Type> flattened_ret_types;
+      FlattenTupleType(result_type, flattened_ret_types);
+
+      auto op = func_builder->create<mlir::mhlo::InfeedOp>(
+          loc, flattened_ret_types, operands, attributes);
+
+      return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                      result_type);
     }
     case HloOpcode::kOutfeed: {
       attributes.push_back(builder_->getNamedAttr(
           "outfeed_config",
           mlir::StringAttr::get(builder_->getContext(),
                                 instruction->outfeed_config())));
+
+      assert(operands.size() == 2 && "Expected 2 operands for HLO Infeed");
+
+      // In case operands[0] is a tuple, flatten it.
+      llvm::SmallVector<Value> flattened_operands;
+      FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
+      flattened_operands.push_back(operands[1]);
+
       return func_builder
-          ->create<mlir::mhlo::OutfeedOp>(loc, result_type, operands,
+          ->create<mlir::mhlo::OutfeedOp>(loc, result_type, flattened_operands,
                                           attributes)
           .getOperation();
     }
@@ -1557,18 +1597,19 @@ void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
       mlir::Builder(op->getContext()).getIndexTensorAttr(minor_to_major));
 }
 
-StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
-    const xla::Shape& shape) {
-  if (shape.IsToken()) return builder_->getUnitAttr();
+Status HloFunctionImporter::ConvertShapeToMlirLayout(
+    const xla::Shape& shape,
+    llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr) {
+  if (shape.IsToken()) {
+    return tensorflow::Status::OK();
+  }
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
     for (int i = 0; i < shape.tuple_shapes_size(); i++) {
-      TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
-                          ConvertShapeToMlirLayout(shape.tuple_shapes(i)));
-      tuple_layouts.push_back(layout);
+      TF_RETURN_IF_ERROR(
+          ConvertShapeToMlirLayout(shape.tuple_shapes(i), flattened_attr));
     }
-    llvm::ArrayRef<mlir::Attribute> array_ref(tuple_layouts);
-    return builder_->getArrayAttr(array_ref);
+    return tensorflow::Status::OK();
   }
   if (shape.IsArray()) {
     const xla::Layout l = shape.layout();
@@ -1577,7 +1618,8 @@ StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
       minor_to_major.push_back(builder_->getI64IntegerAttr(i));
     }
     llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);
-    return builder_->getArrayAttr(array_ref);
+    flattened_attr.push_back(builder_->getArrayAttr(array_ref));
+    return tensorflow::Status::OK();
   }
   return tensorflow::errors::Internal("Couldn't convert layout.");
 }

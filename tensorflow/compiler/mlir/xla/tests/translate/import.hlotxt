@@ -567,10 +567,35 @@ add {
   %token0 = token[] parameter(0)
   // CHECK-NEXT:  "mhlo.infeed"([[TOKEN]])
   // CHECK-SAME:  infeed_config = "foobar"
-  // CHECK-SAME:  layout = {{\[\[2, 0, 1], unit]}}
+  // CHECK-SAME:  layout = {{\[\[2, 0, 1]]}}
   ROOT %infeed = (s32[3, 3, 3]{2, 0, 1}, token[]) infeed(token[] %token0), infeed_config="foobar"
 }
 
+// CHECK-LABEL:  func private @test_infeed_with_empty_tuple_data
+// CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> !mhlo.token
+  // CHECK-NEXT:  [[INFEED:%.*]] = "mhlo.infeed"([[TOKEN]])
+  // CHECK-SAME:    infeed_config = "foobar"
+  // CHECK-SAME:    layout = []
+  // CHECK:       return [[INFEED]] : !mhlo.token
+%test_infeed_with_empty_tuple_data (Arg_0.1: token[]) -> token[] {
+  %Arg_0.1 = token[] parameter(0)
+  %infeed.2 = ((), token[]) infeed(token[] %Arg_0.1), infeed_config="foobar"
+  %get-tuple-element.3 = () get-tuple-element(((), token[]) %infeed.2), index=0
+  ROOT %get-tuple-element.4 = token[] get-tuple-element(((), token[]) %infeed.2), index=1
+}
+
+// CHECK-LABEL:  func private @test_infeed_layout
+// CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> tuple<tuple<tensor<3x4xi32>, tensor<5x6xi32>, tensor<7x8xi32>, tensor<9x10xi32>>, !mhlo.token>
+%test_infeed_layout (token0: token[]) -> ( ( s32[3, 4]{1, 0}, s32[5, 6]{1, 0}, s32[7, 8]{1, 0}, s32[9,10]{1, 0}), token[]) {
+  %token0 = token[] parameter(0)
+  // CHECK-NEXT:  [[INFEED:%.*]]:5 = "mhlo.infeed"([[TOKEN]])
+  // CHECK-SAME:  infeed_config = "foobar"
+  // CHECK-SAME:  layout = {{\[\[}}1, 0], [1, 0], [1, 0], [1, 0]]
+  // CHECK-NEXT: [[T1:%.*]] = "mhlo.tuple"([[INFEED]]#0, [[INFEED]]#1, [[INFEED]]#2, [[INFEED]]#3)
+  // CHECK-NEXT: [[T2:%.*]] = "mhlo.tuple"([[T1]], [[INFEED]]#4)
+  // CHECK-NEXT: return [[T2]]
+  ROOT %infeed = ( ( s32[3, 4]{1, 0}, s32[5, 6]{1, 0}, s32[7, 8]{1, 0}, s32[9,10]{1, 0}), token[]) infeed(token[] %token0), infeed_config="foobar"
+}
 
 // CHECK-LABEL:  func private @test_iota_1() -> tensor<4xf32>
 %test_iota_1 () -> f32[4] {
@@ -701,6 +726,18 @@ add {
   // CHECK-SAME: mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"
   // CHECK-SAME:  outfeed_config = "foobar"
   ROOT %outfeed.3 = token[] outfeed(s32[3] %Arg_0.1, token[] %Arg_1.2), outfeed_config="foobar", sharding={devices=[2,1]0,1}
+}
+
+// CHECK-LABEL:  func private @test_outfeed_with_empty_data
+// CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> !mhlo.token
+%test_outfeed_with_empty_data (Arg_0.1: token[]) -> token[] {
+  %tuple.2 = () tuple()
+  %Arg_0.1 = token[] parameter(0)
+  // CHECK-NEXT:  "mhlo.outfeed"([[TOKEN]])
+  // CHECK-SAME:  outfeed_config = "foobar"
+  // CHECK-SAME:  xla_shape = "token[]"
+  // CHECK-SAME:  : (!mhlo.token) -> !mhlo.token
+  ROOT %outfeed.3 = token[] outfeed(() %tuple.2, token[] %Arg_0.1), outfeed_shape=(), outfeed_config="foobar"
 }
 
 // CHECK-LABEL:  func private @test_pad(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf32>

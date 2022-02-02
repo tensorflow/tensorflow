@@ -129,6 +129,11 @@ HloInstructionProto* XlaBuilderFriend::GetInstruction(XlaOp op) {
               ->instructions_[op.builder()->handle_to_index_[op.handle_]];
 }
 
+HloInstructionProto* XlaBuilderFriend::GetInstructionByHandle(
+    XlaBuilder* builder, int64_t handle) {
+  return &builder->instructions_[builder->handle_to_index_[handle]];
+}
+
 }  // namespace internal
 
 XlaOp operator-(XlaOp x) { return Neg(x); }
