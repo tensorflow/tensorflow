@@ -80,6 +80,7 @@ class AdjustLayout : public PassWrapper<AdjustLayout, OperationPass<FuncOp>> {
       llvm::SmallVector<mlir::Attribute> v;
       v.reserve(types.size());
       for (const mlir::Type &t : types) {
+        if (t.isa<TokenType>()) continue;
         auto layout = GetLayout({t}, rewriter);
         if (failed(layout)) return failure();
         v.push_back(layout.getValue());
@@ -92,7 +93,8 @@ class AdjustLayout : public PassWrapper<AdjustLayout, OperationPass<FuncOp>> {
       llvm::SmallVector<mlir::Attribute> v;
       v.reserve(types.size());
       for (const mlir::Type &t : types) {
-        auto layout = GetLayout(t, rewriter);
+        if (t.isa<TokenType>()) continue;
+        auto layout = GetLayout({t}, rewriter);
         if (failed(layout)) return failure();
         v.push_back(layout.getValue());
       }
@@ -131,7 +133,9 @@ class AdjustLayout : public PassWrapper<AdjustLayout, OperationPass<FuncOp>> {
       }
       return rewriter.getArrayAttr(elements);
     } else {
-      return rewriter.getUnitAttr();  // e.g. tokens
+      // types.size() == 1 and types[0] == TokenType
+      // For this case, we return an empty array attribute.
+      return rewriter.getArrayAttr({});
     }
   }
 

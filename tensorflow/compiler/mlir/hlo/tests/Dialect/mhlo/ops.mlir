@@ -655,6 +655,38 @@ func @infeed_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<i32>, 
 
 // -----
 
+func @main(%arg0: !mhlo.token) -> tensor<3x3xi32> {
+  // expected-error@+1 {{layout-attribute size must be 2 (which is the number of op-results - 1 (for token result)), but got 1}}
+  %0:3 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[0, 1]]} : (!mhlo.token) -> (tensor<3x3xi32>, tensor<i1>, !mhlo.token)
+  return %0#0 : tensor<3x3xi32>
+}
+
+// -----
+
+func @main(%arg0: !mhlo.token) -> !mhlo.token {
+  // expected-error@+1 {{layout-attribute size must be 0 (which is the number of op-results - 1 (for token result)), but got 1}}
+  %0:1 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[]]} : (!mhlo.token) -> (!mhlo.token)
+  return %0#0 : !mhlo.token
+}
+
+// -----
+
+func @main(%arg0: !mhlo.token) -> tensor<3x3xi32> {
+  // expected-error@+1 {{layout-attribute expected to have elements of type array, but got 0 : i64}}
+  %0:2 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[0]} : (!mhlo.token) -> (tensor<3x3xi32>, !mhlo.token)
+  return %0#0 : tensor<3x3xi32>
+}
+
+// -----
+
+func @main(%arg0: !mhlo.token) -> tensor<3x3xi32> {
+  // expected-error@+1 {{ayout-attribute's leaf elements are expected to be of type integer, but got []}}
+  %0:2 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[0,[]]]} : (!mhlo.token) -> (tensor<3x3xi32>, !mhlo.token)
+  return %0#0 : tensor<3x3xi32>
+}
+
+// -----
+
 func @iota_scalar() -> tensor<i32> {
   // expected-error@+1 {{does not support scalars}}
   %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<i32>

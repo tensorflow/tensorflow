@@ -693,9 +693,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kInfeed: {
       if (IsNestedTupleInData(result_type)) {
-        result_type.dump();
-        assert(0 && "InfeedWithTokenInternal: nested tuple found");
+        llvm_unreachable(
+            "Importing xla::kInfeed with nested tuple shape not supported");
       }
+
       attributes.push_back(builder_->getNamedAttr(
           "infeed_config",
           mlir::StringAttr::get(builder_->getContext(),
