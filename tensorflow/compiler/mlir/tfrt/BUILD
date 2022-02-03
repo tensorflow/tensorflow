@@ -631,6 +631,7 @@ tf_cc_binary(
         "@llvm-project//mlir:Shape",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:print_stream_pass",
+        "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )
 
