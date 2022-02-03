@@ -6890,7 +6890,7 @@ class name_scope_v1(object):  # pylint: disable=invalid-name
 
 @tf_export("get_current_name_scope", v1=[])
 def get_current_name_scope():
-  """Returns current full name scope specified by `tf.name_scope(...)`s.
+  """Returns current full name scope specified by `tf.name_scope(...)`.
 
   For example,
   ```python
