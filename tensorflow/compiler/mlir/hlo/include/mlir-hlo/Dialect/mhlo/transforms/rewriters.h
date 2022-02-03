@@ -26,7 +26,7 @@ limitations under the License.
 namespace mlir {
 namespace bufferization {
 class BufferizeTypeConverter;
-}
+}  // namespace bufferization
 namespace mhlo {
 
 class RemoveSignTypeConverter;

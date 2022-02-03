@@ -30,7 +30,7 @@ class OperationPass;
 class Pass;
 namespace lmhlo {
 class FusionOp;
-}
+}  // namespace lmhlo
 
 namespace mhlo {
 
