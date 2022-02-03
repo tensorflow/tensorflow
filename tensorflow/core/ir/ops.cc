@@ -519,6 +519,15 @@ static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
   MLIRContext *context = builder.getContext();
 
+  // Parse visibility.
+  StringRef visibility;
+  if (!parser.parseOptionalKeyword(&visibility,
+                                   {"public", "private", "nested"})) {
+    StringAttr visibility_attr = parser.getBuilder().getStringAttr(visibility);
+    result.attributes.push_back(parser.getBuilder().getNamedAttr(
+        SymbolTable::getVisibilityAttrName(), visibility_attr));
+  }
+
   if (succeeded(parser.parseOptionalKeyword("generic")))
     result.addAttribute("generic", builder.getUnitAttr());
 
@@ -626,12 +635,18 @@ static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
 static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   // Print the operation and the function name.
   p << " ";
+  int argIndentSize = op->getName().getStringRef().size() + 3;
+  StringRef visibility_attr_name = SymbolTable::getVisibilityAttrName();
+  if (auto visibility = op->getAttrOfType<StringAttr>(visibility_attr_name)) {
+    p << visibility.getValue() << ' ';
+    argIndentSize += visibility.getValue().size() + 1;
+  }
   if (op.generic()) p << "generic ";
   auto funcName =
       op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
           .getValue();
   p.printSymbolName(funcName);
-  int argIndentSize = op->getName().getStringRef().size() + funcName.size() + 3;
+  argIndentSize += funcName.size();
   std::string indent(argIndentSize, ' ');
   Region &body = op->getRegion(0);
   FunctionType fnType = op.getType();
@@ -678,7 +693,8 @@ static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   if (!op->getAttrs().empty()) {
     p.printNewline();
     function_interface_impl::printFunctionAttributes(
-        p, op, fnType.getNumInputs(), fnType.getNumResults(), {"generic"});
+        p, op, fnType.getNumInputs(), fnType.getNumResults(),
+        {"generic", SymbolTable::getVisibilityAttrName()});
   }
   // Print body.
   p << ' ';
@@ -835,7 +851,14 @@ LogicalResult CastOp::fold(ArrayRef<Attribute> operands,
                            SmallVectorImpl<OpFoldResult> &results) {
   // If the op has control operands, we can't fold.
   if (!ctls().empty()) return failure();
-  if (getElementTypeOrSelf(x()) != getElementTypeOrSelf(y())) return failure();
+  // GetResultOp gets the value from uninstantiated op and it can't be folded.
+  if (x().getDefiningOp<GetResultOp>()) return failure();
+
+  ShapedType x_shape = x().getType().dyn_cast<ShapedType>();
+  ShapedType y_shape = y().getType().dyn_cast<ShapedType>();
+  if (!x_shape || x_shape != y_shape || !x_shape.hasStaticShape())
+    return failure();
+
   results.push_back(x());
   results.push_back(LookupControlDependency(x()));
   return success();
@@ -847,7 +870,7 @@ LogicalResult CastOp::fold(ArrayRef<Attribute> operands,
 template <typename IfLikeOp>
 static LogicalResult VerifyIfLikeOp(IfLikeOp op,
                                     SymbolTableCollection &symbol_table) {
-  if (failed(op.verify())) return failure();
+  if (failed(op.verifyInvariants())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(op);
@@ -879,7 +902,7 @@ static LogicalResult VerifyIfLikeOp(IfLikeOp op,
 template <typename CaseLikeOp>
 static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
                                       SymbolTableCollection &symbol_table) {
-  if (failed(op.verify())) return failure();
+  if (failed(op.verifyInvariants())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(op);
@@ -905,7 +928,7 @@ static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
 template <typename WhileLikeOp>
 static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
                                        SymbolTableCollection &symbol_table) {
-  if (failed(op.verify())) return failure();
+  if (failed(op.verifyInvariants())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(op);
@@ -932,7 +955,7 @@ static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
 // ForOp
 
 LogicalResult ForOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
-  if (failed(verify())) return failure();
+  if (failed(verifyInvariants())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(*this);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(*this);

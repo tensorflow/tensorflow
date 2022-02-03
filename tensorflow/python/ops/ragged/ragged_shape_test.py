@@ -411,6 +411,24 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     actual = original._alt_inner_shape(new_dense_rank)
     self.assertAllEqual(actual, expected_inner_shape)
 
+  def testWithNumRowPartitionsDynamic(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([3], dtypes.int64)])
+    def fun(x):
+      shape = RaggedShape([
+          RowPartition.from_row_lengths([1, 3], dtype=dtypes.int64),
+          RowPartition.from_row_lengths([2, 3, 4, 5], dtype=dtypes.int64)
+      ], x)
+      result = shape._with_num_row_partitions(3)
+      expected = RaggedShape([
+          RowPartition.from_row_lengths([1, 3], dtype=dtypes.int64),
+          RowPartition.from_row_lengths([2, 3, 4, 5], dtype=dtypes.int64),
+          RowPartition.from_uniform_row_length(
+              2, nrows=14, nvals=28, dtype=dtypes.int64)
+      ], [14 * 2, 3])
+      self.assertShapeEq(expected, result)
+    fun(constant_op.constant([14, 2, 3], dtype=dtypes.int64))
+
   @parameterized.parameters([
       dict(
           lengths=[2],
@@ -1738,7 +1756,301 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       rt_a + rt_b  # pylint: disable=pointless-statement
       nodes_at_d = len(g.as_graph_def().node)
       num_nodes = nodes_at_d - nodes_at_b
-      self.assertLessEqual(num_nodes, max_num_ops)
+
+  @parameterized.parameters([
+      dict(
+          lengths_a=[3, (1, 4, 2)], lengths_b=[],
+          shape_e=[3, None], new_impl=False),
+      dict(
+          lengths_a=[3, (1, 4, 2)], lengths_b=[],
+          shape_e=[3, None], new_impl=True),
+      dict(
+          lengths_a=[5, (1, 4, 2, 1, 3), 3],
+          lengths_b=[5, 1, 3],
+          shape_e=[5, None, 3], new_impl=False),
+      dict(
+          lengths_a=[5, (1, 4, 2, 1, 3), 3],
+          lengths_b=[5, 1, 3],
+          shape_e=[5, None, 3], new_impl=True),
+      dict(
+          lengths_a=[3, 2, (1, 4, 2, 1, 3, 1), 3],
+          lengths_b=[3, 2, 1, 3],
+          shape_e=[3, 2, None, 3], new_impl=False),
+      dict(
+          lengths_a=[3, 2, (1, 4, 2, 1, 3, 1), 3],
+          lengths_b=[3, 2, 1, 3],
+          shape_e=[3, 2, None, 3],
+          new_impl=True),
+      dict(
+          lengths_a=[3, (1, 4, 2)], lengths_b=[3, 1],
+          shape_e=[3, None], new_impl=False),
+      dict(
+          lengths_a=[3, (1, 4, 2)], lengths_b=[3, 1],
+          shape_e=[3, None], new_impl=True),
+
+  ])
+  def testAddShape(self,
+                   lengths_a,
+                   lengths_b,
+                   shape_e,
+                   new_impl=False,
+                   num_row_partitions_a=None,
+                   num_row_partitions_b=None):
+    if context.executing_eagerly():
+      return
+    shape_a = RaggedShape.from_lengths(
+        lengths_a, num_row_partitions=num_row_partitions_a)
+    shape_b = RaggedShape.from_lengths(
+        lengths_b, num_row_partitions=num_row_partitions_b)
+    rt_a = ragged_array_ops.ragged_reshape(
+        _lowest_primes(_num_elements_of_lengths(lengths_a)), shape_a)
+    rt_b = ragged_array_ops.ragged_reshape(
+        _lowest_primes(_num_elements_of_lengths(lengths_b)), shape_b)
+    if new_impl:
+      result = ragged_shape.ragged_binary_elementwise_op_impl(
+          math_ops.add, rt_a, rt_b)
+      shape_e = tensor_shape.TensorShape(shape_e)
+      self.assertEqual(shape_e.as_list(), result.shape.as_list())
+    else:
+      if isinstance(rt_a, RaggedTensor):
+        rt_a = rt_a.with_row_splits_dtype(dtypes.int32)
+      if isinstance(rt_b, RaggedTensor):
+        rt_b = rt_b.with_row_splits_dtype(dtypes.int32)
+      result = rt_a + rt_b
+      shape_e = tensor_shape.TensorShape(shape_e)
+      self.assertEqual(shape_e.as_list(), result.shape.as_list())
+
+  @parameterized.parameters([
+      dict(
+          lengths_a=[3, (1, 4, 2)], lengths_b=[],
+          shape_e=[3, (1, 4, 2)]),
+      dict(
+          lengths_a=[5], lengths_b=[1],
+          shape_e=[5]),
+      dict(
+          lengths_a=[5, (1, 4, 2, 1, 3), 3],
+          lengths_b=[5, 1, 3],
+          shape_e=[5, None, 3]),
+      dict(
+          lengths_a=[3, 2, (1, 4, 2, 1, 3, 1), 3],
+          lengths_b=[3, 2, 1, 3],
+          shape_e=[3, 2, None, 3]),
+      dict(lengths_a=[3, (1, 4, 2)], lengths_b=[3, 1], shape_e=[3, None]),
+      dict(lengths_a=[5, 1, 3], lengths_b=[2, 3], shape_e=[5, 2, 3]),
+      dict(lengths_a=[5, 1, (3, 2, 4, 1, 3)], lengths_b=[2, 1],
+           shape_e=[5, 2, None]),
+      dict(lengths_a=[5, 4, 1, 3], lengths_b=[2, 1], shape_e=[5, 4, 2, 3]),
+  ])
+  def testBroadcastDynamicShapeStatic(self,
+                                      lengths_a,
+                                      lengths_b,
+                                      shape_e,
+                                      num_row_partitions_a=None,
+                                      num_row_partitions_b=None):
+    if context.executing_eagerly():
+      return
+    shape_a = RaggedShape.from_lengths(
+        lengths_a, num_row_partitions=num_row_partitions_a)
+    shape_b = RaggedShape.from_lengths(
+        lengths_b, num_row_partitions=num_row_partitions_b)
+
+    result = ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
+    result_shape = result._to_tensor_shape()
+
+    tensor_shape_e = [None if isinstance(x, tuple) else x for x in shape_e]
+    self.assertEqual(shape_e, result.static_lengths())
+    self.assertEqual(tensor_shape_e, result_shape.as_list())
+
+  def testBroadcastDynamicShapePartiallyKnown(self):
+    if context.executing_eagerly():
+      return
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int64)])
+    def fun(x):
+      shape_a = RaggedShape([], array_ops.stack([5, x, 3]))
+      shape_b = RaggedShape.from_lengths([1, 3], dtype=dtypes.int64)
+      result = ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
+      self.assertAllEqual([5, None, 3], result.static_lengths())
+    fun(constant_op.constant(2, dtype=dtypes.int64))
+
+  def testBroadcastDynamicShapePartiallyKnownNiceToHave(self):
+    if context.executing_eagerly():
+      return
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int64)])
+    def fun(x):
+      shape_a = RaggedShape([], array_ops.stack([5, x, 3]))
+      shape_b = RaggedShape.from_lengths([2, 3], dtype=dtypes.int64)
+      result = ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
+      self.assertAllEqual([5, 2, 3], result.static_lengths())
+    fun(constant_op.constant(2, dtype=dtypes.int64))
+
+  def testFromRowPartitionsStatic(self):
+    if context.executing_eagerly():
+      return
+    rp = RowPartition.from_row_lengths([4, 2, 3])
+    result = RaggedShape.from_row_partitions([rp])
+    self.assertEqual([3, (4, 2, 3)], result.static_lengths())
+
+  @parameterized.parameters([
+      dict(
+          lengths_a=[3, (1, 4, 2)], dim=0,
+          expected=3),
+      dict(
+          lengths_a=[5], dim=0,
+          expected=5),
+      dict(
+          lengths_a=[5, (1, 4, 2, 1, 3), 3],
+          dim=0,
+          expected=5),
+      dict(
+          lengths_a=[5, (1, 4, 2, 1, 3), 3],
+          dim=2,
+          expected=3),
+      dict(
+          lengths_a=[3, 2, (1, 4, 2, 1, 3, 1), 3],
+          dim=1,
+          expected=2),
+      dict(lengths_a=[5, 1, 3], dim=0, expected=5),
+  ])
+  def testDimStatic(self, lengths_a, dim, expected):
+    if context.executing_eagerly():
+      return
+    shape_a = RaggedShape.from_lengths(lengths_a)
+    result = tensor_util.constant_value(shape_a[dim])
+    self.assertEqual(result, expected)
+
+  @parameterized.parameters([
+      dict(
+          lengths_a=[5, (1, 4, 2, 1, 3), 3],
+          shape_e=[5, (1, 4, 2, 1, 3), 3],
+          new_num_row_partitions=2),  # Fails
+      dict(
+          lengths_a=[3, 2, (1, 4, 2, 1, 3, 1), 3],
+          shape_e=[3, 2, (1, 4, 2, 1, 3, 1), 3],
+          new_num_row_partitions=3),  # Fails
+  ])
+  def testNumRowPartitionShapeStatic(self,
+                                     lengths_a,
+                                     shape_e,
+                                     new_num_row_partitions,
+                                     num_row_partitions_a=None):
+    if context.executing_eagerly():
+      return
+    shape_a = RaggedShape.from_lengths(
+        lengths_a, num_row_partitions=num_row_partitions_a)
+    result = shape_a._with_num_row_partitions(new_num_row_partitions)
+    self.assertEqual(shape_e, result.static_lengths())
+
+  @parameterized.parameters([
+      dict(lengths_a=[5, (1, 4, 2, 1, 3), 3]),
+      dict(lengths_a=[3, 2, (1, 4, 2, 1, 3, 1), 3]),
+  ])
+  def testFromLengthsNRowsStatic(self, lengths_a):
+    if context.executing_eagerly():
+      return
+    shape_a = RaggedShape.from_lengths(lengths_a)
+    for rp in shape_a.row_partitions:
+      actual = tensor_util.constant_value(rp.nrows())
+      self.assertIsNotNone(actual, 'Failed on ' + str(rp))
+
+  @parameterized.parameters([
+      dict(
+          lengths_a=[5, (1, 4, 2, 1, 3), 3], inner_shape=[33],
+          new_inner_rank=1),
+      dict(
+          lengths_a=[3, 2, (1, 4, 2, 1, 3, 1), 3],
+          inner_shape=[36],
+          new_inner_rank=1),
+      dict(
+          lengths_a=[3, 2, (1, 4, 2, 1, 3, 1), 3, 4],
+          inner_shape=[36, 4],
+          new_inner_rank=2),
+  ])
+  def testAltInnerShapeStatic(self,
+                              lengths_a,
+                              inner_shape,
+                              new_inner_rank,
+                              num_row_partitions_a=None):
+    if context.executing_eagerly():
+      return
+    shape_a = RaggedShape.from_lengths(
+        lengths_a, num_row_partitions=num_row_partitions_a)
+    result = shape_a._alt_inner_shape(new_inner_rank)
+    result_static = tensor_util.constant_value_as_shape(result)
+    self.assertEqual(inner_shape, result_static.as_list())
+
+  @parameterized.parameters([
+      dict(
+          lengths=[3, (1, 4, 2)],
+          shape_e=[3, None]),
+      dict(
+          lengths=[3, (1, 4, 2)],
+          shape_e=[3, None]),
+      dict(
+          lengths=[5, (1, 4, 2, 1, 3), 3],
+          shape_e=[5, None, 3]),
+      dict(
+          lengths=[5, (1, 4, 2, 1, 3), 3],
+          shape_e=[5, None, 3]),
+      dict(
+          lengths=[3, 2, (1, 4, 2, 1, 3, 1), 3],
+          shape_e=[3, 2, None, 3]),
+      dict(
+          lengths=[3, 2, (1, 4, 2, 1, 3, 1), 3],
+          shape_e=[3, 2, None, 3]),
+  ])
+  def testStaticShape(self,
+                      lengths,
+                      shape_e,
+                      num_row_partitions=None):
+    # Testing the shape has enough information.
+    # In particular, any uniform_row_length should be reproduced.
+    if context.executing_eagerly():
+      return
+    shape = RaggedShape.from_lengths(
+        lengths, num_row_partitions=num_row_partitions)
+    rt_a = ragged_array_ops.ragged_reshape(
+        _lowest_primes(_num_elements_of_lengths(lengths)), shape)
+    shape_e = tensor_shape.TensorShape(shape_e)
+    self.assertEqual(shape_e.as_list(), rt_a.shape.as_list())
+
+  @parameterized.parameters([
+      dict(
+          lengths=[5, (1, 4, 2, 1, 3), 3],
+          shape_e=[5, (1, 4, 2, 1, 3), 3]),
+      dict(
+          lengths=[3, 2, (1, 4, 2, 1, 3, 1), 3],
+          shape_e=[3, 2, (1, 4, 2, 1, 3, 1), 3]),
+  ])
+  def testWithNumRowPartitionsStatic(self,
+                                     lengths,
+                                     shape_e,
+                                     num_row_partitions=None):
+    # Note that this test loses the later static values.
+    if context.executing_eagerly():
+      return
+    shape = RaggedShape.from_lengths(
+        lengths, num_row_partitions=num_row_partitions)
+    shape_b = shape._with_num_row_partitions(shape.rank - 1)
+    self.assertEqual(shape_e, shape_b.static_lengths())
+
+  def testWithNumRowPartitionsStaticAlt(self):
+    # Note that this test loses the later static values.
+    if context.executing_eagerly():
+      return
+    shape = RaggedShape.from_lengths(
+        [5, 2, 3], num_row_partitions=2)
+    shape_b = shape._with_num_row_partitions(0)
+    self.assertEqual([5, 2, 3], shape_b.static_lengths())
+
+  def testWithNumRowPartitionsDType(self):
+    # Note that this test loses the later static values.
+    shape = RaggedShape([], constant_op.constant([5, 2, 3], dtype=dtypes.int32))
+    self.assertEqual(shape.dtype, dtypes.int32)
+
+    result = shape._with_num_row_partitions(2)
+    self.assertEqual(result.dtype, dtypes.int32)
 
   @parameterized.parameters([
       dict(
@@ -1810,8 +2122,7 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       dict(
           lengths=[2, 2],
           num_row_partitions=1,
-          expected=[2, None, ...],  # Also acceptable: [2, 2]
-          expected_eager=[2, 2]),
+          expected=[2, 2]),
       dict(lengths=[2, 2], num_row_partitions=0, expected=[2, 2]),
       dict(
           lengths=[2, (1, 2), 2], num_row_partitions=1, expected=[2, (1, 2), 2])

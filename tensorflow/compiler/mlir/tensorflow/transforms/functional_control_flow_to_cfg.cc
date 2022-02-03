@@ -37,7 +37,7 @@ namespace {
 
 struct FunctionalControlFlowToCFG
     : public FunctionalControlFlowToCFGPassBase<FunctionalControlFlowToCFG> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Lowers a general tensor argument that is used as a condition to a functional
@@ -272,9 +272,9 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   return success();
 }
 
-void FunctionalControlFlowToCFG::runOnFunction() {
+void FunctionalControlFlowToCFG::runOnOperation() {
   // Scan the function looking for these ops.
-  for (Block& block : getFunction()) {
+  for (Block& block : getOperation()) {
     for (Operation& op : block) {
       // If the operation is one of the control flow ops we know, lower it.
       // If we lower an operation, then the current basic block will be split,

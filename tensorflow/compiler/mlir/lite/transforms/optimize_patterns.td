@@ -141,7 +141,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
   // Fuse for TransposeConv with no bias
   def FuseBinaryOpWithTransposeConvNoneBias#binaryOp : Pat<
     (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
-                (ConstantOp $bias), $padding,
+                $bias, $padding,
                 $stride_h, $stride_w),
               (Arith_ConstantOp FloatElementsAttr:$value), TFL_AF_None),
     (TFL_TransposeConvOp $output_shape, $weights, $inputs,
@@ -224,7 +224,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
   def FuseMulOrDivWithTransposeConvWithNoneBias#BinaryOp : Pat<
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
                 (Arith_ConstantOp FloatElementsAttr:$weights), $input,
-                (ConstantOp $bias),
+                $bias,
                 $padding, $stride_h, $stride_w),
               (Arith_ConstantOp $value), TFL_AF_None),
     (TFL_TransposeConvOp $output_shape,
@@ -232,7 +232,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
         TFL_AF_None),
       $input,
-      (ConstantOp $bias),
+      $bias,
       $padding, $stride_h, $stride_w),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (IsNoneType $bias),

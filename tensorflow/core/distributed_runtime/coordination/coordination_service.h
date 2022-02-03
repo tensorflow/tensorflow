@@ -60,8 +60,6 @@ class Env;
 // coordination. One instance of the service should be deployed in a cluster,
 // handling various requests and stores configuration key-value data for the
 // tasks. Each task interacts with the service through CoordinationServiceAgent.
-//
-// Experimental feature. Not yet implemented in open source.
 class CoordinationServiceInterface {
  public:
   using CoordinationServiceFactory =

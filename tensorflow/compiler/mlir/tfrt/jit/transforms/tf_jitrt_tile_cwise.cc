@@ -92,9 +92,9 @@ struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
   TileCWisePass() = default;
   explicit TileCWisePass(int64_t tile_size) { cwise_tile_size = tile_size; }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     constexpr llvm::StringRef kTiledId = "tiled";
-    auto func = getFunction();
+    auto func = getOperation();
 
     LinalgTilingOptions tiling_options;
     // Tile the innermost dimension by 8 for vectorization and scalarize the
@@ -131,11 +131,11 @@ struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateTileCWisePass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass() {
   return std::make_unique<TileCWisePass>();
 }
 
-std::unique_ptr<mlir::FunctionPass> CreateTileCWisePass(
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass(
     int64_t cwise_tile_size) {
   return std::make_unique<TileCWisePass>(cwise_tile_size);
 }

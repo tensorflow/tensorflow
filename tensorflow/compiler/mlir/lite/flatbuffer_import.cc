@@ -90,7 +90,7 @@ using mlir::MLIRContext;
 using mlir::OpBuilder;
 using mlir::Operation;
 using mlir::OperationState;
-using mlir::OwningModuleRef;
+using mlir::OwningOpRef;
 using mlir::RankedTensorType;
 using mlir::UnrankedTensorType;
 using mlir::Value;
@@ -853,8 +853,8 @@ StatusOr<Operation*> ConvertOp(
     // with `none` value,
     llvm::SmallVector<Value, 4> none_operands(
         input_max_num - op_input_num,
-        builder.create<mlir::ConstantOp>(loc, builder.getNoneType(),
-                                         builder.getUnitAttr()));
+        builder.create<mlir::TFL::NoValueOp>(loc, builder.getNoneType(),
+                                             builder.getUnitAttr()));
     op_state.addOperands(ArrayRef<Value>(none_operands));
   }
 
@@ -1305,8 +1305,8 @@ StatusOr<FuncOp> ConvertSubgraph(
         if (maybe_optional_arg_marker == nullptr) {
           maybe_optional_arg_marker =
               op_builder
-                  .create<mlir::ConstantOp>(base_loc, builder.getNoneType(),
-                                            builder.getUnitAttr())
+                  .create<mlir::TFL::NoValueOp>(base_loc, builder.getNoneType(),
+                                                builder.getUnitAttr())
                   .getResult();
         }
       } else if (!vals_map.at(input_num)) {
@@ -1436,7 +1436,7 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
 }
 }  // namespace
 
-OwningModuleRef tflite::FlatBufferToMlir(
+OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     absl::string_view buffer, MLIRContext* context, Location base_loc,
     bool use_external_constant,
     const std::vector<std::string>& ordered_input_arrays,
@@ -1513,5 +1513,5 @@ OwningModuleRef tflite::FlatBufferToMlir(
     module.push_back(func_or_error.ConsumeValueOrDie());
   }
   AddRegionsForTflWhileOp(module);
-  return OwningModuleRef(module);
+  return OwningOpRef<mlir::ModuleOp>(module);
 }

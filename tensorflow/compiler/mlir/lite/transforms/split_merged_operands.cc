@@ -66,8 +66,8 @@ namespace TFL {
 namespace {
 
 struct SplitMergedOperandsPass
-    : public PassWrapper<SplitMergedOperandsPass, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<SplitMergedOperandsPass, OperationPass<FuncOp>> {
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -111,9 +111,9 @@ LogicalResult DuplicateValueIfNeeded(Operation* op,
   return success();
 }
 
-void SplitMergedOperandsPass::runOnFunction() {
+void SplitMergedOperandsPass::runOnOperation() {
   llvm::DenseSet<Value> stateful_values;
-  auto func = getFunction();
+  auto func = getOperation();
   OpBuilder builder(func);
   for (auto& bb : func.getBody()) {
     for (auto& op : bb) {

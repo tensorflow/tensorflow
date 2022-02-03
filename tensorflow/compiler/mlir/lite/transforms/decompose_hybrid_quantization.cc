@@ -37,7 +37,8 @@ namespace TFL {
 namespace {
 
 class DecomposeHybridQuantizationPass
-    : public PassWrapper<DecomposeHybridQuantizationPass, FunctionPass> {
+    : public PassWrapper<DecomposeHybridQuantizationPass,
+                         OperationPass<FuncOp>> {
  public:
   DecomposeHybridQuantizationPass() = default;
   DecomposeHybridQuantizationPass(const DecomposeHybridQuantizationPass &) {}
@@ -52,7 +53,7 @@ class DecomposeHybridQuantizationPass
            "(some arguments/results left in floating point).";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
@@ -133,10 +134,10 @@ class DequantizeConverter : public OpRewritePattern<SrcOp> {
   }
 };
 
-void DecomposeHybridQuantizationPass::runOnFunction() {
+void DecomposeHybridQuantizationPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto *ctx = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
   patterns.insert<DequantizeConverter<TFL::Conv2DOp>,
                   DequantizeConverter<TFL::Conv3DOp>,
                   DequantizeConverter<TFL::DepthwiseConv2DOp>,

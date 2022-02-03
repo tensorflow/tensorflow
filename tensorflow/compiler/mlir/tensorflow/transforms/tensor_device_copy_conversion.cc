@@ -40,13 +40,13 @@ constexpr const char *kTFDeviceAttr = "tf.device";
 struct TensorDeviceCopyConversionPass
     : public TensorDeviceCopyConversionPassBase<
           TensorDeviceCopyConversionPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Folds tf.IdentityOp and tf.IdentityNOp if op device and the argument devices
 // from the defining ops match.
-void TensorDeviceCopyConversionPass::runOnFunction() {
-  FuncOp func_op = getFunction();
+void TensorDeviceCopyConversionPass::runOnOperation() {
+  FuncOp func_op = getOperation();
 
   auto should_fold_op_func = [&func_op](const Value &arg,
                                         const StringAttr &op_device) {

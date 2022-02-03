@@ -75,7 +75,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
   SmallVector<FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
-  OwningModuleRef module_for_func =
+  OwningOpRef<mlir::ModuleOp> module_for_func =
       ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()));
   SymbolTable symbol_table(module_for_func.get());
 

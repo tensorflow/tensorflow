@@ -76,7 +76,8 @@ using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 // This pass runs before the quantization pass and apply preprocess if
 // applicable.
 class PrepareDynamicRangeQuantizePass
-    : public PassWrapper<PrepareDynamicRangeQuantizePass, FunctionPass> {
+    : public PassWrapper<PrepareDynamicRangeQuantizePass,
+                         OperationPass<FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<TensorFlowLiteDialect, ::mlir::quant::QuantizationDialect>();
@@ -115,7 +116,7 @@ class PrepareDynamicRangeQuantizePass
   // method preprocess the function to remove all stats ops.
   void removeAllStatsOp(FuncOp func);
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   QuantizationSpecs quant_specs_;
@@ -434,8 +435,8 @@ void PrepareDynamicRangeQuantizePass::removeAllStatsOp(FuncOp func) {
   });
 }
 
-void PrepareDynamicRangeQuantizePass::runOnFunction() {
-  FuncOp func = getFunction();
+void PrepareDynamicRangeQuantizePass::runOnOperation() {
+  FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
   ConvertTFLQuantOpsToMlirQuantOps(func);

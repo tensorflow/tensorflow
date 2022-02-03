@@ -507,7 +507,7 @@ Status CoordinationServiceStandaloneImpl::InsertKeyValue(
   const std::string& norm_key = NormalizeKey(key);
   mutex_lock l(kv_mu_);
   if (kv_store_.find(norm_key) != kv_store_.end()) {
-    return errors::InvalidArgument("Config key ", key, " already exists.");
+    return errors::AlreadyExists("Config key ", key, " already exists.");
   }
   kv_store_.emplace(norm_key, value);
   auto iter = get_cb_.find(norm_key);

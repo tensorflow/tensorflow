@@ -1,4 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
 load(
@@ -152,6 +155,7 @@ cc_library(
 cc_library(
     name = "types",
     hdrs = ["types.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [":friends"],
     deps = [
         "//third_party/eigen3",
@@ -247,6 +251,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
@@ -589,6 +594,7 @@ cc_library(
     deps = [
         ":status",
         ":types",
+        ":util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -612,6 +618,7 @@ cc_library(
     deps = [
         ":array",
         ":types",
+        ":util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -680,6 +687,7 @@ cc_library(
     name = "executable_run_options",
     srcs = ["executable_run_options.cc"],
     hdrs = ["executable_run_options.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":types",
@@ -958,6 +966,7 @@ cc_library(
     name = "cpu_function_runtime",
     srcs = ["cpu_function_runtime.cc"],
     hdrs = ["cpu_function_runtime.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [":friends"],
     deps = [
         "@com_google_absl//absl/base:dynamic_annotations",

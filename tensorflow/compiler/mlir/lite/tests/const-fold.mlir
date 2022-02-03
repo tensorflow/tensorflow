@@ -760,7 +760,7 @@ func @ConstantFoldFullyConnectedLarge() -> tensor<1024xf32> {
 func @ConstantFoldFullyConnectedNoBias() -> tensor<1024xf32> {
   %cst_input = arith.constant dense<1.0> : tensor<512xf32>
   %cst_weights = arith.constant dense<2.0> : tensor<1024x512xf32>
-  %cst_bias = constant unit
+  %cst_bias = "tfl.no_value"() {value = unit} : () -> none
 
   %0 = "tfl.fully_connected" (%cst_input, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<512xf32>, tensor<1024x512xf32>, none) -> tensor<1024xf32>
 

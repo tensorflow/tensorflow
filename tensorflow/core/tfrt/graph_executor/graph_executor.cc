@@ -429,7 +429,7 @@ GraphExecutor::LoadClientGraph(const GraphExecutor::ClientGraph& client_graph) {
   return loaded_client_graph;
 }
 
-tensorflow::StatusOr<mlir::OwningModuleRef>
+tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 GraphExecutor::ImportClientGraphToMlirModule(
     const GraphExecutor::ClientGraph& client_graph,
     mlir::MLIRContext* context) const {

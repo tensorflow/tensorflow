@@ -694,13 +694,13 @@ void RemoveUnusedResourceArgumentsAndForwardedRetvals(
       }
     }
   }
-  llvm::SmallVector<unsigned int, 4> indices_to_erase;
+  llvm::BitVector indices_to_erase(func_op.getNumArguments());
   llvm::SmallVector<Type, 4> new_types;
   int64_t skipped_args = 0;
   for (auto arg : func_op.getArguments()) {
     auto it = infos.find(arg.getArgNumber());
     if (it != infos.end() && !it->getSecond().used) {
-      indices_to_erase.push_back(arg.getArgNumber());
+      indices_to_erase.set(arg.getArgNumber());
       skipped_args++;
       if (old_to_new_arg_indices != nullptr) {
         old_to_new_arg_indices->push_back(-1);

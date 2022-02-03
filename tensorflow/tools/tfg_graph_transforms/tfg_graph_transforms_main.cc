@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/transforms/pass_registration.h"
 #include "tensorflow/tools/tfg_graph_transforms/export.h"
 #include "tensorflow/tools/tfg_graph_transforms/import.h"
 
@@ -118,7 +119,7 @@ tensorflow::Status RunOptimizationPasses(
 }
 
 // Import model to the TFG MLIR module.
-tensorflow::StatusOr<mlir::OwningModuleRef> ImportModel(
+tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
     DataFormat data_format, const std::string& input_file,
     mlir::MLIRContext* mlir_context) {
   switch (data_format) {
@@ -152,6 +153,8 @@ int main(int argc, char** argv) {
   mlir::registerAsmPrinterCLOptions();
   mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
+  mlir::tfg::registerTFGraphPasses();
+
   mlir::PassPipelineCLParser pass_pipeline("", "TFG passes to run");
   llvm::cl::ParseCommandLineOptions(argc, argv, "TFG optimization tool\n");
 
@@ -164,14 +167,15 @@ int main(int argc, char** argv) {
   mlir::MLIRContext context(registry);
 
   // Import model to the TFG MLIR module.
-  tensorflow::StatusOr<mlir::OwningModuleRef> module_ref_status =
+  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref_status =
       ImportModel(data_format, input_file, &context);
 
   if (!module_ref_status.ok()) {
     LOG(QFATAL) << "Model import failed: "
                 << module_ref_status.status().ToString();
   }
-  mlir::OwningModuleRef module_ref = std::move(module_ref_status.ValueOrDie());
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
+      std::move(module_ref_status.ValueOrDie());
 
   // Parse the optimization pipeline configuration and run requested graph
   // optimizations.

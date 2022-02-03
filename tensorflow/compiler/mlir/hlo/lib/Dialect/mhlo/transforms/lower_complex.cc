@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -55,7 +56,8 @@ void LowerComplexPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
-  (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    return signalPassFailure();
 }
 
 }  // end anonymous namespace

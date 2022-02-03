@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -45,6 +47,18 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
+
+namespace {
+
+std::string TruncateMessage(const std::string& msg, size_t max_len) {
+  if (msg.size() > max_len) {
+    return absl::StrCat(msg.substr(0, max_len), " ... [truncated]");
+  } else {
+    return msg;
+  }
+}
+
+}  // namespace
 
 namespace tensorflow {
 namespace tpu {
@@ -134,7 +148,8 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
            .has_value()) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(compile_status.code());
-    proto.set_status_error_message(compile_status.error_message());
+    proto.set_status_error_message(
+        TruncateMessage(compile_status.error_message(), 128));
     status_payload = proto.SerializeAsString();
   }
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
@@ -356,8 +371,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(status.code());
     if (!status.ok()) {
-      proto.set_status_error_message(
-          absl::StrCat("Compilation failure: ", status.error_message()));
+      proto.set_status_error_message(TruncateMessage(
+          absl::StrCat("Compilation failure: ", status.error_message()), 128));
     }
     if (return_hlo_protos_) {
       // Return the HloProtos as part of compilation status.

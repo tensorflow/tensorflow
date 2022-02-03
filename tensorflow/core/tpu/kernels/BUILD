@@ -847,6 +847,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/numeric:bits",
     ],
     alwayslink = 1,
 )

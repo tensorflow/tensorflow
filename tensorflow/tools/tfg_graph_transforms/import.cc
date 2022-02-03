@@ -33,7 +33,7 @@ namespace mlir {
 namespace tfg {
 namespace graph_transforms {
 
-tensorflow::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
+tensorflow::StatusOr<mlir::OwningOpRef<ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const std::string& model_file) {
   tensorflow::SavedModel saved_model;
 
@@ -49,7 +49,7 @@ tensorflow::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
   return mlir::tfg::ImportGraphDefToMlir(context, debug_info, graphdef);
 }
 
-tensorflow::StatusOr<mlir::OwningModuleRef> ImportGraphDef(
+tensorflow::StatusOr<mlir::OwningOpRef<ModuleOp>> ImportGraphDef(
     mlir::MLIRContext* context, const std::string& model_file) {
   tensorflow::GraphDef graphdef;
 

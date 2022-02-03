@@ -263,7 +263,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
   {
     py::gil_scoped_release gil_release;
     mlir::MLIRContext context;
-    TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+    TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                         ParseMlirModuleString(mlir_module, context));
     TF_ASSIGN_OR_RETURN(
         executable, pjrt_client_->Compile(module.get(), std::move(options)));

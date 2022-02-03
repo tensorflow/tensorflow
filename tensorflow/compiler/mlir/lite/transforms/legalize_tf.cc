@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Threading.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
@@ -73,7 +74,7 @@ constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
 constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
 
 // Legalize operations in functions.
-class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+class LegalizeTF : public PassWrapper<LegalizeTF, OperationPass<FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<quant::QuantizationDialect, TFL::TensorFlowLiteDialect>();
   }
@@ -96,7 +97,7 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   }
 
   /// Performs the lowering to TFLite dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   Option<bool> run_tfl_runtime_verification_{
@@ -264,7 +265,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   }
 
   Type output_type = tf_matmul_op.getResult().getType();
-  auto no_input = rewriter.create<ConstantOp>(
+  auto no_input = rewriter.create<TFL::NoValueOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
   auto fc_op = rewriter.create<FullyConnectedOp>(
       op->getLoc(), ArrayRef<Type>{output_type},
@@ -359,7 +360,7 @@ LogicalResult ConvertTFConv3DOp::matchAndRewrite(
 
   // TensorFlow Conv3D has no bias, optimization patterns will fuse Conv3D
   // with other ops can fill the bias.
-  Value none = rewriter.create<mlir::ConstantOp>(
+  Value none = rewriter.create<TFL::NoValueOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
   rewriter.replaceOpWithNewOp<TFL::Conv3DOp>(
@@ -399,7 +400,7 @@ LogicalResult ConvertTFConv3DBackpropInputV2Op::matchAndRewrite(
 
   // TensorFlow Conv3D has no bias, optimization patterns will fuse Conv3D
   // with other ops can fill the bias.
-  Value none = rewriter.create<mlir::ConstantOp>(
+  Value none = rewriter.create<TFL::NoValueOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
   Value output_shape =
@@ -518,7 +519,7 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
     }
 
     // Optional input placeholder.
-    Value none = rewriter.create<mlir::ConstantOp>(
+    Value none = rewriter.create<TFL::NoValueOp>(
         op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
     // Populate inputs.
@@ -933,9 +934,9 @@ bool applyPatterns(FuncOp func, ConversionTarget& target,
   return true;
 }
 
-void LegalizeTF::runOnFunction() {
+void LegalizeTF::runOnOperation() {
   auto* context = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
 
   ConversionTarget target(*context);
   // It is legal to have TF ops in the graph still which can be
@@ -943,6 +944,7 @@ void LegalizeTF::runOnFunction() {
   // graph.
   target.addLegalOp<mlir::arith::ConstantOp>();
   target.addLegalOp<mlir::ConstantOp>();
+  target.addLegalOp<TFL::NoValueOp>();
   target.addLegalOp<ConstOp>();
   target.addLegalOp<DequantizeOp>();
   target.addLegalOp<QConstOp>();

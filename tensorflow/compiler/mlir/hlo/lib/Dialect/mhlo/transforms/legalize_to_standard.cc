@@ -15,6 +15,8 @@ limitations under the License.
 
 // This file implements logic for lowering MHLO dialect to Standard dialect.
 
+#include <utility>
+
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
@@ -205,7 +207,8 @@ void PopulateMhloToStdPatterns(RewritePatternSet *patterns,
 void LegalizeToStandardPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
-  (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    return signalPassFailure();
 }
 
 }  // end namespace mhlo

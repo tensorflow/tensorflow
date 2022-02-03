@@ -39,7 +39,6 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
 // to inject more information in the middle of the conversion before resuming it
 // (like freezing variables for example).
 void AddPreVariableFreezingTFToTFLConversionPasses(
-    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager);
 

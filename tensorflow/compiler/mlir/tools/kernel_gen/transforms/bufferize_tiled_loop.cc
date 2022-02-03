@@ -145,7 +145,7 @@ struct BufferizeInsertSliceOp : public OpConversionPattern<InsertSliceOp> {
           op.getLoc(), destMemRef, op.getMixedOffsets(), op.getMixedSizes(),
           op.getMixedStrides());
     }
-    rewriter.create<linalg::CopyOp>(op.getLoc(), sourceMemRef, subview);
+    rewriter.create<memref::CopyOp>(op.getLoc(), sourceMemRef, subview);
     rewriter.replaceOp(op, destMemRef);
     return success();
   }

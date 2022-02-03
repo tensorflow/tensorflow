@@ -22,7 +22,7 @@ include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 
-class GMLST_Op<string mnemonic, list<OpTrait> traits> :
+class GMLST_Op<string mnemonic, list<Trait> traits> :
     Op<GmlSt_Dialect, mnemonic, traits> {
   let verifier = [{ return Verify(*this); }];
 }

@@ -160,6 +160,13 @@ class IrEmitterUnnested : public IrEmitter {
     return std::make_unique<ThunkSequence>(std::move(thunk_sequence_));
   }
 
+  // Emits code for the given LMHLO region.
+  //
+  // Also populates related information to 'ir_emitter_context_' for
+  // large-constant initializations. Large constants don't get initializers in
+  // the generated code and so must be initialized by XLA. The value of these
+  // constants will be stored in 'content'. Constants with initializers in the
+  // generated code will have empty 'content'.
   Status EmitLmhloRegion(mlir::Region* region);
 
  private:

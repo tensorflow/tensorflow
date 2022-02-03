@@ -3453,12 +3453,13 @@ static LogicalResult Verify(XlaSelectAndScatterOp op) {
            << select_func_type.getNumInputs() << " parameter(s)";
   }
   if (select_func_type.getNumResults() != 1 ||
-      select_func_type.getResult(0).isInteger(1)) {
-    return op.emitOpError()
-           << "expects select function to return a boolean result.";
+      !getElementTypeOrSelf(select_func_type.getResult(0)).isInteger(1)) {
+    return op.emitOpError() << "expects select function to return a single "
+                               "boolean result but got "
+                            << select_func_type.getResult(0);
   }
   auto scatter_func = dyn_cast_or_null<mlir::FuncOp>(
-      SymbolTable::lookupSymbolIn(module, op.select()));
+      SymbolTable::lookupSymbolIn(module, op.scatter()));
   if (!scatter_func) {
     return op.emitOpError() << "has no scatter function specified";
   }

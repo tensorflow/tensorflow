@@ -74,7 +74,7 @@ def ControlOperandsAfterAllData :
 
 // Base class for the operation in this dialect, it'll forward the verifier,
 // printer, and parser to free functions.
-class TfExecutor_Op<string mnemonic, list<OpTrait> traits = []> :
+class TfExecutor_Op<string mnemonic, list<Trait> traits = []> :
     Op<TfExecutor_Dialect, mnemonic, traits> {
 
   let verifier = [{ return ::mlir::tf_executor::Verify(*this); }];

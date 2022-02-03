@@ -3351,5 +3351,41 @@ TEST_F(CopyInsertionTest, CustomCallAliasingCopyRemoved) {
   HloInstruction* custom_call = module->entry_computation()->root_instruction();
   EXPECT_THAT(custom_call->operand(0), op::Add());
 }
+
+TEST_F(CopyInsertionTest, ReverseInConditional) {
+  const char* const kModuleString = R"(
+HloModule jit_f.0
+
+%region_0.4 (Arg_.5: u8[300,451,3]) -> (u8[300,451,3]) {
+  %Arg_.5 = u8[300,451,3]{1,0,2:T(8,128)(4,1)} parameter(0)
+  ROOT %tuple = (u8[300,451,3]{1,0,2:T(8,128)(4,1)}) tuple(u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_.5)
+}
+
+%region_1.9 (Arg_.10: u8[300,451,3]) -> (u8[300,451,3]) {
+  %Arg_.10 = u8[300,451,3]{1,0,2:T(8,128)(4,1)} parameter(0)
+  %reverse = u8[300,451,3]{1,0,2:T(8,128)(4,1)} reverse(u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_.10), dimensions={0}
+  ROOT %tuple.1 = (u8[300,451,3]{1,0,2:T(8,128)(4,1)}) tuple(u8[300,451,3]{1,0,2:T(8,128)(4,1)} %reverse)
+}
+
+ENTRY %main.13 (Arg_0.1: pred[], Arg_1.2: u8[300,451,3]) -> u8[300,451,3] {
+  %Arg_0.1 = pred[]{:T(1024)} parameter(0)
+  %convert.3 = s32[]{:T(256)} convert(pred[]{:T(1024)} %Arg_0.1)
+  %Arg_1.2 = u8[300,451,3]{1,0,2:T(8,128)(4,1)} parameter(1)
+  %conditional.12.clone = (u8[300,451,3]{1,0,2:T(8,128)(4,1)}) conditional(s32[]{:T(256)} %convert.3, u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_1.2, u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_1.2), branch_computations={%region_0.4, %region_1.9}
+  ROOT %get-tuple-element = u8[300,451,3]{1,0,2:T(8,128)(4,1)} get-tuple-element((u8[300,451,3]{1,0,2:T(8,128)(4,1)}) %conditional.12.clone), index=0
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  HloInstruction* reverse = FindInstruction(module.get(), "reverse");
+  EXPECT_THAT(reverse->operand(0), op::Copy());
+}
+
 }  // namespace
 }  // namespace xla

@@ -70,7 +70,7 @@ def HasSameStaticShapes : Constraint<HasSameStaticShapesPred, "op must have stat
 def HasNotSameStaticShapes : Constraint<Neg<HasSameStaticShapesPred>, "op must have not static same input shapes">;
 
 def CreateNoneValue : NativeCodeCall<
-  "$_builder.create<mlir::ConstantOp>($0.getLoc(), $_builder.getNoneType(), $_builder.getUnitAttr())">;
+  "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
 
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.

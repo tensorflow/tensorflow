@@ -62,7 +62,7 @@ def TFFramework_JITCallableType : DialectType<TFFramework_Dialect, CPred<
 }
 
 // Base class for TF Framework dialect ops.
-class TFFramework_Op<string mnemonic, list<OpTrait> traits = []> :
+class TFFramework_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFFramework_Dialect, mnemonic, traits> {
   let verifier = "return Verify<$cppClass>(*this);";
 }

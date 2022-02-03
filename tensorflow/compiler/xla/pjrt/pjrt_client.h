@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_PJRT_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_CLIENT_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
@@ -164,9 +166,25 @@ using PjRtCrossHostRecvNotifier =
     std::function<void(StatusOr<std::pair<std::vector<PjRtCrossHostRecvBuffer>,
                                           PjRtCrossHostSendCancelNotifier>>&&)>;
 
-struct MultiSliceOptions {
-  // Number of connected slices to compile for.
-  int32_t num_slices;
+// Provides configuration for implementations that support compile and execute
+// spanning multiple slices. A slice is a set of devices connected by dedicated
+// high speed interconnect. Connectivity between slices is typically over data
+// center networks. Concrete implementations of MultiSliceConfig contain
+// environment specific information to enable communication between devices on
+// different slices. Passed as options during compile and execute.
+// Implementations that do not support this are allowed to pass nullptr.
+class MultiSliceConfig {
+ public:
+  virtual ~MultiSliceConfig();
+
+  // Returns the total number of slices.
+  virtual int32_t NumSlices() const = 0;
+
+  // Returns the SliceID at this host - an integer in [0, NumSlices)
+  virtual int32_t SliceId() const = 0;
+
+  // Returns the number of devices on each slice indexed by SliceId.
+  virtual absl::flat_hash_map<int32_t, int32_t> NumDevicesPerSlice() const = 0;
 };
 
 struct CompileOptions {
@@ -186,9 +204,9 @@ struct CompileOptions {
   // compiled for one device doesn't run on another.
   bool compile_portable_executable = false;
 
-  // Set multi_slice_options to trigger compilation for DCN connected multi
+  // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
-  absl::optional<MultiSliceOptions> multi_slice_options = absl::nullopt;
+  const MultiSliceConfig* multi_slice_config = nullptr;
 };
 
 class PjRtExecutable;
@@ -750,6 +768,11 @@ struct ExecuteOptions {
   // If true, check that the PjRtBuffer argument shapes match the compiled
   // shapes. Otherwise, any shape with the right size on device may be passed.
   bool strict_shape_checking = true;
+
+  // Set multi_slice_config when the computation spans multiple slices. The
+  // config should match what was used during compilation to generate this
+  // executable.
+  const MultiSliceConfig* multi_slice_config = nullptr;
 };
 
 // Represents a compiled computation that can be executed given handles to

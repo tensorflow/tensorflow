@@ -88,6 +88,7 @@ cc_library(
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorOps",
+        "@llvm-project//mlir:VectorTransforms",
     ],
     alwayslink = 1,
 )

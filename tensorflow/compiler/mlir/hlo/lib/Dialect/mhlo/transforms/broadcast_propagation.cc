@@ -239,10 +239,10 @@ void PropagateBroadcast(DynamicBroadcastInDimOp root) {
             [&](const BroadcastIntent &a, const BroadcastIntent &b) {
               Operation *producer_op_a = a.target_value.getDefiningOp();
               Operation *producer_op_b = b.target_value.getDefiningOp();
-              bool a_in_block =
-                  producer_op_a && producer_op_a->getBlock() == the_block;
-              bool b_in_block =
-                  producer_op_b && producer_op_b->getBlock() == the_block;
+              bool a_in_block = producer_op_a != nullptr &&
+                                producer_op_a->getBlock() == the_block;
+              bool b_in_block = producer_op_b != nullptr &&
+                                producer_op_b->getBlock() == the_block;
               if (a_in_block && b_in_block) {
                 return producer_op_a->isBeforeInBlock(producer_op_b);
               }

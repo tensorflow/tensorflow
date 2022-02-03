@@ -30,6 +30,7 @@ package_group(
         "//smartass/brain/ops/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
+        "//third_party/auroraml/...",
     ]),
 )
 
@@ -110,6 +111,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticTransforms",
         "@llvm-project//mlir:Async",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
@@ -120,7 +122,6 @@ cc_library(
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToSCF",

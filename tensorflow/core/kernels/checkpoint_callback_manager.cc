@@ -139,9 +139,28 @@ CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
 
 Status CheckpointCallbackManager::RegisterSaveCallback(
     absl::string_view file_extension, SaveCallback callback) {
-  return save_callbacks_.try_emplace(file_extension, std::move(callback)).second
-             ? Status::OK()
-             : errors::AlreadyExists("A callback already exists.");
+  if (!save_callbacks_.try_emplace(file_extension, std::move(callback))
+           .second) {
+    return errors::AlreadyExists("A callback already exists.");
+  }
+
+  std::string checkpoint_id;
+  std::string checkpoint_dir;
+
+  {
+    tf_shared_lock l(mu_);
+    checkpoint_id = last_saved_checkpoint_id_and_dir_.first;
+    checkpoint_dir = last_saved_checkpoint_id_and_dir_.second;
+  }
+
+  // If last_saved_checkpoint_id_and_dir_ is not empty,
+  // tries to trigger save callback lazily.
+  if (!checkpoint_id.empty()) {
+    TriggerSaveCallbackIfFileNotExist(checkpoint_id, checkpoint_dir,
+                                      file_extension,
+                                      save_callbacks_[file_extension]);
+  }
+  return Status::OK();
 }
 
 bool CheckpointCallbackManager::DoesSaveCallbackExist(
@@ -181,12 +200,15 @@ bool CheckpointCallbackManager::DoesRestoreCallbackExist(
 }
 
 void CheckpointCallbackManager::Save(absl::string_view prefix) {
-  if (save_callbacks_.empty()) return;
-
   StatusOr<std::pair<std::string, std::string>> id_and_dir =
       GetCheckpointIdAndPathFromPrefix(prefix);
   if (!id_and_dir.ok()) {
     return;
+  }
+
+  {
+    mutex_lock l(mu_);
+    last_saved_checkpoint_id_and_dir_ = *id_and_dir;
   }
 
   for (const auto& name_and_callback : save_callbacks_) {

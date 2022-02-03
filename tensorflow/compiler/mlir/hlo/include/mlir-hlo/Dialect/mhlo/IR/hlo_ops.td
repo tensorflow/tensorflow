@@ -27,7 +27,7 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
 include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td"
 
-class HLO_Op<string mnemonic, list<OpTrait> traits> :
+class HLO_Op<string mnemonic, list<Trait> traits> :
     Op<HLO_Dialect, mnemonic, traits> {
   // Whether this operation has a custom conversion to HLO or not.
   bit hasCustomHLOConverter = 0b0;
@@ -37,7 +37,7 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
   let verifier = [{ return Verify(*this); }];
 }
 
-class HLO_ShapedInterfaceOp<string mnemonic, list<OpTrait> traits> :
+class HLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits> :
     HLO_Op<mnemonic, traits # [DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
     ["reifyReturnTypeShapes"]>]> {
 }
@@ -122,7 +122,7 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
-class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
+class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     Type TensorType> : HLO_Op<mnemonic, traits # [Elementwise,
     InferShapedTypeOpInterface, InferShapeEqualityOpInterface,
     SameOperandsAndResultShape]> {
@@ -434,7 +434,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
-class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
+class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
     HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
     InferShapeEqualityOpInterface, SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
@@ -681,9 +681,9 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
     there must be a total order among the Infeed operations.
 
     Attributes:
-      layout:  Array attribute. Same shape as the output of the infeed, except
-               that every tensor is replaced by a minor_to_major array for the
-               tensor's layout.
+      layout:  Array attribute. Each element of the array is a minor_to_major
+               array corresponding to the shape of the data read from the infeed
+               interface.
 
     See https://www.tensorflow.org/xla/operation_semantics#infeed.
   }];
@@ -693,7 +693,7 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
     DefaultValuedStrAttr<StrAttr, "">:$infeed_config,
     OptionalAttr<ArrayAttr>:$layout
   );
-  let results = (outs HLO_Tuple);
+  let results = (outs Variadic<HLO_TensorOrToken>);
   let hasCustomHLOConverter = 1;
 }
 
@@ -712,7 +712,7 @@ def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
   }];
 
   let arguments = (ins
-    HLO_TensorOrTuple:$operand,
+    Variadic<HLO_TensorOrTuple>:$operands,
     HLO_Token:$token,
     DefaultValuedStrAttr<StrAttr, "">:$outfeed_config
   );
@@ -735,7 +735,7 @@ def HLO_SendOp : HLO_Op<"send", []> {
   }];
 
   let arguments = (ins
-    HLO_TensorOrTuple:$operand,
+    Variadic<HLO_Tensor>:$operands,
     HLO_Token:$token,
     ChannelHandle:$channel_handle,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
@@ -766,7 +766,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
-  let results = (outs HLO_Tuple);
+  let results = (outs Variadic<HLO_TensorOrToken>);
   let hasCustomHLOConverter = 1;
 }
 

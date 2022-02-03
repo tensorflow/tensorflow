@@ -188,8 +188,8 @@ struct LinalgTrivialBufferForwardingPattern
 struct LinalgTrivialBufferForwardingPass
     : public LinalgTrivialBufferForwardingBase<
           LinalgTrivialBufferForwardingPass> {
-  void runOnFunction() override {
-    mlir::FuncOp function = getFunction();
+  void runOnOperation() override {
+    mlir::FuncOp function = getOperation();
     mlir::MLIRContext* ctx = function.getContext();
 
     mlir::RewritePatternSet patterns(ctx);
@@ -201,7 +201,8 @@ struct LinalgTrivialBufferForwardingPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateLinalgTrivialBufferForwardingPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateLinalgTrivialBufferForwardingPass() {
   return std::make_unique<LinalgTrivialBufferForwardingPass>();
 }
 

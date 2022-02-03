@@ -654,18 +654,6 @@ func @broadcast_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> {
 
 // -----
 
-// CHECK-LABEL: @get_dim_size
-func @get_dim_size(%arg0: tensor<?xi32>) -> tensor<i32> {
-  // CHECK: %[[IDX:.+]] = arith.constant 0
-  // CHECK: %[[DIM:.+]] = tensor.dim %arg0, %[[IDX]]
-  // CHECK: %[[CAST:.+]] = arith.index_cast %[[DIM]]
-  // CHECK: %[[TENSOR:.+]] = tensor.from_elements %[[CAST]]
-  %0 = "mhlo.get_dimension_size"(%arg0) { dimension = 0 : i64 } : (tensor<?xi32>) -> tensor<i32>
-  return %0 : tensor<i32>
-}
-
-// -----
-
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d0, d3, d2)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 // CHECK-LABEL: func @transpose

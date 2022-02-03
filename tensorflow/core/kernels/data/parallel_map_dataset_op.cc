@@ -772,13 +772,7 @@ void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                           &captured_func));
 
   if (num_parallel_calls == model::kAutotune) {
-    auto experiments = GetExperiments();
-    if (experiments.contains("max_parallelism") &&
-        !experiments.contains("max_parallelism_v2")) {
-      num_parallel_calls = GetCpuBudget();
-    } else {
-      metrics::RecordTFDataAutotune(kDatasetType);
-    }
+    metrics::RecordTFDataAutotune(kDatasetType);
   }
 
   *output =

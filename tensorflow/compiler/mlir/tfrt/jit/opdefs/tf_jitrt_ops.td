@@ -48,7 +48,7 @@ def TF_JITRT_Dialect : Dialect {
 // TF CPU Runtime op definitions
 //===----------------------------------------------------------------------===//
 
-class TF_JITRT_Op<string mnemonic, list<OpTrait> traits = []> :
+class TF_JITRT_Op<string mnemonic, list<Trait> traits = []> :
       Op<TF_JITRT_Dialect, mnemonic, traits> {
 }
 
@@ -80,6 +80,30 @@ def FallbackCompileOp : TF_JITRT_Op<"fallback.compile",
 
   let assemblyFormat = [{
     $kernel `device` `(` $device `)` attr-dict
+  }];
+}
+
+def FallbackWaitForCompilationOp : TF_JITRT_Op<"fallback.wait_for_compilation",
+    [TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
+  let summary = "waits for the completion of all compilation tasks";
+  let description = [{
+    `tf_jitrt.fallback.wait_for_compilation` waits for the completion of all
+    specialization compilation tasks related to the given kernel.
+
+    This kernel is intended for use in tests to deterministically call
+    specialized kernels when specialization is done lazily.
+    ```
+  }];
+
+  let arguments = (ins
+    SymbolRefAttr:$kernel,
+    TFRT_ChainType:$chain
+  );
+
+  let results = (outs TFRT_ChainType:$scheduled);
+
+  let assemblyFormat = [{
+    $kernel `(` $chain `)` attr-dict
   }];
 }
 

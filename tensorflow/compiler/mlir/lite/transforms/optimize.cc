@@ -92,7 +92,7 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-class OptimizePass : public PassWrapper<OptimizePass, FunctionPass> {
+class OptimizePass : public PassWrapper<OptimizePass, OperationPass<FuncOp>> {
  public:
   OptimizePass() = default;
   OptimizePass(const OptimizePass &) {}
@@ -110,7 +110,7 @@ class OptimizePass : public PassWrapper<OptimizePass, FunctionPass> {
     return "Optimize within the TensorFlow Lite dialect";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   Option<bool> enable_canonicalization_{
@@ -1587,10 +1587,10 @@ void AddCanonicalizationPatterns(MLIRContext *context,
     op.getCanonicalizationPatterns(*patterns, context);
 }
 
-void OptimizePass::runOnFunction() {
+void OptimizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto *ctx = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
 
   // Merge reshapes into fully connected ops before we start moving them past
   // binary ops.

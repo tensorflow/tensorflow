@@ -56,7 +56,7 @@ using QuantParamsEntry = QuantizationInfo::QuantParams;
 
 namespace {
 class ImportQuantStatsPass
-    : public PassWrapper<ImportQuantStatsPass, FunctionPass> {
+    : public PassWrapper<ImportQuantStatsPass, OperationPass<FuncOp>> {
  public:
   explicit ImportQuantStatsPass(OperationToName op_to_name)
       : op_to_name_(op_to_name) {}
@@ -71,7 +71,7 @@ class ImportQuantStatsPass
     return "Import quantization stats to the model";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<quant::QuantizationDialect>();
@@ -183,8 +183,8 @@ void ImportQuantStatsPass::ImportAsStatsOps(OpBuilder b, Operation *op,
   }
 }
 
-void ImportQuantStatsPass::runOnFunction() {
-  FuncOp func = getFunction();
+void ImportQuantStatsPass::runOnOperation() {
+  FuncOp func = getOperation();
   OpBuilder builder(func);
 
   func.walk([&](Operation *op) {

@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -132,6 +133,16 @@ class AotCompilationOptions {
   se::StreamExecutor* executor() const { return executor_; }
   void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
 
+  // Optional session_id and cache key may be used to trigger recompilation
+  // when a compilation cache is used.
+  uint64_t session_id() const { return session_id_; }
+  void set_session_id(uint64_t session_id) { session_id_ = session_id; }
+
+  absl::string_view cache_key() const { return cache_key_; }
+  void set_cache_key(absl::string_view cache_key) {
+    cache_key_ = std::string(cache_key);
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -144,6 +155,8 @@ class AotCompilationOptions {
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
   se::StreamExecutor* executor_ = nullptr;
+  uint64_t session_id_ = 0;
+  std::string cache_key_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time

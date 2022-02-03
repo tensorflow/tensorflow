@@ -58,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -1343,7 +1342,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
 
       auto* quotient = computation->AddInstruction(HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, abs_dividend,
-          MakeScalarLike(abs_dividend, tensorflow::Log2Floor64(b_value))));
+          MakeScalarLike(abs_dividend, Log2Floor<uint64_t>(b_value))));
 
       auto* neqated_quotient =
           computation->AddInstruction(HloInstruction::CreateUnary(
@@ -1358,7 +1357,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
     if (absl::has_single_bit(b_value)) {
       return HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, a,
-          MakeScalarLike(a, tensorflow::Log2Floor64(b_value)));
+          MakeScalarLike(a, Log2Floor(b_value)));
     }
   }
 

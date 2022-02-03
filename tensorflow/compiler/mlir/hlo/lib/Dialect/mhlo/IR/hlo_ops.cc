@@ -1087,8 +1087,7 @@ OpFoldResult DynamicUpdateSliceOp::fold(ArrayRef<Attribute> operands) {
   for (Value index : this->start_indices()) {
     DenseIntElementsAttr de_attr;
     if (!matchPattern(index, m_Constant(&de_attr))) return {};
-    int start_val = de_attr.getSplatValue<IntegerAttr>().getInt();
-    if (start_val != 0) return {};
+    if (!de_attr.getSplatValue<IntegerAttr>().getValue().isZero()) return {};
   }
   return this->update();
 }
@@ -2596,18 +2595,56 @@ LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
 // InfeedOp
 //===----------------------------------------------------------------------===//
 
-// Checks that the result type is of the form `tuple< any_type, token >`.
+// Checks that the result type is of the form `zero_or_more_type(s),
+// mhlo::token`
 static LogicalResult Verify(InfeedOp op) {
-  auto result_ty = op.getResult().getType().cast<TupleType>();
-  auto subtypes = result_ty.getTypes();
-  if (subtypes.size() != 2)
+  auto result_types = op.getResultTypes();
+  if (result_types.empty())
     return op.emitOpError()
-           << "result is expected to be a tuple of size 2, but got "
-           << subtypes.size();
-  if (!subtypes[1].isa<TokenType>())
-    return op.emitOpError() << "second element of result tuple is expected to "
+           << "result is expected to be at least of size 1, but got "
+           << result_types.size();
+
+  if (!result_types[result_types.size() - 1].isa<TokenType>())
+    return op.emitOpError() << "last element of result types is expected to "
                                "be of token type, but got "
-                            << subtypes[1];
+                            << result_types[result_types.size() - 1];
+
+  // Verify layout attribute
+  constexpr char kLayoutAttr[] = "layout";
+  if (!op.getOperation()->hasAttr(kLayoutAttr)) return success();
+
+  mlir::ArrayAttr layout =
+      op.getOperation()->getAttrOfType<mlir::ArrayAttr>(kLayoutAttr);
+  if (!layout)
+    return op.emitOpError() << "layout-attribute expected to be of array-type.";
+
+  if (layout.size() != result_types.size() - 1) {
+    return op.emitOpError()
+           << "layout-attribute size must be " << result_types.size() - 1
+           << " (which is the number of "
+              "op-results - 1 (for token result)), but got "
+           << layout.size();
+  }
+
+  for (auto child_layout : layout) {
+    mlir::ArrayAttr child_layout_arr = child_layout.dyn_cast<mlir::ArrayAttr>();
+    if (!child_layout_arr) {
+      return op->emitOpError() << "layout-attribute expected to have "
+                                  "elements of type array, but got "
+                               << child_layout;
+    }
+
+    for (int64_t i = 0; i < child_layout_arr.size(); i++) {
+      mlir::IntegerAttr attr =
+          child_layout_arr[i].dyn_cast<mlir::IntegerAttr>();
+      if (!attr) {
+        return op->emitOpError() << "layout-attribute's leaf elements are "
+                                    "expected to be of type integer, but got "
+                                 << child_layout_arr[i];
+      }
+    }
+  }
+
   return success();
 }
 
@@ -2830,18 +2867,18 @@ OpFoldResult MapOp::fold(ArrayRef<Attribute> operands) {
 // RecvOp
 //===----------------------------------------------------------------------===//
 
-// Checks that the result type is of the form `tuple<any_type, mhlo::token>`
+// Checks that the result type is of the form `zero_or_more_type(s),
+// mhlo::token`
 static LogicalResult Verify(RecvOp op) {
-  auto result_ty = op.getResult().getType().cast<TupleType>();
-  auto subtypes = result_ty.getTypes();
-  if (subtypes.size() != 2)
+  auto result_types = op.getResultTypes();
+  if (result_types.empty())
     return op.emitOpError()
-           << "result is expected to be a tuple of size 2, but got "
-           << subtypes.size();
-  if (!subtypes[1].isa<TokenType>())
-    return op.emitOpError() << "second element of result tuple is expected to "
+           << "result is expected to be at least of size 1, but got "
+           << result_types.size();
+  if (!result_types[result_types.size() - 1].isa<TokenType>())
+    return op.emitOpError() << "last element of result types is expected to "
                                "be of token type, but got "
-                            << subtypes[1];
+                            << result_types[result_types.size() - 1];
   return success();
 }
 

@@ -71,7 +71,7 @@ bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {
          parser.ParseFromString(contents, hlo_proto->mutable_hlo_module());
 }
 
-mlir::OwningModuleRef HloToMlirHloTranslateFunction(
+mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
   xla::HloProto hlo_proto;
@@ -81,7 +81,7 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
     return nullptr;
   }
 
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   auto status = ConvertHloToMlirHlo(
       module.get(), hlo_proto.mutable_hlo_module(), import_all_computations);
@@ -93,7 +93,7 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
   return module;
 }
 
-mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
+mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
   xla::HloProto hlo_proto;
@@ -106,7 +106,7 @@ mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
   }
 
   auto hlo_module = std::move(hlo_module_error.ValueOrDie());
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   auto status =
       ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations);
@@ -159,7 +159,7 @@ Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
       toco_flags.unfold_large_splat_constant();
   pass_config.enable_hlo_to_tf_conversion = true;
 
-  mlir::OwningModuleRef module;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
   if (model_flags.hlo_file_type() == toco::ModelFlags::HLO_TEXT) {
     module = HloTextToMlirHloTranslateFunction(input, &context, false);
   } else if (model_flags.hlo_file_type() == toco::ModelFlags::HLO_PROTO) {

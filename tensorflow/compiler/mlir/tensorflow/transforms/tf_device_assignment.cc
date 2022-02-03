@@ -33,10 +33,10 @@ class SimpleTFDeviceAssignmentPass
     default_device_ = std::string(default_device);
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     Builder builder(&getContext());
     Dialect* tf = getContext().getLoadedDialect<TensorFlowDialect>();
-    getFunction().walk([&](Operation* op) {
+    getOperation().walk([&](Operation* op) {
       if (auto device_attr = op->getAttrOfType<StringAttr>("device")) {
         // We assign default device to ops with device attribute that is empty.
         if (device_attr.getValue().empty()) {

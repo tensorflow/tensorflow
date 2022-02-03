@@ -219,7 +219,8 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
       llvm::MemoryBuffer::getMemBuffer(mlir_input, "benchmark"), llvm::SMLoc());
 
   // Parse a kernel source code into the MLIR Module.
-  mlir::OwningModuleRef module(mlir::parseSourceFile(source_mgr, &context));
+  mlir::OwningOpRef<mlir::ModuleOp> module(
+      mlir::parseSourceFile(source_mgr, &context));
   CHECK(module) << "failed to parse mlir module";
 
   // Collect all diagnostics emitted while lowering parsed kernel module.

@@ -130,6 +130,7 @@ cc_library(
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),

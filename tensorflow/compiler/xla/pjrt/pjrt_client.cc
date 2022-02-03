@@ -34,4 +34,6 @@ StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
   return absl::bit_cast<std::uintptr_t>(ptr);
 }
 
+MultiSliceConfig::~MultiSliceConfig() {}
+
 }  // namespace xla

@@ -106,8 +106,8 @@ void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
 // is currently not supported because the data is not located on host.
 struct EmbedMemRefPrintsPass
     : public EmbedMemRefPrintsPassBase<EmbedMemRefPrintsPass> {
-  void runOnFunction() override {
-    FuncOp func = getFunction();
+  void runOnOperation() override {
+    FuncOp func = getOperation();
     if (!func->getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName))
       return;
 
@@ -122,7 +122,7 @@ struct EmbedMemRefPrintsPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateEmbedMemRefPrintsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateEmbedMemRefPrintsPass() {
   return std::make_unique<EmbedMemRefPrintsPass>();
 }
 

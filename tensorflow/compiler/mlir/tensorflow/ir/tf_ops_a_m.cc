@@ -2305,28 +2305,29 @@ static LogicalResult Verify(EmptyTensorListOp op) {
 // For EnqueueTPUEmbedding ops the device ordinal corresponds to the resource
 // instance.
 
-int64_t EnqueueTPUEmbeddingArbitraryTensorBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string
+EnqueueTPUEmbeddingArbitraryTensorBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
-int64_t EnqueueTPUEmbeddingBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string EnqueueTPUEmbeddingBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
-int64_t EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
-int64_t EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
-int64_t EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
-int64_t EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
 //===----------------------------------------------------------------------===//
