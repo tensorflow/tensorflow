@@ -253,7 +253,7 @@ struct HloToLhloDotGeneralOpConverter
 };
 
 template <typename HloOpTy>
-class HloToLhloOpRemainingHloRegionsConverter : public BaseOpConversion<HloOpTy> {
+class HloToLhloOpWithRegionsConverter : public BaseOpConversion<HloOpTy> {
 public:
   using BaseOpConversion<HloOpTy>::BaseOpConversion;
   LogicalResult
@@ -587,12 +587,12 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::XorOp>,
       HloToLhloReduceLikeOpConverter<mhlo::ReduceOp>,
       HloToLhloReduceLikeOpConverter<mhlo::ReduceWindowOp>,
-      HloToLhloOpRemainingHloRegionsConverter<mhlo::AllReduceOp>,
-      HloToLhloOpRemainingHloRegionsConverter<mhlo::MapOp>,
-      HloToLhloOpRemainingHloRegionsConverter<mhlo::ReduceScatterOp>,
-      HloToLhloOpRemainingHloRegionsConverter<mhlo::ScatterOp>,
-      HloToLhloOpRemainingHloRegionsConverter<mhlo::SelectAndScatterOp>,
-      HloToLhloOpRemainingHloRegionsConverter<mhlo::SortOp>,
+      HloToLhloOpWithRegionsConverter<mhlo::AllReduceOp>,
+      HloToLhloOpWithRegionsConverter<mhlo::MapOp>,
+      HloToLhloOpWithRegionsConverter<mhlo::ReduceScatterOp>,
+      HloToLhloOpWithRegionsConverter<mhlo::ScatterOp>,
+      HloToLhloOpWithRegionsConverter<mhlo::SelectAndScatterOp>,
+      HloToLhloOpWithRegionsConverter<mhlo::SortOp>,
       HloToLhloReturnOpConverter
   >(*converter, context);
   // clang-format on
