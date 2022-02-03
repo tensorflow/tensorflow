@@ -161,7 +161,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 }
 
 // Create a 8-bit TOSA TABLE constant tensor with int8[256] array.
-// Follow PopulateLookupTable() tensorflow/lite/kernels/activations.cc
+// Follow PopulateLookupTable<int8_t>()
+// tensorflow/lite/kernels/internal/common.h
 Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
                             double input_scale, int32_t input_zp,
                             double output_scale, int32_t output_zp,
@@ -193,7 +194,8 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
 
 // Create a 16-bit TOSA TABLE constant tensor with int16[513] array.
 // Output is restricted to [-1.0, 1.0].
-// Follow gen_lut() tensorflow/lite/kernels/internal/common.h
+// Follow PopulateLookupTable<int16_t>()
+// tensorflow/lite/kernels/internal/common.h
 Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
                              std::function<double(double)> func, double min,
                              double max) {
