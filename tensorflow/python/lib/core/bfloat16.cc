@@ -133,6 +133,12 @@ bool CastToBfloat16(PyObject* arg, bfloat16* output) {
     *output = bfloat16(f);
     return true;
   }
+  if (PyArray_IsScalar(arg, LongDouble)) {
+    long double f;
+    PyArray_ScalarAsCtype(arg, &f);
+    *output = bfloat16(f);
+    return true;
+  }
   if (PyArray_IsZeroDim(arg)) {
     Safe_PyObjectPtr ref;
     PyArrayObject* arr = reinterpret_cast<PyArrayObject*>(arg);
@@ -684,6 +690,12 @@ template <>
 struct TypeDescriptor<double> {
   typedef double T;
   static int Dtype() { return NPY_DOUBLE; }
+};
+
+template <>
+struct TypeDescriptor<long double> {
+  typedef long double T;
+  static int Dtype() { return NPY_LONGDOUBLE; }
 };
 
 template <>
@@ -1404,6 +1416,9 @@ bool Initialize() {
   if (!RegisterBfloat16Cast<double>(NPY_DOUBLE)) {
     return false;
   }
+  if (!RegisterBfloat16Cast<long double>(NPY_LONGDOUBLE)) {
+    return false;
+  }
   if (!RegisterBfloat16Cast<bool>(NPY_BOOL)) {
     return false;
   }
@@ -1456,6 +1471,10 @@ bool Initialize() {
   }
   if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_DOUBLE, NPY_NOSCALAR) <
       0) {
+    return false;
+  }
+  if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_LONGDOUBLE,
+                              NPY_NOSCALAR) < 0) {
     return false;
   }
   if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_COMPLEX64, NPY_NOSCALAR) <

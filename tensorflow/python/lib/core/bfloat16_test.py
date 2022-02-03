@@ -38,6 +38,31 @@ def numpy_assert_allclose(a, b, **kwargs):
   return np.testing.assert_allclose(a, b, **kwargs)
 
 
+def type_bits(x):
+  if x == bfloat16:
+    return 16
+
+  return np.finfo(x).bits
+
+
+def promote_types(a, b):
+  num_bits_a = type_bits(a)
+  num_bits_b = type_bits(b)
+  # Pick the greater of the two types.
+  if num_bits_a < num_bits_b:
+    return b
+  if num_bits_b < num_bits_a:
+    return a
+  # Pick either type if both are equivalent.
+  if a == b:
+    return a
+  # The only possibility at this point is that the two types are bfloat16 and
+  # np.float16. We expect to have promoted to np.float32.
+  assert num_bits_a == 16
+  assert num_bits_b == 16
+  return np.float32
+
+
 epsilon = float.fromhex("1.0p-7")
 
 # Values that should round trip exactly to float and back.
@@ -58,7 +83,7 @@ class Bfloat16Test(parameterized.TestCase):
       np.testing.assert_equal(v, float(bfloat16(v)))
 
   def testRoundTripNumpyTypes(self):
-    for dtype in [np.float16, np.float32, np.float64]:
+    for dtype in [np.float16, np.float32, np.float64, np.longdouble]:
       np.testing.assert_equal(-3.75, dtype(bfloat16(dtype(-3.75))))
       np.testing.assert_equal(1.5, float(bfloat16(dtype(1.5))))
       np.testing.assert_equal(4.5, dtype(bfloat16(np.array(4.5, dtype))))
@@ -73,7 +98,7 @@ class Bfloat16Test(parameterized.TestCase):
   @parameterized.named_parameters(({
       "testcase_name": "_" + dtype.__name__,
       "dtype": dtype
-  } for dtype in [bfloat16, np.float16, np.float32, np.float64]))
+  } for dtype in [bfloat16, np.float16, np.float32, np.float64, np.longdouble]))
   def testRoundTripToNumpy(self, dtype):
     for v in FLOAT_VALUES:
       np.testing.assert_equal(v, bfloat16(dtype(v)))
@@ -124,15 +149,16 @@ class Bfloat16Test(parameterized.TestCase):
         float("-inf"), float(bfloat16(float("-inf")) + bfloat16(-2.25)))
     self.assertTrue(math.isnan(float(bfloat16(3.5) + bfloat16(float("nan")))))
 
-    # Test type promotion against Numpy scalar values.
-    self.assertEqual(np.float32, type(bfloat16(3.5) + np.float16(2.25)))
-    self.assertEqual(np.float32, type(np.float16(3.5) + bfloat16(2.25)))
-    self.assertEqual(np.float32, type(bfloat16(3.5) + np.float32(2.25)))
-    self.assertEqual(np.float32, type(np.float32(3.5) + bfloat16(2.25)))
-    self.assertEqual(np.float64, type(bfloat16(3.5) + np.float64(2.25)))
-    self.assertEqual(np.float64, type(np.float64(3.5) + bfloat16(2.25)))
-    self.assertEqual(np.float64, type(bfloat16(3.5) + float(2.25)))
-    self.assertEqual(np.float64, type(float(3.5) + bfloat16(2.25)))
+  def testAddScalarTypePromotion(self):
+    """Tests type promotion against Numpy scalar values."""
+    types = [bfloat16, np.float16, np.float32, np.float64, np.longdouble]
+    for lhs_type in types:
+      for rhs_type in types:
+        expected_type = promote_types(lhs_type, rhs_type)
+        actual_type = type(lhs_type(3.5) + rhs_type(2.25))
+        self.assertEqual(expected_type, actual_type)
+
+  def testAddArrayTypePromotion(self):
     self.assertEqual(np.float32,
                      type(bfloat16(3.5) + np.array(2.25, np.float32)))
     self.assertEqual(np.float32,
@@ -264,6 +290,7 @@ class Bfloat16Test(parameterized.TestCase):
   def testDtypeFromString(self):
     assert np.dtype("bfloat16") == np.dtype(bfloat16)
 
+
 BinaryOp = collections.namedtuple("BinaryOp", ["op"])
 
 UNARY_UFUNCS = [
@@ -333,13 +360,15 @@ class Bfloat16NumPyTest(parameterized.TestCase):
         (np.uint8, bfloat16),
         (bfloat16, np.float32),
         (bfloat16, np.float64),
+        (bfloat16, np.longdouble),
         (bfloat16, np.complex64),
         (bfloat16, np.complex128),
     ]
     all_dtypes = [
-        np.float16, np.float32, np.float64, np.int8, np.int16, np.int32,
-        np.int64, np.complex64, np.complex128, np.uint8, np.uint16, np.uint32,
-        np.uint64, np.intc, np.int_, np.longlong, np.uintc, np.ulonglong
+        np.float16, np.float32, np.float64, np.longdouble, np.int8, np.int16,
+        np.int32, np.int64, np.complex64, np.complex128, np.uint8, np.uint16,
+        np.uint32, np.uint64, np.intc, np.int_, np.longlong, np.uintc,
+        np.ulonglong
     ]
     for d in all_dtypes:
       self.assertEqual((bfloat16, d) in allowed_casts, np.can_cast(bfloat16, d))
@@ -347,9 +376,10 @@ class Bfloat16NumPyTest(parameterized.TestCase):
 
   def testCasts(self):
     for dtype in [
-        np.float16, np.float32, np.float64, np.int8, np.int16, np.int32,
-        np.int64, np.complex64, np.complex128, np.uint8, np.uint16, np.uint32,
-        np.uint64, np.intc, np.int_, np.longlong, np.uintc, np.ulonglong
+        np.float16, np.float32, np.float64, np.longdouble, np.int8, np.int16,
+        np.int32, np.int64, np.complex64, np.complex128, np.uint8, np.uint16,
+        np.uint32, np.uint64, np.intc, np.int_, np.longlong, np.uintc,
+        np.ulonglong
     ]:
       x = np.array([[1, 2, 3]], dtype=dtype)
       y = x.astype(bfloat16)
