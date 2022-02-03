@@ -3558,6 +3558,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/stream_executor:matmul_util",
     ]) + if_cuda_or_rocm([":gpu_utils"]),
 )
 
