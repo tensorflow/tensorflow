@@ -140,7 +140,6 @@ def JitRtLegalizeI1Types
   let dependentDialects = [
     "mlir::TF::TensorFlowDialect",
     "mlir::mhlo::MhloDialect",
-    "mlir::StandardOpsDialect",
   ];
 }
 

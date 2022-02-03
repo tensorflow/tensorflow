@@ -462,7 +462,7 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
     %c0 = arith.constant 0 : i64
     %a_pos = arith.cmpi sge, %a, %c0 : i64
     %a_neg = arith.subi %c0, %a : i64
-    %a_abs = select %a_pos, %a, %a_neg : i64
+    %a_abs = arith.select %a_pos, %a, %a_neg : i64
     linalg.yield %a_abs : i64
   }
   %result = memref.reshape %flat_result(%arg_shape)

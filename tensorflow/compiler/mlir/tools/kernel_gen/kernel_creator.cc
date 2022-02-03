@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
@@ -47,8 +48,6 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -97,7 +96,7 @@ bool IsSmallAlloc(Value alloc) {
     // values by multiplying several small values.
     if (type.getRank() <= kMaxRankOfAllocatedMemRef) {
       for (Value alloc_arg : alloc.getDefiningOp()->getOperands()) {
-        if (auto select = alloc_arg.getDefiningOp<mlir::SelectOp>()) {
+        if (auto select = alloc_arg.getDefiningOp<mlir::arith::SelectOp>()) {
           if (!select.getTrueValue().getDefiningOp<RankOp>() ||
               !select.getFalseValue().getDefiningOp<RankOp>())
             return false;

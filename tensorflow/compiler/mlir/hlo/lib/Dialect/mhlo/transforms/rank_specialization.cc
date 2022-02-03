@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -653,7 +654,7 @@ Value MaterializeGenericRankSpecializationCases(
     if (!max_rank) {
       max_rank = rank;
     } else {
-      max_rank = b.create<mlir::SelectOp>(
+      max_rank = b.create<mlir::arith::SelectOp>(
           loc,
           b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt, max_rank,
                                   rank),
@@ -917,7 +918,7 @@ struct RankSpecializationToSCFPass
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, chlo::HloClientDialect,
-                    shape::ShapeDialect, scf::SCFDialect>();
+                    StandardOpsDialect, shape::ShapeDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {

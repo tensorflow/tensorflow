@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -258,8 +257,8 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
       int dim = it->second;
       Value is_expansion = b->create<arith::CmpIOp>(
           loc, arith::CmpIPredicate::slt, operand_sizes[dim], result_dim_size);
-      Value select = b->create<mlir::SelectOp>(loc, is_expansion, zero,
-                                               operand_strides[dim]);
+      Value select = b->create<mlir::arith::SelectOp>(loc, is_expansion, zero,
+                                                      operand_strides[dim]);
       strides.push_back(select);
     }
 
@@ -326,8 +325,7 @@ struct HloLegalizeToMemrefPass
     target.addIllegalOp<DynamicReshapeOp, DynamicBroadcastInDimOp>();
     target.addLegalDialect<arith::ArithmeticDialect,
                            bufferization::BufferizationDialect, BuiltinDialect,
-                           memref::MemRefDialect, StandardOpsDialect,
-                           tensor::TensorDialect>();
+                           memref::MemRefDialect, tensor::TensorDialect>();
 
     auto func = getOperation();
     if (failed(applyPartialConversion(func, target, std::move(patterns))))

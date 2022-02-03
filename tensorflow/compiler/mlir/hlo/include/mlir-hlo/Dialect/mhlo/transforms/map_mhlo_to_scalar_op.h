@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -308,12 +308,13 @@ inline Value MapMhloOpToStdScalarOp<mhlo::AbsOp>(Location loc,
     Value zero_intval = b->create<::mlir::arith::ConstantIntOp>(
         loc, 0, integer_type.getWidth());
     if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
-      zero_intval = b->create<::mlir::SplatOp>(loc, vec_type, zero_intval);
+      zero_intval =
+          b->create<::mlir::vector::SplatOp>(loc, vec_type, zero_intval);
     }
     auto lhs_gt_zero = b->create<ScalarIOp<CompareOp>>(
         loc, arith::CmpIPredicate::sge, lhs, zero_intval);
     auto neg_val = b->create<ScalarIOp<mhlo::SubOp>>(loc, zero_intval, lhs);
-    return b->create<::mlir::SelectOp>(loc, lhs_gt_zero, lhs, neg_val);
+    return b->create<::mlir::arith::SelectOp>(loc, lhs_gt_zero, lhs, neg_val);
   }
   return nullptr;
 }
@@ -492,7 +493,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
       Value zero_intval = b->create<::mlir::arith::ConstantIntOp>(
           loc, 0, sourceType.cast<IntegerType>().getWidth());
       if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
-        zero_intval = b->create<::mlir::SplatOp>(loc, vec_type, zero_intval);
+        zero_intval =
+            b->create<::mlir::vector::SplatOp>(loc, vec_type, zero_intval);
       }
       return b->create<mlir::arith::CmpIOp>(loc, arith::CmpIPredicate::ne,
                                             args.front(), zero_intval);
@@ -500,7 +502,7 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
       Value zero =
           b->create<arith::ConstantOp>(loc, b->getFloatAttr(sourceType, 0.0));
       if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
-        zero = b->create<::mlir::SplatOp>(loc, vec_type, zero);
+        zero = b->create<::mlir::vector::SplatOp>(loc, vec_type, zero);
       }
       return b->create<mlir::arith::CmpFOp>(loc, arith::CmpFPredicate::UNE,
                                             args.front(), zero);
@@ -610,7 +612,7 @@ struct CompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
       assert(predicate.hasValue() && "expected valid comparison direction");
       auto cmp = b->template create<StdCompareOp>(loc, predicate.getValue(),
                                                   args[0], args[1]);
-      return b->create<::mlir::SelectOp>(loc, cmp, args[0], args[1]);
+      return b->create<::mlir::arith::SelectOp>(loc, cmp, args[0], args[1]);
     }
     return CompareSelectOpToStdScalarOp<Args...>::map(
         loc, comparison_direction, result_types, arg_types, args, b);
@@ -628,9 +630,9 @@ inline Value MhloAlwaysPropagateNaN(Value v, ValueRange args, Location loc,
     Value nan =
         b->create<mlir::arith::ConstantFloatOp>(loc, nan_apfloat, float_type);
     if (VectorType vec_type = args[0].getType().dyn_cast<VectorType>()) {
-      nan = b->create<::mlir::SplatOp>(loc, vec_type, nan);
+      nan = b->create<::mlir::vector::SplatOp>(loc, vec_type, nan);
     }
-    v = b->create<mlir::SelectOp>(loc, isnan, nan, v);
+    v = b->create<mlir::arith::SelectOp>(loc, isnan, nan, v);
   }
   return v;
 }
@@ -686,7 +688,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::NegOp>(Location loc,
     Value zero_intval = b->create<::mlir::arith::ConstantIntOp>(
         loc, 0, integer_type.getWidth());
     if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
-      zero_intval = b->create<::mlir::SplatOp>(loc, vec_type, zero_intval);
+      zero_intval =
+          b->create<::mlir::vector::SplatOp>(loc, vec_type, zero_intval);
     }
     return b->create<ScalarIOp<mhlo::SubOp>>(loc, zero_intval, lhs);
   }
@@ -705,7 +708,7 @@ inline Value MapMhloOpToStdScalarOp<mhlo::NotOp>(Location loc,
     Value all_ones = b->create<::mlir::arith::ConstantIntOp>(
         loc, -1, integer_type.getWidth());
     if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
-      all_ones = b->create<::mlir::SplatOp>(loc, vec_type, all_ones);
+      all_ones = b->create<::mlir::vector::SplatOp>(loc, vec_type, all_ones);
     }
     return b->create<::mlir::arith::XOrIOp>(loc, all_ones, args[0]);
   }
@@ -759,8 +762,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
                   b.create<::mlir::arith::AndIOp>(loc, exponent, one), one);
               Value multiplied =
                   b.create<::mlir::arith::MulIOp>(loc, accum, base);
-              accum =
-                  b.create<::mlir::SelectOp>(loc, condition, multiplied, accum);
+              accum = b.create<::mlir::arith::SelectOp>(loc, condition,
+                                                        multiplied, accum);
               base = b.create<::mlir::arith::MulIOp>(loc, base, base);
               exponent = b.create<::mlir::arith::ShRUIOp>(loc, exponent, one);
               b.create<scf::YieldOp>(
@@ -787,11 +790,14 @@ inline Value MapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
   // - Return 1 or -1 depending on the parity of rhs when the lhs is -1.
   // - Return 1 if lhs is 1.
   // - Else return 0.
-  Value if_lhs_is_one = lb.create<::mlir::SelectOp>(lhs_is_one, one, zero);
-  Value if_lhs_is_neg_one = lb.create<::mlir::SelectOp>(
-      lhs_is_neg_one, lb.create<::mlir::SelectOp>(rhs_is_even, one, neg_one),
+  Value if_lhs_is_one =
+      lb.create<::mlir::arith::SelectOp>(lhs_is_one, one, zero);
+  Value if_lhs_is_neg_one = lb.create<::mlir::arith::SelectOp>(
+      lhs_is_neg_one,
+      lb.create<::mlir::arith::SelectOp>(rhs_is_even, one, neg_one),
       if_lhs_is_one);
-  return lb.create<::mlir::SelectOp>(rhs_is_negative, if_lhs_is_neg_one, accum);
+  return lb.create<::mlir::arith::SelectOp>(rhs_is_negative, if_lhs_is_neg_one,
+                                            accum);
 }
 
 template <>
@@ -824,8 +830,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::SelectOp>(Location loc,
                                                     ArrayRef<Type> arg_types,
                                                     ValueRange args,
                                                     OpBuilder* b) {
-  return MapMhloOpToScalarOpImpl<::mlir::SelectOp>{}(loc, result_types,
-                                                     arg_types, args, b);
+  return MapMhloOpToScalarOpImpl<::mlir::arith::SelectOp>{}(loc, result_types,
+                                                            arg_types, args, b);
 }
 
 template <>
@@ -843,7 +849,7 @@ inline Value MapMhloOpToStdScalarOp<mhlo::SignOp>(Location loc,
     Value zero =
         b->create<mlir::arith::ConstantFloatOp>(loc, zero_apfloat, float_type);
     if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
-      zero = b->create<::mlir::SplatOp>(loc, vec_type, zero);
+      zero = b->create<::mlir::vector::SplatOp>(loc, vec_type, zero);
     }
     Value ne0_i1 = b->create<::mlir::arith::CmpFOp>(
         loc, arith::CmpFPredicate::ONE, args[0], zero);
@@ -853,7 +859,7 @@ inline Value MapMhloOpToStdScalarOp<mhlo::SignOp>(Location loc,
                                                           ne0_float, args[0]);
     auto is_nan = b->create<::mlir::arith::CmpFOp>(
         loc, arith::CmpFPredicate::UNO, args[0], args[0]);
-    return b->create<::mlir::SelectOp>(loc, is_nan, args[0], copy_sign);
+    return b->create<::mlir::arith::SelectOp>(loc, is_nan, args[0], copy_sign);
   } else if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
     // sign(x) = x == 0 ? 0 : ((x s>> 31) | 1)
     Value zero = b->create<::mlir::arith::ConstantIntOp>(
@@ -863,17 +869,17 @@ inline Value MapMhloOpToStdScalarOp<mhlo::SignOp>(Location loc,
     Value one = b->create<::mlir::arith::ConstantIntOp>(
         loc, 1, integer_type.getWidth());
     if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
-      zero = b->create<::mlir::SplatOp>(loc, vec_type, zero);
+      zero = b->create<::mlir::vector::SplatOp>(loc, vec_type, zero);
       bitwidth_minus_one =
-          b->create<::mlir::SplatOp>(loc, vec_type, bitwidth_minus_one);
-      one = b->create<::mlir::SplatOp>(loc, vec_type, one);
+          b->create<::mlir::vector::SplatOp>(loc, vec_type, bitwidth_minus_one);
+      one = b->create<::mlir::vector::SplatOp>(loc, vec_type, one);
     }
     Value cmp = b->create<::mlir::arith::CmpIOp>(loc, arith::CmpIPredicate::eq,
                                                  args[0], zero);
     Value ashr =
         b->create<::mlir::arith::ShRSIOp>(loc, args[0], bitwidth_minus_one);
     Value or_op = b->create<::mlir::arith::OrIOp>(loc, ashr, one);
-    return b->create<::mlir::SelectOp>(loc, cmp, zero, or_op);
+    return b->create<::mlir::arith::SelectOp>(loc, cmp, zero, or_op);
   } else if (element_type.isa<ComplexType>()) {
     return b->create<::mlir::complex::SignOp>(loc, element_type, args.front());
   }

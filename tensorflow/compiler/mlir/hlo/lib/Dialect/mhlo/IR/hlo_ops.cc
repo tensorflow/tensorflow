@@ -48,8 +48,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -4113,7 +4113,7 @@ LogicalResult DynamicPadOp::reifyReturnTypeShapes(
         loc, arith::CmpIPredicate::slt, value_dim, one);
     Value interior_size = builder.create<arith::MulIOp>(
         loc, value_interior,
-        builder.create<mlir::SelectOp>(
+        builder.create<mlir::arith::SelectOp>(
             loc, value_dim_less_than_one, zero,
             builder.create<arith::SubIOp>(loc, value_dim, one)));
     shape_values.push_back(builder.create<arith::AddIOp>(

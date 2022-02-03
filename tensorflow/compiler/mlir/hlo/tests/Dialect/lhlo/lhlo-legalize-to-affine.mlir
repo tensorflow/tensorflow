@@ -255,7 +255,7 @@ func @gather_1(%arg0: memref<28996x512xf32>, %arg1: memref<1x128xi32>, %arg2: me
 // CHECK-NEXT:         %[[S_in0:.*]] = arith.index_cast %[[a]] : i32 to index
 // CHECK-NEXT:         %[[operand_val:.*]] = affine.load %[[OPERAND]][%[[iv0]], %[[offset0]]] : memref<28996x512xf32>
 // CHECK-NEXT:         %[[pred:.*]] = arith.cmpi eq, %[[S_in0]], %[[iv0]] : index
-// CHECK-NEXT:         %[[selected_value:.*]] = select %[[pred]], %[[operand_val]], %[[zero]] : f32
+// CHECK-NEXT:         %[[selected_value:.*]] = arith.select %[[pred]], %[[operand_val]], %[[zero]] : f32
 // CHECK-NEXT:         %[[prev_value:.*]] = affine.load %[[temp_output]][%[[batch0]], %[[batch1]], %[[offset0]]] : memref<1x128x512xf32>
 // CHECK-NEXT:         %[[final_value:.*]] = arith.addf %[[selected_value]], %[[prev_value]] : f32
 // CHECK-NEXT:         affine.store %[[final_value]], %[[temp_output]][%[[batch0]], %[[batch1]], %[[offset0]]] : memref<1x128x512xf32>
@@ -308,7 +308,7 @@ func @gather_2(%arg0: memref<16x11xf32>, %arg1: memref<5x2xi32>, %arg2: memref<5
 // CHECK-NEXT:           %[[In1:.*]] = arith.addi %[[S_in1]], %[[offset1]] : index
 // CHECK-NEXT:           %[[pred2:.*]] = arith.cmpi eq, %[[In1]], %[[iv1]] : index
 // CHECK-NEXT:           %[[and1:.*]] = arith.andi %[[pred1]], %[[pred2]] : i1
-// CHECK-NEXT:           %[[selected_value:.*]] = select %[[and1]], %[[operand_val]], %[[zero]] : f32
+// CHECK-NEXT:           %[[selected_value:.*]] = arith.select %[[and1]], %[[operand_val]], %[[zero]] : f32
 // CHECK-NEXT:           %[[prev_value:.*]] = affine.load %[[temp_output]][%[[batch0]], %[[offset0]], %[[offset1]]] : memref<5x8x6xf32>
 // CHECK-NEXT:           %[[final_value:.*]] = arith.addf %[[selected_value]], %[[prev_value]] : f32
 // CHECK-NEXT:           affine.store %[[final_value]], %[[temp_output]][%[[batch0]], %[[offset0]], %[[offset1]]] : memref<5x8x6xf32>
@@ -365,7 +365,7 @@ func @gather_3(%arg0: memref<16x11xf16>, %arg1: memref<4x2x5xi32>, %arg2: memref
 // CHECK-NEXT:             %[[In1:.*]] = arith.addi %[[S_in1]], %[[offset1]] : index
 // CHECK-NEXT:             %[[pred2:.*]] = arith.cmpi eq, %[[In1]], %[[iv1]] : index
 // CHECK-NEXT:             %[[and1:.*]] = arith.andi %[[pred1]], %[[pred2]] : i1
-// CHECK-NEXT:             %[[selected_value:.*]] = select %[[and1]], %[[operand_val]], %[[zero]] : f16
+// CHECK-NEXT:             %[[selected_value:.*]] = arith.select %[[and1]], %[[operand_val]], %[[zero]] : f16
 // CHECK-NEXT:             %[[prev_value:.*]] = affine.load %[[temp_output]][%[[batch0]], %[[batch1]], %[[offset0]], %[[offset1]]] : memref<4x5x8x6xf16>
 // CHECK-NEXT:             %[[final_value:.*]] = arith.addf %[[selected_value]], %[[prev_value]] : f16
 // CHECK-NEXT:             affine.store %[[final_value]], %[[temp_output]][%[[batch0]], %[[batch1]], %[[offset0]], %[[offset1]]] : memref<4x5x8x6xf16>
@@ -411,7 +411,7 @@ func @gather_4(%arg0: memref<16x11xf32>, %arg1: memref<5x4xi32>, %arg2: memref<4
 // CHECK-NEXT:         %[[S_in0:.*]] = arith.index_cast %[[a]] : i32 to index
 // CHECK-NEXT:         %[[operand_val:.*]] = affine.load %[[OPERAND]][%[[iv0]], %[[offset0]]] : memref<16x11xf32>
 // CHECK-NEXT:         %[[pred:.*]] = arith.cmpi eq, %[[S_in0]], %[[iv0]] : index
-// CHECK-NEXT:         %[[selected_value:.*]] = select %[[pred]], %[[operand_val]], %[[zero]] : f32
+// CHECK-NEXT:         %[[selected_value:.*]] = arith.select %[[pred]], %[[operand_val]], %[[zero]] : f32
 // CHECK-NEXT:         %[[prev_value:.*]] = affine.load %[[temp_output]][%[[batch0]], %[[batch1]], %[[offset0]]] : memref<4x5x6xf32>
 // CHECK-NEXT:         %[[final_value:.*]] = arith.addf %[[selected_value]], %[[prev_value]] : f32
 // CHECK-NEXT:         affine.store %[[final_value]], %[[temp_output]][%[[batch0]], %[[batch1]], %[[offset0]]] : memref<4x5x6xf32>
@@ -499,7 +499,7 @@ func @gather_6(%arg0: memref<16x11x10x9xf32>, %arg1: memref<5x4xi32>, %arg2: mem
 // CHECK-NEXT:                  %[[PRED0_AND_PRED1:.*]] = arith.andi %[[PRED0]], %[[PRED1]] : i1
 // CHECK-NEXT:                  %[[PRED2_AND_PRED3:.*]] = arith.andi %[[PRED2]], %[[PRED3]] : i1
 // CHECK-NEXT:                  %[[PRED:.*]] = arith.andi %[[PRED0_AND_PRED1]], %[[PRED2_AND_PRED3]] : i1
-// CHECK-NEXT:                  %[[OPERANDVAL_OR_ZERO:.*]] = select %[[PRED]], %[[OPERANDVAL]], %[[ZERO]] : f32
+// CHECK-NEXT:                  %[[OPERANDVAL_OR_ZERO:.*]] = arith.select %[[PRED]], %[[OPERANDVAL]], %[[ZERO]] : f32
 // CHECK-NEXT:                  %[[OUTPUTVAL:.*]] = affine.load %[[RESULT]][%[[BATCH0]], %[[OFFSET0]], %[[OFFSET1]], %[[OFFSET2]], %[[OFFSET3]]] : memref<5x8x6x5x4xf32>
 // CHECK-NEXT:                  %[[FINALVAL:.*]] = arith.addf %[[OPERANDVAL_OR_ZERO]], %[[OUTPUTVAL]] : f32
 // CHECK-NEXT:                  affine.store %[[FINALVAL]], %[[RESULT]][%[[BATCH0]], %[[OFFSET0]], %[[OFFSET1]], %[[OFFSET2]], %[[OFFSET3]]] : memref<5x8x6x5x4xf32> 

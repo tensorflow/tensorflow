@@ -146,7 +146,8 @@ Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
   if (arith::ConstantOp::isBuildableWith(value, type))
     return builder.create<arith::ConstantOp>(loc, type, value);
   if (ConstantOp::isBuildableWith(value, type))
-    return builder.create<ConstantOp>(loc, type, value);
+    return builder.create<ConstantOp>(loc, type,
+                                      value.cast<FlatSymbolRefAttr>());
   return nullptr;
 }
 

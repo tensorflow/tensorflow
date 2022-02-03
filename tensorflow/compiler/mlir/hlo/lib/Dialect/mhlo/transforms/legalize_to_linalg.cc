@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/AffineExpr.h"
@@ -2798,8 +2797,8 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
               loc, b.getI1Type(), arith::CmpIPredicate::eq, cmp_idx, idx);
           // Use the output arg, so some update values won't be init value
           // again.
-          Value res = b.create<SelectOp>(loc, args[2].getType(), pred, args[2],
-                                         args[3]);
+          Value res = b.create<arith::SelectOp>(loc, args[2].getType(), pred,
+                                                args[2], args[3]);
           b.create<linalg::YieldOp>(loc, res);
         },
         PruneAttributeList(op));
@@ -2822,8 +2821,8 @@ struct HloLegalizeToLinalgPass
     ConversionTarget target(ctx);
     target.addLegalDialect<arith::ArithmeticDialect, complex::ComplexDialect,
                            linalg::LinalgDialect, math::MathDialect,
-                           StandardOpsDialect, tensor::TensorDialect,
-                           scf::SCFDialect, shape::ShapeDialect>();
+                           tensor::TensorDialect, scf::SCFDialect,
+                           shape::ShapeDialect>();
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 

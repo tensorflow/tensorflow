@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/Pass.h"
@@ -444,7 +444,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     // We use the loaded value if the index computed by adding offsets to
     // starting index is equal to the current operand index. We use 0 as a value
     // otherwise.
-    Value select_load = rewriter.create<mlir::SelectOp>(
+    Value select_load = rewriter.create<mlir::arith::SelectOp>(
         loc, result_predicate, load_value, zero_load_value);
     // We load value at output array.
     Value output_value =

@@ -270,7 +270,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
              converter.isLegal(op->getResultTypes());
     };
     target.addDynamicallyLegalOp<ConstantOp, arith::ConstantOp,
-                                 arith::IndexCastOp, SelectOp,
+                                 arith::IndexCastOp, arith::SelectOp,
                                  tf_framework::JITExecuteOp>(typesAreLegal);
 
     RewritePatternSet patterns(&getContext());

@@ -411,7 +411,7 @@ class PrepareDynamicRangeQuantizableOp
       // old ConstantOp is guaranteed to have one F32->F16 cast regardless of
       // its number of users.
       rewriter.setInsertionPointAfter(op);
-      auto new_const = rewriter.create<ConstantOp>(
+      auto new_const = rewriter.create<arith::ConstantOp>(
           op->getLoc(), new_result_type, new_value_attr);
       auto dq = rewriter.create<DQ>(op->getLoc(), old_result_type, new_const);
       cast_op->replaceAllUsesWith(dq);

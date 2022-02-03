@@ -1169,7 +1169,7 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
             input_size);
         Value cond = rewriter.create<mlir::arith::CmpIOp>(
             loc, arith::CmpIPredicate::sge, padding_needed, zero);
-        padding_needed = rewriter.create<mlir::SelectOp>(
+        padding_needed = rewriter.create<mlir::arith::SelectOp>(
             loc, padding_needed.getType(), cond, padding_needed, zero);
         *padding_low =
             rewriter.create<arith::DivUIOp>(loc, padding_needed, two);
@@ -3188,8 +3188,8 @@ class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
       auto dim_value = rewriter.create<arith::IndexCastOp>(
           loc, rewriter.create<tensor::DimOp>(loc, input, i),
           shape_scalar_type);
-      end_value = rewriter.create<mlir::SelectOp>(loc, is_minus_one, dim_value,
-                                                  end_value);
+      end_value = rewriter.create<mlir::arith::SelectOp>(loc, is_minus_one,
+                                                         dim_value, end_value);
       auto end_value_casted = rewriter.create<arith::IndexCastOp>(
           loc, rewriter.getIndexType(), end_value);
       end_values.push_back(end_value_casted);
