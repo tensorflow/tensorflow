@@ -67,7 +67,7 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
   if (!module) {
     return diagnostic_handler.ConsumeStatus();
   }
-  if (failed(module->verify())) {
+  if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
     return diagnostic_handler.ConsumeStatus();

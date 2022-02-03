@@ -870,7 +870,7 @@ LogicalResult CastOp::fold(ArrayRef<Attribute> operands,
 template <typename IfLikeOp>
 static LogicalResult VerifyIfLikeOp(IfLikeOp op,
                                     SymbolTableCollection &symbol_table) {
-  if (failed(op.verify())) return failure();
+  if (failed(op.verifyInvariants())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(op);
@@ -902,7 +902,7 @@ static LogicalResult VerifyIfLikeOp(IfLikeOp op,
 template <typename CaseLikeOp>
 static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
                                       SymbolTableCollection &symbol_table) {
-  if (failed(op.verify())) return failure();
+  if (failed(op.verifyInvariants())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(op);
@@ -928,7 +928,7 @@ static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
 template <typename WhileLikeOp>
 static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
                                        SymbolTableCollection &symbol_table) {
-  if (failed(op.verify())) return failure();
+  if (failed(op.verifyInvariants())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(op);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(op);
@@ -955,7 +955,7 @@ static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
 // ForOp
 
 LogicalResult ForOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
-  if (failed(verify())) return failure();
+  if (failed(verifyInvariants())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(*this);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(*this);

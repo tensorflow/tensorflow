@@ -300,7 +300,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     *result = translated_result;
   }
 
-  if (mlir::failed(module.verify())) {
+  if (mlir::failed(module.verifyInvariants())) {
     return tensorflow::errors::Unknown("Final module is invalid");
   }
   return Status::OK();
