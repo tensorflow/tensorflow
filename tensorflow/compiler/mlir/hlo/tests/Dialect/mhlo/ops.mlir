@@ -2394,7 +2394,8 @@ func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %2 = arith.constant dense<0> : tensor<i32>
     %3 = "mhlo.slice"(%arg2) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
     %4 = "mhlo.compare"(%arg1, %3) {comparison_direction = "LT"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
-    "mhlo.return"(%4) : (tensor<1xi1>) -> ()
+    %5 = "mhlo.reshape"(%4) : (tensor<1xi1>) -> tensor<i1>
+    "mhlo.return"(%5) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
     %3 = "mhlo.broadcast_in_dim"(%arg3) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>

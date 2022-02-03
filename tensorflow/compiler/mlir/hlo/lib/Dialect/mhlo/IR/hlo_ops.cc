@@ -5564,7 +5564,7 @@ LogicalResult WhileOp::verify() {
              << condReturnOp->getNumOperands();
     auto operandType =
         condReturnOp->getOperand(0).getType().dyn_cast<RankedTensorType>();
-    if (!operandType ||  // TODO(b/210930774): operandType.getRank() != 0 ||
+    if (!operandType || operandType.getRank() != 0 ||
         !operandType.getElementType().isa<IntegerType>() ||
         operandType.getElementType().cast<IntegerType>().getWidth() != 1)
       return condReturnOp.emitOpError()

@@ -9,11 +9,12 @@ func @while(%arg0: tensor<1xi64>) -> tensor<1xi64> {
   ^bb0(%arg1: tensor<1xi64>):
 
     // CHECK: %[[VAL_3:.*]] = "mhlo.compare"(%[[VAL_2]], %[[VAL_2]]) {comparison_direction = "LT", name = "compare.2"} : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi1>
-    // CHECK: %[[COLLAPSED:.*]] = tensor.collapse_shape %[[VAL_3]] [] : tensor<1xi1> into tensor<i1>
-    // CHECK: %[[VAL_4:.*]] = tensor.extract %[[COLLAPSED]][] : tensor<i1>
+    // CHECK: %[[RESHAPE:.*]] = "mhlo.reshape"(%[[VAL_3]]) : (tensor<1xi1>) -> tensor<i1>
+    // CHECK: %[[VAL_4:.*]] = tensor.extract %[[RESHAPE]][] : tensor<i1>
     // CHECK: scf.condition(%[[VAL_4]]) %[[VAL_2]] : tensor<1xi64>
     %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT", name = "compare.2"} : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi1>
-    "mhlo.return"(%1) : (tensor<1xi1>) -> ()
+    %2 = "mhlo.reshape"(%1) : (tensor<1xi1>) -> tensor<i1>
+    "mhlo.return"(%2) : (tensor<i1>) -> ()
 
   // CHECK: } do {
   // CHECK: ^bb0(%[[VAL_5:.*]]: tensor<1xi64>):
