@@ -79,7 +79,7 @@ Note: This requires XCode v10.1 or later.
 
 #### Step 1. Get the demo source code and make sure it compiles.
 
-Follow our iOS Demo App [tutorial](https://www.tensorflow.org/lite/demo_ios).
+Follow our iOS Demo App [tutorial](https://www.tensorflow.org/lite/guide/ios).
 This will get you to a point where the unmodified iOS camera demo is working on
 your phone.
 
