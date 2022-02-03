@@ -9753,6 +9753,60 @@ ENTRY entry {
                             op::Broadcast(op::Constant())));
 }
 
+TEST_F(SpmdPartitioningTest, SubgroupManualAllReduce) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  param = f32[2,2] parameter(0),
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+  ROOT all-reduce = f32[2,2]{1,0} all-reduce(param), to_apply=sum,
+    replica_groups={{2,0},{1,3}}, use_global_device_ids=true, channel_id=1,
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::AllReduce(op::Parameter(0)), op::Shape("f32[1,2]")));
+  EXPECT_EQ(root->replica_groups().size(), 2);
+}
+
+TEST_F(SpmdPartitioningTest, SubgroupIllegalManualAllReduce) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  param = f32[2,2] parameter(0),
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+  ROOT all-reduce = f32[2,2]{1,0} all-reduce(param), to_apply=sum,
+    replica_groups={{1,0},{2,3}}, use_global_device_ids=true, channel_id=1,
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+}
+)";
+
+  auto module_status = PartitionComputation(hlo_string, /*num_devices=*/4);
+  EXPECT_FALSE(module_status.status().ok());
+  EXPECT_THAT(module_status.status().ToString(),
+              ::testing::HasSubstr("Manual all-reduce across devices that "
+                                   "belong to different manual subgroups"));
+}
+
 TEST_F(SpmdPartitioningTest, SubgroupManualReduce) {
   absl::string_view hlo_string = R"(
 HloModule module

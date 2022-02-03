@@ -1564,7 +1564,8 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       hlo->opcode() != HloOpcode::kTuple &&
       hlo->opcode() != HloOpcode::kGetTupleElement &&
       hlo->opcode() != HloOpcode::kParameter &&
-      hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng) {
+      hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng &&
+      hlo->opcode() != HloOpcode::kAllReduce) {
     const bool has_manual_sharding =
         hlo->sharding().IsManual() ||
         (hlo->sharding().IsTuple() &&
@@ -2340,6 +2341,48 @@ Status SpmdPartitioningVisitor::HandleSingleDevice(const HloInstruction* hlo) {
 
 Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
   if (hlo->IsCrossReplicaAllReduce() && hlo->operand_count() == 1) {
+    return HandleElementwise(hlo);
+  }
+  if (hlo->channel_id()) {
+    TF_RET_CHECK(hlo->operand_count() == 1)
+        << "SPMD partitioner supports only single-operand allreduce in manual "
+           "partitioning mode.";
+    if (hlo->sharding().IsManual()) {
+      return HandleElementwise(hlo);
+    }
+    TF_RET_CHECK(hlo->sharding().IsManualSubgroup())
+        << "Cross-partition allreduce must be in (partial) manual partitioning "
+           "mode.";
+    auto* ar = Cast<HloAllReduceInstruction>(hlo);
+    TF_RET_CHECK(ar->use_global_device_ids())
+        << "Cross-partition allreduce in partial manual partitioning mode must "
+           "use global device IDs.";
+    absl::flat_hash_map<int64_t, int64_t> partition_to_group_id;
+    hlo->sharding().tile_assignment().Each(
+        [&](absl::Span<const int64_t> indices, int64_t partition) {
+          int64_t group_id = 0;
+          for (int64_t i = 0; i < indices.size(); ++i) {
+            if (i == hlo->sharding().SubgroupManualDim()) {
+              continue;
+            }
+            group_id *= hlo->sharding().tile_assignment().dim(i);
+            group_id += indices[i];
+          }
+          partition_to_group_id[partition] = group_id;
+        });
+    for (const auto& group : ar->replica_groups()) {
+      int64_t first_partition = group.replica_ids(0) % num_partitions_;
+      for (int64_t device : group.replica_ids()) {
+        int64_t partition = device % num_partitions_;
+        if (partition_to_group_id[partition] !=
+            partition_to_group_id[first_partition]) {
+          return InvalidArgumentStrCat(
+              "Manual all-reduce across devices that belong to different "
+              "manual subgroups: ",
+              ar->ToString());
+        }
+      }
+    }
     return HandleElementwise(hlo);
   }
   return DefaultAction(hlo);
