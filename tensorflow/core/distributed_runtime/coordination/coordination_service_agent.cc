@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -148,8 +149,8 @@ Status CoordinationServiceAgentImpl::Initialize(
     StatusCallback error_fn) {
   mutex_lock l(state_mu_);
   if (state_ != State::UNINITIALIZED) {
-    return errors::FailedPrecondition(
-        "Coordination service agent has already been initialized.");
+    return MakeCoordinationError(errors::FailedPrecondition(
+        "Coordination service agent has already been initialized."));
   }
 
   env_ = env;
@@ -157,13 +158,13 @@ Status CoordinationServiceAgentImpl::Initialize(
   task_id_ = task_id;
   configs_ = configs;
   if (configs_.service_leader().empty()) {
-    return errors::InvalidArgument(
-        "CoordinationServiceAgent must be initialized with a valid leader.");
+    return MakeCoordinationError(errors::InvalidArgument(
+        "CoordinationServiceAgent must be initialized with a valid leader."));
   }
   leader_client_ = std::move(leader_client);
   if (leader_client_ == nullptr) {
-    return errors::InvalidArgument(
-        "CoordinationServiceAgent must have a valid leader client.");
+    return MakeCoordinationError(errors::InvalidArgument(
+        "CoordinationServiceAgent must have a valid leader client."));
   }
   error_fn_ = error_fn;
   state_ = State::DISCONNECTED;
@@ -192,8 +193,8 @@ Status CoordinationServiceAgentImpl::Connect() {
   {
     mutex_lock l(state_mu_);
     if (state_ != State::DISCONNECTED) {
-      return errors::FailedPrecondition(
-          "Coordination service agent is not in DISCONNECTED state.");
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Coordination service agent is not in DISCONNECTED state."));
     }
   }
   RegisterWorkerRequest request;
@@ -264,9 +265,9 @@ Status CoordinationServiceAgentImpl::Connect() {
           if (!status.ok()) {
             SetError(status);
           } else if (response.leader_incarnation() != leader_incarnation_) {
-            SetError(
+            SetError(MakeCoordinationError(
                 errors::Aborted("Leader incarnation ID mismatch: the "
-                                "coordination leader has restarted."));
+                                "coordination leader has restarted.")));
           }
         }
       }));
@@ -278,9 +279,9 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks(
   {
     mutex_lock l(state_mu_);
     if (state_ != State::RUNNING) {
-      return errors::FailedPrecondition(
+      return MakeCoordinationError(errors::FailedPrecondition(
           "CoordinationServiceAgentImpl::WaitForAllTasks must be called when "
-          "the coordination service agent is in RUNNING state.");
+          "the coordination service agent is in RUNNING state."));
     }
   }
   WaitForAllTasksRequest request;
@@ -311,23 +312,24 @@ CoordinationServiceAgentImpl::GetClusterDeviceInfo() {
 StatusOr<CoordinationServiceAgentImpl::TaskState>
 CoordinationServiceAgentImpl::GetTaskStatus(const std::string& job_name,
                                             const int task_id) {
-  return errors::Unimplemented(
-      "CoordinationServiceAgentImpl::GetTaskStatus is not implemented.");
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgentImpl::GetTaskStatus is not implemented."));
 }
 
 Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
   {
     mutex_lock l(state_mu_);
     if (state_ == State::UNINITIALIZED) {
-      return errors::FailedPrecondition(
+      return MakeCoordinationError(errors::FailedPrecondition(
           "Coordination service agent must be initialized first before "
-          "reporting error.");
+          "reporting error."));
     } else if (state_ == State::ERROR) {
-      return errors::FailedPrecondition(
-          "Coordination service agent is already in error state.");
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Coordination service agent is already in error state."));
     }
   }
-  SetError(error);
+  SetError(MakeCoordinationError(error, job_name_, task_id_,
+                                 /*is_reported_error=*/true));
   LOG(INFO) << "Reporting error to coordination service: " << error;
   ReportErrorToServiceRequest request;
   request.set_error_code(error.code());
@@ -350,8 +352,8 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
 }
 
 Status CoordinationServiceAgentImpl::Reset() {
-  return errors::Unimplemented(
-      "CoordinationServiceAgentImpl::Reset is not implemented.");
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgentImpl::Reset is not implemented."));
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
@@ -371,9 +373,9 @@ StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
   bool call_completed_before_timeout =
       n->WaitForNotificationWithTimeout(timeout);
   if (!call_completed_before_timeout) {
-    return errors::DeadlineExceeded(absl::Substitute(
+    return MakeCoordinationError(errors::DeadlineExceeded(absl::Substitute(
         "GetKeyValue() timed out with key: $0 and duration: $1", key,
-        absl::FormatDuration(timeout)));
+        absl::FormatDuration(timeout))));
   }
   return *result;
 }
@@ -429,20 +431,20 @@ Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
 
 Status CoordinationServiceAgentImpl::UpdateKeyValue(const std::string& key,
                                                     const std::string& value) {
-  return errors::Unimplemented(
-      "CoordinationServviceAgent::UpdateKeyValue is not implemented.");
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::UpdateKeyValue is not implemented."));
 }
 
 Status CoordinationServiceAgentImpl::StartWatchKey(
     const std::string& key,
     CoordinationServiceAgentImpl::ChangedKeyValuesCallback on_change) {
-  return errors::Unimplemented(
-      "CoordinationServiceAgent::StartWatchKey is not implemented.");
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::StartWatchKey is not implemented."));
 }
 
 Status CoordinationServiceAgentImpl::StopWatchKey(const std::string& key) {
-  return errors::Unimplemented(
-      "CoordinationServiceAgent::StopWatchKey is not implemented.");
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::StopWatchKey is not implemented."));
 }
 
 void CoordinationServiceAgentImpl::SetError(const Status& error) {
@@ -456,8 +458,8 @@ void CoordinationServiceAgentImpl::SetError(const Status& error) {
 
 Status CoordinationServiceAgentImpl::ActivateWatch(
     const std::string& key, const std::map<std::string, std::string>& kvs) {
-  return errors::Unimplemented(
-      "CoordinationServiceAgent::ActivateWatch is not implemented.");
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::ActivateWatch is not implemented."));
 }
 
 }  // namespace

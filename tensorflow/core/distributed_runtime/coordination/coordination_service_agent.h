@@ -38,6 +38,11 @@ class ServerDef;
 //
 // See CoordinationServiceInterface for more details on coordination service.
 //
+// All coordination service errors will have an additional
+// CoordinationServiceError payload to distinguish themselves from RPC failures.
+// The payload can optionally specify the error origin, and if the error is
+// reported by the user via `agent->ReportError()`.
+//
 // Possible service errors:
 //    - errors::Internal: Coordination service is not enabled.
 //    - errors::Aborted: Incarnation mismatch during heartbeat (either remote
@@ -108,6 +113,8 @@ class CoordinationServiceAgent {
                                             const int task_id) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
+  // Note that the error payload will set `is_reported_error` to true, to
+  // distinguish user-specified errors from internal service or RPC failures.
   // Possible service errors:
   //   - FailedPrecondition: Uninitialized/disconnected/already in error state.
   //   - InvalidArgument: Unexpected worker request

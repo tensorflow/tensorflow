@@ -7,6 +7,19 @@ import "tensorflow/core/framework/device_attributes.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
+// Status payload for all coordination service errors.
+// Note: an empty proto may be set if the error is triggered by the task's own
+// agent calls (i.e. not propagated by the service from another remote task).
+message CoordinationServiceError {
+  // Denotes which worker hit the error. If unset, the error originated from the
+  // same task that is processing this error.
+  string job = 1;
+  int32 task = 2;
+  // If true, error is reported via the agent API by the user (and not an
+  // internal service error).
+  bool is_reported_error = 3;
+}
+
 // Represent device information from different runtimes.
 message TfDeviceList {
   repeated DeviceAttributes devices = 1;

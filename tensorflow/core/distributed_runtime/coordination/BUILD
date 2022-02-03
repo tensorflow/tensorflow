@@ -47,6 +47,7 @@ tf_cuda_library(
     deps = [
         ":coordination_client",
         ":coordination_service",
+        ":coordination_service_error_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -89,6 +90,7 @@ tf_cuda_library(
     hdrs = ["coordination_service_agent.h"],
     deps = [
         ":coordination_client",
+        ":coordination_service_error_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
@@ -122,12 +124,37 @@ cc_library(
         "coordination_service_rpc_handler.h",
     ],
     deps = [
+        ":coordination_service_error_util",
         ":coordination_service_agent",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         ":coordination_service",
     ] + tf_grpc_cc_dependencies(),
+)
+
+cc_library(
+    name = "coordination_service_error_util",
+    hdrs = ["coordination_service_error_util.h"],
+    deps = [
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "coordination_service_error_util_test",
+    srcs = ["coordination_service_error_util_test.cc"],
+    deps = [
+        ":coordination_service_error_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
+    ],
 )
 
 filegroup(
