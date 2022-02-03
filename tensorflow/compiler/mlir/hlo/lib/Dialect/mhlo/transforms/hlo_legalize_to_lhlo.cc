@@ -252,6 +252,7 @@ struct HloToLhloDotGeneralOpConverter
   }
 };
 
+// Legalize a mhlo op to a lmhlo op and remain its region in mhlo
 template <typename HloOpTy>
 class HloToLhloOpWithRegionsConverter : public BaseOpConversion<HloOpTy> {
 public:
@@ -281,7 +282,6 @@ public:
   }
 };
 
-// Legalize a mhlo op to a lmhlo op and remain its region in mhlo
 template <typename HloOpTy>
 struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
  public:
