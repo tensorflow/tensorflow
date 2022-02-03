@@ -2378,6 +2378,38 @@ func @replaceReshapeEqualWithOneHot(%arg: tensor<2xi32>) -> tensor<2x3xi1> {
   // CHECK: %[[RES:.*]] = "tfl.one_hot"(%arg0, %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<2xi32>, tensor<i32>, tensor<i1>, tensor<i1>) -> tensor<2x3xi1>
 }
 
+// CHECK-LABEL: replaceReshapeEqualWithOneHotWithNonTrivialReshape
+func @replaceReshapeEqualWithOneHotWithNonTrivialReshape(%arg: tensor<4x4xi32>) -> tensor<16x3xi1> {
+  // Good match: Replace with one_hot
+  %shape = arith.constant dense<[16, 1]> : tensor<2xi32>
+  %cst = arith.constant dense<[0, 1, 2]> : tensor<3xi32>
+  %tmp = "tfl.reshape"(%arg, %shape) : (tensor<4x4xi32>, tensor<2xi32>) -> tensor<16x1xi32>
+  %result = "tfl.equal"(%tmp, %cst) : (tensor<16x1xi32>, tensor<3xi32>) -> tensor<16x3xi1>
+  return %result : tensor<16x3xi1>
+
+  // CHECK-DAG: %[[CST1:.*]] = arith.constant dense<3> : tensor<i32>
+  // CHECK-DAG: %[[CST2:.*]] = arith.constant dense<true> : tensor<i1>
+  // CHECK-DAG: %[[CST3:.*]] = arith.constant dense<false> : tensor<i1>
+  // CHECK-DAG: %[[CST4:.*]] = arith.constant dense<16> : tensor<1xi32>
+  // CHECK-DAG: %[[TMP:.*]] = "tfl.reshape"(%arg0, %[[CST4]]) : (tensor<4x4xi32>, tensor<1xi32>) -> tensor<16xi32>
+  // CHECK: %[[RES:.*]] = "tfl.one_hot"(%[[TMP]], %[[CST1]], %[[CST2]], %[[CST3]]) {axis = -1 : i32} : (tensor<16xi32>, tensor<i32>, tensor<i1>, tensor<i1>) -> tensor<16x3xi1>
+}
+
+// CHECK-LABEL: noReplaceReshapeEqualWithOneHotWithBatchingDim
+func @noReplaceReshapeEqualWithOneHotWithBatchingDim(%arg: tensor<2xi32>) -> tensor<1x2x3xi1> {
+  // Do not replace: shape length longer than 2
+  %shape = arith.constant dense<[1, 2, 1]> : tensor<3xi32>
+  %cst = arith.constant dense<[0, 1, 2]> : tensor<3xi32>
+  %tmp = "tfl.reshape"(%arg, %shape) : (tensor<2xi32>, tensor<3xi32>) -> tensor<1x2x1xi32>
+  %result = "tfl.equal"(%tmp, %cst) : (tensor<1x2x1xi32>, tensor<3xi32>) -> tensor<1x2x3xi1>
+  return %result : tensor<1x2x3xi1>
+
+  // CHECK-DAG: %[[CST1:.*]] = arith.constant dense<[1, 2, 1]> : tensor<3xi32>
+  // CHECK-DAG: %[[CST2:.*]] = arith.constant dense<[0, 1, 2]> : tensor<3xi32>
+  // CHECK: %[[TMP:.*]] = "tfl.reshape"(%arg0, %[[CST1]]) : (tensor<2xi32>, tensor<3xi32>) -> tensor<1x2x1xi32>
+  // CHECK: %[[RES:.*]] = "tfl.equal"(%[[TMP]], %[[CST2]]) : (tensor<1x2x1xi32>, tensor<3xi32>) -> tensor<1x2x3xi1>
+}
+
 // CHECK-LABEL: noReplaceReshapeEqualWithOneHotBadShape
 func @noReplaceReshapeEqualWithOneHotBadShape(%arg: tensor<6xi32>) -> tensor<2x3xi1> {
   // Do not replace: shape's last dimension isn't 1

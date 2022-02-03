@@ -428,15 +428,47 @@ Attribute GetNumElementsOrOne(Attribute attr) {
       {llvm::APInt(32, num_elements, true)});
 }
 
+bool HasExactlyTwoElements(Attribute attr) {
+  const auto values = attr.dyn_cast_or_null<ElementsAttr>();
+  if (!values) return false;
+  return values.getNumElements() == 2;
+}
+
 // Returns true if attr is a DenseIntElementsAttr with the last element equal 1.
 bool IsLastElementEqualsOne(Attribute attr) {
   const auto ints = attr.dyn_cast_or_null<DenseIntElementsAttr>();
   if (!ints) return false;
   if (ints.empty()) return false;
   const auto last_element_index = ints.getNumElements() - 1;
-  const auto iterator = ints.value_begin<APInt>();
-  const APInt last_element = iterator[last_element_index];
+  const auto iterator = ints.value_begin<int>();
+  const int last_element = iterator[last_element_index];
   return last_element == 1;
+}
+
+// Reshapes value to a given shape.
+Value ReshapeValueDroppingLastDim(OpBuilder &builder, Value value,
+                                  Attribute shape) {
+  // This function is always guarded with IsLastElementEqualsOne(), so we could
+  // cast safely here.
+  const auto old_shape = shape.cast<DenseIntElementsAttr>();
+  auto iterator = old_shape.value_begin<int>();
+  SmallVector<int, 4> new_shape;
+  SmallVector<int64_t, 4> new_shape_i64;
+  for (int i = 0; i < old_shape.size() - 1; ++i) {
+    new_shape.push_back(*iterator);
+    new_shape_i64.push_back(*iterator);
+    ++iterator;
+  }
+  return builder.create<ReshapeOp>(
+      value.getLoc(),
+      RankedTensorType::get(
+          new_shape_i64, value.getType().cast<ShapedType>().getElementType()),
+      value,
+      builder.create<arith::ConstantOp>(
+          value.getLoc(), DenseIntElementsAttr::get(
+                              RankedTensorType::get({old_shape.size() - 1},
+                                                    builder.getI32Type()),
+                              new_shape)));
 }
 
 // Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or an

@@ -915,6 +915,12 @@ def OptimizeSliceOp : Pat<
 
 def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0)">;
 
+def ReshapeValueDroppingLastDim : NativeCodeCall<
+  "ReshapeValueDroppingLastDim($_builder, $0, $1)">;
+
+def HasExactlyTwoElements : Constraint<CPred<
+  "TFL::HasExactlyTwoElements($0)">>;
+
 def IsLastElementEqualsOne : Constraint<CPred<
   "TFL::IsLastElementEqualsOne($0)">>;
 
@@ -924,19 +930,21 @@ def IsOneHotIndexAttribute : Constraint<CPred<
 // Replace
 //   Equal(Reshape(X, shape), indices)
 // With
-//   OneHot(X, N, true, false, -1)
+//   OneHot(Reshape(X, shape[:-1]), N, true, false, -1)
 // where
+//  - shape has length 2 (unnecessary, just to be conservative)
 //  - last value in shape is 1
 //  - indices is a incrementing series from 0 to N-1. (N elements total.)
 def ReshapeEqualOpToOneHotOp : Pat<
   (TFL_EqualOp (TFL_ReshapeOp $x, (Arith_ConstantOp $shape)),
                (Arith_ConstantOp $series)),
-  (TFL_OneHotOp $x,
+  (TFL_OneHotOp (ReshapeValueDroppingLastDim $x, $shape),
                 (Arith_ConstantOp (GetNumElementsOrOne $series)),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
                 ConstantAttr<I32Attr, "-1">),
-  [(IsLastElementEqualsOne $shape),
+  [(HasExactlyTwoElements $shape),
+   (IsLastElementEqualsOne $shape),
    (IsOneHotIndexAttribute $series)]>;
 
 def F32ElementsVal : Constraint<CPred<
