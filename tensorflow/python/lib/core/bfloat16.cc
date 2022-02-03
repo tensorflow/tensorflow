@@ -710,6 +710,12 @@ struct TypeDescriptor<std::complex<double>> {
   static int Dtype() { return NPY_COMPLEX128; }
 };
 
+template <>
+struct TypeDescriptor<std::complex<long double>> {
+  typedef std::complex<long double> T;
+  static int Dtype() { return NPY_CLONGDOUBLE; }
+};
+
 // Performs a NumPy array cast from type 'From' to 'To'.
 template <typename From, typename To>
 void NPyCast(void* from_void, void* to_void, npy_intp n, void* fromarr,
@@ -1463,6 +1469,9 @@ bool Initialize() {
   if (!RegisterBfloat16Cast<std::complex<double>>(NPY_COMPLEX128)) {
     return false;
   }
+  if (!RegisterBfloat16Cast<std::complex<long double>>(NPY_CLONGDOUBLE)) {
+    return false;
+  }
 
   // Safe casts from bfloat16 to other types
   if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_FLOAT, NPY_NOSCALAR) <
@@ -1482,6 +1491,10 @@ bool Initialize() {
     return false;
   }
   if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_COMPLEX128,
+                              NPY_NOSCALAR) < 0) {
+    return false;
+  }
+  if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_CLONGDOUBLE,
                               NPY_NOSCALAR) < 0) {
     return false;
   }

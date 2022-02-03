@@ -363,12 +363,13 @@ class Bfloat16NumPyTest(parameterized.TestCase):
         (bfloat16, np.longdouble),
         (bfloat16, np.complex64),
         (bfloat16, np.complex128),
+        (bfloat16, np.clongdouble),
     ]
     all_dtypes = [
         np.float16, np.float32, np.float64, np.longdouble, np.int8, np.int16,
-        np.int32, np.int64, np.complex64, np.complex128, np.uint8, np.uint16,
-        np.uint32, np.uint64, np.intc, np.int_, np.longlong, np.uintc,
-        np.ulonglong
+        np.int32, np.int64, np.complex64, np.complex128, np.clongdouble,
+        np.uint8, np.uint16, np.uint32, np.uint64, np.intc, np.int_,
+        np.longlong, np.uintc, np.ulonglong
     ]
     for d in all_dtypes:
       self.assertEqual((bfloat16, d) in allowed_casts, np.can_cast(bfloat16, d))
@@ -377,9 +378,9 @@ class Bfloat16NumPyTest(parameterized.TestCase):
   def testCasts(self):
     for dtype in [
         np.float16, np.float32, np.float64, np.longdouble, np.int8, np.int16,
-        np.int32, np.int64, np.complex64, np.complex128, np.uint8, np.uint16,
-        np.uint32, np.uint64, np.intc, np.int_, np.longlong, np.uintc,
-        np.ulonglong
+        np.int32, np.int64, np.complex64, np.complex128, np.clongdouble,
+        np.uint8, np.uint16, np.uint32, np.uint64, np.intc, np.int_,
+        np.longlong, np.uintc, np.ulonglong
     ]:
       x = np.array([[1, 2, 3]], dtype=dtype)
       y = x.astype(bfloat16)
@@ -390,7 +391,7 @@ class Bfloat16NumPyTest(parameterized.TestCase):
       self.assertEqual(dtype, z.dtype)
 
   def testConformNumpyComplex(self):
-    for dtype in [np.complex64, np.complex128]:
+    for dtype in [np.complex64, np.complex128, np.clongdouble]:
       x = np.array([1.1, 2.2 + 2.2j, 3.3], dtype=dtype)
       y_np = x.astype(np.float32)
       y_tf = x.astype(bfloat16)
