@@ -361,6 +361,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
       });
 
       auto compile_start_time = absl::Now();
+      LOG(INFO) << "Started JitExecutable specialization compilation for "
+                << name << " (" << GetSessionName(exec_ctx) << ")";
       compile();
       auto compile_duration = absl::Now() - compile_start_time;
 
@@ -440,6 +442,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Instantiate new JitExecutable from the MLIR source.
     auto compile_start_time = absl::Now();
+    LOG(INFO) << "Started JitExecutable instantiation compilation for "
+              << kernel.root_symbol().str() << " (" << GetSessionName(exec_ctx)
+              << ")";
     Expected<JitExecutable> jit_executable =
         JitExecutable::Instantiate(module, entrypoint, std::move(opts), runner);
     auto compile_duration = absl::Now() - compile_start_time;
