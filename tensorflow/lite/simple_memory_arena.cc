@@ -114,7 +114,7 @@ TfLiteStatus SimpleMemoryArena::Deallocate(
 TfLiteStatus SimpleMemoryArena::Commit(TfLiteContext* context) {
   size_t required_size = RequiredBufferSize();
   if (required_size > underlying_buffer_size_) {
-    char* new_alloc = new char[required_size];
+    char* new_alloc = new char[required_size]();
     char* new_underlying_buffer_aligned_ptr = reinterpret_cast<char*>(
         AlignTo(arena_alignment_, reinterpret_cast<intptr_t>(new_alloc)));
 
