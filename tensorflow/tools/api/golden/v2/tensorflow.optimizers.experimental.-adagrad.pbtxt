@@ -1,8 +1,8 @@
 path: "tensorflow.optimizers.experimental.Adagrad"
 tf_class {
-  is_instance: "<class \'keras.optimizer_experimental.adagrad.Adagrad\'>"
-  is_instance: "<class \'keras.optimizer_experimental.optimizer.Optimizer\'>"
-  is_instance: "<class \'keras.optimizer_experimental.optimizer._BaseOptimizer\'>"
+  is_instance: "<class \'keras.optimizers.optimizer_experimental.adagrad.Adagrad\'>"
+  is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer.Optimizer\'>"
+  is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer._BaseOptimizer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.autotrackable.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
