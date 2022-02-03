@@ -239,6 +239,16 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
   return str;
 }
 
+// Gets the session name from the fallback request state.
+static const std::string GetSessionName(const ExecutionContext& exec_ctx) {
+  RequestContext* req_ctx = exec_ctx.request_ctx();
+
+  auto* fallback = req_ctx->GetDataIfExists<KernelFallbackCompatRequestState>();
+  if (!fallback) return "<unknown>";
+
+  return fallback->session_metadata().name();
+}
+
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     CompilationUnitAttribute kernel, const ExecutionContext& exec_ctx,
     const Optional<TfJitRtPipelineOpts>& opts = None) {
@@ -319,7 +329,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     CompilationThreadPool& thread_pool = CompilationThreadPool::Get(exec_ctx);
 
     thread_pool.Schedule([request_id, kernel, specialization,
-                          compile = std::move(compile),
+                          compile = std::move(compile), exec_ctx,
                           args = std::move(args)]() mutable {
       // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
       // theory can be unloaded before the completion of the compilation task.
@@ -356,7 +366,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
       LOG(INFO) << "JitExecutable specialization compilation for " << name
                 << " took " << absl::ToInt64Milliseconds(compile_duration)
-                << " ms";
+                << " ms (" << GetSessionName(exec_ctx) << ")";
 
       if (compile_duration > absl::Seconds(1))
         LOG(INFO) << "Expensive JitExecutable specialization compilation ("
@@ -369,7 +379,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   CompilationThreadPool& thread_pool = CompilationThreadPool::Get(exec_ctx);
 
   thread_pool.Schedule([kernel, request_id, runner, workers = *worker_threads,
-                        ptr = entry.ptr, tf_jitrt_opts = opts]() {
+                        exec_ctx, ptr = entry.ptr, tf_jitrt_opts = opts]() {
     TraceMe trace_me([&] {
       absl::string_view name(kernel.root_symbol().data(),
                              kernel.root_symbol().size());
@@ -436,7 +446,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     LOG(INFO) << "JitExecutable instantiation for "
               << kernel.root_symbol().str() << " took "
-              << absl::ToInt64Milliseconds(compile_duration) << " ms";
+              << absl::ToInt64Milliseconds(compile_duration) << " ms ("
+              << GetSessionName(exec_ctx) << ")";
 
     if (compile_duration > absl::Seconds(1))
       LOG(INFO) << "Expensive JitExecutable instantiation ("
