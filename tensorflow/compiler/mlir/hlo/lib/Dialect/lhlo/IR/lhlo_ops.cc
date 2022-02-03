@@ -269,7 +269,7 @@ static LogicalResult Verify(PadOp op) {
   // dimension is calculated as :-
   //     low_padding + operand_dim_size + total_interior_padding + high_padding
   //  where, total_interior_padding = (operand_dim_size - 1) * interior_padding.
-  for (auto paddings : llvm::enumerate(llvm::zip(
+  for (const auto &paddings : llvm::enumerate(llvm::zip(
            edge_pad_low_ranges, edge_pad_high_ranges, interior_pad_ranges,
            operand_type.getShape(), output_type.getShape()))) {
     auto index = static_cast<unsigned>(paddings.index());
