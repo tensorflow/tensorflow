@@ -14,12 +14,15 @@
 # ==============================================================================
 """ShardedVariable class."""
 import copy
+import functools
 import math
 from typing import Sequence
 import weakref
 
 import numpy as np
 
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -33,7 +36,10 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object_util
@@ -749,7 +755,25 @@ class ShardedVariableMixin(trackable.Trackable):
   def _shared_name(self):
     return self._name
 
+  @property
+  def trainable(self):
+    return self.variables[0].trainable
 
+  @property
+  def synchronization(self):
+    return variables_lib.VariableSynchronization.NONE
+
+  @property
+  def aggregation(self):
+    return variables_lib.VariableAggregation.NONE
+
+  @property
+  def is_sharded_variable(self):
+    return True
+
+
+@registration.register_tf_serializable(
+    predicate=lambda obj: isinstance(obj, ShardedVariable))
 @tf_export('__internal__.distribute.ShardedVariable', v1=[])
 class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
   """A container for `Variables` that should be treated as shards.
@@ -823,6 +847,67 @@ class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
       return tensor_operator(_var_to_tensor(v), *args, **kwargs)
 
     setattr(cls, operator, _operator)
+
+  @classmethod
+  def _deserialize_from_proto(cls, **kwargs):
+
+    object_proto = kwargs['object_proto']
+    var_kwargs = {}
+    var_kwargs['shape'] = tensor_shape.TensorShape(object_proto.variable.shape)
+    var_kwargs['dtype'] = dtypes.as_dtype(object_proto.variable.dtype)
+
+    # Simple zeros initializer to give variables appropriate shapes and dtypes.
+    # Values will be filled in later during checkpoint restoration.
+    def initializer(shape, dtype, **kwargs):
+      if 'partition_shape' in kwargs:
+        shape = kwargs['partition_shape']
+      return array_ops.zeros(shape, dtype)
+
+    var_kwargs['initial_value'] = functools.partial(initializer,
+                                                    var_kwargs['shape'],
+                                                    var_kwargs['dtype'])
+    if ds_context.has_strategy():
+      strategy = ds_context.get_strategy()
+      if isinstance(strategy,
+                    parameter_server_strategy_v2.ParameterServerStrategyV2):
+        return strategy.extended._create_variable(  # pylint: disable=protected-access
+            vs.default_variable_creator_v2, **var_kwargs)
+      else:
+        raise ValueError('Tried to load a ShardedVariable using a strategy '
+                         'other than tf.distribute.ParameterServerStrategy. '
+                         'This is not currently supported.')
+    else:
+      if (var_kwargs['shape'] is not None and var_kwargs['dtype'] is not None):
+        logging.warn('Loading a ShardedVariable without using a '
+                     'tf.distribute.Strategy. This could lead to excessive '
+                     'memory usage.')
+        return vs.default_variable_creator_v2(**var_kwargs)
+      else:
+        raise ValueError('Tried to load a ShardedVariable without using a '
+                         'tf.distribute.Strategy, and without specifying one '
+                         'of shape or dtype.')
+
+  def _should_act_as_resource_variable(self):
+    """Pass resource_variable_ops.is_resource_variable check."""
+
+  def _write_object_proto(self, proto, options):
+    """Update a SavedObject proto for the caller.
+
+    Args:
+      proto: A pre-built `SavedObject` proto for this object. It is assumed this
+        will be a `SavedVariable` instance.
+      options: A `SaveOptions` instance.
+    """
+    resource_variable_ops.write_object_proto_for_resource_variable(
+        self, proto, options, enforce_naming=False)
+
+  def __tf_experimental_restore_capture__(self, concrete_function,
+                                          internal_capture):
+    # Avoid restoring captures for functions that use ShardedVariable - the
+    # layer will be recreated during Keras model loading
+    # TODO(jmullenbach): support loading models with ShardedVariables using
+    # tf.saved_model.load
+    return None
 
 
 def _var_to_tensor(var, dtype=None, name=None, as_ref=False):

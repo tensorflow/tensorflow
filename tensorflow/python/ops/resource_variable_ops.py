@@ -2338,7 +2338,10 @@ class VariableSpec(tensor_spec.DenseSpec):
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 
 
-def write_object_proto_for_resource_variable(resource_variable, proto, options):
+def write_object_proto_for_resource_variable(resource_variable,
+                                             proto,
+                                             options,
+                                             enforce_naming=True):
   """Writes additional information of the variable into the SavedObject proto.
 
   This allows users to define a `hook` to provide extra information of the
@@ -2352,12 +2355,14 @@ def write_object_proto_for_resource_variable(resource_variable, proto, options):
       information to be saved into the proto.
     proto: `SavedObject` proto to update.
     options: A `SaveOption` instance that configures save behavior.
+    enforce_naming: A bool determining whether to check that names end in the
+      expected string ':0'
   """
   proto.variable.SetInParent()
-  if not resource_variable.name.endswith(":0"):
+  if enforce_naming and not resource_variable.name.endswith(":0"):
     raise ValueError(f"Cowardly refusing to save variable "
                      f"{resource_variable.name} because of "
-                     f"unexpected suffix in the name (':0') "
+                     f"unexpected suffix in the name (expected ':0')"
                      f"which won't be restored.")
   proto.variable.name = meta_graph._op_name(resource_variable.name)  # pylint: disable=protected-access
   proto.variable.trainable = resource_variable.trainable

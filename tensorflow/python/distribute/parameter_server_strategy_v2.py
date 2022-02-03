@@ -35,8 +35,10 @@ from tensorflow.python.distribute import values
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as tf_device
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -664,15 +666,23 @@ class ParameterServerStrategyV2Extended(
       return self._create_variable_round_robin(var_creator, **kwargs)
 
     name = kwargs.get("name", None)
+    dtype = kwargs.get("dtype", None)
+    shape = kwargs.get("shape", None)
     initial_value = kwargs.get("initial_value", None)
     if initial_value is None:
-      raise ValueError(
-          "It looks like you are using `ParameterServerStrategy` with a "
-          "`variable_partitioner`, and trying to create a variable without "
-          "specifying `initial_value`. This is not allowed. Please specify the "
-          "`initial_value`. This can also happen if you are trying to load a "
-          "saved_model within a `ParameterServerStrategy` scope. Loading a "
-          "saved_model with `variable_partitioner` is not supported.")
+      # If we are loading, next_creator will return an UninitializedVariable
+      v = next_creator(**kwargs)
+      if not isinstance(v, resource_variable_ops.UninitializedVariable):
+        raise ValueError(
+            "It looks like you are using `ParameterServerStrategy` with a "
+            "`variable_partitioner`, and trying to create a variable without "
+            "specifying `initial_value`. This is not allowed. Please specify the "
+            "`initial_value`.")
+      else:
+        initial_value = var_creator
+        # This occurs when loading from a SavedModel
+        if isinstance(dtype, int):
+          dtype = dtypes.as_dtype(dtype)
 
     # Two cases where initial_value can be a callable:
     #   1. initial_value is passed as a callable, e.g, an `initializer` class.
@@ -680,8 +690,6 @@ class ParameterServerStrategyV2Extended(
     #     "CheckpointInitialValueCallable".
     init_from_fn = callable(initial_value)
 
-    dtype = kwargs.get("dtype", None)
-    shape = kwargs.get("shape", None)
     if init_from_fn and (shape is None or dtype is None):
       init_from_fn = False
       initial_value = initial_value()

@@ -102,6 +102,8 @@ def get_tensor_from_node(node):
       return node
     elif getattr(node, "is_distributed_table", False):
       return node
+    elif getattr(node, "is_sharded_variable", False):
+      return node
     elif resource_variable_ops.is_resource_variable(node):
       return node.handle
     elif isinstance(node, tracking.Asset):

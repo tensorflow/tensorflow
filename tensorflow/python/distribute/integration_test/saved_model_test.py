@@ -40,6 +40,7 @@ from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import lookup_ops
 
 _sixteen_worker_pool = strategy_combinations._deferred_pool_runner(
@@ -677,17 +678,8 @@ class PSStrategySaveAndLoadTest(test.TestCase):
     m.train()
     tf.saved_model.save(m, model_dir)
 
-    # ShardedVariable loading only works in v1.
+    # ShardedVariable loading works in v1.
     self.assertAllEqual(self.load_and_run_v1(model_dir, {"x": 1}), [6, 6, 6, 6])
-
-    with self.assertRaisesRegex(
-        ValueError, "Loading a saved_model containing ShardedVariable"):
-      with strategy.scope():
-        tf.saved_model.load(model_dir)
-
-    with self.assertRaisesRegex(
-        ValueError, "Loading a saved_model containing ShardedVariable"):
-      tf.saved_model.load(model_dir)
 
   def test_load_with_partitioner_raises_error(self):
     model = self.Model()
@@ -696,7 +688,7 @@ class PSStrategySaveAndLoadTest(test.TestCase):
 
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver, tf1.fixed_size_partitioner(2))
-    with self.assertRaisesRegex(ValueError, "`variable_partitioner`"):
+    with self.assertRaises(errors_impl.InvalidArgumentError):
       with strategy.scope():
         tf.saved_model.load(model_dir)
 

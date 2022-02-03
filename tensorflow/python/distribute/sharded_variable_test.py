@@ -20,7 +20,13 @@ from absl.testing import parameterized
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
+from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
+from tensorflow.python.distribute.test_util import get_cluster_def
+from tensorflow.python.distribute.test_util import TestClusterParams
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -40,9 +46,16 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
+
+
+# We create one cluster to share between tests. The cluster should be large
+# enough to accommodate all the tests. Adjust the following constants as needed
+# but be aware of resource limitations in OSS tests.
+test_cluster_params = TestClusterParams(None, 2, 3)
 
 
 def _load_and_run(
@@ -412,19 +425,6 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     # Continue using root.train for training
     self.assertAllEqual([3., 2.], root.train([0, 1]).numpy())
 
-  def test_load_raises_error(self):
-    root = tracking.AutoTrackable()
-    v1 = variables_lib.Variable([3.])
-    v2 = variables_lib.Variable([2.])
-    root.v = sharded_variable.ShardedVariable([v1, v2])
-
-    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
-    save.save(root, save_dir)
-
-    with self.assertRaisesRegex(
-        ValueError, 'Loading a saved_model containing ShardedVariable'):
-      load.load(save_dir)
-
   def test_validation_errors(self):
     with self.assertRaisesRegex(TypeError, 'should be a non-empty list of'):
       sharded_variable.ShardedVariable(None)
@@ -685,6 +685,67 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     for v in sv1.variables:
       self.assertTrue(hasattr(v, '_sharded_container'))
       self.assertIs(v._sharded_container(), sv1)
+
+
+class ShardedVariableSaveLoadTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    cluster_def = get_cluster_def(test_cluster_params, num_workers=2, num_ps=3)
+    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+
+  def tearDown(self):
+    super().tearDown()
+    # reset context to disconnect from the cluster.
+    context._reset_context()
+
+  def testSaveAndLoadUnderStrategy(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver,
+        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
+    _ = coordinator_lib.ClusterCoordinator(strategy)
+    with strategy.scope():
+      var = variables_lib.Variable([1., 2., 3., 4., 5., 6.])
+
+    # save variable
+    model_dir = self.get_temp_dir()
+    save.save(var, model_dir)
+
+    # create new strategy with 3 partitions
+    strategy2 = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver,
+        variable_partitioner=sharded_variable.FixedShardsPartitioner(3))
+    with strategy2.scope():
+      # load variable
+      loaded = load.load(model_dir)
+
+    # assert all values loaded, values are same
+    loaded_flat = array_ops.concat(loaded.variables, axis=0)
+    self.assertLen(loaded_flat, 6)
+
+    var_flat = array_ops.concat(var.variables, axis=0)
+    self.assertAllClose(var_flat, loaded_flat)
+
+  def testSaveUnderStrategyLoadNoStrategy(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver,
+        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
+    _ = coordinator_lib.ClusterCoordinator(strategy)
+    with strategy.scope():
+      var = variables_lib.Variable([1., 2., 3., 4., 5., 6.])
+
+    # save variable
+    model_dir = self.get_temp_dir()
+    save.save(var, model_dir)
+
+    # load variable
+    loaded = load.load(model_dir)
+
+    # assert all values loaded, values are same
+    self.assertLen(loaded.numpy(), 6)
+
+    var_flat = array_ops.concat(var.variables, axis=0)
+    self.assertAllClose(var_flat, loaded)
 
 
 if __name__ == '__main__':

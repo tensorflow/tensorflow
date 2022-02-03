@@ -3,3 +3,4 @@
 
 tf.StaticHashTable
 tf.TrackableConstant
+tf.ShardedVariable
