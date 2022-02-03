@@ -299,6 +299,10 @@ struct TurnDynamicReshapeIntoCollapseShape final
       // Consume trailing 1 dimensions.
       while (i < argShapeInfo->size() && (*argShapeInfo)[i].isConstant(1))
         reassociation_map.back().push_back(i++);
+
+      // This is effectively a shape expansion that we cannot handle yet.
+      // TODO(b/217611473): Implement shape expansion cases.
+      if (reassociation_map.back().empty()) return failure();
     }
 
     // Fail if not all of the operand shape could be consumed.
