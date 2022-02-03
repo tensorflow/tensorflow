@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_TF_OP_WRAPPER_H_
 #define TENSORFLOW_CORE_IR_TF_OP_WRAPPER_H_
 
+#include <cstddef>
+
 #include "llvm/ADT/iterator_range.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -29,39 +31,49 @@ namespace tfg {
 // nodes uniformly.
 class TFOp {
  public:
-  explicit TFOp(Operation &op);
-  explicit TFOp(Operation *op) : TFOp(*op) {}
+  // Wrap an operation. The operation can be null. The constructor must be
+  // marked as implicit to support `llvm::dyn_cast`.
+  TFOp(Operation *op = nullptr);  // NOLINT
+
+  explicit TFOp(Operation &op) : TFOp(&op) {}
+
+  // Support LLVM-style RTTI.
   static bool classof(Operation *op) {
     return isa<TFGraphDialect>(op->getDialect());
   }
 
+  // Get the wrapped operation.
+  Operation *getOperation() { return op_; }
+
   // Returns a pointer to the TensorFlow Graph Dialect. It nevers returns
   // nullptr.
   TFGraphDialect *getDialect() {
-    return static_cast<TFGraphDialect *>(op_.getDialect());
+    return cast<TFGraphDialect>(op_->getDialect());
+  }
+
+  // Split the operands into data and control operands.
+  std::tuple<OperandRange, OperandRange> splitOperands() {
+    ControlType ctl_type = getDialect()->getControlType();
+    OperandRange operands = op_->getOperands();
+    unsigned num_ctl = 0;
+    for (Value operand : llvm::reverse(operands)) {
+      if (operand.getType() == ctl_type)
+        ++num_ctl;
+      else
+        break;
+    }
+    unsigned split_idx = operands.size() - num_ctl;
+    return {operands.slice(0, split_idx), operands.slice(split_idx, num_ctl)};
   }
 
   // Returns the regular operands, the control operands will be excluded.
-  OperandRange getNonControlOperands() {
-    OperandRange operands = op_.getOperands();
-    if (operands.empty()) return operands;
-    OperandRange::iterator first_control_op = std::prev(operands.end());
-    while (first_control_op != operands.begin() &&
-           first_control_op.getBase()->get().getType().isa<ControlType>())
-      --first_control_op;
-    if (!first_control_op.getBase()->get().getType().isa<ControlType>())
-      ++first_control_op;
-    return llvm::make_range(operands.begin(), first_control_op);
-  }
+  OperandRange getNonControlOperands() { return std::get<0>(splitOperands()); }
 
   // The control operands are always after the regular inputs.
-  OperandRange getControlOperands() {
-    return llvm::make_range(getNonControlOperands().end(),
-                            op_.getOperands().end());
-  }
+  OperandRange getControlOperands() { return std::get<1>(splitOperands()); }
 
   // Returns the control token produced by this operation.
-  Value controlRet() { return op_.getResult(op_.getNumResults() - 1); }
+  Value controlRet() { return op_->getResult(op_->getNumResults() - 1); }
 
   // Returns the node name for this operation.
   StringAttr nameAttr();
@@ -99,11 +111,15 @@ class TFOp {
   }
 
   // Forward `->` to the underlying operation, exposing the `Operation` methods.
-  Operation *operator->() { return &op_; }
-  Operation &operator*() { return op_; }
+  Operation *operator->() { return op_; }
+  Operation &operator*() { return *op_; }
+
+  // Converts to true if there is a wrapped operation.
+  explicit operator bool() const { return op_; }
 
  private:
-  Operation &op_;
+  // The wrapped operation.
+  Operation *op_;
 };
 
 }  // namespace tfg
