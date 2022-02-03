@@ -96,23 +96,6 @@ size_t TotalSize(const ObjectsAssignment<size_t>& assignment) {
                          assignment.object_sizes.end(), static_cast<size_t>(0));
 }
 
-// Checks if sub-buffer image 2D mapping is supported.
-bool CanUseSubBuffer(const GpuInfo& gpu_info) {
-  if (!gpu_info.IsCL11OrHigher()) {
-    return false;
-  }
-  if (gpu_info.IsPowerVR()) {
-    return false;
-  }
-  if (gpu_info.IsMali() &&
-      (gpu_info.mali_info.IsBifrost() || gpu_info.mali_info.IsMidgard())) {
-    // Known driver issue on some G72 (Bifrost), G76 (Bifrost), T830 (Midgard),
-    // and T880 (Midgard) devices.
-    return false;
-  }
-  return true;
-}
-
 }  // namespace
 
 void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
@@ -392,6 +375,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
       &buffer_usages);
 
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
+  bool has_buffer_based_images = false;
   for (auto& usage : buffer_usages) {
     const auto& t = tensors_descs_[usage.first];
     const auto& shape = t.shape;
@@ -400,6 +384,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
     size_t buffer_size;
     if (descriptor.storage_type == TensorStorageType::TEXTURE_2D ||
         descriptor.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+      has_buffer_based_images = true;
       const size_t bytes_per_pixel =
           element_size *
           (descriptor.storage_type == TensorStorageType::TEXTURE_2D ? 4
@@ -413,6 +398,9 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
       const size_t width_aligned = AlignByN(width, width_pixel_alignment);
       buffer_size = width_aligned * bytes_per_pixel * height;
     } else {
+      if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+        has_buffer_based_images = true;
+      }
       buffer_size =
           shape.b * shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
     }
@@ -427,12 +415,13 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
   RETURN_IF_ERROR(AssignObjectsToTensors(
       buffer_usage_records, MemoryStrategy::GREEDY_BEST, &buffer_assignment));
 
-  size_t base_align_bytes =
-      std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
   bool use_offset_assignment = false;
 
   OffsetsAssignment offset_assignment;
-  if (CanUseSubBuffer(gpu_info)) {
+  if ((!has_buffer_based_images && gpu_info.IsCL11OrHigher()) ||
+      CanUseSubBufferForImage2d(gpu_info)) {
+    const size_t base_align_bytes =
+        std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
     RETURN_IF_ERROR(AssignOffsetsToTensors(
         buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
         &offset_assignment, base_align_bytes));
