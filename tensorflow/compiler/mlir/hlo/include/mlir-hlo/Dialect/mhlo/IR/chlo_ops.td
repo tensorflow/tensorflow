@@ -58,9 +58,6 @@ def HLOClient_Dialect : Dialect {
 
 class HLOClient_Op<string mnemonic, list<Trait> traits> :
     Op<HLOClient_Dialect, mnemonic, traits> {
-  // TODO(b/129012527) Much of this custom verification should be expressed as
-  // type constraints.
-  let verifier = [{ return Verify(*this); }];
 }
 
 class HLOClient_NativeOpTrait<string name> : NativeOpTrait<name> {
@@ -626,6 +623,7 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def HLOClient_DigammaOp : HLOClient_UnaryElementwiseOp<"digamma",
@@ -809,6 +807,7 @@ def HLOClient_MinimumBroadcastShapesOp :
 
   let assemblyFormat = "$shapes attr-dict `:` type($shapes) `->` type($results)";
 
+  let hasVerifier = 1;
 }
 
 def HLOClient_RankSpecializationClusterOp
@@ -844,6 +843,8 @@ def HLOClient_RankSpecializationClusterOp
   let arguments = (ins Variadic<HLO_Tensor>:$operands);
   let results = (outs Variadic<HLO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
+
+  let hasVerifier = 1;
 }
 
 def HLOClient_RankSpecializationClusterYieldOp
