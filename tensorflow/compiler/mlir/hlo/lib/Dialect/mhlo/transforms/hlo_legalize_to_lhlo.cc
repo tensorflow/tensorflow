@@ -253,6 +253,36 @@ struct HloToLhloDotGeneralOpConverter
 };
 
 template <typename HloOpTy>
+class HloToLhloOpRemainingHloRegionsConverter : public BaseOpConversion<HloOpTy> {
+public:
+  using BaseOpConversion<HloOpTy>::BaseOpConversion;
+  LogicalResult
+  matchAndRewrite(HloOpTy hloOp, typename HloOpTy::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const final {
+    Operation* op = hloOp.getOperation();
+    ValueRange operands = adaptor.getOperands();
+    SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
+    if (failed(ConvertResults(op, buffer_args, rewriter))) return failure();
+    
+    auto new_op = rewriter.create<mhlo::HloToLhloOp<HloOpTy>>(
+      op->getLoc(), llvm::None, buffer_args, op->getAttrs());
+
+    // Copy over the operations inside regions.
+    for (unsigned i = 0, num_region = op->getNumRegions(); i < num_region; ++i) {
+      rewriter.inlineRegionBefore(op->getRegion(i), 
+                                  new_op->getRegion(i), 
+                                  new_op->getRegion(i).end());
+    }
+
+    rewriter.replaceOp(
+      op, llvm::makeArrayRef(buffer_args).drop_front(operands.size()));
+
+    return success();
+  }
+};
+
+// Legalize a mhlo op to a lmhlo op and remain its region in mhlo
+template <typename HloOpTy>
 struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
  public:
   using BaseOpConversion<HloOpTy>::BaseOpConversion;
@@ -429,7 +459,19 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
         lmhlo::LmhloDialect, memref::MemRefDialect, shape::ShapeDialect,
         StandardOpsDialect, tensor::TensorDialect>();
-    target.addIllegalDialect<mhlo::MhloDialect>();
+    
+    // Illegalize MhloDialect
+    // except the following ops allowing mhlo in its regions
+    target.addDynamicallyLegalDialect<mhlo::MhloDialect>([&](Operation* op) {
+      return isa_and_nonnull<
+        mhlo::AllReduceOp, lmhlo::AllReduceOp,
+        mhlo::MapOp, lmhlo::MapOp,
+        mhlo::ReduceScatterOp, lmhlo::ReduceScatterOp,
+        mhlo::ScatterOp, lmhlo::ScatterOp,
+        mhlo::SelectAndScatterOp, lmhlo::SelectAndScatterOp,
+        mhlo::SortOp, lmhlo::SortOp>(op->getParentOp());
+    });
+
     // bufferization.to_memref is illegal if it has uses.
     // TODO(b/175670649) Make bufferization.to_memref illegal.
     target.addDynamicallyLegalOp<mlir::bufferization::ToMemrefOp>(
@@ -545,6 +587,12 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::XorOp>,
       HloToLhloReduceLikeOpConverter<mhlo::ReduceOp>,
       HloToLhloReduceLikeOpConverter<mhlo::ReduceWindowOp>,
+      HloToLhloOpRemainingHloRegionsConverter<mhlo::AllReduceOp>,
+      HloToLhloOpRemainingHloRegionsConverter<mhlo::MapOp>,
+      HloToLhloOpRemainingHloRegionsConverter<mhlo::ReduceScatterOp>,
+      HloToLhloOpRemainingHloRegionsConverter<mhlo::ScatterOp>,
+      HloToLhloOpRemainingHloRegionsConverter<mhlo::SelectAndScatterOp>,
+      HloToLhloOpRemainingHloRegionsConverter<mhlo::SortOp>,
       HloToLhloReturnOpConverter
   >(*converter, context);
   // clang-format on

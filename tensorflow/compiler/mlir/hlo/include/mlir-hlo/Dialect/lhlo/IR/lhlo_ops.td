@@ -977,7 +977,9 @@ def LHLO_SelectOp: LHLO_Op<"select", [Elementwise]> {
   );
 }
 
-def LHLO_SelectAndScatterOp: LHLO_Op<"select_and_scatter", []> {
+def LHLO_SelectAndScatterOp: LHLO_Op<"select_and_scatter", [
+      DeclareOpInterfaceMethods<RegionBranchOpInterface>
+      ]> {
   let summary = "SelectAndScatter operator";
   let description = [{
     Runs a windowed selection `select` function over `operand` with shape

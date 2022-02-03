@@ -677,4 +677,87 @@ func @clamp_broadcast(%min: tensor<f32>, %value: tensor<4xf32>, %max: tensor<f32
   return %0 : tensor<4xf32>
 }
 
+// -----
+
+// CHECK-LABEL: func @scatter
+func @scatter(%arg0: tensor<512x128xf32>, %arg1: tensor<128x1xi64>, %arg2: tensor<128x128xf32>) -> tensor<512x128xf32> {
+  // CHECK: "lmhlo.scatter"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}})
+  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ( {
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):  // no predecessors
+    %173 = mhlo.add %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%173) : (tensor<f32>) -> ()
+  }) {indices_are_sorted = false, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1], inserted_window_dims = [0], scatter_dims_to_operand_dims = [0], index_vector_dim = 1>, unique_indices = false} : (tensor<512x128xf32>, tensor<128x1xi64>, tensor<128x128xf32>) -> tensor<512x128xf32>
+  return %0 : tensor<512x128xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_scatter
+func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
+  // CHECK: "lmhlo.reduce_scatter"(%{{.*}}, %{{.*}})
+  %0 = "mhlo.reduce_scatter"(%data) ({
+    // reduction computation
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @map
+func @map(%arg0: tensor<16xf32>, %arg1: tensor<16xf32>) -> tensor<16xf32> {
+  // CHECK: "lmhlo.map"(%{{.*}}, %{{.*}}, %{{.*}})
+  %0 = "mhlo.map"(%arg0, %arg1) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
+  return %0 : tensor<16xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @sort
+func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
+  // CHECK: "lmhlo.sort"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}})
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
+    %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @all_reduce
+func @all_reduce(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK: "lmhlo.all_reduce"(%{{.*}}, %{{.*}})
+  %0 = "mhlo.all_reduce"(%arg0) ({
+    ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>}: (tensor<10xf32>) -> tensor<10xf32>
+  return  %0 : tensor<10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @select_and_scatter
+func @select_and_scatter(%arg0: tensor<32x64x112x112xf16>, %arg1: tensor<32x64x56x56xf16>, %arg2: tensor<f16>) -> tensor<32x64x112x112xf16> {
+  // CHECK: "lmhlo.select_and_scatter"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}})
+  %0 = "mhlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
+  ^bb0(%arg3: tensor<f16>, %arg4: tensor<f16>):  // no predecessors
+    %1 = "mhlo.compare"(%arg3, %arg4) {comparison_direction = "GE"} : (tensor<f16>, tensor<f16>) -> tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  }, {
+  ^bb0(%arg3: tensor<f16>, %arg4: tensor<f16>):  // no predecessors
+    %1 = mhlo.add %arg3, %arg4 : tensor<f16>
+    "mhlo.return"(%1) : (tensor<f16>) -> ()
+  }) {padding = dense<[[0, 0], [0, 0], [1, 1], [1, 1]]> : tensor<4x2xi64>, window_dimensions = dense<[1, 1, 3, 3]> : tensor<4xi64>, window_strides = dense<[1, 1, 2, 2]> : tensor<4xi64>} : (tensor<32x64x112x112xf16>, tensor<32x64x56x56xf16>, tensor<f16>) -> tensor<32x64x112x112xf16>
+  return %0 : tensor<32x64x112x112xf16>
+}
 

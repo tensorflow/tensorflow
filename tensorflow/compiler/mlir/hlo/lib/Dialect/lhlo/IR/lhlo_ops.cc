@@ -298,6 +298,25 @@ static LogicalResult Verify(ReduceWindowOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SelectAndScatterOp.
+//===----------------------------------------------------------------------===//
+
+void SelectAndScatterOp::getSuccessorRegions(Optional<unsigned> index,
+                                             ArrayRef<Attribute> /*operands*/,
+                                             SmallVectorImpl<RegionSuccessor> &regions) {
+  // If the predecessor is the SelectAndScatterOp or the scatter region, 
+  // branch into the select region.
+  if (!index.hasValue() || index.getValue() == 1) {
+    regions.push_back(RegionSuccessor(&select(), select().getArguments()));
+    return;
+  }
+  // If the predecessor is the select region, we can branch to the scatter region
+  // or back to the parent operation.
+  regions.push_back(RegionSuccessor(&scatter(), scatter().getArguments()));
+  regions.push_back(RegionSuccessor());
+}
+
+//===----------------------------------------------------------------------===//
 // WhileOp
 //===----------------------------------------------------------------------===//
 
