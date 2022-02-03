@@ -36,8 +36,8 @@ class SummaryV2Test(test.TestCase):
     """Tests scalar v2 invocation with a v2 writer."""
     with test.mock.patch.object(
         summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
-      with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default(
-          step=1):
+      with summary_ops_v2.create_summary_file_writer(
+          self.get_temp_dir()).as_default(step=1):
         i = constant_op.constant(2.5)
         tensor = summary_lib.scalar('float', i)
     # Returns empty string.
@@ -62,7 +62,7 @@ class SummaryV2Test(test.TestCase):
       with test.mock.patch.object(
           summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
         with summary_ops_v2.create_summary_file_writer(
-            '/tmp/test').as_default():
+            self.get_temp_dir()).as_default():
           summary_lib.scalar('float', constant_op.constant(2.5))
     mock_scalar_v2.assert_not_called()
 
@@ -71,8 +71,8 @@ class SummaryV2Test(test.TestCase):
     """Tests `family` arg handling when scalar v2 is invoked."""
     with test.mock.patch.object(
         summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
-      with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default(
-          step=1):
+      with summary_ops_v2.create_summary_file_writer(
+          self.get_temp_dir()).as_default(step=1):
         tensor = summary_lib.scalar(
             'float', constant_op.constant(2.5), family='otter')
     # Returns empty string.
@@ -86,8 +86,8 @@ class SummaryV2Test(test.TestCase):
     """Tests `family` arg handling when there is an outer scope."""
     with test.mock.patch.object(
         summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
-      with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default(
-          step=1):
+      with summary_ops_v2.create_summary_file_writer(
+          self.get_temp_dir()).as_default(step=1):
         with ops.name_scope_v2('sea'):
           tensor = summary_lib.scalar(
               'float', constant_op.constant(3.5), family='crabnet')
@@ -104,7 +104,8 @@ class SummaryV2Test(test.TestCase):
     global_step.assign(1024)
     with test.mock.patch.object(
         summary_v2, 'scalar', autospec=True) as mock_scalar_v2:
-      with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default():
+      with summary_ops_v2.create_summary_file_writer(
+          self.get_temp_dir()).as_default():
         i = constant_op.constant(2.5)
         tensor = summary_lib.scalar('float', i)
     # Returns empty string.
@@ -117,8 +118,8 @@ class SummaryV2Test(test.TestCase):
     """Tests image v2 invocation."""
     with test.mock.patch.object(
         summary_v2, 'image', autospec=True) as mock_image_v2:
-      with summary_ops_v2.create_summary_file_writer('/tmp/test').as_default(
-          step=2):
+      with summary_ops_v2.create_summary_file_writer(
+          self.get_temp_dir()).as_default(step=2):
         i = array_ops.ones((5, 4, 4, 3))
         with ops.name_scope_v2('outer'):
           tensor = summary_lib.image('image', i, max_outputs=3, family='family')
@@ -127,6 +128,21 @@ class SummaryV2Test(test.TestCase):
     self.assertEqual(tensor.dtype, dtypes.string)
     mock_image_v2.assert_called_once_with(
         'family/outer/family/image', data=i, step=2, max_outputs=3)
+
+  @test_util.run_v2_only
+  def test_histogram_summary_v2(self):
+    """Tests histogram v2 invocation."""
+    with test.mock.patch.object(
+        summary_v2, 'histogram', autospec=True) as mock_histogram_v2:
+      with summary_ops_v2.create_summary_file_writer(
+          self.get_temp_dir()).as_default(step=3):
+        i = array_ops.ones((1024,))
+        tensor = summary_lib.histogram('histogram', i, family='family')
+    # Returns empty string.
+    self.assertEqual(tensor.numpy(), b'')
+    self.assertEqual(tensor.dtype, dtypes.string)
+    mock_histogram_v2.assert_called_once_with(
+        'family/family/histogram', data=i, step=3)
 
 
 if __name__ == '__main__':
