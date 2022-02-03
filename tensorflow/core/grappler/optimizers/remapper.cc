@@ -309,6 +309,8 @@ bool IsGpuCompatibleDataType(const NodeDef* contraction,
   DataType dtype = GetDataTypeFromAttr(*contraction, type_attr);
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT;
+  } else if (IsMatMul(*contraction)) {
+    return dtype == DT_FLOAT || dtype == DT_HALF;
   } else {
     return false;
   }
@@ -326,6 +328,16 @@ bool IsCpuCompatibleDataFormat(const RemapperContext& ctx,
   } else {
     return false;
   }
+}
+
+bool BlasLtMatmulEnabled() {
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_USE_CUBLASLT", /*default_val=*/false, &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
 }
 
 bool IsGpuCompatibleDataFormat(const RemapperContext& ctx,
@@ -351,6 +363,12 @@ bool IsGpuCompatibleConv2D(const RemapperContext& ctx, const NodeDef* conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
   return NodeIsOnGpu(conv2d) && IsGpuCompatibleDataType(conv2d) &&
          IsGpuCompatibleDataFormat(ctx, conv2d);
+}
+
+bool IsGpuCompatibleMatMul(const RemapperContext& ctx, const NodeDef* matmul) {
+  DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
+  return BlasLtMatmulEnabled() && NodeIsOnGpu(matmul) &&
+         IsGpuCompatibleDataType(matmul);
 }
 
 bool IsCpuCompatibleMatMul(const RemapperContext& ctx, const NodeDef* matmul) {
@@ -388,42 +406,62 @@ bool IsGpuCompatible(const RemapperContext& ctx,
   // ROCm does not support _FusedConv2D
   return false;
 #endif
-  // The TF->XLA bridge does not support `_FusedConv2D` so we avoid creating
-  // this op.  Furthermore, XLA already does this fusion internally so there
+  // The TF->XLA bridge does not support `_Fused[Conv2D|MatMul]` so we avoid
+  // creating this op. Furthermore, XLA already does this fusion internally so
+  // there is no true benefit from doing this optimization if XLA is going to
+  // compile the unfused operations anyway.
+  if (ctx.xla_auto_clustering_on) return false;
+
+  const GraphDef* graph = ctx.graph_view.graph();
+
+  // We rely on cuDNN for fused convolution and cublasLt for fused matmul.
+  const NodeDef& activation_node = graph->node(matched.activation);
+  if (!IsRelu(activation_node)) return false;
+
+  const NodeDef& contraction_node = graph->node(matched.contraction);
+  if (IsConv2D(contraction_node)) {
+    const std::vector<OpInfo::TensorProperties>& input_props =
+        ctx.graph_properties.GetInputProperties(contraction_node.name());
+    const TensorShapeProto& filter_shape =
+        input_props.size() >= 2 ? input_props[1].shape() : TensorShapeProto();
+
+    // FusedConv2D on GPU with 1x1 convolution is marginally faster than
+    // in-graph computation in micro benchmarks (see kernels/conv_ops_test.cc),
+    // and significantly slower in large scale benchmarks.
+    bool is_spatial_conv = Rank(filter_shape) == 4 &&          //
+                           IsKnown(filter_shape.dim(1)) &&     //
+                           IsKnown(filter_shape.dim(2)) &&     //
+                           filter_shape.dim(1).size() != 1 &&  //
+                           filter_shape.dim(2).size() != 1;
+
+    return is_spatial_conv && IsGpuCompatibleConv2D(ctx, &contraction_node);
+  } else if (IsMatMul(contraction_node)) {
+    return IsGpuCompatibleMatMul(ctx, &contraction_node);
+  }
+
+  return false;
+}
+
+// Checks if we can rewrite a pattern to the `_FusedMatMul` on GPU device.
+bool IsGpuCompatible(const RemapperContext& ctx,
+                     const ContractionWithBiasAdd& matched) {
+#if TENSORFLOW_USE_ROCM
+  // ROCm does not support _FusedMatMul
+  return false;
+#endif
+  // The TF->XLA bridge does not support `_FusedMatMul` so we avoid creating
+  // this op. Furthermore, XLA already does this fusion internally so there
   // is no true benefit from doing this optimization if XLA is going to compile
   // the unfused operations anyway.
   if (ctx.xla_auto_clustering_on) return false;
 
   const GraphDef* graph = ctx.graph_view.graph();
   const NodeDef& contraction_node = graph->node(matched.contraction);
-  if (!IsConv2D(contraction_node)) return false;
+  if (!IsMatMul(contraction_node)) return false;
 
-  const std::vector<OpInfo::TensorProperties>& input_props =
-      ctx.graph_properties.GetInputProperties(contraction_node.name());
-  const TensorShapeProto& filter_shape =
-      input_props.size() >= 2 ? input_props[1].shape() : TensorShapeProto();
-
-  // FusedConv2D on GPU with 1x1 convolution is marginally faster than
-  // in-graph computation in micro benchmarks (see kernels/conv_ops_test.cc),
-  // and significantly slower in large scale benchmarks.
-  bool is_spatial_conv = Rank(filter_shape) == 4 &&          //
-                         IsKnown(filter_shape.dim(1)) &&     //
-                         IsKnown(filter_shape.dim(2)) &&     //
-                         filter_shape.dim(1).size() != 1 &&  //
-                         filter_shape.dim(2).size() != 1;
-
-  // We rely on cuDNN for fused convolution, and it currently supports only Relu
-  // activation.
-  const NodeDef& activation_node = graph->node(matched.activation);
-  bool is_relu = IsRelu(activation_node);
-
-  return is_relu && is_spatial_conv &&
-         IsGpuCompatibleConv2D(ctx, &contraction_node);
+  return IsGpuCompatibleMatMul(ctx, &contraction_node);
 }
-bool IsGpuCompatible(const RemapperContext& ctx,
-                     const ContractionWithBiasAdd& matched) {
-  return false;
-}
+
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithSqueezeAndBiasAdd& matched) {
   return false;
