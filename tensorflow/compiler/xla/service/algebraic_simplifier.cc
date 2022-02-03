@@ -6076,20 +6076,6 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   return Status::OK();
 }
 
-bool AlgebraicSimplifierVisitor::TransformToClampIfSameShape(
-    HloInstruction* root, HloInstruction* min, HloInstruction* min_operand,
-    HloInstruction* operand, HloInstruction* max, HloInstruction* max_operand) {
-  // Ensure shapes of min and max operand are equal to match current shape
-  // inference.
-  if (!SameShape(min_operand, max_operand)) {
-    return false;
-  }
-
-  auto clamp = HloInstruction::CreateTernary(root->shape(), HloOpcode::kClamp,
-                                             max_operand, operand, min_operand);
-  TF_CHECK_OK(ReplaceWithNewInstruction(root, std::move(clamp)));
-  return true;
-}
 
 Status AlgebraicSimplifierVisitor::HandleMap(HloInstruction* map) {
   auto* map_computation = map->to_apply();
