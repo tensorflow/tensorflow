@@ -50,8 +50,10 @@ class BinValuesFixedWidth(test.TestCase):
       self.assertEqual(dtypes.int32, bins.dtype)
       self.assertAllClose(expected_bins, self.evaluate(bins))
       
-  def test_with_negative_nbins(self):
+  def test_invalid_nbins(self):
     values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+    with self.assertRaisesRegex(ValueError, "nbins shape must be of rank 0"):
+      histogram_ops.histogram_fixed_width_bins(values, [1.0, 5.0], nbins=[1, 2])
     with self.assertRaisesRegex(ValueError, "nbins should be positive number"):
       histogram_ops.histogram_fixed_width_bins(values, [1.0, 5.0], nbins=-5)
 
