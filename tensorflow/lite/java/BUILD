@@ -580,6 +580,31 @@ java_test_with_tflite(
 )
 
 java_test_with_tflite(
+    name = "InterpreterApiNoRuntimeTest",
+    size = "small",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterApiNoRuntimeTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
+        "src/test/java/org/tensorflow/lite/TestInit.java",
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
+    data = [
+        "src/testdata/add.bin",
+    ],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.InterpreterApiNoRuntimeTest",
+    tflite_jni_binaries = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_stable_test_jni.so",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tensorflowlite_api_javalib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+java_test_with_tflite(
     name = "NnApiDelegateTest",
     size = "small",
     srcs = [
