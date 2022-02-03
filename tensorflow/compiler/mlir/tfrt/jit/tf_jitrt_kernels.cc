@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/ExecutionEngine/AsyncRuntime.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_kernels_registration.h"
@@ -372,6 +373,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     CompilationPipelineOptions copts;
     copts.alignment = EIGEN_MAX_ALIGN_BYTES;  // Eigen included by tensor.h
     copts.num_worker_threads = workers->NumThreads();
+    copts.cost_driven_async_parallel_for =
+        GetJitRtFlags().cost_driven_async_parallel_for;
 
     // Options for the JitRt JitExecutable compilation.
     CompilationOptions opts;
@@ -389,6 +392,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
       if (tf_jitrt_opts) {
         opts.vectorize = tf_jitrt_opts->vectorize;
         opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
+      } else {
+        opts.vectorize = GetJitRtFlags().vectorize;
       }
 
       // Lower from Tensorflow to Linalg on buffers.

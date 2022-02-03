@@ -82,9 +82,10 @@ REQUIRED_PACKAGES = [
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
     'keras_preprocessing >= 1.1.1',  # 1.1.0 needs tensorflow==1.7
-    'libclang >= 9.0.1',
+    'libclang >= 13.0.0',
     'numpy >= 1.20',
     'opt_einsum >= 2.3.2',
+    'packaging',
     'protobuf >= 3.9.2',
     'setuptools',
     'six >= 1.12.0',

@@ -146,6 +146,9 @@ endif()
 
 set(MLIR_HLO_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(MLIR_HLO_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(MLIR_HLO_MAIN_INCLUDE_DIR ${MLIR_HLO_SOURCE_DIR}/include )
+set(MLIR_HLO_GEN_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/include)
+set(MLIR_HLO_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/lib)
 
 add_custom_target(check-mlir-hlo)
 
@@ -157,3 +160,5 @@ add_subdirectory(tests)
 if(MHLO_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)
 endif()
+
+add_subdirectory(cmake/modules)

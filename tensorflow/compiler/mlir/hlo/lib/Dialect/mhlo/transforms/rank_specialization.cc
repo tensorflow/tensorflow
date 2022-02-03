@@ -934,14 +934,14 @@ struct RankSpecializationToSCFPass
 
 }  // namespace
 
-void PopulateRankSpecializationClusterPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns) {
+void PopulateRankSpecializationClusterPatterns(MLIRContext *context,
+                                               RewritePatternSet *patterns) {
   patterns->insert<MergeRankSpecializationClusterOpsPattern,
                    RankSpecializationClusterPattern>(context);
 }
 
 void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
-                                             OwningRewritePatternList *patterns,
+                                             RewritePatternSet *patterns,
                                              int64_t max_target_rank) {
   patterns->insert<LowerRankSpecializationClusterPattern>(context,
                                                           max_target_rank);

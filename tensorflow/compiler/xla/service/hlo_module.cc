@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
@@ -838,7 +837,7 @@ HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,
 }
 
 uint64_t HloModule::RandomNew64() const {
-  tensorflow::mutex_lock l(rng_mutex_);
+  absl::MutexLock l(&rng_mutex_);
   return rng_();
 }
 
@@ -848,19 +847,6 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
-}
-
-uint64_t HloModule::Hash() const {
-  uint64_t result = entry_computation_layout().Hash();
-  // Use MakeComputationSorted() instead of MakeComputationPostOrder()
-  // because naming may affect the order of MakeComputationPostOrder() but not
-  // MakeComputationSorted().
-  for (auto* computation : MakeComputationSorted()) {
-    for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      result = tensorflow::Hash64Combine(result, instruction->Hash());
-    }
-  }
-  return result;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

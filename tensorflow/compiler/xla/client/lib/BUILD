@@ -370,7 +370,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

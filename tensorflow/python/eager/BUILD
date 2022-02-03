@@ -25,32 +25,14 @@ package(
 )
 
 cc_library(
-    name = "eager_context",
-    srcs = [
-        "eager_context.cc",
-    ],
-    hdrs = [
-        "eager_context.h",
-    ],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-    deps = [
-        "//tensorflow/c/eager:c_api",
-    ],
-)
-
-cc_library(
     name = "pywrap_tfe_lib",
     srcs = [
-        "eager_context.cc",
         "pywrap_gradient_exclusions.cc",
         "pywrap_tensor.cc",
         "pywrap_tensor_conversion.cc",
         "pywrap_tfe_src.cc",
     ],
     hdrs = [
-        "eager_context.h",
         "pywrap_gradient_exclusions.h",
         "pywrap_tensor.h",
         "pywrap_tensor_conversion.h",
@@ -136,7 +118,6 @@ cuda_py_test(
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
-        "eager_context.h",
         "pywrap_tensor.h",
         "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",

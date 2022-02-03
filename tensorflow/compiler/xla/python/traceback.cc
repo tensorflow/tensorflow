@@ -145,9 +145,8 @@ void BuildTracebackSubmodule(py::module& m) {
   traceback.def("__str__", &Traceback::ToString);
   traceback.def("__eq__",
                 [](const Traceback& a, const Traceback& b) { return a == b; });
-  traceback.def("__hash__", [](const Traceback& tb) {
-    return absl::Hash<Traceback>()(tb);
-  });
+  traceback.def("__hash__",
+                [](const Traceback& tb) { return absl::HashOf(tb); });
   traceback.def("as_python_traceback", &Traceback::AsPythonTraceback);
 
   traceback.def_static(

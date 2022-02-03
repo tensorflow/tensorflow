@@ -24,9 +24,11 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
-/// Generate the code for registering passes for command-line parsing.
+
+// Generate the code for registering passes for command-line parsing.
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/core/transforms/passes.h.inc"
+
 }  // namespace tfg
 }  // namespace mlir
 

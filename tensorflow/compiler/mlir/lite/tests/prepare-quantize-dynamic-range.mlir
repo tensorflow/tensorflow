@@ -1,7 +1,8 @@
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range | FileCheck %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range  --tfl-enable-dynamic-range-per-channel-quantization=false | FileCheck --check-prefix=PerTensor %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range  --tfl-min-elements-for-weights=10000 | FileCheck --check-prefix=MinElement %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range  --tfl-enable-float16-quantization | FileCheck --check-prefix=Float16 %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range --tfl-enable-custom-op-quantization="CustomTestOp=1-3,CustomTestOp3=3" | FileCheck --check-prefix=CustomOp %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range  --tfl-min-elements-for-weights=4000 --tfl-enable-custom-op-quantization="CustomTestOp=1-3,CustomTestOp3=3" | FileCheck --check-prefix=MinElement %s
 
 // CHECK-LABEL: QuantizeConv2D
 // PerTensor-LABEL: QuantizeConv2D
@@ -123,27 +124,27 @@ func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112
 // MinElement-LABEL: QuantizeBatchMatmulWithActConst
 func @QuantizeBatchMatmulWithActConst(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x3x3x12xf32> {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x3x3x512xf32>) -> tensor<1x3x3x512xf32>
-  %w = arith.constant dense<127.0> : tensor<512x12xf32>
-  %mm = "tfl.batch_matmul"(%0, %w) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x12xf32>) -> tensor<1x3x3x12xf32>
+  %w = arith.constant dense<127.0> : tensor<512x2xf32>
+  %mm = "tfl.batch_matmul"(%0, %w) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x2xf32>) -> tensor<1x3x3x12xf32>
   %mm_s = "quant.stats"(%mm) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x3x3x12xf32>) -> tensor<1x3x3x12xf32>
   return %mm_s : tensor<1x3x3x12xf32>
 
-// CHECK: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<512x12xf32>
-// CHECK: %[[q_w:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<512x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>}
-// CHECK: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w]]) : (tensor<512x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<512x12xf32>
+// CHECK: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<512x2xf32>
+// CHECK: %[[q_w:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<512x2x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>}
+// CHECK: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w]]) : (tensor<512x2x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<512x2xf32>
 // CHECK: %[[mm:.*]] = "tfl.batch_matmul"(%arg0, %[[dq_w]]) {adj_x = false, adj_y = false
 // CHECK-SAME: , asymmetric_quantize_inputs = true
 // CHECK: return %[[mm:.*]]
 
-// PerTensor: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<512x12xf32>
-// PerTensor: %[[q_w:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<512x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>}
-// PerTensor: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w]]) : (tensor<512x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<512x12xf32>
+// PerTensor: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<512x2xf32>
+// PerTensor: %[[q_w:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<512x2x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>}
+// PerTensor: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w]]) : (tensor<512x2x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<512x2xf32>
 // PerTensor: %[[mm:.*]] = "tfl.batch_matmul"(%arg0, %[[dq_w]]) {adj_x = false, adj_y = false
 // PerTensor-SAME: , asymmetric_quantize_inputs = true
 // PerTensor: return %[[mm:.*]]
 
-// MinElement: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<512x12xf32>
-// MinElement: %[[mm:.*]] = "tfl.batch_matmul"(%arg0, %[[w]]) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x12xf32>) -> tensor<1x3x3x12xf32>
+// MinElement: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<512x2xf32>
+// MinElement: %[[mm:.*]] = "tfl.batch_matmul"(%arg0, %[[w]]) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x2xf32>) -> tensor<1x3x3x12xf32>
 // MinElement: return %[[mm:.*]]
 }
 
@@ -191,6 +192,50 @@ func @NotQuantizeConst() -> tensor<1x1x12x512xf32> {
 
 // Float16: %[[w:.*]] = arith.constant dense<-1.23697901> : tensor<1x1x12x512xf32>
 // Float16: return %[[w:.*]]
+}
+
+// CHECK-LABEL: QuantizeCustomOp
+// CustomOp-LABEL: QuantizeCustomOp
+// MinElement-LABEL: QuantizeCustomOp
+func @QuantizeCustomOp(%arg0: tensor<1x1x1x1xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) attributes {tf.entry_function = {inputs = "input", outputs = "custom_op"}} {
+  %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 2.550000e+02]> : tensor<2xf32>} : (tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
+  %w_1 = arith.constant dense<127.0> : tensor<4096x1x1x1xf32>
+  %w_2 = arith.constant dense<127.0> : tensor<128x1x1x1xf32>
+  %b = arith.constant dense<127.0> : tensor<2048x1x1x1xf32>
+  %custom_1 = "tfl.custom"(%0, %w_1, %w_2, %b) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+  %custom_2 = "tfl.custom"(%0, %w_1, %w_2, %b) {custom_code = "CustomTestOp2", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+  %custom_3 = "tfl.custom"(%0, %w_1, %w_2, %b) {custom_code = "CustomTestOp3", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+  return %custom_1, %custom_2, %custom_3 : tensor<*xf32>, tensor<*xf32>, tensor<*xf32>
+
+// CHECK: %[[w_1:.*]] = arith.constant dense<1.270000e+02> : tensor<4096x1x1x1xf32>
+// CHECK: %[[w_2:.*]] = arith.constant dense<1.270000e+02> : tensor<128x1x1x1xf32>
+// CHECK: %[[b:.*]] = arith.constant dense<1.270000e+02> : tensor<2048x1x1x1xf32>
+// CHECK: %[[custom_1:.*]] = "tfl.custom"(%arg0, %[[w_1]], %[[w_2]], %[[b]]) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+// CHECK: %[[custom_2:.*]] = "tfl.custom"(%arg0, %[[w_1]], %[[w_2]], %[[b]]) {custom_code = "CustomTestOp2", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+// CHECK: %[[custom_3:.*]] = "tfl.custom"(%arg0, %[[w_1]], %[[w_2]], %[[b]]) {custom_code = "CustomTestOp3", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+// CHECK: return %[[custom_1:.*]], %[[custom_2:.*]], %[[custom_3:.*]]
+
+// CustomOp: %[[w_1:.*]] = arith.constant dense<1.270000e+02> : tensor<4096x1x1x1xf32>
+// CustomOp: %[[q_w1:.*]] = "tfl.quantize"(%[[w_1]]) {qtype = tensor<4096x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>} : (tensor<4096x1x1x1xf32>) -> tensor<4096x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// CustomOp: %[[dq_w1:.*]] = "tfl.dequantize"(%[[q_w1]]) : (tensor<4096x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<4096x1x1x1xf32>
+// CustomOp: %[[w_2:.*]] = arith.constant dense<1.270000e+02> : tensor<128x1x1x1xf32>
+// CustomOp: %[[b:.*]] = arith.constant dense<1.270000e+02> : tensor<2048x1x1x1xf32>
+// CustomOp: %[[q_b:.*]] = "tfl.quantize"(%[[b]]) {qtype = tensor<2048x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>} : (tensor<2048x1x1x1xf32>) -> tensor<2048x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// CustomOp: %[[dq_b:.*]] = "tfl.dequantize"(%[[q_b]]) : (tensor<2048x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<2048x1x1x1xf32>
+// CustomOp: %[[custom_1:.*]] = "tfl.custom"(%arg0, %[[dq_w1]], %[[w_2]], %[[dq_b]]) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+// CustomOp: %[[custom_2:.*]] = "tfl.custom"(%arg0, %[[w_1]], %[[w_2]], %[[b]]) {custom_code = "CustomTestOp2", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+// CustomOp: %[[custom_3:.*]] = "tfl.custom"(%arg0, %[[w_1]], %[[w_2]], %[[dq_b]]) {custom_code = "CustomTestOp3", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+// CustomOp: return %[[custom_1:.*]], %[[custom_2:.*]], %[[custom_3:.*]]
+
+// MinElement: %[[w_1:.*]] = arith.constant dense<1.270000e+02> : tensor<4096x1x1x1xf32>
+// MinElement: %[[q_w1:.*]] = "tfl.quantize"(%[[w_1]]) {qtype = tensor<4096x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>} : (tensor<4096x1x1x1xf32>) -> tensor<4096x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// MinElement: %[[dq_w1:.*]] = "tfl.dequantize"(%[[q_w1]]) : (tensor<4096x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<4096x1x1x1xf32>
+// MinElement: %[[w_2:.*]] = arith.constant dense<1.270000e+02> : tensor<128x1x1x1xf32>
+// MinElement: %[[b:.*]] = arith.constant dense<1.270000e+02> : tensor<2048x1x1x1xf32>
+// MinElement: %[[custom_1:.*]] = "tfl.custom"(%arg0, %[[dq_w1]], %[[w_2]], %[[b]]) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+// MinElement: %[[custom_2:.*]] = "tfl.custom"(%arg0, %[[w_1]], %[[w_2]], %[[b]]) {custom_code = "CustomTestOp2", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+// MinElement: %[[custom_3:.*]] = "tfl.custom"(%arg0, %[[w_1]], %[[w_2]], %[[b]]) {custom_code = "CustomTestOp3", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
+// MinElement: return %[[custom_1:.*]], %[[custom_2:.*]], %[[custom_3:.*]]
 }
 
 // CHECK-LABEL: QuantizeTransposeConvWeightOnly

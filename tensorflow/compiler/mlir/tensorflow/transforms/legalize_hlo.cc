@@ -2640,7 +2640,7 @@ void LegalizeHloToTf::runOnFunction() {
   MLIRContext &context = getContext();
 
   // Add legalization patterns to the list.
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   PopulateLegalizeHloToTfPatterns(&patterns, &context);
 
   ConversionTarget target(context);
@@ -2656,7 +2656,7 @@ void LegalizeHloToTf::runOnFunction() {
 
 }  // end namespace
 
-void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
+void PopulateLegalizeHloToTfPatterns(RewritePatternSet *patterns,
                                      MLIRContext *context) {
   patterns
       ->insert<ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp,

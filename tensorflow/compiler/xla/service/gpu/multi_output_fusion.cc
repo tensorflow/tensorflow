@@ -238,6 +238,13 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
       fusion_info_cache->Invalidate(*j);
       HloInstruction* remaining = *i;
       HloInstruction* fused = *j;
+
+      DumpFusionState(*remaining,
+                      absl::StrCat("About to fuse producer |", fused->name(),
+                                   "| into consumer |", remaining->name(),
+                                   "| inside GPU multi-output fusion"),
+                      /*producer=*/fused);
+
       if (fused->opcode() == HloOpcode::kFusion) {
         remaining->MergeFusionInstructionIntoMultiOutput(fused);
       } else {
@@ -245,6 +252,9 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
         CHECK_EQ(0, fused->user_count());
         TF_CHECK_OK(computation_->RemoveInstruction(fused));
       }
+      DumpFusionState(*remaining,
+                      absl::StrCat("Fused into consumer |", remaining->name(),
+                                   "| inside GPU multi-output fusion"));
       changed = true;
       siblings.erase(j);
       RecomputeReachability();
@@ -258,17 +268,6 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   RecomputeReachability();
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
-
-  auto dump_fusion_state = [&](const HloInstruction& consumer,
-                               absl::string_view label) {
-    if (computation_->parent()
-            ->config()
-            .debug_options()
-            .xla_dump_fusion_visualization()) {
-      RegisterFusionState(*computation_, label, consumer);
-    }
-    return Status::OK();
-  };
 
   FusionInfoCache fusion_info_cache;
   while (!defs_before_uses.empty()) {
@@ -312,6 +311,12 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     if (consumer_for_fusion->opcode() == HloOpcode::kFusion) {
       VLOG(2) << "Fuse producer " << producer->name() << " into its consumer "
               << consumer_for_fusion->name();
+      DumpFusionState(
+          *consumer_for_fusion,
+          absl::StrCat("About to fuse producer |", producer_name,
+                       "| into consumer |", consumer_for_fusion->name(),
+                       "| inside GPU multi-output fusion"),
+          /*producer=*/producer);
       if (producer->opcode() == HloOpcode::kFusion) {
         consumer_for_fusion->MergeFusionInstructionIntoMultiOutput(producer);
       } else {
@@ -320,10 +325,11 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
         TF_CHECK_OK(computation_->RemoveInstruction(producer));
       }
 
-      TF_RETURN_IF_ERROR(dump_fusion_state(
+      DumpFusionState(
           *consumer_for_fusion,
           absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
-                       consumer_for_fusion->name(), "| inside MOF-fusion")));
+                       consumer_for_fusion->name(),
+                       "| inside GPU multi-output fusion"));
       RecomputeReachability();
       continue;
     }
@@ -334,6 +340,11 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
             consumer_for_fusion));
     VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
             << consumer_for_fusion->name() << " into " << input_fusion->name();
+    DumpFusionState(
+        *input_fusion,
+        absl::StrCat("About to fuse |", producer_name, "| into consumer |",
+                     input_fusion->name(), "| inside GPU multi-output fusion"),
+        /*producer=*/input_fusion);
     TF_CHECK_OK(
         computation_->ReplaceInstruction(consumer_for_fusion, input_fusion));
     if (producer->opcode() == HloOpcode::kFusion) {
@@ -344,13 +355,24 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
       TF_CHECK_OK(computation_->RemoveInstruction(producer));
     }
 
-    TF_RETURN_IF_ERROR(dump_fusion_state(
+    DumpFusionState(
         *input_fusion,
         absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
-                     input_fusion->name(), "| inside MOF-fusion")));
+                     input_fusion->name(), "| inside GPU multi-output fusion"));
     RecomputeReachability();
   }
   return changed;
+}
+
+void GpuMultiOutputFusion::DumpFusionState(const HloInstruction& consumer,
+                                           absl::string_view label,
+                                           const HloInstruction* producer) {
+  if (consumer.GetModule()
+          ->config()
+          .debug_options()
+          .xla_dump_fusion_visualization()) {
+    RegisterFusionState(*computation_, label, consumer, producer);
+  }
 }
 
 StatusOr<bool> GpuMultiOutputFusion::Run(HloModule* module) {

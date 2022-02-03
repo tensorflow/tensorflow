@@ -84,7 +84,7 @@ class TargetHardware {
                                           size_t buffer_size) const = 0;
 
   // Returns a list of all patterns to apply for this hardware.
-  virtual mlir::OwningRewritePatternList GetTransformations(
+  virtual mlir::RewritePatternSet GetTransformations(
       MLIRContext* context) const = 0;
 
   // Returns TypeId for the provided hardware.

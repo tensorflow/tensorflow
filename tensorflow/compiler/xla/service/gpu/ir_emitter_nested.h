@@ -53,12 +53,13 @@ class IrEmitterNested : public IrEmitter {
 
   llvm::Function* GetEmittedFunction() const { return emitted_function_; }
 
+  // Generate the code for the computation passed in the constructor.
+  Status CodegenNestedComputation();
+
+ protected:
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) override;
-
-  // Generate the code for the computation passed in the constructor.
-  Status CodegenNestedComputation();
 
  private:
   // Constructs an LLVM IR emitter for a nested HLO computation. `function` is
@@ -67,6 +68,10 @@ class IrEmitterNested : public IrEmitter {
   IrEmitterNested(const HloModuleConfig& hlo_module_config,
                   const HloComputation& nested_computation,
                   IrEmitterContext* ir_emitter_context);
+
+  // Emits constants to generated LLVM IR, and also populate related
+  // inforamtion to ir_emitter_context for large-constant initializations.
+  Status EmitConstants(const HloComputation& computation);
 
   const HloComputation& nested_computation_;
   llvm::Function* emitted_function_;

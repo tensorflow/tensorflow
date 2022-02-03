@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
 # ==============================================================================
 """Shapes & broadcasting for RaggedTensors.
 
-
 TODO(martinz): make this suitable for output for tf.shape
+TODO(martinz): replace ragged_tensor_shape with this.
 """
 
 
@@ -39,6 +39,13 @@ from tensorflow.python.types import core
 
 
 # TODO(martinz): allow inner_shape to be a fully defined TensorShape.
+# A "fully defined TensorShape" means one where the rank and all dimensions are
+# known.
+# Allowing inner_shape might mean allowing inner_shape to be initialized by
+# a fully defined TensorShape, or it might mean that you can actually store
+# TensorShape in the inner_shape field. This could conceivably construct
+# a RaggedShape that was dtype agnostic.
+#
 # TODO(martinz): unify the impl of the determination of index type across
 #     RowPartition and RaggedShape.
 class RaggedShape:
@@ -728,7 +735,38 @@ class RaggedShape:
     fully_ragged = self._with_num_row_partitions(rank - 1)
     return fully_ragged.row_partitions
 
-  def _add_row_partitions(self, flat_values):
+  def _validate_flat_values_dynamically(self, flat_values):
+    """Test if flat_values have the right nvals dynamically."""
+    if self.row_partitions:
+      assert_op = check_ops.assert_equal(
+          self.row_partitions[-1].nvals(),
+          array_ops.shape(flat_values, out_type=self.dtype)[0],
+          message="Last row partition does not match flat_values.")
+      return control_flow_ops.with_dependencies([assert_op], flat_values)
+    return flat_values
+
+  def _validate_flat_values(self, flat_values):
+    """Test if flat_values have the right nvals."""
+    if not isinstance(flat_values, ops.Tensor):
+      return flat_values
+    if self.row_partitions:
+      last_row_partition = self.row_partitions[-1]
+      flat_values_shape = flat_values.shape
+      if flat_values_shape is None:
+        return self._validate_flat_values_dynamically(flat_values)
+      first_dim_flat_values = flat_values_shape[0]
+      if isinstance(first_dim_flat_values, tensor_shape.Dimension):
+        first_dim_flat_values = first_dim_flat_values.value
+      if first_dim_flat_values is None:
+        return self._validate_flat_values_dynamically(flat_values)
+      static_nvals = last_row_partition.static_nvals
+      if static_nvals is None:
+        return self._validate_flat_values_dynamically(flat_values)
+      if first_dim_flat_values != static_nvals:
+        raise ValueError("Last row partition does not match flat_values.")
+    return flat_values
+
+  def _add_row_partitions(self, flat_values, validate=False):
     """Add row partitions to flat_values, if necessary.
 
     If the shape is truly ragged, then this adds the row_partitions.
@@ -738,13 +776,16 @@ class RaggedShape:
     Args:
       flat_values: the flat_values of a ragged tensor with this shape, or a
         dense tensor with this shape.
+      validate: validate the flat_values have the right first dimension.
 
     Returns:
       flat_values reshaped to have row_partitions.
     """
     if self.row_partitions:
+      if validate:
+        flat_values = self._validate_flat_values(flat_values)
       return ragged_tensor.RaggedTensor._from_nested_row_partitions(
-          flat_values, self.row_partitions)
+          flat_values, self.row_partitions, validate=False)
     else:
       return flat_values
 
@@ -850,7 +891,7 @@ def broadcast_dynamic_shape_extended(
       b = b.with_dtype(dtypes.int64)
 
   if (a.rank is None or b.rank is None):
-    raise ValueError("Rank of both shapes must be statically known")
+    raise ValueError("Unable to broadcast: unknown rank")
   elif a.rank == 0:
     return (b, _Broadcaster(a, b, []), _get_identity_broadcaster(b))
   elif b.rank == 0:
@@ -868,6 +909,61 @@ def broadcast_dynamic_shape_extended(
     return (c, ac, bc)
 
   return _broadcast_dynamic_shape_extended_helper(a, b)
+
+
+def _row_partitions_identical(shape_a, shape_b):
+  """Returns True iff all row_partitions in shapes are identical."""
+  return ((shape_a.num_row_partitions == shape_b.num_row_partitions) and all(
+      a is b for a, b in zip(shape_a.row_partitions, shape_b.row_partitions)))
+
+
+# TODO(martinz): Preserve shapes better (see CL/414806185)
+def ragged_binary_elementwise_op_impl(op, x, y):
+  """Binary elementwise api handler for RaggedTensors."""
+  x_is_ragged = ragged_tensor.is_ragged(x)
+  y_is_ragged = ragged_tensor.is_ragged(y)
+
+  # Convert args to tensors.
+  x = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+      x, preferred_dtype=(y.dtype if y_is_ragged else None))
+  y = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+      y, preferred_dtype=x.dtype)
+
+  if x_is_ragged and y_is_ragged:
+    x, y = ragged_tensor.match_row_splits_dtypes(x, y)
+
+  if ((x_is_ragged and y_is_ragged) or
+      (x_is_ragged and x.flat_values.shape.ndims <= y.shape.ndims) or
+      (y_is_ragged and y.flat_values.shape.ndims <= x.shape.ndims)):
+    shape_x = RaggedShape.from_tensor(x)
+    shape_y = RaggedShape.from_tensor(y)
+    if shape_x.dtype != shape_y.dtype:
+      if not x_is_ragged:
+        shape_x = shape_x.with_dtype(shape_y.dtype)
+      elif not y_is_ragged:
+        shape_y = shape_y.with_dtype(shape_x.dtype)
+
+    if _row_partitions_identical(shape_x, shape_y):
+      # At this point, both x and y must be ragged.
+      return shape_x._add_row_partitions(  # pylint: disable=protected-access
+          op(x.flat_values, y.flat_values), validate=False)
+
+    (shape_z, bcast_xz,
+     bcast_yz) = broadcast_dynamic_shape_extended(shape_x, shape_y)
+    x_new_flat = bcast_xz.broadcast_flat_values(x)
+    y_new_flat = bcast_yz.broadcast_flat_values(y)
+    z_flat = op(x_new_flat, y_new_flat)
+    return shape_z._add_row_partitions(z_flat, validate=True)  # pylint: disable=protected-access
+
+  x_values = x.flat_values if ragged_tensor.is_ragged(x) else x
+  y_values = y.flat_values if ragged_tensor.is_ragged(y) else y
+  mapped_values = op(x_values, y_values)
+  if isinstance(mapped_values, bool):
+    return mapped_values  # Special case for tensor_equals.
+  if ragged_tensor.is_ragged(x):
+    return x.with_flat_values(mapped_values)
+  else:
+    return y.with_flat_values(mapped_values)
 
 
 def _find_dtype_helper(value, preferred):
@@ -1189,6 +1285,12 @@ class _Broadcaster:
   def dtype(self):
     return self._source_shape.dtype
 
+  def _target_inner_shape_int32(self):
+    new_inner_shape = self.target_shape.inner_shape
+    if new_inner_shape.dtype == dtypes.int64:
+      new_inner_shape = math_ops.cast(new_inner_shape, dtype=dtypes.int32)
+    return new_inner_shape
+
   # pylint:disable=protected-access
   def broadcast_flat_values(self, rt, inner_dimensions=True):
     """flat_values of a ragged tensor broadcast to target_shape.
@@ -1230,7 +1332,7 @@ class _Broadcaster:
       # rt.rank == self._source_shape.rank < inner_rank
       # Here, property 2a holds.
       if inner_dimensions:
-        return array_ops.broadcast_to(rt, self.target_shape.inner_shape)
+        return array_ops.broadcast_to(rt, self._target_inner_shape_int32())
       return rt
     else:
       if self._source_shape.inner_rank != inner_rank:
@@ -1241,7 +1343,7 @@ class _Broadcaster:
       rt = flat_broadcaster.broadcast_tensor(rt)
       # Here, property 2b holds.
       if inner_dimensions:
-        rt = array_ops.broadcast_to(rt, self.target_shape.inner_shape)
+        rt = array_ops.broadcast_to(rt, self._target_inner_shape_int32())
       return rt
 
   def broadcast(self, rt):

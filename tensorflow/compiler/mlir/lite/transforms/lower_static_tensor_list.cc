@@ -1470,7 +1470,7 @@ void LowerStaticTensorListPass::runOnOperation() {
   target.addLegalOp<TFL::UnidirectionalSequenceRNNOp>();
   target.addLegalOp<TFL::BidirectionalSequenceLSTMOp>();
 
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   populateWithGenerated(patterns);
   patterns.insert<ConvertConst, ConvertIdentity, ConvertTensorListGetItem,
                   ConvertTensorListLength, ConvertTensorListPushBack,

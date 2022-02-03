@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/get_compiler_ir.h"
-#include "tensorflow/python/eager/eager_context.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
@@ -1202,8 +1201,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return tensorflow::PyoOrThrow(TFE_Py_SetEagerContext(o.ptr()));
   });
   m.def("TFE_Py_SetCEagerContext", [](const py::handle& ctx) {
-    tensorflow::eager::TFE_Py_SetCEagerContext(
-        tensorflow::InputTFE_Context(ctx));
+    TFE_Py_SetCEagerContext(tensorflow::InputTFE_Context(ctx));
   });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));

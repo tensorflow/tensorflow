@@ -54,7 +54,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::AffineDialect, mlir::arith::ArithmeticDialect,
                       mlir::memref::MemRefDialect, mlir::StandardOpsDialect>();
-  mlir::OwningModuleRef mlir_module(
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
   mlir::FuncOp function =

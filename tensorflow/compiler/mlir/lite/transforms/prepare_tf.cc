@@ -1233,7 +1233,7 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   target.addIllegalOp<TF::XlaConvOp>();
   target.addIllegalOp<TF::XlaGatherOp>();
 
-  OwningRewritePatternList patterns(context);
+  RewritePatternSet patterns(context);
   mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
@@ -1369,8 +1369,8 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
 
 void PrepareTFPass::runOnFunction() {
   MLIRContext *ctx = &getContext();
-  OwningRewritePatternList patterns(ctx);
-  OwningRewritePatternList phase_2_patterns(ctx);
+  RewritePatternSet patterns(ctx);
+  RewritePatternSet phase_2_patterns(ctx);
   auto func = getFunction();
 
   // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since

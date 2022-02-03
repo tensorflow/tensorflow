@@ -170,12 +170,12 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   }
 
   // Create the kernel.
-  mlir::OwningModuleRef module;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
   mlir::MLIRContext context;
 
   if (item.result_module().empty()) {
     // Otherwise, compile the module now.
-    tensorflow::StatusOr<mlir::OwningModuleRef> status_or_module =
+    tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> status_or_module =
         tensorflow::kernel_gen::GenerateKernelForTfCode(
             context, code, architectures, tile_sizes, unroll_factors,
             max_supported_rank, /*embed_memref_prints=*/false,

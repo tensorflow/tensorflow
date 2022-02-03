@@ -789,7 +789,11 @@ TEST_F(GetAttrTest, Shape) {
        "b|list(shape)|[{ dim { size:2 } }, { dim { size: 4 } }]"});
   auto* get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"shape", "shape_proto"});
-  EXPECT_EQ(get_attr_kernel->shape_proto.ShortDebugString(), "dim { size: 3 }");
+  TensorShapeProto expected_shape_proto;
+  protobuf::TextFormat::ParseFromString("dim { size: 3 }",
+                                        &expected_shape_proto);
+  EXPECT_EQ(get_attr_kernel->shape_proto.ShortDebugString(),
+            expected_shape_proto.ShortDebugString());
   EXPECT_EQ("[3]", get_attr_kernel->shape.DebugString());
 
   op_kernel = ExpectSuccess(
@@ -799,10 +803,14 @@ TEST_F(GetAttrTest, Shape) {
   get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"shape_list", "shape_proto_list"});
   ASSERT_EQ(2, get_attr_kernel->shape_proto_list.size());
+  protobuf::TextFormat::ParseFromString("dim { size: 2 }",
+                                        &expected_shape_proto);
   EXPECT_EQ(get_attr_kernel->shape_proto_list[0].ShortDebugString(),
-            "dim { size: 2 }");
+            expected_shape_proto.ShortDebugString());
+  protobuf::TextFormat::ParseFromString("dim { size: 4 }",
+                                        &expected_shape_proto);
   EXPECT_EQ(get_attr_kernel->shape_proto_list[1].ShortDebugString(),
-            "dim { size: 4 }");
+            expected_shape_proto.ShortDebugString());
   ASSERT_EQ(2, get_attr_kernel->shape_list.size());
   EXPECT_EQ("[2]", get_attr_kernel->shape_list[0].DebugString());
   EXPECT_EQ("[4]", get_attr_kernel->shape_list[1].DebugString());

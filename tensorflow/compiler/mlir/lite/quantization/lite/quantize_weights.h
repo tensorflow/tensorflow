@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -31,9 +32,16 @@ namespace lite {
 enum class BufferType { QUANTIZED_INT8, QUANTIZED_FLOAT16 };
 
 // Stores information about how to quantize a user-specified custom operation.
+// CustomOpInfo contains info of its corresponding CustomOp registered in the
+// CustomOpMap. 'quantizable_input_indices' is used to determine which indicies
+// of the CustomOp is quantizable. 'is_weight_only' is used specify whether the
+// custom op is quantized only for storage and dequantized at runtime.
+// 'no_side_effect' is used to determine whether the op can be pruned if
+// considered as trivially dead.
 struct CustomOpInfo {
   std::vector<std::int32_t> quantizable_input_indices;
-  bool is_weight_only;
+  bool is_weight_only = false;
+  bool no_side_effect = true;
 };
 
 using StringSet = absl::flat_hash_set<std::string>;

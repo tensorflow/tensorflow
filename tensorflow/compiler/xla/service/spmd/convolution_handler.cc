@@ -48,7 +48,7 @@ StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
     int64_t num_partitions, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
   if (original_hlo->batch_group_count() == 1 ||
-      original_hlo->batch_group_count() < num_partitions) {
+      original_hlo->batch_group_count() % num_partitions != 0) {
     return nullptr;
   }
 
@@ -140,7 +140,7 @@ StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
     int64_t num_partitions, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
   if (original_hlo->feature_group_count() == 1 ||
-      original_hlo->feature_group_count() < num_partitions) {
+      original_hlo->feature_group_count() % num_partitions != 0) {
     return nullptr;
   }
 

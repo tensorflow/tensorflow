@@ -41,7 +41,7 @@ namespace {
 StatusOr<std::string> PyXlaComputationToMlirModule(
     const XlaComputation& computation) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   context.loadDialect<mlir::StandardOpsDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
@@ -57,7 +57,7 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
                                                       bool use_tuple_args,
                                                       bool return_tuple) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
   context.loadDialect<mlir::StandardOpsDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   context.loadDialect<mlir::chlo::HloClientDialect>();

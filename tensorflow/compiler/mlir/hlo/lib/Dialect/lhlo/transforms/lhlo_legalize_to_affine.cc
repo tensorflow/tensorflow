@@ -532,7 +532,7 @@ struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
 };
 
 void populateLHLOToAffineConversionPattern(MLIRContext* context,
-                                           OwningRewritePatternList* patterns) {
+                                           RewritePatternSet* patterns) {
   // clang-format off
   patterns->insert<
       BinaryOpConverter<lmhlo::AddOp>,
@@ -556,7 +556,7 @@ struct LhloLegalizeToAffinePass
   }
   void runOnOperation() override {
     auto func = getOperation();
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     populateLHLOToAffineConversionPattern(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
   }

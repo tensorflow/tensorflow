@@ -326,7 +326,8 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
 
 Status ConvertMLIRToTFLiteFlatBuffer(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    mlir::OwningModuleRef module, const mlir::TFL::PassConfig& pass_config,
+    mlir::OwningOpRef<mlir::ModuleOp> module,
+    const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
     llvm::Optional<tensorflow::Session*> session) {
   if (toco_flags.has_dump_graphviz_dir()) {

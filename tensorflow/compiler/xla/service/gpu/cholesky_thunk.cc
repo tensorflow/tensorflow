@@ -93,11 +93,12 @@ StatusOr<GpuSolverContext*> GetContext(se::Stream* stream) {
   // TODO(b/214454412): This global hashtable is incorrect (ABA bug if a Stream
   // is added to the hasthable, then deleted, and then a new Stream is created
   // at the same address).  It also leaks memory!
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static absl::Mutex mu(absl::kConstInit);
   static auto contexts =
-      new absl::flat_hash_map<se::Stream*, GpuSolverContext> TF_GUARDED_BY(mu);
+      new absl::flat_hash_map<se::Stream*, GpuSolverContext> ABSL_GUARDED_BY(
+          mu);
 
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   auto result = contexts->emplace(stream, GpuSolverContext());
   if (result.second) {
     TF_ASSIGN_OR_RETURN(result.first->second, GpuSolverContext::Create(stream));
@@ -114,13 +115,13 @@ StatusOr<SetPotrfBatchedPointersKernel*> GetSetPotrfBatchedPointersKernel(
     se::StreamExecutor* executor, const se::GpuAsmOpts& asm_opts) {
   // A global hashtable keyed on StreamExecutor* is ok because StreamExecutors
   // are never destroyed.
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static absl::Mutex mu(absl::kConstInit);
   static auto kernels =
       new absl::flat_hash_map<se::StreamExecutor*,
                               std::unique_ptr<SetPotrfBatchedPointersKernel>>
-          TF_GUARDED_BY(mu);
+          ABSL_GUARDED_BY(mu);
 
-  tensorflow::mutex_lock lock(mu);
+  absl::MutexLock lock(&mu);
   auto result = kernels->emplace(executor, nullptr);
   if (result.second) {
     absl::Span<const uint8_t> compiled_ptx;
@@ -181,9 +182,9 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "type=" << PrimitiveType_Name(type_)
           << " uplo=" << se::blas::UpperLowerString(uplo_)
           << " batch_size=" << batch_size_ << " n=" << n_
-       << " a=" << a_buffer_.ToString()
-       << " workspace=" << workspace_buffer_.ToString()
-       << " info=" << info_buffer_.ToString();
+          << " a=" << a_buffer_.ToString()
+          << " workspace=" << workspace_buffer_.ToString()
+          << " info=" << info_buffer_.ToString();
 
   TF_ASSIGN_OR_RETURN(GpuSolverContext * context, GetContext(params.stream));
   if (context->SupportsPotrfBatched()) {

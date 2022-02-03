@@ -1088,7 +1088,7 @@ TEST_F(OpLevelCostEstimatorTest, UnaryOpExecutionTime) {
   std::vector<std::pair<std::string, int>> unary_ops = {
       {"All", 1},      {"ArgMax", 1}, {"Cast", 1},  {"Max", 1},
       {"Min", 1},      {"Prod", 1},   {"Relu", 1},  {"Relu6", 1},
-      {"Softmax", 43}, {"Sum", 1},    {"TopKV2", 1}};
+      {"Softmax", 40}, {"Sum", 1},    {"TopKV2", 1}};
 
   const int kTensorSize = 1000;
   for (auto unary_op : unary_ops) {

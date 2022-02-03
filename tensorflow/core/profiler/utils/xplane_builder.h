@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/meta/type_traits.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -46,14 +47,14 @@ class XStatsBuilder {
   // NOTE: A stat shouldn't have existed for the given metadata.
   // Adds a stat for the given metadata and sets its value.
   template <typename ValueT>
-  void AddStatValue(const XStatMetadata& metadata, ValueT value) {
-    SetStatValue(value, AddStat(metadata));
+  void AddStatValue(const XStatMetadata& metadata, ValueT&& value) {
+    SetStatValue(std::forward<ValueT>(value), AddStat(metadata));
   }
 
   // Adds or finds a stat for the given metadata and sets its value.
   template <typename ValueT>
-  void SetOrAddStatValue(const XStatMetadata& metadata, ValueT value) {
-    SetStatValue(value, FindOrAddStat(metadata));
+  void SetOrAddStatValue(const XStatMetadata& metadata, ValueT&& value) {
+    SetStatValue(std::forward<ValueT>(value), FindOrAddStat(metadata));
   }
 
   // Adds a stat by copying a stat from another XPlane. Does not check if a stat
@@ -112,23 +113,25 @@ class XStatsBuilder {
     return AddStat(metadata);
   }
 
-  static void SetStatValue(uint32 value, XStat* stat) {
-    stat->set_uint64_value(value);
-  }
-  static void SetStatValue(unsigned long value, XStat* stat) {  // NOLINT
-    stat->set_uint64_value(value);
-  }
-  static void SetStatValue(unsigned long long value, XStat* stat) {  // NOLINT
-    stat->set_uint64_value(value);
-  }
-  static void SetStatValue(int32_t value, XStat* stat) {
+  static void SetStatValue(bool value, XStat* stat) {
+    // bool is integral unsigned, but saved in the signed slot for backwards
+    // compatibility.
     stat->set_int64_value(value);
   }
-  static void SetStatValue(long value, XStat* stat) {  // NOLINT
+  template <typename Int,
+            std::enable_if_t<absl::conjunction<std::is_integral<Int>,
+                                               std::is_signed<Int>>::value,
+                             bool> = true>
+  static void SetStatValue(Int value, XStat* stat) {
     stat->set_int64_value(value);
   }
-  static void SetStatValue(long long value, XStat* stat) {  // NOLINT
-    stat->set_int64_value(value);
+  template <typename UInt,
+            std::enable_if_t<
+                absl::conjunction<std::is_integral<UInt>,
+                                  absl::negation<std::is_signed<UInt>>>::value,
+                bool> = true>
+  static void SetStatValue(UInt value, XStat* stat) {
+    stat->set_uint64_value(value);
   }
   static void SetStatValue(double value, XStat* stat) {
     stat->set_double_value(value);

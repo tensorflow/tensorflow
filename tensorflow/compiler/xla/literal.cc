@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 
@@ -1156,27 +1155,6 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
     default:
       return absl::nullopt;
   }
-}
-
-size_t LiteralBase::Hash(int64_t byte_limit) const {
-  using tensorflow::Hash64Combine;
-
-  size_t hash_value = ShapeUtil::Hash(shape());
-
-  ShapeUtil::ForEachSubshape(
-      shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) {
-          return;
-        }
-
-        CHECK(LayoutUtil::IsDense(subshape.layout()));
-        auto data =
-            absl::MakeConstSpan(static_cast<const char*>(untyped_data(index)),
-                                std::min(byte_limit, size_bytes(index)));
-        hash_value = Hash64Combine(hash_value, xla::HashOf(data));
-      });
-
-  return hash_value;
 }
 
 Status MutableLiteralBase::SetIntegralAsS64(

@@ -195,7 +195,7 @@ std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandardPass>();
 }
 
-void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
+void PopulateMhloToStdPatterns(RewritePatternSet *patterns,
                                mlir::MLIRContext *ctx) {
   mlir::populateWithGenerated(*patterns);
   patterns->insert<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
@@ -203,7 +203,7 @@ void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
 
 /// Perform the lowering to standard dialect.
 void LegalizeToStandardPass::runOnOperation() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
   (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }

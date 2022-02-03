@@ -29,7 +29,7 @@ py_library(
         ":saveable_object",
         ":saveable_object_util",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/saved_model:registration",
+        "//tensorflow/python/saved_model/registration",
     ],
 )
 

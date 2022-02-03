@@ -20,7 +20,7 @@ func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
 func @tensor.from_elements(%a : f32) -> f32 {
   // CHECK-DAG: %[[B:.*]] = arith.constant 1.2
   // CHECK-DAG: %[[C:.*]] = arith.constant 2.3
-  // ALLOC: %[[MEM:.*]] = memref.alloc() : memref<3xf32>
+  // ALLOC: %[[MEM:.*]] = memref.alloc() {{.*}} : memref<3xf32>
   // ALLOCA: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
@@ -40,7 +40,7 @@ func @tensor.from_elements(%a : f32) -> f32 {
 // CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> index
 func @tensor.generate(%arg : tensor<*xf32>) -> index {
   // CHECK: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
-  // ALLOC: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) : memref<?xindex>
+  // ALLOC: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) {{.*}} : memref<?xindex>
   // ALLOCA: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index

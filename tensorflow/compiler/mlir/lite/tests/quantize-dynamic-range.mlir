@@ -3,6 +3,8 @@
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization --tfl-enable-dynamic-range-per-channel-quantization=false | FileCheck --check-prefix=PerTensor %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization --tfl-enable-weight-only-quantization --tfl-enable-dynamic-range-per-channel-quantization=false | FileCheck --check-prefix=PerTensorWeightOnly %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization --tfl-enable-dynamic-range-per-channel-quantization=false --tfl-ops-blocklist="tfl.conv_2d" | FileCheck --check-prefix=BLOCK %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization --tfl-enable-custom-op-quantization="CustomTestOp=1" --tfl-enable-custom-op-weight-only="CustomTestOp=true" | FileCheck --check-prefix=CustomOpWeightOnly %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize --tfl-enable-dynamic-range-quantization --tfl-enable-custom-op-quantization="CustomTestOp=1" --tfl-enable-custom-op-weight-only="CustomTestOp=false" | FileCheck --check-prefix=CustomOpNotWeightOnly %s
 
 // CHECK-LABEL: QuantizeConv2D
 // PerTensor-LABEL: QuantizeConv2D
@@ -195,6 +197,29 @@ func @QuantizeGatherWeightOnly(%arg0: tensor<3xi32>) -> tensor<3x3x3x3xf32> {
 // PerTensor: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w]]) : (tensor<64x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<64x3x3x3xf32>
 // PerTensor: %[[emb:.*]] = "tfl.gather"(%[[dq_w]], %arg0)
 // PerTensor: return %[[emb:.*]]
+}
+
+// CHECK-LABEL: QuantizeCustomOp
+// CustomOpWeightOnly-LABEL: QuantizeCustomOp
+// CustomOpNotWeightOnly-LABEL: QuantizeCustomOp
+func @QuantizeCustomOp(%arg0: tensor<1x1x1x1xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "input", outputs = "custom_op"}} {
+  %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 2.550000e+02]> : tensor<2xf32>} : (tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
+  %w = arith.constant dense<127.0> : tensor<1024x1x1x1xf32>
+  %custom = "tfl.custom"(%0, %w) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<1024x1x1x1xf32>) -> tensor<*xf32>
+  return %custom : tensor<*xf32>
+
+// CHECK: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<1024x1x1x1xf32>
+// CHECK: %[[custom:.*]] = "tfl.custom"(%arg0, %[[w:.*]]) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>}
+// CHECK: return %[[custom:.*]]
+
+// CustomOpWeightOnly: %[[q_w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<1024x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// CustomOpWeightOnly: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w:.*]]) : (tensor<1024x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<1024x1x1x1xf32>
+// CustomOpWeightOnly: %[[custom:.*]] = "tfl.custom"(%arg0, %[[dq_w:.*]]) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>}
+// CustomOpWeightOnly: return %[[custom:.*]]
+
+// CustomOpNotWeightOnly: %[[q_w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<1024x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// CustomOpNotWeightOnly: %[[custom:.*]] = "tfl.custom"(%arg0, %[[q_w:.*]]) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>}
+// CustomOpNotWeightOnly: return %[[custom:.*]]
 }
 
 // CHECK-LABEL: NotQuantizeConv3D

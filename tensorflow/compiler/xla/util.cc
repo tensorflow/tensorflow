@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
@@ -93,7 +92,7 @@ void ScopedLoggingTimer::StopAndLog() {
     double secs = (end_micros - start_micros_) / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
-    tensorflow::mutex_lock lock(stats.stats_mutex);
+    absl::MutexLock lock(&stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
       stats.max_secs = secs;
@@ -136,11 +135,12 @@ std::string Reindent(absl::string_view original,
       });
 }
 
-template <typename IntT, typename FloatT>
+template <typename FloatT>
 static void RoundTripNanPayload(FloatT value, std::string* result) {
   const int kPayloadBits = NanPayloadBits<FloatT>();
   if (std::isnan(value) && kPayloadBits > 0) {
-    auto rep = absl::bit_cast<IntT>(value);
+    auto rep = absl::bit_cast<
+        typename UnsignedIntegerTypeForSize<sizeof(FloatT)>::type>(value);
     auto payload = rep & NanPayloadBitMask<FloatT>();
     if (payload != QuietNanWithoutPayload<FloatT>()) {
       absl::StrAppendFormat(result, "(0x%x)", payload);
@@ -148,31 +148,46 @@ static void RoundTripNanPayload(FloatT value, std::string* result) {
   }
 }
 
-std::string RoundTripFpToString(tensorflow::bfloat16 value) {
-  std::string result = absl::StrFormat("%.4g", static_cast<float>(value));
-  RoundTripNanPayload<uint16_t>(value, &result);
+template <typename FloatT>
+static std::string GenericRoundTripFpToString(FloatT value) {
+  // TODO(majnemer): Remove this temporary variable once Eigen creates a symbol
+  // definition for `max_digits10`.
+  int max_decimal_digits = std::numeric_limits<FloatT>::max_digits10;
+  return absl::StrFormat("%.*g", max_decimal_digits,
+                         static_cast<double>(value));
+}
+
+std::string RoundTripFpToString(bfloat16 value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayload(value, &result);
   return result;
 }
 
-std::string RoundTripFpToString(Eigen::half value) {
-  std::string result = absl::StrFormat("%.5g", static_cast<float>(value));
-  RoundTripNanPayload<uint16_t>(value, &result);
+std::string RoundTripFpToString(half value) {
+  std::string result = GenericRoundTripFpToString(value);
+  RoundTripNanPayload(value, &result);
   return result;
 }
 
 std::string RoundTripFpToString(float value) {
-  char buffer[tensorflow::strings::kFastToBufferSize];
-  tensorflow::strings::FloatToBuffer(value, buffer);
-  std::string result = buffer;
-  RoundTripNanPayload<uint32_t>(value, &result);
+  float parsed_result;
+  std::string result =
+      absl::StrFormat("%.*g", std::numeric_limits<float>::digits10, value);
+  if (!absl::SimpleAtof(result, &parsed_result) || parsed_result != value) {
+    result = GenericRoundTripFpToString(value);
+  }
+  RoundTripNanPayload(value, &result);
   return result;
 }
 
 std::string RoundTripFpToString(double value) {
-  char buffer[tensorflow::strings::kFastToBufferSize];
-  tensorflow::strings::DoubleToBuffer(value, buffer);
-  std::string result = buffer;
-  RoundTripNanPayload<uint64_t>(value, &result);
+  double parsed_result;
+  std::string result =
+      absl::StrFormat("%.*g", std::numeric_limits<double>::digits10, value);
+  if (!absl::SimpleAtod(result, &parsed_result) || parsed_result != value) {
+    result = GenericRoundTripFpToString(value);
+  }
+  RoundTripNanPayload(value, &result);
   return result;
 }
 
@@ -245,8 +260,8 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
 
   // Protect calls with a mutex so we don't interleave calls to LogLines from
   // multiple threads.
-  static tensorflow::mutex log_lines_mu(tensorflow::LINKER_INITIALIZED);
-  tensorflow::mutex_lock lock(log_lines_mu);
+  static absl::Mutex log_lines_mu(absl::kConstInit);
+  absl::MutexLock lock(&log_lines_mu);
 
   size_t cur = 0;
   while (cur < text.size()) {

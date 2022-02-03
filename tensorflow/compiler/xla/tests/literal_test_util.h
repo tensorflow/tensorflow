@@ -21,6 +21,7 @@ limitations under the License.
 #include <random>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -45,16 +45,16 @@ class LiteralTestUtil {
   // Asserts that the given shapes have the same rank, dimension sizes, and
   // primitive types.
   static ::testing::AssertionResult EqualShapes(
-      const Shape& expected, const Shape& actual) TF_MUST_USE_RESULT;
+      const Shape& expected, const Shape& actual) ABSL_MUST_USE_RESULT;
 
   // Asserts that the provided shapes are equal as defined in AssertEqualShapes
   // and that they have the same layout.
   static ::testing::AssertionResult EqualShapesAndLayouts(
-      const Shape& expected, const Shape& actual) TF_MUST_USE_RESULT;
+      const Shape& expected, const Shape& actual) ABSL_MUST_USE_RESULT;
 
   static ::testing::AssertionResult Equal(const LiteralSlice& expected,
                                           const LiteralSlice& actual)
-      TF_MUST_USE_RESULT;
+      ABSL_MUST_USE_RESULT;
 
   // Asserts the given literal are (bitwise) equal to given expected values.
   template <typename NativeT>
@@ -92,7 +92,8 @@ class LiteralTestUtil {
   static ::testing::AssertionResult Near(
       const LiteralSlice& expected, const LiteralSlice& actual,
       const ErrorSpec& error_spec,
-      absl::optional<bool> detailed_message = absl::nullopt) TF_MUST_USE_RESULT;
+      absl::optional<bool> detailed_message = absl::nullopt)
+      ABSL_MUST_USE_RESULT;
 
   // Asserts the given literal are within the given error bound of the given
   // expected values. Only supported for floating point values.
@@ -145,7 +146,7 @@ class LiteralTestUtil {
   // will be compared recursively.
   static ::testing::AssertionResult NearOrEqual(
       const LiteralSlice& expected, const LiteralSlice& actual,
-      const absl::optional<ErrorSpec>& error) TF_MUST_USE_RESULT;
+      const absl::optional<ErrorSpec>& error) ABSL_MUST_USE_RESULT;
 
  private:
   LiteralTestUtil(const LiteralTestUtil&) = delete;

@@ -52,7 +52,7 @@ namespace {
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::Operation;
-using mlir::OwningModuleRef;
+using mlir::OwningOpRef;
 using stream_executor::port::StatusOr;
 
 bool IsControlFlowV1Op(Operation* op) {
@@ -102,7 +102,7 @@ Status RegisterExtraTfOpDefs(absl::Span<const std::string> extra_tf_opdefs) {
 }
 }  // namespace
 
-StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
+StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
     const GraphImportConfig& specs, absl::string_view debug_info_file,
@@ -120,7 +120,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 
   if (input_mlir) {
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-    return OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
+    return OwningOpRef<ModuleOp>(mlir::parseSourceFile(*source_mgr, context));
   }
 
   // Register extra TF ops passed as OpDef.
@@ -306,7 +306,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   return Status::OK();
 }
 
-StatusOr<mlir::OwningModuleRef> ImportSavedModel(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,

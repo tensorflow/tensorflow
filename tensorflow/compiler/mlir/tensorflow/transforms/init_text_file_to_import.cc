@@ -138,7 +138,7 @@ class ConvertInitializeTableFromTextFileV2
 };
 
 void InitTextFileToImportPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   MLIRContext* context = &getContext();
   FuncOp func = getFunction();
 

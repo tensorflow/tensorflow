@@ -374,9 +374,9 @@ void UseInterval::mergeAndEraseContiguousIntervals(
   if (std::next(iter) != next) iter = interval.erase(std::next(iter), next);
 }
 
-UserangeAnalysis::UserangeAnalysis(Operation *op,
-                                   const BufferPlacementAllocs &allocs,
-                                   const BufferViewFlowAnalysis &aliases)
+UserangeAnalysis::UserangeAnalysis(
+    Operation *op, const bufferization::BufferPlacementAllocs &allocs,
+    const BufferViewFlowAnalysis &aliases)
     : liveness(op) {
   // Walk over all operations and map them to an ID.
   op->walk([&](Operation *operation) {
@@ -387,7 +387,7 @@ UserangeAnalysis::UserangeAnalysis(Operation *op,
 
   // Compute the use range for every allocValue and its aliases. Merge them
   // and compute an interval. Add all computed intervals to the useIntervalMap.
-  for (const BufferPlacementAllocs::AllocEntry &entry : allocs) {
+  for (const bufferization::BufferPlacementAllocs::AllocEntry &entry : allocs) {
     Value allocValue = std::get<0>(entry);
     const Value::use_range &allocUses = allocValue.getUses();
     size_t dist = std::distance(allocUses.begin(), allocUses.end());

@@ -114,7 +114,7 @@ CreateTensorDeviceCopyConversionPass();
 std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass();
 
 void populateTfControlFlowToScfPatterns(MLIRContext* context,
-                                        OwningRewritePatternList* patterns);
+                                        RewritePatternSet* patterns);
 // Create a pass to convert TensorFlow control flow to SCF.
 std::unique_ptr<OperationPass<ModuleOp>> createConvertTfControlFlowToScfPass();
 
@@ -204,7 +204,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
 
 // Addds the HLO to TF rewrite patterns to the specified pattern list.
-void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
+void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);
 
 // Matches sequence of ops to TensorFlow fused kernels. This pass should not be

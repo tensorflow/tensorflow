@@ -55,6 +55,7 @@ limitations under the License.
 #include "llvm/Transforms/Scalar.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
+#include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_command_line_options.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -551,14 +552,24 @@ StatusOr<std::string> CompileToPtx(
       configure_target(target_machine.get());
     }
 
+    uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+
     // Link with libdevice, and optimize the LLVM module.
     TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
         module, gpu_version, hlo_module_config, libdevice_dir_path,
         NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),
         kDefaultInlineThreshold));
 
+    uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+    RecordLlvmPassesDuration(end_usecs - start_usecs);
+
+    start_usecs = tensorflow::Env::Default()->NowMicros();
+
     // Lower optimized LLVM module to PTX.
     ptx = EmitModuleToPTX(module, target_machine.get());
+
+    end_usecs = tensorflow::Env::Default()->NowMicros();
+    RecordLlvmToPtxDuration(end_usecs - start_usecs);
   }
   return ptx;
 }

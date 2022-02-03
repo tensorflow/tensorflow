@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
@@ -25,11 +28,44 @@ namespace mlir {
 namespace tfg {
 namespace graph_transforms {
 
-// Reads the SavedModel proto from `input_file`.
+// Reads the model proto from `input_file`.
 // If the format of proto cannot be identified based on the file extension,
-// attempt to load in a binary format first and then in a text format.
-tensorflow::Status ReadSavedModelProto(
-    const std::string& input_file, tensorflow::SavedModel& saved_model_proto);
+// attempts to load in a binary format first and then in a text format.
+template <class T>
+tensorflow::Status ReadModelProto(const std::string& input_file,
+                                  T& model_proto) {
+  // Proto might be either in binary or text format.
+  tensorflow::StringPiece extension = tensorflow::io::Extension(input_file);
+  bool binary_extenstion = !extension.compare("pb");
+  bool text_extension = !extension.compare("pbtxt");
+
+  if (!binary_extenstion && !text_extension) {
+    LOG(WARNING) << "Proto type cannot be identified based on the extension";
+    // Try load binary first.
+    auto status = tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
+                                              input_file, &model_proto);
+    if (status.ok()) {
+      return status;
+    }
+
+    // Binary proto loading failed, attempt to load text proto.
+    return tensorflow::ReadTextProto(tensorflow::Env::Default(), input_file,
+                                     &model_proto);
+  }
+
+  if (binary_extenstion) {
+    return tensorflow::ReadBinaryProto(tensorflow::Env::Default(), input_file,
+                                       &model_proto);
+  }
+
+  if (text_extension) {
+    return tensorflow::ReadTextProto(tensorflow::Env::Default(), input_file,
+                                     &model_proto);
+  }
+
+  return tensorflow::errors::InvalidArgument(
+      "Expected either binary or text protobuf");
+}
 
 // Best effort to identify if the protobuf file `input_file` is
 // in a text or binary format.

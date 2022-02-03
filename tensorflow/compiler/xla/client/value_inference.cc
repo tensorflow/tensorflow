@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/client/value_inference.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -292,7 +293,7 @@ using Visit2D = std::function<StatusOr<Literal>(Literal, Literal)>;
 
 // A postorder dfs node can be visited once its dependency requests are all
 // fulfilled.
-struct TF_MUST_USE_RESULT PostorderDFSNode {
+struct ABSL_MUST_USE_RESULT PostorderDFSNode {
   PostorderDFSNode& AddDependency(int64_t handle, PostorderDFSNodeType type,
                                   InferenceContext context,
                                   std::string annotation = "") {
@@ -1617,9 +1618,7 @@ StatusOr<absl::optional<int64_t>> ValueInference::CseOpHandle(int64_t handle) {
   if (opcode != HloOpcode::kGetDimensionSize) {
     return {absl::nullopt};
   }
-  int64_t hash = inst->operand_ids(0);
-  hash = tensorflow::Hash64Combine(hash,
-                                   std::hash<int64_t>()(inst->dimensions(0)));
+  int64_t hash = absl::HashOf(inst->operand_ids(0), inst->dimensions(0));
   auto lookup = cse_map_.find(hash);
   if (lookup == cse_map_.end()) {
     cse_map_[hash] = handle;

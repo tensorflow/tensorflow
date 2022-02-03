@@ -73,8 +73,6 @@ bazel test \
 //tensorflow/python/distribute:tf_function_test_2gpu \
 //tensorflow/python/distribute:vars_test_2gpu \
 //tensorflow/python/distribute:warm_starting_util_test_2gpu \
-//tensorflow/python/keras/utils:multi_gpu_utils_test_2gpu \
-//tensorflow/python/keras/utils:multi_gpu_utils_test_xla_2gpu \
 //tensorflow/python/training:saver_test_2gpu \
 
 

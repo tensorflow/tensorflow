@@ -4508,7 +4508,7 @@ func @testSetStaticDimensionBounds(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?xi32
 // -----
 
 func @testSetStaticDimensionBounds(%arg0: tensor<?x?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi32> {
-  // expected-error @below {{'tf.SetStaticDimensionBounds' op static shape must be a ranked tensor of rank 1 (vector)}}
+  // expected-error @below {{'tf.SetStaticDimensionBounds' op static shape must be of rank 1 (vector)}}
   %dyn_arg0 = "tf.SetStaticDimensionBounds" (%arg0, %arg1) :(tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
   return %dyn_arg0 : tensor<?x?xi32>
 }

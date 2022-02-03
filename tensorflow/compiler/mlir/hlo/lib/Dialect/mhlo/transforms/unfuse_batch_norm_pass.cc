@@ -36,7 +36,7 @@ struct TestUnfuseBatchNormPass
     registry.insert<memref::MemRefDialect>();
   }
   void runOnOperation() override {
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
