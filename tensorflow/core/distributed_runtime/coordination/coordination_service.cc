@@ -102,7 +102,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void StartCheckStaleness();
   void Stop();
-  void PropagateError(const std::string& job, int task_id, Status error)
+  void PropagateError(const std::string& job, int task_id, Status error,
+                      bool is_reported_by_agent = false)
       TF_LOCKS_EXCLUDED(state_mu_);
   void DoneClusterRegistration(Status s) TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
@@ -405,7 +406,7 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
       cluster_state_[task_name]->SetError(error);
     }
   }
-  PropagateError(job_name, task_id, error);
+  PropagateError(job_name, task_id, error, /*is_reported_by_agent=*/true);
   return Status::OK();
 }
 
@@ -436,13 +437,16 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
 }
 
 void CoordinationServiceStandaloneImpl::PropagateError(
-    const std::string& job_name, int task_id, Status error) {
+    const std::string& job_name, int task_id, Status error,
+    bool is_reported_by_agent) {
   assert(!error.ok());
   ReportErrorToAgentRequest request;
-  request.set_source_job(job_name);
-  request.set_source_task(task_id);
   request.set_error_code(error.code());
   request.set_error_message(error.error_message());
+  CoordinationServiceError* payload = request.mutable_error_payload();
+  payload->set_job(job_name);
+  payload->set_task(task_id);
+  payload->set_is_reported_error(is_reported_by_agent);
   std::vector<std::shared_ptr<Notification>> notifications;
 
   std::vector<absl::string_view> task_names;

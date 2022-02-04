@@ -86,8 +86,9 @@ message WaitForAllTasksResponse {
 message ReportErrorToAgentRequest {
   int32 error_code = 1;
   string error_message = 2;
-  string source_job = 3;
-  int32 source_task = 4;
+  // Removed fields that are embedded in payload.
+  reserved 3, 4;
+  CoordinationServiceError error_payload = 5;
 }
 
 message ReportErrorToAgentResponse {}

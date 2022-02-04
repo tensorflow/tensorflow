@@ -47,6 +47,13 @@ inline Status MakeCoordinationError(Status s, absl::string_view job_name,
   s.SetPayload(CoordinationErrorPayloadKey(), error.SerializeAsString());
   return s;
 }
+
+// Mark error as a coordination service error with payload.
+inline Status MakeCoordinationError(Status s,
+                                    const CoordinationServiceError& payload) {
+  s.SetPayload(CoordinationErrorPayloadKey(), payload.SerializeAsString());
+  return s;
+}
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_H_

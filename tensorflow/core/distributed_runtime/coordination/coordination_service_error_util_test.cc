@@ -72,5 +72,25 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
   EXPECT_EQ(payload.is_reported_error(), true);
 }
 
+TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
+  Status error = errors::Internal("Test Error");
+  CoordinationServiceError payload;
+  payload.set_job("test_worker");
+  payload.set_task(7);
+  payload.set_is_reported_error(true);
+
+  Status coordination_error = MakeCoordinationError(error, payload);
+
+  EXPECT_EQ(coordination_error.code(), error.code());
+  EXPECT_EQ(coordination_error.error_message(), error.error_message());
+  CoordinationServiceError actual_payload;
+  // Explicit string conversion for open source builds.
+  actual_payload.ParseFromString(std::string(
+      coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
+  EXPECT_EQ(actual_payload.job(), payload.job());
+  EXPECT_EQ(actual_payload.task(), payload.task());
+  EXPECT_EQ(actual_payload.is_reported_error(), payload.is_reported_error());
+}
+
 }  // namespace
 }  // namespace tensorflow

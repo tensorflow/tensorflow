@@ -99,13 +99,12 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
 void CoordinationServiceRpcHandler::ReportErrorToAgentAsync(
     const ReportErrorToAgentRequest* request,
     ReportErrorToAgentResponse* response, StatusCallback done) {
-  Status error(
-      static_cast<error::Code>(request->error_code()),
-      strings::StrCat("Error reported from /job:", request->source_job(),
-                      "/task:", request->source_task(), ": ",
-                      request->error_message()));
-  error = MakeCoordinationError(error, request->source_job(),
-                                request->source_task());
+  const CoordinationServiceError& error_payload = request->error_payload();
+  Status error(static_cast<error::Code>(request->error_code()),
+               strings::StrCat("Error reported from /job:", error_payload.job(),
+                               "/task:", error_payload.task(), ": ",
+                               request->error_message()));
+  error = MakeCoordinationError(error, error_payload);
   agent_->SetError(error);
   done(Status::OK());
 }
