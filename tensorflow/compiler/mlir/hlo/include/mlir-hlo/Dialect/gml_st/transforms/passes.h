@@ -28,6 +28,10 @@ namespace gml_st {
 /// TilingInterface on it.
 std::unique_ptr<OperationPass<FuncOp>> createGreedyTilingPass();
 
+/// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
+/// loops and memref.load/memref.store accesses.
+std::unique_ptr<OperationPass<FuncOp>> createGmlStToScfPass();
+
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 

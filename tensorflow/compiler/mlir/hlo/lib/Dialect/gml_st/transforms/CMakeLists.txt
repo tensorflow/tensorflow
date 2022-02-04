@@ -31,6 +31,7 @@ add_mlir_library(GmlStTilingInterface
 
 add_mlir_library(GmlStPasses
   greedy_tiling.cc
+  gml_st_to_scf.cc
 
   DEPENDS
   MLIRGmlStPassIncGen

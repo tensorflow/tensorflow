@@ -19,3 +19,9 @@ def GreedyTilingPass : Pass<"gml-greedy-tiling", "mlir::FuncOp"> {
   let summary = "Tile producers of gml_st.materialize operations";
   let constructor = "::mlir::gml_st::createGreedyTilingPass()";
 }
+
+def GmlStToScf : Pass<"gml-st-to-scf", "mlir::FuncOp"> {
+  let summary = "Lower `gml_st.loop` to SCF loops and parallel loops";
+  let constructor = "::mlir::gml_st::createGmlStToScfPass()";
+  let dependentDialects = ["::mlir::scf::SCFDialect"];
+}

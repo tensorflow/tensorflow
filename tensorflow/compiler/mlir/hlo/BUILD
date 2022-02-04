@@ -1531,6 +1531,7 @@ cc_library(
         ":copy_removal",
         ":expand_hlo_tuples",
         ":gml_st_passes_inc_gen",
+        ":gml_st_to_scf",
         ":greedy_tiling",
         ":group_reduction_dimensions",
         ":hlo_legalize_shape_ops_to_standard",
@@ -1994,5 +1995,25 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "gml_st_to_scf",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
+        "lib/Dialect/gml_st/transforms/gml_st_to_scf.cc",
+    ],
+    hdrs = ["include/mlir-hlo/Dialect/gml_st/transforms/passes.h"],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":gml_st_passes_inc_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
 )

@@ -18,6 +18,12 @@ limitations under the License.
 
 #include "mlir/Pass/Pass.h"
 
+namespace mlir {
+namespace scf {
+class SCFDialect;
+}  // namespace scf
+}  // namespace mlir
+
 #define GEN_PASS_CLASSES
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
