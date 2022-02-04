@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
 
 /**
  * Interface to TensorFlow Lite model interpreter, excluding experimental methods.
@@ -251,7 +252,8 @@ public interface InterpreterApi extends AutoCloseable {
    */
   @SuppressWarnings("StaticOrDefaultInterfaceMethod")
   public static InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
-    InterpreterFactoryApi factory = TensorFlowLite.getFactory(options);
+    TfLiteRuntime runtime = (options == null ? null : options.getRuntime());
+    InterpreterFactoryApi factory = TensorFlowLite.getFactory(runtime);
     return factory.create(modelFile, options);
   }
 
@@ -270,7 +272,8 @@ public interface InterpreterApi extends AutoCloseable {
   @SuppressWarnings("StaticOrDefaultInterfaceMethod")
   public static InterpreterApi create(
       @NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
-    InterpreterFactoryApi factory = TensorFlowLite.getFactory(options);
+    TfLiteRuntime runtime = (options == null ? null : options.getRuntime());
+    InterpreterFactoryApi factory = TensorFlowLite.getFactory(runtime);
     return factory.create(byteBuffer, options);
   }
 

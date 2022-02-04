@@ -87,14 +87,32 @@ public final class TensorFlowLite {
     return schemaVersion();
   }
 
-  /** Returns the version of the underlying TensorFlowLite runtime. */
-  public static String runtimeVersion() {
-    return getFactory(new InterpreterApi.Options()).runtimeVersion();
+  /** Returns the version of the specified TensorFlowLite runtime. */
+  public static String runtimeVersion(TfLiteRuntime runtime) {
+    return getFactory(runtime, "org.tensorflow.lite.TensorFlowLite", "runtimeVersion")
+        .runtimeVersion();
   }
 
-  /** Returns the version of the underlying TensorFlowLite model schema. */
+  /** Returns the version of the default TensorFlowLite runtime. */
+  public static String runtimeVersion() {
+    return runtimeVersion(null);
+  }
+
+  /**
+   * Returns the version of the TensorFlowLite model schema that is supported by the specified
+   * TensorFlowLite runtime.
+   */
+  public static String schemaVersion(TfLiteRuntime runtime) {
+    return getFactory(runtime, "org.tensorflow.lite.TensorFlowLite", "schemaVersion")
+        .schemaVersion();
+  }
+
+  /**
+   * Returns the version of the TensorFlowLite model schema that is supported by the default
+   * TensorFlowLite runtime.
+   */
   public static String schemaVersion() {
-    return getFactory(new InterpreterApi.Options()).schemaVersion();
+    return schemaVersion(null);
   }
 
   /**
@@ -196,40 +214,47 @@ public final class TensorFlowLite {
     }
   }
 
-  // Package-private method for finding the TF Lite runtime implementation.
-  static InterpreterFactoryApi getFactory(InterpreterApi.Options options) {
+  static InterpreterFactoryApi getFactory(TfLiteRuntime runtime) {
+    return getFactory(runtime, "org.tensorflow.lite.InterpreterApi.Options", "setRuntime");
+  }
+
+  /**
+   * Package-private method for finding the TF Lite runtime implementation.
+   *
+   * @param className Class name for method to mention in exception messages.
+   * @param methodName Method name for method to mention in exception messages.
+   */
+  static InterpreterFactoryApi getFactory(
+      TfLiteRuntime runtime, String className, String methodName) {
     InterpreterFactoryApi factory;
     Exception exception = null;
-    if (options != null
-        && (options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
-            || options.runtime == TfLiteRuntime.FROM_SYSTEM_ONLY)) {
+    if (runtime == null) {
+      runtime = TfLiteRuntime.FROM_APPLICATION_ONLY;
+    }
+    if (runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
+        || runtime == TfLiteRuntime.FROM_SYSTEM_ONLY) {
       if (RuntimeFromSystem.TFLITE.getFactory() != null) {
-        if (!haveLogged[options.runtime.ordinal()].getAndSet(true)) {
+        if (!haveLogged[runtime.ordinal()].getAndSet(true)) {
           logger.info(
               String.format(
                   "TfLiteRuntime.%s: "
                       + "Using system TF Lite runtime client from com.google.android.gms",
-                  options.runtime.name()));
+                  runtime.name()));
         }
         return RuntimeFromSystem.TFLITE.getFactory();
       } else {
         exception = RuntimeFromSystem.TFLITE.getException();
       }
     }
-    if (options == null
-        || options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
-        || options.runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
-      TfLiteRuntime runtimeOption =
-          ((options != null && options.runtime != null)
-              ? options.runtime
-              : TfLiteRuntime.FROM_APPLICATION_ONLY);
+    if (runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
+        || runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
       if (RuntimeFromApplication.TFLITE.getFactory() != null) {
-        if (!haveLogged[runtimeOption.ordinal()].getAndSet(true)) {
+        if (!haveLogged[runtime.ordinal()].getAndSet(true)) {
           logger.info(
               String.format(
                   "TfLiteRuntime.%s: "
                       + "Using application TF Lite runtime client from org.tensorflow.lite",
-                  runtimeOption.name()));
+                  runtime.name()));
         }
         return RuntimeFromApplication.TFLITE.getFactory();
       } else {
@@ -241,17 +266,21 @@ public final class TensorFlowLite {
       }
     }
     String message;
-    if (options == null || options.runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
+    if (runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
       message =
-          "You should declare a build dependency on org.tensorflow.lite:tensorflow-lite,"
-              + " or call .setRuntime with a value other than TfLiteRuntime.FROM_APPLICATION_ONLY"
-              + " (see docs for org.tensorflow.lite.InterpreterApi.Options#setRuntime).";
-    } else if (options.runtime == TfLiteRuntime.FROM_SYSTEM_ONLY) {
+          String.format(
+              "You should declare a build dependency on org.tensorflow.lite:tensorflow-lite,"
+                  + " or call .%s with a value other than TfLiteRuntime.FROM_APPLICATION_ONLY"
+                  + " (see docs for %s#%s(TfLiteRuntime)).",
+              methodName, className, methodName);
+    } else if (runtime == TfLiteRuntime.FROM_SYSTEM_ONLY) {
       message =
-          "You should declare a build dependency on"
-              + " com.google.android.gms:play-services-tflite-java,"
-              + " or call .setRuntime with a value other than TfLiteRuntime.FROM_SYSTEM_ONLY "
-              + " (see docs for org.tensorflow.lite.InterpreterApi.Options#setRuntime).";
+          String.format(
+              "You should declare a build dependency on"
+                  + " com.google.android.gms:play-services-tflite-java,"
+                  + " or call .%s with a value other than TfLiteRuntime.FROM_SYSTEM_ONLY "
+                  + " (see docs for %s#%s).",
+              methodName, className, methodName);
     } else {
       message =
           "You should declare a build dependency on"
