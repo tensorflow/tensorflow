@@ -51,7 +51,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"
 #include "tensorflow/core/kernels/linalg/einsum_op_impl.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -6654,7 +6657,7 @@ Status ConvertGraphDefToEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
-    bool use_explicit_precision) {
+    bool use_explicit_precision, tensorflow::grappler::Cluster* cluster) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
@@ -6666,12 +6669,46 @@ Status ConvertGraphDefToEngine(
   TF_RETURN_IF_ERROR(statusor.status());
   std::unique_ptr<Converter> converter = std::move(statusor.ValueOrDie());
 
+  GraphDef graph = gdef;
+  if (cluster != nullptr) {
+    bool apply_layout_optim;
+    Status status =
+        ReadBoolFromEnvVar("TF_TRT_ENABLE_LAYOUT_OPTIMIZER",
+                           /*default_value=*/true, &apply_layout_optim);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
+    if (apply_layout_optim) {
+      tensorflow::grappler::GrapplerItem grappler_item;
+      grappler_item.graph = gdef;
+      // TensorRT API requires the input for convolution to be in NCHW.
+      tensorflow::grappler::GenericLayoutOptimizer layout_optimizer("NCHW");
+      TF_RETURN_IF_ERROR(
+          layout_optimizer.Optimize(cluster, grappler_item, &graph));
+
+      grappler_item.graph = graph;
+
+      tensorflow::grappler::ConstantFolding const_optimizer(
+          nullptr,
+          /*disable_compressed_tensor_optimization=*/false,
+          /*fold_quantization_emulation=*/false);
+      TF_RETURN_IF_ERROR(
+          const_optimizer.Optimize(cluster, grappler_item, &graph));
+
+      // The optimizers may break the topological order
+      // so we need these steps to restore it
+      Graph g(OpRegistry::Global());
+      TF_RETURN_IF_ERROR(
+          ConvertGraphDefToGraph(GraphConstructorOptions(), graph, &g));
+      g.ToGraphDef(&graph);
+    }
+  }
   VLOG(1) << "Starting to convert TensorFlow ops to TensorRT layers";
   std::vector<Converter::EngineOutputInfo> output_tensors;
   int num_layers = converter->network()->getNbLayers();
   absl::flat_hash_set<const char*> layer_names;
   // Graph nodes are already topologically sorted during construction
-  for (const auto& node_def : gdef.node()) {
+  for (const auto& node_def : graph.node()) {
     const string& node_name = node_def.name();
     VLOG(2) << "Converting node " << node_name << ", op=" << node_def.op();
     if (IsEngineInput(node_name)) {

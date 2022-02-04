@@ -343,7 +343,7 @@ tensorflow::TensorShapeProto ComputeTRTNodeIOShape(
 //         one). Connect to the pre-existing engine node instead.
 // 3. In this way, we ensure the graph is topologically sort-able after each
 //    invocation of CreateTRTNode().
-Status CreateTRTNode(const ConversionParams& params,
+Status CreateTRTNode(const ConversionParams& params, grappler::Cluster* cluster,
                      const std::vector<EngineInfo>& infos, int pos,
                      int default_max_batch_size, Graph* graph,
                      std::vector<Node*>* engine_nodes) {
@@ -460,8 +460,9 @@ Status CreateTRTNode(const ConversionParams& params,
                            : default_max_batch_size;
 
   if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
-    TF_RETURN_IF_ERROR(CreateStaticEngine(
-        params, info, max_batch_size, input_shapes, nullptr, &segment_string));
+    TF_RETURN_IF_ERROR(CreateStaticEngine(params, cluster, info, max_batch_size,
+                                          input_shapes, nullptr,
+                                          &segment_string));
   }
 
   string prec_string;
@@ -635,11 +636,12 @@ Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
   return Status::OK();
 }
 
-std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
-                                                 const EngineInfo& engine) {
+std::pair<int, Allocator*> GetDeviceAndAllocator(
+    const ConversionParams& params, const EngineInfo& engine,
+    const grappler::Cluster* cluster) {
   int cuda_device_id = -1;
   Allocator* dev_allocator = nullptr;
-  if (params.cluster == nullptr || params.cluster->GetDeviceSet() == nullptr ||
+  if (cluster == nullptr || cluster->GetDeviceSet() == nullptr ||
       engine.device.empty()) {
     // If device is not set, use the first found GPU device for the conversion.
     TfDeviceId tf_device_id;
@@ -658,7 +660,7 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
   }
 
   // Use the device requested by the engine.
-  auto device_set = params.cluster->GetDeviceSet();
+  auto device_set = cluster->GetDeviceSet();
   std::vector<Device*> devices;
   DeviceNameUtils::ParsedName parsed_name;
   if (DeviceNameUtils::ParseFullName(engine.device, &parsed_name) &&
@@ -686,12 +688,13 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
 }
 
 Status CreateStaticEngine(const ConversionParams& params,
-                          const EngineInfo& info, int max_batch_size,
+                          grappler::Cluster* cluster, const EngineInfo& info,
+                          int max_batch_size,
                           const std::vector<PartialTensorShape>& input_shapes,
                           TrtShapeOptimizationProfile* profile,
                           string* segment_string) {
   std::pair<int, Allocator*> device_allocator =
-      GetDeviceAndAllocator(params, info);
+      GetDeviceAndAllocator(params, info, cluster);
   int cuda_device_id = 0;
   std::unique_ptr<TRTBaseAllocator> trt_allocator;
   if (device_allocator.first >= 0) {
@@ -717,7 +720,7 @@ Status CreateStaticEngine(const ConversionParams& params,
       trt_allocator.get(), /*calibrator=*/nullptr, &engine,
       info.use_calibration, params.use_implicit_batch,
       /*convert_successfully=*/nullptr, profile, info.engine_name,
-      /*use_explicit_precision=*/params.use_explicit_precision));
+      /*use_explicit_precision=*/params.use_explicit_precision, cluster));
   TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
   *segment_string = string(static_cast<const char*>(engine_data->data()),
                            engine_data->size());
@@ -725,7 +728,8 @@ Status CreateStaticEngine(const ConversionParams& params,
 }
 
 // Entry function from optimization pass.
-Status ConvertAfterShapes(const ConversionParams& params) {
+Status ConvertAfterShapes(const ConversionParams& params,
+                          grappler::Cluster* cluster) {
   // Sanity checks.
   if (params.precision_mode != TrtPrecisionMode::INT8 &&
       params.use_calibration) {
@@ -900,7 +904,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     engine.max_workspace_size_bytes = params.max_workspace_size_bytes;
     VLOG(1) << "Assigned " << engine.max_workspace_size_bytes << " bytes to "
             << engine.engine_name;
-    auto status = CreateTRTNode(params, engine_segments, i,
+    auto status = CreateTRTNode(params, cluster, engine_segments, i,
                                 params.max_batch_size, &graph, &engine_nodes);
 
     string msg = StrCat("segment ", i, " consisting of ",
