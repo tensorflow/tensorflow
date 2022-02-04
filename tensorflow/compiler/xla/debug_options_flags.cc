@@ -41,7 +41,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_fusion_visualization(false);
-  opts.set_xla_dump_include_timestamp(true);
+  opts.set_xla_dump_include_timestamp(false);
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
 #ifdef ENABLE_MKL
