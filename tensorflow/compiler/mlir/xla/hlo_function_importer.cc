@@ -999,8 +999,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           llvm::makeArrayRef(operands).take_front(num_inputs),
           llvm::makeArrayRef(operands).drop_front(num_inputs),
           ConvertDimensions(instruction->dimensions()));
-      TF_RETURN_IF_ERROR(
-          ImportAsRegion(*instruction->to_apply(), &reduce.body()));
+      TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
+                                        &reduce.body(),
+                                        /*flatten_region_arg_tuple=*/true));
 
       // Check if the output needs to be tupled.
       if (return_types.size() == 1 && return_types.front() == result_type) {
