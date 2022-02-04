@@ -91,7 +91,7 @@ RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10"
 
-ENV CLANG_VERSION="r88c525235bc979af9e137d1e9b9d03633b0b0598"
+ENV CLANG_VERSION="r969a51ff363263a3b5f2df55eba6b4d392bf30c0"
 COPY install/install_latest_clang.sh /install/
 RUN /install/install_latest_clang.sh
 
