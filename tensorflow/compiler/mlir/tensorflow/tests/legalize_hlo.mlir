@@ -2625,8 +2625,7 @@ func @convert_argmax(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4
     %13 = mhlo.and %11, %12 : tensor<i1>
     %14 = mhlo.or %9, %13 : tensor<i1>
     %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    %16 = "mhlo.tuple"(%10, %15) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-    "mhlo.return"(%16) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+    "mhlo.return"(%10, %15) : (tensor<f32>, tensor<i32>) -> ()
   }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<4x32x256xf32>, tensor<4x32x256xi32>, tensor<f32>, tensor<i32>) -> (tensor<4x32xf32>, tensor<4x32xi32>)
   return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
 }
@@ -2656,8 +2655,7 @@ func @convert_argmax_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, ten
     %13 = mhlo.and %11, %12 : tensor<i1>
     %14 = mhlo.or %9, %13 : tensor<i1>
     %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    %16 = "mhlo.tuple"(%10, %15) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-    "mhlo.return"(%16) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+    "mhlo.return"(%10, %15) : (tensor<f32>, tensor<i32>) -> ()
   }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<2x2x4xf32>, tensor<2x2x4xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
   return %4#0, %4#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
@@ -2685,8 +2683,7 @@ func @convert_argmin(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4
     %13 = mhlo.and %11, %12 : tensor<i1>
     %14 = mhlo.or %9, %13 : tensor<i1>
     %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    %16 = "mhlo.tuple"(%10, %15) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-    "mhlo.return"(%16) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+    "mhlo.return"(%10, %15) : (tensor<f32>, tensor<i32>) -> ()
   }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<4x32x256xf32>, tensor<4x32x256xi32>, tensor<f32>, tensor<i32>) -> (tensor<4x32xf32>, tensor<4x32xi32>)
   return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
 }
@@ -2713,8 +2710,7 @@ func @convert_argmin_i16(%arg0: tensor<2xi16>) -> (tensor<i16>, tensor<i32>) {
     %16 = mhlo.and %14, %15 : tensor<i1>
     %17 = mhlo.or %12, %16 : tensor<i1>
     %18 = "mhlo.select"(%17, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    %19 = "mhlo.tuple"(%13, %18) {xla_shape = "(s16[], s32[])"} : (tensor<i16>, tensor<i32>) -> tuple<tensor<i16>, tensor<i32>>
-    "mhlo.return"(%19) : (tuple<tensor<i16>, tensor<i32>>) -> ()
+    "mhlo.return"(%13, %18) : (tensor<i16>, tensor<i32>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi16>, tensor<2xi32>, tensor<i16>, tensor<i32>) -> (tensor<i16>, tensor<i32>)
   return %4#0, %4#1 : tensor<i16>, tensor<i32>
 }
@@ -2745,8 +2741,7 @@ func @convert_argmin_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, ten
     %13 = mhlo.and %11, %12 : tensor<i1>
     %14 = mhlo.or %9, %13 : tensor<i1>
     %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    %16 = "mhlo.tuple"(%10, %15) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-    "mhlo.return"(%16) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+    "mhlo.return"(%10, %15) : (tensor<f32>, tensor<i32>) -> ()
   }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<2x2x4xf32>, tensor<2x2x4xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
   return %4#0, %4#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }

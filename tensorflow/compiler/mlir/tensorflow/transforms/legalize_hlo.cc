@@ -1676,8 +1676,7 @@ class ConvertReduceOpToTfArgMinMax
   // %6 = and(%4, %5)
   // %7 = or(%2, %6)
   // %8 = select(%7, %lhs_index, %rhs_index)
-  // %9 = tuple(%3, %8)
-  // return %9
+  // return %3, %8
   // Also note that %1 may be folded if %lhs_value is of integer types.
   LogicalResult matchReduceComputation(Region &computation,
                                        bool is_float) const {
@@ -1685,17 +1684,10 @@ class ConvertReduceOpToTfArgMinMax
     if (body.getNumArguments() != 4) return failure();
 
     mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
-    if (!return_op) return failure();
-    if (return_op.getNumOperands() != 1) return failure();
-
-    mhlo::TupleOp return_tuple = llvm::dyn_cast_or_null<mhlo::TupleOp>(
-        return_op.getOperand(0).getDefiningOp());
-    if (!return_tuple ||
-        return_tuple.getType().cast<TupleType>().getTypes().size() != 2)
-      return failure();
+    if (!return_op || return_op.getNumOperands() != 2) return failure();
 
     mhlo::SelectOp value_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-        return_tuple.getOperand(0).getDefiningOp());
+        return_op.getOperand(0).getDefiningOp());
     if (!value_select || value_select.on_true() != body.getArgument(0) ||
         value_select.on_false() != body.getArgument(2))
       return failure();
@@ -1728,7 +1720,7 @@ class ConvertReduceOpToTfArgMinMax
     }
 
     mhlo::SelectOp index_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-        return_tuple.getOperand(1).getDefiningOp());
+        return_op.getOperand(1).getDefiningOp());
     if (!index_select || index_select.on_true() != body.getArgument(1) ||
         index_select.on_false() != body.getArgument(3))
       return failure();

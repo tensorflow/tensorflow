@@ -844,8 +844,9 @@ add {
 
   // CHECK:  mhlo.reduce([[ARG0]] init: [[ARG2]]), ([[ARG0]] init: [[ARG2]])
   // CHECK-SAME:  dimensions = [0, 1]
-  // CHECK:  mhlo.add{{.*}} : tensor<f32>
-  // CHECK:  mhlo.add{{.*}} : tensor<f32>
+  // CHECK:  %[[A:.*]] = mhlo.add{{.*}} : tensor<f32>
+  // CHECK:  %[[B:.*]] = mhlo.add{{.*}} : tensor<f32>
+  // CHECK: "mhlo.return"(%[[A]], %[[B]]) : (tensor<f32>, tensor<f32>) -> ()
   // CHECK: "mhlo.tuple"(%0#0, %0#1) {xla_shape = {{.*}}} : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
   %reduce.1 = (f32[], f32[]) reduce(%Arg_0.1, %Arg_0.1, %Arg_2.3, %Arg_2.3), dimensions={0, 1}, to_apply=%reduce_helper.1
 
