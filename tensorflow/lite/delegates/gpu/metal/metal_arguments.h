@@ -97,7 +97,8 @@ class MetalArguments : public ArgumentsBinder {
   void AddImageBuffer(const std::string& name,
                       const GPUImageBufferDescriptor& desc);
 
-  absl::Status SetBuffer(const std::string& name, id<MTLBuffer> handle);
+  absl::Status SetBuffer(const std::string& name, id<MTLBuffer> handle,
+                         uint64_t offset);
   absl::Status SetImage2D(const std::string& name, id<MTLTexture> handle);
   absl::Status SetImage2DArray(const std::string& name, id<MTLTexture> handle);
   absl::Status SetImage3D(const std::string& name, id<MTLTexture> handle);
@@ -134,6 +135,7 @@ class MetalArguments : public ArgumentsBinder {
   struct MetalBufferDescriptor {
     GPUBufferDescriptor desc;
     id<MTLBuffer> handle;
+    uint64_t offset;
   };
   struct MetalImage2DDescriptor {
     GPUImage2DDescriptor desc;

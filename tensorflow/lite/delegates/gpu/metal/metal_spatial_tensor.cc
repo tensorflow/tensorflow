@@ -236,7 +236,7 @@ absl::Status MetalSpatialTensor::GetGPUResources(
           "Tensor can be used with BufferDescriptor only wtih "
           "TensorStorageType::BUFFER.");
     }
-    resources->buffers.push_back({"buffer", memory_});
+    resources->buffers.push_back({"buffer", {memory_, 0}});
     return absl::OkStatus();
   }
   const auto* texture2d_desc =
@@ -274,13 +274,13 @@ absl::Status MetalSpatialTensor::GetGPUResources(
   }
 
   if (descriptor_.storage_type == TensorStorageType::BUFFER) {
-    resources->buffers.push_back({"buffer", memory_});
+    resources->buffers.push_back({"buffer", {memory_, 0}});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D) {
     if (obj_ptr->GetAccess() == AccessType::WRITE &&
         tensor_desc->use_buffer_for_write_only_2d_texture) {
       resources->ints.push_back(
           {"aligned_texture_width", aligned_texture_width_});
-      resources->buffers.push_back({"buffer", memory_});
+      resources->buffers.push_back({"buffer", {memory_, 0}});
     } else {
       resources->images2d.push_back({"image2d", texture_mem_});
     }
@@ -291,7 +291,7 @@ absl::Status MetalSpatialTensor::GetGPUResources(
   } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
     if (obj_ptr->GetAccess() == AccessType::WRITE &&
         tensor_desc->use_buffer_for_write_only_image_buffer) {
-      resources->buffers.push_back({"buffer", memory_});
+      resources->buffers.push_back({"buffer", {memory_, 0}});
     } else {
       resources->image_buffers.push_back({"image_buffer", texture_mem_});
     }

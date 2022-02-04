@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstring>
 #include <string>
+#include <utility>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
@@ -429,7 +430,9 @@ absl::Status MetalArguments::SetObjectRef(const std::string& name,
 void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder,
                             int buffer_offset, int texture_offset) const {
   for (auto& b : buffers_) {
-    [encoder setBuffer:b.second.handle offset:0 atIndex:buffer_offset];
+    [encoder setBuffer:b.second.handle
+                offset:b.second.offset
+               atIndex:buffer_offset];
     buffer_offset++;
   }
   for (auto& image : images2d_) {
@@ -485,7 +488,9 @@ API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
 void MetalArguments::EncodeArguments(id<MTLArgumentEncoder> arguments_encoder) {
   int index = 0;
   for (auto& b : buffers_) {
-    [arguments_encoder setBuffer:b.second.handle offset:0 atIndex:index];
+    [arguments_encoder setBuffer:b.second.handle
+                          offset:b.second.offset
+                         atIndex:index];
     index++;
   }
   for (auto& image : images2d_) {
@@ -599,7 +604,8 @@ absl::Status MetalArguments::SetGPUResources(
     RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
   }
   for (const auto& r : resources.buffers) {
-    RETURN_IF_ERROR(SetBuffer(absl::StrCat(name, "_", r.first), r.second));
+    RETURN_IF_ERROR(SetBuffer(absl::StrCat(name, "_", r.first), r.second.handle,
+                              r.second.offset));
   }
   for (const auto& r : resources.images2d) {
     RETURN_IF_ERROR(SetImage2D(absl::StrCat(name, "_", r.first), r.second));
@@ -662,13 +668,14 @@ void MetalArguments::AddGPUResources(const std::string& name,
 }
 
 absl::Status MetalArguments::SetBuffer(const std::string& name,
-                                       id<MTLBuffer> handle) {
+                                       id<MTLBuffer> handle, uint64_t offset) {
   auto it = buffers_.find(name);
   if (it == buffers_.end()) {
     return absl::NotFoundError(
         absl::StrCat("No buffer argument with name - ", name));
   }
   it->second.handle = handle;
+  it->second.offset = offset;
   return absl::OkStatus();
 }
 
