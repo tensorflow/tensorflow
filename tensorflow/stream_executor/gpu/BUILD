@@ -260,6 +260,8 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cuda_driver",
         "//tensorflow/stream_executor/cuda:ptxas_wrapper",
         "//tensorflow/stream_executor/cuda:fatbinary_wrapper",
+    ]) + if_rocm_is_configured([
+        "//tensorflow/stream_executor/rocm:rocm_driver",
     ]) + ["@com_google_absl//absl/container:flat_hash_set"],
 )
 
