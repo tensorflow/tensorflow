@@ -346,8 +346,10 @@ struct OpenClInfo {
   int max_work_group_total_size;
 
   // The row pitch alignment size in pixels for 2D images created from a buffer.
-  // The value returned must be a power of 2.
-  uint64_t image_pitch_alignment;
+  // The value must be a power of 2.
+  uint64_t image_pitch_alignment = 0;
+  // The minimum alignment in pixels. The value must be a power of 2.
+  uint64_t image_base_address_alignment = 0;
   uint64_t base_addr_align_in_bits;
 
   // rtn is ROUND_TO_NEAREST

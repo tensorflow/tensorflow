@@ -560,6 +560,9 @@ bool OpenClInfo::IsImage2dFromBufferSupported() const {
   if (image_pitch_alignment == 0) {
     return false;
   }
+  if (image_base_address_alignment == 0) {
+    return false;
+  }
   if (cl_version == OpenClVersion::kCl2_0 ||
       cl_version == OpenClVersion::kCl2_1 ||
       cl_version == OpenClVersion::kCl2_2) {
