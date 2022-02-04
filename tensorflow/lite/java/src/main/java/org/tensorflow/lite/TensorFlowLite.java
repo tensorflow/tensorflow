@@ -15,7 +15,10 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
-/** Static utility methods loading the TensorFlowLite runtime. */
+import java.lang.reflect.Constructor;
+import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
+
+/** Static utility methods for loading the TensorFlowLite runtime and native code. */
 public final class TensorFlowLite {
 
   private static final String[][] TFLITE_RUNTIME_LIBNAMES =
@@ -72,12 +75,12 @@ public final class TensorFlowLite {
 
   /** Returns the version of the underlying TensorFlowLite runtime. */
   public static String runtimeVersion() {
-    return InterpreterApi.getFactory(new InterpreterApi.Options()).runtimeVersion();
+    return getFactory(new InterpreterApi.Options()).runtimeVersion();
   }
 
   /** Returns the version of the underlying TensorFlowLite model schema. */
   public static String schemaVersion() {
-    return InterpreterApi.getFactory(new InterpreterApi.Options()).schemaVersion();
+    return getFactory(new InterpreterApi.Options()).schemaVersion();
   }
 
   /**
@@ -111,4 +114,65 @@ public final class TensorFlowLite {
   }
 
   private static native void nativeDoNothing();
+
+  // Package-private method for finding the TF Lite runtime implementation.
+  static InterpreterFactoryApi getFactory(InterpreterApi.Options options) {
+    InterpreterFactoryApi factory;
+    Exception exception = null;
+    if (options != null
+        && (options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
+            || options.runtime == TfLiteRuntime.FROM_SYSTEM_ONLY)) {
+      try {
+        Class<?> clazz = Class.forName("com.google.android.gms.tflite.InterpreterFactoryImpl");
+        Constructor<?> factoryConstructor = clazz.getDeclaredConstructor();
+        factoryConstructor.setAccessible(true);
+        factory = (InterpreterFactoryApi) factoryConstructor.newInstance();
+        if (factory != null) {
+          return factory;
+        }
+      } catch (Exception e1) {
+        exception = e1;
+      }
+    }
+    if (options == null
+        || options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
+        || options.runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
+      try {
+        Class<?> clazz = Class.forName("org.tensorflow.lite.InterpreterFactoryImpl");
+        factory = (InterpreterFactoryApi) clazz.getDeclaredConstructor().newInstance();
+        if (factory != null) {
+          return factory;
+        }
+      } catch (Exception e2) {
+        if (exception == null) {
+          exception = e2;
+        } else {
+          exception.addSuppressed(e2);
+        }
+      }
+    }
+    String message;
+    if (options == null || options.runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
+      message =
+          "You should declare a build dependency on org.tensorflow.lite:tensorflow-lite,"
+              + " or call .setRuntime with a value other than TfLiteRuntime.FROM_APPLICATION_ONLY"
+              + " (see docs for org.tensorflow.lite.InterpreterApi.Options#setRuntime).";
+    } else if (options.runtime == TfLiteRuntime.FROM_SYSTEM_ONLY) {
+      message =
+          "You should declare a build dependency on"
+              + " com.google.android.gms:play-services-tflite-java,"
+              + " or call .setRuntime with a value other than TfLiteRuntime.FROM_SYSTEM_ONLY "
+              + " (see docs for org.tensorflow.lite.InterpreterApi.Options#setRuntime).";
+    } else {
+      message =
+          "You should declare a build dependency on"
+              + " org.tensorflow.lite:tensorflow-lite or"
+              + " com.google.android.gms:play-services-tflite-java";
+    }
+    throw new IllegalStateException(
+        "Couldn't find TensorFlow Lite runtime's InterpreterFactoryImpl class --"
+            + " make sure your app links in the right TensorFlow Lite runtime. "
+            + message,
+        exception);
+  }
 }
