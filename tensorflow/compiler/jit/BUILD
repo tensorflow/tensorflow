@@ -315,7 +315,11 @@ cc_library(
     ],
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
-    deps = XLA_DEVICE_DEPS + [":xla_compilation_cache"],
+    deps = XLA_DEVICE_DEPS + [
+        ":flags_headers",
+        ":xla_compilation_cache",
+        ":xla_compilation_cache_persistence",
+    ],
     alwayslink = 1,
 )
 
@@ -439,6 +443,51 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "xla_compilation_cache_proto",
+    srcs = ["xla_compilation_cache.proto"],
+    cc_api_version = 2,
+    protodeps = tf_additional_all_protos() + ["//tensorflow/compiler/xla/service:hlo_proto"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "xla_compilation_cache_persistence",
+    srcs = ["xla_compilation_cache_persistence.cc"],
+    hdrs = ["xla_compilation_cache_persistence.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_compilation_cache_proto_cc",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:thread_annotations",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_compilation_cache_persistence_test",
+    srcs = [
+        "xla_compilation_cache_persistence_test.cc",
+    ],
+    deps = [
+        ":xla_compilation_cache_persistence",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "xla_compilation_cache",
     srcs = ["xla_compilation_cache.cc"],
@@ -448,16 +497,23 @@ cc_library(
         ":flags",
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
+        ":xla_cluster_util",
+        ":xla_compilation_cache_persistence",
+        ":xla_compilation_cache_proto_cc",
         "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/xla:protobuf_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -469,6 +525,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -505,6 +562,44 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_compilation_cache_serialize_test",
+    srcs = [
+        "xla_compilation_cache_serialize_test.cc",
+    ],
+    tags = [
+        "no_oss",  # This test only runs with GPU.
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":compilation_passes",
+        ":flags",
+        ":xla_compilation_cache",
+        ":xla_compilation_cache_persistence",
+        ":xla_cpu_jit",
+        ":xla_gpu_device",
+        ":xla_gpu_jit",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:core_cpu",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/platform:path",
     ],
 )
 

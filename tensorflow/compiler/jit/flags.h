@@ -106,6 +106,12 @@ struct XlaOpsCommonFlags {
   // If true, _XlaCompile compiles the cluster asynchronously with respect to
   // the main execution. The fallback path is taken while compilation happens.
   bool tf_xla_async_compilation;
+  // If true, entires loaded into the XLA compile cache will not have their
+  // signatures checked strictly. This should generally not be disabled except
+  // for debugging. Defaults to false.
+  bool tf_xla_disable_strict_signature_checks;
+  // Specifies the persistance cache prefix. Default is "xla_compile_cache"
+  string tf_xla_persistant_cache_prefix;
 };
 
 // Flags for the build_xla_ops pass.

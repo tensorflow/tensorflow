@@ -187,6 +187,8 @@ void AllocateAndParseFlags() {
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
   ops_flags->tf_xla_async_compilation = false;
+  ops_flags->tf_xla_disable_strict_signature_checks = false;
+  ops_flags->tf_xla_persistant_cache_prefix = "xla_compile_cache";
 
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
@@ -247,6 +249,14 @@ void AllocateAndParseFlags() {
             "When lazy compilation is enabled, asynchronous compilation starts "
             "the cluster compilation in the background, and the fallback path "
             "is executed until the compilation has finished."),
+       Flag("tf_xla_disable_strict_signature_checks",
+            &ops_flags->tf_xla_disable_strict_signature_checks,
+            "If true, entires loaded into the XLA compile cache will not have "
+            "their signatures checked strictly. Defaults to false."),
+       Flag("tf_xla_persistant_cache_prefix",
+            &ops_flags->tf_xla_persistant_cache_prefix,
+            "Specifies the persistance cache prefix. Default is "
+            "\"xla_compile_cache\""),
 
        Flag("tf_introduce_floating_point_jitter_to_tensors",
             setter_for_jitter_tensor_names, "",

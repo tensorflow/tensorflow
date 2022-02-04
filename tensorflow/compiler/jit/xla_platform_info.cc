@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 
+#include <utility>
+
+#include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/xla_compilation_cache_persistence.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 
 namespace tensorflow {
@@ -43,9 +47,17 @@ xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
 Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                 const XlaPlatformInfo& platform_info,
                                 XlaCompilationCache** cache) {
+  XlaCompilationCache::Config cache_config;
+  cache_config.disable_strict_signature_checks =
+      GetXlaOpsCommonFlags().tf_xla_disable_strict_signature_checks;
+  cache_config.persistance_prefix =
+      GetXlaOpsCommonFlags().tf_xla_persistant_cache_prefix;
+  cache_config.saver = CreateXlaCompilationCacheSaver();
+  cache_config.loader = CreateXlaCompilationCacheLoader();
+
   if (platform_info.xla_device_metadata()) {
     *cache = new XlaCompilationCache(
-        platform_info.xla_device_metadata()->client(),
+        std::move(cache_config), platform_info.xla_device_metadata()->client(),
         platform_info.xla_device_metadata()->jit_device_type());
     return Status::OK();
   }
@@ -101,7 +113,8 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                    platform_info.device_type().type());
   }
   *cache = new XlaCompilationCache(
-      client.ValueOrDie(), DeviceType(registration->compilation_device_name));
+      std::move(cache_config), client.ValueOrDie(),
+      DeviceType(registration->compilation_device_name));
   return Status::OK();
 }
 

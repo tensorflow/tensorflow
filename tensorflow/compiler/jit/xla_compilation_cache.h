@@ -16,14 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 
+#include <memory>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
+#include "tensorflow/compiler/jit/xla_compilation_cache_persistence.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -32,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 
@@ -45,7 +52,22 @@ namespace tensorflow {
 // bound.
 class XlaCompilationCache : public ResourceBase {
  public:
-  XlaCompilationCache(xla::LocalClient* client, DeviceType device_type);
+  struct Config {
+    // Disable strict signature checks for entries loaded into the cache from
+    // external sources.
+    bool disable_strict_signature_checks = false;
+
+    // The cache persistence prefix to use if serializing/deserialzing entries.
+    std::string persistance_prefix;
+
+    // A cache saver to use, if nullptr no entries will be saved.
+    std::unique_ptr<XlaCompilationCacheSaver> saver;
+
+    // A cache loader to use, if nullptr no entries will be loaded.
+    std::unique_ptr<XlaCompilationCacheLoader> loader;
+  };
+  XlaCompilationCache(Config config, xla::LocalClient* client,
+                      DeviceType device_type);
   ~XlaCompilationCache() override;
 
   enum class CompileMode {
@@ -54,11 +76,7 @@ class XlaCompilationCache : public ResourceBase {
     kAsync,
   };
 
-  enum class CompileState {
-    kUncompiled,
-    kCompiling,
-    kCompiled,
-  };
+  enum class CompileState { kUncompiled, kCompiling, kCompiled };
 
   enum class CompileScope {
     kOp,
@@ -111,6 +129,8 @@ class XlaCompilationCache : public ResourceBase {
   // Describes the types, shapes and any compile-time constant arguments
   // to a kernel. Key that uniquely identifies a compilation output.
   struct Signature {
+    Signature() = default;
+
     string name;
 
     // List of args (either as a TensorTypeAndShape or as a Tensor value)
@@ -152,6 +172,21 @@ class XlaCompilationCache : public ResourceBase {
                          const XlaCompiler::CompilationResult& result,
                          std::unique_ptr<xla::LocalExecutable>* executable);
 
+  // Like BuildExecutable above, except that it generates an XLA
+  // AotCompilationResult (instead of LocalExecutable), which can be persisted
+  // to later load a LocalExecutable using the LoadExecutable() method below.
+  Status BuildSerializedExecutable(
+      const XlaCompiler::Options& options,
+      const XlaCompiler::CompilationResult& result,
+      std::unique_ptr<xla::AotCompilationResult>* aot_result);
+
+  // Returns an XLA LocalExecutable loaded from a serialized XLA
+  // AotCompilationResult.
+  Status LoadExecutable(const XlaCompiler::Options& options,
+                        const XlaCompiler::CompilationResult& result,
+                        const std::string& serialized_aot_result,
+                        std::unique_ptr<xla::LocalExecutable>* executable);
+
   // Determines whether the cluster should be compiled.
   bool ShouldCompileCluster(CompileMode compile_mode, bool is_megamorphic,
                             bool is_first_execution,
@@ -160,6 +195,8 @@ class XlaCompilationCache : public ResourceBase {
 
   xla::LocalClient* const client_;
   const DeviceType device_type_;
+  bool disable_strict_signature_checks_;
+  std::string persistance_prefix_;
 
   // The value associated with a cache entry.
   struct Entry {
@@ -182,14 +219,29 @@ class XlaCompilationCache : public ResourceBase {
     std::unique_ptr<xla::LocalExecutable> executable TF_GUARDED_BY(mu);
   };
 
-  Status CompileStrict(Entry* entry,
+  // Returns a cache key proto that identifies an entry in the compilation
+  // cache.
+  XlaSerializedCacheKey BuildSerializedCacheKey(
+      const Signature& sig, const xla::HloSnapshot& computation) const;
+
+  // Serializes the signature and its corresponding entry to a proto message.
+  StatusOr<XlaSerializedCacheEntry> SerializeEntry(
+      const XlaCompiler::Options& options, const Signature& sig,
+      const Entry& entry) TF_EXCLUSIVE_LOCKS_REQUIRED(entry.mu);
+
+  // Checks if the loaded `entry` matches the expected `key` and `computation`.
+  Status VerifyLoadedCacheEntry(const XlaSerializedCacheKey& key,
+                                const xla::HloSnapshot& computation,
+                                const XlaSerializedCacheEntry& entry);
+
+  Status CompileStrict(const Signature& sig, Entry* entry,
                        const XlaCompiler::CompileOptions& compile_options,
                        const XlaCompiler::Options& options,
                        const std::vector<XlaCompiler::Argument>& args,
                        const NameAttrList& function, OpKernelContext* ctx,
                        CompileScope scope)
       TF_EXCLUSIVE_LOCKS_REQUIRED(entry->mu);
-  Status CompileAsynchronous(Entry* entry,
+  Status CompileAsynchronous(const Signature& sig, Entry* entry,
                              const XlaCompiler::CompileOptions& compile_options,
                              const XlaCompiler::Options& options,
                              const std::vector<XlaCompiler::Argument>& args,
@@ -249,6 +301,9 @@ class XlaCompilationCache : public ResourceBase {
   // The number of times a lazy compilation must be requested for a specific
   // signature before  we attempt to compile it.
   static constexpr int64_t kDefaultCompilationThreshold = 2;
+
+  std::unique_ptr<XlaCompilationCacheSaver> saver_;
+  std::unique_ptr<XlaCompilationCacheLoader> loader_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);
 };
