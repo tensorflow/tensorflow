@@ -6683,6 +6683,7 @@ filegroup(
         "unicode_ops.cc",
         "unique_op.cc",
         "where_op.cc",
+        "whole_file_read_ops.cc",
         "xent_op.cc",
     ] + [
         "//tensorflow/core/kernels/boosted_trees:quantile_ops.cc",
