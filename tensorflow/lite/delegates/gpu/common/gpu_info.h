@@ -164,6 +164,9 @@ enum class AppleGpu {
   kA13,
   kA14,
   kA15,
+  kM1,
+  kM1Pro,
+  kM1Max,
 };
 
 struct AppleInfo {
@@ -176,6 +179,13 @@ struct AppleInfo {
   bool IsLocalMemoryPreferredOverGlobal() const;
 
   bool IsBionic() const;
+
+  bool IsSIMDMatMulSupported() const;
+  // Often, fp32 alu performance is 1/2 of fp16 alu performance
+  // But, on some devices, fp32 alu performance equal to fp16 alu performance,
+  // at least in some scenarios.
+  // This method returns true if SIMDMatMul performance in fp32 equal to fp16
+  bool IsSIMDMatMulFp32Perf2x() const;
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;

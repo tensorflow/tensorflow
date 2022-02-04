@@ -326,13 +326,26 @@ int AdrenoInfo::GetComputeUnitsCount() const {
 
 AppleInfo::AppleInfo(const std::string& gpu_description) {
   const std::map<std::string, AppleGpu> kMapping = {
-      {"apple a7 gpu", AppleGpu::kA7},     {"apple a8 gpu", AppleGpu::kA8},
-      {"apple a8x gpu", AppleGpu::kA8X},   {"apple a9 gpu", AppleGpu::kA9},
-      {"apple a9x gpu", AppleGpu::kA9X},   {"apple a10 gpu", AppleGpu::kA10},
-      {"apple a10x gpu", AppleGpu::kA10X}, {"apple a11 gpu", AppleGpu::kA11},
-      {"apple a12 gpu", AppleGpu::kA12},   {"apple a12x gpu", AppleGpu::kA12X},
-      {"apple a12z gpu", AppleGpu::kA12Z}, {"apple a13 gpu", AppleGpu::kA13},
-      {"apple a14 gpu", AppleGpu::kA14},   {"apple a15 gpu", AppleGpu::kA15},
+      {"apple a7 gpu", AppleGpu::kA7},
+      {"apple a8 gpu", AppleGpu::kA8},
+      {"apple a8x gpu", AppleGpu::kA8X},
+      {"apple a9 gpu", AppleGpu::kA9},
+      {"apple a9x gpu", AppleGpu::kA9X},
+      {"apple a10 gpu", AppleGpu::kA10},
+      {"apple a10x gpu", AppleGpu::kA10X},
+      {"apple a11 gpu", AppleGpu::kA11},
+      {"apple a12 gpu", AppleGpu::kA12},
+      {"apple a12x gpu", AppleGpu::kA12X},
+      {"apple a12z gpu", AppleGpu::kA12Z},
+      {"apple a13 gpu", AppleGpu::kA13},
+      {"apple a14 gpu", AppleGpu::kA14},
+      {"apple a15 gpu", AppleGpu::kA15},
+      // on tablets we have metal device name "apple m1 gpu"
+      // and on notebooks "apple m1"
+      {"apple m1 gpu", AppleGpu::kM1},
+      {"apple m1", AppleGpu::kM1},
+      {"apple m1 pro", AppleGpu::kM1Pro},
+      {"apple m1 max", AppleGpu::kM1Max},
   };
   auto it = kMapping.find(gpu_description);
   if (it != kMapping.end()) {
@@ -355,7 +368,18 @@ bool AppleInfo::IsBionic() const {
   return gpu_type == AppleGpu::kA11 || gpu_type == AppleGpu::kA12 ||
          gpu_type == AppleGpu::kA12X || gpu_type == AppleGpu::kA12Z ||
          gpu_type == AppleGpu::kA13 || gpu_type == AppleGpu::kA14 ||
-         gpu_type == AppleGpu::kA15;
+         gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kM1 ||
+         gpu_type == AppleGpu::kM1Pro || gpu_type == AppleGpu::kM1Max;
+}
+
+bool AppleInfo::IsSIMDMatMulSupported() const {
+  return gpu_type == AppleGpu::kA14 || gpu_type == AppleGpu::kA15 ||
+         gpu_type == AppleGpu::kM1 || gpu_type == AppleGpu::kM1Pro ||
+         gpu_type == AppleGpu::kM1Max;
+}
+
+bool AppleInfo::IsSIMDMatMulFp32Perf2x() const {
+  return gpu_type == AppleGpu::kA15;
 }
 
 bool AppleInfo::IsRoundToNearestSupported() const { return IsBionic(); }
@@ -388,11 +412,22 @@ int AppleInfo::GetComputeUnitsCount() const {
       return 4;
     case AppleGpu::kA14:
       return 4;
+    // For A15, M1, M1 Pro and M1 Max we can not receive exact CU count from
+    // name. No official Metal API to receive this info.
     case AppleGpu::kA15:
       if (compute_units != -1) {
         return compute_units;
       }
       return 5;
+    case AppleGpu::kM1:
+      // approximate, can be 7 or 8
+      return 8;
+    case AppleGpu::kM1Pro:
+      // approximate, can be 14 or 16
+      return 16;
+    case AppleGpu::kM1Max:
+      // approximate, can be 24 or 32
+      return 32;
     case AppleGpu::kUnknown:
       return 4;
   }
