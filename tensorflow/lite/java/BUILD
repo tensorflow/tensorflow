@@ -814,7 +814,7 @@ cc_library(
 #-----------------------------------------------------------------------------
 # JNI binary targets for generating the .so files for the JNI code.
 
-# JNI shared libary containing Java API native code, including experimental APIs.
+# JNI shared library containing Java API native code, including experimental APIs.
 # This library will get automatically loaded by TensorFlowLite.init().
 jni_binary_with_tflite(
     name = "libtensorflowlite_jni.so",
@@ -833,7 +833,7 @@ jni_binary_with_tflite(
     ],
 )
 
-# JNI shared libary containing Java API native code, excluding experimental APIs.
+# JNI shared library containing Java API native code, excluding experimental APIs.
 # This library will get automatically loaded by TensorFlowLite.init(),
 # if libtensorflowlite_jni.so isn't found.
 jni_binary_with_tflite(

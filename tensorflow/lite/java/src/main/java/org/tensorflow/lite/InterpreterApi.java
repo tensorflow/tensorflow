@@ -416,7 +416,7 @@ public interface InterpreterApi extends AutoCloseable {
   public int getInputIndex(String opName);
 
   /**
-   * Gets the Tensor associated with the provdied input index.
+   * Gets the Tensor associated with the provided input index.
    *
    * @throws IllegalArgumentException if {@code inputIndex} is negative or is not smaller than the
    *     number of model inputs.
@@ -435,7 +435,7 @@ public interface InterpreterApi extends AutoCloseable {
   public int getOutputIndex(String opName);
 
   /**
-   * Gets the Tensor associated with the provdied output index.
+   * Gets the Tensor associated with the provided output index.
    *
    * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
    * is executed. If you need updated details *before* running inference (e.g., after resizing an

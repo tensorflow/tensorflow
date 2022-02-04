@@ -16,10 +16,22 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.lang.reflect.Constructor;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Logger;
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
 
 /** Static utility methods for loading the TensorFlowLite runtime and native code. */
 public final class TensorFlowLite {
+  // We use Java logging here (java.util.logging), rather than Android logging (android.util.Log),
+  // to avoid unnecessary platform dependencies. This also makes unit testing simpler and faster,
+  // since we can use plain Java tests rather than needing to use Robolectric (android_local_test).
+  //
+  // WARNING: some care is required when using Java logging on Android.  In particular, avoid
+  // logging with severity levels lower than "INFO", since the default Java log handler on Android
+  // will discard those, and avoid logging messages with parameters (call String.format instead),
+  // since the default Java log handler on Android only logs the raw message string and doesn't
+  // apply the parameters.
+  private static final Logger logger = Logger.getLogger(InterpreterApi.class.getName());
 
   private static final String[][] TFLITE_RUNTIME_LIBNAMES =
       new String[][] {
@@ -120,8 +132,11 @@ public final class TensorFlowLite {
     private final InterpreterFactoryApi factory;
     private final Exception exception;
 
-    /** @param namespace: "org.tensorflow.lite" or "com.google.android.gms.tflite". */
-    public PossiblyAvailableRuntime(String namespace) {
+    /**
+     * @param namespace: "org.tensorflow.lite" or "com.google.android.gms.tflite".
+     * @param category: "application" or "system".
+     */
+    public PossiblyAvailableRuntime(String namespace, String category) {
       InterpreterFactoryApi factory = null;
       Exception exception = null;
       try {
@@ -129,7 +144,15 @@ public final class TensorFlowLite {
         Constructor<?> factoryConstructor = clazz.getDeclaredConstructor();
         factoryConstructor.setAccessible(true);
         factory = (InterpreterFactoryApi) factoryConstructor.newInstance();
+        if (factory != null) {
+          logger.info(String.format("Found %s TF Lite runtime client in %s", category, namespace));
+        } else {
+          logger.warning(
+              String.format("Failed to construct TF Lite runtime client from %s", namespace));
+        }
       } catch (Exception e) {
+        logger.info(
+            String.format("Didn't find %s TF Lite runtime client in %s", category, namespace));
         exception = e;
       }
       this.exception = exception;
@@ -154,12 +177,21 @@ public final class TensorFlowLite {
   // for TF Lite runtimes that the application actually tries to use.
   private static class RuntimeFromSystem {
     static final PossiblyAvailableRuntime TFLITE =
-        new PossiblyAvailableRuntime("com.google.android.gms.tflite");
+        new PossiblyAvailableRuntime("com.google.android.gms.tflite", "system");
   }
 
   private static class RuntimeFromApplication {
     static final PossiblyAvailableRuntime TFLITE =
-        new PossiblyAvailableRuntime("org.tensorflow.lite");
+        new PossiblyAvailableRuntime("org.tensorflow.lite", "application");
+  }
+
+  // We log at most once for each different options.runtime value.
+  private static AtomicBoolean[] haveLogged = new AtomicBoolean[TfLiteRuntime.values().length];
+
+  static {
+    for (int i = 0; i < TfLiteRuntime.values().length; i++) {
+      haveLogged[i] = new AtomicBoolean();
+    }
   }
 
   // Package-private method for finding the TF Lite runtime implementation.
@@ -170,6 +202,13 @@ public final class TensorFlowLite {
         && (options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
             || options.runtime == TfLiteRuntime.FROM_SYSTEM_ONLY)) {
       if (RuntimeFromSystem.TFLITE.getFactory() != null) {
+        if (!haveLogged[options.runtime.ordinal()].getAndSet(true)) {
+          logger.info(
+              String.format(
+                  "TfLiteRuntime.%s: "
+                      + "Using system TF Lite runtime client from com.google.android.gms",
+                  options.runtime.name()));
+        }
         return RuntimeFromSystem.TFLITE.getFactory();
       } else {
         exception = RuntimeFromSystem.TFLITE.getException();
@@ -178,7 +217,18 @@ public final class TensorFlowLite {
     if (options == null
         || options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
         || options.runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
+      TfLiteRuntime runtimeOption =
+          ((options != null && options.runtime != null)
+              ? options.runtime
+              : TfLiteRuntime.FROM_APPLICATION_ONLY);
       if (RuntimeFromApplication.TFLITE.getFactory() != null) {
+        if (!haveLogged[runtimeOption.ordinal()].getAndSet(true)) {
+          logger.info(
+              String.format(
+                  "TfLiteRuntime.%s: "
+                      + "Using application TF Lite runtime client from org.tensorflow.lite",
+                  runtimeOption.name()));
+        }
         return RuntimeFromApplication.TFLITE.getFactory();
       } else {
         if (exception == null) {
