@@ -434,22 +434,16 @@ absl::Status GPUOperationFromNodePart0(
         conv_op.operation->flops_ = GetConvolutionTransposedFlops(
             inputs[0]->tensor.shape, weights_shape);
 
-        const int dst_depth = AlignByN(DivideRoundUp(weights_shape.o, 4),
-                                       weights_desc.GetOutputGroupSize());
-        const int src_depth = DivideRoundUp(weights_shape.i, 4);
-        const int kernel_x = weights_shape.w;
-        const int kernel_y = weights_shape.h;
         if (weights_desc.layout ==
                 WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
             weights_desc.layout ==
                 WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
           // weights are 4x textures 2d
           conv_op.input_ids = {static_cast<int>(inputs[0]->id), -1, -2, -3, -4};
-          int texture_width = dst_depth;
-          int texture_height = src_depth * kernel_x * kernel_y;
+          const uint2 tex_size = Get2dResourceSize(weights_desc, weights_shape);
           for (int i = 0; i < 4; ++i) {
             gpu_subgraph->new_tensors.push_back(
-                {BHWC(1, texture_height, texture_width, 4),
+                {BHWC(1, tex_size.y, tex_size.x, 4),
                  TensorDescriptor(op_def.GetDataType(),
                                   TensorStorageType::TEXTURE_2D, Layout::HWC)});
           }

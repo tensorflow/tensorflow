@@ -42,6 +42,21 @@ uint GetTotalElementsCountForLayout(const WeightsDescription& weight_desc,
   return GetTotalElementsCountForLayout(weight_desc, ohwdi_shape);
 }
 
+uint2 Get2dResourceSize(const WeightsDescription& weight_desc,
+                        const OHWI& shape) {
+  const OHWDI ohwdi_shape = OHWDI(shape.o, shape.h, shape.w, 1, shape.i);
+  return Get2dResourceSize(weight_desc, ohwdi_shape);
+}
+
+uint2 Get2dResourceSize(const WeightsDescription& weight_desc,
+                        const OHWDI& shape) {
+  const int dst_depth =
+      AlignByN(DivideRoundUp(shape.o, 4), weight_desc.output_group_size);
+  const int src_depth = DivideRoundUp(shape.i, 4);
+
+  return uint2(dst_depth, src_depth * shape.h * shape.w * shape.d);
+}
+
 void RearrangeWeights(
     const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
     const WeightsDescription& dst_weight_desc, DataType dst_type,
