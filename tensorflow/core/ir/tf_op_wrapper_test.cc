@@ -142,13 +142,6 @@ TEST(TFOpWrapper, AttributeGetterSetters) {
     op->removeAttr(tfg_dialect->getDeviceAttrIdentifier());
     EXPECT_EQ(op.device(), "");
   }
-
-  // tfg.tpu_replicate
-  {
-    auto tpu_replicate = StringAttr::get(op->getContext(), "a_tpu");
-    op.setTpuReplicate(tpu_replicate);
-    EXPECT_EQ(op.tpuReplicate(), tpu_replicate);
-  }
 }
 }  // namespace
 }  // namespace tfg

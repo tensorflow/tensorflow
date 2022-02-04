@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
 
-#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -239,18 +238,16 @@ tensorflow::StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
   return value;
 }
 
-Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
-                         ArrayRef<StringRef> attrs_to_ignore,
-                         bool remove_ref_type, AttrValueMap* values) {
-  StringSet<> ignored_attrs;
-  ignored_attrs.insert(attrs_to_ignore.begin(), attrs_to_ignore.end());
+Status ConvertAttributes(
+    const llvm::ArrayRef<NamedAttribute> attrs,
+    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
+    bool remove_ref_type, AttrValueMap* values) {
   AttrValueMap func_call_attrs;
   for (const NamedAttribute& named_attr : attrs) {
-    std::string name_str =
-        PrepareTFGAttributeForExport(named_attr.getName()).str();
+    auto name_strref = named_attr.getName().str();
     auto attr = named_attr.getValue();
-    absl::string_view name = name_str;
-    if (ignored_attrs.contains(name_str)) {
+    absl::string_view name(name_strref.data(), name_strref.size());
+    if (name == "name" || name == "device" || attrs_to_ignore.contains(name)) {
       // The name, device spec of a TF op or function are not stored as
       // AttrValue inside NodeDef, but we model them using attribute inside
       // MLIR. So we need to ignore them when going back to AttrValue here.
@@ -406,24 +403,6 @@ tensorflow::StatusOr<Attribute> ConvertAttributeValue(
     default:
       return ConvertNonFuncAttributeValue(value, builder, tfgDialect);
   }
-}
-
-static constexpr StringLiteral kTpuReplicate = "_tpu_replicate";
-
-StringRef PromoteToTFGAttribute(StringRef tf_attr_name) {
-  return StringSwitch<StringRef>(tf_attr_name)
-      // `_tpu_replicate` -> `tfg.tpu_replicate`
-      //   This attribute assigns ops to TPU clusters. When transformations
-      //   create new ops, they must ensure that these new ops are assigned to
-      //   the same cluster.
-      .Case(kTpuReplicate, TFGraphDialect::getTfgTpuReplicateAttrKey())
-      .Default(tf_attr_name);
-}
-
-StringRef PrepareTFGAttributeForExport(StringRef tfg_attr_name) {
-  return StringSwitch<StringRef>(tfg_attr_name)
-      .Case(TFGraphDialect::getTfgTpuReplicateAttrKey(), kTpuReplicate)
-      .Default(tfg_attr_name);
 }
 
 }  // namespace tfg

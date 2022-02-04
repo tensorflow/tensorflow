@@ -102,11 +102,6 @@ class TFOp {
   void setAssignedDevice(const Twine &assigned_device);
   void setAssignedDevice(StringAttr assigned_device);
 
-  // Returns the assigned TPU cluster name.
-  StringAttr tpuReplicate();
-  // Set the assigned TPU cluster name.
-  void setTpuReplicate(StringAttr tpu_replicate);
-
   // Returns the device, preferring the assigned device if set, and the
   // requested device otherwise.
   StringAttr deviceAttr() {

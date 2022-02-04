@@ -70,27 +70,20 @@ def TFGraphDialect : Dialect {
 
   let extraClassDeclaration = [{
     StringAttr getNameAttrIdentifier() const { return name_key_; }
-    static constexpr StringLiteral getNameAttrKey() { return "_mlir_name"; }
+    static constexpr StringRef getNameAttrKey() { return "_mlir_name"; }
 
     StringAttr getDeviceAttrIdentifier() const { return device_key_; }
-    static constexpr StringLiteral getDeviceAttrKey() { return "_mlir_device"; }
+    static constexpr StringRef getDeviceAttrKey() { return "_mlir_device"; }
 
     StringAttr getAssignedDeviceAttrIdentifier() const {
       return assigned_device_key_;
     }
-    static constexpr StringLiteral getAssignedDeviceAttrKey() {
+    static constexpr StringRef getAssignedDeviceAttrKey() {
       return "_mlir_assigned_device";
     }
 
     StringAttr getTfgNameAttrIdentifier() const { return tfg_name_key_; }
     static constexpr StringRef getTfgNameAttrKey() { return "tfg.name"; }
-
-    StringAttr getTfgTpuReplicateAttrIdentifier() const {
-      return tfg_tpu_replicate_key_;
-    }
-    static constexpr StringLiteral getTfgTpuReplicateAttrKey() {
-      return "tfg.tpu_replicate";
-    }
 
     // Cached accessor for the control type.
     ControlType getControlType() const { return control_ty_; }
@@ -119,7 +112,6 @@ def TFGraphDialect : Dialect {
     StringAttr device_key_;
     StringAttr assigned_device_key_;
     StringAttr tfg_name_key_;
-    StringAttr tfg_tpu_replicate_key_;
     ControlType control_ty_;
   }];
 

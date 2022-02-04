@@ -2,7 +2,7 @@
 
 # Since there are no uses of the output for the Add node, it is imported without any output.
 # CHECK:      tfg.graph
-# CHECK-DAG: %Add, %{{.*}} = Add(%Placeholder, %Placeholder_0) name("Add") {T = i32, tfg.tpu_replicate = "cluster"} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
+# CHECK-DAG: %Add, %{{.*}} = Add(%Placeholder, %Placeholder_0) name("Add") {T = i32} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
 # CHECK-DAG: %Placeholder, %{{.*}} = Placeholder name("input0") {dtype = i32, shape = #tf_type.shape<*>} : () -> (tensor<*xi32>)
 # CHECK-DAG: %Placeholder_0, %{{.*}} = Placeholder name("input1") {dtype = i32, shape = #tf_type.shape<*>} : () -> (tensor<*xi32>)
 
@@ -15,12 +15,6 @@ node {
     key: "T"
     value {
       type: DT_INT32
-    }
-  }
-  attr {
-    key: "_tpu_replicate"
-    value {
-      s: "cluster"
     }
   }
 }

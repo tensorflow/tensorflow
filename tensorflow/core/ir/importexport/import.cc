@@ -591,7 +591,7 @@ Status GraphImporter::ConvertNode(const Node& node) {
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
                         ConvertAttributeValue(tf_attr, builder_, dialect_));
-    result.addAttribute(PromoteToTFGAttribute(name), attr);
+    result.addAttribute(name, attr);
   }
   Attribute assigned_device =
       result.attributes.get(dialect_->getAssignedDeviceAttrIdentifier());
