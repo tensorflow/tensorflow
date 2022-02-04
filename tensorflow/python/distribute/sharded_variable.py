@@ -732,6 +732,10 @@ class ShardedVariableMixin(trackable.Trackable):
     return obj_map, resource_map
 
   @property
+  def _in_graph_mode(self):
+    return self.variables[0]._in_graph_mode  # pylint: disable=protected-access
+
+  @property
   def _unique_id(self):
     return self.variables[0]._unique_id  # pylint: disable=protected-access
 
