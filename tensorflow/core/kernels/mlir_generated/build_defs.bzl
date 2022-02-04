@@ -157,7 +157,7 @@ def _gen_kernel_bin_impl(ctx):
             "--output=%s" % gpu_bin.path,
             "--enable_ftz=%s" % (ctx.attr.data_type == "f32"),
             "--cpu_codegen=%s" % ctx.attr.cpu_codegen,
-            "--index_64bit=%s" % ctx.attr.index_64bit,
+            "--jit_i64_indexed_for_large_tensor=%s" % ctx.attr.jit_i64_indexed_for_large_tensor,
             "--jit=%s" % ctx.attr.jit,
         ],
         use_default_shell_env = True,
@@ -191,7 +191,7 @@ _gen_kernel_bin_rule = rule(
         "gpu_archs": attr.string_list(),
         "jit": attr.bool(),
         "cpu_codegen": attr.bool(),
-        "index_64Bit": attr.bool(),
+        "jit_i64_indexed_for_large_tensor": attr.bool(),
         "extra_args": attr.string_list(),
         # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
         "_tfso": attr.label(
@@ -256,7 +256,7 @@ def _gen_kernel_library(
         extra_args = [],
         test_tags = [],
         test_size = "medium",
-        jit_i64_indexed_for_large_tensors_types = None,
+        output_jit_i64_indexed_for_large_tensors_types = None,
         output_partial_jit_types = None,):
     """ Generate a library with GPU or CPU kernels for a specific tensorflow op.
 
@@ -288,8 +288,8 @@ def _gen_kernel_library(
       extra_args: Extra arguments to pass to the generator tool.
       test_tags: The tags to pass to the generated test.
       test_size: The "size" argument to pass to the test.
-      jit_i64_indexed_for_large_tensors_types: The type to apply to the Kernel's 
-                                               indexing.
+      output_jit_i64_indexed_for_large_tensors_types: Whether to enable JIT compilation of 
+                                                      i64-indexed kernels for large inputs.
       output_partial_jit_types: The output types for which a partial jit kernel should 
                                 be generated.
     """
@@ -302,29 +302,30 @@ def _gen_kernel_library(
     if not output_jit_types:
         output_jit_types = jit_types
     true_jits = [True for i in range(len(jit_types))]
-    if not jit_i64_indexed_for_large_tensors_types:
-        jit_i64_indexed_for_large_tensors_types = []
+    if not output_jit_i64_indexed_for_large_tensors_types:
+        output_jit_i64_indexed_for_large_tensors_types = []
     if not output_partial_jit_types:
-        output_partial_jit_types = jit_i64_indexed_for_large_tensors_types
+        output_partial_jit_types = output_jit_i64_indexed_for_large_tensors_types
     true_partial_jits = [True for i in
-        jit_i64_indexed_for_large_tensors_types]
+        output_jit_i64_indexed_for_large_tensors_types]
     use_i64_indices_for_jit = [False for i in jit_types]
     use_i64_indices_for_partial_jit = [True for i in
-        jit_i64_indexed_for_large_tensors_types]
+        output_jit_i64_indexed_for_large_tensors_types]
     all_jit_kernels = zip(jit_types, output_jit_types,
                           true_jits, use_i64_indices_for_jit)
-    all_partial_jit_kernels = zip(jit_i64_indexed_for_large_tensors_types,
-                                  output_partial_jit_types, true_partial_jits, 
-                                  use_i64_indices_for_partial_jit)
+    all_jit_i64_indexed_for_large_tensors_kernels = zip(output_jit_i64_indexed_for_large_tensors_types,
+                                                        output_partial_jit_types, 
+                                                        true_partial_jits, 
+                                                        use_i64_indices_for_partial_jit)
     false_jits = [False for i in types]
     all_precomp_kernels = zip(
         types, output_types, false_jits, false_jits)
     all_kernels = all_precomp_kernels
     if if_mlir_generated_experimental_kernels_enabled(True, False):
         all_kernels += all_jit_kernels
-        all_kernels += all_partial_jit_kernels
+        all_kernels += all_jit_i64_indexed_for_large_tensors_kernels
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
-        for (type, output_type, jit, index_64bit) in all_kernels:
+        for (type, output_type, jit, jit_i64_indexed_for_large_tensor) in all_kernels:
             # Disable unrolling for integer types while LLVM does not vectorize these.
             # See b/182343395 for context.
             integer_types = ["i1", "i8", "i16", "i32", "i64", "ui8", "ui16", "ui32", "ui64"]
@@ -358,8 +359,7 @@ def _gen_kernel_library(
                 ),
                 tile_size = typed_tile_size,
                 unroll_factors = typed_unroll_factors,
-                index_64bit = index_64bit,
->>>>>>> refactor index64bit in build_defs
+                jit_i64_indexed_for_large_tensor = jit_i64_indexed_for_large_tensor,
             )
 
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
@@ -374,7 +374,7 @@ def _gen_kernel_library(
                 ),
                 "--cpu_codegen=true" if enable_cpu else "--arch={}".format(gpu_arch_option),
                 "--tile_sizes=%s" % typed_tile_size,
-                "--index_64bit=%s" % index_64bit,
+                "--jit_i64_indexed_for_large_tensor=%s" % jit_i64_indexed_for_large_tensor,
                 "--enable_ftz=%s" % (type == "f32"),
             ]
             if typed_unroll_factors:
@@ -408,7 +408,7 @@ def _gen_kernel_library(
             type = type,
             output_type = output_type,
         )
-        for (type, output_type, jit, index_64bit) in all_kernels
+        for (type, output_type, jit, jit_i64_indexed_for_large_tensors) in all_kernels
     ] + ["//tensorflow/compiler/mlir/tools/kernel_gen:tf_framework_c_interface"]
 
     native.cc_library(
