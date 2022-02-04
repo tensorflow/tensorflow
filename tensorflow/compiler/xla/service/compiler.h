@@ -143,6 +143,11 @@ class AotCompilationOptions {
     cache_key_ = std::string(cache_key);
   }
 
+  bool run_backend_only() const { return run_backend_only_; }
+  void set_run_backend_only(bool run_backend_only) {
+    run_backend_only_ = run_backend_only;
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -157,6 +162,7 @@ class AotCompilationOptions {
   se::StreamExecutor* executor_ = nullptr;
   uint64_t session_id_ = 0;
   std::string cache_key_;
+  bool run_backend_only_ = false;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time

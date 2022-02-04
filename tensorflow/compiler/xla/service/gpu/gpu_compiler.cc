@@ -1328,6 +1328,25 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   for (const auto& module : modules) {
     XLA_SCOPED_LOGGING_TIMER(
         "GpuCompiler::CompileAheadOfTime - compiling one HloModule");
+
+    if (!options.run_backend_only()) {
+      uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+      tensorflow::profiler::TraceMe activity(
+          [&] { return absl::StrCat("HLO Transforms:", module->name()); },
+          tensorflow::profiler::TraceMeLevel::kInfo);
+      TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), stream_exec,
+                                           options.device_allocator()));
+
+      TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+
+      uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+
+      // This won't record values for calls that error out (because if they
+      // error out we have no way of telling how far through the process we
+      // got).
+      RecordHloPassesDuration(end_usecs - start_usecs);
+    }
+
     std::string slow_compilation_msg =
         absl::StrCat("Compiling module ", module->name());
     auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
