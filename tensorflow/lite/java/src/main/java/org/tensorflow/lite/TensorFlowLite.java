@@ -115,6 +115,53 @@ public final class TensorFlowLite {
 
   private static native void nativeDoNothing();
 
+  /** Encapsulates the use of reflection to find an available TF Lite runtime. */
+  private static class PossiblyAvailableRuntime {
+    private final InterpreterFactoryApi factory;
+    private final Exception exception;
+
+    /** @param namespace: "org.tensorflow.lite" or "com.google.android.gms.tflite". */
+    public PossiblyAvailableRuntime(String namespace) {
+      InterpreterFactoryApi factory = null;
+      Exception exception = null;
+      try {
+        Class<?> clazz = Class.forName(namespace + ".InterpreterFactoryImpl");
+        Constructor<?> factoryConstructor = clazz.getDeclaredConstructor();
+        factoryConstructor.setAccessible(true);
+        factory = (InterpreterFactoryApi) factoryConstructor.newInstance();
+      } catch (Exception e) {
+        exception = e;
+      }
+      this.exception = exception;
+      this.factory = factory;
+    }
+    /** @return the InterpreterFactoryApi for this runtime, or null if this runtime wasn't found. */
+    public InterpreterFactoryApi getFactory() {
+      return factory;
+    }
+    /** @return The exception that occurred when trying to find this runtime, if any, or null. */
+    public Exception getException() {
+      return exception;
+    }
+  }
+
+  // We use static members here for caching, to ensure that we only do the reflective lookups once
+  // and then afterwards re-use the previously computed results.
+  //
+  // We put these static members in nested static classes to ensure that Java will
+  // delay the initialization of these static members until their respective first use;
+  // that's needed to ensure that we only log messages about TF Lite runtime not found
+  // for TF Lite runtimes that the application actually tries to use.
+  private static class RuntimeFromSystem {
+    static final PossiblyAvailableRuntime TFLITE =
+        new PossiblyAvailableRuntime("com.google.android.gms.tflite");
+  }
+
+  private static class RuntimeFromApplication {
+    static final PossiblyAvailableRuntime TFLITE =
+        new PossiblyAvailableRuntime("org.tensorflow.lite");
+  }
+
   // Package-private method for finding the TF Lite runtime implementation.
   static InterpreterFactoryApi getFactory(InterpreterApi.Options options) {
     InterpreterFactoryApi factory;
@@ -122,32 +169,22 @@ public final class TensorFlowLite {
     if (options != null
         && (options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
             || options.runtime == TfLiteRuntime.FROM_SYSTEM_ONLY)) {
-      try {
-        Class<?> clazz = Class.forName("com.google.android.gms.tflite.InterpreterFactoryImpl");
-        Constructor<?> factoryConstructor = clazz.getDeclaredConstructor();
-        factoryConstructor.setAccessible(true);
-        factory = (InterpreterFactoryApi) factoryConstructor.newInstance();
-        if (factory != null) {
-          return factory;
-        }
-      } catch (Exception e1) {
-        exception = e1;
+      if (RuntimeFromSystem.TFLITE.getFactory() != null) {
+        return RuntimeFromSystem.TFLITE.getFactory();
+      } else {
+        exception = RuntimeFromSystem.TFLITE.getException();
       }
     }
     if (options == null
         || options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
         || options.runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
-      try {
-        Class<?> clazz = Class.forName("org.tensorflow.lite.InterpreterFactoryImpl");
-        factory = (InterpreterFactoryApi) clazz.getDeclaredConstructor().newInstance();
-        if (factory != null) {
-          return factory;
-        }
-      } catch (Exception e2) {
+      if (RuntimeFromApplication.TFLITE.getFactory() != null) {
+        return RuntimeFromApplication.TFLITE.getFactory();
+      } else {
         if (exception == null) {
-          exception = e2;
-        } else {
-          exception.addSuppressed(e2);
+          exception = RuntimeFromApplication.TFLITE.getException();
+        } else if (exception.getSuppressed().length == 0) {
+          exception.addSuppressed(RuntimeFromApplication.TFLITE.getException());
         }
       }
     }
