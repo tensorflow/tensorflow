@@ -174,15 +174,16 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
     ConfigProto::Experimental::MlirBridgeRollout rollout_state =
         GetMlirBridgeRolloutState(config ? absl::make_optional(*config)
                                          : absl::nullopt);
-    compile_status = Compile(MlirToHloArgs{mlir_module_, rollout_state},
-                             mesh_state->data(), arg_shapes, tpu_program_group);
+    compile_status =
+        Compile(MlirToHloArgs{mlir_module_, rollout_state}, mesh_state->data(),
+                arg_shapes, &key, tpu_program_group);
   } else {
     compile_status =
         Compile(FunctionToHloArgs{&function_,
                                   flib_runtime->GetFunctionLibraryDefinition(),
                                   flib_runtime->graph_def_version(),
                                   {&guaranteed_constants}},
-                mesh_state->data(), arg_shapes, tpu_program_group);
+                mesh_state->data(), arg_shapes, &key, tpu_program_group);
   }
 
   absl::Time end_time = absl::Now();
@@ -223,10 +224,15 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
         ctx->input_list("guaranteed_constants", &guaranteed_constants));
   }
 
+  ResourceMgr* resource_mgr = ctx->resource_manager();
+
+  // The session_id needs to be unique among live sessions.
+  // Recycled session_id is acceptable if it is unique among live sessions.
+  uint64_t session_id = reinterpret_cast<uint64_t>(resource_mgr);
   const TpuCompilationCacheKey key = CreateCompilationCacheKey(
       function_.name(), metadata_.function_library_fingerprint(),
       mlir_module_fingerprint_, guaranteed_constants, dynamic_shapes, metadata_,
-      *mesh_state);
+      *mesh_state, session_id, resource_mgr);
 
   // Process-wide cache of TPU executables.
   TpuCompilationCacheInterface* cache;

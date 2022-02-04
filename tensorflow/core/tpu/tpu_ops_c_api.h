@@ -31,6 +31,7 @@ namespace tensorflow {
 
 class TpuMeshCommonState;
 class TpuEmbeddingEngineState;
+class ResourceMgr;
 
 }  // namespace tensorflow
 
@@ -88,6 +89,8 @@ struct CompilationCacheKeyProperty {
   int32_t num_cores_per_replica;
   int32_t num_replicas;
   const XLA_TpuMeshState* mesh_state;
+  uint64_t session_id;
+  tensorflow::ResourceMgr* resource_mgr;
 };
 
 // Compilation cache key result returning both the key and a more verbose debug
