@@ -1323,16 +1323,33 @@ def HLO_DynamicBroadcastInDimOp : HLO_ShapedInterfaceOp<
     This is a generalization of the BroadcastInDimOp which accepts its output
     dimensions as an argument. It should eventually supercede the statically
     shaped original, but is being phased as a separate op in order to support
-    compatibility with lowerings and translations that precede dynamic
-    shapes.
+    compatibility with lowerings and translations that precede dynamic shapes.
+
+    The op accepts optional attributes to express static knowledge about the
+    expanding behavior of dimensions. If not specified, all dimensions are
+    assumed to be possibly expanding. The sets of dimensions that are known to
+    be expanding and the set of dimensions that are known to be non-expanding
+    must be disjoint.
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_DimensionTensor:$output_dimensions,
-    BroadcastDimAttr:$broadcast_dimensions
+    BroadcastDimAttr:$broadcast_dimensions,
+    OptionalAttr<BroadcastDimAttr>:$known_expanding_dimensions,
+    OptionalAttr<BroadcastDimAttr>:$known_nonexpanding_dimensions
   );
 
   let results = (outs HLO_Tensor);
+
+  let builders = [
+    OpBuilder<(ins
+        "Type":$result_type, "Value":$operand, "Value":$output_dimensions,
+        "DenseIntElementsAttr":$broadcast_dimensions), [{
+      build($_builder, $_state, result_type, operand, output_dimensions,
+          broadcast_dimensions, /*known_expanding_dimensions=*/{},
+          /*known_nonexpanding_dimensions=*/{});
+    }]>
+  ];
 
   let hasCanonicalizer = 1;
   let hasVerifier = 1;
