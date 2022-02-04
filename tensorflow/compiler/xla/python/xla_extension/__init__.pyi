@@ -238,6 +238,7 @@ class OpSharding_Type(enum.IntEnum):
   MAXIMAL: int
   TUPLE: int
   OTHER: int
+  MANUAL: int
 
 class OpSharding:
   Type: typing.Type[OpSharding_Type]
