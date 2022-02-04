@@ -20,6 +20,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -82,9 +83,7 @@ struct TFGraphOpAsmInterface
     }
   }
   void getAsmBlockArgumentNames(Operation *op, Region &region,
-                                OpAsmSetValueNameFn setNameFn) const {
-    return;
-  }
+                                OpAsmSetValueNameFn setNameFn) const {}
 };
 
 // Dialect construction: there is one instance per context and it registers its
@@ -106,6 +105,7 @@ void TFGraphDialect::initialize() {
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
   assigned_device_key_ =
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
+  tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
   control_ty_ = ControlType::get(getContext());
 }
 
@@ -121,6 +121,24 @@ void *TFGraphDialect::getRegisteredInterfaceForOp(mlir::TypeID interface,
 
 TFGraphDialect::~TFGraphDialect() { delete fallbackOpAsmInterface_; }
 
+static void PrintKeywordAttributes(Operation *op, OpAsmPrinter &printer,
+                                   ArrayRef<StringRef> elided_attrs = {}) {
+  // Handles the optional "device" and "name" attribute.
+  std::array<StringRef, 3> keywords{"_mlir_device", "_mlir_assigned_device",
+                                    "_mlir_name"};
+  for (StringRef keyword : keywords) {
+    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword))
+      if (!value_attr.getValue().empty())
+        printer << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
+                << value_attr.getValue() << "\")";
+  }
+
+  // Print attributes (other than name and device).
+  SmallVector<StringRef> attrs_to_elide = llvm::to_vector(elided_attrs);
+  llvm::append_range(attrs_to_elide, keywords);
+  printer.printOptionalAttrDict(op->getAttrs(), attrs_to_elide);
+}
+
 // Print an operation that belongs to this dialect, if unregistered.
 // The general syntax is:
 //   tfg.OpName(%input1, %input2, %input3) [%control_dep1, %control_dep2]
@@ -128,7 +146,6 @@ TFGraphDialect::~TFGraphDialect() { delete fallbackOpAsmInterface_; }
 //           (input types) -> (result_types)
 void TFGraphDialect::printCustomTfOp(Operation *op,
                                      OpAsmPrinter &printer) const {
-  raw_ostream &os = printer.getStream();
   ControlType control_ty = getControlType();
 
   // Check that all control dependencies are after the regular values,
@@ -161,65 +178,26 @@ void TFGraphDialect::printCustomTfOp(Operation *op,
   }
 
   // Print the inputs (other than the control dependencies), if any.
-  if (llvm::any_of(op->getOperandTypes(),
-                   [&](Type ty) { return ty != control_ty; })) {
-    os << "(";
-    llvm::interleaveComma(
-        llvm::make_filter_range(
-            op->getOperands(),
-            [&](Value operand) { return operand.getType() != control_ty; }),
-        os, [&](Value operand) { printer.printOperand(operand); });
-    os << ")";
-  }
+  TFOp tfg_op(op);
+  OperandRange data = tfg_op.getNonControlOperands();
+  if (!data.empty()) printer << '(' << data << ')';
   // Print the control dependencies (if any).
-  if (llvm::any_of(op->getOperands(), [&](Value operand) {
-        return operand.getType() == control_ty;
-      })) {
-    os << " [";
-    llvm::interleaveComma(
-        llvm::make_filter_range(
-            op->getOperands(),
-            [&](Value operand) { return operand.getType() == control_ty; }),
-        os, [&](Value operand) { printer.printOperand(operand); });
-    os << "]";
-  }
+  OperandRange ctls = tfg_op.getControlOperands();
+  if (!ctls.empty()) printer << " [" << ctls << ']';
 
-  // Handles the optional "device" and "name" attribute.
-  std::array<llvm::StringRef, 3> keywords{
-      "_mlir_device", "_mlir_assigned_device", "_mlir_name"};
-  for (StringRef keyword : keywords) {
-    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword))
-      if (!value_attr.getValue().empty())
-        os << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
-           << value_attr.getValue() << "\")";
-  }
-
-  // Print attributes (other than name and device).
-  printer.printOptionalAttrDict(op->getAttrs(), keywords);
+  // Print the keyword attributes and optional attribute dictionary.
+  PrintKeywordAttributes(op, printer);
 
   // Print the type, but omit control dependencies.
   // If there is a single control return, just print the list of input types,
   // otherwise print the complete type in a "function-style" way: (operands)
   // -> (results).
-  auto is_not_control_dep = [&](Type t) { return t != control_ty; };
-  if (isa<ReturnOp>(op) ||
-      (op->getNumResults() == 1 && op->getResult(0).getType() == control_ty)) {
-    if (llvm::any_of(op->getOperandTypes(), is_not_control_dep)) {
-      os << " : ";
-      llvm::interleaveComma(
-          make_filter_range(op->getOperandTypes(), is_not_control_dep), os);
-    }
+  ResultRange results = tfg_op.getNonControlResults();
+  if (results.empty()) {
+    if (!data.empty()) printer << " : " << data.getTypes();
   } else {
-    if (op->getNumResults() > 1 ||
-        llvm::any_of(op->getOperandTypes(), is_not_control_dep)) {
-      os << " : (";
-      llvm::interleaveComma(
-          make_filter_range(op->getOperandTypes(), is_not_control_dep), os);
-      os << ") -> (";
-      llvm::interleaveComma(
-          make_filter_range(op->getResultTypes(), is_not_control_dep), os);
-      os << ")";
-    }
+    printer << " : (" << data.getTypes() << ") -> (" << results.getTypes()
+            << ")";
   }
 }
 
@@ -235,6 +213,23 @@ TFGraphDialect::getOperationPrinter(Operation *op) const {
   };
 }
 
+// Parse any number of keyword attributes.
+static ParseResult ParseKeywordAttributes(OpAsmParser &parser,
+                                          OperationState &result) {
+  for (const char *keyword : {"device", "assigned_device", "name"}) {
+    if (succeeded(parser.parseOptionalKeyword(keyword))) {
+      StringAttr value;
+      if (parser.parseLParen() ||
+          parser.parseAttribute<StringAttr>(
+              value, NoneType::get(parser.getContext())) ||
+          parser.parseRParen())
+        return failure();
+      result.addAttribute((Twine("_mlir_") + keyword).str(), value);
+    }
+  }
+  return parser.parseOptionalAttrDict(result.attributes);
+}
+
 // Parse an operation that belongs to this dialect, if unregistered.
 // The general syntax is:
 //   tfg.OpName(%input1, %input2, %input3) [%control_dep1, %control_dep2]
@@ -245,39 +240,15 @@ static ParseResult ParseCustomTfOp(OpAsmParser &parser,
   MLIRContext *context = parser.getBuilder().getContext();
   // Parse optional argument list
   SmallVector<OpAsmParser::OperandType, 4> op_infos;
-  if (succeeded(parser.parseOptionalLParen())) {
-    do {
-      OpAsmParser::OperandType operand;
-      if (failed(parser.parseOperand(operand))) return failure();
-      op_infos.push_back(operand);
-    } while (succeeded(parser.parseOptionalComma()));
-    if (parser.parseRParen()) return failure();
-  }
-  int numNonControlOperands = op_infos.size();
+  if (parser.parseOperandList(op_infos, AsmParser::Delimiter::OptionalParen))
+    return failure();
+  unsigned numNonControlOperands = op_infos.size();
   // Optional control list, in between brackets.
-  if (succeeded(parser.parseOptionalLSquare())) {
-    do {
-      OpAsmParser::OperandType operand;
-      if (failed(parser.parseOperand(operand))) return failure();
-      op_infos.push_back(operand);
-    } while (succeeded(parser.parseOptionalComma()));
-    if (parser.parseRSquare()) return failure();
-  }
+  if (parser.parseOperandList(op_infos, AsmParser::Delimiter::OptionalSquare))
+    return failure();
 
-  // Parse the optional device and name attributes.
-  for (const char *keyword : {"device", "assigned_device", "name"}) {
-    if (succeeded(parser.parseOptionalKeyword(keyword))) {
-      StringAttr value;
-      if (parser.parseLParen() ||
-          parser.parseAttribute<StringAttr>(value, NoneType::get(context)) ||
-          parser.parseRParen())
-        return failure();
-      result.addAttribute((Twine("_mlir_") + keyword).str(), value);
-    }
-  }
-
-  // Parse the optional attribute list.
-  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+  // Parse the optional keyword attributes and optional attribute dictionary.
+  if (ParseKeywordAttributes(parser, result)) return failure();
 
   // Parse the functional type.
   SmallVector<Type> arg_types;
@@ -286,10 +257,7 @@ static ParseResult ParseCustomTfOp(OpAsmParser &parser,
   Type control_type = ControlType::get(context);
   if (failed(parser.parseOptionalColonTypeList(arg_types))) return failure();
   if (arg_types.size() == 1 && arg_types.front().isa<FunctionType>()) {
-    auto funcType = arg_types.front().dyn_cast<FunctionType>();
-    if (!funcType)
-      return parser.emitError(loc)
-             << "expected functional type, got " << arg_types.front();
+    auto funcType = arg_types.front().cast<FunctionType>();
     if (funcType.getNumInputs() != numNonControlOperands)
       return parser.emitError(loc)
              << "got " << numNonControlOperands
@@ -754,6 +722,92 @@ void GraphFuncOp::getAsmBlockArgumentNames(Region &region,
       set_name_fn(args[arg_num + 1], (strAttr.getValue() + ".ctl").str());
     }
   }
+}
+
+//===----------------------------------------------------------------------===//
+// ReturnOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(ReturnOp op) {
+  // If the control result attributes are present, there must be the same number
+  // of entries as control results.
+  if (op.control_ret_attrs().size() != TFOp(op).getControlOperands().size()) {
+    return op.emitOpError(
+        "expected as many control result attributes as there are control "
+        "operands");
+  }
+  return success();
+}
+
+ParseResult ParseReturnOp(OpAsmParser &parser, OperationState &result) {
+  // ReturnOp has the same assembly format as generic TFG ops except that the
+  // control result attributes are embedded with the control operands:
+  // [%ctl {tfg.name = "foo"}, %ctl_0 {tfg.name = "bar"}]
+  SmallVector<OpAsmParser::OperandType> operands;
+  if (parser.parseOperandList(operands, AsmParser::Delimiter::OptionalParen))
+    return failure();
+
+  SmallVector<Attribute> control_ret_attrs;
+  if (succeeded(parser.parseOptionalLSquare())) {
+    OpAsmParser::OperandType operand;
+    do {
+      NamedAttrList attrs;
+      OptionalParseResult parse_result = parser.parseOptionalOperand(operand);
+      if (!parse_result.hasValue()) break;
+      if (failed(parse_result.getValue())) return failure();
+      if (parser.parseOptionalAttrDict(attrs)) return failure();
+      control_ret_attrs.push_back(attrs.getDictionary(result.getContext()));
+      operands.push_back(std::move(operand));
+    } while (succeeded(parser.parseOptionalComma()));
+    if (parser.parseRSquare()) return failure();
+  }
+
+  if (ParseKeywordAttributes(parser, result)) return failure();
+  result.addAttribute(ReturnOp::control_ret_attrsAttrName(result.name),
+                      ArrayAttr::get(result.getContext(), control_ret_attrs));
+
+  SmallVector<Type> types;
+  if (parser.parseOptionalColonTypeList(types)) return failure();
+  types.resize(operands.size(), ControlType::get(result.getContext()));
+  if (parser.resolveOperands(operands, types, parser.getCurrentLocation(),
+                             result.operands))
+    return failure();
+  return success();
+}
+
+void Print(ReturnOp op, OpAsmPrinter &printer) {
+  TFOp tfg_op(op);
+  OperandRange data = tfg_op.getNonControlOperands();
+  if (!data.empty()) printer << '(' << data << ')';
+
+  OperandRange ctls = tfg_op.getControlOperands();
+  if (!ctls.empty()) {
+    printer << " [";
+    llvm::interleave(
+        llvm::zip(ctls, op.control_ret_attrs().getAsRange<DictionaryAttr>()),
+        printer,
+        [&](auto it) {
+          printer << std::get<0>(it);
+          if (!std::get<1>(it).empty()) printer << ' ' << std::get<1>(it);
+        },
+        ", ");
+    printer << ']';
+  }
+
+  PrintKeywordAttributes(op, printer, {"control_ret_attrs"});
+
+  if (!data.empty()) printer << " : " << data.getTypes();
+}
+
+void ReturnOp::build(OpBuilder &builder, OperationState &result,
+                     ValueRange operands, ValueRange control_operands) {
+  result.addOperands(operands);
+  result.addOperands(control_operands);
+  // Populate `control_ret_attrs` with empty dictionaries.
+  result.addAttribute(
+      ReturnOp::control_ret_attrsAttrName(result.name),
+      builder.getArrayAttr(SmallVector<Attribute>(
+          control_operands.size(), builder.getDictionaryAttr({}))));
 }
 
 //===----------------------------------------------------------------------===//

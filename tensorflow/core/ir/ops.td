@@ -175,6 +175,8 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
   let hasCanonicalizeMethod = 1;
 }
 
+def TFGraph_DictionaryArrayAttr
+    : TypedArrayAttrBase<DictionaryAttr, "an array of dictionaries">;
 
 def TFGraph_ReturnOp : TFGraph_Op<"return",
   [NoSideEffect, HasParent<"GraphFuncOp">, ReturnLike, Terminator]> {
@@ -188,15 +190,15 @@ def TFGraph_ReturnOp : TFGraph_Op<"return",
     similarly for the function results,
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins Variadic<AnyType>:$operands,
+                       TFGraph_DictionaryArrayAttr:$control_ret_attrs);
 
   let builders = [
-    OpBuilder<(ins),
-    [{ build($_builder, $_state, llvm::None); }]>];
+    OpBuilder<(ins "ValueRange":$operands, "ValueRange":$control_operands)>];
 
-  // Use the dialect printer/parser like other unregistered ops in this dialect.
-  let parser = [{ return ParseCustomTfOp(parser, result); }];
-  let printer = [{ PrintCustomTfOp(*this, p); }];
+  let verifier = [{ return Verify(*this); }];
+  let parser = [{ return ParseReturnOp(parser, result); }];
+  let printer = [{ Print(*this, p); }];
 }
 
 

@@ -75,6 +75,11 @@ class TFOp {
   // Returns the control token produced by this operation.
   Value controlRet() { return op_->getResult(op_->getNumResults() - 1); }
 
+  // Returns the non-control results produced by this operation.
+  ResultRange getNonControlResults() {
+    return op_->getResults().slice(0, op_->getNumResults() - 1);
+  }
+
   // Returns the node name for this operation.
   StringAttr nameAttr();
   StringRef name();
