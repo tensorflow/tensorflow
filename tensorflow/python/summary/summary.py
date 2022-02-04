@@ -39,6 +39,7 @@ from tensorflow.python.eager import context as _context
 from tensorflow.python.framework import constant_op as _constant_op
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 from tensorflow.python.ops import gen_summary_ops as _gen_summary_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import summary_op_util as _summary_op_util
@@ -390,8 +391,6 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
   writing. This forwarding is best-effort and not all arguments will be
   preserved. Additionally:
 
-  * The TF2 op requires a 3-D `float32` `Tensor` and does not support the 2-D
-    `Tensor` mentioned above.
   * The TF2 op just outputs the data under a single tag that contains multiple
     samples, rather than multiple tags (i.e. no "/0" or "/1" suffixes).
 
@@ -434,6 +433,9 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
     # Defer the import to happen inside the symbol to prevent breakage due to
     # missing dependency.
     from tensorboard.summary.v2 import audio as audio_v2  # pylint: disable=g-import-not-at-top
+    if tensor.shape.rank == 2:
+      # TF2 op requires 3-D tensor, add the `channels` dimension.
+      tensor = _array_ops.expand_dims_v2(tensor, axis=2)
     with _compat_summary_scope(name, family) as tag:
       audio_v2(
           name=tag,
