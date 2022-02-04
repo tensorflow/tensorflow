@@ -62,13 +62,7 @@ absl::Status CreateFunction(id<MTLDevice> device, const std::string& code,
   MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
 
   // Runtime checks for the iOS version independently of minimum target iOS.
-  if (@available(macOS 12.0, iOS 15.0, tvOS 15.0, *)) {
-    [options setLanguageVersion:MTLLanguageVersion2_4];
-  } else if (@available(macOS 11.0, iOS 14.0, tvOS 14.0, *)) {
-    [options setLanguageVersion:MTLLanguageVersion2_3];
-  } else if (@available(macOS 10.15, iOS 13.0, tvOS 13.0, *)) {
-    [options setLanguageVersion:MTLLanguageVersion2_2];
-  } else if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
+  if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
     [options setLanguageVersion:MTLLanguageVersion2_1];
   } else if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
     [options setLanguageVersion:MTLLanguageVersion2_0];
