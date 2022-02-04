@@ -60,8 +60,10 @@ public final class TensorFlowLite {
       for (String libName : group) {
         try {
           System.loadLibrary(libName);
+          logger.info("Loaded native library: " + libName);
           break;
         } catch (UnsatisfiedLinkError e) {
+          logger.info("Didn't load native library: " + libName);
           if (loadLibraryException == null) {
             loadLibraryException = e;
           } else {
