@@ -739,6 +739,22 @@ class PjRtBuffer {
   // immediate use on the device. Useful in particular for timing benchmarks.
   virtual Status BlockHostUntilReady() = 0;
 
+  // Calls callback when the buffer is ready.
+  //
+  //   buf->OnReady(callback);
+  //
+  // is semantically almost identical to:
+  //
+  //   ForkThread([]() { callback(buf->BlockHostUntilReady()); });
+  //
+  // the only difference being that the callback may happen immediately on the
+  // calling thread. (The implementation may also be more efficient.)
+  //
+  // The interface makes no assumptions about what thread calls callback, so the
+  // caller must ensure that callback returns quickly and hands off long-running
+  // work or any blocking operation to a caller-managed threadpool.
+  virtual void OnReady(std::function<void(Status)> callback) = 0;
+
   // Whether this buffer is on CPU and thus allows for certain optimizations.
   virtual bool IsOnCpu() const = 0;
 };
