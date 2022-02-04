@@ -149,7 +149,7 @@ class Bfloat16Test(parameterized.TestCase):
         float("-inf"), float(bfloat16(float("-inf")) + bfloat16(-2.25)))
     self.assertTrue(math.isnan(float(bfloat16(3.5) + bfloat16(float("nan")))))
 
-  def testAddScalarTypePromotion(self):
+  def DISABLED_testAddScalarTypePromotion(self):
     """Tests type promotion against Numpy scalar values."""
     types = [bfloat16, np.float16, np.float32, np.float64, np.longdouble]
     for lhs_type in types:
