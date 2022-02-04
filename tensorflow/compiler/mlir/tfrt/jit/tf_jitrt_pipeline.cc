@@ -163,6 +163,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Lower index cast on tensors to tensor.generate.
   pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Add linalg passes to perform fusion, tiling, peeling and vectorization.
@@ -181,8 +182,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // of bufferizing to memref dialect) we can remove the remaining references
   // to unsigned types.
   pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
-  // Always run canonicalizer (which does dead code removal) before bufferizing
-  // anything.
+  // Always run CSE and canonicalizer (which does dead code removal) before
+  // bufferizing anything.
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
