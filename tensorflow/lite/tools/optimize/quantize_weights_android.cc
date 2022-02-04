@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_weights.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -54,18 +53,6 @@ struct TensorPerChannel {
 // The default minimum number of elements a weights array must have to be
 // quantized by this transformation.
 const int kWeightsMinNumElementsDefault = 1024;
-
-// Convert the MLIR CustomOpMap from the TFlite CustomOpMap as their member
-// variables differ.
-void ConstructMLIRCustomOpMap(mlir::lite::CustomOpMap& mlir_map,
-                              const CustomOpMap& tflite_map) {
-  for (const auto& entry : tflite_map) {
-    mlir_map[entry.first].quantizable_input_indices =
-        entry.second.quantizable_input_indices;
-    mlir_map[entry.first].is_weight_only = !entry.second.is_hybrid;
-    mlir_map[entry.first].no_side_effect = true;
-  }
-}
 
 // Gets the operators that consume tensor_idx.
 std::vector<ConsumerOpInfo> GetTensorConsumers(const ModelT* model,
@@ -602,12 +589,12 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              uint64_t weights_min_num_elements,
                              bool use_hybrid_evaluation,
                              QuantizerType quantizer_type) {
+  if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
+    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
+    return kTfLiteError;
+  }
   // By default we require that only weights with more than
   // kWeightsMinSizeDefault elements are quantized.
-  if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    return mlir::lite::QuantizeWeights(
-        builder, input_model, weights_min_num_elements, use_hybrid_evaluation);
-  }
   CustomOpMap custom_op_map;
   return QuantizeWeightsInt8(builder, input_model, use_hybrid_evaluation,
                              weights_min_num_elements, custom_op_map,
@@ -620,8 +607,8 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              uint64_t weights_min_num_elements,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    return mlir::lite::QuantizeWeights(builder, input_model,
-                                       weights_min_num_elements);
+    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
+    return kTfLiteError;
   }
   CustomOpMap custom_op_map;
   return QuantizeWeightsInt8(builder, input_model, true,
@@ -633,15 +620,14 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model, BufferType quant_type,
                              bool use_updated_hybrid_scheme,
                              QuantizerType quantizer_type) {
-  // By default we require that only weights with more than
-  // kWeightsMinSizeDefault elements are quantized.
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    return mlir::lite::QuantizeWeights(builder, input_model,
-                                       (mlir::lite::BufferType)quant_type,
-                                       use_updated_hybrid_scheme);
+    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
+    return kTfLiteError;
   }
   switch (quant_type) {
     case BufferType::QUANTIZED_INT8: {
+      // By default we require that only weights with more than
+      // kWeightsMinSizeDefault elements are quantized.
       CustomOpMap custom_op_map;
       return QuantizeWeightsInt8(builder, input_model, true,
                                  kWeightsMinNumElementsDefault, custom_op_map,
@@ -658,10 +644,8 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const CustomOpMap& custom_op_map,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    mlir::lite::CustomOpMap mlir_custom_op_map;
-    ConstructMLIRCustomOpMap(mlir_custom_op_map, custom_op_map);
-    return mlir::lite::QuantizeWeights(
-        builder, input_model, weights_min_num_elements, mlir_custom_op_map);
+    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
+    return kTfLiteError;
   }
   return QuantizeWeightsInt8(builder, input_model, true,
                              weights_min_num_elements, custom_op_map,
@@ -676,11 +660,8 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const flat_hash_set<BuiltinOperator>& op_denylist,
                              QuantizerType quantizer_type) {
   if (quantizer_type == QuantizerType::MLIR_QUANTIZER) {
-    mlir::lite::CustomOpMap mlir_custom_op_map;
-    ConstructMLIRCustomOpMap(mlir_custom_op_map, custom_op_map);
-    return mlir::lite::QuantizeWeights(
-        builder, input_model, weights_min_num_elements, mlir_custom_op_map,
-        use_updated_hybrid_scheme, op_denylist);
+    LOG(ERROR) << "Portable targets cannot use the MLIR quantizer.";
+    return kTfLiteError;
   }
   return QuantizeWeightsInt8(builder, input_model,
                              /*use_hybrid_evaluation=*/true,

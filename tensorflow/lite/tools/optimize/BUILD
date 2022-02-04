@@ -268,7 +268,10 @@ tf_cc_test(
 
 cc_library(
     name = "quantize_weights",
-    srcs = ["quantize_weights.cc"],
+    srcs = select({
+        "//tensorflow:android": ["quantize_weights_android.cc"],
+        "//conditions:default": ["quantize_weights.cc"],
+    }),
     hdrs = ["quantize_weights.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -285,7 +288,12 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/core:tflite_portable_logging",
-    ],
+    ] + select({
+        "//tensorflow:android": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_weights",
+        ],
+    }),
 )
 
 tf_cc_test(
