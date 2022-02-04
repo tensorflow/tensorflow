@@ -90,10 +90,15 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   id<MTLBuffer> GetBufferHandle() const;
 
  private:
+  friend absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
+                                               const TensorDescriptor& descriptor,
+                                               MetalSpatialTensor* result, uint64_t buffer_offset);
+
   friend absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
                                                       const TensorDescriptor& descriptor,
                                                       int row_bytes_alignment,
-                                                      MetalSpatialTensor* result);
+                                                      MetalSpatialTensor* result,
+                                                      uint64_t buffer_offset);
 
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
@@ -115,6 +120,8 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   TensorDescriptor descriptor_;
   // for use with TEXTURE_2D and when texture created from buffer.
   int aligned_texture_width_;
+  // used when created from shared buffer
+  uint64_t buffer_offset_ = 0;
 };
 
 absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
@@ -127,19 +134,21 @@ absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
 
 absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
                                       const TensorDescriptor& descriptor,
-                                      MetalSpatialTensor* result);
+                                      MetalSpatialTensor* result, uint64_t buffer_offset = 0);
 
 absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
                                       const TensorDescriptor& descriptor,
-                                      MetalSpatialTensor* result);
+                                      MetalSpatialTensor* result, uint64_t buffer_offset = 0);
 
 absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
                                              const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment, MetalSpatialTensor* result);
+                                             int row_bytes_alignment, MetalSpatialTensor* result,
+                                             uint64_t buffer_offset = 0);
 
 absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
                                              const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment, MetalSpatialTensor* result);
+                                             int row_bytes_alignment, MetalSpatialTensor* result,
+                                             uint64_t buffer_offset = 0);
 
 TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info);
 
@@ -191,7 +200,8 @@ absl::Status MetalSpatialTensor::WriteDataBHWDC(id<MTLDevice> device, const T* i
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      std::memcpy([memory_ contents], data_copy.get(), data_size);
+      std::memcpy(reinterpret_cast<uint8_t*>([memory_ contents]) + buffer_offset_, data_copy.get(),
+                  data_size);
       break;
     case TensorStorageType::TEXTURE_2D:
       WriteDataToTexture2D(texture_mem_, device, data_copy.get());
@@ -221,7 +231,8 @@ absl::Status MetalSpatialTensor::ReadDataBHWDC(id<MTLDevice> device, T* out) con
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      std::memcpy(data_copy.get(), [memory_ contents], data_size);
+      std::memcpy(data_copy.get(), reinterpret_cast<uint8_t*>([memory_ contents]) + buffer_offset_,
+                  data_size);
       break;
     case TensorStorageType::TEXTURE_2D:
       ReadDataFromTexture2D(texture_mem_, device, data_copy.get());

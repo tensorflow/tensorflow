@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -64,6 +65,16 @@ void AddUsage(ValueId id, int task_index,
     // updating end index(.y)
     (*usage_records)[id].y = task_index;
   }
+}
+
+// Calculates the total size of the assignment.
+size_t TotalSize(const ObjectsAssignment<size_t>& assignment,
+                 size_t alignment = 1) {
+  size_t total_size = 0;
+  for (auto object_size : assignment.object_sizes) {
+    total_size += AlignByN(object_size, alignment);
+  }
+  return total_size;
 }
 }  // namespace
 
@@ -295,6 +306,22 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
       },
       &buffer_usages);
 
+  // From Apple documentation:
+  // For buffers in the device address space, align the offset to the data type
+  // consumed by the compute function (which is always less than or equal to 16
+  // bytes).
+  // For buffers in the constant address space, align the offset to 256
+  // bytes in macOS. In iOS, align the offset to the maximum of either the data
+  // type consumed by the compute function, or 4 bytes. A 16-byte alignment is
+  // safe in iOS if you don't need to consider the data type.
+#if defined(TARGET_IOS) || defined(TARGET_TVOS)
+  const size_t kConstAlignment = 16;
+#elif defined(TARGET_MACOS)
+  const size_t kConstAlignment = 256;
+#else
+  const size_t kConstAlignment = 256;
+#endif
+  size_t min_common_alignment = kConstAlignment;
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
   for (auto& usage : buffer_usages) {
     const auto& t = tensors_descs_[usage.first];
@@ -308,11 +335,15 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
                                                         descriptor.data_type,
                                                         false)];
     if (descriptor.storage_type == TensorStorageType::TEXTURE_2D) {
+      min_common_alignment =
+          std::lcm(min_common_alignment, row_bytes_alignment);
       const size_t bytes_per_row = element_size * shape.b * shape.w * 4;
       const size_t height = shape.h * DivideRoundUp(shape.c, 4);
       buffer_size = AlignByN(bytes_per_row, row_bytes_alignment) * height;
     } else if (descriptor.storage_type ==
                TensorStorageType::SINGLE_TEXTURE_2D) {
+      min_common_alignment =
+          std::lcm(min_common_alignment, row_bytes_alignment);
       const size_t bytes_per_row = element_size * shape.b * shape.w * shape.c;
       const size_t height = shape.h;
       buffer_size = AlignByN(bytes_per_row, row_bytes_alignment) * height;
@@ -331,23 +362,41 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
   RETURN_IF_ERROR(AssignObjectsToTensors(
       buffer_usage_records, MemoryStrategy::GREEDY_BEST, &buffer_assignment));
 
-  shared_buffers_.resize(buffer_assignment.object_sizes.size());
-  for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
-    // Initialize metal buffer
-    NSUInteger bufferSize = buffer_assignment.object_sizes[i];
+  OffsetsAssignment offset_assignment;
+  RETURN_IF_ERROR(AssignOffsetsToTensors(
+      buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE, &offset_assignment,
+      min_common_alignment));
 
-    if (bufferSize > device->GetInfo().GetMaxBufferSize()) {
-      std::string error("Tensor id: ");
-      error += std::to_string(buffer_assignment.object_ids[i]) +
-               " with size: " + std::to_string(bufferSize) +
-               " exceeds MTLDevice maxBufferLength: " +
-               std::to_string(device->GetInfo().GetMaxBufferSize());
-      return absl::ResourceExhaustedError(error);
-    }
+  bool use_offset_assignment = false;
+  if (offset_assignment.total_size <= TotalSize(buffer_assignment) &&
+      offset_assignment.total_size <= device->GetInfo().GetMaxBufferSize()) {
+    use_offset_assignment = true;
+  }
 
-    shared_buffers_[i] =
-        [device->device() newBufferWithLength:bufferSize
+  if (use_offset_assignment) {
+    shared_buffers_.resize(1);
+    shared_buffers_[0] =
+        [device->device() newBufferWithLength:offset_assignment.total_size
                                       options:MTLResourceStorageModeShared];
+  } else {
+    shared_buffers_.resize(buffer_assignment.object_sizes.size());
+    for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
+      // Initialize metal buffer
+      NSUInteger bufferSize = buffer_assignment.object_sizes[i];
+
+      if (bufferSize > device->GetInfo().GetMaxBufferSize()) {
+        std::string error("Tensor id: ");
+        error += std::to_string(buffer_assignment.object_ids[i]) +
+                 " with size: " + std::to_string(bufferSize) +
+                 " exceeds MTLDevice maxBufferLength: " +
+                 std::to_string(device->GetInfo().GetMaxBufferSize());
+        return absl::ResourceExhaustedError(error);
+      }
+
+      shared_buffers_[i] =
+          [device->device() newBufferWithLength:bufferSize
+                                        options:MTLResourceStorageModeShared];
+    }
   }
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
@@ -363,18 +412,27 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
       if (created_tensors[tensor_index]) continue;
       const auto& tensor_dummy = tensors_descs_[tensor_id];
       const int buffer_index = buffer_assignment.object_ids[tensor_index];
+      uint64_t base_buffer_offset = 0;
+      id<MTLBuffer> base_buffer;
+      if (use_offset_assignment) {
+        base_buffer = shared_buffers_[0];
+        base_buffer_offset = offset_assignment.offsets[tensor_index];
+      } else {
+        base_buffer = shared_buffers_[buffer_index];
+        base_buffer_offset = 0;
+      }
       if (tensor_dummy.storage_type == TensorStorageType::TEXTURE_2D ||
           tensor_dummy.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
         size_t row_bytes_alignment = [device->device()
             minimumLinearTextureAlignmentForPixelFormat:
                 DataTypeToRGBAPixelFormat(tensor_dummy.data_type, false)];
         RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
-            shared_buffers_[buffer_index], tensor_dummy.shape, tensor_dummy,
-            row_bytes_alignment, &shared_buffer_tensors_[tensor_index]));
+            base_buffer, tensor_dummy.shape, tensor_dummy, row_bytes_alignment,
+            &shared_buffer_tensors_[tensor_index], base_buffer_offset));
       } else {
         RETURN_IF_ERROR(CreateSharedBufferTensor(
-            shared_buffers_[buffer_index], tensor_dummy.shape, tensor_dummy,
-            &shared_buffer_tensors_[tensor_index]));
+            base_buffer, tensor_dummy.shape, tensor_dummy,
+            &shared_buffer_tensors_[tensor_index], base_buffer_offset));
       }
       created_tensors[tensor_index] = true;
     }
