@@ -443,6 +443,11 @@ Status GpuCompiler::OptimizeHloModule(
       // bitcast(bitcast) with one bitcast. This leads to having to
       // linearize and then delinearize the index.
       options.set_replace_transpose_with_bitcast(false);
+      const se::Platform* platform = stream_exec->platform();
+      if (platform->Name() == "ROCM") {
+        // SwapConvOperands does not yet work on ROCM
+        options.set_enable_conv_operand_swap(false);
+      }
       pipeline.AddPass<AlgebraicSimplifier>(options);
       pipeline.AddPass<BitcastDtypesExpander>();
       // AlgebraicSimplifier may add contracting dimensions to a dot.
