@@ -752,11 +752,7 @@ def norm(tensor,
             axis=-1)
         result = array_ops.transpose(matrix_2_norm, perm=perm_after)
       else:
-        result = math_ops.sqrt(
-            math_ops.reduce_sum(
-                tensor * math_ops.conj(tensor), axis, keepdims=True))
-        # TODO(rmlarsen): Replace with the following, once gradients are defined
-        # result = math_ops.reduce_euclidean_norm(tensor, axis, keepdims=True)
+        result = math_ops.reduce_euclidean_norm(tensor, axis, keepdims=True)
     else:
       result = math_ops.abs(tensor)
       if ord == 1:
