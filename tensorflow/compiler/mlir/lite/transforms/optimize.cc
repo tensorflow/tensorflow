@@ -36,10 +36,10 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -471,6 +471,16 @@ Value ReshapeValueDroppingLastDim(OpBuilder &builder, Value value,
                               new_shape)));
 }
 
+// Returns true if val has a static shape and the last dimension equals 1.
+bool IsLastDimensionEqualOne(Value val) {
+  const auto val_type = val.getType().cast<ShapedType>();
+  if (!val_type.hasStaticShape()) return false;
+  const auto val_shape = val_type.getShape();
+  if (val_shape.empty()) return false;
+  const auto last_element = *val_shape.rbegin();
+  return last_element == 1;
+}
+
 // Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or an
 // incrementing sequence from 0 to N-1.
 //
@@ -494,6 +504,31 @@ bool IsOneHotIndexAttribute(Attribute attr) {
       return false;
     }
   }
+  return true;
+}
+
+// Creates FullyConnected op from params and returns the output.
+mlir::Value GetFcOutput(OpBuilder *builder,
+                        ::mlir::Operation::result_range result, Value input,
+                        Value filter, Value bias,
+                        StringAttr fused_activation_function,
+                        StringAttr weights_format, BoolAttr keep_num_dims,
+                        BoolAttr asymmetric_quantize_inputs) {
+  auto fc_op = builder->create<FullyConnectedOp>(
+      result[0].getLoc(), result.getTypes(), input, filter, bias,
+      fused_activation_function, weights_format, keep_num_dims,
+      asymmetric_quantize_inputs);
+  return fc_op->getResult(0);
+}
+
+// Returns true if 'value' represents a const ElementsAttr with all values
+// equals to 0.0.
+bool AllValuesAreZero(mlir::Value value) {
+  if (!value) return false;
+  DenseElementsAttr vals;
+  if (!matchPattern(value, m_Constant(&vals))) return false;
+  for (auto elem : vals.getValues<float>())
+    if (elem != 0.0f) return false;
   return true;
 }
 

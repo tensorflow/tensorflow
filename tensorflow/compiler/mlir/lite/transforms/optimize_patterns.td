@@ -1111,3 +1111,44 @@ def MatchGelu : Pat<
    (HasOneUse $erf_out),
    (HasOneUse $mul_out1),
   ]>;
+
+
+// Checks if the shape has shape with last dimension equals 1.
+def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
+
+// Fetches the output of FC op, from the provided arguments.
+def GetFcOutput : NativeCodeCall<
+  "GetFcOutput(&$_builder, $0, $1, $2, $3, $4, $5, $6, $7)">;
+
+// Verifies all values in the provided argument are zero.
+def AllValuesAreZero :  Constraint<CPred<"AllValuesAreZero($0)">>;
+
+def SimplifyDoubleSelectFCZerosLHS : Pat<
+  (TFL_SelectV2Op $condition, $zeros_2,
+   (TFL_FullyConnectedOp:$results
+    (TFL_SelectV2Op $condition, $zeros_1, $input),
+    $filter, $bias, $fused_activation_function, $weights_format,
+    ConstBoolAttrTrue, $asymmetric_quantize_inputs)),
+  (TFL_SelectV2Op $condition, $zeros_2,
+   (GetFcOutput $results, $input, $filter, $bias, $fused_activation_function,
+    $weights_format, ConstBoolAttrTrue, $asymmetric_quantize_inputs)),
+  [(IsLastDimensionEqualOne $condition),
+   (AllValuesAreZero $zeros_1),
+   (AllValuesAreZero $zeros_2)
+  ]>;
+
+def SimplifyDoubleSelectFCZerosRHS : Pat<
+  (TFL_SelectV2Op $condition,
+   (TFL_FullyConnectedOp:$results
+    (TFL_SelectV2Op $condition, $input, $zeros_1),
+    $filter, $bias, $fused_activation_function, $weights_format,
+    ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+   $zeros_2),
+  (TFL_SelectV2Op $condition,
+   (GetFcOutput $results, $input, $filter, $bias, $fused_activation_function,
+    $weights_format, ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+   $zeros_2),
+  [(IsLastDimensionEqualOne $condition),
+   (AllValuesAreZero $zeros_1),
+   (AllValuesAreZero $zeros_2)
+  ]>;
