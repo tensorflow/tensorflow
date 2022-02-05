@@ -1065,7 +1065,7 @@ bool InferUnspecifiedDimsFromOperand(HloInstruction* annotate_op,
     return false;
   }
   const HloSharding& operand_sharding = annotate_op->operand(0)->sharding();
-  if (operand_sharding.IsTileMaximal()) {
+  if (!operand_sharding.IsTiled()) {
     return false;
   }
   HloInstruction* man_conversion_op = nullptr;
