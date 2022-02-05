@@ -1033,6 +1033,7 @@ def LHLO_PadOp: LHLO_Op<"pad", []> {
     I64ElementsAttr:$interior_padding,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
+  let verifier = [{ return Verify(*this); }];
 }
 
 def LHLO_TransposeOp: LHLO_Op<"transpose", []> {

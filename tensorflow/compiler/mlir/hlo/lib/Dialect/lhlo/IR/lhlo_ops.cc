@@ -229,6 +229,67 @@ static LogicalResult Verify(CustomCallOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// PadOp
+//===----------------------------------------------------------------------===//
+
+// PadOp's verifier checks if :-
+//  1. Operand and output ranks match.
+//  2. Padding configurations are specified for each dimension.
+//  3. Output shape matches the expected output shape when the padding
+//     configurations are applied to the operand.
+static LogicalResult Verify(PadOp op) {
+  auto operand_type = op.operand().getType().dyn_cast<ShapedType>();
+  auto output_type = op.output().getType().dyn_cast<ShapedType>();
+  if (!(operand_type && output_type && operand_type.hasRank() &&
+        output_type.hasRank())) {
+    return success();
+  }
+
+  unsigned rank = operand_type.getRank();
+  // Checks if operand and output ranks match.
+  if (output_type.getRank() != rank) {
+    return op.emitOpError()
+           << "output's rank(" << output_type.getRank()
+           << ") is not same as operand's rank(" << rank << ")";
+  }
+
+  auto edge_pad_low_ranges = op.edge_padding_low().getValues<int64_t>();
+  auto edge_pad_high_ranges = op.edge_padding_high().getValues<int64_t>();
+  auto interior_pad_ranges = op.interior_padding().getValues<int64_t>();
+  // Checks if padding configurations are specified for each dimension.
+  if (edge_pad_low_ranges.size() != rank ||
+      edge_pad_high_ranges.size() != rank ||
+      interior_pad_ranges.size() != rank) {
+    return op.emitOpError() << "pad configurations to be specified for all "
+                            << rank << " dimensions";
+  }
+
+  // Checks if output shape matches the expected output shape when the padding
+  // configurations are applied to the operand. Expected output shape for each
+  // dimension is calculated as :-
+  //     low_padding + operand_dim_size + total_interior_padding + high_padding
+  //  where, total_interior_padding = (operand_dim_size - 1) * interior_padding.
+  for (const auto& paddings : llvm::enumerate(llvm::zip(
+           edge_pad_low_ranges, edge_pad_high_ranges, interior_pad_ranges,
+           operand_type.getShape(), output_type.getShape()))) {
+    auto index = static_cast<unsigned>(paddings.index());
+    int64_t low_pad, high_pad, interior_pad, operand_dim_size, output_dim_size;
+    std::tie(low_pad, high_pad, interior_pad, operand_dim_size,
+             output_dim_size) = paddings.value();
+    int64_t expected_dim_size = low_pad + operand_dim_size +
+                                (operand_dim_size - 1) * interior_pad +
+                                high_pad;
+    if (expected_dim_size != output_dim_size) {
+      return op.emitOpError()
+             << "expected " << index << "-th dimension size after padding is "
+             << expected_dim_size << " but found " << output_dim_size;
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceOp
 //===----------------------------------------------------------------------===//
 
