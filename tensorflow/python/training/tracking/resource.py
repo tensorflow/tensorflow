@@ -16,7 +16,6 @@
 
 import contextlib
 import copy
-import weakref
 
 import six
 
@@ -124,7 +123,7 @@ class CapturableResource(six.with_metaclass(_ResourceMetaclass,
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
     """
-    self._self_resource_handle = None
+    self._resource_handle = None
     self._resource_device = device
     self._self_destruction_context = (
         context.eager_mode if context.executing_eagerly()
@@ -148,16 +147,6 @@ class CapturableResource(six.with_metaclass(_ResourceMetaclass,
     """A function that creates a resource handle."""
     raise NotImplementedError("TrackableResource._create_resource not "
                               "implemented.")
-
-  @property
-  def _resource_handle(self):
-    return self._self_resource_handle
-
-  @_resource_handle.setter
-  def _resource_handle(self, value):
-    if isinstance(value, (ops.Tensor, ops.EagerTensor)):
-      value._parent_trackable = weakref.ref(self)  # pylint: disable=protected-access
-    self._self_resource_handle = value
 
   def _initialize(self):
     """A function that initializes the resource. Optional."""
