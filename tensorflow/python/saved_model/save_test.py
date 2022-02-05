@@ -189,7 +189,8 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       return v.read_value()
 
     root.f = f
-    with self.assertRaisesRegex(AssertionError, "some_unique_name"):
+    with self.assertRaisesRegex(
+        AssertionError, "Trackable referencing this tensor.*some_unique_name"):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
 
   def test_version_information_included(self):
