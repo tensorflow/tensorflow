@@ -231,10 +231,16 @@ struct RemoveRedundantCstrReshapable final
 
 struct TurnDynamicReshapeIntoCollapseShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
-  TurnDynamicReshapeIntoCollapseShape(MLIRContext *ctx)
+  explicit TurnDynamicReshapeIntoCollapseShape(MLIRContext *ctx)
       : OpRewritePattern(ctx) {}
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
+    auto input_type = op.operand().getType().dyn_cast<RankedTensorType>();
+    auto output_type = op.getType().dyn_cast<RankedTensorType>();
+    if (!input_type || !output_type ||
+        input_type.getRank() <= output_type.getRank())
+      return failure();
+
     // Require sucessful shape analysis for operand and shape.
     ShapeComponentAnalysis shapeComponentAnalysis;
     auto argShapeInfo = shapeComponentAnalysis.GetShapeInfo(op.operand());
