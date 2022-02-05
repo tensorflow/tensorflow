@@ -62,7 +62,10 @@ _NAME_KEY = "_tpu_embedding_layer"
 
 class TPUShardedVariable(sharded_variable.ShardedVariableMixin):
   """A ShardedVariable class for TPU."""
-  pass
+
+  @property
+  def _in_graph_mode(self):
+    return self.variables[0]._in_graph_mode  # pylint: disable=protected-access
 
 
 def _add_key_attr(op, name):
