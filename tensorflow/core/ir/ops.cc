@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
@@ -59,28 +60,31 @@ namespace tfg {
 // TFGraph dialect.
 //===----------------------------------------------------------------------===//
 
+// Name operation results with the operation name, except control outputs which
+// are named "ctl". MLIR will automatically use a numerical suffix to unique.
+static void GenericGetAsmResultNames(Operation *op,
+                                     OpAsmSetValueNameFn set_name_fn) {
+  // We only name the results when there are results to name, an op like `print`
+  // which does not have results will just use the `ctl` name for the control
+  // output.
+  if (op->getNumResults() > 1 && !op->getResult(0).getType().isa<ControlType>())
+    set_name_fn(op->getResult(0), op->getName().stripDialect());
+  for (Value result : op->getResults()) {
+    if (result.getType().isa<ControlType>()) {
+      set_name_fn(op->getResult(op->getNumResults() - 1), "ctl");
+      break;
+    }
+  }
+}
+
 // TFGraph support for interacting with the AsmPrinter.
 // Gives prettier names to SSA values.
 struct TFGraphOpAsmInterface
     : public OpAsmOpInterface::FallbackModel<TFGraphOpAsmInterface> {
   static bool classof(Operation *op) { return true; }
 
-  // Name operation results with the operation name, except control outputs
-  // which are named "ctl". MLIR will automatically use a numerical suffix to
-  // unique.
   void getAsmResultNames(Operation *op, OpAsmSetValueNameFn set_name_fn) const {
-    // We only name the results when there are results to name, an op like
-    // `print` which does not have results will just use the `ctl` name for the
-    // control output.
-    if (op->getNumResults() > 1 &&
-        !op->getResult(0).getType().isa<ControlType>())
-      set_name_fn(op->getResult(0), op->getName().stripDialect());
-    for (Value result : op->getResults()) {
-      if (result.getType().isa<ControlType>()) {
-        set_name_fn(op->getResult(op->getNumResults() - 1), "ctl");
-        break;
-      }
-    }
+    GenericGetAsmResultNames(op, set_name_fn);
   }
   void getAsmBlockArgumentNames(Operation *op, Region &region,
                                 OpAsmSetValueNameFn setNameFn) const {}
@@ -213,7 +217,8 @@ TFGraphDialect::getOperationPrinter(Operation *op) const {
   };
 }
 
-// Parse any number of keyword attributes.
+// Try to parse optional keyword attributes and prefix them with `_mlir_`, of
+// `device`, `assigned_device`, and `name`.
 static ParseResult ParseKeywordAttributes(OpAsmParser &parser,
                                           OperationState &result) {
   for (const char *keyword : {"device", "assigned_device", "name"}) {
@@ -1008,15 +1013,15 @@ static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
 //===----------------------------------------------------------------------===//
 // ForOp
 
-LogicalResult ForOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
+LogicalResult ForOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   if (failed(verifyInvariants())) return failure();
   FailureOr<TypeRange> ins = VerifyOperands(*this);
   if (failed(ins)) return failure();
   FailureOr<TypeRange> outs = VerifyResults(*this);
   if (failed(outs)) return failure();
 
-  auto body_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
-      *this, body().getName());
+  auto body_func =
+      symbolTable.lookupNearestSymbolFrom<GraphFuncOp>(*this, body().getName());
   // The first three arguments are the for-loop indices, but the current loop
   // index is passed in.
   TypeRange func_args = llvm::drop_begin(*ins, /*N=*/2);
@@ -1024,6 +1029,277 @@ LogicalResult ForOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
       failed(VerifySignature(body_func, *this, func_args, *outs, "body")))
     return failure();
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Region Ops and Terminators
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+
+MutableOperandRange YieldOp::getMutableSuccessorOperands(
+    Optional<unsigned> index) {
+  // Get the subrange of non-control operands.
+  return argsMutable();
+}
+
+static bool terminatedByYield(Block &block) {
+  return isa<YieldOp>(block.getTerminator());
+}
+
+//===----------------------------------------------------------------------===//
+// IfLikeRegionOp
+
+// Verify an if-like region op.
+template <typename IfLikeRegionOp>
+static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
+  // Verify terminators.
+  if (!terminatedByYield(op.then_block()))
+    return op.emitOpError("then region must be terminated by a 'tfg.yield'");
+  if (!terminatedByYield(op.else_block()))
+    return op.emitOpError("else region must be terminated by a 'tfg.yield'");
+
+  // Call the region branch op verifier. Verifies correctness of terminator,
+  // region, and operand types.
+  return RegionBranchOpInterface::verifyTypes(op);
+}
+
+// Given an potentially null attribute that would represent a constant value,
+// try to narrow it to a statically known condition.
+// TODO(jeffniu): Incorporate the other cases of `tf.ToBool`.
+static Optional<bool> getStaticallyKnownBranch(Attribute cond_attr) {
+  // Only handle the case of a scalar tensor of i1.
+  auto cond = cond_attr.dyn_cast_or_null<ElementsAttr>();
+  if (cond && cond.getNumElements() == 1 &&
+      cond.getElementType().isSignlessInteger(1))
+    return cond.getSplatValue<bool>();
+  return {};
+}
+
+// Get the successor of the regions of an if-like op.
+template <typename IfLikeRegionOp>
+void getIfLikeRegionOpSuccessorRegions(
+    IfLikeRegionOp op, Optional<unsigned> index, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor> &regions) {
+  assert(index.hasValue() ||
+         !operands.empty() && "if-like op expected at least 1 operand");
+  // Both regions branch back to the parent op.
+  if (index.hasValue()) {
+    // Ignore the control token.
+    regions.emplace_back(
+        ResultRange(op->result_begin(), std::prev(op->result_end())));
+  } else if (auto cond = getStaticallyKnownBranch(operands[0])) {
+    // Add only 1 possible successor if the condition is known.
+    regions.emplace_back(*cond ? &op.then_region() : &op.else_region());
+  } else {
+    // Unknown successor.
+    regions.emplace_back(&op.then_region());
+    regions.emplace_back(&op.else_region());
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// CaseLikeRegionOp
+
+// Verify a case-like region op.
+template <typename CaseLikeRegionOp>
+static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
+  for (auto &it : llvm::enumerate(op.branches())) {
+    if (!terminatedByYield(it.value().front())) {
+      return op.emitOpError("branch region #")
+             << it.index() << " is not terminated by a 'tfg.yield' op";
+    }
+  }
+
+  if (op.branch_attrs() && op.branches().size() != op.branch_attrs()->size()) {
+    return op.emitOpError("has ")
+           << op.branches().size() << " regions but "
+           << op.branch_attrs()->size() << " branch function attributes";
+  }
+
+  // Call the region branch op verifier. Verifies correctness of terminator,
+  // region, and operand types.
+  return RegionBranchOpInterface::verifyTypes(op);
+}
+
+// Given a potentially null attribute that would represent a constant value,
+// try to narrow it to a statically known branch index.
+static Optional<unsigned> getStaticallyKnownCaseBranch(Attribute branch_attr) {
+  auto branch = branch_attr.dyn_cast_or_null<ElementsAttr>();
+  if (branch && branch.getNumElements() == 1 &&
+      branch.getElementType().isSignlessInteger(32))
+    return branch.getSplatValue<unsigned>();
+  return {};
+}
+
+// Get the successor of the regions of a case-like op.
+template <typename CaseLikeRegionOp>
+void getCaseLikeRegionOpSuccessorRegions(
+    CaseLikeRegionOp op, Optional<unsigned> index, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor> &regions) {
+  assert(index.hasValue() ||
+         !operands.empty() && "case-like op expected at least 1 operand");
+  // All branch regions branch back to the parent op.
+  if (index.hasValue()) {
+    // Ignore the control token.
+    regions.emplace_back(
+        ResultRange(op->result_begin(), std::prev(op->result_end())));
+  } else if (auto branch_index = getStaticallyKnownCaseBranch(operands[0])) {
+    // Add only 1 possible successor if the condition is known.
+    regions.emplace_back(&op.branches()[*branch_index]);
+  } else {
+    // Unknown successor. Add all of them.
+    for (Region &branch : op.branches()) regions.emplace_back(&branch);
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// ConditionOp
+
+MutableOperandRange ConditionOp::getMutableSuccessorOperands(
+    Optional<unsigned> index) {
+  // Get the subrange of non-control operands that are forwarded to the
+  // successor region.
+  return argsMutable();
+}
+
+//===----------------------------------------------------------------------===//
+// WhileLikeRegionOp
+
+// Verify that the loop regions of a region-based loop op have N control tokens
+// immediately following N data values in their entry block arguments.
+// `RegionBranchOpInterface` will verify the number of arguments and their
+// types.
+static LogicalResult verifyLoopRegionArgs(Operation *op, Region &region) {
+  const auto arg_error = [&](BlockArgument arg) {
+    return op->emitOpError("region #")
+           << region.getRegionNumber() << " argument #" << arg.getArgNumber()
+           << " ";
+  };
+
+  // The interface trait verifies the number of data and control arguments. If
+  // the first half of the arguments are not control tokens, then we know for
+  // sure that the second half is only control tokens.
+  for (BlockArgument data : GetLoopRegionDataArgs(region))
+    if (data.getType().isa<ControlType>())
+      return arg_error(data) << "should not be a control token";
+  return success();
+}
+
+// Verify a while-like region op.
+template <typename WhileLikeRegionOp>
+static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
+  // Verify terminators.
+  if (!isa<ConditionOp>(op.cond_block().getTerminator())) {
+    return op.emitOpError(
+        "condition region must be terminated by a 'tfg.condition' op");
+  }
+  if (!terminatedByYield(op.body_block()))
+    op.emitOpError("body region must be terminated by a 'tfg.yield' op");
+
+  if (failed(verifyLoopRegionArgs(op, op.cond_region())) ||
+      failed(verifyLoopRegionArgs(op, op.body_region())))
+    return failure();
+
+  // Call the region branch op verifier. Verifies correctness of terminator,
+  // region, and operand types.
+  return RegionBranchOpInterface::verifyTypes(op);
+}
+
+template <typename WhileLikeRegionOp>
+static void getWhileLikeRegionOpSuccessorRegions(
+    WhileLikeRegionOp op, Optional<unsigned> index,
+    ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor> &regions) {
+  // The parent op and the body region always branch to the condion region.
+  if (!index || *index == 1) {
+    regions.emplace_back(&op.cond_region(),
+                         GetLoopRegionDataArgs(op.cond_region()));
+    return;
+  }
+  assert(*index == 0 && "invalid region index");
+  // The condition regions branches to the loop body or back to the parent.
+  // Try to narrow the condition value to a constant.
+  auto condition = cast<ConditionOp>(op.cond_region().front().getTerminator());
+  Attribute cond_attr;
+  matchPattern(condition.cond(), m_Constant(&cond_attr));
+  Optional<bool> cond = getStaticallyKnownBranch(cond_attr);
+  if (!cond || *cond) {
+    regions.emplace_back(&op.body_region(),
+                         GetLoopRegionDataArgs(op.body_region()));
+  }
+  if (!cond || !*cond) {
+    // Drop the control token.
+    regions.emplace_back(op.getResults().drop_back());
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// ForRegionOp
+
+static LogicalResult Verify(ForRegionOp op) {
+  if (!terminatedByYield(op.body_block())) {
+    return op.emitOpError("body region must be terminated by a 'tfg.yield' op");
+  }
+
+  Block::BlockArgListType args = op.body_block().getArguments();
+  if (args.empty()) {
+    return op.emitOpError(
+        "expected the body block to have at least have the loop index as an "
+        "argument");
+  }
+  auto index = args.front().getType().dyn_cast<RankedTensorType>();
+  if (!index || index.getRank() != 0 ||
+      !index.getElementType().isSignlessInteger(32)) {
+    return op.emitOpError(
+        "expected first body block argument to be tensor<i32>");
+  }
+
+  if (failed(verifyLoopRegionArgs(op, op.body_region()))) return failure();
+
+  // Call the region branch op verifier. Verifies correctness of terminator,
+  // region, and operand types.
+  return RegionBranchOpInterface::verifyTypes(op);
+}
+
+LogicalResult ForRegionOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  TypeRange arg_types =
+      ForRegionOp::Adaptor(operands, attributes).init().getTypes();
+  inferredReturnTypes.assign(arg_types.begin(), arg_types.end());
+  inferredReturnTypes.push_back(tf_type::ControlType::get(context));
+  return success();
+}
+
+OperandRange ForRegionOp::getSuccessorEntryOperands(unsigned index) {
+  return init();
+}
+
+void ForRegionOp::getSuccessorRegions(
+    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor> &regions) {
+  // Both the parent op and the body region branch to the body. Ignore the loop
+  // index block argument, as it is not modified by the loop body itself.
+  regions.emplace_back(&body_region(),
+                       GetLoopRegionDataArgs(body_region()).drop_front());
+  if (!index) return;
+  // The body might branch back to the parent. Drop the control token.
+  regions.emplace_back((*this)->getResults().drop_back());
+}
+
+BlockArgument ForRegionOp::getDataValueOf(BlockArgument ctl) {
+  return GetLoopRegionDataOf(ctl);
+}
+BlockArgument ForRegionOp::getControlTokenOf(BlockArgument data) {
+  return GetLoopRegionControlOf(data);
+}
+BlockArgument ForRegionOp::getDataValue(Region &region, unsigned idx) {
+  return GetLoopRegionDataArgs(region)[idx];
+}
+BlockArgument ForRegionOp::getControlToken(Region &region, unsigned idx) {
+  return GetLoopRegionControlTokens(region)[idx];
 }
 
 }  // namespace tfg

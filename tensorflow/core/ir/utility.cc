@@ -25,6 +25,25 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
+// For region-based loop ops, the first N block arguments are data values, with
+// N control tokens afterwards.
+Block::BlockArgListType GetLoopRegionDataArgs(Region &region) {
+  Block::BlockArgListType args = region.getArguments();
+  return args.drop_back(args.size() / 2);
+}
+Block::BlockArgListType GetLoopRegionControlTokens(Region &region) {
+  Block::BlockArgListType args = region.getArguments();
+  return args.drop_front(args.size() / 2);
+}
+BlockArgument GetLoopRegionControlOf(BlockArgument data) {
+  Block &block = *data.getOwner();
+  return block.getArgument(data.getArgNumber() + block.getNumArguments() / 2);
+}
+BlockArgument GetLoopRegionDataOf(BlockArgument ctl) {
+  Block &block = *ctl.getOwner();
+  return block.getArgument(ctl.getArgNumber() - block.getNumArguments() / 2);
+}
+
 Value LookupControlDependency(Value data) {
   assert(!data.getType().isa<ControlType>() && "expected a data type");
   // If the value is defined by an op, then the last result is the control
