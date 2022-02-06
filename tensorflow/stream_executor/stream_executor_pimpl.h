@@ -169,22 +169,18 @@ class StreamExecutor {
   DeviceMemory<T> GetSubBuffer(DeviceMemory<T>* parent, uint64_t element_offset,
                                uint64_t element_count);
 
-  // Finds a symbol and returns device memory allocated to the symbol. The
-  // symbol is searched in any kernels that were previously loaded through
-  // GetKernel() before the GetSymbol() call. The user has to make sure that the
-  // type of symbol and T match.
+  // Finds a symbol within the module corresponding to `module_handle` and
+  // returns device memory allocated to the symbol. The user has to make sure
+  // that the type of symbol and T match.
   // - Note: symbol_name should include its namespace as well. For example,
   //         pass "nms0::symbol" if referring to nms0::symbol.
-  //
-  // If `module_handle` is set then searches only within the module
-  // corresponding to `module_handle`.
   template <typename T>
   port::StatusOr<DeviceMemory<T>> GetSymbol(const std::string& symbol_name,
-                                            ModuleHandle module_handle = {});
+                                            ModuleHandle module_handle);
 
   // An untyped version of GetSymbol.
   port::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
-      const std::string& symbol_name, ModuleHandle module_handle = {});
+      const std::string& symbol_name, ModuleHandle module_handle);
 
   // Deallocate the DeviceMemory previously allocated via this interface.
   // Deallocation of a nullptr-representative value is permitted.

@@ -539,18 +539,11 @@ port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
     return DeviceMemoryBase(opaque, bytes);
   }
 
-  if (static_cast<bool>(module_handle)) {
-    return port::Status(
-        port::error::NOT_FOUND,
-        absl::StrCat("Check if module containing symbol ", symbol_name,
-                     " is loaded (module_handle = ",
-                     reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
-  } else {
-    return port::Status(
-        port::error::NOT_FOUND,
-        absl::StrCat("Check if kernel using the symbol is loaded: ",
-                     symbol_name));
-  }
+  return port::Status(
+      port::error::NOT_FOUND,
+      absl::StrCat("Check if module containing symbol ", symbol_name,
+                   " is loaded (module_handle = ",
+                   reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
 }
 
 bool StreamExecutor::GetSymbol(const std::string& symbol_name,
