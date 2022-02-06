@@ -118,6 +118,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
     pm.addPass(CreateJitRtLegalizeI1TypesPass());
   }
 
+  // Remove redundant shape operations left after legalizing to HLO.
+  pm.addPass(mlir::createCSEPass());
+
   // Resolve all shape constraints (e.g. broadcast constraints that can be
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.
