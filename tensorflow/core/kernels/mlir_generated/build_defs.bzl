@@ -288,42 +288,45 @@ def _gen_kernel_library(
       extra_args: Extra arguments to pass to the generator tool.
       test_tags: The tags to pass to the generated test.
       test_size: The "size" argument to pass to the test.
-      output_jit_i64_indexed_for_large_tensors_types: Whether to enable JIT compilation of 
-                                                      i64-indexed kernels for large inputs.
+      output_jit_i64_indexed_for_large_tensors_types: The (input|output) types for which to enable. 
+                                                      JIT compilation of i64-indexed kernels for 
+                                                      large inputs.
       output_partial_jit_types: The output types for which a partial jit kernel should 
-                                be generated.
+                                be generated.   
     """
 
     enable_cpu = bool(platform == "cpu")
     if not output_types:
-        output_types =  
+        output_types = []
     if not jit_types:
         jit_types = []
     if not output_jit_types:
         output_jit_types = jit_types
-    true_jits = [True for i in range(len(jit_types))]
     if not output_jit_i64_indexed_for_large_tensors_types:
         output_jit_i64_indexed_for_large_tensors_types = []
     if not output_partial_jit_types:
         output_partial_jit_types = output_jit_i64_indexed_for_large_tensors_types
-    true_partial_jits = [True for i in
-        output_jit_i64_indexed_for_large_tensors_types]
+    # ully JIT-compiled kernels
+    true_jits = [True for i in range(len(jit_types))]
     use_i64_indices_for_jit = [False for i in jit_types]
-    use_i64_indices_for_partial_jit = [True for i in
-        output_jit_i64_indexed_for_large_tensors_types]
     all_jit_kernels = zip(jit_types, output_jit_types,
                           true_jits, use_i64_indices_for_jit)
-    all_jit_i64_indexed_for_large_tensors_kernels = zip(output_jit_i64_indexed_for_large_tensors_types,
+    # Partially JIT-compiled kernels
+    use_i64_indices_for_partial_jit = [True for i in
+        output_jit_i64_indexed_for_large_tensors_types]
+    true_partial_jits = [True for i in
+        output_jit_i64_indexed_for_large_tensors_types]
+    all_paaratial_jit_kernels = zip(output_jit_i64_indexed_for_large_tensors_types,
                                                         output_partial_jit_types, 
                                                         true_partial_jits, 
                                                         use_i64_indices_for_partial_jit)
+    # AOT kernels
     false_jits = [False for i in types]
-    all_precomp_kernels = zip(
+    aot_kernels = zip(
         types, output_types, false_jits, false_jits)
-    all_kernels = all_precomp_kernels
-    if if_mlir_generated_experimental_kernels_enabled(True, False):
-        all_kernels += all_jit_kernels
-        all_kernels += all_jit_i64_indexed_for_large_tensors_kernels
+    all_kernels = aot_kernels
+    all_kernels += all_jit_kernels
+    all_kernels += all_paaratial_jit_kernels
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
         for (type, output_type, jit, jit_i64_indexed_for_large_tensor) in all_kernels:
             # Disable unrolling for integer types while LLVM does not vectorize these.
