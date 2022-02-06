@@ -345,9 +345,10 @@ static ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static LogicalResult VerifyGraph(GraphOp graph_op) {
+LogicalResult GraphOp::verify() {
+  GraphOp op = *this;
   // Check all ops in the body.
-  if (!all_of(*graph_op.getBody(), VerifyGenericTFGOperation)) return failure();
+  if (!all_of(*op.getBody(), VerifyGenericTFGOperation)) return failure();
 
   return success();
 }
@@ -463,7 +464,8 @@ LogicalResult GraphFuncOp::canonicalize(GraphFuncOp func_op,
   return failure();
 }
 
-static LogicalResult VerifyGraphFunc(GraphFuncOp func_op) {
+LogicalResult GraphFuncOp::verify() {
+  GraphFuncOp func_op = *this;
   if (func_op.getNumArguments() % 2)
     return func_op.emitOpError() << "expects an even number of arguments";
   ArrayAttr args_attrs = func_op.getAllArgAttrs();
@@ -733,7 +735,8 @@ void GraphFuncOp::getAsmBlockArgumentNames(Region &region,
 // ReturnOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult Verify(ReturnOp op) {
+LogicalResult ReturnOp::verify() {
+  ReturnOp op = *this;
   // If the control result attributes are present, there must be the same number
   // of entries as control results.
   if (op.control_ret_attrs().size() != TFOp(op).getControlOperands().size()) {
@@ -1065,6 +1068,14 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
   return RegionBranchOpInterface::verifyTypes(op);
 }
 
+LogicalResult IfRegionOp::verify() { return VerifyIfLikeRegionOp(*this); }
+LogicalResult StatelessIfRegionOp::verify() {
+  return VerifyIfLikeRegionOp(*this);
+}
+LogicalResult StatefulIfRegionOp::verify() {
+  return VerifyIfLikeRegionOp(*this);
+}
+
 // Given an potentially null attribute that would represent a constant value,
 // try to narrow it to a statically known condition.
 // TODO(jeffniu): Incorporate the other cases of `tf.ToBool`.
@@ -1121,6 +1132,14 @@ static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
   // Call the region branch op verifier. Verifies correctness of terminator,
   // region, and operand types.
   return RegionBranchOpInterface::verifyTypes(op);
+}
+
+LogicalResult CaseRegionOp::verify() { return VerifyCaseLikeRegionOp(*this); }
+LogicalResult StatelessCaseRegionOp::verify() {
+  return VerifyCaseLikeRegionOp(*this);
+}
+LogicalResult StatefulCaseRegionOp::verify() {
+  return VerifyCaseLikeRegionOp(*this);
 }
 
 // Given a potentially null attribute that would represent a constant value,
@@ -1207,6 +1226,14 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
   return RegionBranchOpInterface::verifyTypes(op);
 }
 
+LogicalResult WhileRegionOp::verify() { return VerifyWhileLikeRegionOp(*this); }
+LogicalResult StatelessWhileRegionOp::verify() {
+  return VerifyWhileLikeRegionOp(*this);
+}
+LogicalResult StatefulWhileRegionOp::verify() {
+  return VerifyWhileLikeRegionOp(*this);
+}
+
 template <typename WhileLikeRegionOp>
 static void getWhileLikeRegionOpSuccessorRegions(
     WhileLikeRegionOp op, Optional<unsigned> index,
@@ -1237,7 +1264,8 @@ static void getWhileLikeRegionOpSuccessorRegions(
 //===----------------------------------------------------------------------===//
 // ForRegionOp
 
-static LogicalResult Verify(ForRegionOp op) {
+LogicalResult ForRegionOp::verify() {
+  ForRegionOp op = *this;
   if (!terminatedByYield(op.body_block())) {
     return op.emitOpError("body region must be terminated by a 'tfg.yield' op");
   }

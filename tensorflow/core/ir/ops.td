@@ -68,7 +68,7 @@ def TFGraph_GraphOp : TFGraph_Op<"graph",
   // Make the assembly pretty!
   let printer = [{ PrintGraphOp(p, *this); }];
   let parser = [{ return ParseGraphOp(parser, result); }];
-  let verifier = [{ return VerifyGraph(*this); }];
+  let hasVerifier = 1;
 }
 
 
@@ -170,7 +170,7 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
 
   let parser = [{ return ParseGraphFunc(parser, result); }];
   let printer = [{ return PrintGraphFunc(*this, p); }];
-  let verifier = [{ return VerifyGraphFunc(*this); }];
+  let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
 }
 
@@ -195,7 +195,7 @@ def TFGraph_ReturnOp : TFGraph_Op<"return",
   let builders = [
     OpBuilder<(ins "ValueRange":$operands, "ValueRange":$control_operands)>];
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
   let parser = [{ return ParseReturnOp(parser, result); }];
   let printer = [{ Print(*this, p); }];
 }
@@ -463,7 +463,7 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     attr-dict `:` functional-type($cond, $outs)
   }];
 
-  let verifier = [{ return VerifyIfLikeRegionOp(*this); }];
+  let hasVerifier = 1;
 }
 
 def TFGraph_IfRegionOp : TFGraph_IfLikeRegionOp<"IfRegion"> {
@@ -519,7 +519,7 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     attr-dict `:` functional-type($branch_index, $outs)
   }];
 
-  let verifier = [{ return VerifyCaseLikeRegionOp(*this); }];
+  let hasVerifier = 1;
 }
 
 def TFGraph_CaseRegionOp : TFGraph_CaseLikeRegionOp<"CaseRegion"> {
@@ -633,7 +633,7 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     attr-dict (`:` type($init)^)?
   }];
 
-  let verifier = [{ return VerifyWhileLikeRegionOp(*this); }];
+  let hasVerifier = 1;
 }
 
 def TFGraph_WhileRegionOp : TFGraph_WhileLikeRegionOp<"WhileRegion"> {
@@ -697,7 +697,7 @@ def TFGraph_ForRegionOp : TFGraph_RegionOp<
     attr-dict (`:` type($init)^)?
   }];
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 #endif // TFG_OPS
