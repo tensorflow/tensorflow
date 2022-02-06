@@ -45,17 +45,7 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
 
   TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
 
-  let verifier = [{
-    // This is required to populate derived attributes during export in a
-    // meaningful way. Else during export to GraphDef element_type() query
-    // will result in out of bounds access/assert.
-    if (handle_dtype().getSubtypes().size() != 1) {
-      return emitOpError(
-          "must have exactly one subtype in the result variant type");
-    }
-
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 
   DerivedTypeAttr element_dtype = DerivedTypeAttr<
       "return getElementTypeOrSelf(element_type());">;
@@ -117,9 +107,7 @@ An n-way switch statement, implementing the following:
 
   let hasCanonicalizer = 1;
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 
 
  let extraClassDeclaration = [{
@@ -192,9 +180,7 @@ An n-way switch statement, implementing the following:
 
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 
@@ -376,9 +362,7 @@ else_branch: A region that computes the outputs of the op if cond = false.
 
   let regions = (region SizedRegion<1>:$then_branch, SizedRegion<1>:$else_branch);
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
@@ -469,7 +453,7 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
   TF_DerivedOperandTypeListAttr Tdense = TF_DerivedOperandTypeListAttr<4>;
   TF_DerivedResultTypeListAttr sparse_types = TF_DerivedResultTypeListAttr<1>;
 
-  let verifier = ?;
+  let hasVerifier = 0;
 }
 
 def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
@@ -512,9 +496,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
   TF_DerivedResultTypeListAttr ragged_split_types =
     TF_DerivedResultTypeListAttr<5>;
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 }
 
 def TF_PlaceholderOp : TF_Op<"Placeholder", [NoSideEffect]> {
@@ -599,7 +581,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 
-  let verifier = [{ return VerifyPartitionedCall(*this); }];
+  let hasVerifier = 1;
 }
 
 def TF_WhileOp : TF_Op<"While", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
@@ -739,7 +721,7 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 }
@@ -785,17 +767,6 @@ Example:
     Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
   );
 
-  let verifier = [{
-    // VarHandleOp requires the resource handle supply a single subtype from
-    // which to derive the dtype and shape attributes.
-    if (resource_type().getSubtypes().size() != 1) {
-      return emitOpError(
-          "must have exactly one subtype in the result resource type");
-    }
-
-    return success();
-  }];
-
   DerivedTypeAttr dtype = DerivedTypeAttr<
       "return getElementTypeOrSelf(resource_subtype());">;
   DerivedAttr shape = DerivedAttr<
@@ -810,6 +781,8 @@ Example:
       return getElementTypeOrSelf(resource()).cast<TF::ResourceType>();
     }
   }];
+
+  let hasVerifier = 1;
 }
 
 def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect, TF_NoConstantFold]> {
@@ -1034,7 +1007,7 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
     FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 
-  let verifier = [{ return VerifyPartitionedCall(*this); }];
+  let hasVerifier = 1;
 }
 
 def TF_StatefulUniformFullIntOp : TF_Op<"StatefulUniformFullInt", []> {
@@ -1611,7 +1584,7 @@ tpu_call([w_dyn])
     TF_I32OrI64Tensor:$static_shape
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let results = (outs
     TF_Tensor:$output

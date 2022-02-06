@@ -157,7 +157,8 @@ OpFoldResult AddV2Op::fold(ArrayRef<Attribute> operands) {
 // AllOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AllOp op) {
+LogicalResult AllOp::verify() {
+  AllOp op = *this;
   return VerifyReductionInputAndDims(op.input(), op.reduction_indices(),
                                      op.getLoc());
 }
@@ -166,7 +167,8 @@ static LogicalResult Verify(AllOp op) {
 // AnyOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AnyOp op) {
+LogicalResult AnyOp::verify() {
+  AnyOp op = *this;
   return VerifyReductionInputAndDims(op.input(), op.reduction_indices(),
                                      op.getLoc());
 }
@@ -299,6 +301,8 @@ static LogicalResult Verify(OpT op) {
 
   return success();
 }
+LogicalResult BatchMatMulOp::verify() { return Verify(*this); }
+LogicalResult BatchMatMulV2Op::verify() { return Verify(*this); }
 
 void BatchMatMulOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
@@ -314,7 +318,8 @@ void BatchMatMulV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
 // BatchToSpaceOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(BatchToSpaceOp op) {
+LogicalResult BatchToSpaceOp::verify() {
+  BatchToSpaceOp op = *this;
   // Op already has a constraint that block_size >= 2.
   int64_t block_size = op.block_size();
 
@@ -462,7 +467,8 @@ void BatchToSpaceOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // BatchToSpaceNDOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(BatchToSpaceNDOp op) {
+LogicalResult BatchToSpaceNDOp::verify() {
+  BatchToSpaceNDOp op = *this;
   auto block_shape_ty = op.block_shape().getType().cast<ShapedType>();
   auto crops_ty = op.crops().getType().cast<ShapedType>();
 
@@ -488,7 +494,8 @@ static LogicalResult Verify(BatchToSpaceNDOp op) {
 // * Channel dimension of the value operand and length of bias matches if they
 //   are not unknown.
 //
-static LogicalResult Verify(BiasAddOp op) {
+LogicalResult BiasAddOp::verify() {
+  BiasAddOp op = *this;
   absl::string_view data_format(op.data_format().data(),
                                 op.data_format().size());
   tensorflow::TensorFormat format;
@@ -549,7 +556,8 @@ StringRef BiasAddOp::GetOptimalLayout(const RuntimeDevices &devices) {
 // Verifies that,
 // * the out_backprop operands have valid ranks or are unranked.
 //
-static LogicalResult Verify(BiasAddGradOp op) {
+LogicalResult BiasAddGradOp::verify() {
+  BiasAddGradOp op = *this;
   absl::string_view data_format(op.data_format().data(),
                                 op.data_format().size());
   tensorflow::TensorFormat format;
@@ -594,7 +602,7 @@ void BitcastOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // BroadcastToOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(BroadcastToOp op) {
+LogicalResult BroadcastToOp::verify() {
   // TODO(antiagainst): check that
   // * The 'shape' input is an 1-D int tensor.
   // * Each dimension pair of the source and target shapes are either equal
@@ -690,7 +698,8 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
 // * Broadcast compatability for input shapes.
 // * Output shape dimension matches the expected dimension size for input
 // shapes.
-static LogicalResult Verify(BroadcastGradientArgsOp op) {
+LogicalResult BroadcastGradientArgsOp::verify() {
+  BroadcastGradientArgsOp op = *this;
   SmallVector<int64_t, 4> s0_shape, s1_shape;
   DenseIntElementsAttr s0, s1;
   if (!ExtractInputConstShape(op, s0, s1, s0_shape, s1_shape)) return success();
@@ -864,7 +873,8 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   return success();
 }
 
-static LogicalResult Verify(CaseOp op) {
+LogicalResult CaseOp::verify() {
+  CaseOp op = *this;
   return VerifyCaseOpBase(op, op.branch_index());
 }
 
@@ -882,7 +892,8 @@ LogicalResult CaseOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
 // CaseRegionOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(CaseRegionOp op) {
+LogicalResult CaseRegionOp::verify() {
+  CaseRegionOp op = *this;
   if (op.branches().empty())
     return op.emitOpError() << "expects to have at least 1 region";
 
@@ -1004,6 +1015,9 @@ static LogicalResult Verify(OpT op) {
   return VerifyTypesCompatibility(values,
                                   /*mask_one_dim=*/true, op.getOperation());
 }
+
+LogicalResult ConcatOp::verify() { return Verify(*this); }
+LogicalResult ConcatV2Op::verify() { return Verify(*this); }
 
 void ConcatOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
@@ -1369,12 +1383,15 @@ static LogicalResult Verify(OpT op) {
 
   return success();
 }
+LogicalResult CumprodOp::verify() { return Verify(*this); }
+LogicalResult CumsumOp::verify() { return Verify(*this); }
 
 //===----------------------------------------------------------------------===//
 // ConcatOffsetOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(ConcatOffsetOp op) {
+LogicalResult ConcatOffsetOp::verify() {
+  ConcatOffsetOp op = *this;
   if (op.N() < 2)
     return op.emitOpError() << "requires N to be at least 2, got " << op.N();
 
@@ -1612,6 +1629,9 @@ static LogicalResult Verify(OpT op) {
 
   return success();
 }
+
+LogicalResult Conv2DOp::verify() { return Verify(*this); }
+LogicalResult Conv3DOp::verify() { return Verify(*this); }
 
 LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
   auto perm = GetDataFormatPermutation(this->data_format(), data_format);
@@ -1868,7 +1888,8 @@ StringRef Conv2DBackpropFilterOp::GetOptimalLayout(
 // Conv2DBackpropInputOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(Conv2DBackpropInputOp op) {
+LogicalResult Conv2DBackpropInputOp::verify() {
+  Conv2DBackpropInputOp op = *this;
   int num_spatial_dims = 2;
   int num_dims = 2 + num_spatial_dims;
 
@@ -1963,7 +1984,8 @@ LogicalResult Conv3DOp::inferReturnTypes(
 // DataFormatVecPermuteOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(DataFormatVecPermuteOp op) {
+LogicalResult DataFormatVecPermuteOp::verify() {
+  DataFormatVecPermuteOp op = *this;
   auto input_ty = op.x().getType().dyn_cast<RankedTensorType>();
   if (!input_ty) return success();
 
@@ -2139,7 +2161,8 @@ OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
 // DynamicStitchOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(DynamicStitchOp op) {
+LogicalResult DynamicStitchOp::verify() {
+  DynamicStitchOp op = *this;
   if (op.N() < 1) return op.emitOpError("requires attribute N with value >= 1");
 
   if (RankedTensorType out_ty = op.getType().dyn_cast<RankedTensorType>()) {
@@ -2238,7 +2261,8 @@ static LogicalResult Verify(DynamicStitchOp op) {
 // * Arity of the op is at most two.
 //
 // TODO(hinsu): Verify einsum equation attribute.
-static LogicalResult Verify(EinsumOp op) {
+LogicalResult EinsumOp::verify() {
+  EinsumOp op = *this;
   if (op.N() > 2) {
     return op.emitOpError("supports at most two operands");
   }
@@ -2286,7 +2310,16 @@ OpFoldResult EmptyOp::fold(ArrayRef<Attribute> operands) {
 // EmptyTensorListOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(EmptyTensorListOp op) {
+LogicalResult EmptyTensorListOp::verify() {
+  EmptyTensorListOp op = *this;
+  // This is required to populate derived attributes during export in a
+  // meaningful way. Else during export to GraphDef element_type() query
+  // will result in out of bounds access/assert.
+  if (handle_dtype().getSubtypes().size() != 1) {
+    return emitOpError(
+        "must have exactly one subtype in the result variant type");
+  }
+
   if (!IsOfRankOrUnranked(op.element_shape(), 0) &&
       !IsOfRankOrUnranked(op.element_shape(), 1)) {
     return op.emitOpError("requires element_shape operand to be 0D/1D tensor");
@@ -2361,7 +2394,8 @@ OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
 // EqualOp/NotEqualOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(EqualOp op) {
+LogicalResult EqualOp::verify() {
+  EqualOp op = *this;
   // If we allow inputs to have incompatible type, then nothing to do.
   if (!op.incompatible_shape_error()) return success();
 
@@ -2475,7 +2509,8 @@ LogicalResult Expm1Op::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 // FakeQuantWithMinMaxArgsOp
 //===----------------------------------------------------------------------===//
-static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
+LogicalResult FakeQuantWithMinMaxArgsOp::verify() {
+  FakeQuantWithMinMaxArgsOp op = *this;
   // TODO(fengliuai): moving the following to an utility method.
   const llvm::fltSemantics &semantics = op.min().getSemantics();
   float rmin, rmax;
@@ -2502,7 +2537,8 @@ static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
 //===----------------------------------------------------------------------===//
 // FakeQuantWithMinMaxVarsOp
 //===----------------------------------------------------------------------===//
-static LogicalResult Verify(FakeQuantWithMinMaxVarsOp op) {
+LogicalResult FakeQuantWithMinMaxVarsOp::verify() {
+  FakeQuantWithMinMaxVarsOp op = *this;
   auto min = GetRankedTensorTypeForOperand(op.min());
   if (min && !IsOfRankedFloatTensorType(min, 0))
     return op.emitOpError("requires min to be a 0d float tensor");
@@ -2522,7 +2558,8 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsOp op) {
 //===----------------------------------------------------------------------===//
 // FakeQuantWithMinMaxVarsPerChannelOp
 //===----------------------------------------------------------------------===//
-static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
+LogicalResult FakeQuantWithMinMaxVarsPerChannelOp::verify() {
+  FakeQuantWithMinMaxVarsPerChannelOp op = *this;
   auto min = GetRankedTensorTypeForOperand(op.min());
   if (min && !IsOfRankedFloatTensorType(min, 1))
     return op.emitOpError("requires min to be a 1d float tensor");
@@ -2557,7 +2594,8 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
 // FillOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(FillOp op) {
+LogicalResult FillOp::verify() {
+  FillOp op = *this;
   if (!IsOfRankOrUnranked(op.dims(), 1))
     return op.emitOpError() << "requires dims to be a 1D tensor";
   if (!IsOfRankOrUnranked(op.value(), 0))
@@ -2654,7 +2692,8 @@ StringRef FusedBatchNormGradV3Op::GetOptimalLayout(
 // FusedBatchNormOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(FusedBatchNormOp op) {
+LogicalResult FusedBatchNormOp::verify() {
+  FusedBatchNormOp op = *this;
   auto x = GetRankedTensorTypeForOperand(op.x());
   if (x && !IsOfRankedFloatTensorType(x, 4))
     return op.emitOpError("requires x to be a 4D float tensor");
@@ -2743,7 +2782,8 @@ StringRef FusedBatchNormV3Op::GetOptimalLayout(const RuntimeDevices &devices) {
 // GatherV2Op
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(GatherV2Op op) {
+LogicalResult GatherV2Op::verify() {
+  GatherV2Op op = *this;
   int64_t batch_dims = op.batch_dims();
   if (auto ty = op.indices().getType().dyn_cast<RankedTensorType>()) {
     int64_t rank = ty.getRank();
@@ -2854,7 +2894,8 @@ void IfOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // IfRegionOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(IfRegionOp op) {
+LogicalResult IfRegionOp::verify() {
+  IfRegionOp op = *this;
   TypeRange then_types =
       op.then_branch().front().getTerminator()->getOperandTypes();
   TypeRange else_types =
@@ -2932,7 +2973,8 @@ void IfRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
 //===----------------------------------------------------------------------===//
 
 // Verifies that the input is 1D.
-static LogicalResult Verify(InvertPermutationOp op) {
+LogicalResult InvertPermutationOp::verify() {
+  InvertPermutationOp op = *this;
   auto x_type = op.x().getType().cast<TensorType>();
   if (!x_type.hasRank()) return success();
   if (x_type.getShape().size() != 1)
@@ -2990,7 +3032,8 @@ void LogicalNotOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // MatrixBandPartOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(MatrixBandPartOp op) {
+LogicalResult MatrixBandPartOp::verify() {
+  MatrixBandPartOp op = *this;
   if (!HasRankAtLeast(op.input(), 2)) {
     return op.emitOpError()
            << "requires `input` to have rank of at least 2, but found "
@@ -3087,7 +3130,8 @@ StringRef MaxPoolOp::GetOptimalLayout(const RuntimeDevices &devices) {
 // MaxPoolGradOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(MaxPoolGradOp op) {
+LogicalResult MaxPoolGradOp::verify() {
+  MaxPoolGradOp op = *this;
   if (!IsOfRankOrUnranked(op.orig_input(), 4)) {
     return op.emitOpError() << "requires orig_input to be rank 4";
   }
@@ -3164,7 +3208,8 @@ void HashTableOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // BitcastOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(BitcastOp op) {
+LogicalResult BitcastOp::verify() {
+  BitcastOp op = *this;
   auto input_type = op.input().getType().cast<ShapedType>();
   auto output_type = op.output().getType().cast<ShapedType>();
   auto input_element_type = input_type.getElementType();

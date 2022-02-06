@@ -77,7 +77,7 @@ def ControlOperandsAfterAllData :
 class TfExecutor_Op<string mnemonic, list<Trait> traits = []> :
     Op<TfExecutor_Dialect, mnemonic, traits> {
 
-  let verifier = [{ return ::mlir::tf_executor::Verify(*this); }];
+  let hasVerifier = 1;
   let printer = [{ return ::mlir::tf_executor::Print(*this, p); }];
   let parser = [{ return Parse$cppClass(parser, result); }];
 }
@@ -154,7 +154,7 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
 
   let assemblyFormat = "($fetches^ `:` type($fetches))? attr-dict";
 
-  let verifier = ?;
+  let hasVerifier = 0;
   let printer = ?;
   let parser = ?;
 }
@@ -239,7 +239,7 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
 
   let assemblyFormat = "($fetches^ `:` type($fetches))? attr-dict";
 
-  let verifier = ?;
+  let hasVerifier = 0;
   let printer = ?;
   let parser = ?;
 }
@@ -287,7 +287,7 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
     TfeControlType: $control
   );
 
-   let verifier = ?;
+   let hasVerifier = 0;
 }
 
 def TfExecutor_SwitchNOp : TfExecutor_Op<"_SwitchN",
@@ -413,7 +413,7 @@ def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
     TfeControlType:$control
   );
 
-  let verifier = ?;
+  let hasVerifier = 0;
 }
 
 def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
@@ -592,7 +592,7 @@ def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
     TfeControlType:$control
   );
 
-  let verifier = ?;
+  let hasVerifier = 0;
 }
 
 def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
@@ -615,7 +615,7 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
     TfeControlType:$control
   );
 
-  let verifier = ?;
+  let hasVerifier = 0;
 
   let hasCanonicalizer = 1;
 
@@ -671,7 +671,7 @@ def TfExecutor_LoopCondOp : TfExecutor_Op<"LoopCond",
     TfeControlType:$control
   );
 
-  let verifier = ?;
+  let hasVerifier = 0;
 }
 
 #endif // TF_EXECUTOR_DIALECT

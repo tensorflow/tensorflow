@@ -128,7 +128,7 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
     UnitAttr:$is_mutable
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TfSavedModel_SessionInitializerOp: TfSavedModel_Op<"session_initializer"> {
@@ -152,7 +152,7 @@ def TfSavedModel_SessionInitializerOp: TfSavedModel_Op<"session_initializer"> {
   );
 
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 }

@@ -174,7 +174,7 @@ def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
     OpBuilder<(ins "int":$num_regions, "TypeRange":$output_types)>,
   ];
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TfDevice_ReplicateOp : TfDevice_Op<"replicate",
@@ -307,7 +307,7 @@ For example:
 
   let parser = [{ return Parse$cppClass(&parser, &result); }];
   let printer = [{ return Print(*this, &p); }];
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TfDevice_ClusterOp : TfDevice_Op<"cluster",
