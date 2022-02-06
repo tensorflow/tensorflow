@@ -306,7 +306,7 @@ def TFR_ConstantTensorOp : TFR_Op<"constant_tensor", [NoSideEffect]> {
 
   let hasCanonicalizer = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TFR_GetElementOp : TFR_Op<"get_element", [NoSideEffect]> {
@@ -466,7 +466,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     }
   }];
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
   let parser = [{ return ParseFuncOp(parser, &result); }];
   let printer = [{ PrintFuncOp(p, *this); }];
 }

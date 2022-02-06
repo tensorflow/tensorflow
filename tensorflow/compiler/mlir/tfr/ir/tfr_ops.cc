@@ -159,7 +159,8 @@ bool TFRType::classof(Type type) {
 // Custom op methods
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(ConstantTensorOp op) {
+LogicalResult ConstantTensorOp::verify() {
+  ConstantTensorOp op = *this;
   auto input_type = op.arg().getType();
   auto output_type = op.out().getType();
 
@@ -196,7 +197,8 @@ static LogicalResult Verify(ConstantTensorOp op) {
   return failure();
 }
 
-static LogicalResult Verify(TFRFuncOp func) {
+LogicalResult TFRFuncOp::verify() {
+  TFRFuncOp func = *this;
   // Collect all attribute names used by the tensor and tensor list arguments
   // and returns. Also, collect the names of all the attribute arguments as the
   // defined list. Later on, the used attribute names will be verified to be in
