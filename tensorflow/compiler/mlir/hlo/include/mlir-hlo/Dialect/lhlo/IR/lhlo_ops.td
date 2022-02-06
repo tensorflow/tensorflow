@@ -98,7 +98,7 @@ def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs", LHLO_Buffer, [SameOperandsShape]>
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 // TODO(timshen): add a custom verifier.
@@ -555,7 +555,7 @@ def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [SameVariadicOperandSize]> {
   );
 
   let regions = (region SizedRegion<1>:$body);
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 // TODO(timshen): Add a custom syntax for this.
@@ -628,7 +628,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
                       $api_version,
     OptionalAttr<CustomCallTargetArgMapping>:$target_arg_mapping
   );
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1033,7 +1033,7 @@ def LHLO_PadOp: LHLO_Op<"pad", []> {
     I64ElementsAttr:$interior_padding,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def LHLO_TransposeOp: LHLO_Op<"transpose", []> {
@@ -1083,7 +1083,7 @@ class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
     OptionalAttr<ChannelHandle>:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
   );
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     // AllGather is cross replica if channel_id is not set.
     bool IsCrossReplica() { return !channel_id().hasValue(); }
@@ -1153,7 +1153,7 @@ def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]> 
     I64ElementsAttr:$source_target_pairs,
     OptionalAttr<ChannelHandle>:$channel_id
   );
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def LHLO_FftOp: LHLO_Op<"fft", []> {

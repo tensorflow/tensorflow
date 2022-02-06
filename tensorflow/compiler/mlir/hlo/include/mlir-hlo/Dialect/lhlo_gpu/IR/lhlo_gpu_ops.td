@@ -184,7 +184,7 @@ def LHLOGPU_AllReduceStartOp :
   );
   let results = (outs HLO_Token:$token);
   let regions = (region SizedRegion<1>:$computation);
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def LHLOGPU_AllReduceDoneOp:

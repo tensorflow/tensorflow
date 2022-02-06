@@ -69,7 +69,8 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 // AbsOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AbsOp op) {
+LogicalResult AbsOp::verify() {
+  AbsOp op = *this;
   auto operand_type = getElementTypeOrSelf(op.input().getType());
   auto output_type = getElementTypeOrSelf(op.output().getType());
   if (auto complex_type = operand_type.dyn_cast<ComplexType>()) {
@@ -90,12 +91,14 @@ static LogicalResult Verify(AbsOp op) {
 //===----------------------------------------------------------------------===//
 
 // TODO(jurahul): Add verification for output shape.
-static LogicalResult Verify(AllGatherOp op) {
+LogicalResult AllGatherOp::verify() {
+  AllGatherOp op = *this;
   return VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
 }
 
 // TODO(jurahul): Add verification for output shape.
-static LogicalResult Verify(AllToAllOp op) {
+LogicalResult AllToAllOp::verify() {
+  AllToAllOp op = *this;
   return VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
 }
 
@@ -103,13 +106,17 @@ static LogicalResult Verify(AllToAllOp op) {
 // AllReduceOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AllReduceOp op) { return VerifyAllReduce(op); }
+LogicalResult AllReduceOp::verify() {
+  AllReduceOp op = *this;
+  return VerifyAllReduce(op);
+}
 
 //===----------------------------------------------------------------------===//
 // ReduceScatterOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(ReduceScatterOp op) {
+LogicalResult ReduceScatterOp::verify() {
+  ReduceScatterOp op = *this;
   if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
     return failure();
   if (failed(mlir::hlo::VerifyReduceScatter(
@@ -141,7 +148,8 @@ void CaseOp::getSuccessorRegions(Optional<unsigned> index,
 // CollectivePermuteOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(CollectivePermuteOp op) {
+LogicalResult CollectivePermuteOp::verify() {
+  CollectivePermuteOp op = *this;
   return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
       op, op.source_target_pairs());
 }
@@ -182,7 +190,8 @@ void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // CustomCallOp.
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(CustomCallOp op) {
+LogicalResult CustomCallOp::verify() {
+  CustomCallOp op = *this;
   if (op.target_arg_mapping()) {
     CustomCallTargetArgMapping mapping = *op.target_arg_mapping();
     auto verify_mapping = [&](int64_t target_num, size_t op_num,
@@ -237,7 +246,8 @@ static LogicalResult Verify(CustomCallOp op) {
 //  2. Padding configurations are specified for each dimension.
 //  3. Output shape matches the expected output shape when the padding
 //     configurations are applied to the operand.
-static LogicalResult Verify(PadOp op) {
+LogicalResult PadOp::verify() {
+  PadOp op = *this;
   auto operand_type = op.operand().getType().dyn_cast<ShapedType>();
   auto output_type = op.output().getType().dyn_cast<ShapedType>();
   if (!(operand_type && output_type && operand_type.hasRank() &&
@@ -352,7 +362,8 @@ void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
 //===----------------------------------------------------------------------===//
 
 // For reduce-window, all `inputs` need to have compatible shapes.
-static LogicalResult Verify(ReduceWindowOp op) {
+LogicalResult ReduceWindowOp::verify() {
+  ReduceWindowOp op = *this;
   if (failed(verifyCompatibleShapes(op.inputs().getTypes())))
     return op.emitOpError() << "requires same shape for all operands";
   return success();
