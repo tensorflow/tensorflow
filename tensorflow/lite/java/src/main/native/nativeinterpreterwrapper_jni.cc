@@ -80,20 +80,6 @@ int getDataType(TfLiteType data_type) {
   }
 }
 
-void printDims(char* buffer, int max_size, int* dims, int num_dims) {
-  if (max_size <= 0) return;
-  buffer[0] = '?';
-  int size = 1;
-  for (int i = 1; i < num_dims; ++i) {
-    if (max_size > size) {
-      int written_size =
-          snprintf(buffer + size, max_size - size, ",%d", dims[i]);
-      if (written_size < 0) return;
-      size += written_size;
-    }
-  }
-}
-
 // TODO(yichengfan): evaluate the benefit to use tflite verifier.
 bool VerifyModel(const void* buf, size_t len) {
   flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
