@@ -1311,6 +1311,7 @@ py_library(
     srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow_estimator/python/estimator:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":_test_metrics_util",
