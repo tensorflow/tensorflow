@@ -98,6 +98,10 @@ class MutableOpResolver : public OpResolver {
     return delegate_creators_;
   }
 
+  OpResolver::OpaqueDelegateCreators GetOpaqueDelegateCreators() const final {
+    return opaque_delegate_creators_;
+  }
+
  protected:
   /// Registers all operator versions supported by another OpResolver,
   /// except any already registered in this MutableOpResolver.
@@ -118,6 +122,7 @@ class MutableOpResolver : public OpResolver {
   /// and handling ops in the flatbuffer model. This may be used in addition to
   /// the standard TfLiteRegistration lookup for graph resolution.
   TfLiteDelegateCreators delegate_creators_;
+  OpaqueDelegateCreators opaque_delegate_creators_;
 
  private:
   bool MayContainUserDefinedOps() const override;

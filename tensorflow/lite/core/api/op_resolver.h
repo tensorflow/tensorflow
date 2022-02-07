@@ -23,6 +23,16 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
+// Opaque type similar to TfLiteDelegate / TfLiteOpaqueDelegate.
+// This is used for cases (e.g. when using "TF Lite with Google Play Services")
+// where the TF Lite runtime might be built using a newer (or older)
+// version of the TF Lite sources than the app, and hence might have a
+// different definition of the TfLiteDelegate type. TF Lite APIs use
+// TfLiteOpaqueDelegate rather than TfLiteDelegate when they want to
+// refer to a delegate defined with that potentially different version
+// of the TfLiteDelegate type.
+struct TfLiteOpaqueDelegateStruct;
+
 namespace tflite {
 
 /// Abstract interface that returns TfLiteRegistrations given op codes or custom
@@ -47,7 +57,7 @@ class OpResolver {
     return {};
   }
 
-  // Represent a function that creates a TfLite delegate instance.
+  // Represents a function that creates a TfLite delegate instance.
   using TfLiteDelegateCreator =
       std::function<std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
           int /*num_threads*/)>;
@@ -56,6 +66,20 @@ class OpResolver {
   // resolving and handling ops in the flatbuffer model. This may be used in
   // addition to the standard TfLiteRegistration lookup for graph resolution.
   virtual TfLiteDelegateCreators GetDelegateCreators() const { return {}; }
+
+  // Represent a function that creates an opaque delegate instance.
+  using OpaqueDelegatePtr =
+      std::unique_ptr<struct TfLiteOpaqueDelegateStruct,
+                      void (*)(struct TfLiteOpaqueDelegateStruct*)>;
+  using OpaqueDelegateCreator =
+      std::function<OpaqueDelegatePtr(int /*num_threads*/)>;
+  using OpaqueDelegateCreators = std::vector<OpaqueDelegateCreator>;
+  // Returns a vector of delegate creators to create optional delegates for
+  // resolving and handling ops in the flatbuffer model. This may be used in
+  // addition to the standard TfLiteRegistration lookup for graph resolution.
+  virtual OpaqueDelegateCreators GetOpaqueDelegateCreators() const {
+    return {};
+  }
 
   virtual ~OpResolver() {}
 
