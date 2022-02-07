@@ -17,6 +17,7 @@ package(
 
 DEFAULT_COPTS = [
     "-Wno-shorten-64-to-32",
+    "-std=c++17",
 ]
 
 objc_library(
