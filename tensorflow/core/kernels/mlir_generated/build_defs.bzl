@@ -293,7 +293,7 @@ def _gen_kernel_library(
                                                JIT compilation of i64-indexed kernels for 
                                                large inputs.
       output_jit_i64_indexed_for_large_tensors_types: The output types for which a partial jit kernel should 
-                                be generated.   
+                                                      be generated.   
     """
 
     enable_cpu = bool(platform == "cpu")
