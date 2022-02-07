@@ -3,7 +3,14 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
+    "if_mlir",
+    "if_xla_available",
+    "py_test",
+    "tf_enable_mlir_bridge",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
@@ -29,8 +36,17 @@ load("//tensorflow:tensorflow.bzl", "if_windows")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_profiler_deps")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_lib_deps",
+    "tf_proto_library",
+)
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+    "tf_additional_plugin_deps",
+    "tf_additional_profiler_deps",
+)
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 
 # TODO(mdan): Break into per-directory files.
