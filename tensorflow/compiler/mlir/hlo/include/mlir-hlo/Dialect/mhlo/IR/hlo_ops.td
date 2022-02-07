@@ -690,7 +690,9 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
     DefaultValuedStrAttr<StrAttr, "">:$infeed_config,
     OptionalAttr<ArrayAttr>:$layout
   );
-  let results = (outs Variadic<HLO_TensorOrToken>);
+  // TODO(@sdasgup): The following code need to be adjusted once the
+  // allowance of tuple-return-type for infeed is revoked.
+  let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -710,6 +712,8 @@ def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
   }];
 
   let arguments = (ins
+    // TODO(@sdasgup): The following code need to be adjusted once the
+    // allowance of tuple-return-type for infeed is revoked.
     Variadic<HLO_TensorOrTuple>:$operands,
     HLO_Token:$token,
     DefaultValuedStrAttr<StrAttr, "">:$outfeed_config

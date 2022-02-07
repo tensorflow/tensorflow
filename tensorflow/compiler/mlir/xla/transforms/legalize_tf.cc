@@ -5332,8 +5332,7 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
 // operations within a computation. The token type can come from other
 // infeed/outfeed/send/recv ops or can be generated using create_token op with
 // no operands. Here we emit a create_token op to generate the token type
-// operand of infeed. The mhlo.InfeedOp can produce multiple results and later
-// will be exported to XLA infeed op with single tuple return type.
+// operand of infeed.
 //
 // For example the following IR:
 // %0:2 = "tf.InfeedDequeueTuple"() : () -> (tensor<3xi32>, tensor<4xf32>)
@@ -5342,7 +5341,11 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
 //
 // %token = "mhlo.create_token"() : () -> !mhlo.token
 // %data_and_token = "mhlo.infeed"(%token) {infeed_config = ""} :
-//      (!mhlo.token) -> tensor<3xi32>, tensor<4xf32>, !mhlo.token>
+//      (!mhlo.token) -> tuple<tuple<tensor<3xi32>, tensor<4xf32>>,
+//      !mhlo.token>
+// %data = "mhlo.get_tuple_element"(%data_and_token) {index = 0}
+// %0#0 = "mhlo.get_tuple_element"(%data) {index = 0}
+// %0#1 = "mhlo.get_tuple_element"(%data) {index = 1}
 //
 class ConvertInfeedDequeueTupleOp
     : public OpRewritePattern<TF::InfeedDequeueTupleOp> {
@@ -5351,14 +5354,15 @@ class ConvertInfeedDequeueTupleOp
 
   LogicalResult matchAndRewrite(TF::InfeedDequeueTupleOp op,
                                 PatternRewriter &rewriter) const override {
-    SmallVector<Type> result_types;
-    result_types.reserve(op.outputs().size() + 1);
-    for (const auto &output : op.outputs()) {
-      Type ty = output.getType();
-      if (auto tensor_ty = ty.dyn_cast<RankedTensorType>()) {
-        if (!tensor_ty.hasStaticShape()) return failure();
+    std::vector<Type> result_types(op.outputs().size());
+    for (const auto& idx_and_output : llvm::enumerate(op.outputs())) {
+      result_types[idx_and_output.index()] = (idx_and_output.value().getType());
+    }
+
+    for (Type t : result_types) {
+      if (auto ty = t.dyn_cast<RankedTensorType>()) {
+        if (!ty.hasStaticShape()) return failure();
       }
-      result_types.push_back(ty);
     }
 
     // Infeed takes a single token operand. Generate the token using
@@ -5366,15 +5370,19 @@ class ConvertInfeedDequeueTupleOp
     auto token = rewriter.create<CreateTokenOp>(
         op.getLoc(), mhlo::TokenType::get(rewriter.getContext()));
 
-    result_types.push_back(token.getType());
+    // Emit infeed op.
+    // The result type of infeed is a tuple(tuple(result types), token type).
+    auto data_tuple_type =
+        mlir::TupleType::get(rewriter.getContext(), result_types);
+    auto data_and_token_type = mlir::TupleType::get(
+        rewriter.getContext(), {data_tuple_type, token.getType()});
 
     ArrayAttr layout;  // filled in during the xla-adjust-layout pass
+
     auto data_and_token =
-        rewriter.create<InfeedOp>(op.getLoc(), result_types, token,
+        rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
                                   /*infeed_config=*/rewriter.getStringAttr(""),
                                   /*layout=*/layout);
-
-    result_types.pop_back();  // remove the token type.
 
     if (op._XlaSharding().hasValue()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
@@ -5396,10 +5404,20 @@ class ConvertInfeedDequeueTupleOp
       }
     }
 
+    // The infeed instruction produces a tuple of the infeed data and a token
+    // type. Emit get_tuple_element to get infeed data tuple.
+    auto data_tuple = rewriter.create<GetTupleElementOp>(
+        op.getLoc(), data_tuple_type, data_and_token.getResult(0),
+        rewriter.getI32IntegerAttr(0));
+
+    // Emit get_tuple_element for each result.
     llvm::SmallVector<Value> results;
     results.reserve(result_types.size());
     for (auto idx_and_type : llvm::enumerate(result_types)) {
-      results.push_back(data_and_token.getResult(idx_and_type.index()));
+      auto tuple_element = rewriter.create<GetTupleElementOp>(
+          op.getLoc(), idx_and_type.value(), data_tuple,
+          rewriter.getI32IntegerAttr(idx_and_type.index()));
+      results.push_back(tuple_element);
     }
     rewriter.replaceOp(op, ValueRange(results));
     return success();
@@ -5418,10 +5436,11 @@ class ConvertInfeedDequeueTupleOp
 //
 // would be lowered to
 //
+// %tuple = "mhlo.tuple"(%val_1, %val_2) : (tensor<3xi32>, tensor<4xf32>) ->
+//      tuple<tensor<3xi32>, tensor<4xf32>>
 // %token = "mhlo.create_token"() : () -> !mhlo.token
-// %outfeed_token = "mhlo.outfeed"(%val_1, %val_2, %token) {outfeed_config = ""}
-// :
-//      (tensor<3xi32>, tensor<4xf32>, !mhlo.token) -> !mhlo.token
+// %outfeed_token = "mhlo.outfeed"(%tuple, %token) {outfeed_config = ""} :
+//      (tuple<tensor<3xi32>, tensor<4xf32>>, !mhlo.token) -> !mhlo.token
 //
 class ConvertOutfeedEnqueueTupleOp
     : public OpRewritePattern<TF::OutfeedEnqueueTupleOp> {
@@ -5431,8 +5450,10 @@ class ConvertOutfeedEnqueueTupleOp
   LogicalResult matchAndRewrite(TF::OutfeedEnqueueTupleOp op,
                                 PatternRewriter &rewriter) const override {
     auto token_type = mhlo::TokenType::get(rewriter.getContext());
+    auto tuple = rewriter.create<TupleOp>(op.getLoc(), op.inputs());
     auto token = rewriter.create<CreateTokenOp>(op.getLoc(), token_type);
-    rewriter.create<OutfeedOp>(op.getLoc(), token_type, op.inputs(), token,
+    SmallVector<Value> outfeed_data({tuple});
+    rewriter.create<OutfeedOp>(op.getLoc(), token_type, outfeed_data, token,
                                /*outfeed_config=*/rewriter.getStringAttr(""));
     rewriter.eraseOp(op);
     return success();

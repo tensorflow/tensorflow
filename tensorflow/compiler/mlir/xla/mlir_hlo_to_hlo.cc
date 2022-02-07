@@ -1103,37 +1103,51 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   xla::XlaOp token;
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
 
-  // mhlo.infeed produces multiple results. The shape argument expected by the
-  // xla client API is a tuple type with two element-types:
-  // data_type : A tuple containing all the mhlo.infeedOp result types except
-  //             the token type.
-  // token_type : The last result type of mhlo.infeedOp.
-  auto result_types = op.getResultTypes();
-  auto num_results = op.getNumResults();
+  // The shape argument expected by the xla client API is the type of the first
+  // element in the result tuple.
+  auto result_type = op.getResult(0).getType().dyn_cast<mlir::TupleType>();
+  if (result_type) {
+    // TODO(@sdasgup): The current branch need to be removed once the
+    // allowance of tuple-return-type for infeed is revoked.
+    auto result_type =
+        op.getResult(0).getType().cast<mlir::TupleType>().getType(0);
+    value_map[op.getResult(0)] = xla::InfeedWithToken(
+        token, xla::TypeToShape(result_type), std::string(op.infeed_config()));
+  } else {
+    // mhlo.infeed produces multiple results. The shape argument expected by the
+    // xla client API is a tuple type with two element-types:
+    // data_type : A tuple containing all the mhlo.infeedOp result types except
+    //             the token type.
+    // token_type : The last result type of mhlo.infeedOp.
+    auto result_types = op.getResultTypes();
+    auto num_results = op.getNumResults();
 
-  xla::Shape token_shape = xla::TypeToShape(result_types[num_results - 1]);
-  std::vector<xla::Shape> subshapes;
-  for (const auto& item : llvm::enumerate(result_types)) {
-    if (item.index() == num_results - 1) break;
-    subshapes.push_back(xla::TypeToShape(item.value()));
-  }
-
-  xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
-  auto xla_result =
-      xla::InfeedWithToken(token, data_shape, std::string(op.infeed_config()));
-  ctx.builder->ClearSharding();
-
-  if (!subshapes.empty()) {
-    auto data_tuple_element = xla::GetTupleElement(xla_result, 0);
-    for (const auto& item : llvm::enumerate(op.getResults())) {
+    xla::Shape token_shape = xla::TypeToShape(result_types[num_results - 1]);
+    std::vector<xla::Shape> subshapes;
+    for (const auto& item : llvm::enumerate(result_types)) {
       if (item.index() == num_results - 1) break;
-      value_map[item.value()] =
-          xla::GetTupleElement(data_tuple_element, item.index());
+      subshapes.push_back(xla::TypeToShape(item.value()));
     }
-  }
 
-  value_map[op.getResult(num_results - 1)] =
-      xla::GetTupleElement(xla_result, 1);
+    xla::Shape data_shape;
+    data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
+
+    auto xla_result = xla::InfeedWithToken(token, data_shape,
+                                           std::string(op.infeed_config()));
+    ctx.builder->ClearSharding();
+
+    if (!subshapes.empty()) {
+      auto data_tuple_element = xla::GetTupleElement(xla_result, 0);
+      for (const auto& item : llvm::enumerate(op.getResults())) {
+        if (item.index() == num_results - 1) break;
+        value_map[item.value()] =
+            xla::GetTupleElement(data_tuple_element, item.index());
+      }
+    }
+
+    value_map[op.getResult(num_results - 1)] =
+        xla::GetTupleElement(xla_result, 1);
+  }
 
   return success();
 }
@@ -1922,77 +1936,103 @@ LogicalResult ConvertToHloModule::Lower(
     // For infeed ops stemming back to InfeedDequeueTuple, respect the
     // layout attribute, and create the corresponding layout in hlo.
     if (isa<mhlo::InfeedOp>(inst)) {
-      mlir::ArrayAttr layout =
-          inst->getAttrOfType<mlir::ArrayAttr>(kLayoutAttr);
+      if (inst->getNumResults() == 1 &&
+          inst->getResult(0).getType().isa<mlir::TupleType>()) {
+        // TODO(@sdasgup): The current branch need to be removed once the
+        // allowance of tuple-return-type for infeed is revoked.
+        auto iter = value_lowering->find(inst->getResult(0));
+        if (iter == value_lowering->end()) {
+          inst->emitOpError(
+              "inst has a result, but it's not found in value_lowering");
+          return failure();
+        }
+        xla::XlaOp xla_op = iter->second;
+        mlir::ArrayAttr layout =
+            inst->getAttrOfType<mlir::ArrayAttr>(kLayoutAttr);
+        if (layout) {
+          xla::ShapeProto* shape =
+              xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
+                  ->mutable_shape();
 
-      if (layout) {
-        // We propagate layout to the following three ops:
-        // L1: For each data-result of mhlo.InfeedOp, we find the exported
-        // xla::kGetTupleElement and propagate the layout.
-        //
-        // L2: For the token-result of mhlo.InfeedOp (result at last index),
-        // we extract the xla::kInfeed op using the corresponding
-        // xla::kGetTupleElement and propagate the layout to it.
-        //
-        // L3: In case there are non-zero data-results, there exists an
-        // additional xla::kGetTupleElement accessing a tuple of the
-        // data-results. We need to propagate the layout to that
-        // xla::kGetTupleElement as well.
-        auto num_results = inst->getNumResults();
-        bool propagate_layout_to_data_tuple = true;
-        for (unsigned i = 0; i < num_results; i++) {
-          auto iter = value_lowering->find(inst->getResult(i));
-          if (iter == value_lowering->end()) {
-            inst->emitOpError() << "inst's result value at index " << i
-                                << " has no match in value_lowering";
+          if (failed(ConvertLayout(inst, layout, shape))) {
             return failure();
           }
-          auto xla_gte_op = iter->second;
-          xla::HloInstructionProto* get_tuple_element_proto =
-              xla::internal::XlaBuilderFriend::GetInstruction(xla_gte_op);
+        }
 
-          assert(xla::StringToHloOpcode(get_tuple_element_proto->opcode())
-                         .ValueOrDie() == xla::HloOpcode::kGetTupleElement &&
-                 "The token-result of mhlo.InfeedOp should be mapped to a "
-                 "xla::HloOpcode::kGetTupleElement");
+      } else {
+        mlir::ArrayAttr layout =
+            inst->getAttrOfType<mlir::ArrayAttr>(kLayoutAttr);
 
-          if (i == num_results - 1) {
-            // L2
-            xla::HloInstructionProto* xla_infeed_op_proto =
-                xla::internal::XlaBuilderFriend::GetInstructionByHandle(
-                    xla_gte_op.builder(),
-                    get_tuple_element_proto->operand_ids(0));
-
-            assert(xla::StringToHloOpcode(xla_infeed_op_proto->opcode())
-                           .ValueOrDie() == xla::HloOpcode::kInfeed &&
-                   "Expected xla::HloOpcode::kInfeed op");
-
-            auto* shape = xla_infeed_op_proto->mutable_shape();
-            if (failed(ConvertInfeedtLayout(inst, layout, shape)))
+        if (layout) {
+          // We propagate layout to the following three ops:
+          // L1: For each data-result of mhlo.InfeedOp, we find the exported
+          // xla::kGetTupleElement and propagate the layout.
+          //
+          // L2: For the token-result of mhlo.InfeedOp (result at last index),
+          // we extract the xla::kInfeed op using the corresponding
+          // xla::kGetTupleElement and propagate the layout to it.
+          //
+          // L3: In case there are non-zero data-results, there exists an
+          // additional xla::kGetTupleElement accessing a tuple of the
+          // data-results. We need to propagate the layout to that
+          // xla::kGetTupleElement as well.
+          auto num_results = inst->getNumResults();
+          bool propagate_layout_to_data_tuple = true;
+          for (unsigned i = 0; i < num_results; i++) {
+            auto iter = value_lowering->find(inst->getResult(i));
+            if (iter == value_lowering->end()) {
+              inst->emitOpError() << "inst's result value at index " << i
+                                  << " has no match in value_lowering";
               return failure();
+            }
+            auto xla_gte_op = iter->second;
+            xla::HloInstructionProto* get_tuple_element_proto =
+                xla::internal::XlaBuilderFriend::GetInstruction(xla_gte_op);
 
-          } else {
-            // L1
-            auto* shape = get_tuple_element_proto->mutable_shape();
-            if (failed(ConvertInfeedtLayout(inst, layout, shape, i)))
-              return failure();
+            assert(xla::StringToHloOpcode(get_tuple_element_proto->opcode())
+                           .ValueOrDie() == xla::HloOpcode::kGetTupleElement &&
+                   "The token-result of mhlo.InfeedOp should be mapped to a "
+                   "xla::HloOpcode::kGetTupleElement");
 
-            // L3
-            if (propagate_layout_to_data_tuple) {
-              xla::HloInstructionProto* data_tuple_proto =
+            if (i == num_results - 1) {
+              // L2
+              xla::HloInstructionProto* xla_infeed_op_proto =
                   xla::internal::XlaBuilderFriend::GetInstructionByHandle(
                       xla_gte_op.builder(),
                       get_tuple_element_proto->operand_ids(0));
-              auto* data_tuple_shape = data_tuple_proto->mutable_shape();
 
-              assert(xla::StringToHloOpcode(data_tuple_proto->opcode())
-                             .ValueOrDie() ==
-                         xla::HloOpcode::kGetTupleElement &&
-                     "Expected a xla:tupleOp for all the data results.");
-              if (failed(ConvertInfeedtLayout(inst, layout, data_tuple_shape)))
+              assert(xla::StringToHloOpcode(xla_infeed_op_proto->opcode())
+                             .ValueOrDie() == xla::HloOpcode::kInfeed &&
+                     "Expected xla::HloOpcode::kInfeed op");
+
+              auto* shape = xla_infeed_op_proto->mutable_shape();
+              if (failed(ConvertInfeedtLayout(inst, layout, shape)))
                 return failure();
+
+            } else {
+              // L1
+              auto* shape = get_tuple_element_proto->mutable_shape();
+              if (failed(ConvertInfeedtLayout(inst, layout, shape, i)))
+                return failure();
+
+              // L3
+              if (propagate_layout_to_data_tuple) {
+                xla::HloInstructionProto* data_tuple_proto =
+                    xla::internal::XlaBuilderFriend::GetInstructionByHandle(
+                        xla_gte_op.builder(),
+                        get_tuple_element_proto->operand_ids(0));
+                auto* data_tuple_shape = data_tuple_proto->mutable_shape();
+
+                assert(xla::StringToHloOpcode(data_tuple_proto->opcode())
+                               .ValueOrDie() ==
+                           xla::HloOpcode::kGetTupleElement &&
+                       "Expected a xla:tupleOp for all the data results.");
+                if (failed(
+                        ConvertInfeedtLayout(inst, layout, data_tuple_shape)))
+                  return failure();
+              }
+              propagate_layout_to_data_tuple = false;
             }
-            propagate_layout_to_data_tuple = false;
           }
         }
       }
