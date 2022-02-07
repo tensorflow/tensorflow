@@ -4004,18 +4004,9 @@ namespace {
 // object currently active. This object is opaque and wrapped inside a Python
 // Capsule. However, the EagerContext object it holds is tracked by the
 // global_c_eager_context object.
+// Also see common_runtime/eager/context.cc.
 PyObject* global_py_eager_context = nullptr;
-
-// This object tracks the EagerContext owned by global_py_eager_context. Since
-// the vast majority of the Python API is dependent on that
-// global_py_eager_context (including memory management), the Py object owns the
-// C object, so this pointer is non-owning.
-TFE_Context* global_c_eager_context = nullptr;
 }  // namespace
-
-void TFE_Py_SetCEagerContext(TFE_Context* ctx) { global_c_eager_context = ctx; }
-
-TFE_Context* GetCEagerContext() { return global_c_eager_context; }
 
 PyObject* TFE_Py_SetEagerContext(PyObject* py_context) {
   Py_XDECREF(global_py_eager_context);

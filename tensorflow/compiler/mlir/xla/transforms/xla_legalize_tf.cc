@@ -59,7 +59,7 @@ class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
     }
   }
   /// Performs the lowering to XLA dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Emits debug information which includes the number of ops of each type which
@@ -324,12 +324,12 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 }
 
 // Performs the lowering to XLA dialect.
-void LegalizeTF::runOnFunction() {
+void LegalizeTF::runOnOperation() {
   llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None;
   if (use_tf2xla_fallback_) {
     tf2xla_fallback_device_type = device_type_;
   }
-  if (failed(legalizeTF(getFunction(), allow_partial_conversion_,
+  if (failed(legalizeTF(getOperation(), allow_partial_conversion_,
                         legalize_chlo_, tf2xla_fallback_device_type,
                         prefer_tf2xla_))) {
     signalPassFailure();

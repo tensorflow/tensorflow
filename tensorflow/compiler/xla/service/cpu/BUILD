@@ -2,6 +2,9 @@
 #    LLVM-based CPU backend for XLA.
 
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -331,6 +334,7 @@ cc_library(
 cc_library(
     name = "runtime_lightweight_check",
     hdrs = ["runtime_lightweight_check.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
 )
 
@@ -561,11 +565,11 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
+        "@llvm-project//mlir:ArithmeticUtils",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -855,7 +859,7 @@ cc_library(
     name = "runtime_single_threaded_matmul_impl",
     srcs = ["runtime_single_threaded_matmul.cc"],
     hdrs = ["runtime_single_threaded_matmul.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
     copts = runtime_copts(),
     linkstatic = 1,
     visibility = ["//visibility:private"],
@@ -868,7 +872,7 @@ cc_library(
 cc_library(
     name = "runtime_single_threaded_matmul",
     hdrs = ["runtime_single_threaded_matmul.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -881,7 +885,7 @@ cc_library(
 
 cc_library(
     name = "runtime_single_threaded_matmul_nomkl",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [

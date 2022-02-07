@@ -30,6 +30,7 @@ package_group(
         "//smartass/brain/ops/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
+        "//third_party/auroraml/...",
     ]),
 )
 
@@ -103,6 +104,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
+        "//tensorflow/compiler/mlir/hlo:reshape_simplifier",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -629,6 +631,7 @@ tf_cc_binary(
         "@llvm-project//mlir:Shape",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:print_stream_pass",
+        "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )
 

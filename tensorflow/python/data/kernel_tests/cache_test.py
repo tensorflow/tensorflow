@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
@@ -682,6 +683,23 @@ class CacheRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
         initial_state=initial_state, scan_func=scan_func).cache()
     expected = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45]
     self.verifyRandomAccess(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheInputDatasetUnknownCardinality(self):
+    dataset = dataset_ops.Dataset.range(20).filter(
+        lambda x: math_ops.equal(x % 2, 0)).cache()
+    expected = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+    self.verifyRandomAccess(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheInputDatasetInfiniteCardinality(self):
+    dataset = dataset_ops.Dataset.range(20).filter(
+        lambda x: math_ops.equal(x % 2, 0)).repeat(-1).cache()
+    expected = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 0, 2]
+    # Since the dataset has infinite cardinality, random access with caching
+    # will cache through the requested index. In this case, random access
+    # with caching will cache through index 11.
+    self.verifyRandomAccessInfiniteCardinality(dataset, expected)
 
 if __name__ == "__main__":
   test.main()

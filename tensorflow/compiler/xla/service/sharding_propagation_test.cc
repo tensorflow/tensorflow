@@ -427,6 +427,31 @@ ENTRY %broadcast {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, Broadcast1DBackwardNoChange) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %broadcast {
+  %param0 = s32[128]{0} parameter(0)
+  %constant0 = s32[] constant(0), sharding={replicated}
+  %broadcast = s32[128]{0} broadcast(%constant0), dimensions={}, sharding={replicated}
+  ROOT %compare = pred[128]{0} compare(s32[128]{0} %param0, s32[128]{0} %broadcast),
+    direction=NE, sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_FALSE(changed);
+  auto* instruction = FindInstruction(module.get(), "broadcast");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+}
+
 TEST_P(ParameterizedMetadataTestWithOutput, BroadcastForwardPartial) {
   const char* const hlo_string = R"(
 HloModule module
@@ -5585,6 +5610,29 @@ ENTRY %entry {
   auto* to_auto = FindInstruction(module.get(), "to_auto");
   ASSERT_NE(to_auto, nullptr);
   EXPECT_THAT(to_auto, op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7}"));
+}
+
+TEST_F(ShardingPropagationTest, DoNotRefineUnspecifiedDimsOnManual) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[6,3] parameter(0), sharding={manual}
+  %annotate = f32[6,3] custom-call(%param0), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[1]", sharding={manual}
+  ROOT %copy.2 = f32[6,3] copy(%annotate), sharding={manual}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  // Sharding op is changed to a copy.
+  EXPECT_TRUE(changed);
+  for (auto* hlo : module->entry_computation()->instructions()) {
+    EXPECT_TRUE(hlo->sharding().IsManual());
+  }
 }
 
 TEST_F(ShardingPropagationTest, ReshapeNoMatchSubgroupManual) {

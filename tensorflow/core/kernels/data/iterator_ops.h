@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_ITERATOR_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_ITERATOR_OPS_H_
 
+#include <utility>
+
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 namespace data {
@@ -89,9 +92,14 @@ class IteratorResource : public ResourceBase {
     ~State() { cancellation_manager_.StartCancel(); }
 
     // Downcasts the given `IteratorBase` to a `DatasetBaseIterator`, and uses
-    // it to set the `iterator` field.
-    void DowncastAndSetIterator(std::unique_ptr<IteratorBase> it) {
+    // it to set the `iterator` and the `dataset` field.
+    void DowncastAndSetIteratorAndDataset(std::unique_ptr<IteratorBase> it,
+                                          const DatasetBase* dataset) {
       iterator_.reset(static_cast<DatasetBaseIterator*>(it.release()));
+      if (dataset) {
+        dataset->Ref();
+        dataset_.reset(const_cast<DatasetBase*>(dataset));
+      }
     }
 
     std::shared_ptr<FunctionLibraryDefinition> flib_def() { return flib_def_; }
@@ -112,6 +120,8 @@ class IteratorResource : public ResourceBase {
 
     DatasetBaseIterator* iterator() { return iterator_.get(); }
 
+    DatasetBase* dataset() { return dataset_.get(); }
+
    private:
     std::shared_ptr<FunctionLibraryDefinition> flib_def_;
     FunctionLibraryRuntime* flr_ = nullptr;  // not owned
@@ -120,6 +130,7 @@ class IteratorResource : public ResourceBase {
     ResourceMgr resource_mgr_;
     CancellationManager cancellation_manager_;
     std::unique_ptr<DatasetBaseIterator> iterator_;
+    core::RefCountPtr<DatasetBase> dataset_;
   };
 
   UnboundedThreadPool unbounded_thread_pool_;

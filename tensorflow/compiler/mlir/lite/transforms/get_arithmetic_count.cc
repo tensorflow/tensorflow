@@ -35,8 +35,8 @@ namespace TFL {
 namespace {
 
 struct GetArithmeticCountPass
-    : public PassWrapper<GetArithmeticCountPass, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<GetArithmeticCountPass, OperationPass<FuncOp>> {
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -49,8 +49,8 @@ struct GetArithmeticCountPass
   }
 };
 
-void GetArithmeticCountPass::runOnFunction() {
-  auto func = getFunction();
+void GetArithmeticCountPass::runOnOperation() {
+  auto func = getOperation();
   OpBuilder builder(func);
   func->walk([&](TflArithmeticCountOpInterface arithmetic_count_op) {
     Operation* op = arithmetic_count_op.getOperation();

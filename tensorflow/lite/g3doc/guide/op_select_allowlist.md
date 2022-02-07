@@ -414,6 +414,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.RandomUniformInt`
 *   `raw_ops.Range`
 *   `raw_ops.Rank`
+*   `raw_ops.ReadFile`
 *   `raw_ops.ReadVariableOp`
 *   `raw_ops.Real`
 *   `raw_ops.RealDiv`
@@ -736,6 +737,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.VarIsInitializedOp`
 *   `raw_ops.Where`
 *   `raw_ops.WrapDatasetVariant`
+*   `raw_ops.WriteFile`
 *   `raw_ops.Xdivy`
 *   `raw_ops.Xlog1py`
 *   `raw_ops.Xlogy`

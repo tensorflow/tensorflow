@@ -841,6 +841,23 @@ struct EagerContextDeleter {
 using EagerContextPtr =
     std::unique_ptr<EagerContext, internal::EagerContextDeleter>;
 
+// Sets the EagerContext owned by the current Python eager Context (see
+// TFE_Py_SetEagerContext in python/eager/pywrap_tfe.h). This is always called
+// in tandem with TFE_Py_SetEagerContext (but not called by it, because its
+// py_context argument is opaque).
+//
+// Do not use this function in production. It is only intended for testing.
+// (see _reset_context in context.py).
+//
+// Not thread-safe.
+void SetCEagerContext(EagerContext* ctx);
+
+// Returns the EagerContext owned by the current Python eager Context (see
+// TFE_Py_SetEagerContext in pywrap_tfe.h).
+//
+// Not thread-safe.
+EagerContext* GetCEagerContext();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CONTEXT_H_

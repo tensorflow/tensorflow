@@ -44,7 +44,7 @@ namespace {
 // This transformation pass takes an operation with unknown op properties and
 // wrap it by a TFL::CustomTfOp.
 struct RaiseCustomOpsPass
-    : public PassWrapper<RaiseCustomOpsPass, FunctionPass> {
+    : public PassWrapper<RaiseCustomOpsPass, OperationPass<FuncOp>> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<TensorFlowLiteDialect>();
   }
@@ -65,15 +65,15 @@ struct RaiseCustomOpsPass
     return "Raise custom ops into tflite dialect.";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   // If this set is empty, then all the qualified ops will be wrapped.
   const absl::flat_hash_set<std::string> target_op_names;
 };
 
-void RaiseCustomOpsPass::runOnFunction() {
-  auto fn = getFunction();
+void RaiseCustomOpsPass::runOnOperation() {
+  auto fn = getOperation();
   OpBuilder builder(fn.getContext());
 
   llvm::SmallVector<Operation *, 4> custom_ops;

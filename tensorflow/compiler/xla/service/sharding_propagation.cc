@@ -726,6 +726,16 @@ bool InferShardingFromUsers(
                                   false)) {
     return false;
   }
+
+  // TODO(b/214615180): Remove this special handing after a general solution.
+  // If the replicated broadcast is 1D and the size is relative small,
+  // no need to shard it.
+  if (is_spmd && instruction->opcode() == HloOpcode::kBroadcast &&
+      instruction->has_sharding() && instruction->sharding().IsReplicated() &&
+      instruction->shape().IsArray() && instruction->shape().rank() == 1 &&
+      instruction->shape().dimensions(0) <= 128) {
+    return false;
+  }
   bool improved_sharding = false;
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   for (const HloInstruction* user : instruction->users()) {
@@ -1055,7 +1065,7 @@ bool InferUnspecifiedDimsFromOperand(HloInstruction* annotate_op,
     return false;
   }
   const HloSharding& operand_sharding = annotate_op->operand(0)->sharding();
-  if (operand_sharding.IsTileMaximal()) {
+  if (!operand_sharding.IsTiled()) {
     return false;
   }
   HloInstruction* man_conversion_op = nullptr;

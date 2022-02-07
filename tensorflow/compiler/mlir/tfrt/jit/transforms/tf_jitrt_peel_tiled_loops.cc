@@ -58,8 +58,8 @@ struct PeelTiledLoop
 struct PeelTiledLoopsPass : public PeelTiledLoopsBase<PeelTiledLoopsPass> {
   void getDependentDialects(mlir::DialectRegistry &registry) const override {}
 
-  void runOnFunction() override {
-    auto func_op = getFunction();
+  void runOnOperation() override {
+    auto func_op = getOperation();
 
     // Apply some canonicalizations before loop splitting confuses the
     // situation.
@@ -83,7 +83,7 @@ struct PeelTiledLoopsPass : public PeelTiledLoopsBase<PeelTiledLoopsPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreatePeelTiledLoopsPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreatePeelTiledLoopsPass() {
   return std::make_unique<PeelTiledLoopsPass>();
 }
 }  // namespace tensorflow

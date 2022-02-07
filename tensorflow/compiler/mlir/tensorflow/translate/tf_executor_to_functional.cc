@@ -33,7 +33,7 @@ namespace {
 struct ExecutorDialectToFunctionalConversion
     : public TF::ExecutorDialectToFunctionalPassBase<
           ExecutorDialectToFunctionalConversion> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Extracts inner ops of tf_executor.island ops in a tf_executor.graph, in the
@@ -68,8 +68,8 @@ LogicalResult LiftIslandOpInnerOpsFromGraph(tf_executor::GraphOp graph) {
   return success();
 }
 
-void ExecutorDialectToFunctionalConversion::runOnFunction() {
-  auto result = getFunction().walk([](tf_executor::GraphOp graph) {
+void ExecutorDialectToFunctionalConversion::runOnOperation() {
+  auto result = getOperation().walk([](tf_executor::GraphOp graph) {
     if (failed(LiftIslandOpInnerOpsFromGraph(graph)))
       return WalkResult::interrupt();
 

@@ -16,6 +16,8 @@ limitations under the License.
 // This file implements the lowering for trigonometric standard ops to
 // approximations.
 
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -129,7 +131,8 @@ class ApproximateTanhLowering
         loc, arith::CmpFPredicate::OLT, abs_input,
         rewriter.create<arith::ConstantOp>(
             loc, rewriter.getF32FloatAttr(kUseIdentityApprox)));
-    approx = rewriter.create<SelectOp>(loc, use_identity_approx, input, approx);
+    approx = rewriter.create<arith::SelectOp>(loc, use_identity_approx, input,
+                                              approx);
 
     // For very small/large values, use a constant approximation -1/1.
     Value too_large_input = rewriter.create<arith::CmpFOp>(
@@ -142,15 +145,15 @@ class ApproximateTanhLowering
             loc, rewriter.getF32FloatAttr(-7.90531110763549805f)));
     Value input_is_nan = rewriter.create<arith::CmpFOp>(
         loc, arith::CmpFPredicate::UNE, input, input);
-    approx = rewriter.create<SelectOp>(
+    approx = rewriter.create<arith::SelectOp>(
         loc, too_large_input,
         rewriter.create<arith::ConstantOp>(loc, rewriter.getF32FloatAttr(1.0)),
         approx);
-    approx = rewriter.create<SelectOp>(
+    approx = rewriter.create<arith::SelectOp>(
         loc, too_small_input,
         rewriter.create<arith::ConstantOp>(loc, rewriter.getF32FloatAttr(-1.0)),
         approx);
-    approx = rewriter.create<SelectOp>(loc, input_is_nan, input, approx);
+    approx = rewriter.create<arith::SelectOp>(loc, input_is_nan, input, approx);
 
     return approx;
   }
@@ -163,7 +166,10 @@ struct LegalizeTrigonometricToApproximationPass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 

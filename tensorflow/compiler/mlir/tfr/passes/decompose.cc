@@ -95,7 +95,7 @@ Attribute Quantize(float value, Attribute scale_attr, Attribute zp_attr,
 
 // Decompose the TF ops with the registered composition library.
 class DecomposeTFOpsPass
-    : public PassWrapper<DecomposeTFOpsPass, FunctionPass> {
+    : public PassWrapper<DecomposeTFOpsPass, OperationPass<FuncOp>> {
  public:
   explicit DecomposeTFOpsPass(llvm::Optional<ModuleOp> external_tfr_module)
       : external_tfr_module_(external_tfr_module) {}
@@ -106,7 +106,7 @@ class DecomposeTFOpsPass
     return "Decompose TF ops with the registered composition library.";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   // Apply canonicalization, mainly constant folding, on the function.
@@ -126,7 +126,7 @@ class DecomposeTFOpsPass
 #include "tensorflow/compiler/mlir/tfr/passes/generated_decompose.inc"
 
 void DecomposeTFOpsPass::ApplyCanonicalization() {
-  FuncOp func = getFunction();
+  FuncOp func = getOperation();
   RewritePatternSet patterns(&getContext());
 
   populateWithGenerated(patterns);
@@ -136,7 +136,7 @@ void DecomposeTFOpsPass::ApplyCanonicalization() {
 }
 
 LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
-  FuncOp func = getFunction();
+  FuncOp func = getOperation();
   SymbolTable table(external_tfr_module_.hasValue()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
@@ -278,7 +278,7 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
 LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   // The Inliner will automatically use the registered dialect inliner.
   InlinerInterface inliner(&getContext());
-  FuncOp func = getFunction();
+  FuncOp func = getOperation();
   SymbolTable table(external_tfr_module_.hasValue()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
@@ -328,7 +328,7 @@ LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   return success(changed);
 }
 
-void DecomposeTFOpsPass::runOnFunction() {
+void DecomposeTFOpsPass::runOnOperation() {
   // Set a maximum iteration threshold in case there are infinite loops in the
   // call stack.
   int max_iterators = 10;

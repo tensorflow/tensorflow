@@ -38,11 +38,11 @@ namespace {
 class MaterializePassthroughOpPass
     : public TF::MaterializePassthroughOpBase<MaterializePassthroughOpPass> {
  public:
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void MaterializePassthroughOpPass::runOnFunction() {
-  getFunction().walk([](Operation *op) {
+void MaterializePassthroughOpPass::runOnOperation() {
+  getOperation().walk([](Operation *op) {
     auto passthrough_op = dyn_cast<TF::MlirPassthroughOp>(op);
     if (!passthrough_op) return;
     std::string module_string(passthrough_op.mlir_module());

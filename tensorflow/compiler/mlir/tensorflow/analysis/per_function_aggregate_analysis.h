@@ -52,9 +52,9 @@ class PerFunctionAggregateAnalysis {
 
 // Base CRTP class to help write passes that are consumes a per-function
 // aggregate analysis and operate on all non-extern functions (similar to a
-// FunctionPass, but with no concurrency between functions). The derived classes
-// need to provide a runOnFunction() method that accepts the function and the
-// analysis information for that function.
+// OperationPass<FuncOp>, but with no concurrency between functions). The
+// derived classes need to provide a runOnFunction() method that accepts the
+// function and the analysis information for that function.
 template <typename DerivedT, typename AnalysisT>
 class PerFunctionAggregateAnalysisConsumerPass
     : public PassWrapper<

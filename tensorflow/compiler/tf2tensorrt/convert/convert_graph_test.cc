@@ -68,7 +68,7 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   ConversionParams params;
   EngineInfo engine_info;
   {
-    // params.cluster is not set, and no gpu device is available.
+    // cluster is not set, and no gpu device is available.
     auto result = GetDeviceAndAllocator(params, engine_info);
     EXPECT_EQ(-1, result.first);
     EXPECT_EQ(nullptr, result.second);
@@ -85,7 +85,7 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   std::unique_ptr<Session> session(NewSession(options));
 
   {
-    // params.cluster is not set, should find and return first gpu id and
+    // cluster is not set, should find and return first gpu id and
     // corresponding allocator.
     auto result = GetDeviceAndAllocator(params, engine_info);
     EXPECT_EQ(0, result.first);
@@ -94,11 +94,10 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   }
 
   FakeCluster cluster;
-  params.cluster = &cluster;
   {
     // params.cluster->GetDeviceSet() returns null, should find and return first
     // gpu id and corresponding allocator.
-    auto result = GetDeviceAndAllocator(params, engine_info);
+    auto result = GetDeviceAndAllocator(params, engine_info, &cluster);
     EXPECT_EQ(0, result.first);
     EXPECT_NE(nullptr, result.second);
     EXPECT_EQ("GPU_0_bfc", result.second->Name());
@@ -115,7 +114,7 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   {
     // engine_info.device is not set, should find and return first gpu id and
     // corresponding allocator.
-    auto result = GetDeviceAndAllocator(params, engine_info);
+    auto result = GetDeviceAndAllocator(params, engine_info, &cluster);
     EXPECT_EQ(0, result.first);
     EXPECT_NE(nullptr, result.second);
     EXPECT_EQ("GPU_0_bfc", result.second->Name());
@@ -124,7 +123,7 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   engine_info.device = "/GPU:1";
   {
     // Set to use second device.
-    auto result = GetDeviceAndAllocator(params, engine_info);
+    auto result = GetDeviceAndAllocator(params, engine_info, &cluster);
     EXPECT_EQ(0, result.first);
     EXPECT_NE(nullptr, result.second);
     EXPECT_EQ("GPU_1_bfc", result.second->Name());
@@ -133,7 +132,7 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   engine_info.device = "/GPU:3";
   {
     // Set to use nonexistent device.
-    auto result = GetDeviceAndAllocator(params, engine_info);
+    auto result = GetDeviceAndAllocator(params, engine_info, &cluster);
     EXPECT_EQ(-1, result.first);
     EXPECT_EQ(nullptr, result.second);
   }
@@ -161,7 +160,7 @@ class ConvertAfterShapesTest : public ::testing::Test {
     params.use_calibration = false;
     params.trt_logger_name = "DefaultLogger";
 
-    return ConvertAfterShapes(params);
+    return ConvertAfterShapes(params, nullptr);
   }
 };
 

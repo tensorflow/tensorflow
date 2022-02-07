@@ -30,7 +30,7 @@ namespace {
 // TPUCompileSucceededAssertOp.
 class FuseTpuCompileAndExecutePass
     : public mlir::PassWrapper<FuseTpuCompileAndExecutePass,
-                               mlir::FunctionPass> {
+                               mlir::OperationPass<mlir::FuncOp>> {
  public:
   llvm::StringRef getArgument() const final {
     return "tfrt-fuse-tpu-compile-and-execute-ops";
@@ -39,8 +39,8 @@ class FuseTpuCompileAndExecutePass
     return "Fuse TPU Ops according to TFRT's requirements.";
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
 
     // remove TPUCompileSucceededAssertOp
     func.walk([&](mlir::Operation *op) {

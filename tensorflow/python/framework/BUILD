@@ -29,6 +29,7 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additiona
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
 
 visibility = [
+    # copybara:uncomment "//third_party/auroraml:__subpackages__",
     "//tensorflow:__subpackages__",
     "//learning/brain/tfrt:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
@@ -1310,6 +1311,7 @@ py_library(
     srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow_estimator/python/estimator:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":_test_metrics_util",

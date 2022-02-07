@@ -67,7 +67,7 @@ absl::Status LinearStorage::GetGPUResources(
   resources->ints.push_back({"length", depth_});
 
   if (storage_type_ == LinearStorageType::BUFFER) {
-    resources->buffers.push_back({"buffer", buffer_});
+    resources->buffers.push_back({"buffer", {buffer_, 0}});
   } else {
     resources->images2d.push_back({"tex2d", texture_});
   }

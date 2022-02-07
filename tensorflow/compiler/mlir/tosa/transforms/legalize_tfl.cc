@@ -61,7 +61,7 @@ class LegalizeTFL : public TosaLegalizeTFLPassBase<LegalizeTFL> {
     this->disabled_patterns_ = disabled_patterns;
     this->enabled_patterns_ = enabled_patterns;
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
   LogicalResult initialize(MLIRContext* context) override;
 
  private:
@@ -3220,8 +3220,8 @@ LogicalResult LegalizeTFL::initialize(MLIRContext* context) {
   return success();
 }
 
-void LegalizeTFL::runOnFunction() {
-  if (ApplyPatternsWithShapeResolution(getFunction(), this->frozen_patterns_)
+void LegalizeTFL::runOnOperation() {
+  if (ApplyPatternsWithShapeResolution(getOperation(), this->frozen_patterns_)
           .failed()) {
     signalPassFailure();
   }

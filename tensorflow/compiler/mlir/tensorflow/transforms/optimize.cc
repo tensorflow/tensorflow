@@ -141,8 +141,8 @@ struct TensorFlowOptimizePass
     return success();
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, patterns)))
       signalPassFailure();
   }

@@ -28,25 +28,25 @@ constexpr char kShapeInvariantAttr[] = "shape_invariant";
 
 class DropWhileShapeInvariantPass
     : public DropWhileShapeInvariantPassBase<DropWhileShapeInvariantPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 class DropWhileShapeInvariantInDeviceClusterPass
     : public DropWhileShapeInvariantInDeviceClusterPassBase<
           DropWhileShapeInvariantInDeviceClusterPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 void DropWhileShapeInvariantAttr(Operation* op) {
   if (llvm::isa<WhileOp, WhileRegionOp>(op))
     op->removeAttr(kShapeInvariantAttr);
 }
-void DropWhileShapeInvariantPass::runOnFunction() {
-  getFunction().walk([](Operation* op) { DropWhileShapeInvariantAttr(op); });
+void DropWhileShapeInvariantPass::runOnOperation() {
+  getOperation().walk([](Operation* op) { DropWhileShapeInvariantAttr(op); });
 }
 
-void DropWhileShapeInvariantInDeviceClusterPass::runOnFunction() {
-  getFunction().walk([](tf_device::ClusterOp cluster) {
+void DropWhileShapeInvariantInDeviceClusterPass::runOnOperation() {
+  getOperation().walk([](tf_device::ClusterOp cluster) {
     cluster.walk([](Operation* op) { DropWhileShapeInvariantAttr(op); });
   });
 }

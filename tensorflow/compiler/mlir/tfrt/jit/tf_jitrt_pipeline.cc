@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -117,6 +118,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
     pm.addPass(CreateJitRtLegalizeI1TypesPass());
   }
 
+  // Remove redundant shape operations left after legalizing to HLO.
+  pm.addPass(mlir::createCSEPass());
+
   // Resolve all shape constraints (e.g. broadcast constraints that can be
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.
@@ -140,6 +144,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // them through equivalent 1D or 2D reductions, if possible.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
 
+  // Also, try to simplify reshape operations.
+  pm.addNestedPass<FuncOp>(mlir::createReshapeSimplifierPass());
+
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addNestedPass<FuncOp>(
@@ -159,6 +166,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Lower index cast on tensors to tensor.generate.
   pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Add linalg passes to perform fusion, tiling, peeling and vectorization.
@@ -177,8 +185,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // of bufferizing to memref dialect) we can remove the remaining references
   // to unsigned types.
   pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
-  // Always run canonicalizer (which does dead code removal) before bufferizing
-  // anything.
+  // Always run CSE and canonicalizer (which does dead code removal) before
+  // bufferizing anything.
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.

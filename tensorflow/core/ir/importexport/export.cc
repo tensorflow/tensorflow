@@ -332,39 +332,52 @@ Status BuildFunctionSignature(GraphFuncOp func_op, FunctionDef &fdef) {
   if (func_op->getAttr("is_stateful")) signature->set_is_stateful(true);
   if (auto description = func_op->getAttrOfType<StringAttr>("description"))
     signature->set_description(description.getValue().str());
+
   // Handle the results now.
   // An ArgDef entry needs to be constructed for all non-control returned value.
-  auto return_op = cast<tfg::ReturnOp>(func_op.getBody()->getTerminator());
-  ArrayAttr results_attr = func_op.getAllResultAttrs();
-  auto control_ty = tfg::ControlType::get(func_op.getContext());
-  std::string ret_name;
-  for (auto indexed_result : llvm::enumerate(return_op->getOperands())) {
-    int res_num = indexed_result.index();
-    Value ret_val = indexed_result.value();
-    if (ret_val.getType() == control_ty) {
-      auto name = return_op->getAttrOfType<StringAttr>(
-          absl::StrCat("tfg.control_ret_name_", res_num));
-      if (!name)
-        return InvalidArgument("Can't export function ", func_name,
-                               " because missing \"tfg.control_ret_name_\" "
-                               "attribute for control result #",
-                               res_num);
-      signature->add_control_output(name.getValue().str());
-    } else {
-      auto res_attrs = results_attr[res_num].dyn_cast<DictionaryAttr>();
-      auto name = res_attrs.getAs<StringAttr>("tfg.name");
-      if (!name)
-        return InvalidArgument(
-            "Can't export function ", func_name,
-            " because missing \"tfg.name\" attribute for result #", res_num);
-      OpDef::ArgDef *arg = signature->add_output_arg();
-      arg->set_name(name.getValue().str());
-      StringAttr description = res_attrs.getAs<StringAttr>("tfg.description");
-      if (description) arg->set_description(description.getValue().str());
-      TF_RETURN_IF_ERROR(ConvertHandleData(
-          res_attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
-    }
+  auto return_op = cast<ReturnOp>(func_op.getBody()->getTerminator());
+  if (!return_op.control_ret_attrs()) {
+    return InvalidArgument(
+        "Can't export function ", func_name,
+        " because return op is missing \"control_ret_attrs\"");
   }
+  StringAttr tfg_name_key =
+      cast<TFGraphDialect>(func_op->getDialect())->getTfgNameAttrIdentifier();
+
+  // Export the data operands.
+  for (auto it :
+       llvm::zip(llvm::enumerate(TFOp(return_op).getNonControlOperands()),
+                 func_op.getAllResultAttrs().getAsRange<DictionaryAttr>())) {
+    DictionaryAttr attrs = std::get<1>(it);
+    auto name = attrs.getAs<StringAttr>(tfg_name_key);
+    if (!name) {
+      return InvalidArgument(
+          "Can't export function ", func_name,
+          " because missing \"tfg.name\" attribute for result #",
+          std::get<0>(it).index());
+    }
+    OpDef::ArgDef *arg = signature->add_output_arg();
+    arg->set_name(name.getValue().str());
+    StringAttr description = attrs.getAs<StringAttr>("tfg.description");
+    if (description) arg->set_description(description.getValue().str());
+    TF_RETURN_IF_ERROR(
+        ConvertHandleData(attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
+  }
+
+  // Export the control operands.
+  for (auto it : llvm::zip(
+           llvm::enumerate(TFOp(return_op).getControlOperands()),
+           return_op.control_ret_attrsAttr().getAsRange<DictionaryAttr>())) {
+    auto name = std::get<1>(it).getAs<StringAttr>(tfg_name_key);
+    if (!name) {
+      return InvalidArgument(
+          "Can't export function ", func_name,
+          " because missing \"tfg.name\" attribute for control result #",
+          std::get<0>(it).index());
+    }
+    signature->add_control_output(name.getValue().str());
+  }
+
   return Status::OK();
 }
 
@@ -481,26 +494,29 @@ Status ExportFunction(GraphFuncOp func_op,
           return GetValueName(operand, output_name, control_ty);
         }));
 
-  auto return_op = cast<tfg::ReturnOp>(func_op.getBody()->getTerminator());
+  auto return_op = cast<ReturnOp>(func_op.getBody()->getTerminator());
+  if (!return_op.control_ret_attrs()) {
+    return InvalidArgument(
+        "Can't export function ", func_name,
+        " because return op is missing \"control_ret_attrs\"");
+  }
   ArrayAttr results_attr = func_op.getAllResultAttrs();
-  for (auto indexed_result : llvm::enumerate(return_op->getOperands())) {
-    int res_num = indexed_result.index();
-    Value ret_val = indexed_result.value();
-    if (ret_val.getType() == control_ty) continue;
-    auto res_attrs = results_attr[res_num].dyn_cast<DictionaryAttr>();
-    if (!res_attrs)
-      return InvalidArgument("Can't export function ", func_name,
-                             " because missing attributes for result #",
-                             res_num);
-    auto name = res_attrs.getAs<StringAttr>("tfg.name");
-    if (!name)
+  StringAttr tfg_name_key =
+      cast<TFGraphDialect>(func_op->getDialect())->getTfgNameAttrIdentifier();
+
+  for (auto it :
+       llvm::zip(llvm::enumerate(TFOp(return_op).getNonControlOperands()),
+                 results_attr.getAsRange<DictionaryAttr>())) {
+    unsigned res_num = std::get<0>(it).index();
+    auto name = std::get<1>(it).getAs<StringAttr>(tfg_name_key);
+    if (!name) {
       return InvalidArgument(
           "Can't export function ", func_name,
           " because missing \"tfg.name\" attribute for result #", res_num);
-
+    }
     NodeDef *node_def = graph_def.add_node();
-    TF_RETURN_IF_ERROR(GetReturnNode(func_op, ret_val, res_num, name.getValue(),
-                                     node_def, control_ty));
+    TF_RETURN_IF_ERROR(GetReturnNode(func_op, std::get<0>(it).value(), res_num,
+                                     name.getValue(), node_def, control_ty));
   }
 
   tensorflow::GraphConstructorOptions options;
@@ -538,44 +554,50 @@ Status ExportFunction(GraphFuncOp func_op,
   // An ArgDef entry needs to be constructed for all non-control returned value,
   // and a mapping from the output name to the signature is also recorded in the
   // FunctionDef.
-  std::string ret_name;
-  for (auto indexed_result : llvm::enumerate(return_op->getOperands())) {
-    int res_num = indexed_result.index();
-    Value ret_val = indexed_result.value();
-    if (ret_val.getType() == control_ty) {
-      auto name = return_op->getAttrOfType<StringAttr>(
-          absl::StrCat("tfg.control_ret_name_", res_num));
-      if (!name)
-        return InvalidArgument("Can't export function ", func_name,
-                               " because missing \"tfg.control_ret_name_\" "
-                               "attribute for control result #",
-                               res_num);
-      // When we return a control dependency, it is not really a returned value
-      // but it is added to the `control_ret` field of the FunctionDef.
-      TF_RETURN_IF_ERROR(GetValueName(ret_val, ret_name, control_ty));
-      func_def.mutable_control_ret()->insert(
-          {name.getValue().str(), StringRef(ret_name).drop_front().str()});
-      signature->add_control_output(name.getValue().str());
-    } else {
-      auto res_attrs = results_attr[res_num].dyn_cast<DictionaryAttr>();
-      auto name = res_attrs.getAs<StringAttr>("tfg.name");
-      if (!name)
-        return InvalidArgument(
-            "Can't export function ", func_name,
-            " because missing \"tfg.name\" attribute for result #", res_num);
-      OpDef::ArgDef *arg = signature->mutable_output_arg(res_num);
-      auto it = func_def.mutable_ret()->find(arg->name());
-      if (it == func_def.mutable_ret()->end())
-        return tensorflow::errors::Internal(
-            "Mismatch in name mapping for returned value");
-      func_def.mutable_ret()->insert({name.getValue().str(), it->second});
-      func_def.mutable_ret()->erase(it);
-      arg->set_name(name.getValue().str());
-      StringAttr description = res_attrs.getAs<StringAttr>("tfg.description");
-      if (description) arg->set_description(description.getValue().str());
-      TF_RETURN_IF_ERROR(ConvertHandleData(
-          res_attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
+  for (auto it :
+       llvm::zip(llvm::enumerate(TFOp(return_op).getNonControlOperands()),
+                 results_attr.getAsRange<DictionaryAttr>())) {
+    unsigned res_num = std::get<0>(it).index();
+    DictionaryAttr attrs = std::get<1>(it);
+    auto name = std::get<1>(it).getAs<StringAttr>(tfg_name_key);
+    if (!name) {
+      return InvalidArgument(
+          "Can't export function ", func_name,
+          " because missing \"tfg.name\" attribute for result #", res_num);
     }
+    OpDef::ArgDef *arg = signature->mutable_output_arg(res_num);
+    auto ret_it = func_def.mutable_ret()->find(arg->name());
+    if (ret_it == func_def.mutable_ret()->end()) {
+      return tensorflow::errors::Internal(
+          "Mismatch in name mapping for returned value");
+    }
+    func_def.mutable_ret()->insert({name.getValue().str(), ret_it->second});
+    func_def.mutable_ret()->erase(ret_it);
+    arg->set_name(name.getValue().str());
+    StringAttr description = attrs.getAs<StringAttr>("tfg.description");
+    if (description) arg->set_description(description.getValue().str());
+    TF_RETURN_IF_ERROR(
+        ConvertHandleData(attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
+  }
+
+  std::string ret_name;
+  for (auto it : llvm::zip(
+           llvm::enumerate(TFOp(return_op).getControlOperands()),
+           return_op.control_ret_attrsAttr().getAsRange<DictionaryAttr>())) {
+    auto name = std::get<1>(it).getAs<StringAttr>(tfg_name_key);
+    if (!name) {
+      return InvalidArgument("Can't export function ", func_name,
+                             " because missing \"tfg.name\" "
+                             "attribute for control result #",
+                             std::get<0>(it).index());
+    }
+    // When we return a control dependency, it is not really a returned value
+    // but it is added to the `control_ret` field of the FunctionDef.
+    TF_RETURN_IF_ERROR(
+        GetValueName(std::get<0>(it).value(), ret_name, control_ty));
+    func_def.mutable_control_ret()->insert(
+        {name.getValue().str(), ret_name.substr(1)});
+    signature->add_control_output(name.getValue().str());
   }
 
   // Handled the `resource_arg_unique_id` entries. At the moment it is

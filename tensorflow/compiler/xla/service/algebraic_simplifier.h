@@ -411,15 +411,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // tests shape compatibility (ShapeUtil::Compatible).
   bool SameShape(const HloInstruction* lhs, const HloInstruction* rhs) const;
 
-  // Returns whether it was possible to transform `root` to a clamp instruction.
-  // With min a minimum instruction, max a maximum instruction, min_operand a
-  // operand of min and max_operand a operand of max.
-  // Precondition: root is either a minimum or a maximum.
-  bool TransformToClampIfSameShape(HloInstruction* root, HloInstruction* min,
-                                   HloInstruction* min_operand,
-                                   HloInstruction* operand, HloInstruction* max,
-                                   HloInstruction* max_operand);
-
   // A Broadcast that feeds an element-wise operation with a unique non-scalar
   // operand can sink to after the operation.
   StatusOr<bool> TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(

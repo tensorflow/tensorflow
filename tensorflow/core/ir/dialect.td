@@ -82,6 +82,9 @@ def TFGraphDialect : Dialect {
       return "_mlir_assigned_device";
     }
 
+    StringAttr getTfgNameAttrIdentifier() const { return tfg_name_key_; }
+    static constexpr StringRef getTfgNameAttrKey() { return "tfg.name"; }
+
     // Cached accessor for the control type.
     ControlType getControlType() const { return control_ty_; }
 
@@ -108,6 +111,7 @@ def TFGraphDialect : Dialect {
     StringAttr name_key_;
     StringAttr device_key_;
     StringAttr assigned_device_key_;
+    StringAttr tfg_name_key_;
     ControlType control_ty_;
   }];
 
@@ -122,7 +126,7 @@ def TFGraphDialect : Dialect {
 include "tensorflow/core/ir/types/types.td"
 
 // Base class for the operations in this dialect.
-class TFGraph_Op<string mnemonic, list<OpTrait> traits = []> :
+class TFGraph_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFGraphDialect, mnemonic, traits>;
 
 #endif // TFG_DIALECT

@@ -25,12 +25,16 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/clusters/single_machine.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -42,10 +46,25 @@ namespace tensorflow {
 namespace tensorrt {
 namespace {
 
+// Creates and provisions a new cluster. The caller must call Shutdown before
+// the cluster is destroyed.
+Status NewCluster(grappler::Cluster** cluster) {
+  int num_cpu_cores = grappler::GetNumAvailableLogicalCPUCores();
+  int num_gpus = grappler::GetNumAvailableGPUs();
+  int timeout_s = 60 * 10;
+  *cluster = new grappler::SingleMachine(timeout_s, num_cpu_cores, num_gpus);
+  (*cluster)->DisableDetailedStats(true);
+  (*cluster)->AllowSoftPlacement(true);
+  (*cluster)->SetNumWarmupSteps(10);
+  TF_RETURN_IF_ERROR((*cluster)->Provision());
+  return Status::OK();
+}
+
 Status RunGrappler(const MetaGraphDef& meta_graph_def,
                    const std::vector<std::string>& input_names,
                    const std::vector<std::string>& output_names,
-                   const ConfigProto& config_proto, GraphDef* out_graph_def) {
+                   const ConfigProto& config_proto, grappler::Cluster* cluster,
+                   GraphDef* out_graph_def) {
   grappler::ItemConfig item_config;
 
   for (const string& name : input_names) {
@@ -63,8 +82,9 @@ Status RunGrappler(const MetaGraphDef& meta_graph_def,
         "Failed to create grappler item from MetaGraphDef.");
   }
 
+  tensorflow::DeviceBase* cpu_device = nullptr;
   TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
-      std::move(*item), config_proto, nullptr, nullptr, out_graph_def));
+      std::move(*item), config_proto, cpu_device, cluster, out_graph_def));
   VLOG(2) << "Grappler finished\n";
   return Status::OK();
 }
@@ -141,10 +161,16 @@ Status RunTfTrt(const MetaGraphDef& meta_graph_def,
       rewriter_config);
 
   VLOG(4) << "Setting up Grappler parameters\n" << config_proto.DebugString();
-
+  std::unique_ptr<grappler::Cluster> cluster;
+  grappler::Cluster* p_cluster;
+  mutex mu_cluster;  // There can be only one provisioned cluster per process.
+  mutex_lock lock(mu_cluster);
+  TF_RETURN_IF_ERROR(NewCluster(&p_cluster));
+  cluster.reset(p_cluster);
   TF_RETURN_IF_ERROR(RunGrappler(meta_graph_def, input_names, output_names,
-                                 config_proto, segmented_graph_def));
-
+                                 config_proto, cluster.get(),
+                                 segmented_graph_def));
+  TF_RETURN_IF_ERROR(cluster->Shutdown());
   return Status::OK();
 }
 

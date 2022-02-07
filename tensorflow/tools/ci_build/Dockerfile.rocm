@@ -96,7 +96,11 @@ RUN bash -c 'echo -e "gfx900\ngfx906\ngfx908\ngfx90a\ngfx1030" >> ${ROCM_PATH}/b
 # Filed https://github.com/bazelbuild/bazel/issues/11163 for tracking this
 RUN touch ${ROCM_PATH}/.info/version
 
+<<<<<<< HEAD
 ENV PATH="/root/bin:/root/.local/bin:$PATH"
+=======
+ENV PATH="/root//bin:/root/.local/bin:$PATH"
+>>>>>>> upstream/master
 # Copy and run the install scripts.
 COPY install/*.sh /install/
 COPY release/common.sh /install/common.sh

@@ -158,6 +158,26 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_metal_simd",
+    srcs = ["conv_metal_simd.cc"],
+    hdrs = ["conv_metal_simd.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:util",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "conv_powervr",
     srcs = ["conv_powervr.cc"],
     hdrs = ["conv_powervr.h"],

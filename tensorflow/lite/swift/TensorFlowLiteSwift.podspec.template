@@ -21,6 +21,10 @@ Pod::Spec.new do |s|
   tfl_dir = 'tensorflow/lite/'
   swift_dir = tfl_dir + 'swift/'
 
+  s.pod_target_xcconfig = {
+    'VALID_ARCHS' => 'x86_64 armv7 arm64',
+  }
+
   s.default_subspec = 'Core'
 
   s.subspec 'Core' do |core|

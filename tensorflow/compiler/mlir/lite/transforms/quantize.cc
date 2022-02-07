@@ -261,7 +261,7 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
 };
 
 // Applies quantization on the model in TFL dialect.
-struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
+struct QuantizePass : public PassWrapper<QuantizePass, OperationPass<FuncOp>> {
  public:
   // Constructor used by the PassRegistration and only used by test.
   explicit QuantizePass() {
@@ -294,7 +294,7 @@ struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
     return "Apply quantization on models in TensorFlow Lite dialect";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   QuantizationSpecs quant_specs;
@@ -302,9 +302,9 @@ struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
 
-void QuantizePass::runOnFunction() {
+void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
+  auto func = getOperation();
   auto* ctx = func.getContext();
 
   const quant::QuantPassSpec quant_params = {

@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/AffineExpr.h"
@@ -888,31 +887,6 @@ class HloDynamicBroadcastInDimConverter
           nested_builder.create<linalg::YieldOp>(loc, *args.begin());
         },
         PruneAttributeList(op));
-    return success();
-  }
-};
-
-// Extract dimension from the tensor, converts to an i32, and pack in a tensor.
-class GetDimSizeConverter
-    : public OpConversionPattern<mhlo::GetDimensionSizeOp> {
- public:
-  using OpConversionPattern<mhlo::GetDimensionSizeOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      mhlo::GetDimensionSizeOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    Location loc = op.getLoc();
-    auto result_ty = op.getType();
-    auto element_ty = getElementTypeOrSelf(result_ty);
-    auto dim_attr = rewriter.getIndexAttr(op.dimension());
-    auto dim_const = rewriter.create<arith::ConstantOp>(loc, dim_attr);
-
-    Value dim_op = rewriter.create<tensor::DimOp>(loc, rewriter.getIndexType(),
-                                                  op.operand(), dim_const);
-
-    // Cast to the correct element type and convert to a tensor.
-    Value cast = rewriter.create<arith::IndexCastOp>(loc, element_ty, dim_op);
-    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, result_ty, cast);
     return success();
   }
 };
@@ -1844,9 +1818,9 @@ static Value applyPad(Location loc, Value input, ArrayRef<int64_t> pad,
 
   Value padValue = rewriter.create<arith::ConstantOp>(loc, padAttr);
 
-  return tensor::createPadScalarOp(
-      RankedTensorType::get(paddedShape, inputETy), input, padValue, lowIndices,
-      highIndices, /*nofold=*/false, loc, rewriter);
+  return tensor::createPadScalarOp(RankedTensorType::get(paddedShape, inputETy),
+                                   input, padValue, lowIndices, highIndices,
+                                   /*nofold=*/false, loc, rewriter);
 }
 
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
@@ -2823,8 +2797,8 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
               loc, b.getI1Type(), arith::CmpIPredicate::eq, cmp_idx, idx);
           // Use the output arg, so some update values won't be init value
           // again.
-          Value res = b.create<SelectOp>(loc, args[2].getType(), pred, args[2],
-                                         args[3]);
+          Value res = b.create<arith::SelectOp>(loc, args[2].getType(), pred,
+                                                args[2], args[3]);
           b.create<linalg::YieldOp>(loc, res);
         },
         PruneAttributeList(op));
@@ -2847,8 +2821,8 @@ struct HloLegalizeToLinalgPass
     ConversionTarget target(ctx);
     target.addLegalDialect<arith::ArithmeticDialect, complex::ComplexDialect,
                            linalg::LinalgDialect, math::MathDialect,
-                           StandardOpsDialect, tensor::TensorDialect,
-                           scf::SCFDialect, shape::ShapeDialect>();
+                           tensor::TensorDialect, scf::SCFDialect,
+                           shape::ShapeDialect>();
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 
@@ -2925,7 +2899,6 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       SliceConverter,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
-      GetDimSizeConverter,
       TransposeConverter<mhlo::TransposeOp>,
       DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
       DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,

@@ -81,7 +81,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   if (!module) {
     return diagnostic_handler.ConsumeStatus();
   }
-  if (failed(module->verify())) {
+  if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
     return diagnostic_handler.ConsumeStatus();

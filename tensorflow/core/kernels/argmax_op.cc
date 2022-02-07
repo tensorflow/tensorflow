@@ -151,7 +151,13 @@ class ArgMinOp
                               .TypeConstraint<type>("T")              \
                               .TypeConstraint<int32>("output_type")   \
                               .HostMemory("dimension"),               \
-                          ArgMinOp<CPUDevice, type, int32>);
+                          ArgMinOp<CPUDevice, type, int32>);          \
+  REGISTER_KERNEL_BUILDER(Name("ArgMax")                              \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T")              \
+                              .TypeConstraint<int16>("output_type")   \
+                              .HostMemory("dimension"),               \
+                          ArgMaxOp<CPUDevice, type, int16>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_ARGMAX);
 TF_CALL_bool(REGISTER_ARGMAX);
