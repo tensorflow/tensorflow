@@ -38963,10 +38963,10 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 // inverse of the `tf.gather_nd` operator which extracts values or slices from a
 // given tensor.
 //
-// This operation is similar to `tf.tensor_scatter_add`, except that the tensor is
-// zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+// This operation is similar to `tf.tensor_scatter_nd_add`, except that the tensor
+// is zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
 // is identical to calling
-// `tf.tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`.
+// `tf.tensor_scatter_nd_add(tf.zeros(shape, values.dtype), indices, values)`
 //
 // If `indices` contains duplicates, the duplicate `values` are accumulated
 // (summed).
