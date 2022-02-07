@@ -606,15 +606,15 @@ struct TypeDescriptor<bfloat16> {
 };
 
 template <>
-struct TypeDescriptor<uint8> {
-  typedef uint8 T;
-  static int Dtype() { return NPY_UINT8; }
+struct TypeDescriptor<unsigned char> {
+  typedef unsigned char T;
+  static int Dtype() { return NPY_UBYTE; }
 };
 
 template <>
-struct TypeDescriptor<uint16> {
-  typedef uint16 T;
-  static int Dtype() { return NPY_UINT16; }
+struct TypeDescriptor<unsigned short> {  // NOLINT
+  typedef unsigned short T;              // NOLINT
+  static int Dtype() { return NPY_USHORT; }
 };
 
 // We register "int", "long", and "long long" types for portability across
@@ -639,15 +639,15 @@ struct TypeDescriptor<unsigned long long> {  // NOLINT
 };
 
 template <>
-struct TypeDescriptor<int8> {
-  typedef int8 T;
-  static int Dtype() { return NPY_INT8; }
+struct TypeDescriptor<signed char> {
+  typedef signed char T;
+  static int Dtype() { return NPY_BYTE; }
 };
 
 template <>
-struct TypeDescriptor<int16> {
-  typedef int16 T;
-  static int Dtype() { return NPY_INT16; }
+struct TypeDescriptor<short> {  // NOLINT
+  typedef short T;              // NOLINT
+  static int Dtype() { return NPY_SHORT; }
 };
 
 template <>
@@ -670,7 +670,7 @@ struct TypeDescriptor<long long> {  // NOLINT
 
 template <>
 struct TypeDescriptor<bool> {
-  typedef int8 T;
+  typedef unsigned char T;
   static int Dtype() { return NPY_BOOL; }
 };
 
@@ -701,13 +701,13 @@ struct TypeDescriptor<long double> {
 template <>
 struct TypeDescriptor<std::complex<float>> {
   typedef std::complex<float> T;
-  static int Dtype() { return NPY_COMPLEX64; }
+  static int Dtype() { return NPY_CFLOAT; }
 };
 
 template <>
 struct TypeDescriptor<std::complex<double>> {
   typedef std::complex<double> T;
-  static int Dtype() { return NPY_COMPLEX128; }
+  static int Dtype() { return NPY_CDOUBLE; }
 };
 
 template <>
@@ -1428,10 +1428,10 @@ bool Initialize() {
   if (!RegisterBfloat16Cast<bool>(NPY_BOOL)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<uint8>(NPY_UINT8)) {
+  if (!RegisterBfloat16Cast<unsigned char>(NPY_UBYTE)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<uint16>(NPY_UINT16)) {
+  if (!RegisterBfloat16Cast<unsigned short>(NPY_USHORT)) {  // NOLINT
     return false;
   }
   if (!RegisterBfloat16Cast<unsigned int>(NPY_UINT)) {
@@ -1443,13 +1443,10 @@ bool Initialize() {
   if (!RegisterBfloat16Cast<unsigned long long>(NPY_ULONGLONG)) {  // NOLINT
     return false;
   }
-  if (!RegisterBfloat16Cast<uint64>(NPY_UINT64)) {
+  if (!RegisterBfloat16Cast<signed char>(NPY_BYTE)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<int8>(NPY_INT8)) {
-    return false;
-  }
-  if (!RegisterBfloat16Cast<int16>(NPY_INT16)) {
+  if (!RegisterBfloat16Cast<short>(NPY_SHORT)) {  // NOLINT
     return false;
   }
   if (!RegisterBfloat16Cast<int>(NPY_INT)) {
@@ -1463,10 +1460,10 @@ bool Initialize() {
   }
   // Following the numpy convention. imag part is dropped when converting to
   // float.
-  if (!RegisterBfloat16Cast<std::complex<float>>(NPY_COMPLEX64)) {
+  if (!RegisterBfloat16Cast<std::complex<float>>(NPY_CFLOAT)) {
     return false;
   }
-  if (!RegisterBfloat16Cast<std::complex<double>>(NPY_COMPLEX128)) {
+  if (!RegisterBfloat16Cast<std::complex<double>>(NPY_CDOUBLE)) {
     return false;
   }
   if (!RegisterBfloat16Cast<std::complex<long double>>(NPY_CLONGDOUBLE)) {
@@ -1486,12 +1483,12 @@ bool Initialize() {
                               NPY_NOSCALAR) < 0) {
     return false;
   }
-  if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_COMPLEX64, NPY_NOSCALAR) <
+  if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_CFLOAT, NPY_NOSCALAR) <
       0) {
     return false;
   }
-  if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_COMPLEX128,
-                              NPY_NOSCALAR) < 0) {
+  if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_CDOUBLE, NPY_NOSCALAR) <
+      0) {
     return false;
   }
   if (PyArray_RegisterCanCast(&NPyBfloat16_Descr, NPY_CLONGDOUBLE,
@@ -1504,11 +1501,11 @@ bool Initialize() {
                               NPY_NOSCALAR) < 0) {
     return false;
   }
-  if (PyArray_RegisterCanCast(PyArray_DescrFromType(NPY_UINT8), npy_bfloat16,
+  if (PyArray_RegisterCanCast(PyArray_DescrFromType(NPY_UBYTE), npy_bfloat16,
                               NPY_NOSCALAR) < 0) {
     return false;
   }
-  if (PyArray_RegisterCanCast(PyArray_DescrFromType(NPY_INT8), npy_bfloat16,
+  if (PyArray_RegisterCanCast(PyArray_DescrFromType(NPY_BYTE), npy_bfloat16,
                               NPY_NOSCALAR) < 0) {
     return false;
   }
