@@ -159,6 +159,7 @@ cc_library(
     ],
     deps = [
         ":GpuPassesIncGen",
+        ":pattern_utils",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/tensorflow",
