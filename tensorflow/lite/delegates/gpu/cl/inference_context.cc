@@ -31,8 +31,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/serialization.h"
+#include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_model_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -126,7 +129,7 @@ absl::Status InferenceContext::InitFromGraph(
   flatbuffers::FlatBufferBuilder builder;
   flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb;
   if (serialized_model) {
-    gpu_model_fb = Encode(gpu_model, &builder);
+    gpu_model_fb = tflite::gpu::Encode(gpu_model, &builder);
   }
   CopyFromGpuModel(&gpu_model);
 
@@ -185,7 +188,7 @@ absl::Status InferenceContext::InitFromGraph(
   gpu_info_ = env->device().GetInfo();
 
   if (serialized_model) {
-    auto encoded_fb = Encode(*env->GetDevicePtr(), *this, *env->program_cache(),
+    auto encoded_fb = Encode(*env->GetDevicePtr(), *env->program_cache(),
                              gpu_model_fb, &builder);
     data::FinishInferenceContextBuffer(builder, encoded_fb);
     serialized_model->resize(builder.GetSize());
@@ -206,7 +209,7 @@ absl::Status InferenceContext::RestoreDeserialized(
   }
   auto decoded_fb = data::GetInferenceContext(serialized_model.data());
   RETURN_IF_ERROR(Decode(env->context(), *env->GetDevicePtr(),
-                         env->program_cache(), decoded_fb, this));
+                         env->program_cache(), decoded_fb));
 
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
@@ -824,6 +827,109 @@ void InferenceContext::ReleaseCPURepresentation() {
     node.cl_operation.GetGpuOperation().args_.ReleaseCPURepresentation();
   }
   const_tensors_descs_.clear();
+}
+
+flatbuffers::Offset<data::InferenceContext> InferenceContext::Encode(
+    const CLDevice& device, const ProgramCache& program_cache,
+    flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
+    flatbuffers::FlatBufferBuilder* builder) {
+  std::vector<flatbuffers::Offset<tflite::gpu::data::Int3>> work_groups_fb;
+  for (int i = 0; i < nodes_.size(); ++i) {
+    auto work_group_fb =
+        tflite::gpu::Encode(nodes_[i].cl_operation.GetWorkGroupSize(), builder);
+    work_groups_fb.push_back(work_group_fb);
+  }
+  auto work_groups_fb_vec = builder->CreateVector(work_groups_fb);
+  std::vector<uint64_t> node_fingerprints(nodes_.size());
+  for (int i = 0; i < nodes_.size(); ++i) {
+    node_fingerprints[i] = nodes_[i].cl_operation.GetKernelFingerprint();
+  }
+  auto node_fingerprints_fb = builder->CreateVector(node_fingerprints);
+
+  std::set<uint64_t> fingerprints;
+  for (const auto& node : nodes_) {
+    fingerprints.insert(node.cl_operation.GetKernelFingerprint());
+  }
+  std::vector<flatbuffers::Offset<data::BinaryProgram>> binary_programs_fb;
+  for (auto fingerprint : fingerprints) {
+    std::vector<uint8_t> program_binary;
+    program_cache.GetProgramBinary(fingerprint, &program_binary).IgnoreError();
+    auto binary_fb = builder->CreateVector(program_binary);
+    data::BinaryProgramBuilder program_builder(*builder);
+    program_builder.add_fingerprint(fingerprint);
+    program_builder.add_binary(binary_fb);
+    binary_programs_fb.push_back(program_builder.Finish());
+  }
+  auto binary_programs_fb_vec = builder->CreateVector(binary_programs_fb);
+  auto driver_version = builder->CreateString(device.GetPlatformVersion());
+
+  data::InferenceContextBuilder inf_builder(*builder);
+  inf_builder.add_gpu_model(gpu_model_fb);
+  inf_builder.add_driver_version(driver_version);
+  inf_builder.add_binary_programs(binary_programs_fb_vec);
+  inf_builder.add_tuned_work_group_sizes_per_node(work_groups_fb_vec);
+  inf_builder.add_fingerprints_per_node(node_fingerprints_fb);
+  return inf_builder.Finish();
+}
+
+absl::Status InferenceContext::Decode(
+    const CLContext& context, const CLDevice& device,
+    ProgramCache* program_cache, const data::InferenceContext* fb_inference) {
+  std::string platform_version(fb_inference->driver_version()->c_str(),
+                               fb_inference->driver_version()->size());
+  if (device.GetPlatformVersion() != platform_version) {
+    return absl::InvalidArgumentError(
+        "OpenCL driver changed, model respresentation invalid, must be "
+        "regenerated.");
+  }
+
+  GpuModel gpu_model;
+  RETURN_IF_ERROR(tflite::gpu::Decode(fb_inference->gpu_model(), &gpu_model));
+  CopyFromGpuModel(&gpu_model);
+
+  for (auto binary_program_fb : *fb_inference->binary_programs()) {
+    RETURN_IF_ERROR(program_cache->AddProgramBinary(
+        context, device, binary_program_fb->fingerprint(),
+        absl::MakeSpan(binary_program_fb->binary()->data(),
+                       binary_program_fb->binary()->size())));
+  }
+
+  for (int i = 0; i < nodes_.size(); ++i) {
+    uint64_t fingerprint = (*fb_inference->fingerprints_per_node())[i];
+    RETURN_IF_ERROR(
+        nodes_[i].cl_operation.InitFromCache(fingerprint, *program_cache));
+
+    int3 wg_size;
+    wg_size.x = (*fb_inference->tuned_work_group_sizes_per_node())[i]->x();
+    wg_size.y = (*fb_inference->tuned_work_group_sizes_per_node())[i]->y();
+    wg_size.z = (*fb_inference->tuned_work_group_sizes_per_node())[i]->z();
+    nodes_[i].cl_operation.SetWorkGroupSize(wg_size);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
+                          std::vector<int64_t>* in_refs,
+                          std::vector<int64_t>* out_refs) {
+  flatbuffers::Verifier verifier(serialized_model.data(),
+                                 serialized_model.size());
+  if (!data::VerifyInferenceContextBuffer(verifier)) {
+    return absl::DataLossError("Deserialization failed.");
+  }
+  auto fb_inference = data::GetInferenceContext(serialized_model.data());
+  if (in_refs) {
+    in_refs->clear();
+    for (auto in_fb : *fb_inference->gpu_model()->input_refs()) {
+      in_refs->push_back(in_fb);
+    }
+  }
+  if (out_refs) {
+    out_refs->clear();
+    for (auto out_fb : *fb_inference->gpu_model()->output_refs()) {
+      out_refs->push_back(out_fb);
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace cl

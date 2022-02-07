@@ -110,15 +110,14 @@ class InferenceContext {
     kExternal
   };
 
-  friend flatbuffers::Offset<data::InferenceContext> Encode(
-      const CLDevice& device, const InferenceContext& inference,
-      const ProgramCache& program_cache,
+  flatbuffers::Offset<data::InferenceContext> Encode(
+      const CLDevice& device, const ProgramCache& program_cache,
       flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
       flatbuffers::FlatBufferBuilder* builder);
-  friend absl::Status Decode(const CLContext& context, const CLDevice& device,
-                             ProgramCache* program_cache,
-                             const data::InferenceContext* fb_inference,
-                             InferenceContext* inference);
+
+  absl::Status Decode(const CLContext& context, const CLDevice& device,
+                      ProgramCache* program_cache,
+                      const data::InferenceContext* fb_inference);
 
   void CopyFromGpuModel(GpuModel* gpu_model);
 
@@ -202,6 +201,10 @@ class InferenceContext {
 
   GpuInfo gpu_info_;
 };
+
+absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
+                          std::vector<int64_t>* in_refs,
+                          std::vector<int64_t>* out_refs);
 
 }  // namespace cl
 }  // namespace gpu
