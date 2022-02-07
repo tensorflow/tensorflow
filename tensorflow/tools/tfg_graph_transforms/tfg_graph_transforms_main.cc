@@ -174,12 +174,8 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << "Model import failed: "
                 << module_ref_status.status().ToString();
   }
-<<<<<<< HEAD
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module_ref_status.ValueOrDie());
-=======
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       std::move(module_ref_status.ValueOrDie());
->>>>>>> upstream/master
 
   // Parse the optimization pipeline configuration and run requested graph
   // optimizations.
