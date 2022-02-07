@@ -599,6 +599,7 @@ cc_library(
     tags = ["manual"],
     deps = [
         ":gpu_executable_run_options",
+        ":io_feed_manager",
         ":xlir_opdefs_inc_gen",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core/platform:stream_executor_no_cuda",
@@ -620,6 +621,7 @@ cc_library(
         ":nccl_collective_thunks",
         ":nccl_utils",
         ":xlir_opdefs",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "@com_google_absl//absl/strings",
@@ -2520,6 +2522,7 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_copy_test",
         "//tensorflow/compiler/xla/service/gpu/tests:kernel_launch_test",
         "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_alignment_test",
         "//tensorflow/compiler/xla/tests:cholesky_test_gpu",
         "//tensorflow/compiler/xla/tests:convolution_test_cudnn_frontend_disabled_gpu",
         "//tensorflow/compiler/xla/tests:dot_operation_test_gpu",
@@ -2527,6 +2530,7 @@ test_suite(
         "//tensorflow/compiler/xla/tests:scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:select_and_scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:while_test_gpu",
+        "//tensorflow/compiler/xla/tests:local_client_execute_test_gpu",
     ] + if_google([
         # Currently fails in OSS.
         "//tensorflow/compiler/xla/tests:convolution_test_gpu",
@@ -2553,6 +2557,7 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:fused_slice_different_operands.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:fusion.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:gemm_broadcast_folding_rewrite_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_alignment_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_atomic_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_copy_alone_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_copy_test",
@@ -2589,6 +2594,7 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:tree_reduction_rewriter_test",
         "//tensorflow/compiler/xla/tests:cholesky_test_gpu",
         "//tensorflow/compiler/xla/tests:convolution_test_cudnn_frontend_disabled_gpu",
+        "//tensorflow/compiler/xla/tests:local_client_execute_test_gpu",
         "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
         "//tensorflow/compiler/xla/tests:scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:select_and_scatter_test_gpu",

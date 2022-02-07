@@ -68,6 +68,7 @@ cc_library(
         "convolution_pattern.cc",
         "custom_call_pattern.cc",
         "gemm_pattern.cc",
+        "infeed_and_outfeed_pattern.cc",
         "lmhlo_to_gpu.cc",
         "replica_and_partition_pattern.cc",
         "triangular_solve_pattern.cc",

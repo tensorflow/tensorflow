@@ -4795,6 +4795,37 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "random_index_shuffle",
+    srcs = ["random_index_shuffle.cc"],
+    hdrs = ["random_index_shuffle.h"],
+    deps = [
+        "//tensorflow/core:portable_gif_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "random_index_shuffle_test",
+    srcs = ["random_index_shuffle_test.cc"],
+    deps = [
+        ":random_index_shuffle",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:test",
+    ],
+)
+
+tf_kernel_library(
+    name = "random_index_shuffle_ops",
+    prefix = "random_index_shuffle_ops",
+    deps = [
+        ":random_index_shuffle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
     name = "required",
     deps = [
         ":no_op",
@@ -6308,6 +6339,7 @@ filegroup(
         "ragged_tensor_variant.h",
         "random_op.h",
         "random_poisson_op.h",
+        "random_index_shuffle.h",
         "reduction_ops.h",
         "reduction_ops_common.h",
         "relu_op.h",
@@ -6566,6 +6598,9 @@ filegroup(
         "ragged_tensor_to_tensor_op.cc",
         "ragged_tensor_to_variant_op.cc",
         "ragged_tensor_from_variant_op.cc",
+        "random_index_shuffle.h",
+        "random_index_shuffle.cc",
+        "random_index_shuffle_ops.cc",
         "random_op.cc",
         "random_op_cpu.h",
         "random_ops_util.h",

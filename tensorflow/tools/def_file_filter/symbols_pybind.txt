@@ -476,3 +476,6 @@ tensorflow::flags::Flags::GetExportedFlag
 [//tensorflow/core/config:flags] # flags_api
 tensorflow::config::Flag::value
 tensorflow::config::Flag::reset
+
+[//tensorflow/python/framework:op_def_util] # op_def_util
+tensorflow::DataTypeToPyObject
