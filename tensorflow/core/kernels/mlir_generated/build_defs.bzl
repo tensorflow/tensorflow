@@ -290,14 +290,10 @@ def _gen_kernel_library(
       test_tags: The tags to pass to the generated test.
       test_size: The "size" argument to pass to the test.
       jit_i64_indexed_for_large_tensors_types: The (input|output) types for which to enable. 
-                                                      JIT compilation of i64-indexed kernels for 
-                                                      large inputs.
+                                               JIT compilation of i64-indexed kernels for 
+                                               large inputs.
       output_jit_i64_indexed_for_large_tensors_types: The output types for which a partial jit kernel should 
                                 be generated.   
-      jit_i64_indexed_for_large_tensors_types: The input types for which to enable JIT compilation 
-                                               of i64-indexed kernels for large inputs.
-      jit_i64_indexed_for_large_tensors_types: The output types for which to enable JIT compilation 
-                                                      of i64-indexed kernels for large inputs.
     """
 
     enable_cpu = bool(platform == "cpu")
