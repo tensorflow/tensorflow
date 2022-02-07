@@ -55,6 +55,90 @@ void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
     position = str->find(old_word, position + new_word.size());
   }
 }
+
+std::map<std::string, std::string> GetMetalDefines(
+    MetalDevice* device, CalculationsPrecision precision) {
+  std::string simdgroup_barrier;
+  // simdgroup_barrier is supported since Metal shading language version 2.0
+  if (device->IsLanguageVersion2orHigher()) {
+    simdgroup_barrier = "simdgroup_barrier";
+  } else {
+    simdgroup_barrier = "threadgroup_barrier";
+  }
+  std::string storage_type;
+  std::string accumulator_type;
+  std::string to_accumulator_type4;
+  if (precision == CalculationsPrecision::F32) {
+    storage_type = "float";
+    accumulator_type = "float";
+  } else {
+    // FP16
+    storage_type = "half";
+    if (precision == CalculationsPrecision::F32_F16) {
+      accumulator_type = "float";
+      to_accumulator_type4 = "float4";
+    } else {
+      accumulator_type = "half";
+    }
+  }
+  return {
+      {"FLT16_0123(V)", "V[0]"},
+      {"FLT16_4567(V)", "V[1]"},
+      {"FLT16_89ab(V)", "V[2]"},
+      {"FLT16_cdef(V)", "V[3]"},
+      {"FLT", storage_type},
+      {"FLT2", storage_type + "2"},
+      {"FLT3", storage_type + "3"},
+      {"FLT4", storage_type + "4"},
+      {"ACCUM_FLT", accumulator_type},
+      {"ACCUM_FLT2", accumulator_type + "2"},
+      {"ACCUM_FLT3", accumulator_type + "3"},
+      {"ACCUM_FLT4", accumulator_type + "4"},
+      {"INIT_ACCUM_FLT4(value)", accumulator_type + "4(value)"},
+      {"TO_ACCUM_TYPE", to_accumulator_type4},
+      {"TO_ACCUM_FLT", accumulator_type},
+      {"TO_ACCUM_FLT2", accumulator_type + "2"},
+      {"TO_ACCUM_FLT3", accumulator_type + "3"},
+      {"TO_ACCUM_FLT4", accumulator_type + "4"},
+      {"TO_FLT4", storage_type + "4"},
+      {"SIMDGROUP_BARRIER", simdgroup_barrier},
+      {"SIMD_LOCAL_MEM_BARRIER", simdgroup_barrier},
+      {"MAIN_FUNCTION", "kernel void ComputeFunction"},
+      {"GLOBAL_ID_0", "static_cast<int>(reserved_gid.x)"},
+      {"GLOBAL_ID_1", "static_cast<int>(reserved_gid.y)"},
+      {"GLOBAL_ID_2", "static_cast<int>(reserved_gid.z)"},
+      {"LOCAL_ID_0", "static_cast<int>(reserved_lid.x)"},
+      {"LOCAL_ID_1", "static_cast<int>(reserved_lid.y)"},
+      {"LOCAL_ID_2", "static_cast<int>(reserved_lid.z)"},
+      {"GROUP_ID_0", "static_cast<int>(reserved_group_id.x)"},
+      {"GROUP_ID_1", "static_cast<int>(reserved_group_id.y)"},
+      {"GROUP_ID_2", "static_cast<int>(reserved_group_id.z)"},
+      {"GROUP_SIZE_0", "static_cast<int>(reserved_group_size.x)"},
+      {"GROUP_SIZE_1", "static_cast<int>(reserved_group_size.y)"},
+      {"GROUP_SIZE_2", "static_cast<int>(reserved_group_size.z)"},
+      {"SUB_GROUP_LOCAL_ID", "static_cast<int>(reserved_simd_id)"},
+      {"SUB_GROUP_BROADCAST(V, ID)", "simd_broadcast(V, ID)"},
+      {"__local", "threadgroup"},
+      {"__global", "device"},
+      {"__constant", "constant"},
+      {"LOCAL_MEM_BARRIER", "threadgroup_barrier(mem_flags::mem_threadgroup)"},
+      {"INIT_FLT(value)", storage_type + "(value)"},
+      {"INIT_FLT4(value)", storage_type + "4(value)"},
+      {"INIT_FLT4v4(v0, v1, v2, v3)", storage_type + "4(v0, v1, v2, v3)"},
+      {"INIT_FLOAT(value)", "float(value)"},
+      {"INIT_FLOAT2(value)", "float2(value)"},
+      {"INIT_FLOAT2v2(v0, v1)", "float2(v0, v1)"},
+      {"INIT_FLOAT3(value)", "float3(value)"},
+      {"INIT_FLOAT3v3(v0, v1, v2)", "float3(v0, v1, v2)"},
+      {"INIT_FLOAT4(value)", "float4(value)"},
+      {"INIT_FLOAT4v4(v0, v1, v2, v3)", "float4(v0, v1, v2, v3)"},
+      {"INIT_INT(value)", "int(value)"},
+      {"INIT_INT2v2(v0, v1)", "int2(v0, v1)"},
+      {"INIT_INT4v4(v0, v1, v2, v3)", "int4(v0, v1, v2, v3)"},
+      {"CONVERT_TO_INT4(value)", "int4(value)"},
+      {"SELECT_BY_INDEX_FROM_FLT4(value, index)", "(value)[index]"},
+  };
+}
 }  // namespace
 
 ComputeTask::ComputeTask(ComputeTask&& task)
@@ -123,99 +207,18 @@ absl::Status ComputeTask::Compile(MetalDevice* device) {
   ReplaceAllWords("half16", "half4x4", &operation_->code_);
   ReplaceAllWords("float8", "float2x4", &operation_->code_);
   ReplaceAllWords("half8", "half2x4", &operation_->code_);
-  return CompileProgram(device, operation_->GetDefinition().precision,
-                        operation_->code_);
+  defines_ = GetMetalDefines(device, operation_->GetDefinition().precision);
+  return CompileProgram(device, operation_->code_, defines_);
 }
 
-absl::Status ComputeTask::CompileProgram(MetalDevice* device,
-                                         CalculationsPrecision precision,
-                                         const std::string& kernel_code) {
-  std::string simdgroup_barrier;
-  // simdgroup_barrier is supported since Metal shading language version 2.0
-  if (device->IsLanguageVersion2orHigher()) {
-    simdgroup_barrier = "simdgroup_barrier";
-  } else {
-    simdgroup_barrier = "threadgroup_barrier";
-  }
-  std::string storage_type;
-  std::string accumulator_type;
-  std::string to_accumulator_type4;
-  if (precision == CalculationsPrecision::F32) {
-    storage_type = "float";
-    accumulator_type = "float";
-  } else {
-    // FP16
-    storage_type = "half";
-    if (precision == CalculationsPrecision::F32_F16) {
-      accumulator_type = "float";
-      to_accumulator_type4 = "float4";
-    } else {
-      accumulator_type = "half";
-    }
-  }
-  std::map<std::string, std::string> macros = {
-      {"FLT16_0123(V)", "V[0]"},
-      {"FLT16_4567(V)", "V[1]"},
-      {"FLT16_89ab(V)", "V[2]"},
-      {"FLT16_cdef(V)", "V[3]"},
-      {"FLT", storage_type},
-      {"FLT2", storage_type + "2"},
-      {"FLT3", storage_type + "3"},
-      {"FLT4", storage_type + "4"},
-      {"ACCUM_FLT", accumulator_type},
-      {"ACCUM_FLT2", accumulator_type + "2"},
-      {"ACCUM_FLT3", accumulator_type + "3"},
-      {"ACCUM_FLT4", accumulator_type + "4"},
-      {"INIT_ACCUM_FLT4(value)", accumulator_type + "4(value)"},
-      {"TO_ACCUM_TYPE", to_accumulator_type4},
-      {"TO_ACCUM_FLT", accumulator_type},
-      {"TO_ACCUM_FLT2", accumulator_type + "2"},
-      {"TO_ACCUM_FLT3", accumulator_type + "3"},
-      {"TO_ACCUM_FLT4", accumulator_type + "4"},
-      {"TO_FLT4", storage_type + "4"},
-      {"SIMDGROUP_BARRIER", simdgroup_barrier},
-      {"SIMD_LOCAL_MEM_BARRIER", simdgroup_barrier},
-      {"MAIN_FUNCTION", "kernel void ComputeFunction"},
-      {"GLOBAL_ID_0", "static_cast<int>(reserved_gid.x)"},
-      {"GLOBAL_ID_1", "static_cast<int>(reserved_gid.y)"},
-      {"GLOBAL_ID_2", "static_cast<int>(reserved_gid.z)"},
-      {"LOCAL_ID_0", "static_cast<int>(reserved_lid.x)"},
-      {"LOCAL_ID_1", "static_cast<int>(reserved_lid.y)"},
-      {"LOCAL_ID_2", "static_cast<int>(reserved_lid.z)"},
-      {"GROUP_ID_0", "static_cast<int>(reserved_group_id.x)"},
-      {"GROUP_ID_1", "static_cast<int>(reserved_group_id.y)"},
-      {"GROUP_ID_2", "static_cast<int>(reserved_group_id.z)"},
-      {"GROUP_SIZE_0", "static_cast<int>(reserved_group_size.x)"},
-      {"GROUP_SIZE_1", "static_cast<int>(reserved_group_size.y)"},
-      {"GROUP_SIZE_2", "static_cast<int>(reserved_group_size.z)"},
-      {"SUB_GROUP_LOCAL_ID", "static_cast<int>(reserved_simd_id)"},
-      {"SUB_GROUP_BROADCAST(V, ID)", "simd_broadcast(V, ID)"},
-      {"__local", "threadgroup"},
-      {"__global", "device"},
-      {"__constant", "constant"},
-      {"LOCAL_MEM_BARRIER", "threadgroup_barrier(mem_flags::mem_threadgroup)"},
-      {"INIT_FLT(value)", storage_type + "(value)"},
-      {"INIT_FLT4(value)", storage_type + "4(value)"},
-      {"INIT_FLT4v4(v0, v1, v2, v3)", storage_type + "4(v0, v1, v2, v3)"},
-      {"INIT_FLOAT(value)", "float(value)"},
-      {"INIT_FLOAT2(value)", "float2(value)"},
-      {"INIT_FLOAT2v2(v0, v1)", "float2(v0, v1)"},
-      {"INIT_FLOAT3(value)", "float3(value)"},
-      {"INIT_FLOAT3v3(v0, v1, v2)", "float3(v0, v1, v2)"},
-      {"INIT_FLOAT4(value)", "float4(value)"},
-      {"INIT_FLOAT4v4(v0, v1, v2, v3)", "float4(v0, v1, v2, v3)"},
-      {"INIT_INT(value)", "int(value)"},
-      {"INIT_INT2v2(v0, v1)", "int2(v0, v1)"},
-      {"INIT_INT4v4(v0, v1, v2, v3)", "int4(v0, v1, v2, v3)"},
-      {"CONVERT_TO_INT4(value)", "int4(value)"},
-      {"SELECT_BY_INDEX_FROM_FLT4(value, index)", "(value)[index]"},
-  };
-
+absl::Status ComputeTask::CompileProgram(
+    MetalDevice* device, const std::string& code,
+    const std::map<std::string, std::string>& defines) {
   if (use_arguments_buffer_) {
     if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
       id<MTLFunction> function;
-      RETURN_IF_ERROR(CreateFunction(device->device(), kernel_code,
-                                     "ComputeFunction", macros, &function));
+      RETURN_IF_ERROR(CreateFunction(device->device(), code, "ComputeFunction",
+                                     defines, &function));
       arguments_encoder_ = [function newArgumentEncoderWithBufferIndex:0];
       if (!arguments_encoder_) {
         return absl::InternalError("Failed to get MTLArgumentEncoder.");
@@ -255,13 +258,27 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
     }
   } else {
     id<MTLComputePipelineState> program;
-    RETURN_IF_ERROR(CreateComputeProgram(device->device(), kernel_code,
-                                         "ComputeFunction", macros, &program));
+    RETURN_IF_ERROR(CreateComputeProgram(device->device(), code,
+                                         "ComputeFunction", defines, &program));
     if (!program) {
       return absl::InternalError("Unknown shader compilation error");
     }
     program_ = program;
   }
+  return absl::OkStatus();
+}
+
+absl::Status ComputeTask::Init(
+    MetalDevice* device, const std::string& code,
+    const std::map<std::string, std::string>& defines) {
+  return CompileProgram(device, code, defines);
+}
+
+absl::Status ComputeTask::RestoreDeserialized(MetalDevice* device) {
+  RETURN_IF_ERROR(
+      metal_args_.Init(use_arguments_buffer_, device, &operation_->args_));
+
+  operation_->args_.ReleaseCPURepresentation();
   return absl::OkStatus();
 }
 
@@ -367,6 +384,11 @@ absl::Status ComputeTask::Tune(TuningType tuning_type, MetalDevice* device) {
   operation_->work_group_size_ = possible_dispatches[0].work_group_size;
   operation_->RecalculateWorkGroupsCount();
   return absl::OkStatus();
+}
+
+void ComputeTask::SetWorkGroupSize(const int3& work_group_size) {
+  operation_->work_group_size_ = work_group_size;
+  operation_->RecalculateWorkGroupsCount();
 }
 
 }  // namespace metal
