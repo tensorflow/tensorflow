@@ -854,7 +854,7 @@ inline Value MapMhloOpToStdScalarOp<mhlo::SignOp>(Location loc,
     Value ne0_i1 = b->create<::mlir::arith::CmpFOp>(
         loc, arith::CmpFPredicate::ONE, args[0], zero);
     Value ne0_float =
-        b->create<::mlir::arith::UIToFPOp>(loc, ne0_i1, zero.getType());
+        b->create<::mlir::arith::UIToFPOp>(loc, zero.getType(), ne0_i1);
     Value copy_sign = b->create<::mlir::math::CopySignOp>(loc, result_types,
                                                           ne0_float, args[0]);
     auto is_nan = b->create<::mlir::arith::CmpFOp>(

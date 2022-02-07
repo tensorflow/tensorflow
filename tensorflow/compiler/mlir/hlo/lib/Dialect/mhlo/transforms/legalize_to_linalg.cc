@@ -1121,12 +1121,13 @@ class IotaConverter : public OpConversionPattern<OpTy> {
           Value index_op = nested_builder.create<linalg::IndexOp>(
               nested_loc, iota_op.iota_dimension());
           Value cast_op = nested_builder.create<arith::IndexCastOp>(
-              nested_loc, index_op,
+              nested_loc,
               nested_builder.getIntegerType(
-                  result_element_type.getIntOrFloatBitWidth()));
+                  result_element_type.getIntOrFloatBitWidth()),
+              index_op);
           if (result_element_type.template isa<FloatType>()) {
             cast_op = nested_builder.create<arith::SIToFPOp>(
-                nested_loc, cast_op, result_element_type);
+                nested_loc, result_element_type, cast_op);
           }
           nested_builder.create<linalg::YieldOp>(nested_loc, cast_op);
         },
@@ -2521,7 +2522,7 @@ struct TorchIndexSelectOpConversion
     rewriter.setInsertionPointToEnd(block);
 
     Value casted_value = rewriter.create<arith::IndexCastOp>(
-        loc, block->getArgument(0), rewriter.getIndexType());
+        loc, rewriter.getIndexType(), block->getArgument(0));
 
     SmallVector<Value, 4> indices;
     for (int i = 0; i < axis; ++i) {

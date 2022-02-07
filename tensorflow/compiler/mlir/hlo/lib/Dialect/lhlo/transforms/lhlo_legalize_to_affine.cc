@@ -301,8 +301,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     for (unsigned i = 0; i < start_indices_numbers; i++) {
       Value i_val = rewriter.create<mlir::arith::ConstantIntOp>(
           loc, i, start_indices_type.getElementType());
-      i_val = rewriter.create<arith::IndexCastOp>(loc, i_val,
-                                                  rewriter.getIndexType());
+      i_val = rewriter.create<arith::IndexCastOp>(loc, rewriter.getIndexType(),
+                                                  i_val);
       start_indices_index.push_back(i_val);
     }
 
@@ -313,7 +313,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     SmallVector<Value, 4> S_in;
     SmallVector<Value, 4> O_in;
     Value zero_index_val = rewriter.create<arith::IndexCastOp>(
-        loc, zero_int_val, rewriter.getIndexType());
+        loc, rewriter.getIndexType(), zero_int_val);
     for (unsigned i = 0; i < operand_rank; i++) {
       S_in.push_back(zero_index_val);
       O_in.push_back(zero_index_val);
@@ -383,7 +383,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
         Value start_index = rewriter.create<AffineLoadOp>(loc, start_indices,
                                                           batch_induction_vars);
         start_index = rewriter.create<arith::IndexCastOp>(
-            loc, start_index, rewriter.getIndexType());
+            loc, rewriter.getIndexType(), start_index);
         S_in[start_index_map[i]] = start_index;
         batch_induction_vars.erase(batch_induction_vars.begin() +
                                    index_vector_dim);
@@ -394,7 +394,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
       Value start_index = rewriter.create<AffineLoadOp>(loc, start_indices,
                                                         batch_induction_vars);
       start_index = rewriter.create<arith::IndexCastOp>(
-          loc, start_index, rewriter.getIndexType());
+          loc, rewriter.getIndexType(), start_index);
       S_in[0] = start_index;
     }
 

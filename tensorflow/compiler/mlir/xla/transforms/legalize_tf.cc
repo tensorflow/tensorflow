@@ -1231,8 +1231,8 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
     };
     auto get_dim_value = [&](Value val, int64_t dim) {
       Value dim_value = rewriter.create<tensor::DimOp>(loc, val, dim);
-      return rewriter.create<arith::IndexCastOp>(loc, dim_value,
-                                                 shape_scalar_type);
+      return rewriter.create<arith::IndexCastOp>(loc, shape_scalar_type,
+                                                 dim_value);
     };
 
     for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
@@ -1587,8 +1587,8 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
               rewriter.getIntegerAttr(indices_ty.getElementType(), dim_size)));
         } else {
           slice_sizes_vals.push_back(rewriter.create<arith::IndexCastOp>(
-              loc, rewriter.create<tensor::DimOp>(loc, params, i),
-              indices_ty.getElementType()));
+              loc, indices_ty.getElementType(),
+              rewriter.create<tensor::DimOp>(loc, params, i)));
         }
       }
     }
@@ -3179,15 +3179,15 @@ class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
           rewriter.create<tensor::ExtractOp>(loc, begin_indices, indices);
       auto size_value = rewriter.create<tensor::ExtractOp>(loc, sizes, indices);
       Value minus_one = rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.create<arith::ConstantIndexOp>(loc, -1),
-          shape_scalar_type);
+          loc, shape_scalar_type,
+          rewriter.create<arith::ConstantIndexOp>(loc, -1));
       auto is_minus_one = rewriter.create<arith::CmpIOp>(
           loc, arith::CmpIPredicate::eq, size_value, minus_one);
       Value end_value =
           rewriter.create<arith::AddIOp>(loc, begin_value, size_value);
       auto dim_value = rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.create<tensor::DimOp>(loc, input, i),
-          shape_scalar_type);
+          loc, shape_scalar_type,
+          rewriter.create<tensor::DimOp>(loc, input, i));
       end_value = rewriter.create<mlir::arith::SelectOp>(loc, is_minus_one,
                                                          dim_value, end_value);
       auto end_value_casted = rewriter.create<arith::IndexCastOp>(
@@ -5614,8 +5614,8 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
       int64_t dim_size = value_type.getDimSize(dim_idx);
       if (dim_size == ShapedType::kDynamicSize) {
         Value dim_i = rewriter.create<arith::IndexCastOp>(
-            loc, rewriter.create<tensor::DimOp>(loc, op.getOperand(), dim_idx),
-            shape_scalar_type);
+            loc, shape_scalar_type,
+            rewriter.create<tensor::DimOp>(loc, op.getOperand(), dim_idx));
         end_indices.push_back(dim_i);
         if (dim_idx != axis) {
           shape_values.push_back(dim_i);
@@ -6471,7 +6471,7 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
         RankedTensorType::get(result_ty.getShape(), rewriter.getIndexType());
     auto shape_op =
         rewriter.create<shape::ShapeOfOp>(op.getLoc(), index_tensor, input);
-    rewriter.replaceOpWithNewOp<arith::IndexCastOp>(op, shape_op, result_ty);
+    rewriter.replaceOpWithNewOp<arith::IndexCastOp>(op, result_ty, shape_op);
     return success();
   }
 };

@@ -123,8 +123,9 @@ class HloToMemrefReshapeUnrankedConverter
     auto loc = op->getLoc();
     auto result_type = op_result_type.cast<RankedTensorType>();
     auto cast = rewriter.create<memref::CastOp>(
-        loc, adaptor.operand(),
-        MemRefType::get(result_type.getShape(), result_type.getElementType()));
+        loc,
+        MemRefType::get(result_type.getShape(), result_type.getElementType()),
+        adaptor.operand());
 
     return cast;
   }
@@ -231,8 +232,8 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
       Value result_dim_size =
           b->create<tensor::ExtractOp>(loc, op.output_dimensions(), i_val);
       if (!result_dim_size.getType().isIndex()) {
-        result_dim_size = b->create<arith::IndexCastOp>(loc, result_dim_size,
-                                                        b->getIndexType());
+        result_dim_size = b->create<arith::IndexCastOp>(loc, b->getIndexType(),
+                                                        result_dim_size);
       }
       if (result_type.isDynamicDim(i)) {
         sizes.push_back(result_dim_size);
@@ -287,7 +288,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
       Value size =
           b->create<tensor::ExtractOp>(loc, op.output_dimensions(), index);
       if (!size.getType().isIndex()) {
-        size = b->create<arith::IndexCastOp>(loc, size, b->getIndexType());
+        size = b->create<arith::IndexCastOp>(loc, b->getIndexType(), size);
       }
       dynamic_operands.push_back(size);
     }

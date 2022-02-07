@@ -73,7 +73,7 @@ Value InsertDynamicAlloc(Location loc, Value result, Value shape_operand,
         rewriter->create<tensor::ExtractOp>(loc, shape_operand, index);
     if (!alloc_operand.getType().isIndex()) {
       alloc_operand = rewriter->create<arith::IndexCastOp>(
-          loc, alloc_operand, rewriter->getIndexType());
+          loc, rewriter->getIndexType(), alloc_operand);
     }
     dynamic_operands.push_back(alloc_operand);
   }

@@ -58,7 +58,7 @@ class ApproximateOnExtendedF32Lowering : public OpRewritePattern<OpTy> {
       if (arg_ty.isF64()) return failure();
 
       if (arg_ty.isF16())
-        arg = rewriter.create<arith::ExtFOp>(loc, arg, rewriter.getF32Type());
+        arg = rewriter.create<arith::ExtFOp>(loc, rewriter.getF32Type(), arg);
 
       // If we still do not have f32, fail.
       if (!arg.getType().isF32()) return failure();
@@ -72,7 +72,7 @@ class ApproximateOnExtendedF32Lowering : public OpRewritePattern<OpTy> {
     // Truncate back if needed.
     if (op.getType().isF16())
       result =
-          rewriter.create<arith::TruncFOp>(loc, result, rewriter.getF16Type());
+          rewriter.create<arith::TruncFOp>(loc, rewriter.getF16Type(), result);
 
     rewriter.replaceOp(op, {result});
     return success();

@@ -301,8 +301,8 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 
     // Symbolic shape analysis might have given us an i32 or i64. Cast to index.
     if (!output_dyn_dim.getType().isIndex())
-      output_dyn_dim = rewriter.create<IndexCastOp>(loc, output_dyn_dim,
-                                                    rewriter.getIndexType());
+      output_dyn_dim = rewriter.create<IndexCastOp>(
+          loc, rewriter.getIndexType(), output_dyn_dim);
 
     output_dyn_dimensions.push_back(output_dyn_dim);
   }
