@@ -18,6 +18,7 @@ import collections
 import copy
 import itertools
 import math
+from typing import Type
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -38,29 +39,15 @@ def numpy_assert_allclose(a, b, **kwargs):
   return np.testing.assert_allclose(a, b, **kwargs)
 
 
-def type_bits(x):
-  if x == bfloat16:
-    return 16
-
-  return np.finfo(x).bits
-
-
-def promote_types(a, b):
-  num_bits_a = type_bits(a)
-  num_bits_b = type_bits(b)
-  # Pick the greater of the two types.
-  if num_bits_a < num_bits_b:
-    return b
-  if num_bits_b < num_bits_a:
-    return a
-  # Pick either type if both are equivalent.
-  if a == b:
-    return a
-  # The only possibility at this point is that the two types are bfloat16 and
-  # np.float16. We expect to have promoted to np.float32.
-  assert num_bits_a == 16
-  assert num_bits_b == 16
-  return np.float32
+def numpy_promote_types(a: Type[np.generic],
+                        b: Type[np.generic]) -> Type[np.generic]:
+  if a == bfloat16 and b == bfloat16:
+    return bfloat16
+  if a == bfloat16:
+    a = np.float32
+  if b == bfloat16:
+    b = np.float32
+  return np.promote_types(a, b)
 
 
 epsilon = float.fromhex("1.0p-7")
@@ -149,12 +136,12 @@ class Bfloat16Test(parameterized.TestCase):
         float("-inf"), float(bfloat16(float("-inf")) + bfloat16(-2.25)))
     self.assertTrue(math.isnan(float(bfloat16(3.5) + bfloat16(float("nan")))))
 
-  def DISABLED_testAddScalarTypePromotion(self):
+  def testAddScalarTypePromotion(self):
     """Tests type promotion against Numpy scalar values."""
     types = [bfloat16, np.float16, np.float32, np.float64, np.longdouble]
     for lhs_type in types:
       for rhs_type in types:
-        expected_type = promote_types(lhs_type, rhs_type)
+        expected_type = numpy_promote_types(lhs_type, rhs_type)
         actual_type = type(lhs_type(3.5) + rhs_type(2.25))
         self.assertEqual(expected_type, actual_type)
 
