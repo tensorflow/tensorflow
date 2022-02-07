@@ -80,7 +80,9 @@ using tensorflow::errors::InvalidArgument;
 namespace mlir {
 namespace tfg {
 namespace {
-constexpr char kDeviceAttr[] = "_mlir_device";
+
+constexpr StringRef kNameAttr = TFGraphDialect::getNameAttrKey();
+constexpr StringRef kDeviceAttr = TFGraphDialect::getDeviceAttrKey();
 constexpr char kAliasingAttr[] = "tf.aliasing_output";
 
 // Compute the name to use in GraphDef for a given Value (either the result of
@@ -110,7 +112,7 @@ static Status GetValueName(Value operand, std::string &name, Type control_ty) {
     return {};
   }
   Operation *producer = op_result.getDefiningOp();
-  auto nameAttr = producer->getAttrOfType<StringAttr>("_mlir_name");
+  auto nameAttr = producer->getAttrOfType<StringAttr>(kNameAttr);
   if (!nameAttr)
     return InvalidArgument("Can't export graph with missing op-name");
 
@@ -129,7 +131,7 @@ Status GetArgumentNode(GraphFuncOp func, NodeDef *node_def, unsigned index,
   TensorType arg_type = func.getArgument(index).getType().cast<TensorType>();
 
   if (auto resource_type = arg_type.getElementType().dyn_cast<ResourceType>()) {
-    llvm::ArrayRef<TensorType> subtypes = resource_type.getSubtypes();
+    ArrayRef<TensorType> subtypes = resource_type.getSubtypes();
     if (!subtypes.empty()) {
       tensorflow::AttrValue handle_dtypes_attr;
       tensorflow::AttrValue handle_shapes_attr;
@@ -164,12 +166,11 @@ Status GetArgumentNode(GraphFuncOp func, NodeDef *node_def, unsigned index,
   if (auto device_attr = func.getArgAttrOfType<StringAttr>(index, kDeviceAttr))
     *node_def->mutable_device() = device_attr.getValue().str();
 
-  llvm::ArrayRef<NamedAttribute> func_arg_i_attrs = func.getArgAttrs(index);
-  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-      kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype", "tfg.handle_data"};
-  TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
-                                       /*remove_ref_type=*/false,
-                                       node_def->mutable_attr()));
+  ArrayRef<NamedAttribute> func_arg_i_attrs = func.getArgAttrs(index);
+  TF_RETURN_IF_ERROR(ConvertAttributes(
+      func_arg_i_attrs,
+      {kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype", "tfg.handle_data"},
+      /*remove_ref_type=*/false, node_def->mutable_attr()));
 
   return Status::OK();
 }
@@ -198,13 +199,11 @@ Status GetReturnNode(GraphFuncOp function, Value operand, unsigned index,
           function.getResultAttrOfType<StringAttr>(index, kDeviceAttr))
     *node_def->mutable_device() = device_attr.getValue().str();
 
-  llvm::ArrayRef<NamedAttribute> func_res_i_attrs =
-      function.getResultAttrs(index);
-  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-      kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype", "tfg.handle_data"};
-  TF_RETURN_IF_ERROR(ConvertAttributes(func_res_i_attrs, attrs_to_ignore,
-                                       /*remove_ref_type=*/false,
-                                       node_def->mutable_attr()));
+  ArrayRef<NamedAttribute> func_res_i_attrs = function.getResultAttrs(index);
+  TF_RETURN_IF_ERROR(ConvertAttributes(
+      func_res_i_attrs,
+      {kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype", "tfg.handle_data"},
+      /*remove_ref_type=*/false, node_def->mutable_attr()));
 
   return Status::OK();
 }
@@ -234,7 +233,7 @@ void ExtractExperimentalDebugInfoFromLocation(
 // the `ControlType` to compare against and detect a control dependency case.
 Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
                                   GetValueNameFn get_value_name) {
-  auto nameAttr = op.getAttrOfType<StringAttr>("_mlir_name");
+  auto nameAttr = op.getAttrOfType<StringAttr>(kNameAttr);
   if (nameAttr) node->set_name(nameAttr.getValue().str());
   auto deviceAttr = op.getAttrOfType<StringAttr>(kDeviceAttr);
   if (deviceAttr) node->set_device(deviceAttr.getValue().str());
@@ -251,7 +250,7 @@ Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
     StringRef callee_name = callee.getName().getRootReference().getValue();
     node->set_op({callee_name.data(), callee_name.size()});
     TF_RETURN_IF_ERROR(ConvertAttributes(
-        callee.getAttrs().getValue(), {"_mlir_name", kDeviceAttr},
+        callee.getAttrs().getValue(), {kNameAttr, kDeviceAttr},
         /*remove_ref_type=*/false, node->mutable_attr()));
     auto optional_device =
         op.getAttrDictionary().getNamed("_mlir_assigned_device");
@@ -265,7 +264,7 @@ Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
   } else {
     node->set_op({op_name.data(), op_name.size()});
     TF_RETURN_IF_ERROR(
-        ConvertAttributes(op.getAttrs(), {"_mlir_name", kDeviceAttr},
+        ConvertAttributes(op.getAttrs(), {kNameAttr, kDeviceAttr},
                           /*remove_ref_type=*/false, node->mutable_attr()));
   }
   // Eliminate empty "_mlir_assigned_device" from the export. This is just
