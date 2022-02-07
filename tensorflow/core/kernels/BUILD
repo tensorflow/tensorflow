@@ -6353,7 +6353,6 @@ filegroup(
         "where_op.h",
         "xent_op.h",
     ] + [
-        "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
         "//tensorflow/core/kernels/data:portable_all_op_kernels_headers",
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
@@ -6686,7 +6685,6 @@ filegroup(
         "whole_file_read_ops.cc",
         "xent_op.cc",
     ] + [
-        "//tensorflow/core/kernels/boosted_trees:quantile_ops.cc",
         "//tensorflow/core/kernels/data:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:adjust_contrast_op.cc",
         "//tensorflow/core/kernels/image:adjust_hue_op.cc",
@@ -7518,12 +7516,7 @@ cc_library(
     ],
 )
 
-tf_kernel_library(
-    name = "boosted_trees_ops",
-    deps = [
-        "//tensorflow/core/kernels/boosted_trees:boosted_trees_ops",
-    ],
-)
+tf_kernel_library(name = "boosted_trees_ops")
 
 tf_kernel_library(
     name = "data_service_ops",
