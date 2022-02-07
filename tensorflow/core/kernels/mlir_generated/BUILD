@@ -809,7 +809,7 @@ gpu_kernel_library(
         "f64",
     ],
     unroll_factors = "4",
-    output_jit_i64_indexed_for_large_tensors_types = ["f16"],
+    jit_i64_indexed_for_large_tensors_types = ["f16"],
 )
 
 gpu_kernel_library(

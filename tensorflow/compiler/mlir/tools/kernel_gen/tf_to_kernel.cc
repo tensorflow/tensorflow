@@ -184,7 +184,7 @@ int main(int argc, char** argv) {
       "unroll_factors",
       llvm::cl::desc("factors to unroll by, separated by commas"),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
-  llvm::cl::opt<bool> jit_compile(
+  llvm::cl::opt<bool> jit_i64_indexed_for_large_tensors(
       "jit_i64_indexed_for_large_tensors", 
       llvm::cl::desc("Enable JIT compilation of i64-indexed kernels for large inputs."),
       llvm::cl::init(false));
