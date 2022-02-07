@@ -66,16 +66,18 @@ class MetalArguments : public ArgumentsBinder {
   //   float val_2;
   //   int dummy;  // for alignment
   // };
-  std::string ScalarArgumentsToStructWithScalarFields(
-      const std::string& call_prefix, Arguments* args, std::string* code);
+  std::string CopyScalarArgumentsToStructWithScalarFields(
+      const Arguments& args, const std::string& call_prefix = "",
+      std::string* code = nullptr);
 
   // creates structure with layout:
   // struct uniforms_buffer {
   //   int4 val_0_val_1_dummy_dummy;
   //   float4 val_2_dummy_dummy_dummy;
   // };
-  std::string ScalarArgumentsToStructWithVec4Fields(
-      const std::string& call_prefix, Arguments* args, std::string* code);
+  std::string CopyScalarArgumentsToStructWithVec4Fields(
+      const Arguments& args, const std::string& call_prefix = "",
+      std::string* code = nullptr);
 
   absl::Status AllocateObjects(const Arguments& args, id<MTLDevice> device);
   absl::Status AddObjectArgs(const GpuInfo& gpu_info, const Arguments& args);
