@@ -87,6 +87,10 @@ class Delegate {
                               TFLITE_XNNPACK_DELEGATE_FLAG_QS8)) != 0;
   }
 
+  bool force_fp16() const {
+    return (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16) != 0;
+  }
+
   pthreadpool_t threadpool() const {
 #if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
     return nullptr;
@@ -547,22 +551,26 @@ class Subgraph {
     xnn_runtime_t runtime_ptr = nullptr;
     uint32_t flags = XNN_FLAG_YIELD_WORKERS;
     if (has_sparse_weights) {
-      flags |= XNN_FLAG_SPARSE_INFERENCE;
+      flags |= XNN_FLAG_HINT_SPARSE_INFERENCE;
     }
-    const char* precision_metadata_ptr = nullptr;
-    size_t precision_metadata_size = 0;
-    if (context->GetModelMetadata(context, optimize::kTfLiteReducedPrecisionKey,
-                                  &precision_metadata_ptr,
-                                  &precision_metadata_size) == kTfLiteOk) {
-      const std::string precision_metadata(precision_metadata_ptr,
-                                           precision_metadata_size);
-      optimize::ReducedPrecisionSupport precision_mask =
-          optimize::ReducedPrecisionSupport::None;
-      if (optimize::SetMaskFromReducedPrecisionMetadata(precision_metadata,
-                                                        &precision_mask)) {
-        if (optimize::SupportsFP16Inference(precision_mask) &&
-            optimize::SupportsFP16Accumulation(precision_mask)) {
-          flags |= XNN_FLAG_FP16_INFERENCE;
+    if (delegate.force_fp16()) {
+      flags |= XNN_FLAG_FORCE_FP16_INFERENCE;
+    } else {
+      const char* precision_metadata_ptr = nullptr;
+      size_t precision_metadata_size = 0;
+      if (context->GetModelMetadata(
+              context, optimize::kTfLiteReducedPrecisionKey,
+              &precision_metadata_ptr, &precision_metadata_size) == kTfLiteOk) {
+        const std::string precision_metadata(precision_metadata_ptr,
+                                             precision_metadata_size);
+        optimize::ReducedPrecisionSupport precision_mask =
+            optimize::ReducedPrecisionSupport::None;
+        if (optimize::SetMaskFromReducedPrecisionMetadata(precision_metadata,
+                                                          &precision_mask)) {
+          if (optimize::SupportsFP16Inference(precision_mask) &&
+              optimize::SupportsFP16Accumulation(precision_mask)) {
+            flags |= XNN_FLAG_HINT_FP16_INFERENCE;
+          }
         }
       }
     }
