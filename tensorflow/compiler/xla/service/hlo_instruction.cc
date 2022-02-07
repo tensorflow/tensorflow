@@ -3718,30 +3718,7 @@ namespace {
 // Indicates how an instruction uses a value (such as an operand).
 //
 // Does it (a) not use it, (b) use it, or (c) use it multiple times?
-//
-// In the kUse case (i.e. (b)) we may either (i) use the value elementwise, or
-// (ii) use it after having permuted it somehow, e.g. through a reshape.  If
-// the use is a permuting use, we set permutation_instr to the instruction
-// that did the permuting.
-struct UseKind {
-  enum Kind { kReuse, kUse, kNoUse };
-
-  // Creates a UseKind that represents a use that permutes an instruction's
-  // elements according to the given instruction.
-  static UseKind Permuting(const HloInstruction* permutation_instr) {
-    UseKind k(kUse);
-    k.permutation_instr = permutation_instr;
-    return k;
-  }
-
-  UseKind(Kind kind)  // NOLINT intentionally nonexplicit
-      : kind(kind), permutation_instr(nullptr) {}
-
-  bool friend operator==(UseKind a, Kind b) { return a.kind == b; }
-
-  Kind kind;
-  const HloInstruction* permutation_instr;
-};
+enum class UseKind { kReuse = 0, kUse = 1, kNoUse = 2 };
 
 // A helper class for memoized, recursive computation of HloOpcode::kFusion
 // in HloInstruction::OperandElementUse below.
@@ -3756,30 +3733,6 @@ class FusionReusesParamElements {
   static UseKind ComputeInternal(
       int64_t outer_param_num, const HloInstruction& hlo,
       absl::flat_hash_map<const HloInstruction*, UseKind>* cache);
-
-  // Meet operator on a lattice:
-  //
-  //   kReuse < kUse < kNoUse.
-  //
-  // Two kUses uses which have different non-null permutations count as kReuse.
-  static UseKind Meet(UseKind a, UseKind b) {
-    // Without loss of generality, let `b` be the operation with the larger use
-    // kind.
-    if (b.kind < a.kind) {
-      std::swap(a, b);
-    }
-    // If the kinds are different, return the smaller one, namely `a`.
-    if (a.kind != b.kind) {
-      return a;
-    }
-    // If the kinds are both kUse, check that they're the same permutation.
-    if (a.kind == UseKind::kUse && b.kind == UseKind::kUse &&
-        a.permutation_instr && b.permutation_instr &&
-        a.permutation_instr != b.permutation_instr) {
-      return UseKind::kReuse;
-    }
-    return a;  // They're the same.
-  }
 };
 
 }  // namespace
@@ -3789,28 +3742,21 @@ static UseKind OperandElementUse(const HloInstruction& instr,
                                  int64_t operand_num) {
   switch (instr.opcode()) {
     case HloOpcode::kBitcast:
-      // A bitcast that only adds or removes degenerate (i.e. size 1) dimensions
-      // doesn't permute its elements, so it counts as a plain, non-permuting
-      // use.
-      return ShapeUtil::DropDegenerateDimensions(instr.shape()) ==
-                     ShapeUtil::DropDegenerateDimensions(
-                         instr.operand(0)->shape())
-                 ? UseKind::kUse
-                 : UseKind::Permuting(&instr);
     case HloOpcode::kConcatenate:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
-      return UseKind::Permuting(&instr);
+    case HloOpcode::kGather:
+      return UseKind::kUse;
     case HloOpcode::kPad:
       // Pad reuses the padding value but not the padded array elements.
-      return operand_num > 0 ? UseKind::kReuse : UseKind::Permuting(&instr);
+      return operand_num > 0 ? UseKind::kReuse : UseKind::kUse;
     case HloOpcode::kReduce:
       // Reduce reuses the init values but not the operand array elements.
       return operand_num >= Cast<HloReduceInstruction>(&instr)->input_count()
                  ? UseKind::kReuse
-                 : UseKind::Permuting(&instr);
+                 : UseKind::kUse;
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
       return FusionReusesParamElements::Compute(operand_num,
@@ -3830,10 +3776,6 @@ static UseKind OperandElementUse(const HloInstruction& instr,
         return UseKind::kUse;
       }
       return UseKind::kReuse;
-    case HloOpcode::kGather:
-      // Gather reads its indices in a linear fashion, and it permutes the
-      // vector it's gathering from.
-      return operand_num == 0 ? UseKind::kUse : UseKind::Permuting(&instr);
     default:
       return instr.IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }
@@ -3867,8 +3809,8 @@ UseKind FusionReusesParamElements::ComputeInternal(
       // How does the HLO use this operand.
       UseKind hlo_use = OperandElementUse(hlo, operand_num);
 
-      // If HLO does not use the outer operand, return previous value.
-      if (hlo_use.kind == UseKind::kNoUse) {
+      // If the HLO does not use the outer operand, return previous value.
+      if (hlo_use == UseKind::kNoUse) {
         return old_val;
       }
 
@@ -3877,10 +3819,14 @@ UseKind FusionReusesParamElements::ComputeInternal(
 
       // If the operand does not use the outer operand, return the previous
       // value.
-      if (operand_use.kind == UseKind::kNoUse) {
+      if (operand_use == UseKind::kNoUse) {
         return old_val;
       }
-      return Meet(old_val, Meet(hlo_use, operand_use));
+
+      // Meet operator on a lattice:
+      //
+      //   kReuse < kUse < kNoUse.
+      return std::min({old_val, hlo_use, operand_use});
     }();
 
     value_it = cache->find(&hlo);
