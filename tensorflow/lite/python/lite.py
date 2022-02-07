@@ -266,24 +266,35 @@ class QuantizationMode(object):
     self._full_integer_quantization_bias_type = full_integer_quantization_bias_type
     self._validate_full_integer_quantization_bias_type()
 
-  # TODO(b/162537905): Refactor the following quantization functions -
-  # re-organize and refactor for better readability.
   def is_post_training_int8_only_quantization(self):
-    return (self.any_optimization_enabled() and
-            self._is_int8_target_required() and
+    return (self.is_any_optimization_enabled() and
+            self._representative_dataset is not None and
             not self._is_int16x8_target_required() and
             not self.is_allow_float() and
-            self._representative_dataset is not None)
+            self._is_int8_target_required())
 
   def is_post_training_int8_quantization_with_float_fallback(self):
-    return (self.any_optimization_enabled() and
-            not self._is_int16x8_target_required() and
+    return (self.is_any_optimization_enabled() and
             self._representative_dataset is not None and
+            not self._is_int16x8_target_required() and
+            self.is_allow_float() and
             self._smallest_supported_type() == _dtypes.int8)
 
   def is_post_training_int8_quantization(self):
     return (self.is_post_training_int8_only_quantization() or
             self.is_post_training_int8_quantization_with_float_fallback())
+
+  def is_post_training_int16x8_only_quantization(self):
+    return (self.is_any_optimization_enabled() and
+            self._representative_dataset is not None and
+            self._is_int16x8_target_required() and
+            not self.is_allow_float())
+
+  def is_post_training_int16x8_quantization_with_float_fallback(self):
+    return (self.is_any_optimization_enabled() and
+            self._representative_dataset is not None and
+            self._is_int16x8_target_required() and
+            self.is_allow_float())
 
   def is_post_training_int16x8_quantization(self):
     return (self.is_post_training_int16x8_only_quantization() or
@@ -293,50 +304,38 @@ class QuantizationMode(object):
     return (self.is_post_training_int8_quantization() or
             self.is_post_training_int16x8_quantization())
 
+  def is_low_bit_quantize_aware_training(self):
+    return (self.is_any_optimization_enabled() and
+            self.is_quantization_aware_trained_model() and
+            self._experimental_low_bit_qat)
+
+  def is_quantization_aware_training(self):
+    return (self.is_any_optimization_enabled() and
+            self.is_quantization_aware_trained_model() and
+            not self.is_low_bit_quantize_aware_training())
+
   def is_integer_quantization(self):
     return (self.is_post_training_integer_quantization() or
             self.is_quantization_aware_training() or
             self.is_low_bit_quantize_aware_training())
 
-  def is_quantization_aware_training(self):
-    return (not self.is_low_bit_quantize_aware_training() and
-            self.any_optimization_enabled() and
-            self.is_quantization_aware_trained_model())
-
-  def is_bfloat16_quantization(self):
-    return (self.any_optimization_enabled() and
-            self._smallest_supported_type().size == 2 and
-            _dtypes.bfloat16 in self._target_spec.supported_types)
-
-  def is_post_training_int16x8_only_quantization(self):
-    return (self.any_optimization_enabled() and
-            not self._is_int8_target_required() and
-            self._is_int16x8_target_required() and
-            not self.is_allow_float() and
-            self._representative_dataset is not None)
-
-  def is_post_training_int16x8_quantization_with_float_fallback(self):
-    return (self.any_optimization_enabled() and
-            self._is_int16x8_target_required() and
-            self.is_allow_float())
-
   def is_post_training_dynamic_range_quantization(self):
     # Post-training dynamic range quantization is only enabled if post-training
     # int8 quantization and training time quantization was not done.
-    return (self.any_optimization_enabled() and
+    return (self.is_any_optimization_enabled() and
             self._representative_dataset is None and
             not self.is_quantization_aware_trained_model() and
             self._smallest_supported_type() == _dtypes.int8)
 
   def is_post_training_float16_quantization(self):
-    return (self.any_optimization_enabled() and
+    return (self.is_any_optimization_enabled() and
             self._smallest_supported_type().size == 2 and
             _dtypes.float16 in self._target_spec.supported_types)
 
-  def is_low_bit_quantize_aware_training(self):
-    return (self.any_optimization_enabled() and
-            self.is_quantization_aware_trained_model() and
-            self._experimental_low_bit_qat)
+  def is_bfloat16_quantization(self):
+    return (self.is_any_optimization_enabled() and
+            self._smallest_supported_type().size == 2 and
+            _dtypes.bfloat16 in self._target_spec.supported_types)
 
   def activations_type(self):
     if self.is_integer_quantization():
@@ -469,7 +468,7 @@ class QuantizationMode(object):
         self._target_spec.supported_ops)) or (OpsSet.SELECT_TF_OPS in set(
             self._target_spec.supported_ops))
 
-  def any_optimization_enabled(self):
+  def is_any_optimization_enabled(self):
     return bool(
         set(self._optimizations).intersection([
             Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
@@ -764,7 +763,7 @@ class TFLiteConverterBase(object):
         "original_model_format":
             self._metadata.environment.modelType,
         "optimization_default":
-            quant_mode.any_optimization_enabled(),
+            quant_mode.is_any_optimization_enabled(),
         "optimization_post_training_dynamic_range":
             quant_mode.is_post_training_dynamic_range_quantization(),
         "optimization_post_training_float16":
