@@ -28,7 +28,9 @@ namespace grappler {
 //    introduce nondeterminism by running a function multiple times in parallel.
 //    Specifically, if the function can mutate state, it is potentially
 //    nondeterministic. In such cases, this pass converts such dataset ops to a
-//    non-parallel version.
+//    non-parallel version. As a performance optimization, in certain cases this
+//    pass will instead move nondeterministic ops to a separate non-parallel Map
+//    op, so that most of the ops can still run in parallel.
 //
 // 2. Certain datasets, such as Prefetch, can introduce asynchrony by running a
 //    dataset iterator in a background thread while ops outside the dataset are
@@ -38,23 +40,17 @@ namespace grappler {
 //    the parallel datasets mentioned in (1) above.
 //
 //    This pass modifies nodes to remove asynchrony when there are any datasets
-//    in the graph with problematic stateful ops. Unlike (1), legacy random ops
-//    such as RandomUniform are not problematic despite being stateful, as if
-//    the op is within a dataset's function, ops outside the dataset cannot
-//    access the state.
+//    in the graph with problematic stateful ops. This is done by converting
+//    parallel ops into non-parallel versions, as in (1), and by removing
+//    Prefetch nodes. Unlike (1), legacy random ops such as RandomUniform are
+//    not problematic despite being stateful, as if the op is within a dataset's
+//    function, ops outside the dataset cannot access the state. Also unlike
+//    (1), nondeterministic ops are never moved to a separate Map op, since
+//    doing so would not remove asynchrony.
 //
 // 3. Nondeterminism occurs if an op has a "deterministic" attribute that is
 //    false or a "sloppy" attribute that is true. This pass changes such
 //    attributes to be deterministic.
-//
-// NOTE: To address (1) above, parallel datasets are often rewritten to the
-// non-parallel version as the user-defined functions they apply often use
-// stateful ops (such as RNG). Unfortunately, this rewrite usually causes a
-// large performance penalty in such cases by serializing invocations of the
-// user-defined function.
-//
-// TODO(reedwm): Avoid serial execution of stateful functions that contain
-// stateful ops.
 class MakeDeterministic : public TFDataOptimizerBase {
  public:
   MakeDeterministic() = default;
