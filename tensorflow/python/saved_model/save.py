@@ -490,7 +490,8 @@ def _tensor_dict_to_tensorinfo(tensor_dict):
   }
 
 
-def _map_captures_to_created_tensors(original_captures, resource_map):
+def _map_captures_to_created_tensors(original_captures, resource_map,
+                                     function):
   """Maps eager tensors captured by a function to Graph resources for export.
 
   Args:
@@ -499,6 +500,8 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
       body).
     resource_map: A dictionary mapping from resource tensors owned by the eager
       context to resource tensors in the exported graph.
+    function: Function with the original captures. Only used when raising the
+      AssertionError.
 
   Returns:
     A list of stand-in tensors which belong to the exported graph, corresponding
@@ -512,28 +515,40 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
   for exterior, interior in original_captures:
     mapped_resource = resource_map.get(exterior, None)
     if mapped_resource is None:
-      trackable_referrers = []
-      # Try to figure out where the resource came from by iterating over objects
-      # which reference it. This is slow and doesn't help us figure out how to
-      # match it to other objects when loading the SavedModel as a checkpoint,
-      # so we can't continue saving. But we can at least tell the user what
-      # needs attaching.
-      for primary_referrer in gc.get_referrers(exterior):
-        if isinstance(primary_referrer, base.Trackable):
-          trackable_referrers.append(primary_referrer)
-        for secondary_referrer in gc.get_referrers(primary_referrer):
-          if isinstance(secondary_referrer, base.Trackable):
-            trackable_referrers.append(secondary_referrer)
       raise AssertionError(
           "Tried to export a function which references 'untracked' resource "
           f"{interior}. TensorFlow objects (e.g. tf.Variable) captured by "
           "functions must be 'tracked' by assigning them to an attribute of a "
           "tracked object or assigned to an attribute of the main object "
-          "directly.\n\n Trackable Python objects referring to this tensor "
-          "(from gc.get_referrers, limited to two hops):\n{}".format("\n".join(
-              [repr(obj) for obj in trackable_referrers])))
+          "directly. See the information below:"
+          f"\n\tFunction name = {function.name}"
+          f"\n\tCaptured Tensor = {exterior}"
+          f"\n\t{_get_trackable_parent_error_string(exterior)}")
     export_captures.append(mapped_resource)
   return export_captures
+
+
+def _get_trackable_parent_error_string(capture):
+  """Gets error string with the capture's parent object."""
+  parent = getattr(capture, "_parent_trackable", None)
+  if parent is not None:
+    return f"Trackable referencing this tensor = {parent()}"
+
+  # Try to figure out where the resource came from by iterating over objects
+  # which reference it. This is slow and doesn't help us figure out how to
+  # match it to other objects when loading the SavedModel as a checkpoint,
+  # so we can't continue saving. But we can at least tell the user what
+  # needs attaching.
+  trackable_referrers = []
+  for primary_referrer in gc.get_referrers(capture):
+    if isinstance(primary_referrer, base.Trackable):
+      trackable_referrers.append(primary_referrer)
+    for secondary_referrer in gc.get_referrers(primary_referrer):
+      if isinstance(secondary_referrer, base.Trackable):
+        trackable_referrers.append(secondary_referrer)
+  return ("Trackable Python objects referring to this tensor "
+          "(from gc.get_referrers, limited to two hops) = [\n\t\t{}]"
+          .format("\n\t\t".join([repr(obj) for obj in trackable_referrers])))
 
 
 def _to_safe_name_scope(signature_key, user_input_name):
@@ -629,7 +644,7 @@ def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
 def _call_function_with_mapped_captures(function, args, resource_map):
   """Calls `function` in the exported graph, using mapped resource captures."""
   export_captures = _map_captures_to_created_tensors(function.graph.captures,
-                                                     resource_map)
+                                                     resource_map, function)
   # Calls the function quite directly, since we have new captured resource
   # tensors we need to feed in which weren't part of the original function
   # definition.
