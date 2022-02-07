@@ -118,7 +118,7 @@ bool FillStringBufferFromPyUnicode(PyObject* value,
                                    DynamicBuffer* dynamic_buffer) {
   Py_ssize_t len = -1;
   const char* buf = PyUnicode_AsUTF8AndSize(value, &len);
-  if (buf == NULL) {
+  if (buf == nullptr) {
     PyErr_SetString(PyExc_ValueError, "PyUnicode_AsUTF8AndSize() failed.");
     return false;
   }
