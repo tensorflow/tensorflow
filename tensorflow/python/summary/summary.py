@@ -115,6 +115,9 @@ def scalar(name, tensor, collections=None, family=None):
 
   @end_compatibility
   """
+  if _distribute_summary_op_util.skip_summary():
+    return _constant_op.constant('')
+
   # Special case: invoke v2 op for TF2 users who have a v2 writer.
   if _should_invoke_v2_op():
     # Defer the import to happen inside the symbol to prevent breakage due to
@@ -127,8 +130,6 @@ def scalar(name, tensor, collections=None, family=None):
     return _constant_op.constant(b'')
 
   # Fall back to legacy v1 scalar implementation.
-  if _distribute_summary_op_util.skip_summary():
-    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
     val = _gen_logging_ops.scalar_summary(tags=tag, values=tensor, name=scope)
@@ -225,6 +226,9 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
 
   @end_compatibility
   """
+  if _distribute_summary_op_util.skip_summary():
+    return _constant_op.constant('')
+
   # Special case: invoke v2 op for TF2 users who have a v2 writer.
   if _should_invoke_v2_op():
     # Defer the import to happen inside the symbol to prevent breakage due to
@@ -241,8 +245,6 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
     return _constant_op.constant(b'')
 
   # Fall back to legacy v1 image implementation.
-  if _distribute_summary_op_util.skip_summary():
-    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
     val = _gen_logging_ops.image_summary(
@@ -319,6 +321,9 @@ def histogram(name, values, collections=None, family=None):
 
   @end_compatibility
   """
+  if _distribute_summary_op_util.skip_summary():
+    return _constant_op.constant('')
+
   # Special case: invoke v2 op for TF2 users who have a v2 writer.
   if _should_invoke_v2_op():
     # Defer the import to happen inside the symbol to prevent breakage due to
@@ -331,8 +336,6 @@ def histogram(name, values, collections=None, family=None):
     return _constant_op.constant(b'')
 
   # Fall back to legacy v1 histogram implementation.
-  if _distribute_summary_op_util.skip_summary():
-    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[values],
       default_name='HistogramSummary') as (tag, scope):
@@ -428,6 +431,9 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
 
   @end_compatibility
   """
+  if _distribute_summary_op_util.skip_summary():
+    return _constant_op.constant('')
+
   # Special case: invoke v2 op for TF2 users who have a v2 writer.
   if _should_invoke_v2_op():
     # Defer the import to happen inside the symbol to prevent breakage due to
@@ -449,8 +455,6 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
     return _constant_op.constant(b'')
 
   # Fall back to legacy v1 audio implementation.
-  if _distribute_summary_op_util.skip_summary():
-    return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family=family, values=[tensor]) as (tag, scope):
     sample_rate = _ops.convert_to_tensor(
@@ -529,6 +533,9 @@ def text(name, tensor, collections=None):
 
   # Special case: invoke v2 op for TF2 users who have a v2 writer.
   if _should_invoke_v2_op():
+    # `skip_summary` check for v1 op case is done in `tensor_summary`.
+    if _distribute_summary_op_util.skip_summary():
+      return _constant_op.constant('')
     # Defer the import to happen inside the symbol to prevent breakage due to
     # missing dependency.
     from tensorboard.summary.v2 import text as text_v2  # pylint: disable=g-import-not-at-top
