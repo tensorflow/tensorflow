@@ -88,7 +88,11 @@ class Delegate {
   }
 
   bool force_fp16() const {
+#ifdef XNNPACK_FORCE_PRECISION_FP16
+    return true;
+#else
     return (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16) != 0;
+#endif
   }
 
   pthreadpool_t threadpool() const {
