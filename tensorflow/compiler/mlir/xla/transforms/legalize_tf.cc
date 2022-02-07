@@ -4444,12 +4444,9 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
 
     IntegerAttr iota_dimension =
         IntegerAttr::get(rewriter.getIntegerType(64), axis);
-    Value index_values =
-        rewriter.create<IotaOp>(loc, index_type, iota_dimension);
-
-    std::vector<int64_t> dimensions = input_type.getShape();
-    dimensions.erase(dimensions.begin() + axis);
-    ArrayRef<int64_t> reduction_result_shape(dimensions);
+    Value input_shape = rewriter.create<shape::ShapeOfOp>(loc, op.input());
+    Value index_values = rewriter.create<DynamicIotaOp>(
+        loc, index_type, input_shape, iota_dimension);
 
     Value operands[] = {op.input(), index_values};
     Value init_values[] = {init_value, index_init_value};
