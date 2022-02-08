@@ -90,8 +90,6 @@ This release contains contributions from many people at Google, as well as:
 * `tf.data`:
   * The optimization `parallel_batch` now becomes default if not disabled by users, which will parallelize copying of batch elements.
   * Added the ability for `TensorSliceDataset` to identify and handle inputs that are files. This enables creating hermetic SavedModels when using datasets created from files.
-    *   The optimization `parallel_batch` now becomes default if not disabled by users, which will parallelize copying of batch elements.
-    *   Added the ability for `TensorSliceDataset` to identify and handle inputs that are files. This enables creating hermetic SavedModels when using datasets created from files.
 
 *   `tf.lite`:
     *   Adds GPU Delegation support for serialization to Java API. This boosts initialization time up to 90% when OpenCL is available.
