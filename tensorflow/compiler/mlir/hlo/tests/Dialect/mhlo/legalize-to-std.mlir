@@ -211,7 +211,7 @@ func @iota.const.complex.f64() -> tensor<4xcomplex<f64>> {
 
 // CHECK-LABEL: func @select(%arg0: tensor<4xi1>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<4xi32> {
 func @select(%arg0: tensor<4xi1>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK-NEXT: %0 = select %arg0, %arg1, %arg2 : tensor<4xi1>, tensor<4xi32>
+  // CHECK-NEXT: %0 = arith.select %arg0, %arg1, %arg2 : tensor<4xi1>, tensor<4xi32>
   %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<4xi1>, tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %0 : tensor<4xi32>
 }

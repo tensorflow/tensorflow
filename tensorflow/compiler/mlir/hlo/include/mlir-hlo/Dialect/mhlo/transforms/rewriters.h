@@ -26,7 +26,7 @@ limitations under the License.
 namespace mlir {
 namespace bufferization {
 class BufferizeTypeConverter;
-}
+}  // namespace bufferization
 namespace mhlo {
 
 class RemoveSignTypeConverter;
@@ -86,6 +86,10 @@ void populateHLOToLinalgConversionPattern(MLIRContext *context,
                                           TypeConverter &typeConverter,
                                           RewritePatternSet *patterns);
 
+// Collection of rewrite patterns for lowering of HLO dim operations.
+void populateShapeComputationPatterns(MLIRContext *context,
+                                      RewritePatternSet *patterns);
+
 // Converter to signless intergers to be used with linalg conversion patterns.
 std::unique_ptr<TypeConverter> createHloToLinalgSignedIntegerConverter();
 
@@ -123,11 +127,11 @@ void PopulateTrigonometricToApproximationPatterns(MLIRContext *context,
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns);
 
-// Populate patterns to group reduction and parallecol dimensions of reduction
-// operations and realize them through equivalent 1D or 2D reductions, if
-// possible.
+// Populate patterns to group reduction and parallel dimensions of reduction
+// operations and realize them through equivalent 1D or 2D reductions.
 void populateGroupReductionDimensionsPatterns(MLIRContext *context,
-                                              RewritePatternSet *patterns);
+                                              RewritePatternSet *patterns,
+                                              bool prefer_columns_reductions);
 
 /// Populate rank specialization clustering and lowering patterns.
 void PopulateRankSpecializationClusterPatterns(MLIRContext *context,

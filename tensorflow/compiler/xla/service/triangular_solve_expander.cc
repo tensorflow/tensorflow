@@ -250,8 +250,7 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
     // (..., size, size). We resize this to (num_blocks, size, size).
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(diag_blocks));
     int64_t block_size = ShapeUtil::GetDimension(shape, -1);
-    int64_t num_blocks = ShapeUtil::ElementsIn(shape) /
-                         tensorflow::MathUtil::IPow(block_size, 2);
+    int64_t num_blocks = ShapeUtil::ElementsIn(shape) / IPow(block_size, 2);
     diag_blocks = Reshape(diag_blocks, {num_blocks, block_size, block_size});
 
     // The input must be triangular because we rely on that when doing

@@ -294,10 +294,12 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
                 << " bytes on device " << device_ordinal
                 << " for BFCAllocator.";
     }
+
+    tensorflow::BFCAllocator::Options opts;
+    opts.allow_growth = !preallocate;
     auto gpu_bfc_allocator = absl::make_unique<tensorflow::BFCAllocator>(
-        sub_allocator.release(), allocator_memory,
-        /*allow_growth=*/!preallocate,
-        absl::StrCat("GPU_", device_ordinal, "_bfc"));
+        std::move(sub_allocator), allocator_memory,
+        absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);
     allocators.emplace_back(std::move(gpu_bfc_allocator),
                             local_device->compute_stream());
   }
@@ -346,13 +348,18 @@ StatusOr<std::unique_ptr<se::DeviceMemoryAllocator>> GetGpuDeviceAllocator(
 // transfers. We use a fixed 64MB pool of pinned memory.
 std::unique_ptr<tensorflow::BFCAllocator> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
-  tensorflow::SubAllocator* sub_allocator = new tensorflow::DeviceHostAllocator(
-      executor, /*numa_node=*/0, /*alloc_visitors=*/{}, /*free_visitors=*/{});
+  std::unique_ptr<tensorflow::SubAllocator> sub_allocator(
+      new tensorflow::DeviceHostAllocator(executor, /*numa_node=*/0,
+                                          /*alloc_visitors=*/{},
+                                          /*free_visitors=*/{}));
   // TODO(phawkins): allow the user to tune this.
   const int64_t kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
+
+  tensorflow::BFCAllocator::Options opts;
+  opts.allow_growth = true;
   return absl::make_unique<tensorflow::BFCAllocator>(
-      sub_allocator, kGpuHostMemoryLimitBytes, /*allow_growth=*/true,
-      /*name=*/"xla_gpu_host_bfc");
+      std::move(sub_allocator), kGpuHostMemoryLimitBytes,
+      /*name=*/"xla_gpu_host_bfc", opts);
 }
 
 // A table mapping NcclCliqueKeys to ncclUniqueId values encoded as strings.

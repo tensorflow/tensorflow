@@ -40,7 +40,7 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 namespace {
-class AdjustLayout : public PassWrapper<AdjustLayout, FunctionPass> {
+class AdjustLayout : public PassWrapper<AdjustLayout, OperationPass<FuncOp>> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect>();
   }
@@ -73,21 +73,34 @@ class AdjustLayout : public PassWrapper<AdjustLayout, FunctionPass> {
     return std::vector<int64_t>(minor_to_major.begin(), minor_to_major.end());
   }
 
-  static FailureOr<Attribute> GetLayout(const Type &type, OpBuilder &rewriter) {
+  static FailureOr<Attribute> GetLayout(const ArrayRef<Type> types,
+                                        OpBuilder &rewriter) {
     auto i64_type = rewriter.getIntegerType(64);
-    if (type.isa<TupleType>()) {
-      auto tuple_type = type.dyn_cast<TupleType>();
-      const auto &types = tuple_type.getTypes();
+    if (types.size() > 1) {
       llvm::SmallVector<mlir::Attribute> v;
       v.reserve(types.size());
       for (const mlir::Type &t : types) {
-        auto layout = GetLayout(t, rewriter);
+        if (t.isa<TokenType>()) continue;
+        auto layout = GetLayout({t}, rewriter);
         if (failed(layout)) return failure();
         v.push_back(layout.getValue());
       }
       ArrayRef<Attribute> shape(v);
       return rewriter.getArrayAttr(shape);
-    } else if (auto t = type.dyn_cast<RankedTensorType>()) {
+    } else if (types[0].isa<TupleType>()) {
+      auto tuple_type = types[0].dyn_cast<TupleType>();
+      const auto &types = tuple_type.getTypes();
+      llvm::SmallVector<mlir::Attribute> v;
+      v.reserve(types.size());
+      for (const mlir::Type &t : types) {
+        if (t.isa<TokenType>()) continue;
+        auto layout = GetLayout({t}, rewriter);
+        if (failed(layout)) return failure();
+        v.push_back(layout.getValue());
+      }
+      ArrayRef<Attribute> shape(v);
+      return rewriter.getArrayAttr(shape);
+    } else if (auto t = types[0].dyn_cast<RankedTensorType>()) {
       if (!t.hasStaticShape()) return failure();
       auto layout = GetTPUInfeedLayoutFromAPI(t);
       std::vector<int64_t> minor_to_major;
@@ -120,18 +133,22 @@ class AdjustLayout : public PassWrapper<AdjustLayout, FunctionPass> {
       }
       return rewriter.getArrayAttr(elements);
     } else {
-      return rewriter.getUnitAttr();  // e.g. tokens
+      // types.size() == 1 and types[0] == TokenType
+      // For this case, we return an empty array attribute.
+      return rewriter.getArrayAttr({});
     }
   }
 
   static void runOnInfeedOp(::mlir::mhlo::InfeedOp op) {
     OpBuilder builder(op.getContext());
-    auto layout = GetLayout(op.getType(), builder);
+    SmallVector<Type> result_types(op.getResultTypes().begin(),
+                                   op.getResultTypes().end());
+    auto layout = GetLayout(result_types, builder);
     if (failed(layout)) return;
     op->setAttr("layout", layout.getValue());
   }
 
-  void runOnFunction() override { getFunction().walk(runOnInfeedOp); }
+  void runOnOperation() override { getOperation().walk(runOnInfeedOp); }
 };
 }  // anonymous namespace
 

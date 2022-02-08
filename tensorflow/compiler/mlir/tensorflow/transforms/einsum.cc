@@ -511,12 +511,12 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
 // Transform Einsum to other TF Ops for the supported variants.
 struct TransformEinsumPass
     : public TransformEinsumPassBase<TransformEinsumPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void TransformEinsumPass::runOnFunction() {
+void TransformEinsumPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
+  auto func = getOperation();
 
   patterns.insert<ConvertTFEinsumOp>(&getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
@@ -543,7 +543,7 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 
-std::unique_ptr<FunctionPass> CreateTransformEinsumPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTransformEinsumPass() {
   return std::make_unique<TransformEinsumPass>();
 }
 

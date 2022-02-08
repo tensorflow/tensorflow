@@ -7,6 +7,7 @@ package(
     default_visibility = [
         ":__subpackages__",
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -45,6 +46,7 @@ cc_library(
     hdrs = ["pass_registration.h"],
     deps = [
         ":PassIncGen",
+        "//tensorflow/core/transforms/const_dedupe_hoist:Pass",
         "//tensorflow/core/transforms/drop_unregistered_attribute:OutputShapesPass",
         "//tensorflow/core/transforms/graph_to_func:Pass",
         "//tensorflow/core/transforms/toposort:Pass",
@@ -57,6 +59,7 @@ tf_native_cc_binary(
     srcs = ["tfg-transforms-opt.cc"],
     deps = [
         ":PassRegistration",
+        "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:MlirOptLib",

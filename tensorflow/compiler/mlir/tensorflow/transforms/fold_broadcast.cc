@@ -57,7 +57,7 @@ class ConvertResultsBroadcastableShapeOp : public RewritePattern {
 
 class BroadcastFoldPass : public TF::BroadcastFoldPassBase<BroadcastFoldPass> {
  public:
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 LogicalResult ConvertResultsBroadcastableShapeOp::matchAndRewrite(
@@ -186,9 +186,9 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
   return success(changed);
 }
 
-void BroadcastFoldPass::runOnFunction() {
+void BroadcastFoldPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
+  auto func = getOperation();
 
   patterns.insert<ConvertResultsBroadcastableShapeOp>(func.getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));

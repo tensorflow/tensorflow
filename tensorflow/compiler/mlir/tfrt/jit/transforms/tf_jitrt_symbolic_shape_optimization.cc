@@ -44,11 +44,11 @@ using mlir::AffineExpr;
 using mlir::AffineMap;
 using mlir::failure;
 using mlir::FuncOp;
-using mlir::FunctionPass;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::OpBuilder;
+using mlir::OperationPass;
 using mlir::RankedTensorType;
 using mlir::ShapeComponentAnalysis;
 using mlir::success;
@@ -343,7 +343,7 @@ struct SymbolicShapeOptimizationPass
     this->optimize_only_constraints = constraints_only;
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
 
@@ -363,7 +363,7 @@ struct SymbolicShapeOptimizationPass
         op.getCanonicalizationPatterns(patterns, ctx);
     }
 
-    if (failed(mlir::applyPatternsAndFoldGreedily(getFunction(),
+    if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
                                                   std::move(patterns)))) {
       return signalPassFailure();
     }
@@ -372,7 +372,7 @@ struct SymbolicShapeOptimizationPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateSymbolicShapeOptimizationPass(
+std::unique_ptr<OperationPass<FuncOp>> CreateSymbolicShapeOptimizationPass(
     bool constraints_only) {
   return std::make_unique<SymbolicShapeOptimizationPass>(constraints_only);
 }

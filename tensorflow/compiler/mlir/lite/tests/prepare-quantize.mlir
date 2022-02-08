@@ -540,10 +540,10 @@ func @QuantizeConstant() -> tensor<2x3xf32> {
 
 // CHECK-LABEL: NotQuantizeNoneType
 func @NotQuantizeNoneType() -> none {
-  %cst = constant unit
+  %cst = "tfl.no_value"() {value = unit} : () -> none
   return %cst : none
 
-// CHECK-NEXT:  %[[cst:.*]] = constant unit
+// CHECK-NEXT:  %[[cst:.*]] = "tfl.no_value"() {value} : () -> none
 // CHECK-NEXT:  return %[[cst]]
 }
 

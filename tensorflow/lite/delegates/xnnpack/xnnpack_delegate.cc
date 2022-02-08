@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -547,6 +548,23 @@ class Subgraph {
     uint32_t flags = XNN_FLAG_YIELD_WORKERS;
     if (has_sparse_weights) {
       flags |= XNN_FLAG_SPARSE_INFERENCE;
+    }
+    const char* precision_metadata_ptr = nullptr;
+    size_t precision_metadata_size = 0;
+    if (context->GetModelMetadata(context, optimize::kTfLiteReducedPrecisionKey,
+                                  &precision_metadata_ptr,
+                                  &precision_metadata_size) == kTfLiteOk) {
+      const std::string precision_metadata(precision_metadata_ptr,
+                                           precision_metadata_size);
+      optimize::ReducedPrecisionSupport precision_mask =
+          optimize::ReducedPrecisionSupport::None;
+      if (optimize::SetMaskFromReducedPrecisionMetadata(precision_metadata,
+                                                        &precision_mask)) {
+        if (optimize::SupportsFP16Inference(precision_mask) &&
+            optimize::SupportsFP16Accumulation(precision_mask)) {
+          flags |= XNN_FLAG_FP16_INFERENCE;
+        }
+      }
     }
     status = xnn_create_runtime_v2(subgraph.get(), delegate.threadpool(), flags,
                                    &runtime_ptr);

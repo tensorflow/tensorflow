@@ -91,26 +91,13 @@ bool IsBufferBased(const GpuInfo& gpu_info, const TensorStorageType& type) {
 }
 
 // Calculates the total size of the assignment.
-size_t TotalSize(const ObjectsAssignment<size_t>& assignment) {
-  return std::accumulate(assignment.object_sizes.begin(),
-                         assignment.object_sizes.end(), static_cast<size_t>(0));
-}
-
-// Checks if sub-buffer image 2D mapping is supported.
-bool CanUseSubBuffer(const GpuInfo& gpu_info) {
-  if (!gpu_info.IsCL11OrHigher()) {
-    return false;
+size_t TotalSize(const ObjectsAssignment<size_t>& assignment,
+                 size_t alignment = 1) {
+  size_t total_size = 0;
+  for (auto object_size : assignment.object_sizes) {
+    total_size += AlignByN(object_size, alignment);
   }
-  if (gpu_info.IsPowerVR()) {
-    return false;
-  }
-  if (gpu_info.IsMali() &&
-      (gpu_info.mali_info.IsBifrost() || gpu_info.mali_info.IsMidgard())) {
-    // Known driver issue on some G72 (Bifrost), G76 (Bifrost), T830 (Midgard),
-    // and T880 (Midgard) devices.
-    return false;
-  }
-  return true;
+  return total_size;
 }
 
 }  // namespace
@@ -392,6 +379,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
       &buffer_usages);
 
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
+  bool has_buffer_based_images = false;
   for (auto& usage : buffer_usages) {
     const auto& t = tensors_descs_[usage.first];
     const auto& shape = t.shape;
@@ -400,6 +388,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
     size_t buffer_size;
     if (descriptor.storage_type == TensorStorageType::TEXTURE_2D ||
         descriptor.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+      has_buffer_based_images = true;
       const size_t bytes_per_pixel =
           element_size *
           (descriptor.storage_type == TensorStorageType::TEXTURE_2D ? 4
@@ -413,6 +402,9 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
       const size_t width_aligned = AlignByN(width, width_pixel_alignment);
       buffer_size = width_aligned * bytes_per_pixel * height;
     } else {
+      if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+        has_buffer_based_images = true;
+      }
       buffer_size =
           shape.b * shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
     }
@@ -427,12 +419,15 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
   RETURN_IF_ERROR(AssignObjectsToTensors(
       buffer_usage_records, MemoryStrategy::GREEDY_BEST, &buffer_assignment));
 
-  size_t base_align_bytes =
+  const bool is_sub_buffers_supported =
+      (!has_buffer_based_images && gpu_info.IsCL11OrHigher()) ||
+      CanUseSubBufferForImage2d(gpu_info);
+  const size_t base_align_bytes =
       std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
-  bool use_offset_assignment = false;
 
+  bool use_offset_assignment = false;
   OffsetsAssignment offset_assignment;
-  if (CanUseSubBuffer(gpu_info)) {
+  if (is_sub_buffers_supported) {
     RETURN_IF_ERROR(AssignOffsetsToTensors(
         buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
         &offset_assignment, base_align_bytes));
@@ -443,19 +438,37 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
   }
 
   if (use_offset_assignment) {
-    shared_buffers_.resize(offset_assignment.offsets.size());
     RETURN_IF_ERROR(CreateReadWriteBuffer(offset_assignment.total_size, context,
                                           &shared_buffers_parent_));
+    shared_buffers_.resize(offset_assignment.offsets.size());
     for (int i = 0; i < offset_assignment.offsets.size(); ++i) {
       RETURN_IF_ERROR(CreateReadWriteSubBuffer(
           shared_buffers_parent_, offset_assignment.offsets[i],
           buffer_usage_records[i].tensor_size, context, &shared_buffers_[i]));
     }
   } else {
-    shared_buffers_.resize(buffer_assignment.object_sizes.size());
-    for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
-      RETURN_IF_ERROR(CreateReadWriteBuffer(buffer_assignment.object_sizes[i],
-                                            context, &shared_buffers_[i]));
+    const size_t total_size = TotalSize(buffer_assignment, base_align_bytes);
+    if (is_sub_buffers_supported && total_size <= gpu_info.GetMaxBufferSize()) {
+      // use single parent buffer:
+      RETURN_IF_ERROR(
+          CreateReadWriteBuffer(total_size, context, &shared_buffers_parent_));
+
+      shared_buffers_.resize(buffer_assignment.object_sizes.size());
+      size_t offset = 0;
+      for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
+        const size_t aligned_size =
+            AlignByN(buffer_assignment.object_sizes[i], base_align_bytes);
+        RETURN_IF_ERROR(CreateReadWriteSubBuffer(shared_buffers_parent_, offset,
+                                                 aligned_size, context,
+                                                 &shared_buffers_[i]));
+        offset += aligned_size;
+      }
+    } else {
+      shared_buffers_.resize(buffer_assignment.object_sizes.size());
+      for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
+        RETURN_IF_ERROR(CreateReadWriteBuffer(buffer_assignment.object_sizes[i],
+                                              context, &shared_buffers_[i]));
+      }
     }
   }
 

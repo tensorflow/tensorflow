@@ -58,7 +58,7 @@ constexpr StringRef kLocationPrefix = "loc:@";
 class ConvertReadonlyReferenceVariablesToResourceVariablesPass
     : public ConvertReadonlyReferenceVariablesToResourceVariablesPassBase<
           ConvertReadonlyReferenceVariablesToResourceVariablesPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Parse node name from "_class" or "shared_name" attributes.
@@ -109,8 +109,9 @@ StringRef GetNodeNameFromClassAttrOrSharedNameAttr(Operation *op) {
   return result;
 }
 
-void ConvertReadonlyReferenceVariablesToResourceVariablesPass::runOnFunction() {
-  FuncOp func = getFunction();
+void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
+    runOnOperation() {
+  FuncOp func = getOperation();
 
   OpBuilder builder(func.getContext());
   SmallVector<VariableV2Op, 4> variable_v2s_to_replace;

@@ -357,7 +357,7 @@ TEST(CoordinationServiceTest, TestSetGetValues) {
   // Key with redundant slashes
   TF_ASSERT_OK(coord_service->InsertKeyValue("path/to//key2/", "value2"));
   // Error when repeatedly inserting the same key
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(errors::IsAlreadyExists(
       coord_service->InsertKeyValue("/path/to/key1/", "value2")));
 
   // Get simple key

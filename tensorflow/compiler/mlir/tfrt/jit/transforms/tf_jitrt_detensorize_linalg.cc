@@ -93,8 +93,8 @@ struct DetensorizeLinalgPass
     : public DetensorizeLinalgBase<DetensorizeLinalgPass> {
   DetensorizeLinalgPass() = default;
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
     auto* context = &getContext();
 
     mlir::ConversionTarget target(*context);
@@ -122,7 +122,8 @@ struct DetensorizeLinalgPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateDetensorizeLinalgPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateDetensorizeLinalgPass() {
   return std::make_unique<DetensorizeLinalgPass>();
 }
 

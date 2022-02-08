@@ -150,17 +150,21 @@ class RaggedShape:
                     message=msg))
 
     self._inner_shape.shape.assert_has_rank(1)
+    self._static_inner_shape = tensor_util.constant_value_as_shape(
+        self._inner_shape)
+
     if row_partitions:
       last_row_partition = row_partitions[-1]
       static_nvals = last_row_partition.static_nvals
-      static_inner_shape = tensor_util.constant_value(self._inner_shape)
-      if (static_nvals is not None) and (static_inner_shape is not None):
-        if static_nvals != static_inner_shape[0]:
+      static_inner_shape_nvals = tensor_shape.dimension_value(
+          self._static_inner_shape[0])
+      if static_nvals is not None and static_inner_shape_nvals is not None:
+        if static_nvals != static_inner_shape_nvals:
           raise ValueError("Last row partition does not match inner_shape.")
       elif validate:
         checks.append(
             check_ops.assert_equal(
-                row_partitions[-1].nvals(),
+                last_row_partition.nvals(),
                 self._inner_shape[0],
                 message="Last row partition does not match inner_shape."))
     if checks:
@@ -319,12 +323,11 @@ class RaggedShape:
     """The dtype of the shape -- one of tf.int32 or tf.int64."""
     return self._inner_shape.dtype
 
-  def _static_inner_shape(self, truncate_first):
-    """Returns the lengths of the inner shape (if rank known)."""
-    result = tensor_util.constant_value(self.inner_shape, partial=True)
-    if result is None:
+  def _static_inner_shape_as_list(self, truncate_first):
+    """Returns the lengths of the inner shape (if rank known), or [...]."""
+    if self._static_inner_shape.rank is None:
       return [...]
-    result = list(result)
+    result = self._static_inner_shape.as_list()
     if truncate_first:
       return result[1:]
     return result
@@ -347,7 +350,7 @@ class RaggedShape:
       Ellipsis at the end.
     """
     if self.num_row_partitions == 0:
-      return self._static_inner_shape(False)
+      return self._static_inner_shape_as_list(False)
     first_dim = self.row_partitions[0].static_nrows
     if isinstance(first_dim, tensor_shape.Dimension):
       first_dim = first_dim.value
@@ -364,7 +367,7 @@ class RaggedShape:
       else:
         rp_dims.append(None)
 
-    return rp_dims + self._static_inner_shape(True)
+    return rp_dims + self._static_inner_shape_as_list(True)
 
   def __repr__(self):
     lengths = _list_with_ellipsis_to_str(self.static_lengths())
@@ -440,10 +443,22 @@ class RaggedShape:
     elif not self.is_uniform(index):
       raise ValueError("Index " + str(index) + " is not uniform")
     elif index == 0 and self.num_row_partitions > 0:
+      static_nrows = self.row_partitions[0].static_nrows
+      if static_nrows is not None:
+        return constant_op.constant(static_nrows, dtype=self.dtype)
       return self.row_partitions[0].nrows()
     elif self.num_row_partitions == 0:
+      static_result = tensor_shape.dimension_value(
+          self._static_inner_shape[index])
+      if static_result is not None:
+        return constant_op.constant(static_result, dtype=self.dtype)
       return self.inner_shape[index]
     elif index > self.num_row_partitions:
+      static_result = tensor_shape.dimension_value(
+          self._static_inner_shape[index - self.num_row_partitions])
+      if static_result is not None:
+        return constant_op.constant(static_result, dtype=self.dtype)
+
       return self.inner_shape[index - self.num_row_partitions]
     else:
       return self.row_partitions[index - 1].uniform_row_length()
@@ -533,9 +548,7 @@ class RaggedShape:
             "You can't use negative values if the rank is undefined")
       axis = axis + rank
     if axis == 0:
-      if self.num_row_partitions >= 1:
-        return self.row_partitions[0].nrows()
-      return self.inner_shape[0]
+      return self._dimension(0)
     if axis <= self.num_row_partitions:
       return self.row_partitions[axis - 1].nvals()
     # If self.num_row_partitions = 1, and
@@ -550,7 +563,7 @@ class RaggedShape:
     return math_ops.reduce_prod(self.inner_shape[:remainder])
 
   def is_uniform(self, axis):
-    """Returns true if the indicated dimension is ragged."""
+    """Returns true if the indicated dimension is uniform."""
     if not isinstance(axis, int):
       raise TypeError("axis must be an integer")
     rank = self.rank
@@ -604,6 +617,9 @@ class RaggedShape:
     elif new_inner_rank == self.inner_rank:
       return self.inner_shape
     elif new_inner_rank < self.inner_rank:
+      if self._static_inner_shape.is_fully_defined():
+        return _alt_inner_shape_from_tensor_shape(self._static_inner_shape,
+                                                  self.dtype, new_inner_rank)
       first_dimension = self._num_slices_in_dimension(-new_inner_rank)
       if new_inner_rank == 1:
         return array_ops.expand_dims(first_dimension, 0)
@@ -625,10 +641,15 @@ class RaggedShape:
       return array_ops.concat([array_ops.stack(new_dims), self.inner_shape[1:]],
                               axis=0)
 
+  def _inner_shape_dim(self, dimension):
+    """Returns an int or a tensor representing _inner_shape[dimension]."""
+    result = tensor_shape.dimension_value(self._static_inner_shape[dimension])
+    return self._inner_shape[dimension] if result is None else result
+
   def with_inner_rank(self, inner_rank):
     """Returns the same shape but a different inner_rank.
 
-    All dimensions that are to represented in the inner_shape must be dense.
+    All dimensions that are to be represented in the inner_shape must be dense.
     See inner_rank.
 
     Args:
@@ -690,20 +711,19 @@ class RaggedShape:
       raise ValueError("num_row_partitions must be less than rank")
     if num_row_partitions > self.num_row_partitions:
       num_row_partitions_diff = num_row_partitions - self.num_row_partitions
-
-      nvals = self.row_partitions[-1].nvals() if (
-          self.num_row_partitions > 0) else self._dimension(0)
+      new_inner_rank = self.rank - num_row_partitions
+      nvals = self._inner_shape_dim(0)
       more_rp = []
       for i in range(num_row_partitions_diff):
         nrows = nvals
-        row_length = self.inner_shape[i + 1]
+        row_length = self._inner_shape_dim(i + 1)
         nvals = nrows * row_length
         rp = RowPartition.from_uniform_row_length(
-            row_length, nrows=nrows, nvals=nvals)
+            row_length, nrows=nrows, dtype=self.dtype)
         more_rp.append(rp)
+      alt_inner = self._alt_inner_shape(new_inner_rank)
       return RaggedShape(
-          list(self.row_partitions) + more_rp,
-          self._alt_inner_shape(self.rank - num_row_partitions))
+          list(self.row_partitions) + more_rp, alt_inner)
     else:
       assert num_row_partitions < self.num_row_partitions
       return RaggedShape(self.row_partitions[:num_row_partitions],
@@ -950,8 +970,8 @@ def ragged_binary_elementwise_op_impl(op, x, y):
 
     (shape_z, bcast_xz,
      bcast_yz) = broadcast_dynamic_shape_extended(shape_x, shape_y)
-    x_new_flat = bcast_xz.broadcast_flat_values(x)
-    y_new_flat = bcast_yz.broadcast_flat_values(y)
+    x_new_flat = bcast_xz.broadcast_flat_values(x, inner_dimensions=False)
+    y_new_flat = bcast_yz.broadcast_flat_values(y, inner_dimensions=False)
     z_flat = op(x_new_flat, y_new_flat)
     return shape_z._add_row_partitions(z_flat, validate=True)  # pylint: disable=protected-access
 
@@ -1098,18 +1118,18 @@ class _LayerBroadcaster(abc.ABC):
     pass
 
   @classmethod
-  def get_identity_broadcaster(cls, nvals):
+  def get_identity_broadcaster(cls, nvals, dtype=None):
     """Create an identity broadcaster.
 
     TODO(martinz): an identity broadcaster can be far more efficient than a
     generic broadcaster. Add an optimized implementation.
     Args:
       nvals: the number of values for the broadcaster.
-
+      dtype: the dtype of the broadcaster, or None to use the dtype of nvals.
     Returns:
       an identity broadcaster from [0....nvals-1] to [0...nvals-1]
     """
-    return _GatherLayerBroadcaster(math_ops.range(nvals))
+    return _GatherLayerBroadcaster(math_ops.range(nvals, dtype=dtype))
 
   def broadcast_tensor(self, tensor):
     """Broadcast from a dense tensor.
@@ -1487,14 +1507,19 @@ def _broadcast_dynamic_shape_one_layer(a, b):
   """
   a_0 = a[0]
   b_0 = b[0]
-  can_broadcast_from_a = math_ops.equal(a_0, 1)
-  can_broadcast_from_b = math_ops.equal(b_0, 1)
 
   def broadcast_from_a():
     # Assumes a_0 == 1
     a_layer = array_ops.zeros(b_0, dtype=b_0.dtype)
     b_layer = math_ops.range(b_0)
     target = b
+    return [a_layer, b_layer, target]
+
+  a_static = tensor_util.constant_value(a)
+  if a_static is not None and a_static[0] == 1:
+    [a_gi, b_gi, target] = broadcast_from_a()
+    a_layer = _LayerBroadcaster.from_gather_index(a_gi)
+    b_layer = _LayerBroadcaster.from_gather_index(b_gi)
     return [a_layer, b_layer, target]
 
   def broadcast_from_b():
@@ -1504,6 +1529,13 @@ def _broadcast_dynamic_shape_one_layer(a, b):
     target = a
     return [a_layer, b_layer, target]
 
+  b_static = tensor_util.constant_value(b)
+  if b_static is not None and b_static[0] == 1:
+    [a_gi, b_gi, target] = broadcast_from_b()
+    a_layer = _LayerBroadcaster.from_gather_index(a_gi)
+    b_layer = _LayerBroadcaster.from_gather_index(b_gi)
+    return [a_layer, b_layer, target]
+
   def broadcast_noop():
     # Assumes a_0 == 1
     a_layer = math_ops.range(a_0)
@@ -1511,8 +1543,10 @@ def _broadcast_dynamic_shape_one_layer(a, b):
     target = b
     return [a_layer, b_layer, target]
 
+  can_broadcast_from_a = math_ops.equal(a_0, 1)
+  can_broadcast_from_b = math_ops.equal(b_0, 1)
+
   def broadcast_not_from_a():
-    can_broadcast_from_b = math_ops.equal(b_0, 1)
     return control_flow_ops.cond(
         can_broadcast_from_b, true_fn=broadcast_from_b, false_fn=broadcast_noop)
 
@@ -1552,14 +1586,30 @@ def _broadcast_dynamic_shape_first_layer(a_0, b_0):
     layer_a is a _LayerBroadcaster from a to the target.
     layer_b is a _LayerBroadcaster from b to the target.
   """
-  can_broadcast_from_a = math_ops.equal(a_0, constant_op.constant(1, a_0.dtype))
-  can_broadcast_from_b = math_ops.equal(b_0, constant_op.constant(1, b_0.dtype))
-
   def broadcast_from_a():
     # Assumes a_0 == 1
     a_layer = array_ops.zeros(b_0, dtype=b_0.dtype)
     b_layer = math_ops.range(b_0)
     return [a_layer, b_layer]
+
+  static_a_0 = tensor_util.constant_value(a_0)
+  static_b_0 = tensor_util.constant_value(b_0)
+  if static_a_0 is not None:
+    if static_a_0 == static_b_0:
+      id_broadcaster = _LayerBroadcaster.get_identity_broadcaster(
+          static_a_0, dtype=a_0.dtype)
+      return [id_broadcaster, id_broadcaster]
+    elif static_a_0 == 1:
+      return [
+          _LayerBroadcaster.get_singleton_broadcaster(b_0),
+          _LayerBroadcaster.get_identity_broadcaster(b_0)
+      ]
+
+  if static_b_0 == 1:
+    return [
+        _LayerBroadcaster.get_identity_broadcaster(a_0),
+        _LayerBroadcaster.get_singleton_broadcaster(a_0)
+    ]
 
   def broadcast_from_b():
     # Assumes b_0 == 1
@@ -1572,6 +1622,9 @@ def _broadcast_dynamic_shape_first_layer(a_0, b_0):
     a_layer = math_ops.range(a_0)
     b_layer = math_ops.range(b_0)
     return [a_layer, b_layer]
+
+  can_broadcast_from_a = math_ops.equal(a_0, constant_op.constant(1, a_0.dtype))
+  can_broadcast_from_b = math_ops.equal(b_0, constant_op.constant(1, b_0.dtype))
 
   def broadcast_not_from_a():
     return control_flow_ops.cond(
@@ -1663,6 +1716,15 @@ def _broadcast_dynamic_shape_next_layer_half_ragged(
   assert a_1.is_uniform()
   assert not b_1.is_uniform()
 
+  static_a_1 = tensor_util.constant_value(a_1.uniform_row_length())
+  if static_a_1 == 1:
+    [bc_1, c_1b] = _broadcast_half(bc_0, b_1)
+    ac_1_gather_index = array_ops.gather(ac_0.gather_index, c_1b.value_rowids())
+    c_1 = RowPartition.from_row_splits(c_1b.row_splits())
+    ac_1 = _LayerBroadcaster.from_gather_index(ac_1_gather_index)
+    bc_1 = _LayerBroadcaster.from_gather_index(bc_1.gather_index)
+    return [c_1, ac_1, bc_1]
+
   def broadcast_noop():
     # The sides must be "equal".
     [ac_1, c_1a] = _broadcast_half(ac_0, a_1)
@@ -1729,6 +1791,37 @@ def _broadcast_dynamic_shape_next_layer_both_uniform(
     raise TypeError("b_1 should be a RowPartition")
   assert a_1.is_uniform()
   assert b_1.is_uniform()
+
+  static_a_1 = tensor_util.constant_value(a_1.uniform_row_length())
+  static_b_1 = tensor_util.constant_value(b_1.uniform_row_length())
+
+  if static_a_1 is not None:
+    if static_a_1 == static_b_1:
+      # Here, this dimension is the same, but we may have to broadcast previous
+      # dimensions.
+      [ac_1, _] = _broadcast_half(ac_0, a_1)
+      [bc_1, _] = _broadcast_half(bc_0, b_1)
+      c_1 = RowPartition.from_uniform_row_length(
+          static_a_1,
+          nrows=ac_0.dest_nrows())
+      return [c_1, ac_1, bc_1]
+    elif static_a_1 == 1:
+      [bc_1, c_1b] = _broadcast_half(bc_0, b_1)
+      ac_1 = _LayerBroadcaster.from_gather_index(
+          array_ops.gather(ac_0.gather_index, c_1b.value_rowids()))
+      c_1 = RowPartition.from_uniform_row_length(
+          b_1.uniform_row_length(),
+          nrows=bc_0.dest_nrows())
+      return [c_1, ac_1, bc_1]
+
+  if static_b_1 == 1:
+    [ac_1, c_1a] = _broadcast_half(ac_0, a_1)
+    bc_1 = _LayerBroadcaster.from_gather_index(
+        array_ops.gather(bc_0.gather_index, c_1a.value_rowids()))
+    c_1 = RowPartition.from_uniform_row_length(
+        a_1.uniform_row_length(),
+        nrows=ac_0.dest_nrows())
+    return [c_1, ac_1, bc_1]
 
   def broadcast_noop():
     # Assumes a_1.uniform_row_length() == b_1.uniform_row_length()
@@ -1920,8 +2013,8 @@ def _broadcast_dynamic_shape_extended_complete(
   ]
   c_num_row_partitions = _get_broadcast_num_row_partitions(a, b)
 
-  c = RaggedShape.from_row_partitions(
-      c_prefix + tuple(c_suffix))._with_num_row_partitions(c_num_row_partitions)
+  c_raw = RaggedShape.from_row_partitions(c_prefix + tuple(c_suffix))
+  c = c_raw._with_num_row_partitions(c_num_row_partitions)
   return (c, _Broadcaster(a, c, ac), _Broadcaster(b, c, bc_prefix + bc_suffix))
 
 
@@ -1946,7 +2039,6 @@ def _broadcast_dynamic_shape_extended_helper(
   assert 1 <= a.rank
   a_rps = a._as_row_partitions()  # pylint: disable=protected-access
   b_rps = b._as_row_partitions()  # pylint: disable=protected-access
-  a_nrows = a[0]
 
   if len(a_rps) < len(b_rps):
     # Note: this includes the case where len(a_rps)==0.
@@ -1956,6 +2048,11 @@ def _broadcast_dynamic_shape_extended_helper(
     # a_rps[1]      | b_rps[1-len(a_rps)]
     # ...           | ...
     # a_rps[-1]     | b_rps[-1]
+
+    a_nrows = a[0]
+    a_nrows_static = tensor_util.constant_value(a_nrows)
+    if a_nrows_static is not None:
+      a_nrows = a_nrows_static
 
     neg_one_a_rp = RowPartition.from_uniform_row_length(
         uniform_row_length=a_nrows, nrows=1, nvals=a_nrows)
@@ -2180,3 +2277,15 @@ def _is_int_or_tuple_of_ints(x):
     if not isinstance(y, int):
       return False
   return True
+
+
+def _alt_inner_shape_from_tensor_shape(shape, dtype, new_inner_rank):
+  """Helper for _alt_inner_shape, used directly in _with_num_row_partitions."""
+  if new_inner_rank == 1:
+    return constant_op.constant([shape.num_elements()], dtype=dtype)
+  new_inner_rank_tail_length = new_inner_rank - 1
+  inner_shape_tail = shape[-new_inner_rank_tail_length:].as_list()
+  first_dim = shape[:-new_inner_rank_tail_length].num_elements()
+  return constant_op.constant([first_dim] + inner_shape_tail,
+                              dtype=dtype)
+

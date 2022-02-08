@@ -44,7 +44,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.platform import remote_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training.tracking import base
@@ -469,12 +468,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           device_filters=("/job:%s/task:%d" % (task_type, task_id),))
       self._collective_ops_configured = True
       if context.context().coordination_service is None:
-        coordination_service = remote_utils.coordination_service_type(
-            cluster_resolver.rpc_layer)
         coordinated_jobs = ["chief", "worker"]
-        if coordination_service and task_type in coordinated_jobs:
+        if task_type in coordinated_jobs:
           context.context().configure_coordination_service(
-              service_type=coordination_service,
+              service_type="standalone",
               service_leader=multi_worker_util.coordination_leader(
                   cluster_spec),
               coordinated_jobs=coordinated_jobs)

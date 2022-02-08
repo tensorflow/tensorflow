@@ -29,11 +29,11 @@ namespace {
 
 class DedupBoundInputBindingPass
     : public DedupBoundInputBindingPassBase<DedupBoundInputBindingPass> {
-  void runOnFunction() final;
+  void runOnOperation() final;
 };
 
-void DedupBoundInputBindingPass::runOnFunction() {
-  FuncOp func = getFunction();
+void DedupBoundInputBindingPass::runOnOperation() {
+  FuncOp func = getOperation();
   if (!mlir::tf_saved_model::IsExported(func)) return;
   llvm::SmallDenseMap<Attribute, unsigned, 8> unique_bound_inputs;
   llvm::BitVector arg_indices_to_erase(func.getNumArguments());

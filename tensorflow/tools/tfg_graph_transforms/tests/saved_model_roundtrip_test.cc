@@ -49,7 +49,8 @@ void RunRoundTrip(const std::string& input_file) {
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref_status =
       mlir::tfg::graph_transforms::ImportSavedModel(&context, input_file);
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module_ref_status.ValueOrDie());
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
+      std::move(module_ref_status.ValueOrDie());
 
   // Generate the Temp file and use it for the export.
   std::string output_file;

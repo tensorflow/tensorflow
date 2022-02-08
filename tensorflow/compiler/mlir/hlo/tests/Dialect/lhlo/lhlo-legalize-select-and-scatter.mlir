@@ -127,9 +127,9 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 
 
     // Depending on PRED, return ARG ivs & elem or current select ivs and value.
-    // CHECK:  [[IF_PRED_RES0:%.*]] = select [[PRED]], [[ARG_I]], [[SEL_I]]
-    // CHECK:  [[IF_PRED_RES1:%.*]] = select [[PRED]], [[ARG_J]], [[SEL_J]]
-    // CHECK:  [[IF_PRED_RES2:%.*]] = select [[PRED]], [[ARG_ELEM]], [[SEL_VAL]]
+    // CHECK:  [[IF_PRED_RES0:%.*]] = arith.select [[PRED]], [[ARG_I]], [[SEL_I]]
+    // CHECK:  [[IF_PRED_RES1:%.*]] = arith.select [[PRED]], [[ARG_J]], [[SEL_J]]
+    // CHECK:  [[IF_PRED_RES2:%.*]] = arith.select [[PRED]], [[ARG_ELEM]], [[SEL_VAL]]
 
     // INIT-THEN-BODY yield.
     // CHECK:  scf.yield [[IF_PRED_RES0]], [[IF_PRED_RES1]],

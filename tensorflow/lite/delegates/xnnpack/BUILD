@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK//:xnnpack_for_tflite",
     ],
 )
@@ -65,6 +66,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "@XNNPACK",
     ],
 )

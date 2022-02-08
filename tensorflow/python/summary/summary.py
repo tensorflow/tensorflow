@@ -19,6 +19,7 @@ See the [Summaries and
 TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard) guide.
 """
 
+import contextlib
 import warnings
 
 from google.protobuf import json_format as _json_format
@@ -38,6 +39,7 @@ from tensorflow.python.eager import context as _context
 from tensorflow.python.framework import constant_op as _constant_op
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 from tensorflow.python.ops import gen_summary_ops as _gen_summary_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import summary_op_util as _summary_op_util
@@ -118,11 +120,8 @@ def scalar(name, tensor, collections=None, family=None):
     # Defer the import to happen inside the symbol to prevent breakage due to
     # missing dependency.
     from tensorboard.summary.v2 import scalar as scalar_v2  # pylint: disable=g-import-not-at-top
-    # Get a new summary tag name with the `family` arg.
-    with _summary_op_util.summary_scope(name, family) as (tag, _):
-      # Reset the root name scope with an empty summary_scope.
-      with _summary_op_util.summary_scope(name='', family=None):
-        scalar_v2(name=tag, data=tensor, step=_get_step_for_v2())
+    with _compat_summary_scope(name, family) as tag:
+      scalar_v2(name=tag, data=tensor, step=_get_step_for_v2())
     # Return an empty Tensor, which will be acceptable as an input to the
     # `tf.compat.v1.summary.merge()` API.
     return _constant_op.constant(b'')
@@ -184,8 +183,25 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
     buffer.
 
   @compatibility(TF2)
-  This API is not compatible with eager execution and `tf.function`. To migrate
-  to TF2, please use `tf.summary.image` instead. Please check
+  For compatibility purposes, when invoked in TF2 where the outermost context is
+  eager mode, this API will check if there is a suitable TF2 summary writer
+  context available, and if so will forward this call to that writer instead. A
+  "suitable" writer context means that the writer is set as the default writer,
+  and there is an associated non-empty value for `step` (see
+  `tf.summary.SummaryWriter.as_default`, or alternatively
+  `tf.summary.experimental.set_step`). For the forwarded call, the arguments
+  here will be passed to the TF2 implementation of `tf.summary.image`, and the
+  return value will be an empty bytestring tensor, to avoid duplicate summary
+  writing. This forwarding is best-effort and not all arguments will be
+  preserved. Additionally:
+
+  *  The TF2 op does not do any of the normalization steps described above.
+     Rather than rescaling data that's outside the expected range, it simply
+     clips it.
+  *  The TF2 op just outputs the data under a single tag that contains multiple
+     samples, rather than multiple tags (i.e. no "/0" or "/1" suffixes).
+
+  To migrate to TF2, please use `tf.summary.image` instead. Please check
   [Migrating tf.summary usage to
   TF 2.0](https://www.tensorflow.org/tensorboard/migrate#in_tf_1x) for concrete
   steps for migration.
@@ -209,6 +225,22 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
 
   @end_compatibility
   """
+  # Special case: invoke v2 op for TF2 users who have a v2 writer.
+  if _should_invoke_v2_op():
+    # Defer the import to happen inside the symbol to prevent breakage due to
+    # missing dependency.
+    from tensorboard.summary.v2 import image as image_v2  # pylint: disable=g-import-not-at-top
+    with _compat_summary_scope(name, family) as tag:
+      image_v2(
+          name=tag,
+          data=tensor,
+          step=_get_step_for_v2(),
+          max_outputs=max_outputs)
+    # Return an empty Tensor, which will be acceptable as an input to the
+    # `tf.compat.v1.summary.merge()` API.
+    return _constant_op.constant(b'')
+
+  # Fall back to legacy v1 image implementation.
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
   with _summary_op_util.summary_scope(
@@ -250,8 +282,19 @@ def histogram(name, values, collections=None, family=None):
     buffer.
 
   @compatibility(TF2)
-  This API is not compatible with eager execution and `tf.function`. To migrate
-  to TF2, please use `tf.summary.histogram` instead. Please check
+  For compatibility purposes, when invoked in TF2 where the outermost context is
+  eager mode, this API will check if there is a suitable TF2 summary writer
+  context available, and if so will forward this call to that writer instead. A
+  "suitable" writer context means that the writer is set as the default writer,
+  and there is an associated non-empty value for `step` (see
+  `tf.summary.SummaryWriter.as_default`, or alternatively
+  `tf.summary.experimental.set_step`). For the forwarded call, the arguments
+  here will be passed to the TF2 implementation of `tf.summary.histogram`, and
+  the return value will be an empty bytestring tensor, to avoid duplicate
+  summary writing. This forwarding is best-effort and not all arguments will be
+  preserved.
+
+  To migrate to TF2, please use `tf.summary.histogram` instead. Please check
   [Migrating tf.summary usage to
   TF 2.0](https://www.tensorflow.org/tensorboard/migrate#in_tf_1x) for concrete
   steps for migration.
@@ -276,6 +319,18 @@ def histogram(name, values, collections=None, family=None):
 
   @end_compatibility
   """
+  # Special case: invoke v2 op for TF2 users who have a v2 writer.
+  if _should_invoke_v2_op():
+    # Defer the import to happen inside the symbol to prevent breakage due to
+    # missing dependency.
+    from tensorboard.summary.v2 import histogram as histogram_v2  # pylint: disable=g-import-not-at-top
+    with _compat_summary_scope(name, family) as tag:
+      histogram_v2(name=tag, data=values, step=_get_step_for_v2())
+    # Return an empty Tensor, which will be acceptable as an input to the
+    # `tf.compat.v1.summary.merge()` API.
+    return _constant_op.constant(b'')
+
+  # Fall back to legacy v1 histogram implementation.
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
   with _summary_op_util.summary_scope(
@@ -324,8 +379,22 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
     buffer.
 
   @compatibility(TF2)
-  This API is not compatible with eager execution or `tf.function`. To migrate
-  to TF2, please use `tf.summary.audio` instead. Please check
+  For compatibility purposes, when invoked in TF2 where the outermost context is
+  eager mode, this API will check if there is a suitable TF2 summary writer
+  context available, and if so will forward this call to that writer instead. A
+  "suitable" writer context means that the writer is set as the default writer,
+  and there is an associated non-empty value for `step` (see
+  `tf.summary.SummaryWriter.as_default`, or alternatively
+  `tf.summary.experimental.set_step`). For the forwarded call, the arguments
+  here will be passed to the TF2 implementation of `tf.summary.audio`, and the
+  return value will be an empty bytestring tensor, to avoid duplicate summary
+  writing. This forwarding is best-effort and not all arguments will be
+  preserved. Additionally:
+
+  * The TF2 op just outputs the data under a single tag that contains multiple
+    samples, rather than multiple tags (i.e. no "/0" or "/1" suffixes).
+
+  To migrate to TF2, please use `tf.summary.audio` instead. Please check
   [Migrating tf.summary usage to
   TF 2.0](https://www.tensorflow.org/tensorboard/migrate#in_tf_1x) for concrete
   steps for migration.
@@ -359,6 +428,27 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
 
   @end_compatibility
   """
+  # Special case: invoke v2 op for TF2 users who have a v2 writer.
+  if _should_invoke_v2_op():
+    # Defer the import to happen inside the symbol to prevent breakage due to
+    # missing dependency.
+    from tensorboard.summary.v2 import audio as audio_v2  # pylint: disable=g-import-not-at-top
+    if tensor.shape.rank == 2:
+      # TF2 op requires 3-D tensor, add the `channels` dimension.
+      tensor = _array_ops.expand_dims_v2(tensor, axis=2)
+    with _compat_summary_scope(name, family) as tag:
+      audio_v2(
+          name=tag,
+          data=tensor,
+          sample_rate=sample_rate,
+          step=_get_step_for_v2(),
+          max_outputs=max_outputs,
+      )
+    # Return an empty Tensor, which will be acceptable as an input to the
+    # `tf.compat.v1.summary.merge()` API.
+    return _constant_op.constant(b'')
+
+  # Fall back to legacy v1 audio implementation.
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
   with _summary_op_util.summary_scope(
@@ -723,3 +813,12 @@ def _should_invoke_v2_op():
     return False
   return True
 
+
+@contextlib.contextmanager
+def _compat_summary_scope(name, family):
+  """Handles `family` argument for v2 op invocation in v1."""
+  # Get a new summary tag name with the `family` arg.
+  with _summary_op_util.summary_scope(name, family) as (tag, _):
+    # Reset the root name scope with an empty summary_scope.
+    with _summary_op_util.summary_scope(name='', family=None):
+      yield tag

@@ -27,12 +27,13 @@ namespace TF {
 namespace {
 
 // Legalize TF quantization emulation ops to that in Quant ops dialect.
-struct LegalizeTFToQuant : public PassWrapper<LegalizeTFToQuant, FunctionPass> {
+struct LegalizeTFToQuant
+    : public PassWrapper<LegalizeTFToQuant, OperationPass<FuncOp>> {
   explicit LegalizeTFToQuant() = default;
   LegalizeTFToQuant(const LegalizeTFToQuant &) {}
 
   /// Performs the lowering to Quant ops dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -146,9 +147,9 @@ using PreparePerChannelFakeQuant =
 // TODO(fengliuai): add the support of the tf.QuantizeAndDequantize*
 // legalization.
 
-void LegalizeTFToQuant::runOnFunction() {
+void LegalizeTFToQuant::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
+  auto func = getOperation();
   auto *ctx = func.getContext();
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));

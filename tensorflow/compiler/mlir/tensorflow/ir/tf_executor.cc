@@ -160,9 +160,8 @@ LogicalResult VerifyControlOperandsAfterAllData(Operation *op) {
 
 FetchOp GraphOp::GetFetch() { return llvm::cast<FetchOp>(GetBody().back()); }
 
-namespace {
-
-LogicalResult Verify(GraphOp graph) {
+LogicalResult GraphOp::verify() {
+  GraphOp graph = *this;
   auto *executorDialect = graph->getDialect();
 
   if (graph.GetBody().empty())
@@ -213,6 +212,8 @@ LogicalResult Verify(GraphOp graph) {
   return success();
 }
 
+namespace {
+
 void Print(GraphOp graph, OpAsmPrinter &p) {
   p << ' ';
   p.printRegion(graph.getOperation()->getRegion(0));
@@ -252,7 +253,7 @@ ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-}  // anonymous namespace
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // tf_executor.fetch
@@ -277,9 +278,8 @@ bool IslandOp::WrapsSingleOp() {
                     wrapped_op.getResults().end(), yield.getOperands().begin());
 }
 
-namespace {
-
-LogicalResult Verify(IslandOp island) {
+mlir::LogicalResult IslandOp::verify() {
+  IslandOp island = *this;
   if (!island.GetBody().args_empty())
     return island.emitOpError() << "expects body without any arguments";
 
@@ -311,6 +311,8 @@ LogicalResult Verify(IslandOp island) {
   }
   return success();
 }
+
+namespace {
 
 void Print(IslandOp op, OpAsmPrinter &p) {
   if (op.getNumOperands()) {
@@ -461,9 +463,8 @@ void Print(SwitchOp switch_op, OpAsmPrinter &p) {
 // tf_executor.SwitchN
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-LogicalResult Verify(SwitchNOp switchn) {
+LogicalResult SwitchNOp::verify() {
+  SwitchNOp switchn = *this;
   IntegerAttr num_outs = switchn->getAttrOfType<IntegerAttr>("num_outs");
   if (!num_outs)
     return switchn.emitOpError() << "expects a `num_outs` integer attribute";
@@ -514,6 +515,8 @@ LogicalResult Verify(SwitchNOp switchn) {
   }
   return success();
 }
+
+namespace {
 
 void Print(SwitchNOp switchn, OpAsmPrinter &p) {
   p << ' ';
@@ -580,9 +583,8 @@ ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
 // tf_executor.Merge
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-LogicalResult Verify(MergeOp merge) {
+LogicalResult MergeOp::verify() {
+  MergeOp merge = *this;
   if (!merge.getNumOperands())
     return merge.emitOpError() << "expects at least one operand";
 
@@ -629,6 +631,8 @@ LogicalResult Verify(MergeOp merge) {
   }
   return success();
 }
+
+namespace {
 
 void Print(MergeOp merge, OpAsmPrinter &p) {
   // Use short form only when there are exactly two data operands and their
@@ -793,9 +797,8 @@ ParseResult ParseEnterOp(OpAsmParser &parser, OperationState &result) {
 // tf_executor.NextIteration.Source
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-LogicalResult Verify(NextIterationSourceOp source) {
+LogicalResult NextIterationSourceOp::verify() {
+  NextIterationSourceOp source = *this;
   Value token = source.token();
   if (!token.hasOneUse())
     return source.emitOpError() << "expects a single user for produced token";
@@ -804,15 +807,12 @@ LogicalResult Verify(NextIterationSourceOp source) {
   return success();
 }
 
-}  // anonymous namespace
-
 //===----------------------------------------------------------------------===//
 // tf_executor.NextIteration.Sink
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-LogicalResult Verify(NextIterationSinkOp sink) {
+LogicalResult NextIterationSinkOp::verify() {
+  NextIterationSinkOp sink = *this;
   Value token = sink.token();
   Operation *definingOp = token.getDefiningOp();
   if (!definingOp)
@@ -829,8 +829,6 @@ LogicalResult Verify(NextIterationSinkOp sink) {
            << source.output().getType();
   return success();
 }
-
-}  // anonymous namespace
 
 NextIterationSourceOp NextIterationSinkOp::GetSource() {
   return cast<NextIterationSourceOp>(token().getDefiningOp());

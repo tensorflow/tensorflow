@@ -122,7 +122,6 @@ void AddConvertHloToTfPass(std::string entry_function_name,
 // to inject more information in the middle of the conversion before resuming
 // it.
 void AddPreVariableFreezingTFToTFLConversionPasses(
-    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager) {
   if (pass_config.enable_hlo_to_tf_conversion) {
@@ -363,8 +362,7 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
                                 const toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager) {
-  AddPreVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
-                                                pass_config, pass_manager);
+  AddPreVariableFreezingTFToTFLConversionPasses(pass_config, pass_manager);
   AddPostVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
                                                  pass_config, pass_manager);
 }

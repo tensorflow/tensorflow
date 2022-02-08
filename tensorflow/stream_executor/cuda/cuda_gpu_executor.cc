@@ -817,6 +817,8 @@ bool GpuExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
 bool GpuExecutor::GetSymbol(const std::string& symbol_name,
                             ModuleHandle module_handle, void** mem,
                             size_t* bytes) {
+  CHECK(static_cast<bool>(module_handle));
+
   auto lookup_in_module = [&](CUmodule module) {
     CHECK(module != nullptr);
     return GpuDriver::GetModuleSymbol(context_, module, symbol_name.c_str(),
@@ -826,20 +828,12 @@ bool GpuExecutor::GetSymbol(const std::string& symbol_name,
 
   {  // give limited scope to mutex_lock
     absl::MutexLock lock{&in_memory_modules_mu_};
-    if (static_cast<bool>(module_handle)) {
-      auto it = gpu_binary_to_module_.find(module_handle.id());
-      CHECK(it != gpu_binary_to_module_.end());
-      return lookup_in_module(it->second.first);
-    }
-
-    for (auto& it : gpu_binary_to_module_) {
-      if (lookup_in_module(it.second.first)) {
-        return true;
-      }
-    }
+    auto it = gpu_binary_to_module_.find(module_handle.id());
+    CHECK(it != gpu_binary_to_module_.end());
+    return lookup_in_module(it->second.first);
   }
 
-  LOG(INFO) << "Failed to find symbol in any modules: " << symbol_name;
+  LOG(INFO) << "Failed to find symbol: " << symbol_name;
   return false;
 }
 

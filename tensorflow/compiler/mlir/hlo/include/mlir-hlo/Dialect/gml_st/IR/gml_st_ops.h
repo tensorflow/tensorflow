@@ -21,7 +21,10 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
+#include "mlir/Interfaces/LoopLikeInterface.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 // Generated dialect declarations.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_dialect.h.inc"

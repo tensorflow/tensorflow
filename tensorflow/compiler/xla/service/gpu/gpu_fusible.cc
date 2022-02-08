@@ -38,18 +38,6 @@ namespace {
 // some extra space for cache.
 int64_t kSharedMemoryBudgetInBytes = 40000;
 
-void AppendParams(const HloInstruction& instr,
-                  std::vector<HloInstruction*>* params) {
-  if (instr.opcode() == HloOpcode::kFusion) {
-    params->insert(std::end(*params), std::begin(instr.fused_parameters()),
-                   std::end(instr.fused_parameters()));
-  } else {
-    for (HloInstruction* operand : instr.operands()) {
-      params->push_back(operand);
-    }
-  }
-}
-
 bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
   if (instr.opcode() == HloOpcode::kReduce &&
@@ -68,29 +56,13 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   return false;
 }
 
-std::vector<int64_t> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
-  std::vector<int64_t> relative_order;
-  for (int64_t dim : LayoutUtil::MinorToMajor(shape)) {
-    if (shape.dimensions(dim) > 1) {
-      relative_order.push_back(dim);
-    }
-  }
-  // Now normalize the dimensions to values between 0 and true rank - 1.
-  std::vector<int64_t> sorted_dims = relative_order;
-  std::sort(sorted_dims.begin(), sorted_dims.end());
-  for (int64_t& dim : relative_order) {
-    int64_t sorted_index = std::distance(
-        sorted_dims.begin(),
-        std::lower_bound(sorted_dims.begin(), sorted_dims.end(), dim));
-    dim = sorted_index;
-  }
-  return relative_order;
-}
-
 }  // namespace
 
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
                                          const HloInstruction& reduce) {
+  if (producer.opcode() == HloOpcode::kCopy) {
+    return false;
+  }
   if (producer.opcode() == HloOpcode::kFusion) {
     for (const HloInstruction* instr : producer.fused_instructions()) {
       if (instr->opcode() == HloOpcode::kCopy) {
@@ -101,24 +73,11 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
     }
   }
 
-  std::vector<HloInstruction*> params;
-  AppendParams(producer, &params);
-  AppendParams(reduce, &params);
-  int64_t max_true_rank = -1;
-  std::vector<int64_t> max_rank_order;
-  for (HloInstruction* param : params) {
-    if (param->shape().IsArray() &&
-        ShapeUtil::TrueRank(param->shape()) > max_true_rank) {
-      max_true_rank = ShapeUtil::TrueRank(param->shape());
-      max_rank_order = ExtractRelativeOrderOfNontrivialDims(param->shape());
-    }
-  }
-  return absl::c_all_of(params, [&](HloInstruction* param) {
-    return !param->shape().IsArray() ||
-           ShapeUtil::TrueRank(param->shape()) < max_true_rank ||
-           ExtractRelativeOrderOfNontrivialDims(param->shape()) ==
-               max_rank_order;
-  });
+  // A fusion iterates over its output in physically-contiguous order. This
+  // applies "upwards" to operands.  Only an operator that changes an operand's
+  // physical layout can create a "bad" memory access pattern, and layout
+  // assignment guarantees kCopy is the only such operator.
+  return true;
 }
 
 bool IsReduceInputFusion(const HloInstruction& instr) {

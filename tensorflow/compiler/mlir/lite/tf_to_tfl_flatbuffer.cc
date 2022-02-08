@@ -217,8 +217,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
           pass_manager.getContext()));
 
-  tensorflow::AddPreVariableFreezingTFToTFLConversionPasses(
-      saved_model_dir, toco_flags, pass_config, &pass_manager);
+  tensorflow::AddPreVariableFreezingTFToTFLConversionPasses(pass_config,
+                                                            &pass_manager);
   if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }
@@ -300,7 +300,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     *result = translated_result;
   }
 
-  if (mlir::failed(module.verify())) {
+  if (mlir::failed(module.verifyInvariants())) {
     return tensorflow::errors::Unknown("Final module is invalid");
   }
   return Status::OK();

@@ -15,13 +15,13 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TosaLegalizeTFPass : FunctionPass<"tosa-legalize-tf"> {
+def TosaLegalizeTFPass : Pass<"tosa-legalize-tf", "mlir::FuncOp"> {
   let summary = "Legalize from TensorFlow to TOSA";
   let constructor = "createLegalizeTFPass()";
   let dependentDialects = ["TosaDialect", "quant::QuantizationDialect"];
 }
 
-def TosaLegalizeTFLPass : FunctionPass<"tosa-legalize-tfl"> {
+def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "mlir::FuncOp"> {
   let summary = "Legalize from TensorFlow Lite to TOSA. Options allow selective disabling/enabling of rewrites";
   let constructor = "createLegalizeTFLPass()";
 
@@ -36,13 +36,13 @@ def TosaLegalizeTFLPass : FunctionPass<"tosa-legalize-tfl"> {
   ];
 }
 
-def TosaLegalizeTFTFLPass : FunctionPass<"tosa-legalize-tf-tfl"> {
+def TosaLegalizeTFTFLPass : Pass<"tosa-legalize-tf-tfl", "mlir::FuncOp"> {
   let summary = "Legalize from TensorFlow / TensorFlow Lite to TOSA";
   let constructor = "createLegalizeTFTFLPass()";
   let dependentDialects = ["TosaDialect"];
 }
 
-def TosaFusebiasTFPass : FunctionPass<"tosa-fuse-bias-tf"> {
+def TosaFusebiasTFPass : Pass<"tosa-fuse-bias-tf", "mlir::FuncOp"> {
   let summary = "Fuse tf.Op + tf.BiasAdd and legalized to TOSA";
   let constructor = "createFuseBiasTFPass()";
   let dependentDialects = ["TosaDialect"];
@@ -54,7 +54,7 @@ def TosaConvertTFLUint8Pass : FunctionPass<"tosa-convert-tfl-uint8"> {
   let dependentDialects = ["TosaDialect"];
 }
 
-def TosaStripQuantTypesPass : FunctionPass<"tosa-strip-quant-types"> {
+def TosaStripQuantTypesPass : Pass<"tosa-strip-quant-types", "mlir::FuncOp"> {
   let summary = "Convert all quant types to their storage type.";
   let constructor = "createStripQuantTypesPass()";
   let dependentDialects = ["TosaDialect"];

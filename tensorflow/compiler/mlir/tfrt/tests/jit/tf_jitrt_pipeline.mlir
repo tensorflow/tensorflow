@@ -355,7 +355,7 @@ func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
   // CHECK:      %[[ALLOC:.*]] = memref.alloc() : memref<1xi32>
   // CHECK:      %[[SUBVIEW:.*]] = memref.subview %arg0[0] [1] [1]
   // CHECK-SAME:                 : memref<3xi32> to memref<1xi32>
-  // CHECK:      linalg.copy(%[[SUBVIEW]], %[[ALLOC]])
+  // CHECK:      memref.copy %[[SUBVIEW]], %[[ALLOC]]
   // CHECK:      %[[RET:.*]] = memref.collapse_shape %[[ALLOC]]
   // CHECK:      return %[[RET]]
   %0 = "tf.StridedSlice"(%arg0, %cst_1, %cst_0, %cst_0)

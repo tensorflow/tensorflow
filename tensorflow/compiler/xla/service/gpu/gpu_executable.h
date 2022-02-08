@@ -194,9 +194,16 @@ class GpuExecutable : public Executable {
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
 
-  // Loads the PTX or CUBIN for this executable into `executor` and resolves the
-  // globals corresponding to constant buffers.  Returns a map mapping buffer
-  // allocation indices to GPU pointers.
+  // Loads the PTX or CUBIN for this executable and initializes all
+  // constants that haven't already been initialized by the CUDA driver. Loaded
+  // modules are owned by this executable.
+  //
+  // Returns a map from buffer allocation indices to device memory pointers
+  // (only for allocations that contain constants).
+  //
+  // The returned map is cached. If the above process has already been run for
+  // the given stream, it is skipped and the cached map is immediately returned
+  // instead.
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::Stream* stream);
 
@@ -254,11 +261,12 @@ class GpuExecutable : public Executable {
   std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
   std::function<std::string()> verbose_buffer_assignment_string_dumper_;
 
-  // Cache of module handles and constant buffer allocation maps used by
-  // `ResolveConstantGlobals`.
   absl::Mutex module_handle_mutex_;
+  // Cache of module handles. Required to keep loaded modules alive until this
+  // executable is destroyed.
   std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
       module_handles_ ABSL_GUARDED_BY(module_handle_mutex_);
+  // Cache of constant buffer allocation maps used by `ResolveConstantGlobals`.
   std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
       module_globals_ ABSL_GUARDED_BY(module_handle_mutex_);
 

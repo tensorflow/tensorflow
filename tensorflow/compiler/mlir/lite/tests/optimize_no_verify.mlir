@@ -18,7 +18,7 @@ func @fuseScalarAddIntoConv2dHalf(%arg0: tensor<256x32x32x3xf16>, %arg1: tensor<
 // CHECK-LABEL: @fuseBroadcastMulIntoFullyConnected
 func @fuseBroadcastMulIntoFullyConnected(%arg0: tensor<1x10368xbf16>) -> tensor<32x1x256xbf16> {
   %cst_0 = arith.constant dense<2.0> : tensor<256x10368xbf16>
-  %cst_1 = constant unit
+  %cst_1 = "tfl.no_value"() {value = unit} : () -> none
   %cst_2 = arith.constant dense<3.0> : tensor<32x1x256xbf16>
   %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) {
     fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"
@@ -56,7 +56,7 @@ func @fuseScalarAddIntoConv2dBf16(%arg0: tensor<256x32x32x3xbf16>, %arg1: tensor
 // CHECK-LABEL: RemoveReshapeAfterFullyConnected
 func @RemoveReshapeAfterFullyConnected(%arg0: tensor<4x1024x1024xbf16>) -> tensor<4x1024x4096xbf16> {
   %cst_0 = arith.constant dense<1.0> : tensor<4096x1024xbf16>
-  %cst_1 = constant unit
+  %cst_1 = "tfl.no_value"() {value = unit} : () -> none
   %cst_2 = arith.constant dense<[4, 1024, 4096]> : tensor<3xi32>
   %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x1024x1024xbf16>, tensor<4096x1024xbf16>, none) -> tensor<4096x4096xbf16>
   %1 = "tfl.reshape"(%0, %cst_2) : (tensor<4096x4096xbf16>, tensor<3xi32>) -> tensor<4x1024x4096xbf16>
@@ -68,7 +68,7 @@ func @RemoveReshapeAfterFullyConnected(%arg0: tensor<4x1024x1024xbf16>) -> tenso
 // CHECK-LABEL: RemoveReshapeAfterFullyConnectedAdd
 func @RemoveReshapeAfterFullyConnectedAdd(%arg0: tensor<4x1024x1024xbf16>) -> tensor<4x1024x4096xbf16> {
   %cst_0 = arith.constant dense<1.0> : tensor<4096x1024xbf16>
-  %cst_1 = constant unit
+  %cst_1 = "tfl.no_value"() {value = unit} : () -> none
   %cst_2 = arith.constant dense<[4, 1024, 4096]> : tensor<3xi32>
   %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x1024x1024xbf16>, tensor<4096x1024xbf16>, none) -> tensor<4096x4096xbf16>
   %1 = "tfl.reshape"(%0, %cst_2) : (tensor<4096x4096xbf16>, tensor<3xi32>) -> tensor<4x1024x4096xbf16>

@@ -60,6 +60,20 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+
+namespace {
+// This object tracks the EagerContext owned by global_py_eager_context in
+// pywrap_tfe_src.cc. Since the vast majority of the Python API is dependent on
+// that global_py_eager_context (including memory management), the Py object
+// owns the C object, so this pointer is non-owning.
+EagerContext* global_c_eager_context = nullptr;
+
+}  // namespace
+
+void SetCEagerContext(EagerContext* ctx) { global_c_eager_context = ctx; }
+
+EagerContext* GetCEagerContext() { return global_c_eager_context; }
+
 namespace {
 
 bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {

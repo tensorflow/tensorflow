@@ -111,7 +111,8 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
       if (i) {
         Value rank_is_greater = lb.create<arith::CmpIOp>(
             arith::CmpIPredicate::ugt, ranks[i], max_rank);
-        max_rank = lb.create<SelectOp>(rank_is_greater, ranks[i], max_rank);
+        max_rank =
+            lb.create<arith::SelectOp>(rank_is_greater, ranks[i], max_rank);
       } else {
         max_rank = ranks[0];
       }
@@ -214,8 +215,8 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
             Value current_size_is_not_one = b.create<arith::CmpIOp>(
                 l, arith::CmpIPredicate::ne, current_size, one);
             no_broadcasting.push_back(current_size_is_not_one);
-            Value new_same_size = b.create<SelectOp>(l, current_size_is_not_one,
-                                                     current_size, same_size);
+            Value new_same_size = b.create<arith::SelectOp>(
+                l, current_size_is_not_one, current_size, same_size);
             Value same_size_was_not_one = b.create<arith::CmpIOp>(
                 l, arith::CmpIPredicate::ne, same_size, one);
             Value is_different_size = b.create<arith::CmpIOp>(
@@ -241,9 +242,9 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
             // If all dimensions are 1, we preserve the status whether a shape
             // needs broadcasting or not, because in that case the dimension can
             // just be ignored.
-            no_broadcasting[i] =
-                b.create<SelectOp>(l, same_size_is_one, prev_no_broadcasting[i],
-                                   no_broadcasting[i]);
+            no_broadcasting[i] = b.create<arith::SelectOp>(
+                l, same_size_is_one, prev_no_broadcasting[i],
+                no_broadcasting[i]);
             // Compare whether the current shape changes its status regarding
             // whether it needs broadcasting at the current dimension.
             Value broadcasting_is_different = b.create<arith::CmpIOp>(
@@ -297,9 +298,10 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                                    // If the shape needed broadcasting at the
                                    // previous dimension, we set the output size
                                    // to 1, otherwise to 'running_product'.
-                                   Value output_size = b.create<SelectOp>(
-                                       l, prev_no_broadcasting[i],
-                                       running_product, one);
+                                   Value output_size =
+                                       b.create<arith::SelectOp>(
+                                           l, prev_no_broadcasting[i],
+                                           running_product, one);
                                    b.create<memref::StoreOp>(l, output_size,
                                                              result_shapes[i],
                                                              output_dimension);
@@ -335,7 +337,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
       result_shapes[i] =
           RemoveLeadingOnesFrom1DMemref(lb, result_shapes[i], ranks[i]);
       result_shapes[i] =
-          lb.create<SelectOp>(is_invalid, shapes[i], result_shapes[i]);
+          lb.create<arith::SelectOp>(is_invalid, shapes[i], result_shapes[i]);
     }
     rewriter.replaceOp(broadcast_shapes_op, result_shapes);
     return success();
@@ -360,8 +362,8 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
           auto all_ones =
               b.create<arith::AndIOp>(l, vr.front(), is_equal_to_one);
           auto increased_value = b.create<arith::AddIOp>(l, vr.back(), one);
-          auto number_of_leading_ones =
-              b.create<SelectOp>(l, all_ones, increased_value, vr.back());
+          auto number_of_leading_ones = b.create<arith::SelectOp>(
+              l, all_ones, increased_value, vr.back());
           b.create<scf::YieldOp>(l,
                                  ValueRange{all_ones, number_of_leading_ones});
         });

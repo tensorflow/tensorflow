@@ -140,3 +140,31 @@ tf_cc_test(
         "@llvm-project//mlir:Parser",
     ],
 )
+
+tf_cc_test(
+    name = "tf_op_wrapper_test",
+    size = "small",
+    srcs = ["tf_op_wrapper_test.cc"],
+    deps = [
+        ":Dialect",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+    ],
+)
+
+tf_cc_test(
+    name = "ops_test",
+    size = "small",
+    srcs = ["ops_test.cc"],
+    deps = [
+        ":Dialect",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+    ],
+)

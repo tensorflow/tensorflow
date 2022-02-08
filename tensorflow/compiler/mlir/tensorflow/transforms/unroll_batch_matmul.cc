@@ -64,12 +64,12 @@ class ConvertTFBatchMatMulOp : public OpRewritePattern<BatchMatMulOpType> {
 // the end.
 struct UnrollBatchMatMulPass
     : public UnrollBatchMatMulPassBase<UnrollBatchMatMulPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void UnrollBatchMatMulPass::runOnFunction() {
+void UnrollBatchMatMulPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
+  auto func = getOperation();
   PopulateUnrollTfBatchMatMul(&getContext(), patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

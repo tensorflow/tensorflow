@@ -64,6 +64,7 @@ using ::llvm::Expected;
 using ::llvm::None;
 using ::llvm::Optional;
 
+using ::tfrt::Argument;
 using ::tfrt::ArrayRef;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValuePtr;
@@ -71,7 +72,9 @@ using ::tfrt::AsyncValueRef;
 using ::tfrt::Attribute;
 using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
+using ::tfrt::DecodedDiagnostic;
 using ::tfrt::DType;
+using ::tfrt::EmitErrorAsync;
 using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
 using ::tfrt::IndirectAsyncValue;
@@ -92,7 +95,6 @@ using ::tfrt::TaskFunction;
 using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
-using ::tfrt::jitrt::EmitErrors;
 using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::JitExecutableCache;
@@ -100,6 +102,7 @@ using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::OperandConstraint;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnAsyncStridedMemref;
+using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConverter;
 using ::tfrt::jitrt::SpecializationListener;
@@ -236,6 +239,16 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
   return str;
 }
 
+// Gets the session name from the fallback request state.
+static const std::string GetSessionName(const ExecutionContext& exec_ctx) {
+  RequestContext* req_ctx = exec_ctx.request_ctx();
+
+  auto* fallback = req_ctx->GetDataIfExists<KernelFallbackCompatRequestState>();
+  if (!fallback) return "<unknown>";
+
+  return fallback->session_metadata().name();
+}
+
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     CompilationUnitAttribute kernel, const ExecutionContext& exec_ctx,
     const Optional<TfJitRtPipelineOpts>& opts = None) {
@@ -316,7 +329,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     CompilationThreadPool& thread_pool = CompilationThreadPool::Get(exec_ctx);
 
     thread_pool.Schedule([request_id, kernel, specialization,
-                          compile = std::move(compile),
+                          compile = std::move(compile), exec_ctx,
                           args = std::move(args)]() mutable {
       // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
       // theory can be unloaded before the completion of the compilation task.
@@ -347,7 +360,20 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
         return TraceMeEncode({{"src", serialized_operation}});
       });
 
+      auto compile_start_time = absl::Now();
+      LOG(INFO) << "Started JitExecutable specialization compilation for "
+                << name << " (" << GetSessionName(exec_ctx) << ")";
       compile();
+      auto compile_duration = absl::Now() - compile_start_time;
+
+      LOG(INFO) << "JitExecutable specialization compilation for " << name
+                << " took " << absl::ToInt64Milliseconds(compile_duration)
+                << " ms (" << GetSessionName(exec_ctx) << ")";
+
+      if (compile_duration > absl::Seconds(1))
+        LOG(INFO) << "Expensive JitExecutable specialization compilation ("
+                  << absl::ToInt64Milliseconds(compile_duration) << " ms):\n"
+                  << kernel.serialized_operation().str();
     });
   };
 
@@ -355,7 +381,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   CompilationThreadPool& thread_pool = CompilationThreadPool::Get(exec_ctx);
 
   thread_pool.Schedule([kernel, request_id, runner, workers = *worker_threads,
-                        ptr = entry.ptr, tf_jitrt_opts = opts]() {
+                        exec_ctx, ptr = entry.ptr, tf_jitrt_opts = opts]() {
     TraceMe trace_me([&] {
       absl::string_view name(kernel.root_symbol().data(),
                              kernel.root_symbol().size());
@@ -378,7 +404,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Options for the JitRt JitExecutable compilation.
     CompilationOptions opts;
-    opts.specialization = CompilationOptions::Specialization::kAlways;
+    opts.specialization = CompilationOptions::Specialization::kEnabled;
 
     // Register dialects and interfaces required for the compilation pipeline.
     opts.register_dialects = [](mlir::DialectRegistry& registry) {
@@ -415,8 +441,23 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     auto module = kernel.serialized_operation();
 
     // Instantiate new JitExecutable from the MLIR source.
+    auto compile_start_time = absl::Now();
+    LOG(INFO) << "Started JitExecutable instantiation compilation for "
+              << kernel.root_symbol().str() << " (" << GetSessionName(exec_ctx)
+              << ")";
     Expected<JitExecutable> jit_executable =
         JitExecutable::Instantiate(module, entrypoint, std::move(opts), runner);
+    auto compile_duration = absl::Now() - compile_start_time;
+
+    LOG(INFO) << "JitExecutable instantiation for "
+              << kernel.root_symbol().str() << " took "
+              << absl::ToInt64Milliseconds(compile_duration) << " ms ("
+              << GetSessionName(exec_ctx) << ")";
+
+    if (compile_duration > absl::Seconds(1))
+      LOG(INFO) << "Expensive JitExecutable instantiation ("
+                << absl::ToInt64Milliseconds(compile_duration) << " ms):\n"
+                << kernel.serialized_operation().str();
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
@@ -445,6 +486,27 @@ static AsyncValueRef<Chain> Compile(StringAttribute device,
     return MakeErrorAsyncValueRef(StrCat(err));
 
   // Immediately return an available chain once we schedule the compilation.
+  return MakeAvailableAsyncValueRef<Chain>();
+}
+
+// -------------------------------------------------------------------------- //
+// TFRT kernel function definition for tf_jitrt.fallback.wait_for_compilation.
+// -------------------------------------------------------------------------- //
+
+static AsyncValueRef<Chain> WaitForCompilation(
+    Argument<Chain> chain, CompilationUnitAttribute kernel,
+    const ExecutionContext& exec_ctx) {
+  // Request context must be initialized with the tf_jitrt state.
+  auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
+  if (!state)
+    return EmitErrorAsync(exec_ctx,
+                          "tf_jitrt state not found in the request context");
+
+  // Wait for the completion of all compilation tasks.
+  JitExecutableCache* jit_executable_cache = state->jit_executable_cache;
+  if (auto cached = jit_executable_cache->Find(kernel.id()))
+    return cached->AllExecutablesCompiled();
+
   return MakeAvailableAsyncValueRef<Chain>();
 }
 
@@ -513,6 +575,15 @@ struct DebugListener : public SpecializationListener {
   }
 };
 
+// Emits diagnostics for the kernel invocation and returns error for all
+// remaining results.
+template <typename Error>
+static void ReturnErrors(RemainingResults results, Error error,
+                         const ExecutionContext& exec_ctx) {
+  EmitError(exec_ctx, StrCat(error));
+  ReturnErrors(results, std::move(error));
+}
+
 static void ExecuteImpl(Executable& executable,
                         const llvm::SmallVectorImpl<MemrefDesc>& memrefs,
                         RepeatedArguments<FallbackTensor> operands,
@@ -547,7 +618,7 @@ static void ExecuteImpl(Executable& executable,
   Expected<Eigen::ThreadPoolInterface*> worker_threads =
       GetWorkerThreads(exec_ctx);
   if (auto err = worker_threads.takeError())
-    return EmitErrors(results, std::move(err), exec_ctx);
+    return ReturnErrors(results, std::move(err), exec_ctx);
 
   // Override async runtime worker threads with fallback Eigen thread pool.
   Executable::ExecuteOpts opts;
@@ -555,8 +626,12 @@ static void ExecuteImpl(Executable& executable,
   // Pass kernel context pointer to be emitted in the compiled function.
   opts.kernel_context = &converter.context();
 
-  // Error propagation happens in the result converter.
-  if (auto err = executable.Execute(memrefs, converter, exec_ctx, opts)) return;
+  // Execution error automatically forwarded to all results, we only need to
+  // notify the HostContext to emit the diagnostics for the kernel invocation.
+  if (auto err = executable.Execute(memrefs, converter, exec_ctx, opts)) {
+    EmitError(exec_ctx, StrCat(err));
+    return;
+  }
 
   // If executable is async keep operands and conversion context alive until
   // results become available.
@@ -583,12 +658,12 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   Expected<AsyncValuePtr<Executable>> executable = jit_executable.GetExecutable(
       memrefs, exec_ctx, debug ? &debug_listener : nullptr);
   if (auto err = executable.takeError())
-    return EmitErrors(results, std::move(err), exec_ctx);
+    return ReturnErrors(results, std::move(err), exec_ctx);
 
   // If executable is available execute it inline.
   if (executable->IsAvailable()) {
     if (executable->IsError()) {
-      EmitErrors(results, executable->GetError(), exec_ctx);
+      ReturnErrors(results, executable->GetError(), exec_ctx);
     } else {
       ExecuteImpl(executable->get(), memrefs, operands, results, exec_ctx);
     }
@@ -618,7 +693,7 @@ static void ExecuteImpl(JitExecutable& jit_executable,
     RemainingResults results(results_storage);
 
     if (executable.IsError()) {
-      EmitErrors(results, executable.GetError(), exec_ctx);
+      ReturnErrors(results, executable.GetError(), exec_ctx);
     } else {
       ExecuteImpl(*executable, memrefs, operands, results, exec_ctx);
     }
@@ -642,12 +717,12 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
       CompileImpl(kernel, exec_ctx, opts);
 
   if (auto err = jit_executable.takeError())
-    return EmitErrors(results, std::move(err), exec_ctx);
+    return ReturnErrors(results, std::move(err), exec_ctx);
 
   // If kernel is available execute it inline.
   if (jit_executable->IsAvailable()) {
     if (jit_executable->IsError()) {
-      EmitErrors(results, jit_executable->GetError(), exec_ctx);
+      ReturnErrors(results, jit_executable->GetError(), exec_ctx);
     } else {
       ExecuteImpl(**jit_executable, operands, results, exec_ctx, debug);
     }
@@ -676,7 +751,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
     RemainingResults results(results_storage);
 
     if (jit_executable.IsError()) {
-      EmitErrors(results, jit_executable.GetError(), exec_ctx);
+      ReturnErrors(results, jit_executable.GetError(), exec_ctx);
     } else {
       ExecuteImpl(*jit_executable, operands, results, exec_ctx, debug);
     }
@@ -722,6 +797,8 @@ void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
 
 void RegisterTfJitRuntimeKernels(KernelRegistry* registry) {
   registry->AddKernel("tf_jitrt.fallback.compile", TFRT_KERNEL(Compile));
+  registry->AddKernel("tf_jitrt.fallback.wait_for_compilation",
+                      TFRT_KERNEL(WaitForCompilation));
   registry->AddKernel("tf_jitrt.fallback.execute", TFRT_KERNEL(Execute));
   registry->AddKernel("tf_jitrt.fallback.debug.execute",
                       TFRT_KERNEL(ExecuteDebug));

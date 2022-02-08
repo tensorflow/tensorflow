@@ -41,7 +41,7 @@ namespace {
 class FuseBiasTF : public TosaFusebiasTFPassBase<FuseBiasTF> {
  public:
   explicit FuseBiasTF() {}
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 struct ConvertTFBiasAddOp : public RewritePattern {
@@ -107,10 +107,10 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
   return success();
 }
 
-void FuseBiasTF::runOnFunction() {
+void FuseBiasTF::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto* ctx = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
 
   // Add the generated patterns to the list.
   patterns.insert<ConvertTFBiasAddOp>(ctx);

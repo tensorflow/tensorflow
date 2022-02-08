@@ -113,12 +113,12 @@ void ExpandHeadOutsideCompiledOps(tf_device::ClusterOp cluster,
 struct TPUHostComputationExpansionPass
     : public TF::TPUHostComputationExpansionPassBase<
           TPUHostComputationExpansionPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void TPUHostComputationExpansionPass::runOnFunction() {
+void TPUHostComputationExpansionPass::runOnOperation() {
   OpBuilder builder(&getContext());
-  getFunction().walk([&](tf_device::ClusterOp cluster) {
+  getOperation().walk([&](tf_device::ClusterOp cluster) {
     ExpandHeadOutsideCompiledOps(cluster, &builder);
   });
 }

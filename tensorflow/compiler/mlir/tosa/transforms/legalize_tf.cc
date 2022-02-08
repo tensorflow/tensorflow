@@ -42,7 +42,7 @@ namespace {
 class LegalizeTF : public TosaLegalizeTFPassBase<LegalizeTF> {
  public:
   explicit LegalizeTF() {}
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // All the Pat<> lowering mappings.
@@ -2252,10 +2252,10 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
   return success();
 }
 
-void LegalizeTF::runOnFunction() {
+void LegalizeTF::runOnOperation() {
   auto* ctx = &getContext();
   RewritePatternSet patterns(ctx);
-  auto func = getFunction();
+  auto func = getOperation();
   populateLegalizeTFPatterns(ctx, patterns);
 
   if (ApplyPatternsWithShapeResolution(func, std::move(patterns)).failed()) {

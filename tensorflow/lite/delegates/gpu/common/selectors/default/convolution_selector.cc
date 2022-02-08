@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_buffer_1x1.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal_simd.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_powervr.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_weights_converter.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -132,16 +133,34 @@ std::unique_ptr<GPUOperation> SelectConvolutionDynamicWeightsMali(
   }
 }
 
+std::unique_ptr<GPUOperation> SelectConvolutionMetal(
+    const Convolution2DAttributes& attr, const BHWC& dst_shape,
+    const GpuInfo& gpu_info, const OperationDef& op_def) {
+  if (IsConvolutionMetalSimdSupported(gpu_info, op_def, attr) &&
+      op_def.precision == CalculationsPrecision::F32 && gpu_info.IsApple() &&
+      gpu_info.apple_info.IsSIMDMatMulFp32Perf2x() &&
+      IsGoodTaskSizeForAppleConvSimd(dst_shape, gpu_info)) {
+    ConvolutionMetalSimd conv =
+        CreateConvolutionMetalSimd(op_def, dst_shape, attr, gpu_info);
+    return absl::make_unique<ConvolutionMetalSimd>(std::move(conv));
+  } else if (IsConvolutionMetalSupported(op_def)) {
+    ConvolutionMetal conv =
+        CreateConvolutionMetal(op_def, dst_shape, attr, gpu_info);
+    return absl::make_unique<ConvolutionMetal>(std::move(conv));
+  } else {
+    ConvPowerVR conv = CreateConvPowerVR(gpu_info, op_def, attr, &dst_shape);
+    return absl::make_unique<ConvPowerVR>(std::move(conv));
+  }
+}
+
 }  // namespace
 
 std::unique_ptr<GPUOperation> SelectConvolution(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const GpuInfo& gpu_info, const OperationDef& op_def,
     ModelHints hints) {
-  if (gpu_info.IsApiMetal() && IsConvolutionMetalSupported(op_def)) {
-    ConvolutionMetal conv =
-        CreateConvolutionMetal(op_def, dst_shape, attr, gpu_info);
-    return absl::make_unique<ConvolutionMetal>(std::move(conv));
+  if (gpu_info.IsApiMetal()) {
+    return SelectConvolutionMetal(attr, dst_shape, gpu_info, op_def);
   } else if (gpu_info.IsAdreno()) {
     return SelectConvolutionAdreno(attr, dst_shape, gpu_info, op_def, hints);
   } else if (gpu_info.IsPowerVR() || gpu_info.IsAMD() || gpu_info.IsIntel() ||

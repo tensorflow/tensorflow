@@ -27,6 +27,7 @@ permissions: read-all
 
 jobs:
   analysis:
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     name: Scorecards analysis
     runs-on: ubuntu-latest
     permissions:

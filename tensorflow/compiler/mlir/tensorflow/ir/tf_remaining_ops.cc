@@ -82,7 +82,8 @@ namespace {
 // This verifies that `_XlaHostComputeMlirOp` has a well-formed
 // `host_mlir_module` attribute.
 // For other attributes, there is no additional verification beyond the default.
-static LogicalResult Verify(_XlaHostComputeMlirOp op) {
+LogicalResult _XlaHostComputeMlirOp::verify() {
+  _XlaHostComputeMlirOp op = *this;
   // Extract the module and function.
   StringRef host_module = op.host_mlir_module();
 
@@ -126,6 +127,22 @@ FuncOp _XlaHostComputeMlirOp::GetHostFunc(
            .ok())
     return nullptr;
   return (*mlir_module)->lookupSymbol<FuncOp>("host_func");
+}
+
+//===----------------------------------------------------------------------===//
+// XLA Send/Recv ops
+//===----------------------------------------------------------------------===//
+
+// For XLA Send/Recv ops the key corresponds to the resource instance.
+
+std::string _XlaRecvAtHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaRecvAtHostV2Op::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostV2Op::GetResourceInstanceStr() {
+  return key().str();
 }
 
 }  // namespace TF

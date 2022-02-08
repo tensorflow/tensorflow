@@ -92,7 +92,7 @@ class MultiDeviceIterator : public ResourceBase {
   }
 
   Status Init(std::unique_ptr<IteratorBase> iterator, int64_t max_buffer_size,
-              int64_t* incarnation_id) {
+              int64_t* incarnation_id, DatasetBase* dataset) {
     if (iterator) {
       TF_RETURN_IF_ERROR(
           VerifyTypesMatch(output_types_, iterator->output_dtypes()));
@@ -104,6 +104,8 @@ class MultiDeviceIterator : public ResourceBase {
     if (multi_device_buffer_) {
       multi_device_buffer_->Reset();
     }
+    dataset->Ref();
+    dataset_.reset(dataset);
 
     ++incarnation_id_;
     *incarnation_id = incarnation_id_;
@@ -450,6 +452,7 @@ class MultiDeviceIterator : public ResourceBase {
 
   int64_t incarnation_id_ TF_GUARDED_BY(mu_) = 0;
   std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ TF_GUARDED_BY(mu_);
+  core::RefCountPtr<DatasetBase> dataset_;
 };
 
 // Used to generate unique names for anonymous multi device iterators.
@@ -654,7 +657,7 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     core::ScopedUnref unref(finalized_dataset);
     int64_t incarnation_id;
     OP_REQUIRES_OK(ctx, resource->Init(std::move(iterator), max_buffer_size,
-                                       &incarnation_id));
+                                       &incarnation_id, dataset));
     Tensor tensor_incarnation_id(DT_INT64, TensorShape({}));
     tensor_incarnation_id.scalar<int64_t>()() = incarnation_id;
     OP_REQUIRES_OK(ctx,
@@ -825,9 +828,9 @@ class DeleteMultiDeviceIteratorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
-    // The iterator resource is guaranteed to exist because the variant tensor
-    // wrapping the deleter is provided as an unused input to this op, which
-    // guarantees that it has not run yet.
+    // The iterator resource is guaranteed to
+    // exist because the variant tensor wrapping the deleter is provided as an
+    // unused input to this op, which guarantees that it has not run yet.
     OP_REQUIRES_OK(ctx, DeleteResource(ctx, handle));
   }
 };

@@ -34,18 +34,30 @@ namespace tensorflow {
 // algorithm.
 class GPUBFCAllocator : public BFCAllocator {
  public:
-  GPUBFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                  const string& name, double fragmentation_fraction = 0.0);
-  GPUBFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                  const GPUOptions& gpu_options, const string& name,
-                  double fragmentation_fraction = 0.0);
+  // See BFCAllocator::Options.
+  struct Options {
+    // Overridden by TF_FORCE_GPU_ALLOW_GROWTH if that envvar is set.
+    bool allow_growth = false;
+
+    // If nullopt, defaults to TF_ENABLE_GPU_GARBAGE_COLLECTION, or true if that
+    // envvar is not present.
+    //
+    // Note:
+    //
+    //  - BFCAllocator defaults garbage_collection to false, not true.
+    //  - this is not the same override behavior as TF_FORCE_GPU_ALLOW_GROWTH.
+    absl::optional<bool> garbage_collection;
+
+    double fragmentation_fraction = 0;
+    bool allow_retry_on_failure = true;
+  };
+
+  GPUBFCAllocator(std::unique_ptr<SubAllocator> sub_allocator,
+                  size_t total_memory, const string& name, const Options& opts);
+
   ~GPUBFCAllocator() override {}
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
-
- private:
-  static bool GetAllowGrowthValue(const GPUOptions& gpu_options);
-  static bool GetGarbageCollectionValue();
 };
 
 }  // namespace tensorflow

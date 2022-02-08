@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
@@ -96,8 +95,8 @@ struct ComputeReshapeShapeConversion
                                                       new_shape, indices[0]);
           Value use_missing_dim_val = b.create<arith::CmpIOp>(
               loc, arith::CmpIPredicate::eq, extent, neg_one);
-          Value dim_val = b.create<SelectOp>(loc, use_missing_dim_val,
-                                             missing_dim_val, extent);
+          Value dim_val = b.create<arith::SelectOp>(loc, use_missing_dim_val,
+                                                    missing_dim_val, extent);
           dim_val = target_shape_type.getElementType().isIndex()
                         ? dim_val
                         : b.create<arith::IndexCastOp>(
@@ -144,13 +143,13 @@ struct CstrReshapableConversion
       Value is_invalid = rewriter.create<arith::CmpIOp>(
           loc, arith::CmpIPredicate::slt, extent, neg_one);
       Value total_dynamic = rewriter.create<arith::AddIOp>(
-          loc, rewriter.create<SelectOp>(loc, is_dynamic, one, zero),
+          loc, rewriter.create<arith::SelectOp>(loc, is_dynamic, one, zero),
           body->getArgument(3));
       Value total_invalid = rewriter.create<arith::AddIOp>(
-          loc, rewriter.create<SelectOp>(loc, is_invalid, one, zero),
+          loc, rewriter.create<arith::SelectOp>(loc, is_invalid, one, zero),
           body->getArgument(4));
       Value extent_or_one =
-          rewriter.create<SelectOp>(loc, is_dynamic, one, extent);
+          rewriter.create<arith::SelectOp>(loc, is_dynamic, one, extent);
       Value total_elements = rewriter.create<arith::MulIOp>(
           loc, extent_or_one, body->getArgument(2));
       rewriter.create<shape::YieldOp>(
@@ -160,8 +159,8 @@ struct CstrReshapableConversion
     // Avoid division by zero.
     Value is_zero_elements = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, reduction->getResult(0), zero);
-    Value divisor = rewriter.create<SelectOp>(loc, is_zero_elements, one,
-                                              reduction->getResult(0));
+    Value divisor = rewriter.create<arith::SelectOp>(loc, is_zero_elements, one,
+                                                     reduction->getResult(0));
     Value is_divisible = rewriter.create<arith::CmpIOp>(
         loc, arith::CmpIPredicate::eq, zero,
         rewriter.create<arith::RemSIOp>(loc, num_elements, divisor));
@@ -205,8 +204,8 @@ struct HloLegalizeShapeOpsToStandardPass
     MLIRContext& ctx = getContext();
     RewritePatternSet patterns(&ctx);
     ConversionTarget target(ctx);
-    target.addLegalDialect<arith::ArithmeticDialect, StandardOpsDialect,
-                           tensor::TensorDialect, shape::ShapeDialect>();
+    target.addLegalDialect<arith::ArithmeticDialect, tensor::TensorDialect,
+                           shape::ShapeDialect>();
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 
