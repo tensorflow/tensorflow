@@ -115,10 +115,6 @@ class InferenceContext {
       flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
       flatbuffers::FlatBufferBuilder* builder);
 
-  absl::Status Decode(const CLContext& context, const CLDevice& device,
-                      ProgramCache* program_cache,
-                      const data::InferenceContext* fb_inference);
-
   void CopyFromGpuModel(GpuModel* gpu_model);
 
   absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
