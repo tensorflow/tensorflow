@@ -81,6 +81,12 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   Status StartWatchKey(const std::string& key,
                        ChangedKeyValuesCallback on_change) override;
   Status StopWatchKey(const std::string& key) override;
+  Status WaitAtBarrier(const std::string& barrier_id, absl::Duration timeout,
+                       const std::vector<CoordinatedTask>& tasks) override;
+  void WaitAtBarrierAsync(const std::string& barrier_id, absl::Duration timeout,
+                          const std::vector<CoordinatedTask>& tasks,
+                          StatusCallback done) override;
+  Status CancelBarrier(const std::string& barrier_id) override;
 
  protected:
   void SetError(const Status& error) override;
@@ -467,6 +473,26 @@ Status CoordinationServiceAgentImpl::ActivateWatch(
     const std::string& key, const std::map<std::string, std::string>& kvs) {
   return MakeCoordinationError(errors::Unimplemented(
       "CoordinationServiceAgent::ActivateWatch is not implemented."));
+}
+
+Status CoordinationServiceAgentImpl::WaitAtBarrier(
+    const std::string& barrier_id, absl::Duration timeout,
+    const std::vector<CoordinatedTask>& tasks) {
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::WaitAtBarrierAsync is not implemented."));
+}
+
+void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
+    const std::string& barrier_id, absl::Duration timeout,
+    const std::vector<CoordinatedTask>& tasks, StatusCallback done) {
+  return done(MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::WaitAtBarrierAsync is not implemented.")));
+}
+
+Status CoordinationServiceAgentImpl::CancelBarrier(
+    const std::string& barrier_id) {
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::CancelBarrier is not implemented."));
 }
 
 }  // namespace

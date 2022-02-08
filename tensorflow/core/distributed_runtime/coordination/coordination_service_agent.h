@@ -155,6 +155,52 @@ class CoordinationServiceAgent {
                                ChangedKeyValuesCallback on_change) = 0;
   virtual Status StopWatchKey(const std::string& key) = 0;
 
+  // Blocks until all (or a subset of) tasks are at the barrier or the barrier
+  // fails.
+  //
+  // `barrier_id` should be unique across barriers. Once the barrier has passed
+  // or failed, subsequent calls will not block, and immediately respond with
+  // the previous response.
+  //
+  // The first WaitAtBarrier() call received by the service for a particular
+  // barrier_id is special in that it determines the barrier deadline based on
+  // timeout duration.
+  // However, if subsequent calls by different agents specify a different set of
+  // `tasks` for the same `barrier_id`, the barrier will fail instantly.
+  // For example,
+  //   agent_1->WaitAtBarrier(“barrier”, 10min, <<”worker”, 1>, <”worker”, 2>>);
+  //   agent_2->WaitAtBarrier(“barrier”, 10min, <<”worker”, 2>, <”worker”, 3>>);
+  // Barrier fails after agent_2’s call because it specifies a different set of
+  // participating tasks.
+  //
+  // If no tasks are specified (default), the barrier will block for the
+  // entire cluster.
+  //
+  // Possible service errors:
+  //   - DeadlineExceeded: Timed out waiting for specified tasks at the barrier.
+  //      Deadline is determined by the server timestamp when it receives the
+  //      first WaitAtBarrier() + timeout duration.
+  //   - Cancelled: One of the tasks called CancelBarrier().
+  //   - Internal: Any participating task is in ERROR state.
+  //   - InvalidArgument: Conflicting tasks specified by different agents for
+  //       the same barrier.
+  virtual Status WaitAtBarrier(const std::string& barrier_id,
+                               absl::Duration timeout,
+                               const std::vector<CoordinatedTask>& tasks) = 0;
+
+  virtual void WaitAtBarrierAsync(const std::string& barrier_id,
+                                  absl::Duration timeout,
+                                  const std::vector<CoordinatedTask>& tasks,
+                                  StatusCallback done) = 0;
+
+  // Aborts the barrier if it is ongoing.
+  // Current and future WaitAtBarrier() calls with the same id will return a
+  // CANCELLED error status.
+  // Possible service errors:
+  //   - FailedPrecondition: Barrier has already been passed.
+  //   - NotFound: No barrier with the specified id is found.
+  virtual Status CancelBarrier(const std::string& barrier_id) = 0;
+
  protected:
   // Set the service agent to error status and invoke the error callback.
   // Note: different from ReportError, this does not report the error status to
