@@ -169,7 +169,7 @@ void populateCanonicalizationPatterns(FuncOp func,
       op->getRegisteredInfo()->getCanonicalizationPatterns(patterns, context);
     }
   });
-  patterns.insert<UnrollSCFForOp, SimplifySCFIfOp>(context);
+  patterns.add<UnrollSCFForOp, SimplifySCFIfOp>(context);
 }
 
 }  // namespace TFR

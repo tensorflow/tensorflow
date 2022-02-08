@@ -275,8 +275,8 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     populateMathToLibmConversionPatterns(patterns, 0);
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
                                                               &patterns);
-    patterns.insert<ConvertLaunchFuncOpToTfRuntimeCallPattern>(
-        type_converter, blob_annotation_);
+    patterns.add<ConvertLaunchFuncOpToTfRuntimeCallPattern>(type_converter,
+                                                            blob_annotation_);
     //  Set target.
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();

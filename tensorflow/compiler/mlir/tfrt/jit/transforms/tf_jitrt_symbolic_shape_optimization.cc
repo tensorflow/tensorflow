@@ -348,13 +348,13 @@ struct SymbolicShapeOptimizationPass
     mlir::RewritePatternSet patterns(ctx);
 
     // Rewrite constraints based on the symbolic shapes.
-    patterns.insert<CstrBroadcastableOpLowering>(ctx);
+    patterns.add<CstrBroadcastableOpLowering>(ctx);
     // Rewrite shape.broadcast based on the symbolic shapes.
-    patterns.insert<BroadcastOpLowering>(ctx);
+    patterns.add<BroadcastOpLowering>(ctx);
 
     // Rewrite broadcasts based on the symbolic shapes if enabled.
     if (!optimize_only_constraints)
-      patterns.insert<DynamicBroadcastInDimOpLowering>(ctx);
+      patterns.add<DynamicBroadcastInDimOpLowering>(ctx);
 
     // Add shape dialect canonicalization patterns to fold shape operations
     // after constraints are replaced with constant witness.

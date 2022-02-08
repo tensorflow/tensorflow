@@ -248,8 +248,8 @@ class TFToTFRTDataRewritePass
       return data_converter.isSignatureLegal(op.getType());
     });
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.insert<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
-                    ConstOpConversion, ReturnOpConversion>(context);
+    patterns.add<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
+                 ConstOpConversion, ReturnOpConversion>(context);
     mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
         patterns, data_converter);
 

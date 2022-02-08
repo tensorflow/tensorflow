@@ -915,8 +915,8 @@ void addPatterns(MLIRContext* context, RewritePatternSet& patterns) {
               ConvertTFConv3DOp, ConvertTFConv3DBackpropInputV2Op>(context);
 
   // Ophint python converter converted tf node pattern.
-  patterns.insert<LegalizeUnidirectionalSequenceLstm,
-                  LegalizeUnidirectionalSequenceRnn>(context);
+  patterns.add<LegalizeUnidirectionalSequenceLstm,
+               LegalizeUnidirectionalSequenceRnn>(context);
 }
 
 bool applyPatterns(FuncOp func, ConversionTarget& target,

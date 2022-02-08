@@ -2951,7 +2951,7 @@ struct EraseDeadVarIsInitializedOp
 
 void VarIsInitializedOp::getCanonicalizationPatterns(
     RewritePatternSet &patterns, MLIRContext *context) {
-  patterns.insert<EraseDeadVarIsInitializedOp>(context);
+  patterns.add<EraseDeadVarIsInitializedOp>(context);
 }
 
 //===----------------------------------------------------------------------===//

@@ -192,9 +192,10 @@ class LegalizeHashTables
     }
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
-                    LegalizeHashTableImportOpPattern,
-                    LegalizeHashTableSizeOpPattern>(&getContext());
+    patterns
+        .add<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
+             LegalizeHashTableImportOpPattern, LegalizeHashTableSizeOpPattern>(
+            &getContext());
     if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
       signalPassFailure();
       return;

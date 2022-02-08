@@ -1662,26 +1662,27 @@ void OptimizePass::runOnOperation() {
   // Merge reshapes into fully connected ops before we start moving them past
   // binary ops.
   RewritePatternSet phase_0_patterns(&getContext());
-  phase_0_patterns.insert<RemoveReshapeAfterFullyConnected,
-                          RemoveReshapeBeforeFullyConnected>(ctx);
+  phase_0_patterns
+      .add<RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected>(
+          ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
   TFL::populateWithGenerated(patterns);
-  patterns.insert<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
-                  FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
-                  FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
-                  FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
-                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
+  patterns.add<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+               FuseFullyConnectedAndMul, FuseMulAndFullyConnected,
+               FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+               FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
+               FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
   if (enable_canonicalization_) AddCanonicalizationPatterns(ctx, &patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
-  phase_2_patterns.insert<
+  phase_2_patterns.add<
       ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
       ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
       FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,

@@ -159,7 +159,7 @@ class OutlineWithXLAFrameworkPass
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
-    patterns.insert<OutlineXLAFunc>(ctx);
+    patterns.add<OutlineXLAFunc>(ctx);
     //  Set target.
 
     if (failed(applyPatternsAndFoldGreedily(m, std::move(patterns)))) {

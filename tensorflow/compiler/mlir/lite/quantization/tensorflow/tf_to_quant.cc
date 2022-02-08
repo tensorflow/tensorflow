@@ -151,7 +151,7 @@ void LegalizeTFToQuant::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto *ctx = func.getContext();
-  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
+  patterns.add<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace

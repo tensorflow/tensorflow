@@ -250,7 +250,7 @@ class LegalizeXLAFrameworkToLLVMPass
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
-    patterns.insert<XLABufferToMemOpConversion, BarePtrFuncOpConversion>(
+    patterns.add<XLABufferToMemOpConversion, BarePtrFuncOpConversion>(
         type_converter, 2);
     //  Set target.
     ConversionTarget target(*ctx);

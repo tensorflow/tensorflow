@@ -118,8 +118,8 @@ struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
                       });
 
     mlir::RewritePatternSet patterns(func.getContext());
-    patterns.insert<TileCWisePattern>(tiling_options, filter,
-                                      patterns.getContext());
+    patterns.add<TileCWisePattern>(tiling_options, filter,
+                                   patterns.getContext());
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Ensure we drop the marker in the end.

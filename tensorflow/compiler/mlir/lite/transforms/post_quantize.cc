@@ -256,14 +256,14 @@ void PostQuantizePass::runOnOperation() {
   auto func = getOperation();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(patterns);
-  patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
-  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::LSTMOp>>(ctx);
+  patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
+  patterns.add<PruneUnusedOpsWithSideEffect<TFL::LSTMOp>>(ctx);
   patterns
       .insert<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
           ctx);
-  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
-  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::CustomOp>>(ctx,
-                                                               custom_op_map_);
+  patterns.add<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
+  patterns.add<PruneUnusedOpsWithSideEffect<TFL::CustomOp>>(ctx,
+                                                            custom_op_map_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
@@ -272,8 +272,8 @@ void PostQuantizePass::runOnOperation() {
 
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
-  phase_2_patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>,
-                          RemoveVolatileOps<kPreserveInputsAndOutputs>>(ctx);
+  phase_2_patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
+                       RemoveVolatileOps<kPreserveInputsAndOutputs>>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
@@ -282,7 +282,7 @@ void PostQuantizeRemoveQDQPass::runOnOperation() {
   auto func = getOperation();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(patterns);
-  patterns.insert<RemoveVolatileOps<kPreserveNone>>(ctx);
+  patterns.add<RemoveVolatileOps<kPreserveNone>>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
