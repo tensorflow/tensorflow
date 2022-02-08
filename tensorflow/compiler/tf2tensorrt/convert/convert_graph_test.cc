@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
 
-#include <regex>  // NOLINT
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
+#include <regex>  // NOLINT
+
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -64,12 +65,12 @@ class FakeCluster : public grappler::Cluster {
   const DeviceSet* device_set_ = nullptr;
 };
 
-TEST(ConvertGraphTest, GetDeviceAndAllocator) {
-  ConversionParams params;
+TEST(GetDeviceAndAllocatorTest, GetDeviceAndAllocator) {
+  TRTOptimizationPass::ConversionParams params;
   EngineInfo engine_info;
   {
     // cluster is not set, and no gpu device is available.
-    auto result = GetDeviceAndAllocator(params, engine_info);
+    auto result = GetDeviceAndAllocator(nullptr, engine_info);
     EXPECT_EQ(-1, result.first);
     EXPECT_EQ(nullptr, result.second);
   }
@@ -87,7 +88,7 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   {
     // cluster is not set, should find and return first gpu id and
     // corresponding allocator.
-    auto result = GetDeviceAndAllocator(params, engine_info);
+    auto result = GetDeviceAndAllocator(nullptr, engine_info);
     EXPECT_EQ(0, result.first);
     EXPECT_NE(nullptr, result.second);
     EXPECT_EQ("GPU_0_bfc", result.second->Name());
@@ -97,7 +98,7 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   {
     // params.cluster->GetDeviceSet() returns null, should find and return first
     // gpu id and corresponding allocator.
-    auto result = GetDeviceAndAllocator(params, engine_info, &cluster);
+    auto result = GetDeviceAndAllocator(&cluster, engine_info);
     EXPECT_EQ(0, result.first);
     EXPECT_NE(nullptr, result.second);
     EXPECT_EQ("GPU_0_bfc", result.second->Name());
@@ -114,7 +115,7 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   {
     // engine_info.device is not set, should find and return first gpu id and
     // corresponding allocator.
-    auto result = GetDeviceAndAllocator(params, engine_info, &cluster);
+    auto result = GetDeviceAndAllocator(&cluster, engine_info);
     EXPECT_EQ(0, result.first);
     EXPECT_NE(nullptr, result.second);
     EXPECT_EQ("GPU_0_bfc", result.second->Name());
@@ -123,7 +124,7 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   engine_info.device = "/GPU:1";
   {
     // Set to use second device.
-    auto result = GetDeviceAndAllocator(params, engine_info, &cluster);
+    auto result = GetDeviceAndAllocator(&cluster, engine_info);
     EXPECT_EQ(0, result.first);
     EXPECT_NE(nullptr, result.second);
     EXPECT_EQ("GPU_1_bfc", result.second->Name());
@@ -132,16 +133,16 @@ TEST(ConvertGraphTest, GetDeviceAndAllocator) {
   engine_info.device = "/GPU:3";
   {
     // Set to use nonexistent device.
-    auto result = GetDeviceAndAllocator(params, engine_info, &cluster);
+    auto result = GetDeviceAndAllocator(&cluster, engine_info);
     EXPECT_EQ(-1, result.first);
     EXPECT_EQ(nullptr, result.second);
   }
 }
 
-class ConvertAfterShapesTest : public ::testing::Test {
+class ConvertGraphTest : public ::testing::Test {
  public:
-  Status RunConvertAfterShape(Scope s, GraphDef* output_graph_def,
-                              int maximum_batch_size = 1000) {
+  Status RunConvertGraph(Scope s, GraphDef* output_graph_def,
+                         int maximum_batch_size = 1000) {
     // Create GraphProperties.
     grappler::GrapplerItem item;
     TF_EXPECT_OK(s.ToGraphDef(&item.graph));
@@ -150,21 +151,18 @@ class ConvertAfterShapesTest : public ::testing::Test {
 
     // Construct ConversionParams.
     const std::vector<string> input_output_names{"output"};
-    ConversionParams params;
-    params.input_output_names = &input_output_names;
+    TRTOptimizationPass::ConversionParams params;
     params.max_batch_size = maximum_batch_size;
     params.max_workspace_size_bytes = 8 << 20;
-    params.output_graph_def = output_graph_def;
     params.minimum_segment_size = 1;
-    params.grappler_item = &item;
     params.use_calibration = false;
     params.trt_logger_name = "DefaultLogger";
-
-    return ConvertAfterShapes(params, nullptr);
+    return ConvertGraph(params, item, input_output_names, nullptr,
+                        output_graph_def);
   }
 };
 
-TEST_F(ConvertAfterShapesTest, DirectlyConnectedEngines) {
+TEST_F(ConvertGraphTest, DirectlyConnectedEngines) {
   // Create the graph. There will be two TRTEngineOps after the conversion, and
   // the upstream TRTEngineOp will have two output connections from the same
   // node:port inside the op to the downstream TRTEngineOp. Then, if it adds the
@@ -192,7 +190,7 @@ TEST_F(ConvertAfterShapesTest, DirectlyConnectedEngines) {
   ops::Identity(s.WithOpName("output"), add3);
 
   GraphDef output_graph_def;
-  TF_EXPECT_OK(RunConvertAfterShape(s, &output_graph_def));
+  TF_EXPECT_OK(RunConvertGraph(s, &output_graph_def));
 
   auto remove_graph_sequence_number = [](std::string node_name) {
     const std::regex pattern("TRTEngineOp_[0-9]+_");
