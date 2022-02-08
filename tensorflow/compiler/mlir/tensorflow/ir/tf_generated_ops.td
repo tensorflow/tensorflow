@@ -2108,6 +2108,19 @@ as `t`. The maximum value to clip by.}]>:$clip_value_max
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CollectiveAssignGroupV2Op : TF_Op<"CollectiveAssignGroupV2", [NoSideEffect, TF_NoConstantFold]> {
+  let summary = "Assign group keys based on group assignment.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$group_assignment,
+    TF_Int32Tensor:$device_index
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$group_key
+  );
+}
+
 def TF_CollectiveBcastRecvOp : TF_Op<"CollectiveBcastRecv", []> {
   let summary = "Receives a tensor value broadcast from another device.";
 
