@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/bfloat16.h"
 
 namespace xla {
 namespace {
@@ -31,10 +30,10 @@ namespace {
 // Also throws in some trailing whitespace on the original to show it is
 // removed.
 TEST(UtilTest, ReindentsDifferentNumberOfLeadingSpacesUniformly) {
-  string original = R"(   hello there
+  std::string original = R"(   hello there
       world)";
-  string got = Reindent(original, "  ");
-  string want = R"(  hello there
+  std::string got = Reindent(original, "  ");
+  std::string want = R"(  hello there
   world)";
   EXPECT_EQ(want, got);
 }
@@ -112,17 +111,17 @@ TEST(UtilTest, SanitizeFileName) {
 }
 
 TEST(UtilTest, RoundTripFpToString) {
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(
-                false, QuietNanWithoutPayload<Eigen::half>())),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<half>(
+                false, QuietNanWithoutPayload<half>())),
             "nan");
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(
-                true, QuietNanWithoutPayload<Eigen::half>())),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<half>(
+                true, QuietNanWithoutPayload<half>())),
             "-nan");
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tensorflow::bfloat16>(
-                false, QuietNanWithoutPayload<tensorflow::bfloat16>())),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<bfloat16>(
+                false, QuietNanWithoutPayload<bfloat16>())),
             "nan");
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tensorflow::bfloat16>(
-                true, QuietNanWithoutPayload<tensorflow::bfloat16>())),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<bfloat16>(
+                true, QuietNanWithoutPayload<bfloat16>())),
             "-nan");
   EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<float>(
                 false, QuietNanWithoutPayload<float>())),
@@ -137,15 +136,13 @@ TEST(UtilTest, RoundTripFpToString) {
                 true, QuietNanWithoutPayload<double>())),
             "-nan");
 
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(false, 0x1)),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<half>(false, 0x1)),
             "nan(0x1)");
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(true, 0x1)),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<half>(true, 0x1)),
             "-nan(0x1)");
-  EXPECT_EQ(RoundTripFpToString(
-                NanWithSignAndPayload<tensorflow::bfloat16>(false, 0x1)),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<bfloat16>(false, 0x1)),
             "nan(0x1)");
-  EXPECT_EQ(RoundTripFpToString(
-                NanWithSignAndPayload<tensorflow::bfloat16>(true, 0x1)),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<bfloat16>(true, 0x1)),
             "-nan(0x1)");
   EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<float>(false, 0x1)),
             "nan(0x1)");

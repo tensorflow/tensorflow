@@ -95,6 +95,10 @@ parser.add_argument(
     action="store_true",
     help="Whether to generate test cases for TF post-training quantization.")
 parser.add_argument(
+    "--hlo_aware_conversion",
+    action="store_true",
+    help="For TF Quantization only: whether conversion for HLO target.")
+parser.add_argument(
     "--make_forward_compat_test",
     action="store_true",
     help="Make tests by setting TF forward compatibility horizon to the future")
@@ -133,7 +137,6 @@ def main(unused_args):
   options.known_bugs = MLIR_CONVERTER_KNOWN_BUGS
   options.make_forward_compat_test = FLAGS.make_forward_compat_test
   options.no_tests_limit = FLAGS.no_tests_limit
-  options.use_experimental_converter = True
   options.mlir_quantizer = FLAGS.mlir_quantizer
   options.skip_high_dimension_inputs = FLAGS.skip_high_dimension_inputs
 

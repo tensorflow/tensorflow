@@ -46,6 +46,9 @@ bool AreAllParametersMax(const Model::ModelParameters& parameters) {
 
 // Records the ram usage of hill climbing algorithm.
 void RecordAutotuneRamUsage(int64 ram_budget, double max_buffered_bytes) {
+  if (ram_budget == 0) {
+    return;
+  }
   const auto memory_info = port::GetMemoryInfo();
   // Records ratio of memory used since RootDataset was created over the ram
   // budget.
@@ -1688,16 +1691,16 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
   optimization_params.set_model_input_time(model_input_time);
   switch (algorithm) {
     case AutotuneAlgorithm::DEFAULT:
+    case AutotuneAlgorithm::MAX_PARALLELISM:
+      OptimizeMaxParallelism(snapshot, optimization_params,
+                             cancellation_manager);
+      break;
     case AutotuneAlgorithm::HILL_CLIMB:
       OptimizeHillClimb(snapshot, optimization_params, cancellation_manager);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:
       OptimizeGradientDescent(snapshot, optimization_params,
                               cancellation_manager);
-      break;
-    case AutotuneAlgorithm::MAX_PARALLELISM:
-      OptimizeMaxParallelism(snapshot, optimization_params,
-                             cancellation_manager);
       break;
     default:
       VLOG(2) << "Autotuning algorithm was not recognized. Aborting "

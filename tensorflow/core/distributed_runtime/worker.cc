@@ -110,7 +110,9 @@ void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
 }
 
 void Worker::AbortStep(int64_t step_id) {
-  Rendezvous* rendez = env_->rendezvous_mgr->Find(step_id);
+  RemoteRendezvous* rendez = env_->rendezvous_mgr->Find(step_id);
+  // Do not abort if it's a context global instance for eager op-by-op execution
+  if (rendez->IsRemoteEagerContextDefault()) return;
   SchedNonBlockingClosureAfter(1000000, [rendez, step_id]() {
     // Delay a bit before aborting the step. This way, the root
     // cause may return first back to the client instead of this

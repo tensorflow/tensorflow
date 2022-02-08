@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cusolver_context.h"
 
+#include <algorithm>
+#include <complex>
+#include <utility>
+
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -106,6 +111,15 @@ struct GpuComplexT<std::complex<double>> {
   typedef cuDoubleComplex type;
 };
 
+template <>
+struct GpuComplexT<std::complex<float>*> {
+  typedef cuComplex* type;
+};
+template <>
+struct GpuComplexT<std::complex<double>*> {
+  typedef cuDoubleComplex* type;
+};
+
 #else
 
 using gpuStream_t = hipStream_t;
@@ -121,6 +135,15 @@ struct GpuComplexT<std::complex<float>> {
 template <>
 struct GpuComplexT<std::complex<double>> {
   typedef rocblas_double_complex type;
+};
+
+template <>
+struct GpuComplexT<std::complex<float>*> {
+  typedef rocblas_float_complex* type;
+};
+template <>
+struct GpuComplexT<std::complex<double>*> {
+  typedef rocblas_double_complex* type;
 };
 #endif
 
@@ -282,7 +305,8 @@ GpuSolverContext::~GpuSolverContext() {
 // behavior in a future cuSolver release.
 StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
                                                     se::blas::UpperLower uplo,
-                                                    int n, int lda) {
+                                                    int n, int lda,
+                                                    int batch_size) {
 #if !defined(TENSORFLOW_USE_ROCM)
   int size = -1;
   switch (type) {
@@ -310,36 +334,96 @@ StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
       return InvalidArgument("Invalid type for cholesky decomposition: %s",
                              PrimitiveType_Name(type));
   }
-  return size;
+  // CUDA's potrfBatched needs space for the `as` array, which contains
+  // batch_size pointers.  Divide by sizeof(type) because this function returns
+  // not bytes but a number of elements of `type`.
+  int64_t potrf_batched_scratch = CeilOfRatio<int64_t>(
+      batch_size * sizeof(void*), primitive_util::ByteWidth(type));
+
+  return std::max<int64_t>(size, potrf_batched_scratch);
 #else
   return 0;
 #endif
 }
 
 #if !defined(TENSORFLOW_USE_ROCM)
-#define POTRF_INSTANCE(T, type_prefix)                                    \
-  template <>                                                             \
-  Status GpuSolverContext::Potrf<T>(                                      \
-      se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda,   \
-      se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace) { \
-    return ConvertStatus(DN_SOLVER_FN(potrf, type_prefix)(                \
-        handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(A), lda,    \
-        ToDevicePointer(workspace), workspace.ElementCount(),             \
-        ToDevicePointer(lapack_info)));                                   \
-  }
+#define CALL_POTRF(T, suffix_lower, suffix_upper)                    \
+  ConvertStatus(cusolverDn##suffix_upper##potrf(                     \
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda, \
+      ToDevicePointer(se::DeviceMemory<T>(workspace)),               \
+      se::DeviceMemory<T>(workspace).ElementCount(),                 \
+      ToDevicePointer(lapack_info)))
 #else
-#define POTRF_INSTANCE(T, type_prefix)                                    \
-  template <>                                                             \
-  Status GpuSolverContext::Potrf<T>(                                      \
-      se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda,   \
-      se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace) { \
-    return ConvertStatus(DN_SOLVER_FN(potrf, type_prefix)(                \
-        handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(A), lda,    \
-        ToDevicePointer(lapack_info)));                                   \
-  }
+#define CALL_POTRF(T, suffix_lower, suffix_upper)                    \
+  ConvertStatus(tensorflow::wrap::rocsolver_##suffix_lower##potrf(   \
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(a), lda, \
+      ToDevicePointer(lapack_info)))
 #endif
 
-CALL_LAPACK_TYPES(POTRF_INSTANCE);
+Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
+                               se::DeviceMemory<float> a, int lda,
+                               se::DeviceMemory<int> lapack_info,
+                               se::DeviceMemoryBase workspace) {
+  return CALL_POTRF(float, s, S);
+}
+
+Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
+                               se::DeviceMemory<double> a, int lda,
+                               se::DeviceMemory<int> lapack_info,
+                               se::DeviceMemoryBase workspace) {
+  return CALL_POTRF(double, d, D);
+}
+
+Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
+                               se::DeviceMemory<std::complex<float>> a, int lda,
+                               se::DeviceMemory<int> lapack_info,
+                               se::DeviceMemoryBase workspace) {
+  return CALL_POTRF(std::complex<float>, c, C);
+}
+
+Status GpuSolverContext::Potrf(se::blas::UpperLower uplo, int n,
+                               se::DeviceMemory<std::complex<double>> a,
+                               int lda, se::DeviceMemory<int> lapack_info,
+                               se::DeviceMemoryBase workspace) {
+  return CALL_POTRF(std::complex<double>, z, Z);
+}
+
+#if !defined(TENSORFLOW_USE_ROCM)
+#define CALL_POTRF_BATCHED(T, suffix_lower, suffix_upper)             \
+  ConvertStatus(cusolverDn##suffix_upper##potrfBatched(               \
+      handle(), GpuBlasUpperLower(uplo), n, ToDevicePointer(as), lda, \
+      ToDevicePointer(lapack_info), batch_size));
+#else
+#define CALL_POTRF_BATCHED(T, suffix_lower, suffix_upper) \
+  Unimplemented("potrf_batched not implemented on rocm");
+#endif
+
+Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
+                                      se::DeviceMemory<float*> as, int lda,
+                                      se::DeviceMemory<int> lapack_info,
+                                      int batch_size) {
+  return CALL_POTRF_BATCHED(float, s, S);
+}
+
+Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
+                                      se::DeviceMemory<double*> as, int lda,
+                                      se::DeviceMemory<int> lapack_info,
+                                      int batch_size) {
+  return CALL_POTRF_BATCHED(double, d, D);
+}
+Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
+                                      se::DeviceMemory<std::complex<float>*> as,
+                                      int lda,
+                                      se::DeviceMemory<int> lapack_info,
+                                      int batch_size) {
+  return CALL_POTRF_BATCHED(std::complex<float>, c, C);
+}
+Status GpuSolverContext::PotrfBatched(
+    se::blas::UpperLower uplo, int n,
+    se::DeviceMemory<std::complex<double>*> as, int lda,
+    se::DeviceMemory<int> lapack_info, int batch_size) {
+  return CALL_POTRF_BATCHED(std::complex<double>, z, Z);
+}
 
 }  // namespace gpu
 }  // namespace xla

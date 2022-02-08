@@ -85,6 +85,7 @@ py_test(
 # copybara:uncomment_end
 
 exports_files([
+    "conversion_metadata.fbs",
     "schema.fbs",
     "schema_v0.fbs",
     "schema_v1.fbs",

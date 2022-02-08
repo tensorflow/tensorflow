@@ -23,8 +23,10 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <ostream>
+#include <random>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -45,9 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -63,7 +63,7 @@ class LiteralUtil {
   // native type. For example:
   //
   //  CreateR1<float>({1.0, 42.0});
-  //  CreateR2<uint32>({{1, 2}, {3, 4}});
+  //  CreateR2<uint32_t>({{1, 2}, {3, 4}});
   //
   // The variants not ending with WithLayout use the default XLA layout for the
   // literal's linear representation in memory.
@@ -291,7 +291,7 @@ class LiteralUtil {
   // Returns a multi-dimensional index as a string. For example: '{7, 8}' will
   // be returned for a 2-dimensional index with dimension 0 index equal to 7,
   // dimension 1 equal to 8.
-  static string MultiIndexAsString(absl::Span<const int64_t> multi_index);
+  static std::string MultiIndexAsString(absl::Span<const int64_t> multi_index);
 };
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal);
@@ -321,7 +321,7 @@ template <typename NativeT>
       primitive_util::NativeToPrimitiveType<NativeT>(),
       {static_cast<int64_t>(values.size()),
        static_cast<int64_t>(values.begin()->size())},
-      AsInt64Slice(layout.minor_to_major())));
+      layout.minor_to_major()));
   literal.PopulateR2(values);
   return literal;
 }
@@ -408,7 +408,7 @@ template <typename NativeT>
     const Array<NativeT>& values, const Layout& layout) {
   Literal literal(ShapeUtil::MakeShapeWithLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
-      AsInt64Slice(layout.minor_to_major())));
+      layout.minor_to_major()));
   literal.PopulateFromArray(values);
   return literal;
 }

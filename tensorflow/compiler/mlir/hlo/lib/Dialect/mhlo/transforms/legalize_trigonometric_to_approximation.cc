@@ -16,6 +16,8 @@ limitations under the License.
 // This file implements the lowering for trigonometric standard ops to
 // approximations.
 
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -56,7 +58,7 @@ class ApproximateOnExtendedF32Lowering : public OpRewritePattern<OpTy> {
       if (arg_ty.isF64()) return failure();
 
       if (arg_ty.isF16())
-        arg = rewriter.create<arith::ExtFOp>(loc, arg, rewriter.getF32Type());
+        arg = rewriter.create<arith::ExtFOp>(loc, rewriter.getF32Type(), arg);
 
       // If we still do not have f32, fail.
       if (!arg.getType().isF32()) return failure();
@@ -70,7 +72,7 @@ class ApproximateOnExtendedF32Lowering : public OpRewritePattern<OpTy> {
     // Truncate back if needed.
     if (op.getType().isF16())
       result =
-          rewriter.create<arith::TruncFOp>(loc, result, rewriter.getF16Type());
+          rewriter.create<arith::TruncFOp>(loc, rewriter.getF16Type(), result);
 
     rewriter.replaceOp(op, {result});
     return success();
@@ -129,7 +131,8 @@ class ApproximateTanhLowering
         loc, arith::CmpFPredicate::OLT, abs_input,
         rewriter.create<arith::ConstantOp>(
             loc, rewriter.getF32FloatAttr(kUseIdentityApprox)));
-    approx = rewriter.create<SelectOp>(loc, use_identity_approx, input, approx);
+    approx = rewriter.create<arith::SelectOp>(loc, use_identity_approx, input,
+                                              approx);
 
     // For very small/large values, use a constant approximation -1/1.
     Value too_large_input = rewriter.create<arith::CmpFOp>(
@@ -142,15 +145,15 @@ class ApproximateTanhLowering
             loc, rewriter.getF32FloatAttr(-7.90531110763549805f)));
     Value input_is_nan = rewriter.create<arith::CmpFOp>(
         loc, arith::CmpFPredicate::UNE, input, input);
-    approx = rewriter.create<SelectOp>(
+    approx = rewriter.create<arith::SelectOp>(
         loc, too_large_input,
         rewriter.create<arith::ConstantOp>(loc, rewriter.getF32FloatAttr(1.0)),
         approx);
-    approx = rewriter.create<SelectOp>(
+    approx = rewriter.create<arith::SelectOp>(
         loc, too_small_input,
         rewriter.create<arith::ConstantOp>(loc, rewriter.getF32FloatAttr(-1.0)),
         approx);
-    approx = rewriter.create<SelectOp>(loc, input_is_nan, input, approx);
+    approx = rewriter.create<arith::SelectOp>(loc, input_is_nan, input, approx);
 
     return approx;
   }
@@ -160,10 +163,13 @@ struct LegalizeTrigonometricToApproximationPass
     : public LegalizeTanhToApproximationPassBase<
           LegalizeTrigonometricToApproximationPass> {
   /// Perform the lowering of standard dialect operations to approximations.
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 
@@ -174,10 +180,10 @@ createLegalizeTrigonometricToApproximationPass() {
   return std::make_unique<LegalizeTrigonometricToApproximationPass>();
 }
 
-void PopulateTrigonometricToApproximationPatterns(
-    mlir::MLIRContext *context, OwningRewritePatternList *patterns) {
+void PopulateTrigonometricToApproximationPatterns(mlir::MLIRContext *context,
+                                                  RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<ApproximateTanhLowering>(context);
+  patterns->add<ApproximateTanhLowering>(context);
   // clang-format on
 }
 

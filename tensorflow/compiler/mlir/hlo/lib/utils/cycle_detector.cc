@@ -29,7 +29,7 @@ using OrderedNodeSet = OrderedSet<int32_t>;
 
 template <typename T>
 struct VecStruct {
-  typedef llvm::SmallVector<T, 4> type;
+  using type = llvm::SmallVector<T, 4>;
 };
 template <typename T>
 using Vec = typename VecStruct<T>::type;

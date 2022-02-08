@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -44,8 +44,8 @@ namespace {
 struct PropagateTfAbiKnowledgeToKernelsPass
     : public PropagateTfAbiKnowledgeToKernelsBase<
           PropagateTfAbiKnowledgeToKernelsPass> {
-  void runOnFunction() override {
-    FuncOp function = getFunction();
+  void runOnOperation() override {
+    FuncOp function = getOperation();
     llvm::SmallVector<Value, 4> worklist;
     // We currently only handle entry functions and do not propagate across
     // functions.
@@ -210,7 +210,8 @@ struct PropagateTfAbiKnowledgeToKernelsPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels() {
+std::unique_ptr<OperationPass<FuncOp>>
+CreatePropagateTfAbiKnowledgeToKernels() {
   return std::make_unique<PropagateTfAbiKnowledgeToKernelsPass>();
 }
 

@@ -13,5 +13,5 @@ def repo():
         },
         urls = tf_mirror_urls("https://github.com/KhronosGroup/Vulkan-Headers/archive/ec2db85225ab410bc6829251bef6c578aaed5868.tar.gz"),
         # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/vulkan_headers.cmake)
-        build_file = "//third_party/vulkan_headers:BUILD.bazel",
+        build_file = "//third_party/vulkan_headers:vulkan_headers.BUILD",
     )

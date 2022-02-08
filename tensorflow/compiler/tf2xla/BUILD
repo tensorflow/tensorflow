@@ -13,6 +13,9 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//tensorflow/compiler/xla/service/cpu:build_defs.bzl", "runtime_copts")
 
@@ -165,9 +168,9 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -267,6 +270,7 @@ cc_library(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
     hdrs = ["xla_compiled_cpu_function.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
@@ -344,6 +348,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
+        ":layout_util",
         ":host_compute_metadata_proto_cc",
         ":rearrange_function_argument",
         ":sharding_util",
@@ -583,6 +588,29 @@ cc_library(
 )
 
 cc_library(
+    name = "layout_util",
+    srcs = [
+        "layout_util.cc",
+    ],
+    hdrs = [
+        "layout_util.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":common",
+        ":xla_argument",
+        ":xla_helpers",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "common",
     srcs = [
         "literal_util.cc",
@@ -756,7 +784,9 @@ tf_cc_test(
     ],
     deps = [
         ":common",
+        ":layout_util",
         ":side_effect_util",
+        ":xla_argument",
         ":xla_compiler",
         ":xla_expression",
         ":xla_resource",
@@ -908,6 +938,7 @@ cc_library(
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

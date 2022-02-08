@@ -50,7 +50,6 @@ py_library(
         ":recurrent",
         ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
-        ":wrappers",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
@@ -396,25 +395,6 @@ py_library(
         ":recurrent",
         "//tensorflow/python:util",
         "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",
-    ],
-)
-
-py_library(
-    name = "wrappers",
-    srcs = ["wrappers.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":recurrent",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:base_layer",
-        "//tensorflow/python/keras/engine:input_spec",
-        "//tensorflow/python/keras/utils:generic_utils",
-        "//tensorflow/python/keras/utils:layer_utils",
-        "//tensorflow/python/keras/utils:tf_utils",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
 )
 
@@ -833,27 +813,6 @@ tf_py_test(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/initializers",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "wrappers_test",
-    size = "medium",
-    srcs = ["wrappers_test.py"],
-    python_version = "PY3",
-    shard_count = 12,
-    tags = [
-        "noasan",  # http://b/78599823
-        "notsan",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-        "//tensorflow/python/ops/ragged:ragged_concat_ops",
-        "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <optional>
 #include <sstream>
 
@@ -24,8 +26,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/any.h"
+#include "tensorflow/compiler/xla/service/compile_time_cap.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
@@ -1691,7 +1695,7 @@ class CopyRemover {
     }
   }
 
-  string ValueListToString(const ValueNode* element) {
+  std::string ValueListToString(const ValueNode* element) {
     std::string result = "{";
     auto VisitValueNode = [&](const ValueNode* node) {
       if (result == "{") {
@@ -1706,8 +1710,8 @@ class CopyRemover {
     return result;
   }
 
-  string ToString() const {
-    string out = absl::StrCat("CopyRemover:\n");
+  std::string ToString() const {
+    std::string out = absl::StrCat("CopyRemover:\n");
     StrAppend(&out, "  Def-use chains in each buffer:\n");
     for (const ValueNode* head : value_lists_) {
       StrAppend(&out, "    Buffer defined by ", head->value->ToShortString(),
@@ -1716,7 +1720,7 @@ class CopyRemover {
       do {
         StrAppend(&out, "      ", p->value->ToShortString(), ", uses: ",
                   absl::StrJoin(p->uses, "; ",
-                                [](string* s, const HloUse* use) {
+                                [](std::string* s, const HloUse* use) {
                                   StrAppend(s, use->ToString());
                                 }),
                   "\n");
@@ -1857,13 +1861,46 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
   // values share a buffer with other values (for example, the init value of a
   // while is a constant) then copy the value at its definition and replace all
   // its uses with the copy.
+  // Also, locate all input-output aliasing violations for operations that
+  // cannot be done in place. Such aliasing can be created when some copies are
+  // removed too aggressively by CopyRemoval.
   for (const HloValue* value : alias_analysis->dataflow_analysis().values()) {
-    if (ValueIsReadOnly(*value) &&
-        alias_analysis->GetBufferContainingValue(*value).values().size() > 1) {
+    HloBuffer& buffer = alias_analysis->GetBufferContainingValue(*value);
+    if (buffer.values().size() > 1 && ValueIsReadOnly(*value)) {
       VLOG(2) << "Value " << value->ToShortString()
               << " is read only, but its buffer contains more than one value. "
                  "Copying.";
       add_index_to_copy(value->defining_instruction(), value->defining_index());
+    }
+    for (const HloValue* value2 : buffer.values()) {
+      // Find HloValues that share a position and use, which would cause the use
+      // and operand to share buffers. Check if this is allowed and insert a
+      // copy if it isn't.
+      if (value2 == value) {
+        continue;
+      }
+      HloPosition position = value2->defining_position();
+      for (const HloUse& use : value->uses()) {
+        if (use.instruction == position.instruction) {
+          VLOG(3) << "Same instruction: " << position.instruction->ToString();
+          if (!alias_analysis->dataflow_analysis()
+                   .CanShareOperandBufferWithUser(
+                       /*operand=*/use.instruction->mutable_operand(
+                           use.operand_number),
+                       /*operand_index=*/use.operand_index,
+                       /*user=*/position.instruction,
+                       /*user_index=*/position.index)) {
+            VLOG(2) << "Adding back copy: "
+                    << use.instruction->operand(use.operand_number)->ToString()
+                    << "@" << use.operand_index.ToString()
+                    << " instr: " << position.instruction->ToString() << "@"
+                    << position.index;
+            add_index_to_copy(
+                use.instruction->mutable_operand(use.operand_number),
+                use.operand_index);
+          }
+        }
+      }
     }
   }
 
@@ -1983,11 +2020,9 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
   int64_t num_existing_copies = GetNumExistingCopies(module);
   bool changed = true;
   int64_t num_iterations = -1;
-  constexpr int64_t region_analysis_allowance_cap = 30000;
   VLOG(6) << "Copy Insertion analyzing module with instructino count = "
           << module->instruction_count() << "\n";
-  int64_t region_analysis_allowance =
-      std::max(region_analysis_allowance_cap, module->instruction_count() / 10);
+  BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
   while (changed) {
     CHECK_LE(++num_iterations, num_existing_copies);
     changed = false;
@@ -2000,8 +2035,11 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
         // The region_analysis_cost_now is always set to
         // use_region_based_live_range_analysis_ if it is < 0, in which case the
         // analysis is always performed.
-        int64_t region_analysis_cost_now = std::min(
-            region_analysis_allowance, use_region_based_live_range_analysis_);
+        int64_t region_analysis_cost_now =
+            (use_region_based_live_range_analysis_ == 0)
+                ? 0
+                : std::min(allowance.analysis_allowance(),
+                           use_region_based_live_range_analysis_);
         if (instruction->opcode() == HloOpcode::kCopy) {
           if (copy_remover.TryElideCopy(instruction,
                                         &region_analysis_cost_now)) {
@@ -2011,14 +2049,12 @@ Status CopyInsertion::RemoveUnnecessaryCopies(HloOrdering* ordering,
                 instruction->mutable_operand(0)));
             VLOG(6) << "succeeded in eliminating copy.\n";
           }
-          if (region_analysis_allowance > 0 && region_analysis_cost_now > 0) {
+          if (allowance.ContinueAnalysis() && region_analysis_cost_now > 0) {
             VLOG(6) << "Copy Insertion analyzing module cost: "
                     << region_analysis_cost_now << "\n";
             VLOG(6) << "instruction:" << instruction->ToString() << "\n";
-            region_analysis_allowance -= region_analysis_cost_now;
-            if (region_analysis_allowance < 0) {
-              region_analysis_allowance = 0;
-            }
+            allowance.DeductCost(region_analysis_cost_now);
+            VLOG(6) << "allowance:" << allowance.analysis_allowance() << "\n";
           }
         }
       }

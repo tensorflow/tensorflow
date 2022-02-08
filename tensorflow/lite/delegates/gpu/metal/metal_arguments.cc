@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
 
+#include <cstring>
 #include <string>
+#include <utility>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
@@ -34,6 +36,9 @@ bool IsWordSymbol(char symbol) {
 
 void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
                      std::string* str) {
+  if (!str) {
+    return;
+  }
   size_t position = str->find(old_word);
   while (position != std::string::npos) {
     char prev = position == 0 ? '.' : (*str)[position - 1];
@@ -113,26 +118,36 @@ std::string AccessToMetalTextureAccess(AccessType access_type) {
 constexpr char MetalArguments::kArgsPrefix[];
 
 absl::Status MetalArguments::Init(
-    const std::map<std::string, std::string>& linkables, MetalDevice* device,
-    Arguments* args, std::string* code) {
-  RETURN_IF_ERROR(args->AddObjectsScalarArgs(device->GetInfo()));
-  RETURN_IF_ERROR(
-      args->ResolveSelectorsPass(device->GetInfo(), linkables, code));
-  args->GetActiveArguments(*code);
+    bool use_arguments_buffer, MetalDevice* device, Arguments* args,
+    std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, device->device()));
   RETURN_IF_ERROR(AddObjectArgs(device->GetInfo(), *args));
-  object_refs_ = std::move(args->object_refs_);
-  std::string struct_desc = ScalarArgumentsToStructWithVec4Fields(args, code);
+  args->MoveObjectRefs(&object_refs_);
+  std::string call_prefix = use_arguments_buffer ? "args." : "";
+  std::string struct_desc =
+      CopyScalarArgumentsToStructWithVec4Fields(*args, call_prefix, code);
   RETURN_IF_ERROR(SetObjectsResources(*args));
-  args->ResolveArgsPass(code);
+  if (!use_arguments_buffer) {
+    args->ResolveArgsPass(code);
+  }
   std::string header = R"(
 #include <metal_stdlib>
 using namespace metal;
 
 )";
   header += struct_desc + "\n";
+  if (use_arguments_buffer) {
+    const std::string arg_buf_struct =
+        GetArgumentBufferStructDefinition(!struct_desc.empty());
+    header += arg_buf_struct + "\n";
+  }
   *code = header + *code;
-  std::string arguments = GetListOfArgs(/*buffer_offset*/ 0);
+  std::string arguments;
+  if (use_arguments_buffer) {
+    arguments = "device ArgBuffer& args[[buffer(0)]]";
+  } else {
+    arguments = GetListOfArgs(/*buffer_offset*/ 0);
+  }
   const bool use_global_id = code->find("GLOBAL_ID_") != std::string::npos;
   const bool use_local_id = code->find("LOCAL_ID_") != std::string::npos;
   const bool use_group_id = code->find("GROUP_ID_") != std::string::npos;
@@ -166,11 +181,21 @@ using namespace metal;
   return absl::OkStatus();
 }
 
-std::string MetalArguments::ScalarArgumentsToStructWithScalarFields(
-    Arguments* args, std::string* code) {
+absl::Status MetalArguments::Init(bool use_arguments_buffer,
+                                  MetalDevice* device, Arguments* args) {
+  RETURN_IF_ERROR(AllocateObjects(*args, device->device()));
+  RETURN_IF_ERROR(AddObjectArgs(device->GetInfo(), *args));
+  args->MoveObjectRefs(&object_refs_);
+  CopyScalarArgumentsToStructWithVec4Fields(*args);
+  RETURN_IF_ERROR(SetObjectsResources(*args));
+  return absl::OkStatus();
+}
+
+std::string MetalArguments::CopyScalarArgumentsToStructWithScalarFields(
+    const Arguments& args, const std::string& call_prefix, std::string* code) {
   std::string struct_desc = "struct uniforms_buffer {\n";
   int pos = 0;
-  for (auto& fvalue : args->float_values_) {
+  for (auto& fvalue : args.GetFloatValues()) {
     auto& new_val = float_values_[fvalue.first];
     new_val.value = fvalue.second.value;
     new_val.active = fvalue.second.active;
@@ -178,10 +203,11 @@ std::string MetalArguments::ScalarArgumentsToStructWithScalarFields(
       new_val.bytes_offset = pos * 4;
       pos++;
       struct_desc += "  float " + fvalue.first + ";\n";
-      ReplaceAllWords(kArgsPrefix + fvalue.first, "U." + fvalue.first, code);
+      ReplaceAllWords(kArgsPrefix + fvalue.first,
+                      call_prefix + "U." + fvalue.first, code);
     }
   }
-  for (const auto& hfvalue : args->half_values_) {
+  for (const auto& hfvalue : args.GetHalfValues()) {
     auto& new_val = float_values_[hfvalue.first];
     new_val.value = hfvalue.second.value;
     new_val.active = hfvalue.second.active;
@@ -189,11 +215,13 @@ std::string MetalArguments::ScalarArgumentsToStructWithScalarFields(
       new_val.bytes_offset = pos * 4;
       pos++;
       struct_desc += "  float " + hfvalue.first + ";\n";
-      ReplaceAllWords(kArgsPrefix + hfvalue.first,
-                      "static_cast<half>(U." + hfvalue.first + ")", code);
+      ReplaceAllWords(
+          kArgsPrefix + hfvalue.first,
+          "static_cast<half>(" + call_prefix + "U." + hfvalue.first + ")",
+          code);
     }
   }
-  for (auto& ivalue : args->int_values_) {
+  for (auto& ivalue : args.GetIntValues()) {
     auto& new_val = int_values_[ivalue.first];
     new_val.value = ivalue.second.value;
     new_val.active = ivalue.second.active;
@@ -201,7 +229,8 @@ std::string MetalArguments::ScalarArgumentsToStructWithScalarFields(
       new_val.bytes_offset = pos * 4;
       pos++;
       struct_desc += "  int " + ivalue.first + ";\n";
-      ReplaceAllWords(kArgsPrefix + ivalue.first, "U." + ivalue.first, code);
+      ReplaceAllWords(kArgsPrefix + ivalue.first,
+                      call_prefix + "U." + ivalue.first, code);
     }
   }
   if (pos != 0) {
@@ -231,12 +260,12 @@ std::string MetalArguments::ScalarArgumentsToStructWithScalarFields(
   return struct_desc;
 }
 
-std::string MetalArguments::ScalarArgumentsToStructWithVec4Fields(
-    Arguments* args, std::string* code) {
+std::string MetalArguments::CopyScalarArgumentsToStructWithVec4Fields(
+    const Arguments& args, const std::string& call_prefix, std::string* code) {
   std::string struct_desc = "struct uniforms_buffer {\n";
   int pos = 0;
   std::string channels[4] = {".x", ".y", ".z", ".w"};
-  for (auto& fvalue : args->float_values_) {
+  for (auto& fvalue : args.GetFloatValues()) {
     auto& new_val = float_values_[fvalue.first];
     new_val.value = fvalue.second.value;
     new_val.active = fvalue.second.active;
@@ -245,13 +274,13 @@ std::string MetalArguments::ScalarArgumentsToStructWithVec4Fields(
       if (pos % 4 == 0) {
         struct_desc += "  float4 cmp_float4_" + std::to_string(pos / 4) + ";\n";
       }
-      std::string new_name =
-          "U.cmp_float4_" + std::to_string(pos / 4) + channels[pos % 4];
+      std::string new_name = call_prefix + "U.cmp_float4_" +
+                             std::to_string(pos / 4) + channels[pos % 4];
       ReplaceAllWords(kArgsPrefix + fvalue.first, new_name, code);
       pos++;
     }
   }
-  for (const auto& hfvalue : args->half_values_) {
+  for (const auto& hfvalue : args.GetHalfValues()) {
     auto& new_val = float_values_[hfvalue.first];
     new_val.value = hfvalue.second.value;
     new_val.active = hfvalue.second.active;
@@ -260,14 +289,15 @@ std::string MetalArguments::ScalarArgumentsToStructWithVec4Fields(
       if (pos % 4 == 0) {
         struct_desc += "  float4 cmp_float4_" + std::to_string(pos / 4) + ";\n";
       }
-      std::string new_name = "static_cast<half>(U.cmp_float4_" +
-                             std::to_string(pos / 4) + channels[pos % 4] + ")";
+      std::string new_name = "static_cast<half>(" + call_prefix +
+                             "U.cmp_float4_" + std::to_string(pos / 4) +
+                             channels[pos % 4] + ")";
       ReplaceAllWords(kArgsPrefix + hfvalue.first, new_name, code);
       pos++;
     }
   }
   pos = AlignByN(pos, 4);
-  for (auto& ivalue : args->int_values_) {
+  for (auto& ivalue : args.GetIntValues()) {
     auto& new_val = int_values_[ivalue.first];
     new_val.value = ivalue.second.value;
     new_val.active = ivalue.second.active;
@@ -276,8 +306,8 @@ std::string MetalArguments::ScalarArgumentsToStructWithVec4Fields(
       if (pos % 4 == 0) {
         struct_desc += "  int4 cmp_int4_" + std::to_string(pos / 4) + ";\n";
       }
-      std::string new_name =
-          "U.cmp_int4_" + std::to_string(pos / 4) + channels[pos % 4];
+      std::string new_name = call_prefix + "U.cmp_int4_" +
+                             std::to_string(pos / 4) + channels[pos % 4];
       ReplaceAllWords(kArgsPrefix + ivalue.first, new_name, code);
       pos++;
     }
@@ -304,6 +334,54 @@ std::string MetalArguments::ScalarArgumentsToStructWithVec4Fields(
     struct_desc = "";
   }
   return struct_desc;
+}
+
+std::string MetalArguments::GetArgumentBufferStructDefinition(
+    bool add_constants_struct) {
+  std::string result;
+  result = "struct ArgBuffer {\n";
+  int index = 0;
+  for (auto& t : buffers_) {
+    std::string mem_type = MemoryTypeToMetalType(t.second.desc.memory_type);
+    std::string metal_type =
+        ToMetalDataType(t.second.desc.data_type, t.second.desc.element_size);
+    result += absl::StrCat("  ", mem_type, " ", metal_type, "* ", t.first,
+                           "[[id(", index, ")]];\n");
+    index++;
+  }
+  for (auto& t : images2d_) {
+    std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
+    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    result += absl::StrCat("  texture2d<", data_type, ", ", access, "> ",
+                           t.first, "[[id(", index, ")]];\n");
+    index++;
+  }
+  for (auto& t : image2d_arrays_) {
+    std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
+    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    result += absl::StrCat("  texture2d_array<", data_type, ", ", access, "> ",
+                           t.first, "[[id(", index, ")]];\n");
+    index++;
+  }
+  for (auto& t : images3d_) {
+    std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
+    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    result += absl::StrCat("  texture3d<", data_type, ", ", access, "> ",
+                           t.first, "[[id(", index, ")]];\n");
+    index++;
+  }
+  for (auto& t : image_buffers_) {
+    std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
+    std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    result += absl::StrCat("  texture_buffer<", data_type, ", ", access, "> ",
+                           t.first, "[[id(", index, ")]];\n");
+    index++;
+  }
+  if (add_constants_struct) {
+    result += "  uniforms_buffer U;\n";
+  }
+  result += "};";
+  return result;
 }
 
 absl::Status MetalArguments::SetInt(const std::string& name, int value) {
@@ -365,7 +443,9 @@ absl::Status MetalArguments::SetObjectRef(const std::string& name,
 void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder,
                             int buffer_offset, int texture_offset) const {
   for (auto& b : buffers_) {
-    [encoder setBuffer:b.second.handle offset:0 atIndex:buffer_offset];
+    [encoder setBuffer:b.second.handle
+                offset:b.second.offset
+               atIndex:buffer_offset];
     buffer_offset++;
   }
   for (auto& image : images2d_) {
@@ -392,11 +472,67 @@ void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder,
   }
 }
 
+API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
+void MetalArguments::AddResourcesToEncoder(
+    id<MTLComputeCommandEncoder> encoder) const {
+  for (auto& b : buffers_) {
+    [encoder useResource:b.second.handle
+                   usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+  }
+  for (auto& image : images2d_) {
+    [encoder useResource:image.second.handle
+                   usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+  }
+  for (auto& image : image2d_arrays_) {
+    [encoder useResource:image.second.handle
+                   usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+  }
+  for (auto& image : images3d_) {
+    [encoder useResource:image.second.handle
+                   usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+  }
+  for (auto& image : image_buffers_) {
+    [encoder useResource:image.second.handle
+                   usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+  }
+}
+
+API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
+void MetalArguments::EncodeArguments(id<MTLArgumentEncoder> arguments_encoder) {
+  int index = 0;
+  for (auto& b : buffers_) {
+    [arguments_encoder setBuffer:b.second.handle
+                          offset:b.second.offset
+                         atIndex:index];
+    index++;
+  }
+  for (auto& image : images2d_) {
+    [arguments_encoder setTexture:image.second.handle atIndex:index];
+    index++;
+  }
+  for (auto& image : image2d_arrays_) {
+    [arguments_encoder setTexture:image.second.handle atIndex:index];
+    index++;
+  }
+  for (auto& image : images3d_) {
+    [arguments_encoder setTexture:image.second.handle atIndex:index];
+    index++;
+  }
+  for (auto& image : image_buffers_) {
+    [arguments_encoder setTexture:image.second.handle atIndex:index];
+    index++;
+  }
+  if (!const_data_.empty()) {
+    std::memcpy([arguments_encoder constantDataAtIndex:index],
+                const_data_.data(), const_data_.size());
+  }
+}
+
 absl::Status MetalArguments::AllocateObjects(const Arguments& args,
                                           id<MTLDevice> device) {
-  objects_.resize(args.objects_.size());
+  objects_.resize(args.GetObjects().size());
   int i = 0;
-  for (auto& t : args.objects_) {
+  for (auto& t : args.GetObjects()) {
     RETURN_IF_ERROR(CreateMetalObject(device, t.second.get(), &objects_[i]));
     i++;
   }
@@ -405,10 +541,10 @@ absl::Status MetalArguments::AllocateObjects(const Arguments& args,
 
 absl::Status MetalArguments::AddObjectArgs(const GpuInfo& gpu_info,
                                            const Arguments& args) {
-  for (const auto& t : args.objects_) {
+  for (const auto& t : args.GetObjects()) {
     AddGPUResources(t.first, t.second->GetGPUResources(gpu_info));
   }
-  for (const auto& t : args.object_refs_) {
+  for (const auto& t : args.GetObjectRefs()) {
     AddGPUResources(t.first, t.second->GetGPUResources(gpu_info));
   }
   return absl::OkStatus();
@@ -481,7 +617,8 @@ absl::Status MetalArguments::SetGPUResources(
     RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
   }
   for (const auto& r : resources.buffers) {
-    RETURN_IF_ERROR(SetBuffer(absl::StrCat(name, "_", r.first), r.second));
+    RETURN_IF_ERROR(SetBuffer(absl::StrCat(name, "_", r.first), r.second.handle,
+                              r.second.offset));
   }
   for (const auto& r : resources.images2d) {
     RETURN_IF_ERROR(SetImage2D(absl::StrCat(name, "_", r.first), r.second));
@@ -544,13 +681,14 @@ void MetalArguments::AddGPUResources(const std::string& name,
 }
 
 absl::Status MetalArguments::SetBuffer(const std::string& name,
-                                       id<MTLBuffer> handle) {
+                                       id<MTLBuffer> handle, uint64_t offset) {
   auto it = buffers_.find(name);
   if (it == buffers_.end()) {
     return absl::NotFoundError(
         absl::StrCat("No buffer argument with name - ", name));
   }
   it->second.handle = handle;
+  it->second.offset = offset;
   return absl::OkStatus();
 }
 
@@ -600,7 +738,7 @@ absl::Status MetalArguments::SetImageBuffer(const std::string& name,
 
 absl::Status MetalArguments::SetObjectsResources(const Arguments& args) {
   int i = 0;
-  for (const auto& t : args.objects_) {
+  for (const auto& t : args.GetObjects()) {
     GPUResourcesWithValue resources;
     RETURN_IF_ERROR(objects_[i]->GetGPUResources(t.second.get(), &resources));
     RETURN_IF_ERROR(SetGPUResources(t.first, resources));

@@ -31,7 +31,7 @@ namespace TF {
 // Since TFLite does not support BatchMatMul operation, it unrolls a BatchMatMul
 // op into tf.Reshape, tf.Slice, tf.MatMul, tf.Pack, and tf.Reshape ops.
 void PopulateUnrollTfBatchMatMul(MLIRContext* context,
-                                 OwningRewritePatternList& patterns);
+                                 RewritePatternSet& patterns);
 
 }  // namespace TF
 }  // namespace mlir

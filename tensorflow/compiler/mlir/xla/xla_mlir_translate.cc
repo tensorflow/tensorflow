@@ -36,7 +36,7 @@ namespace {
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public tensorflow::protobuf::io::ErrorCollector {
  public:
-  void AddError(int line, int column, const string& message) override {}
+  void AddError(int line, int column, const std::string& message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
@@ -51,17 +51,17 @@ bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
 
 }  // namespace
 
-mlir::OwningModuleRef HloToMlirHloTranslateFunction(
+mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
   HloProto hlo_proto;
-  string content(input.data(), input.size());
+  std::string content(input.data(), input.size());
   if (!LoadHloProto(content, &hlo_proto)) {
     LOG(ERROR) << "Failed to load proto";
     return nullptr;
   }
 
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   auto status = ConvertHloToMlirHlo(
       module.get(), hlo_proto.mutable_hlo_module(), import_all_computations);
@@ -73,10 +73,10 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
   return module;
 }
 
-mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
+mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
-  string content(input.data(), input.size());
+  std::string content(input.data(), input.size());
 
   auto hlo_module_error = ParseAndReturnUnverifiedModule(content);
   if (!hlo_module_error.ok()) {
@@ -85,7 +85,7 @@ mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
   }
 
   auto hlo_module = std::move(hlo_module_error.ValueOrDie());
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   auto status =
       ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations);

@@ -94,7 +94,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
   llvm::SmallVector<FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
-  OwningModuleRef module_for_func =
+  OwningOpRef<mlir::ModuleOp> module_for_func =
       ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()));
   auto parent_module = entry_func->getParentOfType<ModuleOp>();
   auto versions_attr = parent_module->getAttr(kVersionsAttr);
@@ -201,8 +201,8 @@ LogicalResult SetMetadataProtoArgs(
                       op.getNumOperands(), input_shardings.size()));
 
   // Set args metadata in proto.
-  mlir::Identifier replication_attr_name = mlir::Identifier::get(
-      "mhlo.is_same_data_across_replicas", op.getContext());
+  mlir::StringAttr replication_attr_name = mlir::StringAttr::get(
+      op.getContext(), "mhlo.is_same_data_across_replicas");
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int index = operand_type_and_idx.index();

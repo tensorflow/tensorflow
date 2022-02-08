@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
-  StatusOr<mlir::OwningModuleRef> module;
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module;
 
   if (import_saved_model_object_graph || import_saved_model_signature_defs) {
     if (input_mlir)

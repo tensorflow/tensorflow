@@ -121,7 +121,7 @@ static opt<bool, true> strip_debug_info_flag(
 
 namespace mlir {
 namespace {
-static OwningModuleRef FlatBufferFileToMlirTrans(
+static OwningOpRef<mlir::ModuleOp> FlatBufferFileToMlirTrans(
     llvm::SourceMgr* source_mgr, MLIRContext* context,
     bool use_external_constant,
     bool experimental_prune_unreachable_nodes_unconditionally) {

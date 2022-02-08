@@ -20,9 +20,6 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -174,7 +171,8 @@ class TensorShapeBase : public TensorShapeRep {
   /// Construct an empty TensorShape, or an unknown rank PartialTensorShape
   TensorShapeBase();
 
-  // TODO(mihaimaruseac): Mark this explicit in a subsequent change
+  // Cannot be made explicit because we rely on conversion between proto and
+  // `TensorShapeBase` throughtout the codebase (needs bigger cleanup)
   TensorShapeBase(const TensorShapeProto& proto);
 
   // These factory methods should be used instead of the constructors that take
@@ -302,7 +300,7 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// Returns sizes of all dimensions.
   // Returns an empty list for unknown rank PartialTensorShape.
-  gtl::InlinedVector<int64, 4> dim_sizes() const;
+  gtl::InlinedVector<int64_t, 4> dim_sizes() const;
 
   /// Return true iff the rank and all of the dimensions are well defined
   // TODO(irving): Rename to is_fully_defined now that it's fast.
@@ -417,8 +415,8 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   // These CHECK fail to ease debugging.
   // REQUIRES: dims() == NDIMS
   void CheckDimsEqual(int NDIMS) const;
-  // REQUIRES: dims() >= NDIMS
-  void CheckDimsAtLeast(int NDIMS) const;
+  // REQUIRES: dims() <= NDIMS
+  void CheckDimsAtMost(int NDIMS) const;
 
   // Fill output from `*this`.
   // Helper method for common code between `AsEigenDSize()` and
@@ -656,7 +654,7 @@ Status TensorShape::AsEigenDSizesWithStatus(
 
 template <int NDIMS, typename IndexType>
 Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizesWithPadding() const {
-  CheckDimsAtLeast(NDIMS);
+  CheckDimsAtMost(NDIMS);
   return AsEigenDSizesCopyAndPad<NDIMS, IndexType>();
 }
 

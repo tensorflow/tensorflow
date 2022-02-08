@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -366,7 +367,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
 
   // Run the tf standard pipeline by default and then, run passes that lift
   // variables if the flag is set on the module.
-  mlir::OwningModuleRef module = module_or.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module = module_or.ConsumeValueOrDie();
   mlir::PassManager pm(&context);
   std::string error;
   llvm::raw_string_ostream error_stream(error);
@@ -390,7 +391,7 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::MLIRContext context(registry);
-  mlir::OwningModuleRef module;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
   {
     mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
     module = mlir::parseSourceString(mlir_txt, &context);

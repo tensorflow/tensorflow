@@ -26,10 +26,13 @@ from tensorflow.python.platform import test
 
 # Notes:
 #
-# Deterministic cuDNN operation is selected by setting either of the two
-# environment variables TF_CUDNN_DETERMINISTIC or TF_DETERMINISTIC_OPS to 'true'
-# or '1' while also not setting the environment variable TF_CUDNN_USE_AUTOTUNE
-# to 'false' or '0'.
+# TensorFlow makes cuDNN run deterministically when op determinism is enabled
+# via tf.config.experimental.enable_op_determinism(). Additionally, setting the
+# environmental variable TF_CUDNN_DETERMINISTIC to 'true' or '1' makes cuDNN run
+# deterministically, although this environemtnal variable is deprecated and will
+# be removed in a future TensorFlow version. Unlike the enable_op_determinism()
+# function, the environmental variable only makes ops using cuDNN deterministic,
+# not all TensorFlow ops.
 #
 # Where both deterministic and non-deterministic cuDNN algorithms are available,
 # selecting determinitic operation will lead to only the deterministic
@@ -60,6 +63,7 @@ FilterShape3D = collections.namedtuple(
 
 
 class ConvolutionTest(test.TestCase):
+  """Tests for deterministic cuDNN functionality."""
 
   def _random_data_op(self, shape):
     # np.random.random_sample can properly interpret either tf.TensorShape or
@@ -90,7 +94,6 @@ class ConvolutionTest(test.TestCase):
   # algorithms are determnistic.
   @test_util.run_cuda_only
   def testForward(self):
-    np.random.seed(3)
     in_shape = LayerShapeNCDHW(batch=2, channels=3, depth=5, height=7, width=6)
     filter_shape = FilterShape3D(
         depth=3, height=3, width=3, in_channels=3, out_channels=2)
@@ -110,7 +113,6 @@ class ConvolutionTest(test.TestCase):
 
   @test_util.run_cuda_only
   def testBackwardFilterGradient(self):
-    np.random.seed(1)
     in_shape = LayerShapeNHWC(batch=8, height=128, width=128, channels=8)
     filter_shape = FilterShape2D(
         height=3, width=3, in_channels=8, out_channels=8)
@@ -123,8 +125,22 @@ class ConvolutionTest(test.TestCase):
     self._assert_reproducible(filter_gradient_op)
 
   @test_util.run_cuda_only
+  def testBackwardFilterGradientWithDilations(self):
+    in_shape = LayerShapeNHWC(batch=8, height=128, width=128, channels=8)
+    filter_shape = FilterShape2D(
+        height=3, width=3, in_channels=8, out_channels=8)
+    in_op = self._random_data_op(in_shape)
+    strides = [1, 1, 1, 1]
+    padding = 'SAME'
+    dilations = [1, 2, 2, 1]
+    out_op = self._random_out_op(in_shape, filter_shape, strides, padding)
+    filter_gradient_op = nn_ops.conv2d_backprop_filter(
+        in_op, filter_shape, out_op, strides=strides, padding=padding,
+        dilations=dilations)
+    self._assert_reproducible(filter_gradient_op)
+
+  @test_util.run_cuda_only
   def testBackwardInputGradient(self):
-    np.random.seed(2)
     in_shape = LayerShapeNHWC(batch=8, height=32, width=32, channels=8)
     filter_shape = FilterShape2D(
         height=7, width=7, in_channels=8, out_channels=128)
@@ -134,4 +150,19 @@ class ConvolutionTest(test.TestCase):
     out_op = self._random_out_op(in_shape, filter_shape, strides, padding)
     input_gradient_op = nn_ops.conv2d_backprop_input(
         in_shape, filter_op, out_op, strides=strides, padding=padding)
+    self._assert_reproducible(input_gradient_op)
+
+  @test_util.run_cuda_only
+  def testBackwardInputGradientWithDilations(self):
+    in_shape = LayerShapeNHWC(batch=8, height=32, width=32, channels=8)
+    filter_shape = FilterShape2D(
+        height=7, width=7, in_channels=8, out_channels=128)
+    filter_op = self._random_data_op(filter_shape)
+    strides = [1, 1, 1, 1]
+    padding = 'SAME'
+    dilations = [1, 2, 2, 1]
+    out_op = self._random_out_op(in_shape, filter_shape, strides, padding)
+    input_gradient_op = nn_ops.conv2d_backprop_input(
+        in_shape, filter_op, out_op, strides=strides, padding=padding,
+        dilations=dilations)
     self._assert_reproducible(input_gradient_op)

@@ -91,7 +91,7 @@ struct RalInjectExecutionContextPass
     Type ctx_type = RalExecutionContextType::get(b.getContext());
 
     // 1. Prepend context to the entry block arguments
-    Value ctx = entry_block->insertArgument(0u, ctx_type);
+    Value ctx = entry_block->insertArgument(0u, ctx_type, loc);
 
     // 2. remap original arguments to recv_input ops
     for (auto&& en : llvm::enumerate(

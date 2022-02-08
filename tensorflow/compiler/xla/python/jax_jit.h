@@ -37,42 +37,42 @@ namespace jax {
 // - possibly a thread-local value, which initially is absl::nullopt and
 //   overrides the global value if set. The thread-local state is
 //   used to implement context managers that locally override the global state.
-// TODO(phawkins): consider changing the global state to optional types to
-// catch cases where we fail to set it.
-struct GlobalJitState {
-  bool disable_jit = false;
-  bool enable_x64 = false;
-
-  // Extra context that should be included in the JIT cache key. Must be
-  // hashable and have an equality defined.
-  pybind11::object extra_jit_context = pybind11::none();
-
-  // A callback that, if present, is called when a JITted function is executed
-  // from cache.
-  absl::optional<pybind11::function> post_hook;
-};
-
-struct ThreadLocalJitState {
-  ~ThreadLocalJitState() {
+struct JitState {
+  ~JitState() {
     if (extra_jit_context) {
-      // We likely do not hold the GIL, so we hand the Python object to the
-      // global reference manager to destroy.
+      // We likely do not hold the GIL if this JitState is thread-local, so we
+      // hand the Python object to the global reference manager to destroy.
       pybind11::object o = std::move(*extra_jit_context);
       xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&o, 1));
       extra_jit_context = absl::nullopt;
     }
   }
+
   absl::optional<bool> disable_jit;
   absl::optional<bool> enable_x64;
+
+  // Used to manually set the default device jax should use. May be unset even
+  // in global state, indicating there is no manual override.
+  absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> default_device;
+
+  // Extra context that should be included in the JIT cache key. Must be
+  // hashable and have an equality defined.
   absl::optional<pybind11::object> extra_jit_context;
+
+  // A callback that, if present, is called when a JITted function is executed
+  // from cache. May be unset even in global state.
   absl::optional<pybind11::function> post_hook;
 };
 
-// Returns the value for jax_enable_x64 (defined by a thread-local value if
-// defined, defaulting to the value of the flag otherwise).
+JitState& GetGlobalState();
+JitState& GetLocalState();
+
+// Getters for JitState fields that first look in thread-local state, then
+// fallback to global state.
+bool GetDisableJit();
 bool GetEnableX64();
-GlobalJitState& GetGlobalState();
-ThreadLocalJitState& GetLocalState();
+absl::optional<xla::ClientAndPtr<xla::PjRtDevice>> GetDefaultDevice();
+absl::optional<pybind11::function> GetPostHook();
 
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)
@@ -112,7 +112,7 @@ struct CallSignature {
   bool jax_enable_x64;
 
   // Opaque additional context that should be included as part of the cache key.
-  pybind11::object global_extra_jit_context;
+  absl::optional<pybind11::object> global_extra_jit_context;
   absl::optional<pybind11::object> thread_local_extra_jit_context;
 
   bool operator==(const CallSignature& other) const;

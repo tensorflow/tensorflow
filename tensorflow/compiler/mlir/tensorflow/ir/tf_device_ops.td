@@ -36,6 +36,8 @@ def TfDevice_Dialect : Dialect {
     These operations do not map 1-1 to TensorFlow ops and requires a lowering
     pass later to transform them into Compile/Run op pairs, like XlaCompile and
     XlaRun.
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }];
 
   let cppNamespace = "::mlir::tf_device";
@@ -46,7 +48,7 @@ def TfDevice_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 
 // Base class for the operation in this dialect.
-class TfDevice_Op<string mnemonic, list<OpTrait> traits = []> :
+class TfDevice_Op<string mnemonic, list<Trait> traits = []> :
     Op<TfDevice_Dialect, mnemonic, traits> { }
 
 def TfDevice_LaunchOp : TfDevice_Op<"launch",
@@ -172,7 +174,7 @@ def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
     OpBuilder<(ins "int":$num_regions, "TypeRange":$output_types)>,
   ];
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TfDevice_ReplicateOp : TfDevice_Op<"replicate",
@@ -305,7 +307,7 @@ For example:
 
   let parser = [{ return Parse$cppClass(&parser, &result); }];
   let printer = [{ return Print(*this, &p); }];
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TfDevice_ClusterOp : TfDevice_Op<"cluster",

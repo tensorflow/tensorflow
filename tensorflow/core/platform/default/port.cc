@@ -49,6 +49,21 @@ limitations under the License.
 #include "hwloc.h"  // from @hwloc
 #endif
 
+#if defined(__ANDROID__) && (defined(__i386__) || defined(__x86_64__))
+#define TENSORFLOW_HAS_CXA_DEMANGLE 0
+#elif (__GNUC__ >= 4 || (__GNUC__ >= 3 && __GNUC_MINOR__ >= 4)) && \
+    !defined(__mips__)
+#define TENSORFLOW_HAS_CXA_DEMANGLE 1
+#elif defined(__clang__) && !defined(_MSC_VER)
+#define TENSORFLOW_HAS_CXA_DEMANGLE 1
+#else
+#define TENSORFLOW_HAS_CXA_DEMANGLE 0
+#endif
+
+#if TENSORFLOW_HAS_CXA_DEMANGLE
+#include <cxxabi.h>
+#endif
+
 namespace tensorflow {
 namespace port {
 
@@ -68,6 +83,8 @@ string JobName() {
   }
   return "";
 }
+
+int64_t JobUid() { return -1; }
 
 int NumSchedulableCPUs() {
 #if defined(__linux__) && !defined(__ANDROID__)
@@ -309,7 +326,13 @@ void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.
 }
 
-std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
+std::size_t MallocExtension_GetAllocatedSize(const void* p) {
+#if !defined(__ANDROID__)
+  return 0;
+#else
+  return malloc_usable_size(p);
+#endif
+}
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY
@@ -350,7 +373,25 @@ bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
 #endif
 }
 
-string Demangle(const char* mangled) { return mangled; }
+static void DemangleToString(const char* mangled, string* out) {
+  int status = 0;
+  char* demangled = nullptr;
+#if TENSORFLOW_HAS_CXA_DEMANGLE
+  demangled = abi::__cxa_demangle(mangled, nullptr, nullptr, &status);
+#endif
+  if (status == 0 && demangled != nullptr) {  // Demangling succeeded.
+    out->append(demangled);
+    free(demangled);
+  } else {
+    out->append(mangled);
+  }
+}
+
+string Demangle(const char* mangled) {
+  string demangled;
+  DemangleToString(mangled, &demangled);
+  return demangled;
+}
 
 double NominalCPUFrequency() {
   return tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency();

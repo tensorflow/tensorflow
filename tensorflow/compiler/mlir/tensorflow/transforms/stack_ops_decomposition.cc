@@ -55,35 +55,6 @@ namespace {
 
 namespace cutil = TF::collection_ops_util;
 
-// A pass that converts stack operations to tensor operations and read/assign
-// ops on local variables. A later resource lifting pass can further remove the
-// local variables.
-//
-// This pass requires that the full shape of the stack can be inferred: 1) the
-// maximum size needs to be a constant and 2) a push op can be found with a
-// known shape, and all push ops need to have the same shape.
-//
-// A stack creation op "tf.StackV2" will be turned in to two zero-initialized
-// variables, for the buffer and current size. Each push will be turned into
-//   %old_val = "tf.ReadVariableOp"(%buffer)
-//   %old_size = "tf.ReadVariableOp"(%size)
-//   %offsets = "tf.ConcatV2"(%old_size, %other_dims_0s, %const0)
-//   %new_val = "tf.XlaDynamicUpdateSlice"(%old_val, %push_val, %offsets)
-//   "tf.AssignVariableOp"(%buffer, %new_val)
-//   %new_size = "tf.AddV2"(%old_size, %const1)
-//   "tf.AssignVariableOp"(%size, %new_size)
-//
-// and each pop will be turned into
-//
-//   %old_val = "tf.ReadVariableOp"(%buffer)
-//   %old_size = "tf.ReadVariableOp"(%size)
-//   %new_size = "tf.Sub"(%old_size, %const1)
-//   %offsets = "tf.ConcatV2"(%old_size, %other_dims_0s, %const0)
-//   %slice = "tf.Slice"(%old_val, %offsets, %slice_size_const)
-//   %pop_result = "tf.Reshape"(%slice, %elem_size_const)
-//   "tf.AssignVariableOp"(%size, %new_size)
-//
-// The pass also works across control flow and functional calls.
 struct StackOpsDecompositionPass
     : public TF::StackOpsDecompositionPassBase<StackOpsDecompositionPass> {
   void runOnOperation() final;
@@ -129,7 +100,7 @@ void ModifyFunctionSignature(
     if (!stack_type.hasValue()) continue;
     func.getArgument(i).setType(*stack_type);
     new_input_types[i] = *stack_type;
-    auto size_arg = func.front().addArgument(size_var_type);
+    auto size_arg = func.front().addArgument(size_var_type, func.getLoc());
     new_input_types.push_back(size_arg.getType());
     if (stack_var_to_size_var) {
       (*stack_var_to_size_var)[func.getArgument(i)] = size_arg;

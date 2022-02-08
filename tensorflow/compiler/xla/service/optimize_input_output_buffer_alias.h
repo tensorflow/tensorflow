@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 

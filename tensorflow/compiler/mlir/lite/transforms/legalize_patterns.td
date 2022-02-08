@@ -21,6 +21,8 @@ include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
+def CreateEmptyBoolAttr : NativeCodeCall<"::mlir::BoolAttr()">;
+
 def NonOpaqueElementsAttr : ElementsAttrBase<
   CPred<"!$_self.isa<OpaqueElementsAttr>()">,
   "non-opaque constant tensor">;
@@ -68,7 +70,7 @@ def HasSameStaticShapes : Constraint<HasSameStaticShapesPred, "op must have stat
 def HasNotSameStaticShapes : Constraint<Neg<HasSameStaticShapesPred>, "op must have not static same input shapes">;
 
 def CreateNoneValue : NativeCodeCall<
-  "$_builder.create<mlir::ConstantOp>($0.getLoc(), $_builder.getNoneType(), $_builder.getUnitAttr())">;
+  "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
 
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
@@ -292,15 +294,16 @@ def LegalizeDiv : Pat<(TF_DivOp $lhs, $rhs),
 // When batch size is known, TF BatchMatMul gets unfolded to TFL FullyConnected
 // with additional ops. In the case of unknown batch size, the match will
 // fall through to here and convert to TF Lite BatchMatMul.
+// TODO(b/207064634): CreateEmptyBoolAttr is a temporary workaround for this bug.
 def LegalizeBatchMatMulV3UnknownBatch : Pat<
   (TF_BatchMatMulV3Op $lhs, $rhs, $adj_x, $adj_y),
-  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
+  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y, CreateEmptyBoolAttr:$adj_y)>;
 def LegalizeBatchMatMulV2UnknownBatch : Pat<
   (TF_BatchMatMulV2Op $lhs, $rhs, $adj_x, $adj_y),
-  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
+  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y, CreateEmptyBoolAttr:$adj_y)>;
 def LegalizeBatchMatMulUnknownBatch : Pat<
   (TF_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y),
-  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
+  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y, CreateEmptyBoolAttr:$adj_y)>;
 
 def LegalizeFakeQuantWithMinMaxVars: Pat<
   (TF_FakeQuantWithMinMaxVarsOp $inputs, (Arith_ConstantOp F32ElementsAttr:$min),
@@ -533,4 +536,9 @@ def LegalizeRandomUniform : Pat<
 def LegalizeRandomStandardNormal : Pat<
   (TF_RandomStandardNormalOp $shape, $seed, $seed2),
   (TFL_RandomStandardNormalOp $shape, (convertIntAttrTo64Bit $seed),
+   (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeMultinomial : Pat<
+  (TF_MultinomialOp $logits, $num_samples, $seed, $seed2),
+  (TFL_MultinomialOp $logits, $num_samples, (convertIntAttrTo64Bit $seed),
    (convertIntAttrTo64Bit $seed2))>;

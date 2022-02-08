@@ -72,6 +72,7 @@ objc_library(
     name = "metal_delegate",
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
+    copts = ["-std=c++17"],
     module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
@@ -91,6 +92,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/metal:buffer_convert",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
@@ -99,6 +101,7 @@ objc_library(
 objc_library(
     name = "metal_delegate_internal",
     hdrs = ["metal_delegate_internal.h"],
+    copts = ["-std=c++17"],
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite/delegates/gpu:metal_delegate",

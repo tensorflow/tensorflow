@@ -31,7 +31,7 @@ from typing_extensions import Protocol
 from typing_extensions import runtime_checkable
 
 
-class TraceType(abc.ABC):
+class TraceType(metaclass=abc.ABCMeta):
   """Represents the type of object(s) for Function Tracing purposes.
 
   `TraceType` is an abstract class that other classes might inherit from to
@@ -71,7 +71,7 @@ class TracingContext():
 
 
 @runtime_checkable
-class SupportsTracingType(Protocol):
+class SupportsTracingProtocol(Protocol):
   """The Trace Control Protocol for functions.
 
   Classes that implement this protocol can expect the TensorFlow function

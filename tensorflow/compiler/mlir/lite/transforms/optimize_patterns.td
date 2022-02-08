@@ -141,7 +141,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
   // Fuse for TransposeConv with no bias
   def FuseBinaryOpWithTransposeConvNoneBias#binaryOp : Pat<
     (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
-                (ConstantOp $bias), $padding,
+                $bias, $padding,
                 $stride_h, $stride_w),
               (Arith_ConstantOp FloatElementsAttr:$value), TFL_AF_None),
     (TFL_TransposeConvOp $output_shape, $weights, $inputs,
@@ -224,7 +224,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
   def FuseMulOrDivWithTransposeConvWithNoneBias#BinaryOp : Pat<
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
                 (Arith_ConstantOp FloatElementsAttr:$weights), $input,
-                (ConstantOp $bias),
+                $bias,
                 $padding, $stride_h, $stride_w),
               (Arith_ConstantOp $value), TFL_AF_None),
     (TFL_TransposeConvOp $output_shape,
@@ -232,7 +232,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
         TFL_AF_None),
       $input,
-      (ConstantOp $bias),
+      $bias,
       $padding, $stride_h, $stride_w),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (IsNoneType $bias),
@@ -915,6 +915,12 @@ def OptimizeSliceOp : Pat<
 
 def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0)">;
 
+def ReshapeValueDroppingLastDim : NativeCodeCall<
+  "ReshapeValueDroppingLastDim($_builder, $0, $1)">;
+
+def HasExactlyTwoElements : Constraint<CPred<
+  "TFL::HasExactlyTwoElements($0)">>;
+
 def IsLastElementEqualsOne : Constraint<CPred<
   "TFL::IsLastElementEqualsOne($0)">>;
 
@@ -924,19 +930,21 @@ def IsOneHotIndexAttribute : Constraint<CPred<
 // Replace
 //   Equal(Reshape(X, shape), indices)
 // With
-//   OneHot(X, N, true, false, -1)
+//   OneHot(Reshape(X, shape[:-1]), N, true, false, -1)
 // where
+//  - shape has length 2 (unnecessary, just to be conservative)
 //  - last value in shape is 1
 //  - indices is a incrementing series from 0 to N-1. (N elements total.)
 def ReshapeEqualOpToOneHotOp : Pat<
   (TFL_EqualOp (TFL_ReshapeOp $x, (Arith_ConstantOp $shape)),
                (Arith_ConstantOp $series)),
-  (TFL_OneHotOp $x,
+  (TFL_OneHotOp (ReshapeValueDroppingLastDim $x, $shape),
                 (Arith_ConstantOp (GetNumElementsOrOne $series)),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
                 ConstantAttr<I32Attr, "-1">),
-  [(IsLastElementEqualsOne $shape),
+  [(HasExactlyTwoElements $shape),
+   (IsLastElementEqualsOne $shape),
    (IsOneHotIndexAttribute $series)]>;
 
 def F32ElementsVal : Constraint<CPred<
@@ -998,7 +1006,8 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
     $bias,
     TFL_AF_None,
     TFL_FCWO_Default,
-    ConstBoolAttrFalse),
+    ConstBoolAttrFalse,
+    $asymmetric_quantize_inputs),
   (TFL_EmbeddingLookupOp
     $indices,
     (TFL_TransposeOp
@@ -1020,3 +1029,126 @@ def EliminateCumSumInclusive : Pat<
      $reverse),
   (replaceWithValue $input),
   [(AreInputDimensionsOneInAxes $input, $axis)]>;
+
+// Fusing raw computation of GELU op into one native tfl_gelu op.
+//
+// Requires constants to be exact match and only one use of all of the
+// intermediate results.
+//
+// For GeluApproximate, replaces
+//   0.5 * x * ( 1 + tanh( sqrt_2dPi  * ( x + 0.044715 * pow( x, 3 ) ) ) )
+def MatchGeluApproximate : Pat<
+  (TFL_MulOp
+   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
+   (TFL_AddOp:$add_out
+    (TFL_TanhOp:$tanh_out
+     (TFL_MulOp:$mul_out1
+      (TFL_AddOp:$add_out1 $arg0,
+       (TFL_MulOp:$mul_out2
+        (TFL_PowOp:$pow_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_3)),
+        (Arith_ConstantOp F32ElementsAttr:$Coeff), TFL_AF_None), TFL_AF_None),
+      (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_2dPi), TFL_AF_None)),
+    (Arith_ConstantOp F32ElementsAttr:$Cst_1), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrTrue),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"3"> $Cst_3),
+   (FloatValueEquals<"0.797884583"> $Cst_sqrt_2dPi),
+   (FloatValueEquals<"0.044715"> $Coeff),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $tanh_out),
+   (HasOneUse $mul_out1),
+   (HasOneUse $add_out1),
+   (HasOneUse $mul_out2),
+   (HasOneUse $pow_out),
+  ]>;
+
+// Alternate pattern for GeluApproximate (see different order for mul), replaces
+//   x * ( 0.5 * ( 1 + tanh( sqrt_2dPi  * ( x + 0.044715 * pow( x, 3 ) ) ) ) )
+def MatchGeluApproximate1 : Pat<
+  (TFL_MulOp $arg0,
+   (TFL_MulOp:$mul_out
+    (TFL_AddOp:$add_out
+     (TFL_TanhOp:$tanh_out
+      (TFL_MulOp:$mul_out1
+       (TFL_AddOp:$add_out1 $arg0,
+        (TFL_MulOp:$mul_out2
+         (TFL_PowOp:$pow_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_3)),
+         (Arith_ConstantOp F32ElementsAttr:$Coeff), TFL_AF_None), TFL_AF_None),
+       (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_2dPi), TFL_AF_None)),
+     (Arith_ConstantOp F32ElementsAttr:$Cst_1), TFL_AF_None), (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrTrue),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"3"> $Cst_3),
+   (FloatValueEquals<"0.797884583"> $Cst_sqrt_2dPi),
+   (FloatValueEquals<"0.044715"> $Coeff),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $tanh_out),
+   (HasOneUse $mul_out1),
+   (HasOneUse $add_out1),
+   (HasOneUse $mul_out2),
+   (HasOneUse $pow_out),
+  ]>;
+
+// For Gelu, replaces
+//   0.5 * x * ( 1 + erf( x * sqrt_1_2 ) )
+def MatchGelu : Pat<
+  (TFL_MulOp
+   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
+   (TFL_AddOp:$add_out
+    (TF_ErfOp:$erf_out
+     (TFL_MulOp:$mul_out1 $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_1_2), TFL_AF_None)),
+    (Arith_ConstantOp  F32ElementsAttr:$Cst_1), TFL_AF_None), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrFalse),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"1"> $Cst_1),
+   (FloatValueEquals<"0.707106769"> $Cst_sqrt_1_2),
+   (HasOneUse $mul_out),
+   (HasOneUse $add_out),
+   (HasOneUse $erf_out),
+   (HasOneUse $mul_out1),
+  ]>;
+
+
+// Checks if the shape has shape with last dimension equals 1.
+def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
+
+// Fetches the output of FC op, from the provided arguments.
+def GetFcOutput : NativeCodeCall<
+  "GetFcOutput(&$_builder, $0, $1, $2, $3, $4, $5, $6, $7)">;
+
+// Verifies all values in the provided argument are zero.
+def AllValuesAreZero :  Constraint<CPred<"AllValuesAreZero($0)">>;
+
+def SimplifyDoubleSelectFCZerosLHS : Pat<
+  (TFL_SelectV2Op $condition, $zeros_2,
+   (TFL_FullyConnectedOp:$results
+    (TFL_SelectV2Op $condition, $zeros_1, $input),
+    $filter, $bias, $fused_activation_function, $weights_format,
+    ConstBoolAttrTrue, $asymmetric_quantize_inputs)),
+  (TFL_SelectV2Op $condition, $zeros_2,
+   (GetFcOutput $results, $input, $filter, $bias, $fused_activation_function,
+    $weights_format, ConstBoolAttrTrue, $asymmetric_quantize_inputs)),
+  [(IsLastDimensionEqualOne $condition),
+   (AllValuesAreZero $zeros_1),
+   (AllValuesAreZero $zeros_2)
+  ]>;
+
+def SimplifyDoubleSelectFCZerosRHS : Pat<
+  (TFL_SelectV2Op $condition,
+   (TFL_FullyConnectedOp:$results
+    (TFL_SelectV2Op $condition, $input, $zeros_1),
+    $filter, $bias, $fused_activation_function, $weights_format,
+    ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+   $zeros_2),
+  (TFL_SelectV2Op $condition,
+   (GetFcOutput $results, $input, $filter, $bias, $fused_activation_function,
+    $weights_format, ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+   $zeros_2),
+  [(IsLastDimensionEqualOne $condition),
+   (AllValuesAreZero $zeros_1),
+   (AllValuesAreZero $zeros_2)
+  ]>;

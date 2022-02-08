@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/get_compiler_ir.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
@@ -693,7 +694,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_EnableXlaDevices", [] {
     tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
   });
-  m.def("TF_ResetMlirFlags", [] { tensorflow::ResetMlirCommonFlags(); });
+  m.def("TF_ResetJitCompilerFlags",
+        [] { tensorflow::ResetJitCompilerFlags(); });
 
   // TFE_Context Logic
   m.def(
@@ -1199,17 +1201,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_Py_SetEagerContext", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_SetEagerContext(o.ptr()));
   });
+  m.def("TFE_Py_SetCEagerContext", [](const py::handle& ctx) {
+    // TODO(mdan): This cast might need rewriting to ImmediateExecutionContext.
+    tensorflow::SetCEagerContext(reinterpret_cast<tensorflow::EagerContext*>(
+        tensorflow::InputTFE_Context(ctx)));
+  });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
   });
-  m.def("TFE_Py_EncodeArg",
-        [](const py::handle& o, const py::handle& ctx,
-           bool include_tensor_ranks_only, bool encode_variables_by_resource_id,
-           bool use_full_trace_type) {
-          return tensorflow::PyoOrThrow(TFE_Py_EncodeArg(
-              o.ptr(), ctx.ptr(), include_tensor_ranks_only,
-              encode_variables_by_resource_id, use_full_trace_type));
-        });
   m.def("TFE_EnableCollectiveOps", [](const py::handle& ctx, py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());

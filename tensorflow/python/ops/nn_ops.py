@@ -36,7 +36,7 @@ Passing `padding='VALID'` to an op causes no padding to be used. This causes the
 output size to typically be smaller than the input size, even when the stride is
 one. In the 2D case, the output size is computed as:
 
-```
+```python
 out_height = ceil((in_height - filter_height + 1) / stride_height)
 out_width  = ceil((in_width - filter_width + 1) / stride_width)
 ```
@@ -51,7 +51,7 @@ With `'SAME'` padding, padding is applied to each spatial dimension. When the
 strides are 1, the input is padded such that the output size is the same as the
 input size. In the 2D case, the output size is computed as:
 
-```
+```python
 out_height = ceil(in_height / stride_height)
 out_width  = ceil(in_width / stride_width)
 ```
@@ -59,7 +59,7 @@ out_width  = ceil(in_width / stride_width)
 The amount of padding used is the smallest amount that results in the output
 size. The formula for the total amount of padding per dimension is:
 
-```
+```python
 if (in_height % strides[1] == 0):
   pad_along_height = max(filter_height - stride_height, 0)
 else:
@@ -72,7 +72,7 @@ else:
 
 Finally, the padding on the top, bottom, left and right are:
 
-```
+```python
 pad_top = pad_along_height // 2
 pad_bottom = pad_along_height - pad_top
 pad_left = pad_along_width // 2
@@ -282,7 +282,7 @@ def _non_atrous_convolution(
     return op(input, filter)
 
 
-class _NonAtrousConvolution(object):
+class _NonAtrousConvolution:
   """Helper class for _non_atrous_convolution.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -675,7 +675,6 @@ def with_space_to_batch(
   Raises:
     ValueError: if `padding` is invalid or the arguments are incompatible.
     ValueError: if `spatial_dims` are invalid.
-
   """
   input = ops.convert_to_tensor(input, name="input")  # pylint: disable=redefined-builtin
   input_shape = input.shape
@@ -694,7 +693,7 @@ def with_space_to_batch(
   return new_op(input, None)
 
 
-class _WithSpaceToBatch(object):
+class _WithSpaceToBatch:
   """Helper class for with_space_to_batch.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -955,9 +954,9 @@ def _get_strides_and_dilation_rate(num_spatial_dims, strides, dilation_rate):
 
   Args:
     num_spatial_dims: int
-    strides: Optional.  List of N ints >= 1.  Defaults to [1]*N.  If any value
+    strides: Optional.  List of N ints >= 1.  Defaults to `[1]*N`.  If any value
       of strides is > 1, then all values of dilation_rate must be 1.
-    dilation_rate: Optional.  List of N ints >= 1.  Defaults to [1]*N.  If any
+    dilation_rate: Optional.  List of N ints >= 1.  Defaults to `[1]*N`.  If any
       value of dilation_rate is > 1, then all values of strides must be 1.
 
   Returns:
@@ -1032,21 +1031,22 @@ def convolution(
      num_input_channels,
      num_output_channels],
 
-  an optional `dilation_rate` tensor of shape [N] (defaulting to [1]*N)
-  specifying the filter upsampling/input downsampling rate, and an optional list
-  of N `strides` (defaulting [1]*N), this computes for each N-D spatial output
-  position (x[0], ..., x[N-1]):
+  an optional `dilation_rate` tensor of shape N (defaults to `[1]*N`) specifying
+  the filter upsampling/input downsampling rate, and an optional list of N
+  `strides` (defaults to `[1]*N`), this computes for each N-D spatial output
+  position `(x[0], ..., x[N-1])`:
 
   ```
-    output[b, x[0], ..., x[N-1], k] =
-        sum_{z[0], ..., z[N-1], q}
-            filter[z[0], ..., z[N-1], q, k] *
-            padded_input[b,
-                         x[0]*strides[0] + dilation_rate[0]*z[0],
-                         ...,
-                         x[N-1]*strides[N-1] + dilation_rate[N-1]*z[N-1],
-                         q]
+  output[b, x[0], ..., x[N-1], k] =
+      sum_{z[0], ..., z[N-1], q}
+          filter[z[0], ..., z[N-1], q, k] *
+          padded_input[b,
+                       x[0]*strides[0] + dilation_rate[0]*z[0],
+                       ...,
+                       x[N-1]*strides[N-1] + dilation_rate[N-1]*z[N-1],
+                       q]
   ```
+
   where b is the index into the batch, k is the output channel number, q is the
   input channel number, and z is the N-D spatial offset within the filter. Here,
   `padded_input` is obtained by zero padding the input using an effective
@@ -1056,10 +1056,12 @@ def convolution(
   In the case that `data_format` does start with `"NC"`, the `input` and output
   (but not the `filter`) are simply transposed as follows:
 
-    convolution(input, data_format, **kwargs) =
-      tf.transpose(convolution(tf.transpose(input, [0] + range(2,N+2) + [1]),
-                               **kwargs),
-                   [0, N+1] + range(1, N+1))
+  ```python
+  convolution(input, data_format, **kwargs) =
+    tf.transpose(convolution(tf.transpose(input, [0] + range(2,N+2) + [1]),
+                             **kwargs),
+                 [0, N+1] + range(1, N+1))
+  ```
 
   It is required that 1 <= N <= 3.
 
@@ -1078,7 +1080,7 @@ def convolution(
       [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
       for more information.
     strides: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
-      Defaults to [1]*N.  If any value of strides is > 1, then all values of
+      Defaults to `[1]*N`.  If any value of strides is > 1, then all values of
       dilation_rate must be 1.
     dilation_rate: Optional.  Sequence of N ints >= 1.  Specifies the filter
       upsampling/input downsampling rate.  In the literature, the same parameter
@@ -1305,7 +1307,7 @@ def convolution_internal(
       return op(input, filters)
 
 
-class Convolution(object):
+class Convolution:
   """Helper class for convolution.
 
   Note that this class assumes that shapes of input and filter passed to
@@ -1486,13 +1488,13 @@ def pool(
       0 <= c < num_channels:
 
   ```
-    output[b, x[0], ..., x[N-1], c] =
-      REDUCE_{z[0], ..., z[N-1]}
-        input[b,
-              x[0] * strides[0] - pad_before[0] + dilation_rate[0]*z[0],
-              ...
-              x[N-1]*strides[N-1] - pad_before[N-1] + dilation_rate[N-1]*z[N-1],
-              c],
+  output[b, x[0], ..., x[N-1], c] =
+    REDUCE_{z[0], ..., z[N-1]}
+      input[b,
+            x[0] * strides[0] - pad_before[0] + dilation_rate[0]*z[0],
+            ...
+            x[N-1]*strides[N-1] - pad_before[N-1] + dilation_rate[N-1]*z[N-1],
+            c],
   ```
 
   where the reduction function REDUCE depends on the value of `pooling_type`,
@@ -1503,11 +1505,11 @@ def pool(
   In the case that `data_format` starts with `"NC"`, the `input` and output are
   simply transposed as follows:
 
-  ```
-    pool(input, data_format, **kwargs) =
-      tf.transpose(pool(tf.transpose(input, [0] + range(2,N+2) + [1]),
-                        **kwargs),
-                   [0, N+1] + range(1, N+1))
+  ```python
+  pool(input, data_format, **kwargs) =
+    tf.transpose(pool(tf.transpose(input, [0] + range(2,N+2) + [1]),
+                      **kwargs),
+                 [0, N+1] + range(1, N+1))
   ```
 
   Args:
@@ -1521,9 +1523,9 @@ def pool(
     padding: The padding algorithm, must be "SAME" or "VALID".
       See the "returns" section of `tf.nn.convolution` for details.
     dilation_rate: Optional.  Dilation rate.  List of N ints >= 1.
-      Defaults to [1]*N.  If any value of dilation_rate is > 1, then all values
-      of strides must be 1.
-    strides: Optional.  Sequence of N ints >= 1.  Defaults to [1]*N.
+      Defaults to `[1]*N`.  If any value of dilation_rate is > 1, then all
+      values of strides must be 1.
+    strides: Optional.  Sequence of N ints >= 1.  Defaults to `[1]*N`.
       If any value of strides is > 1, then all values of dilation_rate must be
       1.
     name: Optional. Name of the op.
@@ -1667,13 +1669,13 @@ def pool_v2(
       0 <= c < num_channels:
 
   ```
-    output[b, x[0], ..., x[N-1], c] =
-      REDUCE_{z[0], ..., z[N-1]}
-        input[b,
-              x[0] * strides[0] - pad_before[0] + dilation_rate[0]*z[0],
-              ...
-              x[N-1]*strides[N-1] - pad_before[N-1] + dilation_rate[N-1]*z[N-1],
-              c],
+  output[b, x[0], ..., x[N-1], c] =
+    REDUCE_{z[0], ..., z[N-1]}
+      input[b,
+            x[0] * strides[0] - pad_before[0] + dilation_rate[0]*z[0],
+            ...
+            x[N-1]*strides[N-1] - pad_before[N-1] + dilation_rate[N-1]*z[N-1],
+            c],
   ```
 
   where the reduction function REDUCE depends on the value of `pooling_type`,
@@ -1684,11 +1686,11 @@ def pool_v2(
   In the case that `data_format` starts with `"NC"`, the `input` and output are
   simply transposed as follows:
 
-  ```
-    pool(input, data_format, **kwargs) =
-      tf.transpose(pool(tf.transpose(input, [0] + range(2,N+2) + [1]),
-                        **kwargs),
-                   [0, N+1] + range(1, N+1))
+  ```python
+  pool(input, data_format, **kwargs) =
+    tf.transpose(pool(tf.transpose(input, [0] + range(2,N+2) + [1]),
+                      **kwargs),
+                 [0, N+1] + range(1, N+1))
   ```
 
   Args:
@@ -1698,7 +1700,7 @@ def pool_v2(
       with "NC".  Pooling happens over the spatial dimensions only.
     window_shape: Sequence of N ints >= 1.
     pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
-    strides: Optional. Sequence of N ints >= 1.  Defaults to [1]*N. If any value of
+    strides: Optional. Sequence of N ints >= 1.  Defaults to `[1]*N`. If any value of
       strides is > 1, then all values of dilation_rate must be 1.
     padding: The padding algorithm, must be "SAME" or "VALID". Defaults to "SAME".
       See
@@ -1711,7 +1713,7 @@ def pool_v2(
       "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW". For
       N=3, the valid values are "NDHWC" (default) and "NCDHW".
     dilations: Optional.  Dilation rate.  List of N ints >= 1. Defaults to
-      [1]*N.  If any value of dilation_rate is > 1, then all values of strides
+      `[1]*N`.  If any value of dilation_rate is > 1, then all values of strides
       must be 1.
     name: Optional. Name of the op.
 
@@ -1736,7 +1738,6 @@ def pool_v2(
 
   Raises:
     ValueError: if arguments are invalid.
-
   """
   return pool(
       input=input,
@@ -1757,7 +1758,6 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   This function is a simpler wrapper around the more general
   `tf.nn.convolution`, and exists only for backwards compatibility. You can
   use `tf.nn.convolution` to perform 1-D, 2-D, or 3-D atrous convolution.
-
 
   Computes a 2-D atrous convolution, also known as convolution with holes or
   dilated convolution, given 4-D `value` and `filters` tensors. If the `rate`
@@ -1800,17 +1800,17 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   above). The implementation here reduces
 
   ```python
-      atrous_conv2d(value, filters, rate, padding=padding)
+  atrous_conv2d(value, filters, rate, padding=padding)
   ```
 
   to the following three operations:
 
   ```python
-      paddings = ...
-      net = space_to_batch(value, paddings, block_size=rate)
-      net = conv2d(net, filters, strides=[1, 1, 1, 1], padding="VALID")
-      crops = ...
-      net = batch_to_space(net, crops, block_size=rate)
+  paddings = ...
+  net = space_to_batch(value, paddings, block_size=rate)
+  net = conv2d(net, filters, strides=[1, 1, 1, 1], padding="VALID")
+  crops = ...
+  net = batch_to_space(net, crops, block_size=rate)
   ```
 
   Advanced usage. Note the following optimization: A sequence of `atrous_conv2d`
@@ -1818,22 +1818,22 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   with odd heights/ widths:
 
   ```python
-      net = atrous_conv2d(net, filters1, rate, padding="SAME")
-      net = atrous_conv2d(net, filters2, rate, padding="SAME")
-      ...
-      net = atrous_conv2d(net, filtersK, rate, padding="SAME")
+  net = atrous_conv2d(net, filters1, rate, padding="SAME")
+  net = atrous_conv2d(net, filters2, rate, padding="SAME")
+  ...
+  net = atrous_conv2d(net, filtersK, rate, padding="SAME")
   ```
 
   can be equivalently performed cheaper in terms of computation and memory as:
 
   ```python
-      pad = ...  # padding so that the input dims are multiples of rate
-      net = space_to_batch(net, paddings=pad, block_size=rate)
-      net = conv2d(net, filters1, strides=[1, 1, 1, 1], padding="SAME")
-      net = conv2d(net, filters2, strides=[1, 1, 1, 1], padding="SAME")
-      ...
-      net = conv2d(net, filtersK, strides=[1, 1, 1, 1], padding="SAME")
-      net = batch_to_space(net, crops=pad, block_size=rate)
+  pad = ...  # padding so that the input dims are multiples of rate
+  net = space_to_batch(net, paddings=pad, block_size=rate)
+  net = conv2d(net, filters1, strides=[1, 1, 1, 1], padding="SAME")
+  net = conv2d(net, filters2, strides=[1, 1, 1, 1], padding="SAME")
+  ...
+  net = conv2d(net, filtersK, strides=[1, 1, 1, 1], padding="SAME")
+  net = batch_to_space(net, crops=pad, block_size=rate)
   ```
 
   because a pair of consecutive `space_to_batch` and `batch_to_space` ops with
@@ -3832,8 +3832,9 @@ def softmax_v2(logits, axis=None, name=None):
 
   This function performs the equivalent of
 
-      softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis)
-
+  ```python
+  softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), axis, keepdims=True)
+  ```
   Example usage:
 
   >>> softmax = tf.nn.softmax([-1, 0., 1.])
@@ -4635,8 +4636,8 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
   window in `value`.
 
   Args:
-    input: A 5-D `Tensor` of shape `[batch, depth, height, width, channels]` and type
-      `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
+    input: A 5-D `Tensor` of shape `[batch, depth, height, width, channels]`
+      and type `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
     ksize: An int or list of `ints` that has length `1`, `3` or `5`. The size of
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `3` or `5`. The

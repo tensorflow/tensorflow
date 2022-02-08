@@ -359,8 +359,9 @@ void HloDataflowAnalysis::DeleteMarkedValues() {
   value_ids_to_delete_.clear();
 }
 
-string HloDataflowAnalysis::ToString() const {
-  string out = StrCat("HloDataflowAnalysis, module ", module_.name(), "\n");
+std::string HloDataflowAnalysis::ToString() const {
+  std::string out =
+      StrCat("HloDataflowAnalysis, module ", module_.name(), "\n");
   StrAppend(&out, "  Instruction value sets:\n");
   for (const HloComputation* computation : module_.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
@@ -690,6 +691,25 @@ bool HloDataflowAnalysis::UpdateCopyValueSet(HloInstruction* copy) {
 
     HloValueSet& value_set = pair.second;
     HloValueSet& operand_value_set = GetValueSet(copy->operand(0), index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateOptimizationBarrierValueSet(
+    HloInstruction* barrier) {
+  // Optimization Barriers just forward their operand. Given that barriers can
+  // have a tuple operand, we iterate through its indexes, like for copies.
+  // Unlike copies though we also propagate the top-level value.
+  CHECK_EQ(barrier->opcode(), HloOpcode::kOptimizationBarrier);
+  bool changed = false;
+  for (auto& pair : GetInstructionValueSet(barrier)) {
+    const ShapeIndex& index = pair.first;
+    HloValueSet& value_set = pair.second;
+    HloValueSet& operand_value_set = GetValueSet(barrier->operand(0), index);
     if (value_set != operand_value_set) {
       value_set = operand_value_set;
       changed = true;
@@ -1063,6 +1083,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCollectivePermuteStartValueSet(instruction);
     case HloOpcode::kCollectivePermuteDone:
       return UpdateCollectivePermuteDoneValueSet(instruction);
+    case HloOpcode::kOptimizationBarrier:
+      return UpdateOptimizationBarrierValueSet(instruction);
     default:
       // Instruction does not forward HloValues (it defines all values in its
       // output). No update is necessary.
@@ -1225,6 +1247,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         case HloOpcode::kConditional:
         case HloOpcode::kGetTupleElement:
         case HloOpcode::kDomain:
+        case HloOpcode::kOptimizationBarrier:
           // These instructions define no values. The values in their output
           // flow from their operands or from cross computation dataflow.
           break;
@@ -1688,10 +1711,21 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     }
   }
 
+  // There is nothing inherently wrong with while and conditional ops to have
+  // input/output buffers to alias with each other, even when the indices are
+  // different in the while case. It is a problem when this aliasing causes HLO
+  // ops inside these while or conditional to have input/output buffer aliasing
+  // that isn't allowed. So allow while and conditional to share buffers with
+  // operands and we will discover any problematic sharing when we explore the
+  // ops inside these computations.
+  if (user->opcode() == HloOpcode::kWhile ||
+      user->opcode() == HloOpcode::kConditional) {
+    return true;
+  }
+
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
       user->opcode() == HloOpcode::kScatter ||
-      user->opcode() == HloOpcode::kTriangularSolve ||
-      user->opcode() == HloOpcode::kWhile) {
+      user->opcode() == HloOpcode::kTriangularSolve) {
     // We eliminated other users in HloOrdering::LiveRangeStrictlyBefore
     // so here we just need to check that the use is at the right operand index.
     const auto operand_indices = user->OperandIndices(operand);

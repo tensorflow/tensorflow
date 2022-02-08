@@ -15,7 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeTFPass : FunctionPass<"xla-legalize-tf-with-tf2xla"> {
+def LegalizeTFPass : Pass<"xla-legalize-tf-with-tf2xla", "mlir::FuncOp"> {
   let summary = "Legalize from TensorFlow to the HLO dialect using tf2xla kernels";
   let dependentDialects = ["mhlo::MhloDialect"];
   let constructor = "::mlir::mhlo::createLegalizeTfWithTf2XlaPass()";
@@ -38,4 +38,28 @@ def LegalizeTFCommunicationPass : Pass<"xla-legalize-tf-communication", "ModuleO
            "dialect";
   let dependentDialects = ["mhlo::MhloDialect"];
   let constructor = "::mlir::mhlo::CreateLegalizeTFCommunicationPass()";
+  let description = [{
+    A pass that legalizes TF/XLA communication ops, propagates their respective
+    tokens (for ordering), and rewrites their respective functions and control
+    flow ops when necessary.
+
+    For example, given the program
+
+    ```mlir
+      func @send_to_host(%arg0: tensor<i32>) {
+        "tf.XlaSendToHost"(%arg0) {key = "send_key"} : (tensor<i32>) -> ()
+        return
+      }
+    ```
+
+    This might be legalized like this:
+
+    ```mlir
+      func @send_to_host(%arg0: tensor<i32>) {
+        %0 = "mhlo.create_token"() : () -> !mhlo.token
+        %1 = "mhlo.send"(%arg0, %0) {...}} : (tensor<i32>, !mhlo.token) -> !mhlo.token
+        return
+      }
+    '''
+  }];
 }

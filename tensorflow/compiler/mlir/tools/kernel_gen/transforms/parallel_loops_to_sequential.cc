@@ -28,7 +28,7 @@ namespace {
 
 struct ParallelLoopsToSequentialPass
     : public ParallelLoopsToSequentialBase<ParallelLoopsToSequentialPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
     mlir::populateLoopToStdConversionPatterns(patterns);
 
@@ -44,7 +44,8 @@ struct ParallelLoopsToSequentialPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateParallelLoopsToSequential() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateParallelLoopsToSequential() {
   return std::make_unique<ParallelLoopsToSequentialPass>();
 }
 

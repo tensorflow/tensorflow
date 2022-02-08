@@ -68,8 +68,7 @@ tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
 """
 import numbers
 import numpy as np
-from six.moves import builtins
-from six.moves import xrange  # pylint: disable=redefined-builtin
+import builtins
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -420,7 +419,7 @@ def _bucketize(input, boundaries, name=None):
 # pylint: enable=redefined-builtin
 
 
-class DivideDelegateWithName(object):
+class DivideDelegateWithName:
   """Use Python2/Python3 division delegation to implement divide for tensors."""
 
   def __init__(self, x, name):
@@ -999,7 +998,7 @@ def cast(x, dtype, name=None):
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
-      if x.dtype.base_dtype != base_type:
+      if x.dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
     if x.dtype.is_complex and base_type.is_floating:
       logging.warn("Casting complex to real discards imaginary part.")
@@ -4568,9 +4567,19 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
 
+  Caution: On CPU, values in `segment_ids` are always validated to be less than
+  `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+  does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+  result in safe but unspecified behavior, which may include ignoring
+  out-of-bound indices or outputting a tensor with a 0 stored in the first
+  dimension of its shape if `num_segments` is 0.
+
   Args:
     data: A `Tensor` with floating point or complex dtype.
     segment_ids: An integer tensor whose shape is a prefix of `data.shape`.
+      The values must be less than `num_segments`.
+      The values are always validated to be in range on CPU,
+      never validated on GPU.
     num_segments: An integer scalar `Tensor`.  The number of distinct segment
       IDs.
     name: A name for the operation (optional).
@@ -4616,9 +4625,19 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
 
+  Caution: On CPU, values in `segment_ids` are always validated to be less than
+  `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+  does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+  result in safe but unspecified behavior, which may include ignoring
+  out-of-bound indices or outputting a tensor with a 0 stored in the first
+  dimension of its shape if `num_segments` is 0.
+
   Args:
     data: A `Tensor` with floating point or complex dtype.
     segment_ids: An integer tensor whose shape is a prefix of `data.shape`.
+      The values must be in the range `[0, num_segments)`.
+      The values are always validated to be in range on CPU,
+      never validated on GPU.
     num_segments: An integer scalar `Tensor`.  The number of distinct segment
       IDs.
     name: A name for the operation (optional).
@@ -5014,7 +5033,7 @@ def tensordot(a, b, axes, name=None):
     if a.get_shape().is_fully_defined() and isinstance(axes, (list, tuple)):
       shape_a = a.get_shape().as_list()
       axes = [i if i >= 0 else i + len(shape_a) for i in axes]
-      free = [i for i in xrange(len(shape_a)) if i not in axes]
+      free = [i for i in builtins.range(len(shape_a)) if i not in axes]
       free_dims = [shape_a[i] for i in free]
       prod_free = int(np.prod([shape_a[i] for i in free]))
       prod_axes = int(np.prod([shape_a[i] for i in axes]))
@@ -5033,7 +5052,7 @@ def tensordot(a, b, axes, name=None):
       if a.get_shape().ndims is not None and isinstance(axes, (list, tuple)):
         shape_a = a.get_shape().as_list()
         axes = [i if i >= 0 else i + len(shape_a) for i in axes]
-        free = [i for i in xrange(len(shape_a)) if i not in axes]
+        free = [i for i in builtins.range(len(shape_a)) if i not in axes]
         axes_dims = [shape_a[i] for i in axes]
         free_dims = [shape_a[i] for i in free]
         free_dims_static = free_dims
@@ -5071,8 +5090,8 @@ def tensordot(a, b, axes, name=None):
           raise ValueError(f"`axes` must not be larger than the number of "
                            f"dimensions of tensor {a}.  Received {axes}, vs "
                            f"tensor dimensions {a_shape.ndims}.")
-        return (list(xrange(a_shape.ndims - axes,
-                            a_shape.ndims)), list(xrange(axes)))
+        return (list(builtins.range(a_shape.ndims - axes,
+                                    a_shape.ndims)), list(builtins.range(axes)))
       else:
         rank = array_ops.rank(a)
         return (range(rank - axes, rank,

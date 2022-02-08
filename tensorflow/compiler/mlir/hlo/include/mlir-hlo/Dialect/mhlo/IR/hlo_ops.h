@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -56,6 +55,16 @@ class MhloDialect : public Dialect {
   // value with the desired resultant type.
   Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
                                  Location loc) override;
+
+  // Registered hook to verify region arg attributes on operations.
+  LogicalResult verifyRegionArgAttribute(mlir::Operation *op,
+                                         unsigned region_index,
+                                         unsigned arg_index,
+                                         mlir::NamedAttribute attr) override;
+
+  // Registered hook to verify an attribute from this dialect on operations.
+  LogicalResult verifyOperationAttribute(mlir::Operation *op,
+                                         mlir::NamedAttribute attr) override;
 
   // Parses a type registered to this dialect.
   Type parseType(DialectAsmParser &parser) const override;

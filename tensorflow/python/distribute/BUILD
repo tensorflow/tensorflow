@@ -651,6 +651,7 @@ distribute_py_test(
     shard_count = 12,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # b/213388775
     ],
     tpu_tags = [
         "no_oss",
@@ -1124,8 +1125,8 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
-        "no_cuda_asan",  # times out
-        "notsan",  # b/177098062
+        "no_cuda_asan",  # TODO(b/214574707): times out
+        "notsan",  # TODO(b/177098062): flaky for over a year
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1397,6 +1398,7 @@ distribute_py_test(
     name = "distributed_variable_test",
     size = "medium",
     srcs = ["distributed_variable_test.py"],
+    disable_v2 = True,  # TODO(b/209058825)
     main = "distributed_variable_test.py",
     shard_count = 3,
     tags = [
@@ -1404,6 +1406,7 @@ distribute_py_test(
         "no_cuda_asan",  # times out
         "no_oss",  # b/178656226
         "noasan",  # b/175816710
+        "notap",  # Flaky
         "notsan",  # b/168645872
     ],
     tpu_tags = [
@@ -1618,6 +1621,7 @@ distribute_py_test(
     main = "moving_averages_test.py",
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
+        "notpu",  # TODO(b/210145904)
     ],
     deps = [
         ":collective_all_reduce_strategy",

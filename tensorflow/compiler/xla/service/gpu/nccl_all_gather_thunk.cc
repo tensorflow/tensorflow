@@ -29,6 +29,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
 
+#if XLA_ENABLE_XCCL
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
@@ -64,8 +68,8 @@ Status NcclAllGatherThunk::RunNcclCollective(const ExecuteParams& params,
   int device_ordinal = params.stream->parent()->device_ordinal();
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
 
-  cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
-      params.stream->implementation()->GpuStreamMemberHack());
+  se::gpu::GpuStreamHandle gpu_stream =
+      se::gpu::AsGpuStreamValue(params.stream);
 
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
   for (size_t i = 0; i < buffers_.size(); ++i) {
@@ -87,10 +91,10 @@ Status NcclAllGatherThunk::RunNcclCollective(const ExecuteParams& params,
         "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, sendcount=%d, "
         "comm=%p, stream=%p)",
         send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
-        cu_stream);
+        gpu_stream);
 
     XLA_CUDA_RETURN_IF_ERROR(ncclAllGather(
-        send_buffer, recv_buffer, element_count, dtype, comm, *cu_stream));
+        send_buffer, recv_buffer, element_count, dtype, comm, gpu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 

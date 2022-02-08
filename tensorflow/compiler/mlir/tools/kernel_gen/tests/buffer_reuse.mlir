@@ -462,7 +462,7 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
     %c0 = arith.constant 0 : i64
     %a_pos = arith.cmpi sge, %a, %c0 : i64
     %a_neg = arith.subi %c0, %a : i64
-    %a_abs = select %a_pos, %a, %a_neg : i64
+    %a_abs = arith.select %a_pos, %a, %a_neg : i64
     linalg.yield %a_abs : i64
   }
   %result = memref.reshape %flat_result(%arg_shape)
@@ -530,11 +530,11 @@ func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
     indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
     iterator_types = ["parallel"]
   } ins(%3 : memref<?xf32>) outs(%9 : memref<?xf32>) {
-  ^bb0(%arg1: f32, %arg2: f32):  // no predecessors
+  ^bb0(%arg1: f32, %arg2: f32):
     %12 = math.abs %arg1 : f32
     linalg.yield %12 : f32
   }
-  %10 = memref.buffer_cast %0 : memref<?xindex>
+  %10 = bufferization.to_memref %0 : memref<?xindex>
   %11 = memref.reshape %9(%10)
       : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
   return %11 : memref<*xf32>

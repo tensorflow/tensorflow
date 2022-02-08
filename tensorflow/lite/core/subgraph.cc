@@ -690,27 +690,6 @@ TfLiteStatus Subgraph::CheckInputAndOutputForOverlap(const int* input_indices,
   return kTfLiteOk;
 }
 
-namespace {
-// Multiply two sizes and return true if overflow occurred;
-// This is based off tensorflow/overflow.h but is simpler as we already
-// have unsigned numbers. It is also generalized to work where sizeof(size_t)
-// is not 8.
-TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
-  // Multiplying a * b where a and b are size_t cannot result in overflow in a
-  // size_t accumulator if both numbers have no non-zero bits in their upper
-  // half.
-  constexpr size_t size_t_bits = 8 * sizeof(size_t);
-  constexpr size_t overflow_upper_half_bit_position = size_t_bits / 2;
-  *product = a * b;
-  // If neither integers have non-zero bits past 32 bits can't overflow.
-  // Otherwise check using slow devision.
-  if (TFLITE_EXPECT_FALSE((a | b) >> overflow_upper_half_bit_position != 0)) {
-    if (a != 0 && *product / a != b) return kTfLiteError;
-  }
-  return kTfLiteOk;
-}
-}  // namespace
-
 TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
                                      size_t dims_size, size_t* bytes) {
   TF_LITE_ENSURE(&context_, bytes != nullptr);
@@ -1140,6 +1119,11 @@ TfLiteStatus Subgraph::RemoveUnusedInputs() {
         refcounts[tensor_index]++;
       }
     }
+  }
+  // Count references to SubGraph output tensors.
+  for (auto iter = outputs_.begin(); iter != outputs_.end(); iter++) {
+    if (*iter == kTfLiteOptionalTensor) continue;
+    refcounts[*iter]++;
   }
 
   // Mark unused inputs as kTfLiteOptionalTensor.

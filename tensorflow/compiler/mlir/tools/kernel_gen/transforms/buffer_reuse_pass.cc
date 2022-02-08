@@ -21,14 +21,14 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -237,16 +237,16 @@ class BufferReuseAnalysis {
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
-  void runOnFunction() override {
-    if (!getFunction()->getAttrOfType<UnitAttr>(
+  void runOnOperation() override {
+    if (!getOperation()->getAttrOfType<UnitAttr>(
             tf_framework::TFFrameworkDialect::kTFEntryAttrName))
       return;
 
-    BufferReuseAnalysis analysis(getFunction());
+    BufferReuseAnalysis analysis(getOperation());
 
     // Annotate IR with reuse candidates and output indices per allocation.
     Builder builder(&getContext());
-    getFunction().walk([&](memref::AllocOp op) {
+    getOperation().walk([&](memref::AllocOp op) {
       if (auto output_index = analysis.get_output_index(op)) {
         auto attr = builder.getI32IntegerAttr(*output_index);
         op.getOperation()->setAttr(
@@ -263,7 +263,7 @@ struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateBufferReusePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateBufferReusePass() {
   return std::make_unique<BufferReusePass>();
 }
 

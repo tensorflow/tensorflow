@@ -37,7 +37,8 @@
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -47,6 +48,7 @@
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -97,14 +99,15 @@ static llvm::Error MakeError(xla::Status status) {
 
 // Clones `op` into a function within a module with `arguments`.
 // The `get_global_ops` are the def ops of `arguments`, or null otherwise.
-static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
-    Operation* op, mlir::ValueRange arguments,
-    mlir::MutableArrayRef<GetGlobalOp> get_global_ops) {
+static std::tuple<mlir::OwningOpRef<mlir::ModuleOp>, mlir::FuncOp>
+CloneToModule(Operation* op, mlir::ValueRange arguments,
+              mlir::MutableArrayRef<GetGlobalOp> get_global_ops) {
   auto loc = op->getLoc();
   auto* context = op->getContext();
   mlir::OpBuilder builder(context);
 
-  mlir::OwningModuleRef module_op = builder.create<mlir::ModuleOp>(loc);
+  mlir::OwningOpRef<mlir::ModuleOp> module_op =
+      builder.create<mlir::ModuleOp>(loc);
   builder.setInsertionPointToEnd(module_op->getBody());
   // Clone and annotate the memref.global ops that the memref.get_global ops
   // refer to. The lmhlo.alloc index refers to one of the function arguments.
@@ -138,7 +141,7 @@ static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
     mapping.map(get_global_op, builder.clone(*get_global_op)->getResult(0));
   }
   auto* clone = builder.clone(*op, mapping);
-  auto name_loc = mlir::NameLoc::get(builder.getIdentifier(func_name));
+  auto name_loc = mlir::NameLoc::get(builder.getStringAttr(func_name));
   clone->setLoc(mlir::FusedLoc::get(context, {loc, name_loc}));
   builder.create<mlir::lmhlo::TerminatorOp>(loc);
 
@@ -186,15 +189,14 @@ Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
   gpu_device_info.block_dim_limit_x = 2147483647;
   gpu_device_info.block_dim_limit_y = 65535;
   gpu_device_info.block_dim_limit_z = 65535;
-  const xla::HloProfileIndexMap* profile_index_map = nullptr;
 
   llvm_module->setTargetTriple(target_triple);
   llvm_module->setDataLayout(data_layout);
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, profile_index_map,
-      func_op->getContext(), llvm_module);
+      gpu_device_info, cuda_compute_capability, func_op->getContext(),
+      llvm_module);
 
   ir_emitter_context.set_allocations(allocations);
 
@@ -255,11 +257,12 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
     }
   }
   if (!llvm::all_of(*thunks, [](const auto& thunk) {
-        Thunk::Kind kinds[] = {Thunk::kKernel, Thunk::kCopy};
+        Thunk::Kind kinds[] = {Thunk::kKernel, Thunk::kCopy,
+                               Thunk::kMemset32BitValue, Thunk::kMemzero};
         auto equal = [&](Thunk::Kind kind) { return thunk->kind() == kind; };
         return llvm::any_of(kinds, equal);
       })) {
-    return MakeError("Expected only kernel and copy thunks");
+    return MakeError("Expected only kernel, copy, memset, and memzero thunks");
   }
 
   auto libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module_config);
@@ -291,12 +294,16 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
                       rewriter.getStringAttr(gpu_module_data));
 
   // Annotate memref.global ops with the gpu.module symbol, and annotate the
-  // gpu.module op with memref.global symbols which requiring initialization.
+  // gpu.module op with memref.global symbols which require initialization.
   SmallVector<mlir::Attribute, 4> const_attrs;
   for (const auto& constant : constants) {
     auto global_op = mlir::SymbolTable::lookupNearestSymbolFrom(
         op, rewriter.getStringAttr(constant.symbol_name));
-    assert(global_op);
+    if (!global_op) {
+      LOG(WARNING) << "memref.global op not found for constant. Possibly "
+                   << "unused (spurious) constant.";
+      continue;
+    }
     global_op->setAttr(tfrt::gpu::getGpuModuleAttrName(),
                        mlir::SymbolRefAttr::get(gpu_module));
     if (!constant.content.empty())
@@ -320,6 +327,32 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
           loc, mlir::TypeRange(), mlir::ValueRange(),
           get_argument(copy_thunk->destination()),
           get_argument(copy_thunk->source()));
+      continue;
+    }
+
+    auto rewrite_memset = [&](const xla::BufferAllocation::Slice& slice,
+                              uint32_t memset_value) {
+      assert(slice.offset() == 0);
+      Value buffer_arg = arguments[slice.index()];
+      auto element_type =
+          buffer_arg.getType().cast<mlir::MemRefType>().getElementType();
+      rewriter.setInsertionPoint(op);
+      Value value =
+          MakeBitPatternConstant(rewriter, loc, element_type, memset_value);
+      rewriter.create<mlir::gpu::MemsetOp>(
+          loc, mlir::TypeRange(), mlir::ValueRange(), buffer_arg, value);
+    };
+
+    if (thunk->kind() == Thunk::kMemset32BitValue) {
+      const auto* memset_thunk =
+          static_cast<const xla::gpu::Memset32BitValueThunk*>(thunk.get());
+      rewrite_memset(memset_thunk->destination(), memset_thunk->value());
+      continue;
+    }
+    if (thunk->kind() == Thunk::kMemzero) {
+      const auto* memzero_thunk =
+          static_cast<const xla::gpu::MemzeroThunk*>(thunk.get());
+      rewrite_memset(memzero_thunk->destination(), 0);
       continue;
     }
 
@@ -374,7 +407,9 @@ mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
     });
   };
   if (walk(mlir::lmhlo::FusionOp()).wasInterrupted() ||
+      walk(mlir::lmhlo::RngGetAndUpdateStateOp()).wasInterrupted() ||
       walk(mlir::lmhlo::ScatterOp()).wasInterrupted() ||
+      walk(mlir::lmhlo::SelectAndScatterOp()).wasInterrupted() ||
       walk(mlir::lmhlo::SortOp()).wasInterrupted())
     return mlir::failure();
 

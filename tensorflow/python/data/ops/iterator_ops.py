@@ -549,32 +549,6 @@ def _generate_shared_name(prefix):
   return "{}{}".format(prefix, uid)
 
 
-class IteratorResourceDeleter(object):
-  """An object which cleans up an iterator resource handle.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectable.
-  """
-
-  __slots__ = ["_deleter", "_handle", "_eager_mode"]
-
-  def __init__(self, handle, deleter):
-    self._deleter = deleter
-    self._handle = handle
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    # Make sure the resource is deleted in the same mode as it was created in.
-    if self._eager_mode:
-      with context.eager_mode():
-        gen_dataset_ops.delete_iterator(
-            handle=self._handle, deleter=self._deleter)
-    else:
-      with context.graph_mode():
-        gen_dataset_ops.delete_iterator(
-            handle=self._handle, deleter=self._deleter)
-
-
 @tf_export("data.Iterator", v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class IteratorBase(collections_abc.Iterator, trackable.Trackable,
@@ -651,7 +625,7 @@ class IteratorBase(collections_abc.Iterator, trackable.Trackable,
 
   @abc.abstractmethod
   def get_next_as_optional(self):
-    """Returns the next element warpped in `tf.experimental.Optional`.
+    """Returns the next element wrapped in `tf.experimental.Optional`.
 
     If the iterator has reached the end of the sequence, the returned
     `tf.experimental.Optional` will have no value.
@@ -737,7 +711,7 @@ class OwnedIterator(IteratorBase):
           self._element_spec)
       self._flat_output_shapes = structure.get_flat_tensor_shapes(
           self._element_spec)
-      self._iterator_resource, self._deleter = components
+      self._iterator_resource, = components
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(
@@ -764,15 +738,11 @@ class OwnedIterator(IteratorBase):
     self._flat_output_shapes = structure.get_flat_tensor_shapes(
         self._element_spec)
     with ops.colocate_with(ds_variant):
-      self._iterator_resource, self._deleter = (
-          gen_dataset_ops.anonymous_iterator_v2(
+      self._iterator_resource = (
+          gen_dataset_ops.anonymous_iterator_v3(
               output_types=self._flat_output_types,
               output_shapes=self._flat_output_shapes))
       gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
-      # Delete the resource when this object is deleted
-      self._resource_deleter = IteratorResourceDeleter(
-          handle=self._iterator_resource,
-          deleter=self._deleter)
 
   def __iter__(self):
     return self
@@ -942,13 +912,10 @@ class IteratorSpec(type_spec.TypeSpec):
 
   @property
   def _component_specs(self):
-    return (
-        tensor_spec.TensorSpec([], dtypes.resource),
-        tensor_spec.TensorSpec([], dtypes.variant),
-    )
+    return (tensor_spec.TensorSpec([], dtypes.resource),)
 
   def _to_components(self, value):
-    return (value._iterator_resource, value._deleter)  # pylint: disable=protected-access
+    return (value._iterator_resource,)  # pylint: disable=protected-access
 
   def _from_components(self, components):
     return OwnedIterator(

@@ -191,10 +191,11 @@ class LegalizeHashTables
       return;
     }
 
-    OwningRewritePatternList patterns(&getContext());
-    patterns.insert<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
-                    LegalizeHashTableImportOpPattern,
-                    LegalizeHashTableSizeOpPattern>(&getContext());
+    RewritePatternSet patterns(&getContext());
+    patterns
+        .add<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
+             LegalizeHashTableImportOpPattern, LegalizeHashTableSizeOpPattern>(
+            &getContext());
     if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
       signalPassFailure();
       return;

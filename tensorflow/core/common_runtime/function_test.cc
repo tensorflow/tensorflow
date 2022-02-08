@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -448,6 +449,8 @@ class ConsumeArgumentCallFrame : public CallFrameInterface {
 
 TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_ConsumeArgument_DefaultExecutor) {
   Init({test::function::XTimesTwo()});
+  auto default_executor = metrics::TestDelta("flr_executor", "default");
+  auto single_threaded = metrics::TestDelta("flr_executor", "single_threaded");
   FunctionLibraryRuntime::Handle handle;
   TF_CHECK_OK(flr0_->Instantiate(
       "XTimesTwo", test::function::Attrs({{"T", DT_FLOAT}}), &handle));
@@ -469,11 +472,15 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_ConsumeArgument_DefaultExecutor) {
   EXPECT_FALSE(x.IsInitialized());
 
   TF_CHECK_OK(flr0_->ReleaseHandle(handle));
+  EXPECT_GT(default_executor.Get(), 0);
+  EXPECT_EQ(single_threaded.Get(), 0);
 }
 
 TEST_F(FunctionLibraryRuntimeTest,
        XTimesTwo_ConsumeArgument_SingleThreadedExecutor) {
   Init({test::function::XTimesTwo()});
+  auto default_executor = metrics::TestDelta("flr_executor", "default");
+  auto single_threaded = metrics::TestDelta("flr_executor", "single_threaded");
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   FunctionLibraryRuntime::Handle handle;
@@ -498,6 +505,8 @@ TEST_F(FunctionLibraryRuntimeTest,
   EXPECT_FALSE(x.IsInitialized());
 
   TF_CHECK_OK(flr0_->ReleaseHandle(handle));
+  EXPECT_EQ(default_executor.Get(), 0);
+  EXPECT_GT(single_threaded.Get(), 0);
 }
 
 TEST_F(FunctionLibraryRuntimeTest, XTimesN) {
@@ -1393,51 +1402,18 @@ TEST_F(FunctionLibraryRuntimeTest, DoNotPruneControlOutputsFromBody) {
   EXPECT_EQ(expected_node_names, executed_node_names);
 }
 
-// Constant folding generates names using a global counter.
-// This function invokes constant folding and parses the counter
-// from the generated node name.
-int GetConstantFoldingCounter() {
-  Graph g(OpRegistry::Global());
-  Scope s = Scope::NewRootScope();
-  auto a = ops::Const<float>(s, {1.0}, {});
-  auto b = ops::Const<float>(s, {2.0}, {});
-
-  auto add = ops::Add(s.WithOpName("add"), a, b);
-  auto send =
-      ops::_Send(s.WithOpName("s1"), add, "add", "sender", 0, "receiver");
-
-  TF_CHECK_OK(s.ToGraph(&g));
-  bool was_mutated;
-  ConstantFoldingOptions opt{};
-  TF_CHECK_OK(
-      ConstantFold(opt, nullptr, Env::Default(), nullptr, &g, &was_mutated));
-  GraphDef def;
-  g.ToGraphDef(&def);
-  for (const NodeDef& node : def.node()) {
-    if (absl::StartsWith(node.name(), "add/")) {
-      std::vector<std::string> v = absl::StrSplit(node.name(), "__cf__");
-      CHECK_GT(v.size(), 1);
-      int counter;
-      CHECK(absl::SimpleAtoi(v[v.size() - 1], &counter));
-      return counter;
-    }
-  }
-  LOG(FATAL) << "Should have found a node that replaced add";
-}
-
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
   std::unique_ptr<Graph> g = GetFuncBody(flr0_, "XTimes16", {{"T", DT_FLOAT}});
   ASSERT_TRUE(g != nullptr);
   ExpandInlineFunctions(flr0_, g.get());
-  int cf_counter = GetConstantFoldingCounter();
   OptimizeGraph(flr0_, &g);
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
-        s.WithOpName("x4/x2/scale/_12__cf__" + std::to_string(cf_counter + 1))
+        s.WithOpName("x4/x2/scale/_12__cf__0")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
@@ -1648,20 +1624,19 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
 
-  int cf_counter = GetConstantFoldingCounter();
   OptimizeGraph(flr0_, &g);
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
     auto scale = ops::Const(
-        s.WithOpName("scale/_6__cf__" + std::to_string(cf_counter + 2))
+        s.WithOpName("scale/_6__cf__1")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
     auto const0 = ops::Const(
-        s.WithOpName("Func/_1/sy/_5__cf__" + std::to_string(cf_counter + 1))
+        s.WithOpName("Func/_1/sy/_5__cf__0")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(

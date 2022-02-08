@@ -85,8 +85,8 @@ class MockFailurePass
   };
 };
 
-StatusOr<OwningModuleRef> LoadModule(MLIRContext* context,
-                                     const std::string& file_name) {
+StatusOr<OwningOpRef<mlir::ModuleOp>> LoadModule(MLIRContext* context,
+                                                 const std::string& file_name) {
   std::string error_message;
   auto file = openInputFile(file_name, &error_message);
   if (!file) {
@@ -95,7 +95,7 @@ StatusOr<OwningModuleRef> LoadModule(MLIRContext* context,
 
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-  return OwningModuleRef(parseSourceFile(source_mgr, context));
+  return OwningOpRef<mlir::ModuleOp>(parseSourceFile(source_mgr, context));
 }
 
 TEST(ErrorCollectorTest, TessSuccessPass) {
@@ -125,7 +125,7 @@ TEST(ErrorCollectorTest, TessFailurePass) {
   MLIRContext context;
   const std::string input_file =
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir";
-  auto input_file_id = Identifier::get(input_file, &context);
+  auto input_file_id = StringAttr::get(&context, input_file);
 
   context.allowUnregisteredDialects();
   context.enableMultithreading();

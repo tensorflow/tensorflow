@@ -214,7 +214,7 @@ def serialize_tensor(tensor, name=None):
 
 
 @tf_export(v1=["ReaderBase"])
-class ReaderBase(object):
+class ReaderBase:
   """Base class for different Reader types, that produce a record every step.
 
   Conceptually, Readers convert string 'work units' into records (key,

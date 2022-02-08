@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
+#include "absl/strings/match.h"
 
 #import <Metal/Metal.h>
 
 #include <Availability.h>
+#include <map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,9 +37,92 @@ namespace metal {
 
 id<MTLDevice> GetBestSupportedMetalDevice() { return MTLCreateSystemDefaultDevice(); }
 
-absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
-                                  NSDictionary<NSString*, NSString*>* macros,
+absl::Status CreateComputeProgram(id<MTLDevice> device, const std::string& code,
+                                  const std::string& function_name,
+                                  const std::map<std::string, std::string>& macros,
                                   id<MTLComputePipelineState>* program) {
+  id<MTLFunction> function;
+  RETURN_IF_ERROR(CreateFunction(device, code, function_name, macros, &function));
+
+  NSError* error = nil;
+  *program = [device newComputePipelineStateWithFunction:function error:&error];
+  if (!*program) {
+    NSString* errorString =
+        [NSString stringWithFormat:@"newComputePipelineStateWithFunction error: %@",
+                                   [error localizedDescription]];
+    return absl::InternalError([errorString UTF8String]);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CreateComputeProgramWithArgumentBuffer(
+    id<MTLDevice> device, const std::string& code, const std::string& function_name,
+    const std::map<std::string, std::string>& macros, id<MTLComputePipelineState>* program,
+    id<MTLArgumentEncoder>* arguments_encoder) {
+  if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
+    id<MTLFunction> function;
+    RETURN_IF_ERROR(CreateFunction(device, code, "ComputeFunction", macros, &function));
+    *arguments_encoder = [function newArgumentEncoderWithBufferIndex:0];
+    if (!*arguments_encoder) {
+      return absl::InternalError("Failed to get MTLArgumentEncoder.");
+    }
+    MTLComputePipelineDescriptor* pipeline_desc = [[MTLComputePipelineDescriptor alloc] init];
+    pipeline_desc.computeFunction = function;
+    NSError* error = nil;
+    *program = [device newComputePipelineStateWithDescriptor:pipeline_desc
+                                                     options:MTLPipelineOptionNone
+                                                  reflection:nullptr
+                                                       error:&error];
+    if (!*program) {
+      NSString* error_string =
+          [NSString stringWithFormat:@"newComputePipelineStateWithDescriptor: %@",
+                                     [error localizedDescription]];
+      return absl::InternalError([error_string UTF8String]);
+    }
+    return absl::OkStatus();
+  } else {
+    return absl::InternalError("Metal argument buffers available since ios 11, tvos 11 or macos "
+                               "10.13.");
+  }
+}
+
+absl::Status CreateComputeProgramWithICBSupport(id<MTLDevice> device, const std::string& code,
+                                                const std::string& function_name,
+                                                const std::map<std::string, std::string>& macros,
+                                                id<MTLComputePipelineState>* program,
+                                                id<MTLArgumentEncoder>* arguments_encoder) {
+  if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
+    id<MTLFunction> function;
+    RETURN_IF_ERROR(CreateFunction(device, code, "ComputeFunction", macros, &function));
+    *arguments_encoder = [function newArgumentEncoderWithBufferIndex:0];
+    if (!*arguments_encoder) {
+      return absl::InternalError("Failed to get MTLArgumentEncoder.");
+    }
+    MTLComputePipelineDescriptor* pipeline_desc = [[MTLComputePipelineDescriptor alloc] init];
+    pipeline_desc.computeFunction = function;
+    pipeline_desc.supportIndirectCommandBuffers = TRUE;
+    NSError* error = nil;
+    *program = [device newComputePipelineStateWithDescriptor:pipeline_desc
+                                                     options:MTLPipelineOptionNone
+                                                  reflection:nullptr
+                                                       error:&error];
+    if (!*program) {
+      NSString* error_string =
+          [NSString stringWithFormat:@"newComputePipelineStateWithDescriptor: %@",
+                                     [error localizedDescription]];
+      return absl::InternalError([error_string UTF8String]);
+    }
+    return absl::OkStatus();
+  } else {
+    return absl::InternalError("Indirect compute command buffer available since ios 13, tvos 13 "
+                               "or macos 11.00");
+  }
+}
+
+absl::Status CreateFunction(id<MTLDevice> device, const std::string& code,
+                            const std::string& function_name,
+                            const std::map<std::string, std::string>& macros,
+                            id<MTLFunction>* function) {
   MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
 
   // Runtime checks for the iOS version independently of minimum target iOS.
@@ -63,28 +149,40 @@ absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString
 // NOLINTEND
 #endif
 
+  NSMutableDictionary<NSString*, NSString*>* macros_dict = [NSMutableDictionary dictionary];
+  for (const auto& pair : macros) {
+    std::string key = pair.first;
+    std::string value = pair.second;
+    if (absl::StrContains(key, ' ')) {
+      key = "\"" + key + "\"";
+    }
+    if (absl::StrContains(value, ' ')) {
+      value = "\"" + value + "\"";
+    }
+    [macros_dict setObject:[NSString stringWithCString:value.c_str()
+                                              encoding:[NSString defaultCStringEncoding]]
+                    forKey:[NSString stringWithCString:key.c_str()
+                                              encoding:[NSString defaultCStringEncoding]]];
+  }
+
   [options setFastMathEnabled:YES];
-  [options setPreprocessorMacros:macros];
+  [options setPreprocessorMacros:macros_dict];
   NSError* error = nil;
-  id<MTLLibrary> library = [device newLibraryWithSource:code options:options error:&error];
+  NSString* code_ns = [NSString stringWithCString:code.c_str()
+                                         encoding:[NSString defaultCStringEncoding]];
+  id<MTLLibrary> library = [device newLibraryWithSource:code_ns options:options error:&error];
   if (!library) {
     NSString* errorString =
         [NSString stringWithFormat:@"newLibraryWithSource: %@", [error localizedDescription]];
     return absl::InternalError([errorString UTF8String]);
   }
 
-  id<MTLFunction> function = [library newFunctionWithName:functionName];
-  if (!function) {
+  NSString* function_name_ns = [NSString stringWithCString:function_name.c_str()
+                                                  encoding:[NSString defaultCStringEncoding]];
+  *function = [library newFunctionWithName:function_name_ns];
+  if (!*function) {
     NSString* errorString =
         [NSString stringWithFormat:@"newFunctionWithName: %@", [error localizedDescription]];
-    return absl::InternalError([errorString UTF8String]);
-  }
-
-  *program = [device newComputePipelineStateWithFunction:function error:&error];
-  if (!program) {
-    NSString* errorString =
-        [NSString stringWithFormat:@"newComputePipelineStateWithFunction error: %@",
-                                   [error localizedDescription]];
     return absl::InternalError([errorString UTF8String]);
   }
   return absl::OkStatus();

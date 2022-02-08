@@ -30,16 +30,16 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
+#include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
@@ -64,11 +64,12 @@ constexpr char kBadTPUReplicateAttrMsg[] =
 // Mapping for `_tpu_replicate` attribute to TPUReplicateMetadata attributes.
 using MetadataMap = llvm::SmallDenseMap<llvm::StringRef, NamedAttrList, 8>;
 
-// A set of operations in a cluster.
-using ClusterOps = llvm::SmallSetVector<Operation*, 8>;
+// A set of operations. We use a `SmallSetVector` in order to have deterministic
+// traversal order (= insertion order), independent of the pointer keys.
+using OpSetVector = llvm::SmallSetVector<Operation*, 8>;
 
 // Mapping for `_tpu_replicate` attribute to ops of a cluster.
-using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, ClusterOps, 8>;
+using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
 
 struct TPUClusterFormationPass
     : public TF::TPUClusterFormationPassBase<TPUClusterFormationPass> {
@@ -101,7 +102,7 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
       return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
 
     // Remove `name` attribute.
-    attrs.erase(Identifier::get(kNameAttr, metadata_op.getContext()));
+    attrs.erase(StringAttr::get(metadata_op.getContext(), kNameAttr));
 
     auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
                                         std::move(attrs));
@@ -136,94 +137,109 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
   return success();
 }
 
-// Collects all resource ids from an op.
-void CollectResourceIdsFromOp(
-    Operation& op,
-    const TF::ResourceAliasAnalysis::Info& resource_alias_analysis,
-    llvm::SmallDenseSet<int64_t>& observed_resource_ids) {
-  op.walk([&](Operation* inner_op) {
-    for (Value operand : TF::filter_resources(inner_op->getOperands())) {
-      if (resource_alias_analysis.IsUnknownResource(operand)) continue;
-      const auto& ids = resource_alias_analysis.GetResourceUniqueIds(operand);
-      observed_resource_ids.insert(ids.begin(), ids.end());
-    }
-    for (Value result : TF::filter_resources(inner_op->getResults())) {
-      if (resource_alias_analysis.IsUnknownResource(result)) continue;
-      const auto& ids = resource_alias_analysis.GetResourceUniqueIds(result);
-      observed_resource_ids.insert(ids.begin(), ids.end());
-    }
-  });
+// Returns true iff `op` has a direct control dependency from (`incoming` ==
+// true) or to (`incoming` == false) any op in `cluster_ops` or
+// `cluster_dependent_ops`.
+bool hasOpClusterControlDependency(
+    Operation* op, bool incoming, const OpSetVector& cluster_ops,
+    const OpSetVector& cluster_dependent_ops,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+  auto filter = [&](Operation* other_op) {
+    return cluster_ops.contains(other_op) ||
+           cluster_dependent_ops.contains(other_op);
+  };
+  return incoming ? !side_effect_analysis.DirectControlPredecessors(op, filter)
+                         .empty()
+                  : !side_effect_analysis.DirectControlSuccessors(op, filter)
+                         .empty();
 }
 
-// Checks if an op should be moved after a cluster. There may be users of a
-// cluster interleaved among the cluster ops.
-bool ShouldMoveOpAfterCluster(
-    Block* block, Operation* op, const ClusterOps& cluster_ops,
-    const llvm::SmallSetVector<Operation*, 8>& preceding_users,
-    const TF::ResourceAliasAnalysis::Info& resource_alias_analysis,
-    const llvm::SmallDenseSet<int64_t>& observed_resource_ids) {
-  const bool is_replicate = llvm::isa<tf_device::ReplicateOp>(op);
+// Returns true iff `op` has a direct data dependency from (`incoming` == true
+// or to (`incoming` == false) any op in `cluster_ops` or
+// `cluster_dependent_ops`.
+bool hasOpClusterDataDependency(Operation* op, bool incoming,
+                                const OpSetVector& cluster_ops,
+                                const OpSetVector& cluster_dependent_ops) {
   auto result = op->walk([&](Operation* inner_op) {
-    for (Value operand : inner_op->getOperands()) {
-      Operation* def = operand.getDefiningOp();
-      // Operands may not have a defining op (BlockArgument) or is from a
-      // different block.
-      if (!def || def->getBlock() != block) continue;
-
-      if (cluster_ops.count(def) != 0 || preceding_users.count(def) != 0) {
-        // Op is a user of a cluster or another op that is a user of the
-        // cluster (transitively), but is before the cluster.
-        return WalkResult::interrupt();
+    ValueRange values = incoming ? ValueRange(inner_op->getOperands())
+                                 : ValueRange(inner_op->getResults());
+    llvm::SmallVector<Operation*, 4> candidates;
+    for (Value value : values) {
+      if (incoming) {
+        candidates = {value.getDefiningOp()};
+      } else {
+        candidates.assign(value.getUsers().begin(), value.getUsers().end());
       }
-    }
-
-    // Don't visit replicate op inner op operands as new resource
-    // values/arguments may have been created but are not known in
-    // `resource_alias_analysis`.
-    if (is_replicate && inner_op != op) return WalkResult::advance();
-
-    // Check for uses of any resource in or after cluster.
-    for (Value operand : TF::filter_resources(inner_op->getOperands())) {
-      if (resource_alias_analysis.IsUnknownResource(operand)) continue;
-      auto ids = resource_alias_analysis.GetResourceUniqueIds(operand);
-      for (const auto& id : ids)
-        if (observed_resource_ids.contains(id)) return WalkResult::interrupt();
+      for (Operation* candidate_op : candidates) {
+        if (cluster_ops.contains(candidate_op) ||
+            cluster_dependent_ops.contains(candidate_op)) {
+          return WalkResult::interrupt();
+        }
+      }
     }
     return WalkResult::advance();
   });
-
   return result.wasInterrupted();
 }
 
-// Collects ops that are before ops in the cluster but are users of other ops
-// in the cluster. This may happen because users of individual ops in the
-// cluster may be interleaved with other ops in the cluster. Resource IDs are
-// also captured, to keep track of resource usage before, in, or after the
-// cluster.
-// TODO(b/175701589): Extend this to handle all side effecting ops while
-// handling transitive data dependencies.
-llvm::SmallSetVector<Operation*, 8> CollectClusterPrecedingUsers(
-    Block* block, const ClusterOps& cluster_ops,
-    const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
-  llvm::SmallSetVector<Operation*, 8> preceding_users;
-  llvm::SmallDenseSet<int64_t> observed_resource_ids;
+// Collects ops that need to be moved behind the cluster due to data or control
+// dependencies.
+llvm::SmallSetVector<Operation*, 8> CollectClusterSuccessorOps(
+    Block* block, const OpSetVector& cluster_ops,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+  OpSetVector cluster_predecessor_ops;
+  OpSetVector cluster_successor_ops;
 
+  // Collect non-cluster ops that have a dependency to the cluster. For this
+  // traverse all ops from last to first cluster op and keep track of in-between
+  // non-cluster ops that have some outgoing (transitive) dependency to some
+  // cluster op (`cluster_predecessor_ops`).
+  auto rfront = Block::reverse_iterator(cluster_ops.front());
+  auto rback = Block::reverse_iterator(cluster_ops.back());
+  for (Operation& op : llvm::make_range(rback, rfront)) {
+    if (cluster_ops.contains(&op)) continue;
+    bool has_dependency_to_cluster =
+        hasOpClusterDataDependency(&op, /*incoming=*/false, cluster_ops,
+                                   cluster_predecessor_ops) ||
+        hasOpClusterControlDependency(&op, /*incoming=*/false, cluster_ops,
+                                      cluster_predecessor_ops,
+                                      side_effect_analysis);
+    if (has_dependency_to_cluster) cluster_predecessor_ops.insert(&op);
+  }
+  // Collect non-cluster ops that have a dependency from the cluster. For this
+  // traverse all ops from first to last cluster op and keep track of in-between
+  // non-cluster ops that have some incoming (transitive) dependency from some
+  // cluster op (`cluster_successor_ops`).
   auto front = Block::iterator(cluster_ops.front());
   auto back = Block::iterator(cluster_ops.back());
   for (Operation& op : llvm::make_range(front, back)) {
-    if (cluster_ops.contains(&op)) {
-      CollectResourceIdsFromOp(op, resource_alias_analysis,
-                               observed_resource_ids);
-    } else if (ShouldMoveOpAfterCluster(
-                   block, &op, cluster_ops, preceding_users,
-                   resource_alias_analysis, observed_resource_ids)) {
-      preceding_users.insert(&op);
-      CollectResourceIdsFromOp(op, resource_alias_analysis,
-                               observed_resource_ids);
+    if (cluster_ops.contains(&op)) continue;
+    bool has_dependency_from_cluster =
+        hasOpClusterDataDependency(&op, /*incoming=*/true, cluster_ops,
+                                   cluster_successor_ops) ||
+        hasOpClusterControlDependency(&op, /*incoming=*/true, cluster_ops,
+                                      cluster_successor_ops,
+                                      side_effect_analysis);
+    if (has_dependency_from_cluster) {
+      if (cluster_predecessor_ops.contains(&op)) {
+        // Op has a dependency from and to the cluster which is invalid. Instead
+        // of erroring out we don't add the op to `cluster_successor_ops` which
+        // is in line with previous behavior when certain control dependencies
+        // were not considered.
+        // TODO(b/216706460) Establish some contract here: Should we expect only
+        // valid clusters, or should we split clusters accordingly? The latter
+        // might have runtime impact for existing models.
+        // We should make this message an error once there is such a contract
+        // and once existing cases have been fixed.
+        VLOG(1) << "Invalid TPU cluster structure. Following op is both a "
+                   "predecessor and a successor of a cluster: "
+                << mlir::debugString(op);
+      } else {
+        cluster_successor_ops.insert(&op);
+      }
     }
   }
-
-  return preceding_users;
+  return cluster_successor_ops;
 }
 
 // Collects results and associated types of the cluster that are used outside of
@@ -232,7 +248,7 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterPrecedingUsers(
 // outside of the cluster (i.e. results of ops in the cluster are only consumed
 // by other ops in the cluster) are pruned.
 llvm::SmallVector<Value, 8> CollectClusterResults(
-    Block* block, const ClusterOps& cluster_ops) {
+    Block* block, const OpSetVector& cluster_ops) {
   llvm::SmallVector<Value, 8> results;
 
   for (Operation* op : cluster_ops) {
@@ -252,8 +268,8 @@ llvm::SmallVector<Value, 8> CollectClusterResults(
 
 // Creates a `tf_device.cluster` to wrap cluster ops.
 tf_device::ClusterOp CreateClusterOp(
-    Block* block, const ClusterOps& cluster_ops, llvm::ArrayRef<Value> results,
-    llvm::ArrayRef<Operation*> preceding_users) {
+    Block* block, const OpSetVector& cluster_ops, llvm::ArrayRef<Value> results,
+    llvm::ArrayRef<Operation*> cluster_successor_ops) {
   // `tf_device.cluster` will be placed at where the last op of the cluster is.
   Operation* last_cluster_op = cluster_ops.back();
   OpBuilder builder(last_cluster_op);
@@ -304,9 +320,9 @@ tf_device::ClusterOp CreateClusterOp(
     }
   }
 
-  // Move users of cluster that are before the cluster to after the cluster.
+  // Move ops that depend on something in the cluster behind the cluster.
   Operation* op_after_cluster = cluster.getOperation()->getNextNode();
-  for (Operation* user : preceding_users) user->moveBefore(op_after_cluster);
+  for (Operation* op : cluster_successor_ops) op->moveBefore(op_after_cluster);
   return cluster;
 }
 
@@ -362,7 +378,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
 
   LogicalResult status = success();
   // Collect all used TPUReplicatedInput ops and sort by `index`.
-  llvm::SmallSetVector<Operation*, 8> unique_replicated_input_ops;
+  OpSetVector unique_replicated_input_ops;
   mlir::visitUsedValuesDefinedAbove(
       cluster.body(), cluster.body(), [&](mlir::OpOperand* operand) {
         Operation* def = operand->get().getDefiningOp();
@@ -529,8 +545,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
 //      attribute `num_replicas` is greater than 1.
 //   9. Copy over TPUReplicateMetadata attributes to `tf_device.cluster`.
 LogicalResult FormClustersInBlock(
-    Block* block,
-    const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
+    Block* block, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   MetadataMap metadata_map;
   LogicalResult result = CollectMetadata(block, &metadata_map);
   if (failed(result)) return result;
@@ -542,8 +557,7 @@ LogicalResult FormClustersInBlock(
       for (Region& region : op.getRegions()) {
         if (!llvm::hasSingleElement(region))
           return op.emitOpError("Expected single block region");
-        if (failed(
-                FormClustersInBlock(&region.front(), resource_alias_analysis)))
+        if (failed(FormClustersInBlock(&region.front(), side_effect_analysis)))
           return failure();
       }
     }
@@ -569,15 +583,14 @@ LogicalResult FormClustersInBlock(
       continue;
     }
 
-    llvm::SmallSetVector<Operation*, 8> preceding_users =
-        CollectClusterPrecedingUsers(block, cluster_ops,
-                                     resource_alias_analysis);
+    OpSetVector cluster_successor_ops =
+        CollectClusterSuccessorOps(block, cluster_ops, side_effect_analysis);
 
     llvm::SmallVector<Value, 8> results =
         CollectClusterResults(block, cluster_ops);
 
     tf_device::ClusterOp cluster = CreateClusterOp(
-        block, cluster_ops, results, preceding_users.getArrayRef());
+        block, cluster_ops, results, cluster_successor_ops.getArrayRef());
 
     auto num_replicas = cluster_metadata->getSecond().get(kNumReplicasAttr);
     if (!num_replicas || !num_replicas.isa<mlir::IntegerAttr>())
@@ -608,12 +621,11 @@ LogicalResult FormClustersInBlock(
 }
 
 LogicalResult FormClustersInFunction(
-    FuncOp func,
-    const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
+    FuncOp func, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   if (!llvm::hasSingleElement(func))
     return func.emitOpError("Expecting a single block function");
 
-  if (failed(FormClustersInBlock(&func.front(), resource_alias_analysis)))
+  if (failed(FormClustersInBlock(&func.front(), side_effect_analysis)))
     return failure();
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
@@ -645,11 +657,11 @@ LogicalResult FormClustersInFunction(
 }
 
 void TPUClusterFormationPass::runOnOperation() {
-  auto& resource_alias_analysis = getAnalysis<TF::ResourceAliasAnalysis>();
+  auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
   for (auto func : getOperation().getOps<FuncOp>())
     if (!func.isExternal() &&
         failed(FormClustersInFunction(
-            func, resource_alias_analysis.GetAnalysisForFunc(func))))
+            func, side_effect_analysis.GetAnalysisForFunc(func))))
       return signalPassFailure();
 }
 }  // anonymous namespace

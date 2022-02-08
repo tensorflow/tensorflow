@@ -40,7 +40,7 @@ StatusOr<tfrt::gpu::Program> ConvertXlaGpuToGpuProgram(
   mlir::MLIRContext context(registry);
   context.loadAllAvailableDialects();
 
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 
   std::string entry_name = hlo_module->entry_computation()->name();
@@ -51,7 +51,8 @@ StatusOr<tfrt::gpu::Program> ConvertXlaGpuToGpuProgram(
       /*optimize_xla_hlo=*/true));
 
   // LMHLO -> TFRT Dialect (gpu kernels)
-  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToTfrtGpuWithBinary(*module));
+  TF_RETURN_IF_ERROR(
+      tensorflow::ConvertLmhloToTfrtGpuWithBinary(*module, entry_name, {}));
 
   // TFRT Dialect -> BEF
   std::string bef;

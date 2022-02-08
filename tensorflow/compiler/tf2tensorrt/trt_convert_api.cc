@@ -20,17 +20,22 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/clusters/single_machine.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -41,10 +46,25 @@ namespace tensorflow {
 namespace tensorrt {
 namespace {
 
+// Creates and provisions a new cluster. The caller must call Shutdown before
+// the cluster is destroyed.
+Status NewCluster(grappler::Cluster** cluster) {
+  int num_cpu_cores = grappler::GetNumAvailableLogicalCPUCores();
+  int num_gpus = grappler::GetNumAvailableGPUs();
+  int timeout_s = 60 * 10;
+  *cluster = new grappler::SingleMachine(timeout_s, num_cpu_cores, num_gpus);
+  (*cluster)->DisableDetailedStats(true);
+  (*cluster)->AllowSoftPlacement(true);
+  (*cluster)->SetNumWarmupSteps(10);
+  TF_RETURN_IF_ERROR((*cluster)->Provision());
+  return Status::OK();
+}
+
 Status RunGrappler(const MetaGraphDef& meta_graph_def,
                    const std::vector<std::string>& input_names,
                    const std::vector<std::string>& output_names,
-                   const ConfigProto& config_proto, GraphDef* out_graph_def) {
+                   const ConfigProto& config_proto, grappler::Cluster* cluster,
+                   GraphDef* out_graph_def) {
   grappler::ItemConfig item_config;
 
   for (const string& name : input_names) {
@@ -62,8 +82,9 @@ Status RunGrappler(const MetaGraphDef& meta_graph_def,
         "Failed to create grappler item from MetaGraphDef.");
   }
 
+  tensorflow::DeviceBase* cpu_device = nullptr;
   TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
-      std::move(*item), config_proto, nullptr, nullptr, out_graph_def));
+      std::move(*item), config_proto, cpu_device, cluster, out_graph_def));
   VLOG(2) << "Grappler finished\n";
   return Status::OK();
 }
@@ -81,9 +102,22 @@ Status ImportGraphDefToSession(Session* session, const GraphDef& graph_def,
 }
 
 Status GetTrtRewriterConfig(const TfTrtConversionParams& params,
+                            const GraphDef& frozen_graph_def,
                             RewriterConfig* opt_config) {
   opt_config->set_meta_optimizer_iterations(tensorflow::RewriterConfig::ONE);
   opt_config->set_min_graph_nodes(-1);  // do not skip small graphs
+
+  // Turn off remapping.
+  opt_config->set_remapping(RewriterConfig_Toggle::RewriterConfig_Toggle_OFF);
+
+  // If the graph has QDQ nodes, then we need to disable folding of the
+  // QDQ with constants. Otherwise, the conversion will not work corectly.
+  // Ideally, we do this after segmentation and outlining of TRT regions to
+  // functions, but we currently lack that capability. Disabling QDQ-const
+  // folding doesn't matter if you don't have QDQ nodes, so we always enable
+  // this.
+  opt_config->set_experimental_disable_folding_quantization_emulation(
+      IS_TRT_VERSION_GE(8, 0, 0, 0));
 
   // Initial transformations before TensorRTOptimizer is called
   opt_config->add_optimizers("function");
@@ -127,10 +161,16 @@ Status RunTfTrt(const MetaGraphDef& meta_graph_def,
       rewriter_config);
 
   VLOG(4) << "Setting up Grappler parameters\n" << config_proto.DebugString();
-
+  std::unique_ptr<grappler::Cluster> cluster;
+  grappler::Cluster* p_cluster;
+  mutex mu_cluster;  // There can be only one provisioned cluster per process.
+  mutex_lock lock(mu_cluster);
+  TF_RETURN_IF_ERROR(NewCluster(&p_cluster));
+  cluster.reset(p_cluster);
   TF_RETURN_IF_ERROR(RunGrappler(meta_graph_def, input_names, output_names,
-                                 config_proto, segmented_graph_def));
-
+                                 config_proto, cluster.get(),
+                                 segmented_graph_def));
+  TF_RETURN_IF_ERROR(cluster->Shutdown());
   return Status::OK();
 }
 
@@ -154,6 +194,10 @@ Status RunSession(Session* session, const std::vector<std::string>& input_names,
                   const std::vector<std::string>& output_names,
                   const std::vector<Tensor>& input_tensors,
                   string prefix = "") {
+  TRT_ENSURE(!input_names.empty());
+  TRT_ENSURE(!output_names.empty());
+  TRT_ENSURE(!input_tensors.empty());
+
   std::vector<std::pair<std::string, tensorflow::Tensor>> input_pairs;
   std::vector<std::string> prefixed_output_names;
   auto prefixed_name = [](std::string prefix, std::string name) {
@@ -323,6 +367,22 @@ Status ValidateConversionParams(const TfTrtConversionParams& p, int n_inputs) {
   }
   return Status::OK();
 }
+
+// Returns configuration used during the build step session run.
+tensorflow::SessionOptions GetSessionConfg() {
+  // We also need to disable constant folding because we already ran constant
+  // folding and may have prevented quantization operation folding on purpose.
+  tensorflow::SessionOptions opts;
+  auto* rewriter_opts =
+      opts.config.mutable_graph_options()->mutable_rewrite_options();
+  rewriter_opts->set_experimental_disable_folding_quantization_emulation(true);
+
+  // It seems  that we need to disable the optimizer entirely to prevent the
+  // folding.
+  rewriter_opts->set_disable_meta_optimizer(true);
+  return opts;
+}
+
 }  // namespace
 
 StatusOr<GraphDef> ConvertAndBuild(
@@ -335,7 +395,9 @@ StatusOr<GraphDef> ConvertAndBuild(
   meta_graph.mutable_graph_def()->CopyFrom(frozen_graph_def);
 
   RewriterConfig rewriter_config;
-  TF_RETURN_IF_ERROR(GetTrtRewriterConfig(conv_params, &rewriter_config));
+  TF_RETURN_IF_ERROR(
+      GetTrtRewriterConfig(conv_params, frozen_graph_def, &rewriter_config));
+
   GraphDef segmented_graph_def;
   TF_RETURN_IF_ERROR(RunTfTrt(meta_graph, input_names, output_names,
                               rewriter_config, &segmented_graph_def));
@@ -346,7 +408,7 @@ StatusOr<GraphDef> ConvertAndBuild(
     // The TRTOptimization pass has inserted placeholder TRTEngineOps. Here we
     // trigger conversion by inferring the graph.
     std::unique_ptr<tensorflow::Session> session(
-        tensorflow::NewSession(tensorflow::SessionOptions()));
+        tensorflow::NewSession(GetSessionConfg()));
     if (!session.get()) {
       return errors::Internal("Failed to create build session");
     }

@@ -22,21 +22,18 @@ include "mlir/Dialect/Shape/IR/ShapeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
 include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.td"
 
-class HLO_Op<string mnemonic, list<OpTrait> traits> :
+class HLO_Op<string mnemonic, list<Trait> traits> :
     Op<HLO_Dialect, mnemonic, traits> {
   // Whether this operation has a custom conversion to HLO or not.
   bit hasCustomHLOConverter = 0b0;
-
-  // TODO(b/129012527) Much of this custom verification should be expressed as
-  // type constraints.
-  let verifier = [{ return Verify(*this); }];
 }
 
-class HLO_ShapedInterfaceOp<string mnemonic, list<OpTrait> traits> :
+class HLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits> :
     HLO_Op<mnemonic, traits # [DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
     ["reifyReturnTypeShapes"]>]> {
 }
@@ -83,6 +80,7 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_DynamicIotaOp: HLO_ShapedInterfaceOp<"dynamic_iota", [NoSideEffect]> {
@@ -121,7 +119,7 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
-class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
+class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     Type TensorType> : HLO_Op<mnemonic, traits # [Elementwise,
     InferShapedTypeOpInterface, InferShapeEqualityOpInterface,
     SameOperandsAndResultShape]> {
@@ -433,7 +431,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
-class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
+class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
     HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
     InferShapeEqualityOpInterface, SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
@@ -463,9 +461,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     }
   }];
 
-  let results = (outs HLO_Tensor);
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let results = (outs HLO_Tensor:$result);
+  let assemblyFormat = "operands attr-dict `:` type($result)";
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
@@ -498,7 +495,8 @@ def HLO_ComplexOp: HLO_BinaryElementwiseOp<"complex",
     a complex value.
   }];
   let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
-  let results = (outs HLO_ComplexTensor);
+  let results = (outs HLO_ComplexTensor:$result);
+  let assemblyFormat = "`(`operands`)` attr-dict `:` `(`type(operands)`)` `->` type($result)";
   let hasFolder = 1;
 }
 
@@ -680,9 +678,9 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
     there must be a total order among the Infeed operations.
 
     Attributes:
-      layout:  Array attribute. Same shape as the output of the infeed, except
-               that every tensor is replaced by a minor_to_major array for the
-               tensor's layout.
+      layout:  Array attribute. Each element of the array is a minor_to_major
+               array corresponding to the shape of the data read from the infeed
+               interface.
 
     See https://www.tensorflow.org/xla/operation_semantics#infeed.
   }];
@@ -692,8 +690,11 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
     DefaultValuedStrAttr<StrAttr, "">:$infeed_config,
     OptionalAttr<ArrayAttr>:$layout
   );
-  let results = (outs HLO_Tuple);
+  // TODO(@sdasgup): The following code need to be adjusted once the
+  // allowance of tuple-return-type for infeed is revoked.
+  let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 // OutfeedOp corresponds to 'OutfeedWithToken' xla client API and not 'Outfeed'.
@@ -711,7 +712,9 @@ def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
   }];
 
   let arguments = (ins
-    HLO_TensorOrTuple:$operand,
+    // TODO(@sdasgup): The following code need to be adjusted once the
+    // allowance of tuple-return-type for infeed is revoked.
+    Variadic<HLO_TensorOrTuple>:$operands,
     HLO_Token:$token,
     DefaultValuedStrAttr<StrAttr, "">:$outfeed_config
   );
@@ -734,7 +737,7 @@ def HLO_SendOp : HLO_Op<"send", []> {
   }];
 
   let arguments = (ins
-    HLO_TensorOrTuple:$operand,
+    Variadic<HLO_Tensor>:$operands,
     HLO_Token:$token,
     ChannelHandle:$channel_handle,
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
@@ -765,8 +768,9 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
     DefaultValuedAttr<BoolAttr, "false">:$is_host_transfer
   );
 
-  let results = (outs HLO_Tuple);
+  let results = (outs Variadic<HLO_TensorOrToken>);
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -826,20 +830,19 @@ def HLO_IfOp: HLO_Op<"if", [
   }];
 
   let arguments = (ins
-    HLO_PredTensor:$pred,
-    HLO_TensorOrTuple:$true_arg,
-    HLO_TensorOrTuple:$false_arg
+    HLO_PredTensor:$pred
   );
 
   let regions = (region SizedRegion<1>:$true_branch,
                         SizedRegion<1>:$false_branch);
 
-  let results = (outs HLO_TensorOrTuple);
+  let results = (outs Variadic<HLO_TensorOrToken>);
 
   // TODO(b/129422361): ConditionalOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 // Xla Client API has two separate calls for indexed and predicated conditional,
@@ -865,24 +868,25 @@ def HLO_CaseOp: HLO_Op<"case", [
   }];
 
   let arguments = (ins
-    I32Tensor:$index,
-    Variadic<HLO_TensorOrTuple>:$branch_operands
+    I32Tensor:$index
   );
 
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 
-  let results = (outs Variadic<HLO_TensorOrTuple>);
+  let results = (outs Variadic<HLO_TensorOrToken>);
 
   let hasCustomHLOConverter = 1;
 
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 
 def HLO_WhileOp: HLO_Op<"while", [
       RecursiveSideEffects,
       HLO_PairwiseSameOperandAndResultType,
-      SingleBlockImplicitTerminator<"ReturnOp">
+      SingleBlockImplicitTerminator<"ReturnOp">,
+      OpAsmOpInterface
     ]> {
   let summary = "While operator";
   let description = [{
@@ -891,14 +895,31 @@ def HLO_WhileOp: HLO_Op<"while", [
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
   }];
-  let arguments = (ins Variadic<HLO_TensorOrTuple>:$arg);
+  let arguments = (ins Variadic<HLO_TensorOrToken>:$arg);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let results = (outs Variadic<HLO_TensorOrTuple>);
+  let results = (outs Variadic<HLO_TensorOrToken>);
 
+  let extraClassDeclaration = [{
+    // Method of OpAsmOpInterface used during custom printing to name the block
+    // arguments in the nested regions. We name both the condition and the body
+    // regions entry arguments the same way, with a `iterArg` prefix. Since the
+    // two regions are side-by-side they will have the same name, which allows
+    // us to print them once and share it for the two regions, and still be able
+    // to parse them back.
+    void getAsmBlockArgumentNames(Region &region, OpAsmSetValueNameFn setNameFn) {
+      for (BlockArgument arg : region.getArguments())
+        setNameFn(arg, "iterArg");
+    }
+  }];
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+  let hasCanonicalizer = 1;
+  let hasVerifier = 1;
+  let printer = [{ return ::mlir::mhlo::printWhileOp(*this, p); }];
+  let parser = [{ return ::mlir::mhlo::parseWhileOp(parser, result); }];
+
 }
 
 def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
@@ -919,6 +940,7 @@ def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
   );
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_AllReduceOp : HLO_Op<"all_reduce",
@@ -959,6 +981,7 @@ def HLO_ReduceScatterOp : HLO_Op<"reduce_scatter",
   let regions = (region SizedRegion<1>:$computation);
   let results = (outs HLO_Tensor);
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_AllToAllOp : HLO_Op<"all_to_all",
@@ -972,6 +995,8 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
     I64ElementsAttr:$replica_groups
   );
   let results = (outs HLO_Tensor);
+
+  let hasVerifier = 1;
 }
 
 def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
@@ -1001,12 +1026,14 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
 
   let hasFolder = 1;
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
 
-  // TODO(hinsu): Implement custom printer and parser.
+  let printer = [{ return ::mlir::mhlo::printReduceOp(*this, p); }];
+  let parser = [{ return ::mlir::mhlo::parseReduceOp(parser, result); }];
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -1030,6 +1057,7 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]> {
   let results = (outs HLO_TensorOrTokenOrTuple);
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "Value":$value, "int32_t":$index)>];
@@ -1049,6 +1077,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
     OpBuilder<(ins "ValueRange":$values)>];
 
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
@@ -1121,6 +1150,7 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
 
   let results = (outs HLO_Tensor:$result);
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
@@ -1140,6 +1170,7 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
   );
   let results = (outs HLO_Tensor:$result);
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 
@@ -1165,7 +1196,9 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]> {
     I64Attr:$feature_index
   );
 
-  let results = (outs HLO_Tuple);
+  let results = (outs Variadic<HLO_TensorOrToken>);
+
+  let hasCustomHLOConverter = 1;
 }
 
 def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
@@ -1206,7 +1239,9 @@ def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]> {
     I64Attr:$feature_index
   );
 
-  let results = (outs HLO_Tuple);
+  let results = (outs Variadic<HLO_TensorOrToken>);
+
+  let hasCustomHLOConverter = 1;
 }
 
 def HLO_BitcastConvertOp : HLO_ShapedInterfaceOp<"bitcast_convert",
@@ -1247,6 +1282,9 @@ def HLO_BroadcastOp : HLO_ShapedInterfaceOp<"broadcast",
   );
 
   let results = (outs HLO_Tensor);
+
+  let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
@@ -1276,6 +1314,8 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let results = (outs HLO_StaticShapeTensor);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
+  let hasVerifier = 1;
   // Only handles a static subset of the legacy format.
   let hasCustomHLOConverter = 1;
 }
@@ -1287,18 +1327,36 @@ def HLO_DynamicBroadcastInDimOp : HLO_ShapedInterfaceOp<
     This is a generalization of the BroadcastInDimOp which accepts its output
     dimensions as an argument. It should eventually supercede the statically
     shaped original, but is being phased as a separate op in order to support
-    compatibility with lowerings and translations that precede dynamic
-    shapes.
+    compatibility with lowerings and translations that precede dynamic shapes.
+
+    The op accepts optional attributes to express static knowledge about the
+    expanding behavior of dimensions. If not specified, all dimensions are
+    assumed to be possibly expanding. The sets of dimensions that are known to
+    be expanding and the set of dimensions that are known to be non-expanding
+    must be disjoint.
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_DimensionTensor:$output_dimensions,
-    BroadcastDimAttr:$broadcast_dimensions
+    BroadcastDimAttr:$broadcast_dimensions,
+    OptionalAttr<BroadcastDimAttr>:$known_expanding_dimensions,
+    OptionalAttr<BroadcastDimAttr>:$known_nonexpanding_dimensions
   );
 
   let results = (outs HLO_Tensor);
 
+  let builders = [
+    OpBuilder<(ins
+        "Type":$result_type, "Value":$operand, "Value":$output_dimensions,
+        "DenseIntElementsAttr":$broadcast_dimensions), [{
+      build($_builder, $_state, result_type, operand, output_dimensions,
+          broadcast_dimensions, /*known_expanding_dimensions=*/{},
+          /*known_nonexpanding_dimensions=*/{});
+    }]>
+  ];
+
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
   // Cannot be exported to legacy formats.
   let hasCustomHLOConverter = 1;
 }
@@ -1358,6 +1416,8 @@ def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [NoSideEffect,
     HLO_Tensor:$max
   );
   let results = (outs HLO_Tensor);
+
+  let hasVerifier = 1;
 }
 
 def HLO_ConcatenateOp : HLO_ShapedInterfaceOp<"concatenate",
@@ -1379,6 +1439,7 @@ def HLO_ConcatenateOp : HLO_ShapedInterfaceOp<"concatenate",
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
@@ -1408,6 +1469,7 @@ def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
     I64ElementsAttr:$source_target_pairs
   );
   let results = (outs HLO_Tensor);
+  let hasVerifier = 1;
 }
 
 def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]> {
@@ -1490,6 +1552,27 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     `call_target_name` should be short as it may be used in labels.
     `backend_config` can encode arbitrarily large amounts of information.
 
+    `has_side_effect` must be true if the custom call has side-effects.
+    `api_version` specifies the version of the API used by the custom call
+    function.
+
+    A custom call may apply functions within the scope of the parent module.
+    They can be referenced using `called_computations` attribute.
+
+    A custom call can also have layout constraints on operands and results which
+    can be specified as optional `operand_layouts` and `result_layouts`
+    attributes. The layout attribute is an array of rank-1 index tensors and the
+    i-th layout attribute specifies the layout for i-th operand/result.
+
+    The `operand_layouts` & `result_layouts` attributes can be specified under
+    the following constraints:
+    1) Either both `operand_layouts` and `result_layouts` are specified or none.
+    2) None of the operands are of tuple type.
+    3) None of the results are of tuple type except the common case of single
+       tuple result packing non-tuple values is allowed. In this case the i-th
+       `result_layouts` attribute specifies the layout of i-th element in the
+       result tuple.
+
     See https://www.tensorflow.org/xla/operation_semantics#customcall.
   }];
   let arguments = (ins
@@ -1501,10 +1584,14 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
     // the status-returning API.
     DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
                       "CustomCallApiVersion::API_VERSION_ORIGINAL">:
-                      $api_version
+                      $api_version,
+    DefaultValuedAttr<HLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
+    OptionalAttr<HLO_ArrayOfLayoutAttr>:$operand_layouts,
+    OptionalAttr<HLO_ArrayOfLayoutAttr>:$result_layouts
   );
   let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]> {
@@ -1524,6 +1611,7 @@ def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]> {
   // Dot op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]> {
@@ -1542,10 +1630,10 @@ def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]> {
   );
 
   let results = (outs HLO_Tensor);
-  let verifier = [{ return Verify(*this); }];
   // DotGeneral op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 // Define Base Einsum op within the HLO dialect as these are client ops and
@@ -1650,6 +1738,7 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]> {
   let results = (outs I32Tensor);
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_MapOp: HLO_Op<"map",
@@ -1676,6 +1765,7 @@ def HLO_MapOp: HLO_Op<"map",
   let results = (outs HLO_Tensor);
   let hasFolder = 1;
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_ReshapeOp: HLO_Op<"reshape",
@@ -1691,6 +1781,7 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
   let results = (outs HLO_StaticShapeTensor);
   let hasFolder = 1;
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 
   let hasCustomHLOConverter = 1;
 }
@@ -1713,6 +1804,7 @@ def HLO_DynamicReshapeOp: HLO_ShapedInterfaceOp<"dynamic_reshape", [NoSideEffect
   let hasCanonicalizer = 1;
   // Cannot be exported to legacy formats.
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
@@ -1763,6 +1855,7 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
@@ -1817,6 +1910,7 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]> {
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects,
@@ -1846,6 +1940,7 @@ def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects,
   let hasCustomHLOConverter = 1;
 
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_ReverseOp: HLO_Op<"reverse",
@@ -1894,6 +1989,7 @@ def HLO_PadOp: HLO_Op<"pad",
   let hasCustomHLOConverter = 1;
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_TraceOp: HLO_Op<"trace", []> {
@@ -1909,7 +2005,8 @@ def HLO_TraceOp: HLO_Op<"trace", []> {
 }
 
 def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+      [NoSideEffect, SameOperandsAndResultElementType,
+       InferTensorTypeWithReify]> {
   let summary = "Transpose operator";
   let description = [{
     Permutes the dimensions of `operand` according to the given `permutation`.
@@ -1924,7 +2021,15 @@ def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
   );
   let results = (outs HLO_Tensor);
 
+  let extraClassDeclaration = [{
+    // Method from  InferTypeOpInterface interface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
+
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
@@ -1958,6 +2063,8 @@ def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
     HLO_TransposeAttr:$transpose_a
   );
   let results = (outs HLO_FpOrComplexTensor);
+
+  let hasVerifier = 1;
 }
 
 def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
@@ -2012,7 +2119,7 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
   ];
 
   let hasCustomHLOConverter = 1;
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
   // TODO(hinsu): Implement custom printer and parser.
 
   let extraClassDeclaration = [{
@@ -2027,7 +2134,7 @@ def HLO_ReturnOp : HLO_Op<"return", [NoSideEffect, Terminator]> {
   }];
 
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$results
+    Variadic<HLO_TensorOrTokenOrTuple >:$results
   );
 
   // Disable conversion operator for return op as the op is not an actual XLA
@@ -2049,6 +2156,26 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 
   // TODO(hinsu): Canonicalize to lower this client side HLO op to server
   // side HLO ops.
+}
+
+def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
+      [NoSideEffect, HLO_PairwiseSameOperandAndResultType]> {
+  let summary = [{
+    The `hlo.optimization_barrier` op blocks optimizations.
+  }];
+  let description = [{
+    Blocks any optimization pass from moving computations across the barrier.
+
+    Ensures that all inputs are evaluated before any operators that depend on the barrier's outputs.
+    See
+    https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier
+  }];
+
+  let arguments = (ins Variadic<HLO_TensorOrToken>:$arg);
+
+  let results = (outs Variadic<HLO_TensorOrToken>);
+
+  let hasCustomHLOConverter = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2127,7 +2254,7 @@ def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]> {
     HLO_IntOrFpTensor:$initial_state
   );
 
-  let results = (outs HLO_TensorOrTuple:$result);
+  let results = (outs Variadic<HLO_TensorOrToken>);
 
   // TODO(jpienaar): This should not be needed.
   let hasCustomHLOConverter = 1;
@@ -2161,6 +2288,7 @@ def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]> {
   let results = (outs TensorOf<[BF16]>:$output);
 
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_FusionOp : HLO_Op<"fusion", []> {
@@ -2175,7 +2303,7 @@ def HLO_FusionOp : HLO_Op<"fusion", []> {
   let regions = (region SizedRegion<1>:$fused_computation);
 
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$operands,
+    Variadic<HLO_TensorOrToken>:$operands,
     OptionalAttr<HLO_FusionKindAttr>:$fusion_kind
   );
 
@@ -2244,6 +2372,7 @@ def HLO_RealDynamicSliceOp: HLO_ShapedInterfaceOp<
   let results = (outs HLO_Tensor:$result);
   let hasCanonicalizer = 1;
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
@@ -2272,6 +2401,7 @@ def HLO_DynamicPadOp: HLO_ShapedInterfaceOp<"dynamic_pad",
   }];
   let hasCanonicalizer = 1;
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather",
@@ -2300,7 +2430,7 @@ def HLO_DynamicGatherOp: HLO_Op<"dynamic_gather",
   }];
 }
 
-def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]>, BASE_HLO_ConvOp {
+def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]> {
   let summary = "Dynamic Convolution operator";
   let description = [{
     The dynamic shape version of ConvOp. Computes a convolution with dynamic padding.

@@ -133,7 +133,7 @@ struct AssertOpConverter : public OpConversionPattern<AssertOp> {
     if (!ctx) return failure();
     rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.getArg(),
                                             ErrorCode::INVALID_ARGUMENT,
-                                            adaptor.getMsg().getValue());
+                                            adaptor.getMsg());
     return success();
   }
 };
@@ -173,12 +173,12 @@ struct JITCompileFromStrOpConverter
 }  // namespace
 
 void PopulateEmbedTFFrameworkAssertPattern(RewritePatternSet *patterns) {
-  patterns->insert<AssertOpConverter>(patterns->getContext());
+  patterns->add<AssertOpConverter>(patterns->getContext());
 }
 
 void PopulateEmbedTFFrameworkPatterns(RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       AllocOpConverter,
       AssertOpConverter,
       DeallocOpConverter,

@@ -69,40 +69,62 @@ def TFGraphDialect : Dialect {
   }];
 
   let extraClassDeclaration = [{
-    Identifier getNameAttrIdentifier() { return *name_key_; }
-    static constexpr StringRef getNameAttrKey() { return "_mlir_name"; }
+    StringAttr getNameAttrIdentifier() const { return name_key_; }
+    static constexpr StringLiteral getNameAttrKey() { return "_mlir_name"; }
 
-    Identifier getDeviceAttrIdentifier() { return *device_key_; }
-    static constexpr StringRef getDeviceAttrKey() { return "_mlir_device"; }
+    StringAttr getDeviceAttrIdentifier() const { return device_key_; }
+    static constexpr StringLiteral getDeviceAttrKey() { return "_mlir_device"; }
 
-    Identifier getAssignedDeviceAttrIdentifier() {
-      return *assigned_device_key_;
+    StringAttr getAssignedDeviceAttrIdentifier() const {
+      return assigned_device_key_;
     }
-    static constexpr StringRef getAssignedDeviceAttrKey() {
+    static constexpr StringLiteral getAssignedDeviceAttrKey() {
       return "_mlir_assigned_device";
     }
 
+    StringAttr getTfgNameAttrIdentifier() const { return tfg_name_key_; }
+    static constexpr StringRef getTfgNameAttrKey() { return "tfg.name"; }
+
+    StringAttr getTfgTpuReplicateAttrIdentifier() const {
+      return tfg_tpu_replicate_key_;
+    }
+    static constexpr StringLiteral getTfgTpuReplicateAttrKey() {
+      return "tfg.tpu_replicate";
+    }
+
     // Cached accessor for the control type.
-    ControlType getControlType() { return control_ty_; }
+    ControlType getControlType() const { return control_ty_; }
+
+    // Print an operation that belongs to this dialect if unregistered.
+    void printCustomTfOp(Operation *op, OpAsmPrinter &printer) const;
 
     // Returns the hook to parse an operation belonging to this dialect, even
     // if unregistered.
     Optional<ParseOpHook> getParseOperationHook(StringRef opName) const
       override;
 
-    // Print an operation that belongs to this dialect if unregistered.
+    // Returns the took to print an operation belonging to this dialect, even
+    // if unregistered.
     llvm::unique_function<void(Operation *, OpAsmPrinter &)>
     getOperationPrinter(Operation *op) const override;
 
+    // Provides a hook for op interface.
+    void *getRegisteredInterfaceForOp(mlir::TypeID interface,
+                                      mlir::OperationName opName) override;
+
   private:
+    TFGraphOpAsmInterface *fallbackOpAsmInterface_ = nullptr;
     // Cached identifier for efficiency purpose.
-    llvm::Optional<Identifier> name_key_;
-    llvm::Optional<Identifier> device_key_;
-    llvm::Optional<Identifier> assigned_device_key_;
+    StringAttr name_key_;
+    StringAttr device_key_;
+    StringAttr assigned_device_key_;
+    StringAttr tfg_name_key_;
+    StringAttr tfg_tpu_replicate_key_;
     ControlType control_ty_;
   }];
 
   let cppNamespace = "::mlir::tfg";
+  let hasNonDefaultDestructor = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -112,7 +134,7 @@ def TFGraphDialect : Dialect {
 include "tensorflow/core/ir/types/types.td"
 
 // Base class for the operations in this dialect.
-class TFGraph_Op<string mnemonic, list<OpTrait> traits = []> :
+class TFGraph_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFGraphDialect, mnemonic, traits>;
 
 #endif // TFG_DIALECT

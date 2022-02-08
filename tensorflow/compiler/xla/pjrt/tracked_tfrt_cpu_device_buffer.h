@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_TRACKED_TFRT_CPU_DEVICE_BUFFER_H_
 
+#include <functional>
 #include <memory>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
@@ -48,12 +52,15 @@ class MaybeOwningCpuMemory {
   MaybeOwningCpuMemory& operator=(const MaybeOwningCpuMemory&) = delete;
 
   // Owning.
-  static std::shared_ptr<MaybeOwningCpuMemory> AllocateShared(size_t size) {
+  static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> AllocateShared(
+      size_t size) {
+    uint8_t* data = static_cast<uint8_t*>(tensorflow::port::AlignedMalloc(
+        size, cpu_function_runtime::MinAlign()));
+    if (!data) {
+      return ResourceExhausted("Out of memory allocating %d bytes.", size);
+    }
     return std::make_shared<MaybeOwningCpuMemory>(
-        OwnedDataPtr{static_cast<uint8_t*>(tensorflow::port::AlignedMalloc(
-                         size, cpu_function_runtime::kMinAlign)),
-                     tensorflow::port::AlignedFree},
-        size);
+        OwnedDataPtr{data, tensorflow::port::AlignedFree}, size);
   }
 
   void* data() const { return buf_; }
@@ -125,6 +132,7 @@ class TrackedTfrtCpuDeviceBuffer {
 
  private:
   bool is_tuple_;
+  absl::Mutex mu_;
   // If tuple, tuple index table is created and stored.
   std::shared_ptr<MaybeOwningCpuMemory> tuple_index_table_;
   // If non-tuple, `buffers_` contains 1 buffer; otherwise all leaf buffers.
@@ -133,7 +141,8 @@ class TrackedTfrtCpuDeviceBuffer {
   // buffers.
   absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events_;
   // Usage events are associated with CPU operations that read from the buffers.
-  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> usage_events_;
+  absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> usage_events_
+      TF_GUARDED_BY(mu_);
   // A callback to call when the TrackedTfrtCpuDeviceBuffer is about to be
   // destroyed.
   std::function<void()> on_delete_callback_;

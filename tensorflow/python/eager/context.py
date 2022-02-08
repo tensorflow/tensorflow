@@ -78,8 +78,28 @@ is_tfrt_enabled = tfrt_utils.enabled
 
 # This flag and the associated environment var are transient and will eventually
 # be removed, once this experiment is enabled by default.
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv(
-    "TF_RUN_EAGER_OP_AS_FUNCTION") == "1"
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION",
+                                              "1") == "1"
+
+# This flag and associated environment var are transient and will eventually be
+# removed.
+# TODO(b/214312827): remove this once the python flag apis are finalized.
+_GRAPH_BUILDING_OPTIMIZATION = os.getenv(
+    "TF_FLAG_GRAPH_BUILDING_OPTIMIZATION") == "1"
+
+
+def enable_graph_building_optimization():
+  global _GRAPH_BUILDING_OPTIMIZATION
+  _GRAPH_BUILDING_OPTIMIZATION = True
+
+
+def graph_building_optimization_enabled():
+  return _GRAPH_BUILDING_OPTIMIZATION
+
+
+def disable_graph_building_optimization():
+  global _GRAPH_BUILDING_OPTIMIZATION
+  _GRAPH_BUILDING_OPTIMIZATION = False
 
 
 # This method should only be called after the context has beein initialized.
@@ -476,10 +496,13 @@ class Context(object):
     self._inter_op_parallelism_threads = None
     self._soft_device_placement = None
     self._log_device_placement = None
+    self._operation_timeout_in_ms = None
     self._enable_mlir_graph_optimization = None
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
+
+    self._is_global_context = False
 
   # pylint: enable=redefined-outer-name
 
@@ -588,6 +611,16 @@ class Context(object):
       self._context_handle = context_handle
       self._initialize_logical_devices()
       self._initialized = True
+
+      if self._is_global_context:
+        pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
+
+  def mark_as_global_context(self):
+    # If the context was already initialized, publish it. Otherwise wait with
+    # publication until it's initialized.
+    if self._initialized:
+      pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
+    self._is_global_context = True
 
   def _clear_caches(self):
     self.ones_rank_cache().flush()
@@ -1060,6 +1093,9 @@ class Context(object):
 
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
+
+    if self._operation_timeout_in_ms is not None:
+      config.operation_timeout_in_ms = self._operation_timeout_in_ms
 
     is_mlir_bridge_enabled = pywrap_tfe.TF_IsMlirBridgeEnabled()
     config.experimental.mlir_bridge_rollout = is_mlir_bridge_enabled
@@ -1868,6 +1904,21 @@ class Context(object):
         raise ValueError("use_tfrt should be set before being initialized.")
       self._use_tfrt_distributed_runtime = enable
 
+  @property
+  def operation_timeout_in_ms(self):
+    return self.config.operation_timeout_in_ms
+
+  @operation_timeout_in_ms.setter
+  def operation_timeout_in_ms(self, timeout_in_ms):
+    if self._operation_timeout_in_ms == timeout_in_ms:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Operation timeout cannot be modified after initialization.")
+
+    self._operation_timeout_in_ms = timeout_in_ms
+
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
 
@@ -1977,7 +2028,7 @@ class _EagerDeviceContext(object):
     ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
 
 
-# Do not set directly. Use _set_context.
+# Do not change directly.
 _context = None
 _context_lock = threading.Lock()
 
@@ -1985,6 +2036,7 @@ _context_lock = threading.Lock()
 def _set_context_locked(ctx):
   global _context
   pywrap_tfe.TFE_Py_SetEagerContext(ctx)
+  ctx.mark_as_global_context()
   _context = ctx
 
 
@@ -2020,12 +2072,12 @@ def _reset_context():
   _device_parsing_cache = {}
 
 
-def _reset_mlir_flags():
-  """Clears and re-initializes the flags used by MLIR.
+def _reset_jit_compiler_flags():
+  """Clears and re-initializes the TF JIT compiler flags.
 
   Should only be used for testing.
   """
-  pywrap_tfe.TF_ResetMlirFlags()
+  pywrap_tfe.TF_ResetJitCompilerFlags()
 
 
 def context():

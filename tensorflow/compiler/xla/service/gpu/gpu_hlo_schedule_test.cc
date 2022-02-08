@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
 #include <algorithm>
-#include <unordered_set>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -53,7 +53,7 @@ class GpuHloScheduleTest : public HloTestBase {
   }
 
   HloVec RemoveHlo(const HloVec& input,
-                   const std::unordered_set<const HloInstruction*>& remove) {
+                   const absl::flat_hash_set<const HloInstruction*>& remove) {
     HloVec result(input);
     result.erase(std::remove_if(result.begin(), result.end(),
                                 [&remove](const HloInstruction* x) {

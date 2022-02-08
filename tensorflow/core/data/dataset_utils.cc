@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_utils.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <queue>
@@ -448,7 +449,6 @@ absl::flat_hash_set<string> GetExperiments() {
 absl::flat_hash_set<string> GetExperiments(
     const string& job_name, std::function<uint64(const string&)> hash_func) {
   absl::flat_hash_set<string> experiments;
-
   if (job_name.empty()) {
     return experiments;
   }
@@ -866,6 +866,13 @@ bool ShouldApplyOptimizations(
           !optimizations_enabled.empty() || !optimizations_default.empty());
 }
 
+int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
+  if (GetExperiments().contains("initial_parallelism_value")) {
+    return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
+  }
+  return ctx->runner_threadpool_size();
+}
+
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
                                          int64_t rollout_pct) {
@@ -881,10 +888,10 @@ absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
 
 namespace {
 
-REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
-REGISTER_DATASET_EXPERIMENT("max_parallelism_v2", 50);
+REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations", 0);
+REGISTER_DATASET_EXPERIMENT("initial_parallelism_value", 50);
+REGISTER_DATASET_EXPERIMENT("inject_prefetch", 100);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", 5);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

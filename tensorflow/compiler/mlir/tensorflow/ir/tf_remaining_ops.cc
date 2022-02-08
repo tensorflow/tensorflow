@@ -45,7 +45,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -73,7 +72,6 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 namespace {
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_helpers.inc"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
 
@@ -84,13 +82,14 @@ namespace {
 // This verifies that `_XlaHostComputeMlirOp` has a well-formed
 // `host_mlir_module` attribute.
 // For other attributes, there is no additional verification beyond the default.
-static LogicalResult Verify(_XlaHostComputeMlirOp op) {
+LogicalResult _XlaHostComputeMlirOp::verify() {
+  _XlaHostComputeMlirOp op = *this;
   // Extract the module and function.
   StringRef host_module = op.host_mlir_module();
 
   if (host_module.empty()) return success();
 
-  mlir::OwningModuleRef module_for_func;
+  mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
   tensorflow::Status status = tensorflow::DeserializeMlirModule(
       host_module.str(), op->getContext(), &module_for_func);
   if (!status.ok()) {
@@ -121,12 +120,29 @@ static LogicalResult Verify(_XlaHostComputeMlirOp op) {
   return success();
 }
 
-FuncOp _XlaHostComputeMlirOp::GetHostFunc(mlir::OwningModuleRef* mlir_module) {
+FuncOp _XlaHostComputeMlirOp::GetHostFunc(
+    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   if (!tensorflow::DeserializeMlirModule(host_mlir_module().str(),
                                          this->getContext(), mlir_module)
            .ok())
     return nullptr;
   return (*mlir_module)->lookupSymbol<FuncOp>("host_func");
+}
+
+//===----------------------------------------------------------------------===//
+// XLA Send/Recv ops
+//===----------------------------------------------------------------------===//
+
+// For XLA Send/Recv ops the key corresponds to the resource instance.
+
+std::string _XlaRecvAtHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaRecvAtHostV2Op::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostV2Op::GetResourceInstanceStr() {
+  return key().str();
 }
 
 }  // namespace TF

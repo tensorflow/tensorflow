@@ -77,7 +77,7 @@ class LegalizeVariables
       if (!legalize_tfl_variables_attr.cast<BoolAttr>().getValue()) return;
     }
 
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     populateWithGenerated(patterns);
     (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
   }

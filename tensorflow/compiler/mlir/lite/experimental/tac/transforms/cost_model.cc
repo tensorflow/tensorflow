@@ -26,6 +26,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -60,7 +62,7 @@ int64_t GetTransferredTensorBytes(CallOp from_graph, CallOp to_graph) {
       if (IsQUI8Type(input_type) || IsQI8Type(input_type)) {
         total_size_transferred += input_type.getNumElements() * 8;
       } else {
-        total_size_transferred += input_type.getSizeInBits();
+        total_size_transferred += input_type.cast<ShapedType>().getSizeInBits();
       }
     }
   }
@@ -81,20 +83,22 @@ int64_t GetTransferredElementCount(CallOp from_graph, CallOp to_graph) {
   return total_element_count;
 }
 
-struct GetOpCostPass : mlir::PassWrapper<GetOpCostPass, FunctionPass> {
+struct GetOpCostPass : mlir::PassWrapper<GetOpCostPass, OperationPass<FuncOp>> {
   llvm::StringRef getArgument() const final { return "tfl-get-op-cost"; }
   llvm::StringRef getDescription() const final {
     return "Get cost for every op";
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void GetOpCostPass::runOnFunction() {
-  auto func = getFunction();
+void GetOpCostPass::runOnOperation() {
+  auto func = getOperation();
   OpBuilder builder(func);
   func.walk([&](Operation* op) {
-    if (IsTFLDialectNonConstOp(op)) {
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op)) {
       auto hardware = GetTargetAnnotation(op);
+      if (!hardware) return;
       float cost = GetCostForOp(op, hardware.getValue());
       UpdateCost(op, cost, &builder);
     }

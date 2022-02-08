@@ -62,7 +62,7 @@ void CreateRegionWithCall(FuncOp func, Region& region, Location loc) {
   auto block = builder.createBlock(&region);
   SmallVector<Value, 4> new_operands;
   for (Type t : func.getType().getInputs())
-    new_operands.push_back(block->addArgument(t));
+    new_operands.push_back(block->addArgument(t, loc));
   auto call = builder.create<CallOp>(loc, func, new_operands);
   builder.create<YieldOp>(loc, call.getResults());
   // Mark old function as private so that it can be DCE'd if not called.

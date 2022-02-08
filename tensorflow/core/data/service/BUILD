@@ -33,6 +33,7 @@ tf_proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
     cc_api_version = 2,
+    create_java_proto = False,
     protodeps = tf_additional_all_protos(),
 )
 
@@ -41,6 +42,7 @@ tf_proto_library(
     srcs = ["dispatcher.proto"],
     has_services = 1,
     cc_api_version = 2,
+    create_java_proto = False,
     protodeps = tf_additional_all_protos() + [
         ":common_proto",
     ],
@@ -51,6 +53,7 @@ tf_proto_library(
     srcs = ["worker.proto"],
     has_services = 1,
     cc_api_version = 2,
+    create_java_proto = False,
     protodeps = tf_additional_all_protos() + [
         ":common_proto",
         "//tensorflow/core/data:dataset_proto",
@@ -112,7 +115,6 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/ops",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tstring",
@@ -296,6 +298,7 @@ tf_cc_test(
         ":test_cluster",
         ":test_util",
         "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -503,6 +506,7 @@ tf_proto_library(
     name = "journal_proto",
     srcs = ["journal.proto"],
     cc_api_version = 2,
+    create_java_proto = False,
     protodeps = [
         ":common_proto",
         "//tensorflow/core:protos_all",
@@ -666,6 +670,7 @@ cc_library(
         ":common_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:function_testlib",
@@ -675,6 +680,7 @@ cc_library(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tstring",
@@ -884,6 +890,12 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:standalone",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:thread_annotations",
     ] + tf_grpc_cc_dependencies(),
 )
 

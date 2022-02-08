@@ -10,6 +10,6 @@ def repo():
         name = "com_google_benchmark",
         sha256 = BM_SHA256,
         strip_prefix = "benchmark-{commit}".format(commit = BM_COMMIT),
-        build_file = "//third_party/benchmark:BUILD.bazel",
+        build_file = "//third_party/benchmark:benchmark.BUILD",
         urls = tf_mirror_urls("https://github.com/google/benchmark/archive/{commit}.tar.gz".format(commit = BM_COMMIT)),
     )

@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -194,7 +196,7 @@ class TRTEngineOp : public AsyncOpKernel {
   StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> BuildEngine(
       const std::vector<TensorShape>& input_concrete_shapes, int batch_size,
       bool use_calibration, TRTInt8Calibrator* calibrator,
-      TRTEngineCacheResource* cache_resource);
+      TRTEngineCacheResource* cache_resource, OpKernelContext* ctx);
 
   // Verify that the input shapes are consistent and can be handled by this op.
   Status VerifyInputShapes(const std::vector<TensorShape>& shapes);
@@ -255,12 +257,17 @@ class TRTEngineOp : public AsyncOpKernel {
   // user-provided quantization ranges.
   bool use_calibration_;
 
+  tensorflow::grappler::Cluster* cluster_;
+
   // Array of all input shapes, collected from the input_shapes attribute when
   // constructing the TRTEngineOp. The input_shapes attribute is set during
   // graph conversion time. This data is used to retrieve which input dimensions
   // could be unknown. During inference time this information is not available
   // otherwise (all shapes are known (concrete) shapes when we run inference).
   std::vector<PartialTensorShape> input_partial_shapes_;
+
+  // Whether to use explicit precision (QDQ) mode.
+  bool use_explicit_precision_;
 };
 
 #define TYPECASE(dt, X, Y)                                    \
@@ -420,6 +427,17 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     allow_soft_placement_ = true;
   } else {
     OP_REQUIRES_OK(context, status);
+  }
+
+  status = context->GetAttr("use_explicit_precision", &use_explicit_precision_);
+  if (!status.ok()) {
+    use_explicit_precision_ = false;
+  }
+
+  if (use_explicit_precision_) {
+    LOG(INFO) << "TRTEngineOp using explicit QDQ";
+  } else {
+    LOG(INFO) << "TRTEngineOp not using explicit QDQ";
   }
 
   native_execution_func_handle_ = kInvalidHandle;
@@ -996,7 +1014,9 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
 StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
     const std::vector<TensorShape>& input_concrete_shapes, int batch_size,
     bool use_calibration, TRTInt8Calibrator* calibrator,
-    TRTEngineCacheResource* cache_resource) {
+    TRTEngineCacheResource* cache_resource, OpKernelContext* ctx) {
+  TRT_ENSURE(cache_resource);
+  TRT_ENSURE(ctx);
   // Use concrete shapes for implicit batch mode and partial shapes for
   // explicit batch mode.
   bool use_concrete_shapes =
@@ -1010,12 +1030,19 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
   VLOG(1) << "Building a new TensorRT engine for " << name()
           << " with input shapes: " << DebugString(conversion_input_shapes);
 
+  std::unordered_map<string, tensorflow::DeviceProperties> device_map;
+  DeviceNameUtils::ParsedName full_parsed_name;
+  DeviceNameUtils::ParseFullName(ctx->device()->name(), &full_parsed_name);
+  device_map.emplace(ctx->device()->name(),
+                     grappler::GetDeviceInfo(full_parsed_name));
+  tensorflow::grappler::VirtualCluster cluster(device_map);
+
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   auto status = convert::ConvertGraphDefToEngine(
       segment_graph_def_, precision_mode_, batch_size, workspace_size_,
       conversion_input_shapes, &logger, cache_resource->allocator_.get(),
       calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
-      &cache_resource->profiles_, name());
+      &cache_resource->profiles_, name(), use_explicit_precision_, &cluster);
   if (!status.ok()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
         << "Engine creation for " << name() << " failed. "
@@ -1117,7 +1144,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       }
       auto result = BuildEngine(input_concrete_shapes, batch_size,
                                 /*use_calibration=*/false,
-                                /*calibrator=*/nullptr, cache_res);
+                                /*calibrator=*/nullptr, cache_res, ctx);
       if (!result.ok()) {
         return std::pair<EngineContext*, int>(&empty_context, 0);
       }
@@ -1183,8 +1210,9 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
 
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
-    auto result = BuildEngine(input_concrete_shapes, batch_size,
-                              use_calibration_, calibrator_.get(), cache_res);
+    auto result =
+        BuildEngine(input_concrete_shapes, batch_size, use_calibration_,
+                    calibrator_.get(), cache_res, ctx);
     if (!result.ok()) {
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
@@ -1248,8 +1276,9 @@ Status TRTEngineOp::AllocateCalibrationResources(
   }
 
   cache_res->Ref();
+  string platform_device_name = ctx->device()->name();
   cres->thr_.reset(new std::thread([this, cres, shapes, platform_device_id,
-                                    cache_res]() {
+                                    platform_device_name, cache_res]() {
     core::ScopedUnref sc(cache_res);
 
     VLOG(1) << "Starting calibration thread on device " << platform_device_id
@@ -1262,6 +1291,14 @@ Status TRTEngineOp::AllocateCalibrationResources(
     }
     std::vector<PartialTensorShape> partial_shapes(shapes.begin(),
                                                    shapes.end());
+
+    std::unordered_map<string, tensorflow::DeviceProperties> device_map;
+    DeviceNameUtils::ParsedName full_parsed_name;
+    DeviceNameUtils::ParseFullName(platform_device_name, &full_parsed_name);
+    device_map.emplace(platform_device_name,
+                       grappler::GetDeviceInfo(full_parsed_name));
+    tensorflow::grappler::VirtualCluster cluster(device_map);
+
     // ConvertGraphDefToEngine() will try to build the engine. This thread
     // will loop inside buildCudaEngine() consuming the calibration data
     // that is set by the TF op, and drive the builder until calibrator
@@ -1276,7 +1313,9 @@ Status TRTEngineOp::AllocateCalibrationResources(
         partial_shapes, &cache_res->GetLogger(), cache_res->allocator_.get(),
         cres->calibrator_.get(), &cres->engine_, /*use_calibration=*/true,
         this->use_implicit_batch_, /*convert_successfully=*/nullptr,
-        /*profiles=*/nullptr, name());
+        /*profiles=*/nullptr, name(),
+        /*use_explicit_precision=*/use_explicit_precision_,
+        /*cluster=*/&cluster);
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;
       cres->calibrator_->setDone();  // Ignore further pushes

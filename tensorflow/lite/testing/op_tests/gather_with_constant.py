@@ -22,7 +22,7 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
 @register_make_test_function()
 def make_gather_with_constant_tests(options):
-  """Make a set of test which feed a constant to gather toco."""
+  """Make a set of test which feed a constant to gather."""
 
   test_parameters = [{
       "input_shape": [[3]],

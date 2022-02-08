@@ -269,6 +269,12 @@ Status PopulateQuantizationSpecs(
       quant_specs->inference_type = tensorflow::DT_QINT8;
       quant_specs->inference_input_type = tensorflow::DT_QINT8;
     }
+  } else {
+    // These flags are incompatible with post_training_quantize() as only
+    // QAT models can provide required ranges.
+    quant_specs->disable_infer_tensor_range =
+        toco_flags.disable_infer_tensor_range();
+    quant_specs->use_fake_quant_num_bits = toco_flags.use_fake_quant_num_bits();
   }
 
   // Add information about half-precision support if fp16 quantization applies.
@@ -320,7 +326,8 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
 
 Status ConvertMLIRToTFLiteFlatBuffer(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    mlir::OwningModuleRef module, const mlir::TFL::PassConfig& pass_config,
+    mlir::OwningOpRef<mlir::ModuleOp> module,
+    const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
     llvm::Optional<tensorflow::Session*> session) {
   if (toco_flags.has_dump_graphviz_dir()) {

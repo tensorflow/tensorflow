@@ -35,14 +35,13 @@ namespace convert {
 
 struct ConversionParams {
   const grappler::GrapplerItem* grappler_item = nullptr;
-  const std::vector<string>* output_names = nullptr;
+  const std::vector<string>* input_output_names = nullptr;
   string trt_logger_name;
   size_t max_batch_size = 1;
   size_t max_workspace_size_bytes = 1 << 30;
   GraphDef* output_graph_def = nullptr;
   TrtPrecisionMode precision_mode = TrtPrecisionMode::FP32;
   int minimum_segment_size = 3;
-  const grappler::Cluster* cluster = nullptr;
   // Whether to create engine on conversion or execution time
   bool is_dyn_op = false;
   // maximum number of cached engines
@@ -51,14 +50,17 @@ struct ConversionParams {
   bool use_implicit_batch = true;
   ProfileStrategy profile_strategy = ProfileStrategy::kRange;
   bool allow_build_at_runtime = true;
+  bool use_explicit_precision = false;
 };
 
 // Method to call from optimization pass
-Status ConvertAfterShapes(const ConversionParams& params);
+Status ConvertAfterShapes(const ConversionParams& params,
+                          grappler::Cluster* cluster);
 
 // Helper method for the conversion, expose for testing.
-std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
-                                                 const EngineInfo& engine);
+std::pair<int, Allocator*> GetDeviceAndAllocator(
+    const ConversionParams& params, const EngineInfo& engine,
+    const grappler::Cluster* cluster = nullptr);
 
 // Helper method that registers `segment_graph` as a function to the function
 // library in `graph`.
@@ -68,7 +70,8 @@ Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
 // Creates and serializes an ICudaEngine. Used only in is_dynamic_op=false,
 // a.k.a. static engine mode.
 Status CreateStaticEngine(const ConversionParams& params,
-                          const EngineInfo& info, int max_batch_size,
+                          grappler::Cluster* cluster, const EngineInfo& info,
+                          int max_batch_size,
                           const std::vector<PartialTensorShape>& input_shapes,
                           TrtShapeOptimizationProfile* profile,
                           string* segment_string);

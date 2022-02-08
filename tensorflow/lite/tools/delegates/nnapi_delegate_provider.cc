@@ -35,7 +35,8 @@ class NnApiSupportLibraryDelegate : public StatefulNnApiDelegate {
   // The constructed object takes ownership of the nnapi_sl.
   NnApiSupportLibraryDelegate(const NnApiSupportLibrary* nnapi_sl,
                               Options options)
-      : StatefulNnApiDelegate(nnapi_sl, options), nnapi_sl_(nnapi_sl) {}
+      : StatefulNnApiDelegate(nnapi_sl->getFL5(), options),
+        nnapi_sl_(nnapi_sl) {}
 
  private:
   std::unique_ptr<const NnApiSupportLibrary> nnapi_sl_;
@@ -148,7 +149,7 @@ void NnapiDelegateProvider::LogParams(const ToolParams& params,
 
 TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
-  TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
+  TfLiteDelegatePtr null_delegate = CreateNullDelegate();
   if (params.Get<bool>("use_nnapi")) {
     StatefulNnApiDelegate::Options options;
     std::string accelerator_name =
@@ -240,7 +241,7 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
       if (!nnapi_impl->nnapi_exists) {
         TFLITE_LOG(WARN)
             << "NNAPI acceleration is unsupported on this platform.";
-        return delegate;
+        return null_delegate;
       }
       return TfLiteDelegatePtr(
           new StatefulNnApiDelegate(nnapi_impl, options),
@@ -254,7 +255,7 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
       if (!nnapi_impl) {
         TFLITE_LOG(WARN) << "Couldn't load NNAPI support library from path: "
                          << sl_path;
-        return delegate;
+        return null_delegate;
       }
       return TfLiteDelegatePtr(
           new NnApiSupportLibraryDelegate(nnapi_impl.release(), options),
@@ -272,7 +273,7 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
                      << params.Get<std::string>("nnapi_execution_preference")
                      << ") to be used.";
   }
-  return delegate;
+  return null_delegate;
 }
 
 std::pair<TfLiteDelegatePtr, int>

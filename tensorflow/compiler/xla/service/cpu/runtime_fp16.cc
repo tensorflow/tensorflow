@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
+
 #include <cstring>
 
-#include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
-#include "tensorflow/core/platform/macros.h"
+#include "absl/base/attributes.h"
 
 namespace {
-using tensorflow::uint16;
-using tensorflow::uint32;
 
 // Helper class that lets us access the underlying bit representation
 // of a float without breaking C++ strict aliasing.
 class AliasedFloatInt {
  public:
-  static_assert(sizeof(float) == sizeof(uint32), "");
+  static_assert(sizeof(float) == sizeof(uint32_t), "");
 
   static AliasedFloatInt FromFloat(float f) {
     AliasedFloatInt value;
@@ -34,7 +33,7 @@ class AliasedFloatInt {
     return value;
   }
 
-  static AliasedFloatInt FromUInt(uint32 u) {
+  static AliasedFloatInt FromUInt(uint32_t u) {
     AliasedFloatInt value;
     value.set_uint(u);
     return value;
@@ -47,11 +46,11 @@ class AliasedFloatInt {
     return f;
   }
 
-  void set_uint(uint32 u) { value_ = u; }
-  uint32 as_uint() const { return value_; }
+  void set_uint(uint32_t u) { value_ = u; }
+  uint32_t as_uint() const { return value_; }
 
  private:
-  uint32 value_;
+  uint32_t value_;
 };
 }  // namespace
 
@@ -61,7 +60,7 @@ class AliasedFloatInt {
 // that the compiler-rt definitions "win", but that isn't essential.
 
 // Algorithm copied from Eigen.
-uint16 TF_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
+uint16_t ABSL_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
   AliasedFloatInt f = AliasedFloatInt::FromFloat(float_value);
 
   const AliasedFloatInt f32infty = AliasedFloatInt::FromUInt(255 << 23);
@@ -69,7 +68,7 @@ uint16 TF_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
   const AliasedFloatInt denorm_magic =
       AliasedFloatInt::FromUInt(((127 - 15) + (23 - 10) + 1) << 23);
   unsigned int sign_mask = 0x80000000u;
-  uint32 o = static_cast<uint16>(0x0u);
+  uint32_t o = static_cast<uint16_t>(0x0u);
 
   unsigned int sign = f.as_uint() & sign_mask;
   f.set_uint(f.as_uint() ^ sign);
@@ -91,7 +90,7 @@ uint16 TF_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
       f.set_float(f.as_float() + denorm_magic.as_float());
 
       // and one integer subtract of the bias later, we have our final float!
-      o = static_cast<uint16>(f.as_uint() - denorm_magic.as_uint());
+      o = static_cast<uint16_t>(f.as_uint() - denorm_magic.as_uint());
     } else {
       unsigned int mant_odd =
           (f.as_uint() >> 13) & 1;  // resulting mantissa is odd
@@ -102,16 +101,16 @@ uint16 TF_ATTRIBUTE_WEAK __gnu_f2h_ieee(float float_value) {
       // rounding bias part 2
       f.set_uint(f.as_uint() + mant_odd);
       // take the bits!
-      o = static_cast<uint16>(f.as_uint() >> 13);
+      o = static_cast<uint16_t>(f.as_uint() >> 13);
     }
   }
 
-  o |= static_cast<uint16>(sign >> 16);
+  o |= static_cast<uint16_t>(sign >> 16);
   return o;
 }
 
 // Algorithm copied from Eigen.
-float TF_ATTRIBUTE_WEAK __gnu_h2f_ieee(uint16 h) {
+float ABSL_ATTRIBUTE_WEAK __gnu_h2f_ieee(uint16_t h) {
   const AliasedFloatInt magic = AliasedFloatInt::FromUInt(113 << 23);
   const unsigned int shifted_exp = 0x7c00 << 13;  // exponent mask after shift
   AliasedFloatInt o;
@@ -132,7 +131,7 @@ float TF_ATTRIBUTE_WEAK __gnu_h2f_ieee(uint16 h) {
   return o.as_float();
 }
 
-uint16 TF_ATTRIBUTE_WEAK __truncdfhf2(double d) {
+uint16_t ABSL_ATTRIBUTE_WEAK __truncdfhf2(double d) {
   // This does a double rounding step, but it's precise enough for our use
   // cases.
   return __gnu_f2h_ieee(static_cast<float>(d));

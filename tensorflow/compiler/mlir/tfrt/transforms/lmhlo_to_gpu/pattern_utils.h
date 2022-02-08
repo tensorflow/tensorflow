@@ -17,6 +17,7 @@
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Types.h"
+#include "tensorflow/stream_executor/dnn.h"
 #include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/cudnn_wrapper.h"  // from @tf_runtime
 
@@ -37,12 +38,22 @@ cublasComputeType_t MlirTypeToCublasComputeType(mlir::Type type);
 // tfrt::gpu::wrapper::DnnDataType (also rename to MlirTypeToDnnDataType).
 // Converts from mlir::Type to the corresponding cudnnDataType_t.
 cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type);
+cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type,
+                                        se::dnn::DataLayout data_layout);
+cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type,
+                                        se::dnn::FilterLayout filter_layout);
 
-// Creates a TFRT constant op for the specified value of specified type.
+// Creates a TFRT constant op for the specified numerical value of specified
+// type.
 mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
                                       mlir::Location loc, mlir::Type type,
                                       llvm::APFloat value_real,
                                       llvm::APFloat value_imaginary);
+
+// Creates a TFRT constant op for the specified 32-bit pattern value of
+// specified type.
+mlir::Value MakeBitPatternConstant(mlir::OpBuilder& builder, mlir::Location loc,
+                                   mlir::Type type, uint32_t bit_pattern);
 
 }  // namespace tensorflow
 

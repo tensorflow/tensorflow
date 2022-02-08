@@ -3,7 +3,7 @@
 Image classification is a common use of machine learning to identify what an
 image represents. For example, we might want to know what type of animal appears
 in a given picture. The task of predicting what an image represents is called
-_image classification_. An image classifier is trained to recognize various
+*image classification*. An image classifier is trained to recognize various
 classes of images. For example, a model might be trained to recognize photos
 representing three different types of animals: rabbits, hamsters, and dogs. See
 the
@@ -74,8 +74,10 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Vision Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.2.0'
+    // Import the Task Vision Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.3.0'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
 }
 ```
 
@@ -83,8 +85,14 @@ dependencies {
 
 ```java
 // Initialization
-ImageClassifierOptions options = ImageClassifierOptions.builder().setMaxResults(1).build();
-ImageClassifier imageClassifier = ImageClassifier.createFromFileAndOptions(context, modelFile, options);
+ImageClassifierOptions options =
+    ImageClassifierOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setMaxResults(1)
+        .build();
+ImageClassifier imageClassifier =
+    ImageClassifier.createFromFileAndOptions(
+        context, modelFile, options);
 
 // Run inference
 List<Classifications> results = imageClassifier.classify(image);

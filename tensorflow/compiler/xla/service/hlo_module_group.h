@@ -60,9 +60,9 @@ class HloModuleGroup {
   // method runs, the module group will be empty.
   std::vector<std::unique_ptr<HloModule>> ConsumeModules();
 
-  string name() const { return name_; }
+  std::string name() const { return name_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Deallocate removed instructions in each module.
   void Cleanup() {
@@ -71,7 +71,13 @@ class HloModuleGroup {
     }
   }
 
-  uint64 Hash() const;
+  template <typename H>
+  friend H AbslHashValue(H h, const HloModuleGroup& group) {
+    for (auto& module : group.modules_) {
+      h = H::combine(std::move(h), *module);
+    }
+    return H::combine(std::move(h), group.modules_.size());
+  }
 
   // Serialize the module group to/from a proto.
   HloModuleGroupProto ToProto() const;
@@ -85,8 +91,13 @@ class HloModuleGroup {
   // Returns true if there are no modules in the module group.
   bool empty() const { return modules_.empty(); }
 
+  absl::string_view cache_key() const { return cache_key_; }
+  void set_cache_key(absl::string_view cache_key) {
+    cache_key_ = std::string(cache_key);
+  }
+
  private:
-  string name_;
+  std::string name_;
 
   // Vector of modules as std::unique_ptrs.
   std::vector<std::unique_ptr<HloModule>> modules_;
@@ -94,6 +105,8 @@ class HloModuleGroup {
   // Vector of modules as normal pointers. This vector is kept in sync with
   // modules_ as modules are added to the group with push_back.
   std::vector<HloModule*> module_ptrs_;
+
+  std::string cache_key_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloModuleGroup& group);

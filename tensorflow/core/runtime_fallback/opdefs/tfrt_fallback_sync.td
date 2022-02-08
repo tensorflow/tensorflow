@@ -31,9 +31,11 @@ def FallbackSync_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tfrt::fallback_sync";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
-class FallbackSync_Op<string mnemonic, list<OpTrait> traits = []> :
+class FallbackSync_Op<string mnemonic, list<Trait> traits = []> :
     Op<FallbackSync_Dialect, mnemonic, !listconcat(traits, [IsolatedFromAbove])> {
   // Each registered op in the fallback namespace needs to provide all of a
   // verifier, a printer and a parser.

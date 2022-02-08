@@ -26,13 +26,13 @@ namespace TF {
 template <typename Predicate>
 void CopyAttributes(Operation *from, Operation *to, Predicate P) {
   for (const NamedAttribute &attr : from->getAttrs())
-    if (P(attr)) to->setAttr(attr.first, attr.second);
+    if (P(attr)) to->setAttr(attr.getName(), attr.getValue());
 }
 
 // Copies attributes whose name begins with an _ from `from` to `to`.
 inline void CopyUnderscoredAttributes(Operation *from, Operation *to) {
   CopyAttributes(from, to, [](const NamedAttribute &attr) {
-    return attr.first.strref().front() == '_';
+    return attr.getName().strref().front() == '_';
   });
 }
 
@@ -41,9 +41,9 @@ inline void CopyUnderscoredAttributes(Operation *from, Operation *to) {
 // TODO(b/158769932): This should be a general feature instead post some policy
 // discussion.
 inline void CopyDeviceAndUnderscoredAttributes(Operation *from, Operation *to) {
-  auto device = mlir::Identifier::get("device", from->getContext());
+  auto device = mlir::StringAttr::get(from->getContext(), "device");
   CopyAttributes(from, to, [&device](const NamedAttribute &attr) {
-    return attr.first.strref().front() == '_' || attr.first == device;
+    return attr.getName().strref().front() == '_' || attr.getName() == device;
   });
 }
 

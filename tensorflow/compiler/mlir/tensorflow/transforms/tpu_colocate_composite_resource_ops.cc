@@ -36,7 +36,7 @@ namespace {
 struct TPUColocateCompositeResourceOps
     : public TF::TPUColocateCompositeResourceOpsPassBase<
           TPUColocateCompositeResourceOps> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Wraps single op in `tf_device.launch` for explicit device assignment.
@@ -105,11 +105,11 @@ void ColocateCompositeResourceOpsInReplicate(
   }
 }
 
-void TPUColocateCompositeResourceOps::runOnFunction() {
+void TPUColocateCompositeResourceOps::runOnOperation() {
   // Find all the executes first, since we will mutate the nodes around each
   // execute in the same tf_device.replicate op.
   llvm::SmallVector<tf_device::LaunchOp, 8> execute_launches;
-  getFunction().walk([&](tf_device::LaunchOp op) {
+  getOperation().walk([&](tf_device::LaunchOp op) {
     if (op.WrapsSingleOp() &&
         llvm::isa<TF::TPUExecuteOp, TF::TPUExecuteAndUpdateVariablesOp>(
             op.GetBody().front()))

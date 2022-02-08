@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 
 #include <bitset>
+#include <string>
 
+#include "absl/container/node_hash_map.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -155,11 +158,7 @@ SideEffects GetSideEffectsFromEffectInstance(
     const MemoryEffects::EffectInstance& effect_instance, Operation* op) {
   mlir::SideEffects::Effect* effect = effect_instance.getEffect();
   SideEffects side_effects;
-  if (llvm::isa<ResourceEffects::TPUEmbedding>(effect_instance.getResource())) {
-    // TODO(mgester) This hack can be removed once b/196857154 is fixed.
-    // See definition of `TF_TPUEmbeddingSideEffect` for more details.
-    side_effects.SetRead();
-  } else if (isa<MemoryEffects::Allocate>(effect)) {
+  if (isa<MemoryEffects::Allocate>(effect)) {
     side_effects.SetAlloc();
   } else if (isa<MemoryEffects::Free>(effect)) {
     side_effects.SetFree();
@@ -356,11 +355,20 @@ class OpSideEffectCollector {
         // We handle value-based side effects for which we can use resource
         // alias analysis at a different place, skip here.
         if (ShouldUseResourceAliasAnalysis(effect)) continue;
+        if (llvm::isa<ResourceEffects::MustExecute>(effect.getResource()))
+          // We have this fake resource to avoid that certain ops are considered
+          // dead or get pruned, ignore it for side effect analysis.
+          continue;
 
         // Add side effects for op resource ID.
+        std::string instance_str = "";
         SideEffects side_effects(GetSideEffectsFromEffectInstance(effect, op));
-        ResourceId resource_id =
-            GetOpResourceId(effect.getResource()->getResourceID());
+        if (auto resource_instance_op =
+            dyn_cast<GetResourceInstanceInterface>(op)) {
+          instance_str = resource_instance_op.GetResourceInstanceStr();
+        }
+        ResourceId resource_id = GetOpResourceId(
+            effect.getResource()->getResourceID(), instance_str);
         side_effects.SetResourceId(resource_id);
         UpdateSideEffectsByResourceId(side_effects,
                                       side_effects_by_resource_id);
@@ -368,13 +376,14 @@ class OpSideEffectCollector {
     }
   }
 
-  // Get internal op resource ID from MLIR type ID.
-  ResourceId GetOpResourceId(TypeID type_id) {
-    auto emplace_result =
-        type_id_to_op_resource_id_.try_emplace(type_id, next_op_resource_id_);
+  // Get internal op resource ID from MLIR type ID and instance ID.
+  ResourceId GetOpResourceId(TypeID type_id, std::string instance_str) {
+    auto emplace_result = type_instance_str_to_op_resource_id_.try_emplace(
+        std::make_pair(type_id.getAsOpaquePointer(), instance_str),
+        next_op_resource_id_);
     // Increment type ID if we have encountered a new resource type.
     if (emplace_result.second) ++next_op_resource_id_;
-    return emplace_result.first->getSecond();
+    return emplace_result.first->second;
   }
 
   // We use [0, kMaxResourceId] for resource IDs returned by resource alias
@@ -385,9 +394,11 @@ class OpSideEffectCollector {
   // Next available ID for op-based resources (resources not handled by resource
   // alias analysis).
   ResourceId next_op_resource_id_ = kMaxResourceId + 1;
-  // Maps MLIR type IDs for resource types to internal IDs for op-based
-  // resources. Also see comment above.
-  llvm::SmallDenseMap<TypeID, ResourceId> type_id_to_op_resource_id_;
+  // Maps (type ID, instance ID) pairs to internal IDs for op-based resources.
+  // Also see comment above. Instead of using TypeID directly we use its opaque
+  // pointer.
+  absl::node_hash_map<std::pair<const void*, std::string>, ResourceId>
+    type_instance_str_to_op_resource_id_;
   // Used for faster callable resolution.
   SymbolTableCollection symbol_table_collection_;
   // Collect all op-based side effects here.
@@ -647,16 +658,16 @@ SideEffectAnalysisInfo::GetResourceIds(Operation* op) const {
 
 }  // namespace detail
 
-SideEffectAnalysis::SideEffectAnalysis(ModuleOp module) {
+SideEffectAnalysis::SideEffectAnalysis(ModuleOp module)
+    : alias_analysis_(module) {
   // Analyze entire module for alias analysis info.
-  ResourceAliasAnalysis alias_analysis(module);
   detail::OpSideEffectCollector op_side_effect_collector(module);
 
   // Analyze all functions.
   for (auto func : module.getOps<FuncOp>())
     this->info_map_.try_emplace(func, func,
                                 op_side_effect_collector,
-                                alias_analysis.GetAnalysisForFunc(func));
+                                alias_analysis_.GetAnalysisForFunc(func));
 }
 
 }  // namespace TF

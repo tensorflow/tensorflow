@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
@@ -52,17 +52,18 @@ namespace gpu {
 class GpuExecutable : public Executable {
   struct BefBufferDeleter {
     void operator()(uint8_t* ptr) const;
-    std::string entry_function_name;
     size_t size;
   };
 
  public:
+  struct BefExecutable;
+
   typedef std::unique_ptr<const ThunkSchedule> OwnedThunkSchedule;
   typedef std::unique_ptr<uint8_t, BefBufferDeleter> OwnedBefBuffer;
 
   struct ConstantInfo {
     std::string symbol_name;
-    std::vector<uint8> content;
+    std::vector<uint8_t> content;
     int allocation_index = -1;
   };
 
@@ -80,11 +81,12 @@ class GpuExecutable : public Executable {
 
   struct Params {
     std::string asm_text;
-    std::vector<uint8> binary;
+    std::vector<uint8_t> binary;
     GpuVersion gpu_version;
     // The GpuExecutable will either execute Thunks or a whole-program BEF
     // depending on which is supplied.
     absl::variant<OwnedThunkSchedule, OwnedBefBuffer> thunks_or_bef;
+    xla::EntryFunctionAttributes entry_func_attrs;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
     std::string module_name;
@@ -100,35 +102,48 @@ class GpuExecutable : public Executable {
     };
 
     std::unique_ptr<HloModule> debug_module = nullptr;
-    size_t entry_computation_profile_index = 0;
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data = nullptr;
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map = nullptr;
   };
 
-  // We need to share ownership of hlo_module and assignment with profiler to
-  // safely keep a reference to these objects during tracing period, thus they
-  // are passed as shared pointers.
-  explicit GpuExecutable(Params params);
+  // TODO(hanbinyoon): Once BEF replaces Thunks, hide this method as an
+  // implementation detail of GpuExecutable.
+  // Analyze the entry function to construct buffer allocation and other output
+  // information. Optionally use buffer_param_offset to indicate the position of
+  // buffer parameters in the entry function - in tfrt_gpu dialect, buffer
+  // arguments start from the third parameter (after tfrt::Chain and GpuStream).
+  static Status SetUpMlirAllocation(
+      mlir::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
+      std::vector<BufferAllocation>* allocations,
+      absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
+      Shape* output_shape, int buffer_param_offset = 0);
+
+  // Returns an Executable that is loaded from a BEF. This BEF must have entry
+  // point information recorded by use of the tfrt::gpu::setEntryPoint()
+  // function.
+  static StatusOr<std::unique_ptr<Executable>> LoadFromBef(
+      std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
+      xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version);
+
+  static StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
   // This should be called after set_ir_module_string.
-  const string& ir_module_string() const { return ir_module_string_; }
+  const std::string& ir_module_string() const { return ir_module_string_; }
 
   // This should be called before ExecuteOnStream.
-  void set_ir_module_string(const string& ir_module_string) {
+  void set_ir_module_string(const std::string& ir_module_string) {
     ir_module_string_ = ir_module_string;
   }
 
   // Returns the compiled code for the computation. The compiled code is PTX in
   // Cuda and unused empty string in ROCm.
-  const string& text() const { return text_; }
+  const std::string& text() const { return text_; }
 
   // Returns the binary stored in this GpuExecutable. The binary is cubin in
   // Cuda, and HSA code object in ROCm. It may be empty, in which case
   // compilation is left up to the GPU driver.
-  const std::vector<uint8>& binary() const { return binary_; }
+  const std::vector<uint8_t>& binary() const { return binary_; }
 
   // ExecuteAsyncOnStream will fail if the compute capability of the stream
   // doesn't match the compute capability passed to this object's constructor.
@@ -155,6 +170,18 @@ class GpuExecutable : public Executable {
   const std::vector<ConstantInfo>& constants() const { return constants_; }
 
  private:
+  // Use GpuExecutable::Create() to create an instance.
+  explicit GpuExecutable(Params params);
+
+  // Constructor to use when loading a GpuExecutable from a BEF. Omits setting
+  // class members that aren't used in BEF execution mode.
+  GpuExecutable(std::shared_ptr<HloModule> hlo_module, GpuVersion gpu_version,
+                xla::EntryFunctionAttributes entry_func_attrs,
+                absl::string_view module_name, Shape xla_output_shape,
+                std::vector<BufferAllocation> allocations,
+                absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
+                BefExecutable* bef_executable);
+
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for
   // clients, such as Tensorflow, that use a single stream of execution for
@@ -167,9 +194,16 @@ class GpuExecutable : public Executable {
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
 
-  // Loads the PTX or CUBIN for this executable into `executor` and resolves the
-  // globals corresponding to constant buffers.  Returns a map mapping buffer
-  // allocation indices to GPU pointers.
+  // Loads the PTX or CUBIN for this executable and initializes all
+  // constants that haven't already been initialized by the CUDA driver. Loaded
+  // modules are owned by this executable.
+  //
+  // Returns a map from buffer allocation indices to device memory pointers
+  // (only for allocations that contain constants).
+  //
+  // The returned map is cached. If the above process has already been run for
+  // the given stream, it is skipped and the cached map is immediately returned
+  // instead.
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::Stream* stream);
 
@@ -181,8 +215,7 @@ class GpuExecutable : public Executable {
   StatusOr<BufferAllocations> GenerateBufferAllocations(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      se::DeviceMemoryAllocator* const memory_allocator,
-      se::StreamExecutor* executor);
+      se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal);
 
   StatusOr<se::DeviceMemoryBase> BufferForAllocation(
       VariantArguments arguments,
@@ -197,23 +230,25 @@ class GpuExecutable : public Executable {
   // false positives.
   //
   // This string should be modified only before ExecuteOnStream.
-  string ir_module_string_;
+  std::string ir_module_string_;
 
   // The compiled code for the computation.
-  const string text_;
+  const std::string text_;
 
   // The GPU machine code for the computation, targeting GPUs at
   // compute_capability_.
   //
   // May be empty, in which case we leave compilation up to the GPU driver.
-  const std::vector<uint8> binary_;
+  const std::vector<uint8_t> binary_;
 
   // The GPU version for compute compatibility check.
   GpuVersion gpu_version_;
 
   // The thunks to be invoked by this GpuExecutable. They are generated by the
   // IrEmitter.
-  absl::variant<OwnedThunkSchedule, OwnedBefBuffer> thunks_or_bef_;
+  OwnedThunkSchedule thunks_;
+
+  xla::EntryFunctionAttributes entry_func_attrs_;
 
   std::string module_name_;
 
@@ -226,20 +261,23 @@ class GpuExecutable : public Executable {
   std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
   std::function<std::string()> verbose_buffer_assignment_string_dumper_;
 
-  size_t entry_computation_profile_index_ = -1;
-
-  // Cache of module handles and constant buffer allocation maps used by
-  // `ResolveConstantGlobals`.
-  tensorflow::mutex module_handle_mutex_;
+  absl::Mutex module_handle_mutex_;
+  // Cache of module handles. Required to keep loaded modules alive until this
+  // executable is destroyed.
   std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
-      module_handles_ TF_GUARDED_BY(module_handle_mutex_);
+      module_handles_ ABSL_GUARDED_BY(module_handle_mutex_);
+  // Cache of constant buffer allocation maps used by `ResolveConstantGlobals`.
   std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
-      module_globals_ TF_GUARDED_BY(module_handle_mutex_);
+      module_globals_ ABSL_GUARDED_BY(module_handle_mutex_);
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
+  // Data for BEF_EXECUTABLE mode only, owned.
+  BefExecutable* bef_executable_ = nullptr;
+
+  GpuExecutable(const GpuExecutable&) = delete;
+  GpuExecutable& operator=(const GpuExecutable&) = delete;
 };
 
 StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

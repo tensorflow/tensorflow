@@ -247,8 +247,8 @@ static ParseResult parseBatchFunctionOp(OpAsmParser &parser,
 
   SmallVector<Attribute, 4> op_attr_array;
   for (const auto &key_value : op_attrs) {
-    auto key = builder.getStringAttr(key_value.first.strref());
-    auto value = key_value.second;
+    auto key = key_value.getName();
+    auto value = key_value.getValue();
     op_attr_array.push_back(builder.getArrayAttr({key, value}));
   }
 
@@ -425,7 +425,7 @@ struct RemoveDoubleTensorConversion
 }  // namespace
 
 void CoreRTTensorHandleToFallbackTensorOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+    RewritePatternSet &results, MLIRContext *context) {
   results.insert<ConstCoreRTTensorHandleToFallbackTensorCanonicalization,
                  RemoveDoubleTensorConversion>(context);
 }

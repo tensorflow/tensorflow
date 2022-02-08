@@ -93,6 +93,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
   bool scale32 = isScale32(output_qtype);
   int32_t scale_width = scale32 ? 32 : 16;
+  // Only use double round if we are doing 32 bit scaling
+  bool double_round = scale32;
 
   if (auto weight_per_tensor_qtype =
           weight_type.getElementType()
@@ -112,7 +114,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getI32ArrayAttr({multiplier}),
         rewriter.getI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(true), rewriter.getBoolAttr(false));
+        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
 
     return rescale_op.getResult();
 
@@ -148,7 +150,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getI32ArrayAttr(multiplier_arr),
         rewriter.getI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(true), rewriter.getBoolAttr(true));
+        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(true));
 
     return rescale_op.getResult();
 

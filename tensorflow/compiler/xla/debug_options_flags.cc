@@ -41,16 +41,13 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_fusion_visualization(false);
-  opts.set_xla_dump_include_timestamp(true);
+  opts.set_xla_dump_include_timestamp(false);
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
-  // Set cudnn batchnorm off by default; it does not provide a performance win
-  // on average.
-  opts.set_xla_gpu_use_cudnn_batchnorm(false);
 
   // Run all GPU work on one stream by default.  Using multiple streams
   // increases memory usage and we lack strong motivating benchmarks for tuning
@@ -68,7 +65,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // By default, copy TF's Eigen style min_max behavior with nans.
   opts.set_xla_cpu_enable_fast_min_max(true);
 
-  opts.set_xla_gpu_enable_fast_min_max(true);
+  opts.set_xla_gpu_enable_cudnn_frontend(true);
+
+  // Despite the name, fast min/max on GPUs does not seem to be any faster, and
+  // adds very counter-intuitive "NaN-swallowing" behavior.
+  opts.set_xla_gpu_enable_fast_min_max(false);
   opts.set_xla_gpu_strict_conv_algorithm_picker(true);
 
   opts.set_xla_allow_excess_precision(true);
@@ -86,20 +87,20 @@ static DebugOptions* flag_values;
 static std::vector<tensorflow::Flag>* flag_objects;
 
 // Maps pass -> initial fuel values (parsed when AllocateFlags was run).
-static absl::flat_hash_map<string, int64_t>* initial_fuel;
+static absl::flat_hash_map<std::string, int64_t>* initial_fuel;
 
 // Maps pass -> whether fuel was ever consumed for that pass.
-static absl::node_hash_map<string, std::atomic<bool>>* fuel_ever_consumed;
+static absl::node_hash_map<std::string, std::atomic<bool>>* fuel_ever_consumed;
 
 // Maps pass -> remaining fuel.
 //
 // All threads start off using this global fuel pool, but ResetThreadLocalFuel()
 // switches them to a thread-local fuel pool.
-static absl::node_hash_map<string, std::atomic<int64_t>>* global_fuel;
+static absl::node_hash_map<std::string, std::atomic<int64_t>>* global_fuel;
 
 // If we're using thread-local fuel, this stores it.
 static thread_local std::unique_ptr<
-    absl::node_hash_map<string, std::atomic<int64_t>>>
+    absl::node_hash_map<std::string, std::atomic<int64_t>>>
     thread_fuel;  // NOLINT (global variable with nontrivial destructor)
 
 // Logs a warning if a pass's fuel was never consumed, on the theory that this
@@ -149,47 +150,48 @@ static void AllocateFlags() {
   };
 
   auto string_setter_for =
-      [](void (DebugOptions::*member_setter)(const string& value)) {
-        return [member_setter](const string& value) {
+      [](void (DebugOptions::*member_setter)(const std::string& value)) {
+        return [member_setter](const std::string& value) {
           (flag_values->*member_setter)(value);
           return true;
         };
       };
 
   // Custom "sub-parser" lambda for xla_disable_hlo_passes.
-  auto setter_for_xla_disable_hlo_passes = [](string comma_separated_values) {
-    for (const auto& passname :
-         std::vector<string>(absl::StrSplit(comma_separated_values, ','))) {
-      flag_values->add_xla_disable_hlo_passes(passname);
-    }
-    return true;
-  };
+  auto setter_for_xla_disable_hlo_passes =
+      [](std::string comma_separated_values) {
+        for (const auto& passname : std::vector<std::string>(
+                 absl::StrSplit(comma_separated_values, ','))) {
+          flag_values->add_xla_disable_hlo_passes(passname);
+        }
+        return true;
+      };
 
   // Custom "sub-parser" lambda for xla_enable_hlo_passes_only.
   auto setter_for_xla_enable_hlo_passes_only =
-      [](string comma_separated_values) {
-        for (const auto& passname :
-             std::vector<string>(absl::StrSplit(comma_separated_values, ','))) {
+      [](std::string comma_separated_values) {
+        for (const auto& passname : std::vector<std::string>(
+                 absl::StrSplit(comma_separated_values, ','))) {
           flag_values->add_xla_enable_hlo_passes_only(passname);
         }
         return true;
       };
 
   // Custom "sub-parser" lambda for xla_gpu_ptx_file.
-  auto setter_for_xla_gpu_ptx_file = [](string value) {
+  auto setter_for_xla_gpu_ptx_file = [](std::string value) {
     flag_values->add_xla_gpu_ptx_file(value);
     return true;
   };
 
   // Custom "sub-parser" lambda for xla_gpu_llvm_ir_file.
-  auto setter_for_xla_gpu_llvm_ir_file = [](const string& value) {
+  auto setter_for_xla_gpu_llvm_ir_file = [](const std::string& value) {
     flag_values->add_xla_gpu_llvm_ir_file(value);
     return true;
   };
 
   // Custom "sub-parser" lambda for xla_backend_extra_options.
   auto setter_for_xla_backend_extra_options =
-      [](string comma_separated_values) {
+      [](std::string comma_separated_values) {
         auto* extra_options_map =
             flag_values->mutable_xla_backend_extra_options();
         parse_xla_backend_extra_options(extra_options_map,
@@ -201,16 +203,17 @@ static void AllocateFlags() {
   // locking on the fuel global variables.  This means that it's
   // illegal/undefined behavior to modify this flag value while the compiler is
   // running.
-  initial_fuel = new absl::flat_hash_map<string, int64_t>();
-  fuel_ever_consumed = new absl::node_hash_map<string, std::atomic<bool>>();
-  global_fuel = new absl::node_hash_map<string, std::atomic<int64_t>>();
-  auto setter_for_xla_fuel = [](string xla_fuel_value) {
+  initial_fuel = new absl::flat_hash_map<std::string, int64_t>();
+  fuel_ever_consumed =
+      new absl::node_hash_map<std::string, std::atomic<bool>>();
+  global_fuel = new absl::node_hash_map<std::string, std::atomic<int64_t>>();
+  auto setter_for_xla_fuel = [](std::string xla_fuel_value) {
     initial_fuel->clear();
     global_fuel->clear();
     fuel_ever_consumed->clear();
 
     for (const auto& kv : absl::StrSplit(xla_fuel_value, ',')) {
-      std::vector<string> pass_and_fuel = absl::StrSplit(kv, '=');
+      std::vector<std::string> pass_and_fuel = absl::StrSplit(kv, '=');
       if (pass_and_fuel.size() != 2) {
         LOG(ERROR) << absl::StreamFormat(
             "Illegal value for --xla_fuel. Saw %s, but expected token %s to "
@@ -416,12 +419,6 @@ static void AllocateFlags() {
       "xla_backend_extra_options", setter_for_xla_backend_extra_options, "",
       "Extra options to pass to a backend; comma-separated list of 'key=val' "
       "strings (=val may be omitted); no whitespace around commas."));
-  flag_objects->push_back(tensorflow::Flag(
-      "xla_gpu_use_cudnn_batchnorm",
-      bool_setter_for(&DebugOptions::set_xla_gpu_use_cudnn_batchnorm),
-      flag_values->xla_gpu_use_cudnn_batchnorm(),
-      "Allows the GPU backend to implement batchnorm HLOs using cudnn, rather "
-      "than expanding them to a soup of HLOs."));
   flag_objects->push_back(
       tensorflow::Flag("xla_cpu_use_mkl_dnn",
                        bool_setter_for(&DebugOptions::set_xla_cpu_use_mkl_dnn),
@@ -671,6 +668,11 @@ static void AllocateFlags() {
       "ReduceScatter being performed over all of the devices in the same host. "
       "Set to < 1 to disable all-reduce decomposition."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_enable_cudnn_frontend",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_frontend),
+      flag_values->xla_gpu_enable_cudnn_frontend(),
+      "Use the cuDNN frontend API for convolutions when possible."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_dump_disable_metadata",
       bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),
       flag_values->xla_dump_disable_metadata(),
@@ -699,7 +701,8 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
 void ResetThreadLocalFuel() {
   absl::call_once(flags_init, &AllocateFlags);
 
-  thread_fuel.reset(new absl::node_hash_map<string, std::atomic<int64_t>>());
+  thread_fuel.reset(
+      new absl::node_hash_map<std::string, std::atomic<int64_t>>());
   CHECK(initial_fuel != nullptr);
   for (const auto& kv : *initial_fuel) {
     thread_fuel->emplace(kv.first, kv.second);

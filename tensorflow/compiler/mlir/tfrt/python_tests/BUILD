@@ -12,7 +12,19 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "tf_acos_test",
+    srcs = ["tf_acos_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -24,10 +36,11 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "no_pip",
-    ],  # TODO(b/201803253): TFRT pybindings not in OSS.
+        "no_pip",  # TODO(b/201803253): TFRT pybindings not in OSS.
+        "nomsan",
+    ],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -39,10 +52,26 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
+        "no_pip",  # TODO(b/201803253): TFRT pybindings not in OSS.
+        "nomsan",  # TODO(b/210849019)
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "tf_cast_test",
+    srcs = ["tf_cast_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -57,7 +86,22 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "tf_controlflow_test",
+    srcs = ["tf_controlflow_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],  # TODO(b/201803253): TFRT pybindings not in OSS.
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -72,7 +116,7 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -84,7 +128,7 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -97,7 +141,7 @@ py_strict_test(
     tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
@@ -114,7 +158,7 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -129,7 +173,7 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -144,7 +188,7 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -159,7 +203,7 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -174,7 +218,7 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -186,7 +230,7 @@ py_strict_test(
     python_version = "PY3",
     tags = ["no_pip"],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -201,7 +245,7 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -216,7 +260,7 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -231,7 +275,7 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -246,7 +290,7 @@ py_strict_test(
         "no_pip",
     ],  # TODO(b/201803253): TFRT pybindings not in OSS.
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_cpurt",
+        "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],

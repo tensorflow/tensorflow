@@ -51,7 +51,11 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -91,6 +95,10 @@ class MarkForCompilationPassImpl {
     // If true, do not respect the _XlaCompile=false attribute.
     bool ignore_xla_compile_attr;
 
+    // If true, compute the cluster name in a deterministic way so that its
+    // stable from run to rum.
+    bool deterministic_cluster_names;
+
     int max_cluster_size;
     int min_cluster_size;
 
@@ -113,6 +121,7 @@ class MarkForCompilationPassImpl {
                              bool cpu_global_jit)
       : debug_options_(debug_options),
         graph_(graph),
+        graph_fingerprint_(0),
         flib_def_(flib_def),
         env_(env),
         global_jit_level_(global_jit_level),
@@ -424,6 +433,7 @@ class MarkForCompilationPassImpl {
 
   DebugOptions debug_options_;
   Graph* graph_;
+  uint64 graph_fingerprint_;
   FunctionLibraryDefinition* flib_def_;
   Env* env_;
   OptimizerOptions::GlobalJitLevel global_jit_level_;
@@ -627,6 +637,12 @@ StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
   if (!debug_options_.ignore_deadness_checks) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
     TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(*graph_, &deadness_analysis_));
+  }
+
+  // If the user is requesting deterministic cluster names compute a hash of the
+  // input graph to provide a stable but unique prefix for the name.
+  if (debug_options_.deterministic_cluster_names) {
+    TF_ASSIGN_OR_RETURN(graph_fingerprint_, FingerprintGraph(*graph_));
   }
 
   // Each compilation candidate belongs to a cluster. The cluster's
@@ -842,9 +858,36 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   return Status::OK();
 }
 
-std::atomic<int64_t> cluster_sequence_num;
+// Tracks monotonic sequence numbers for graphs.
+class ClusterSequenceNumberGenerator {
+ public:
+  void Reset() {
+    mutex_lock lock(mu_);
+    sequence_numbers_.clear();
+  }
 
-int64_t GetNextClusterSequenceNumber() { return cluster_sequence_num++; }
+  int64 GetNext(uint64 key) {
+    mutex_lock lock(mu_);
+    return sequence_numbers_[key]++;
+  }
+
+  static ClusterSequenceNumberGenerator& Global() {
+    static ClusterSequenceNumberGenerator* gen =
+        new ClusterSequenceNumberGenerator;
+    return *gen;
+  }
+
+ private:
+  mutex mu_;
+  absl::flat_hash_map<uint64, int64> sequence_numbers_;
+};
+
+// Get a monotonic sequence numbers for a graph identified by its `fingerprint`.
+// The sequence number is necessary to disambiguate clusters extracted from the
+// same graph and when duplicate graphs exist within the same process.
+int64_t GetNextClusterSequenceNumber(uint64 fingerprint) {
+  return ClusterSequenceNumberGenerator::Global().GetNext(fingerprint);
+}
 
 Status MarkForCompilationPassImpl::CreateClusters() {
   TF_RET_CHECK(initialized_ && edges_contracted_ && !clusters_created_);
@@ -882,7 +925,13 @@ Status MarkForCompilationPassImpl::CreateClusters() {
       string& name = cluster_names[cluster->cycles_graph_node_id()];
 
       if (name.empty()) {
-        name = absl::StrCat("cluster_", GetNextClusterSequenceNumber());
+        if (debug_options_.deterministic_cluster_names) {
+          name = absl::StrCat("cluster_", graph_fingerprint_, "_",
+                              GetNextClusterSequenceNumber(graph_fingerprint_));
+        } else {
+          name = absl::StrCat("cluster_",
+                              GetNextClusterSequenceNumber(graph_fingerprint_));
+        }
       }
 
       n->AddAttr(kXlaClusterAttr, name);
@@ -1203,6 +1252,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     filter.require_always_compilable = true;
     filter.allow_string_consts = false;
     filter.allow_collective_reduce_v2 = false;
+    filter.allow_unique_op = false;
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});
@@ -1753,6 +1803,8 @@ Status MarkForCompilationPass::Run(
   debug_options.ignore_resource_variable_checks =
       flags->tf_xla_disable_resource_variable_safety_checks_for_debugging;
   debug_options.ignore_xla_compile_attr = false;
+  debug_options.deterministic_cluster_names =
+      flags->tf_xla_deterministic_cluster_names;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
   debug_options.fuel = GetPointerToFuel(flags->tf_xla_clustering_fuel);
@@ -1762,8 +1814,8 @@ Status MarkForCompilationPass::Run(
 }
 
 Status MarkForCompilationPass::RunForTest(
-    const GraphOptimizationPassOptions& options,
-    bool disable_deadness_analysis) {
+    const GraphOptimizationPassOptions& options, bool disable_deadness_analysis,
+    bool deterministic_cluster_names) {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
 
   MarkForCompilationPassImpl::DebugOptions debug_options;
@@ -1771,6 +1823,7 @@ Status MarkForCompilationPass::RunForTest(
   debug_options.ignore_resource_variable_checks =
       flags->tf_xla_disable_resource_variable_safety_checks_for_debugging;
   debug_options.ignore_xla_compile_attr = true;
+  debug_options.deterministic_cluster_names = deterministic_cluster_names;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
   debug_options.fuel = GetPointerToFuel(flags->tf_xla_clustering_fuel);
@@ -1844,287 +1897,292 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
 }
 
 namespace testing {
-void ResetClusterSequenceNumber() { cluster_sequence_num = 0; }
+void ResetClusterSequenceNumber() {
+  ClusterSequenceNumberGenerator::Global().Reset();
+}
 
 absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
-  absl::flat_hash_set<string> result{"AdjustContrastv2",
-                                     "AdjustHue",
-                                     "AdjustSaturation",
-                                     "Asinh",
-                                     "Assert",
-                                     "AssignAddVariableOp",
-                                     "AssignSubVariableOp",
-                                     "AssignVariableOp",
-                                     "AssignVariableXlaConcatND",
-                                     "AvgPool",
-                                     "AvgPool3D",
-                                     "AvgPool3DGrad",
-                                     "AvgPoolGrad",
-                                     "BatchMatMul",
-                                     "BatchMatMulV2",
-                                     "BatchMatMulV3",
-                                     "BatchToSpace",
-                                     "BatchToSpaceND",
-                                     "BesselI0e",
-                                     "BesselI1e",
-                                     "Betainc",
-                                     "BiasAddV1",
-                                     "Bucketize",
-                                     "Case",
-                                     "CheckNumerics",
-                                     "Cholesky",
-                                     "ControlTrigger",
-                                     "Conv2D",
-                                     "Conv2DBackpropFilter",
-                                     "Conv2DBackpropInput",
-                                     "Conv3D",
-                                     "Conv3DBackpropFilterV2",
-                                     "Conv3DBackpropInputV2",
-                                     "Cross",
-                                     "Cumprod",
-                                     "Cumsum",
-                                     "DataFormatDimMap",
-                                     "DataFormatVecPermute",
-                                     "DepthToSpace",
-                                     "DepthwiseConv2dNative",
-                                     "DepthwiseConv2dNativeBackpropFilter",
-                                     "DepthwiseConv2dNativeBackpropInput",
-                                     "Dequantize",
-                                     "Diag",
-                                     "DynamicStitch",
-                                     "DynamicPartition",
-                                     "Einsum",
-                                     "EmptyTensorList",
-                                     "EnsureShape",
-                                     "ExtractImagePatches",
-                                     "Igamma",
-                                     "IgammaGradA",
-                                     "RandomGammaGrad",
-                                     "Igammac",
-                                     "FFT",
-                                     "FFT2D",
-                                     "FFT3D",
-                                     "FakeParam",
-                                     "FakeQuantWithMinMaxArgs",
-                                     "FakeQuantWithMinMaxArgsGradient",
-                                     "FakeQuantWithMinMaxVars",
-                                     "FakeQuantWithMinMaxVarsGradient",
-                                     "Gather",
-                                     "GatherNd",
-                                     "GatherV2",
-                                     "HSVToRGB",
-                                     "IFFT",
-                                     "IFFT2D",
-                                     "IFFT3D",
-                                     "IRFFT",
-                                     "IRFFT2D",
-                                     "IRFFT3D",
-                                     "If",
-                                     "InTopKV2",
-                                     "L2Loss",
-                                     "LeakyRelu",
-                                     "LinSpace",
-                                     "ListDiff",
-                                     "LogMatrixDeterminant",
-                                     "LowerBound",
-                                     "MatMul",
-                                     "MatrixBandPart",
-                                     "MatrixDiag",
-                                     "MatrixDiagPart",
-                                     "MatrixDiagPartV2",
-                                     "MatrixDiagPartV3",
-                                     "MatrixDiagV2",
-                                     "MatrixDiagV3",
-                                     "MatrixInverse",
-                                     "MatrixSetDiag",
-                                     "MatrixSetDiagV2",
-                                     "MatrixSetDiagV3",
-                                     "MatrixSolve",
-                                     "MatrixTriangularSolve",
-                                     "MaxPool",
-                                     "MaxPool3D",
-                                     "MaxPool3DGrad",
-                                     "MaxPool3DGradGrad",
-                                     "MaxPoolGrad",
-                                     "MaxPoolGradGrad",
-                                     "MaxPoolGradGradV2",
-                                     "MaxPoolGradV2",
-                                     "MaxPoolV2",
-                                     "Multinomial",
-                                     "NextAfter",
-                                     "NonMaxSuppressionV4",
-                                     "ParallelDynamicStitch",
-                                     "ParameterizedTruncatedNormal",
-                                     "PartitionedCall",
-                                     "Polygamma",
-                                     "PopulationCount",
-                                     "Qr",
-                                     "QuantizeAndDequantizeV2",
-                                     "QuantizeAndDequantizeV3",
-                                     "QuantizeAndDequantizeV4",
-                                     "RFFT",
-                                     "RFFT2D",
-                                     "RFFT3D",
-                                     "RGBToHSV",
-                                     "RandomShuffle",
-                                     "RandomStandardNormal",
-                                     "RandomUniform",
-                                     "RandomUniformInt",
-                                     "ReadVariableOp",
-                                     "ReadVariableXlaSplitND",
-                                     "ResizeBilinear",
-                                     "ResizeBilinearGrad",
-                                     "ResizeNearestNeighbor",
-                                     "ResourceApplyAdaMax",
-                                     "ResourceApplyAdadelta",
-                                     "ResourceApplyAdagrad",
-                                     "ResourceApplyAdagradDA",
-                                     "ResourceApplyAdagradV2",
-                                     "ResourceApplyAdam",
-                                     "ResourceApplyAddSign",
-                                     "ResourceApplyCenteredRMSProp",
-                                     "ResourceApplyFtrl",
-                                     "ResourceApplyFtrlV2",
-                                     "ResourceApplyGradientDescent",
-                                     "ResourceApplyKerasMomentum",
-                                     "ResourceApplyMomentum",
-                                     "ResourceApplyPowerSign",
-                                     "ResourceApplyProximalAdagrad",
-                                     "ResourceApplyProximalGradientDescent",
-                                     "ResourceApplyRMSProp",
-                                     "ResourceGather",
-                                     "ResourceScatterAdd",
-                                     "ResourceScatterDiv",
-                                     "ResourceScatterMax",
-                                     "ResourceScatterMin",
-                                     "ResourceScatterMul",
-                                     "ResourceScatterNdAdd",
-                                     "ResourceScatterNdSub",
-                                     "ResourceScatterNdUpdate",
-                                     "ResourceScatterSub",
-                                     "ResourceScatterUpdate",
-                                     "RngReadAndSkip",
-                                     "RngSkip",
-                                     "Roll",
-                                     "ScatterNd",
-                                     "SelfAdjointEigV2",
-                                     "SoftmaxCrossEntropyWithLogits",
-                                     "SpaceToBatch",
-                                     "SpaceToBatchND",
-                                     "SpaceToDepth",
-                                     "SparseMatMul",
-                                     "SparseToDense",
-                                     "StackCloseV2",
-                                     "StackPopV2",
-                                     "StackPushV2",
-                                     "StackV2",
-                                     "StatefulPartitionedCall",
-                                     "StatefulStandardNormalV2",
-                                     "StatefulTruncatedNormal",
-                                     "StatefulUniform",
-                                     "StatefulUniformFullInt",
-                                     "StatefulUniformInt",
-                                     "StatelessCase",
-                                     "StatelessIf",
-                                     "StatelessMultinomial",
-                                     "StatelessRandomGetAlg",
-                                     "StatelessRandomGetKeyCounter",
-                                     "StatelessRandomGetKeyCounterAlg",
-                                     "StatelessRandomNormal",
-                                     "StatelessRandomNormalV2",
-                                     "StatelessRandomUniform",
-                                     "StatelessRandomUniformV2",
-                                     "StatelessRandomUniformInt",
-                                     "StatelessRandomUniformIntV2",
-                                     "StatelessRandomUniformFullInt",
-                                     "StatelessRandomUniformFullIntV2",
-                                     "StatelessTruncatedNormal",
-                                     "StatelessTruncatedNormalV2",
-                                     "StatelessWhile",
-                                     "Svd",
-                                     "SymbolicGradient",
-                                     "TensorArrayCloseV3",
-                                     "TensorArrayConcatV3",
-                                     "TensorArrayGatherV3",
-                                     "TensorArrayGradV3",
-                                     "TensorArrayReadV3",
-                                     "TensorArrayScatterV3",
-                                     "TensorArraySizeV3",
-                                     "TensorArraySplitV3",
-                                     "TensorArrayV3",
-                                     "TensorArrayWriteV3",
-                                     "TensorListConcatV2",
-                                     "TensorListElementShape",
-                                     "TensorListFromTensor",
-                                     "TensorListGather",
-                                     "TensorListGetItem",
-                                     "TensorListLength",
-                                     "TensorListPopBack",
-                                     "TensorListPushBack",
-                                     "TensorListReserve",
-                                     "TensorListSetItem",
-                                     "TensorListSplit",
-                                     "TensorListStack",
-                                     "TensorScatterAdd",
-                                     "TensorScatterMax",
-                                     "TensorScatterMin",
-                                     "TensorScatterSub",
-                                     "TensorScatterUpdate",
-                                     "ToBool",
-                                     "TridiagonalSolve",
-                                     "TruncatedNormal",
-                                     "Unique",
-                                     "UniqueV2",
-                                     "UpperBound",
-                                     "UnsortedSegmentMax",
-                                     "UnsortedSegmentMin",
-                                     "UnsortedSegmentProd",
-                                     "UnsortedSegmentSum",
-                                     "VarIsInitializedOp",
-                                     "VariableShape",
-                                     "Where",
-                                     "While",
-                                     "XlaBroadcastHelper",
-                                     "XlaConcatND",
-                                     "XlaConv",
-                                     "XlaConvV2",
-                                     "XlaDequantize",
-                                     "XlaDot",
-                                     "XlaDotV2",
-                                     "XlaDynamicSlice",
-                                     "XlaDynamicUpdateSlice",
-                                     "XlaEinsum",
-                                     "XlaGather",
-                                     "XlaIf",
-                                     "XlaKeyValueSort",
-                                     "XlaPad",
-                                     "XlaRecv",
-                                     "XlaReduce",
-                                     "XlaReduceWindow",
-                                     "XlaRemoveDynamicDimensionSize",
-                                     "XlaReplicaId",
-                                     "XlaRngBitGenerator",
-                                     "XlaScatter",
-                                     "XlaSelectAndScatter",
-                                     "XlaSelfAdjointEig",
-                                     "XlaSend",
-                                     "XlaSetBound",
-                                     "XlaSetDynamicDimensionSize",
-                                     "XlaSharding",
-                                     "XlaSort",
-                                     "XlaSplitND",
-                                     "XlaSpmdFullToShardShape",
-                                     "XlaSpmdShardToFullShape",
-                                     "XlaSvd",
-                                     "XlaVariadicReduce",
-                                     "XlaVariadicReduceV2",
-                                     "XlaVariadicSort",
-                                     "XlaWhile",
-                                     "Zeta",
-                                     "_Arg",
-                                     "_ArrayToList",
-                                     "_ListToArray",
-                                     "_Retval"};
+  absl::flat_hash_set<string> result{
+      "AdjustContrastv2",
+      "AdjustHue",
+      "AdjustSaturation",
+      "Asinh",
+      "Assert",
+      "AssignAddVariableOp",
+      "AssignSubVariableOp",
+      "AssignVariableOp",
+      "AssignVariableXlaConcatND",
+      "AvgPool",
+      "AvgPool3D",
+      "AvgPool3DGrad",
+      "AvgPoolGrad",
+      "BatchMatMul",
+      "BatchMatMulV2",
+      "BatchMatMulV3",
+      "BatchToSpace",
+      "BatchToSpaceND",
+      "BesselI0e",
+      "BesselI1e",
+      "Betainc",
+      "BiasAddV1",
+      "Bucketize",
+      "Case",
+      "CheckNumerics",
+      "Cholesky",
+      "ControlTrigger",
+      "Conv2D",
+      "Conv2DBackpropFilter",
+      "Conv2DBackpropInput",
+      "Conv3D",
+      "Conv3DBackpropFilterV2",
+      "Conv3DBackpropInputV2",
+      "Cross",
+      "Cumprod",
+      "Cumsum",
+      "DataFormatDimMap",
+      "DataFormatVecPermute",
+      "DepthToSpace",
+      "DepthwiseConv2dNative",
+      "DepthwiseConv2dNativeBackpropFilter",
+      "DepthwiseConv2dNativeBackpropInput",
+      "Dequantize",
+      "Diag",
+      "DynamicStitch",
+      "DynamicPartition",
+      "Einsum",
+      "EmptyTensorList",
+      "EnsureShape",
+      "ExtractImagePatches",
+      "Igamma",
+      "IgammaGradA",
+      "RandomGammaGrad",
+      "Igammac",
+      "FFT",
+      "FFT2D",
+      "FFT3D",
+      "FakeParam",
+      "FakeQuantWithMinMaxArgs",
+      "FakeQuantWithMinMaxArgsGradient",
+      "FakeQuantWithMinMaxVars",
+      "FakeQuantWithMinMaxVarsGradient",
+      "FakeQuantWithMinMaxVarsPerChannel",
+      "FakeQuantWithMinMaxVarsPerChannelGradient",
+      "Gather",
+      "GatherNd",
+      "GatherV2",
+      "HSVToRGB",
+      "IFFT",
+      "IFFT2D",
+      "IFFT3D",
+      "IRFFT",
+      "IRFFT2D",
+      "IRFFT3D",
+      "If",
+      "InTopKV2",
+      "L2Loss",
+      "LeakyRelu",
+      "LinSpace",
+      "ListDiff",
+      "LogMatrixDeterminant",
+      "LowerBound",
+      "MatMul",
+      "MatrixBandPart",
+      "MatrixDiag",
+      "MatrixDiagPart",
+      "MatrixDiagPartV2",
+      "MatrixDiagPartV3",
+      "MatrixDiagV2",
+      "MatrixDiagV3",
+      "MatrixInverse",
+      "MatrixSetDiag",
+      "MatrixSetDiagV2",
+      "MatrixSetDiagV3",
+      "MatrixSolve",
+      "MatrixTriangularSolve",
+      "MaxPool",
+      "MaxPool3D",
+      "MaxPool3DGrad",
+      "MaxPool3DGradGrad",
+      "MaxPoolGrad",
+      "MaxPoolGradGrad",
+      "MaxPoolGradGradV2",
+      "MaxPoolGradV2",
+      "MaxPoolV2",
+      "Multinomial",
+      "NextAfter",
+      "NonMaxSuppressionV4",
+      "ParallelDynamicStitch",
+      "ParameterizedTruncatedNormal",
+      "PartitionedCall",
+      "Polygamma",
+      "PopulationCount",
+      "Qr",
+      "QuantizeAndDequantizeV2",
+      "QuantizeAndDequantizeV3",
+      "QuantizeAndDequantizeV4",
+      "RFFT",
+      "RFFT2D",
+      "RFFT3D",
+      "RGBToHSV",
+      "RandomShuffle",
+      "RandomStandardNormal",
+      "RandomUniform",
+      "RandomUniformInt",
+      "ReadVariableOp",
+      "ReadVariableXlaSplitND",
+      "ResizeBilinear",
+      "ResizeBilinearGrad",
+      "ResizeNearestNeighbor",
+      "ResourceApplyAdaMax",
+      "ResourceApplyAdadelta",
+      "ResourceApplyAdagrad",
+      "ResourceApplyAdagradDA",
+      "ResourceApplyAdagradV2",
+      "ResourceApplyAdam",
+      "ResourceApplyAddSign",
+      "ResourceApplyCenteredRMSProp",
+      "ResourceApplyFtrl",
+      "ResourceApplyFtrlV2",
+      "ResourceApplyGradientDescent",
+      "ResourceApplyKerasMomentum",
+      "ResourceApplyMomentum",
+      "ResourceApplyPowerSign",
+      "ResourceApplyProximalAdagrad",
+      "ResourceApplyProximalGradientDescent",
+      "ResourceApplyRMSProp",
+      "ResourceGather",
+      "ResourceScatterAdd",
+      "ResourceScatterDiv",
+      "ResourceScatterMax",
+      "ResourceScatterMin",
+      "ResourceScatterMul",
+      "ResourceScatterNdAdd",
+      "ResourceScatterNdSub",
+      "ResourceScatterNdUpdate",
+      "ResourceScatterSub",
+      "ResourceScatterUpdate",
+      "RngReadAndSkip",
+      "RngSkip",
+      "Roll",
+      "ScatterNd",
+      "SelfAdjointEigV2",
+      "SoftmaxCrossEntropyWithLogits",
+      "SpaceToBatch",
+      "SpaceToBatchND",
+      "SpaceToDepth",
+      "SparseMatMul",
+      "SparseToDense",
+      "StackCloseV2",
+      "StackPopV2",
+      "StackPushV2",
+      "StackV2",
+      "StatefulPartitionedCall",
+      "StatefulStandardNormalV2",
+      "StatefulTruncatedNormal",
+      "StatefulUniform",
+      "StatefulUniformFullInt",
+      "StatefulUniformInt",
+      "StatelessCase",
+      "StatelessIf",
+      "StatelessMultinomial",
+      "StatelessRandomGetAlg",
+      "StatelessRandomGetKeyCounter",
+      "StatelessRandomGetKeyCounterAlg",
+      "StatelessRandomNormal",
+      "StatelessRandomNormalV2",
+      "StatelessRandomUniform",
+      "StatelessRandomUniformV2",
+      "StatelessRandomUniformInt",
+      "StatelessRandomUniformIntV2",
+      "StatelessRandomUniformFullInt",
+      "StatelessRandomUniformFullIntV2",
+      "StatelessTruncatedNormal",
+      "StatelessTruncatedNormalV2",
+      "StatelessWhile",
+      "Svd",
+      "SymbolicGradient",
+      "TensorArrayCloseV3",
+      "TensorArrayConcatV3",
+      "TensorArrayGatherV3",
+      "TensorArrayGradV3",
+      "TensorArrayReadV3",
+      "TensorArrayScatterV3",
+      "TensorArraySizeV3",
+      "TensorArraySplitV3",
+      "TensorArrayV3",
+      "TensorArrayWriteV3",
+      "TensorListConcatV2",
+      "TensorListElementShape",
+      "TensorListFromTensor",
+      "TensorListGather",
+      "TensorListGetItem",
+      "TensorListLength",
+      "TensorListPopBack",
+      "TensorListPushBack",
+      "TensorListReserve",
+      "TensorListSetItem",
+      "TensorListSplit",
+      "TensorListStack",
+      "TensorScatterAdd",
+      "TensorScatterMax",
+      "TensorScatterMin",
+      "TensorScatterSub",
+      "TensorScatterUpdate",
+      "ToBool",
+      "TridiagonalSolve",
+      "TruncatedNormal",
+      "Unique",
+      "UniqueV2",
+      "UpperBound",
+      "UnsortedSegmentMax",
+      "UnsortedSegmentMin",
+      "UnsortedSegmentProd",
+      "UnsortedSegmentSum",
+      "VarIsInitializedOp",
+      "VariableShape",
+      "Where",
+      "While",
+      "XlaBroadcastHelper",
+      "XlaConcatND",
+      "XlaConv",
+      "XlaConvV2",
+      "XlaDequantize",
+      "XlaDot",
+      "XlaDotV2",
+      "XlaDynamicSlice",
+      "XlaDynamicUpdateSlice",
+      "XlaEinsum",
+      "XlaGather",
+      "XlaIf",
+      "XlaKeyValueSort",
+      "XlaPad",
+      "XlaRecv",
+      "XlaReduce",
+      "XlaReduceWindow",
+      "XlaRemoveDynamicDimensionSize",
+      "XlaReplicaId",
+      "XlaRngBitGenerator",
+      "XlaScatter",
+      "XlaSelectAndScatter",
+      "XlaSelfAdjointEig",
+      "XlaSend",
+      "XlaSetBound",
+      "XlaSetDynamicDimensionSize",
+      "XlaSharding",
+      "XlaSort",
+      "XlaSplitND",
+      "XlaSpmdFullToShardShape",
+      "XlaSpmdShardToFullShape",
+      "XlaSvd",
+      "XlaVariadicReduce",
+      "XlaVariadicReduceV2",
+      "XlaVariadicSort",
+      "XlaWhile",
+      "Zeta",
+      "_Arg",
+      "_ArrayToList",
+      "_ListToArray",
+      "_Retval"};
   return result;
 }
 

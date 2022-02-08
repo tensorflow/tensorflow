@@ -44,9 +44,9 @@ struct ChloLegalizeToHloPass
     registry.insert<mhlo::MhloDialect, shape::ShapeDialect, scf::SCFDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns(&getContext());
+    RewritePatternSet conversionPatterns(&getContext());
     conversionTarget.addIllegalDialect<chlo::HloClientDialect>();
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
@@ -78,7 +78,7 @@ struct ChloLegalizeToHloPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
+std::unique_ptr<OperationPass<FuncOp>> createChloLegalizeToHloPass(
     bool legalize_broadcasts, bool expand_compositions) {
   return std::make_unique<ChloLegalizeToHloPass>(legalize_broadcasts,
                                                  expand_compositions);

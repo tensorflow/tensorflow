@@ -18,6 +18,26 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+Thunk::ExecuteParams::ExecuteParams(
+    const ServiceExecutableRunOptions& run_options,
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    se::Stream* async_comms_stream)
+    : buffer_allocations(&buffer_allocations),
+      stream(stream),
+      async_comms_stream(async_comms_stream),
+      run_id(run_options.run_options().run_id()),
+      device_assn(run_options.run_options().device_assignment()) {
+  const GpuExecutableRunOptions* gpu_options =
+      run_options.run_options().gpu_executable_run_options();
+  gpu_global_device_ids = gpu_options && gpu_options->gpu_global_device_ids()
+                              ? &*gpu_options->gpu_global_device_ids()
+                              : nullptr;
+  nccl_unique_id_callback =
+      gpu_options && gpu_options->nccl_unique_id_callback()
+          ? &gpu_options->nccl_unique_id_callback()
+          : nullptr;
+}
+
 StatusOr<GlobalDeviceId> Thunk::ExecuteParams::GetGlobalDeviceId() const {
   int64_t local_device_ordinal = stream->parent()->device_ordinal();
   if (gpu_global_device_ids) {
@@ -42,12 +62,6 @@ StatusOr<GlobalDeviceId> Thunk::ExecuteParams::GetGlobalDeviceId() const {
       return "kConvolution";
     case Thunk::kCopy:
       return "kCopy";
-    case Thunk::kCudnnBatchNormBackward:
-      return "kCudnnBatchNormBackward";
-    case Thunk::kCudnnBatchNormForwardInference:
-      return "kCudnnBatchNormForwardInference";
-    case Thunk::kCudnnBatchNormForwardTraining:
-      return "kCudnnBatchNormForwardTraining";
     case Thunk::kCustomCall:
       return "kCustomCall";
     case Thunk::kNcclAllGather:
@@ -112,7 +126,8 @@ std::string ThunkSequence::ToString(
     // Write out the thunk kind, padded out to max_thunk_kind_len.
     absl::string_view kind_str = Thunk::KindToString(thunk->kind());
     absl::StrAppend(&result, indent_str, kind_str,
-                    string(max_thunk_kind_len - kind_str.length(), ' '), "\t");
+                    std::string(max_thunk_kind_len - kind_str.length(), ' '),
+                    "\t");
     if (get_thunk_annotation) {
       absl::StrAppend(&result, get_thunk_annotation(thunk.get()));
     }

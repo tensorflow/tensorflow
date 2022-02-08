@@ -731,6 +731,18 @@ class ShardedVariableMixin(trackable.Trackable):
 
     return obj_map, resource_map
 
+  @property
+  def _unique_id(self):
+    return self.variables[0]._unique_id  # pylint: disable=protected-access
+
+  @property
+  def _distribute_strategy(self):
+    return self.variables[0]._distribute_strategy  # pylint: disable=protected-access
+
+  @property
+  def _shared_name(self):
+    return self._name
+
 
 class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):
   """A container for `Variables` that should be treated as shards.

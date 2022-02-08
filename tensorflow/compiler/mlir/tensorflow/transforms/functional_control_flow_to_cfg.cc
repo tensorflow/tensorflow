@@ -37,7 +37,7 @@ namespace {
 
 struct FunctionalControlFlowToCFG
     : public FunctionalControlFlowToCFGPassBase<FunctionalControlFlowToCFG> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Lowers a general tensor argument that is used as a condition to a functional
@@ -150,7 +150,7 @@ static LogicalResult LowerIfOp(IfOp op) {
   // Add the block arguments to the merge point, and replace all uses of the
   // original operation results with them.
   for (Value value : op_inst->getResults())
-    merge_block->addArgument(value.getType());
+    merge_block->addArgument(value.getType(), loc);
   ReplaceOpResultWithBlockArgs(loc, op_inst, merge_block, &builder);
 
   // Get arguments to the branches after dropping the condition which is the
@@ -225,11 +225,11 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   // for body_block and orig_block_tail to have arguments of the same types as
   // they have exactly one call-site and they are sharing the operands.
   for (Type type : cond_fn.getType().getInputs()) {
-    cond_block->addArgument(type);
+    cond_block->addArgument(type, loc);
   }
   for (Type type : body_fn.getType().getInputs()) {
-    body_block->addArgument(type);
-    orig_block_tail->addArgument(type);
+    body_block->addArgument(type, loc);
+    orig_block_tail->addArgument(type, loc);
   }
 
   auto get_operand = [&](int i) { return op_inst->getOperand(i); };
@@ -272,9 +272,9 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   return success();
 }
 
-void FunctionalControlFlowToCFG::runOnFunction() {
+void FunctionalControlFlowToCFG::runOnOperation() {
   // Scan the function looking for these ops.
-  for (Block& block : getFunction()) {
+  for (Block& block : getOperation()) {
     for (Operation& op : block) {
       // If the operation is one of the control flow ops we know, lower it.
       // If we lower an operation, then the current basic block will be split,

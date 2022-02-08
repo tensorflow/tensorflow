@@ -152,7 +152,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
 
   // Replace all external uses with function arguments.
   for (auto it : llvm::enumerate(extern_values)) {
-    Value arg = first_block.addArgument(it.value().getType());
+    Value arg = first_block.addArgument(it.value().getType(), loc);
     replaceAllUsesInRegionWith(it.value(), arg, func_region);
   }
 

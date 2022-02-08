@@ -90,7 +90,7 @@ using mlir::MLIRContext;
 using mlir::OpBuilder;
 using mlir::Operation;
 using mlir::OperationState;
-using mlir::OwningModuleRef;
+using mlir::OwningOpRef;
 using mlir::RankedTensorType;
 using mlir::UnrankedTensorType;
 using mlir::Value;
@@ -120,7 +120,7 @@ Location TensorLoc(const TensorT& tensor, Builder builder, Location base) {
   if (tensor.name.empty()) {
     return base;
   }
-  return mlir::NameLoc::get(builder.getIdentifier(tensor.name), base);
+  return mlir::NameLoc::get(builder.getStringAttr(tensor.name), base);
 }
 
 // Create the MLIR Location corresponding to a given op. This is an
@@ -775,7 +775,7 @@ Status AddOpIntermediatesForLstm(
           mlir::TypeAttr::get(std::get<0>(type_and_name));
       auto named_attr =
           builder.getNamedAttr(std::get<1>(type_and_name), type_attr);
-      op_state.addAttribute(named_attr.first, named_attr.second);
+      op_state.addAttribute(named_attr.getName(), named_attr.getValue());
     }
   }
   return Status::OK();
@@ -853,8 +853,8 @@ StatusOr<Operation*> ConvertOp(
     // with `none` value,
     llvm::SmallVector<Value, 4> none_operands(
         input_max_num - op_input_num,
-        builder.create<mlir::ConstantOp>(loc, builder.getNoneType(),
-                                         builder.getUnitAttr()));
+        builder.create<mlir::TFL::NoValueOp>(loc, builder.getNoneType(),
+                                             builder.getUnitAttr()));
     op_state.addOperands(ArrayRef<Value>(none_operands));
   }
 
@@ -1164,7 +1164,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   llvm::SmallVector<mlir::Type, 2> ret_types;
   llvm::SmallVector<mlir::Type, 4> input_types;
 
-  auto func_loc = mlir::NameLoc::get(builder.getIdentifier(name), base_loc);
+  auto func_loc = mlir::NameLoc::get(builder.getStringAttr(name), base_loc);
 
   std::vector<int> func_inputs = subgraph.inputs;
   if (is_entry_point && !ordered_input_arrays.empty()) {
@@ -1305,8 +1305,8 @@ StatusOr<FuncOp> ConvertSubgraph(
         if (maybe_optional_arg_marker == nullptr) {
           maybe_optional_arg_marker =
               op_builder
-                  .create<mlir::ConstantOp>(base_loc, builder.getNoneType(),
-                                            builder.getUnitAttr())
+                  .create<mlir::TFL::NoValueOp>(base_loc, builder.getNoneType(),
+                                                builder.getUnitAttr())
                   .getResult();
         }
       } else if (!vals_map.at(input_num)) {
@@ -1410,12 +1410,13 @@ std::string SubgraphName(bool set_implicit_main_func, unsigned index,
 void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
   OpBuilder op_builder{region};
   region.push_back(new mlir::Block());
-  region.addArguments(func.getType().getInputs());
+  Location loc = region.getLoc();
+  auto inputs = func.getType().getInputs();
+  region.addArguments(inputs, mlir::SmallVector<Location>(inputs.size(), loc));
   op_builder.setInsertionPointToStart(&region.front());
   auto call_op = op_builder.create<mlir::CallOp>(
-      region.getLoc(), func.getType().getResults(), func.sym_name(),
-      region.getArguments());
-  op_builder.create<mlir::TFL::YieldOp>(region.getLoc(), call_op.getResults());
+      loc, func.getType().getResults(), func.sym_name(), region.getArguments());
+  op_builder.create<mlir::TFL::YieldOp>(loc, call_op.getResults());
 }
 
 // TFL::WhileOp has regions, so we add CallOp to call the FuncOp in the regions
@@ -1435,7 +1436,7 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
 }
 }  // namespace
 
-OwningModuleRef tflite::FlatBufferToMlir(
+OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     absl::string_view buffer, MLIRContext* context, Location base_loc,
     bool use_external_constant,
     const std::vector<std::string>& ordered_input_arrays,
@@ -1512,5 +1513,5 @@ OwningModuleRef tflite::FlatBufferToMlir(
     module.push_back(func_or_error.ConsumeValueOrDie());
   }
   AddRegionsForTflWhileOp(module);
-  return OwningModuleRef(module);
+  return OwningOpRef<mlir::ModuleOp>(module);
 }

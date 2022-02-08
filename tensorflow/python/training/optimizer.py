@@ -907,7 +907,7 @@ class Optimizer(
   def _create_non_slot_variable(self, initial_value, name, colocate_with):
     """Add an extra variable, not associated with a slot."""
     # Recommendation: Use OptimizerV2 if your optimizer uses non-slot variables.
-    eager = context.executing_eagerly()
+    eager = ops.executing_eagerly_outside_functions()
     graph = None if eager else colocate_with.graph
 
     key = (name, graph)
@@ -936,20 +936,20 @@ class Optimizer(
 
     return v
 
-  @property
-  def _checkpoint_dependencies(self):
+  def _trackable_children(self,
+                          save_type=trackable.SaveType.CHECKPOINT,
+                          **kwargs):
     """From Trackable. Gather graph-specific non-slot variables to save."""
-    current_graph_non_slot_variables = []
+    current_graph_non_slot_variables = {}
     current_graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
     for (name, _), variable_object in sorted(self._non_slot_dict.items(),
                                              # Avoid comparing graphs
                                              key=lambda item: item[0][0]):
       if variable_object._graph_key == current_graph_key:  # pylint: disable=protected-access
-        current_graph_non_slot_variables.append(
-            trackable.TrackableReference(
-                name=name, ref=variable_object))
-    return (super(Optimizer, self)._checkpoint_dependencies
-            + current_graph_non_slot_variables)
+        current_graph_non_slot_variables[name] = variable_object
+    current_graph_non_slot_variables.update(
+        super(Optimizer, self)._trackable_children(save_type, **kwargs))
+    return current_graph_non_slot_variables
 
   def _lookup_dependency(self, name):
     """From Trackable. Find a non-slot variable in the current graph."""

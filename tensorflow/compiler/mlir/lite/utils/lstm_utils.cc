@@ -26,9 +26,9 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -84,8 +84,8 @@ Value CreateI32DenseConst(OpBuilder* builder, ArrayRef<int32_t> values,
 }
 
 Value CreateNoneValue(OpBuilder* builder, mlir::Location location) {
-  return builder->create<mlir::ConstantOp>(location, builder->getNoneType(),
-                                           builder->getUnitAttr());
+  return builder->create<TFL::NoValueOp>(location, builder->getNoneType(),
+                                         builder->getUnitAttr());
 }
 
 Value Transpose(OpBuilder* builder, Value value_to_transpose,
@@ -419,6 +419,7 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       output_layer_norm_coefficients_, builder_.getStringAttr("TANH"),
       builder_.getF32FloatAttr(10.0), builder_.getF32FloatAttr(0.0),
       builder_.getStringAttr("FULL"),
+      /*asymmetric_quantize_inputs=*/mlir::BoolAttr(),
       /*input_to_input_intermediate=*/mlir::TypeAttr(),
       /*input_to_forget_intermediate=*/mlir::TypeAttr(),
       /*input_to_cell_intermediate=*/mlir::TypeAttr(),
@@ -718,8 +719,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       output_shape,
       final_inputs.getType().cast<RankedTensorType>().getElementType());
 
-  Value none = builder->create<mlir::ConstantOp>(
-      func_op.getLoc(), builder->getNoneType(), builder->getUnitAttr());
+  Value none = CreateNoneValue(builder, func_op.getLoc());
   auto lstm = builder->create<mlir::TFL::UnidirectionalSequenceLSTMOp>(
       func_op.getLoc(), result_type, /*input=*/final_inputs,
       /*input_to_input_weights=*/weights_array->getResult(0),
@@ -744,9 +744,12 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       /*input_layer_norm_coefficients=*/none,
       /*forget_layer_norm_coefficients=*/none,
       /*cell_layer_norm_coefficients=*/none,
-      /*output_layer_norm_coefficients=*/none, builder->getStringAttr("TANH"),
-      builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
-      builder->getBoolAttr(time_majored),
+      /*output_layer_norm_coefficients=*/none,
+      /*fused_activation_function*/ builder->getStringAttr("TANH"),
+      /*cell_clip*/ builder->getF32FloatAttr(10.0),
+      /*proj_clip*/ builder->getF32FloatAttr(0.0),
+      /*time_major*/ builder->getBoolAttr(time_majored),
+      /*asymmetric_quantize_inputs=*/mlir::BoolAttr(),
       /*input_to_input_intermediate=*/mlir::TypeAttr(),
       /*input_to_forget_intermediate=*/mlir::TypeAttr(),
       /*input_to_cell_intermediate=*/mlir::TypeAttr(),

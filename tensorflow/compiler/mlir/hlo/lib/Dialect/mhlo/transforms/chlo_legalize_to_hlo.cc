@@ -64,14 +64,8 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
 
     // Lower to broadcasted constant.
     auto loc = op.getLoc();
-    Type extent_tensor_type = shape::getExtentTensorType(op.getContext());
     Value constant = rewriter.create<mhlo::ConstOp>(loc, op.value());
-    Value uncasted_shape = rewriter.create<shape::ShapeOfOp>(
-        loc, extent_tensor_type, adaptor.operand());
-    Type shape_ty =
-        RankedTensorType::get({result_ty.getRank()}, rewriter.getIndexType());
-    Value shape =
-        rewriter.create<tensor::CastOp>(loc, shape_ty, uncasted_shape);
+    Value shape = rewriter.create<shape::ShapeOfOp>(loc, adaptor.operand());
     rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
         op, result_ty, constant, shape, rewriter.getI64TensorAttr({}));
     return success();
@@ -1140,12 +1134,7 @@ Value MaterializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
   // TODO(b/190374484): Use mhlo::ConstantLikeOp when it supports complex types.
   Value two = rewriter.create<mhlo::ConstOp>(
       loc, hlo::GetScalarOfType(getElementTypeOrSelf(x.getType()), 2));
-  Type extent_tensor_type = shape::getExtentTensorType(x.getContext());
-  Value uncasted_shape =
-      rewriter.create<shape::ShapeOfOp>(loc, extent_tensor_type, x);
-  Type shape_ty =
-      RankedTensorType::get({result_ty.getRank()}, rewriter.getIndexType());
-  Value shape = rewriter.create<tensor::CastOp>(loc, shape_ty, uncasted_shape);
+  Value shape = rewriter.create<shape::ShapeOfOp>(loc, x);
   Value two_with_x_shape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
       loc, result_ty, two, shape, rewriter.getI64TensorAttr({}));
 
@@ -1469,7 +1458,7 @@ class ConvertDynamicReshapeOp
 }  // namespace
 
 void PopulateChloBroadcastingPatterns(MLIRContext *context,
-                                      OwningRewritePatternList *patterns) {
+                                      RewritePatternSet *patterns) {
   // Instantiate conversion templates for conforming binary elementwise ops
   // that do not have different dtypes between operands and results and do
   // not have special attributes that need to be preserved.
@@ -1483,12 +1472,12 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
 }
 
 void PopulateDecomposeChloPatterns(MLIRContext *context,
-                                   OwningRewritePatternList *patterns) {
+                                   RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
 
   // Other patterns.
   // clang-format off
-  patterns->insert<ConvertCoshOp,
+  patterns->add<ConvertCoshOp,
                    ConvertDigammaOp,
                    ConvertErfOp,
                    ConvertErfcOp,

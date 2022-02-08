@@ -83,7 +83,7 @@ class RewriteTFFrameworkAssertPass
     // Populate patterns.
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-    patterns.insert<TFAssertOpConverter>(context);
+    patterns.add<TFAssertOpConverter>(context);
     PopulateEmbedTFFrameworkAssertPattern(&patterns);
 
     // Set target.

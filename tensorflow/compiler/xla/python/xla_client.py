@@ -44,7 +44,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 43
+_version = 56
+
+# Version number for MLIR:Python components.
+mlir_api_version = 2
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -378,7 +381,7 @@ Client = _xla.Client
 Buffer = _xla.Buffer
 DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
-OpSharding = _xla.OpSharding  # type: ignore
+OpSharding = _xla.OpSharding
 
 
 def register_custom_call_target(name, fn, platform='cpu'):

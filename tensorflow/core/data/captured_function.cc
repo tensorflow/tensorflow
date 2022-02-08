@@ -44,6 +44,9 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr char kAllowSmallFunctionOptimizations[] =
+    "allow_small_function_optimizations";
+
 // Simplistic implementation of the `StepStatsCollectorInterface` that only
 // cares about collecting the CPU time needed to execute a captured function.
 class SimpleStepStatsCollector : public StepStatsCollectorInterface {
@@ -408,15 +411,19 @@ Status MakeIteratorFromInputElement(
 
   // Create an iterator for the dataset that was returned by `f`.
   std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
+
+  return returned_dataset->MakeIterator(MakeNestedIteratorContext(ctx), parent,
+                                        iterator_prefix, out_iterator);
+}
+
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
+  // Strip out any split providers so that they don't apply to sub-iterators.
   if (ctx->split_providers().empty()) {
-    return returned_dataset->MakeIterator(ctx, parent, iterator_prefix,
-                                          out_iterator);
+    return *ctx;
   }
-  // Strip out the split providers so that they don't apply to sub-iterators.
   IteratorContext::Params params(ctx);
   params.split_providers.clear();
-  return returned_dataset->MakeIterator(IteratorContext(std::move(params)),
-                                        parent, iterator_prefix, out_iterator);
+  return IteratorContext(std::move(params));
 }
 
 /* static */
@@ -537,8 +544,12 @@ Status CapturedFunction::Instantiate(
   inst_opts.default_device_to_target = metadata_->use_default_device();
   inst_opts.config_proto =
       lib->config_proto() ? *lib->config_proto() : ConfigProto();
-  if (!metadata_->use_inter_op_parallelism()) {
-    inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
+  if (GetExperiments().contains(kAllowSmallFunctionOptimizations)) {
+    inst_opts.allow_small_function_optimizations = true;
+  } else {
+    if (!metadata_->use_inter_op_parallelism()) {
+      inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
+    }
   }
   inst_opts.is_multi_device_function = metadata_->use_multi_device_function();
   if (!params.function_handle_cache) {

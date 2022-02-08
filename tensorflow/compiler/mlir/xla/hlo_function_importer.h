@@ -41,6 +41,11 @@ class HloComputation;
 class HloInstruction;
 class Shape;
 
+// HLO bounded dynamic shapes can be converted to either MLIR dynamic shapes
+// (which lose the bound information) or casted to static shape using the
+// bounds.
+enum class DynamicShapeHandlingMode { kDynamic, kConvertToStatic };
+
 // Helper class for importing HloComputations.
 class HloFunctionImporter {
  public:
@@ -52,9 +57,12 @@ class HloFunctionImporter {
                                                 mlir::FuncOp>* function_map,
                              mlir::Builder* builder);
 
-  // Imports the given hlo computation to the specified region.
+  // Imports the given hlo computation to the specified region. If
+  // 'flatten_region_arg_tuple' is true, then flatten the tuple-typed region
+  // argument(s) and return value(s).
   static Status ImportAsRegion(const xla::HloComputation& computation,
-                               mlir::Region* region, mlir::Builder* builder);
+                               mlir::Region* region, mlir::Builder* builder,
+                               bool flatten_region_arg_tuple = false);
 
   // Imports the given computation to the given place specified by `builder`.
   // `arguments` contains values for all parameters.
@@ -66,7 +74,8 @@ class HloFunctionImporter {
   static StatusOr<mlir::Operation*> ImportInstruction(
       const xla::HloInstruction* instr,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
-      mlir::OpBuilder* builder);
+      mlir::OpBuilder* builder,
+      DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
 
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
                                llvm::StringRef attr_name);
@@ -81,6 +90,46 @@ class HloFunctionImporter {
   // Converts replica groups to attribute
   static mlir::NamedAttribute ConvertReplicaGroups(
       absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder);
+
+  // For mlir::IfOp or mlir::CaseOp, replace the uses of their region's block
+  // arguments with 'implicit_operands'. Here | implicit_operands | == sum of
+  // the number of arguments in all the regions in IfOp or CaseOp.
+  void ReplaceBlockArgumentsWithImplicitOperands(
+      mlir::Operation* op, llvm::ArrayRef<mlir::Value> implicit_operands);
+
+  // Create a TupleOp using the results of 'op' if 'type' is a mlir::TupleType.
+  // Otherwise, return 'op'.
+  mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
+                                            mlir::Location loc,
+                                            mlir::Operation* op,
+                                            mlir::Type type);
+
+  // FlattenTupleType flattens the types in (nested) tuple-type 'type' and
+  // stores them in 'types'.
+  static void FlattenTupleType(
+      mlir::Type type, llvm::SmallVectorImpl<mlir::Type>& flattened_types);
+
+  // FlattenTupleValue flattens the values in (nested) tuple-typed 'value' and
+  // stores them in 'flattened_values'.
+  static void FlattenTupleValue(
+      mlir::OpBuilder* func_builder, mlir::Location loc, mlir::Value value,
+      llvm::SmallVectorImpl<mlir::Value>& flattened_values);
+
+  // CreateTupleValue creates a root TupleOp of (nested) tuple-type 'type' using
+  // the non-tuple-typed values in 'flatten_values'.
+  //
+  // e.g., Given 'flatten_values': [V1, V2, V3] &'type': tuple<T1,tuple<T1,T2>>,
+  //      The function returns %t2 such that:
+  //       %t1 = mhlo.tuple(V2,V3) : (T2,T3) -> tuple<T2,T3>
+  //       %t2 = mhlo.tuple(V1,%t1): (T1,tuple<T2,T3>) -> tuple<T1,tuple<T1,T2>>
+  //
+  // Note: 1. FlattenTupleValue and CreateTupleValue is a pair of functions to
+  //          resp. flatten and create tuples in the exact same order.
+  //       2. `flatten_values`, initially storing the flattened values, will be
+  //          mutated to a 0-length array by the end of function invocation.
+  static mlir::Value CreateTupleValue(
+      mlir::OpBuilder* func_builder, mlir::Location loc,
+      llvm::MutableArrayRef<mlir::Value>& flatten_values, mlir::Type type);
 
  private:
   HloFunctionImporter(mlir::ModuleOp module,
@@ -102,12 +151,14 @@ class HloFunctionImporter {
 
   // Imports the given computation in the specified region.
   tensorflow::Status ImportAsRegion(const HloComputation& computation,
-                                    mlir::Region* region);
+                                    mlir::Region* region,
+                                    bool flatten_region_arg_tuple = false);
 
   // Imports instructions from the given computation in the specified block.
   // Assumes that the block already has correct arguments populated.
   tensorflow::Status ImportInstructions(const HloComputation& computation,
-                                        mlir::Block* block);
+                                        mlir::Block* block,
+                                        bool flatten_region_arg_tuple);
   StatusOr<mlir::Value> ImportInstructionsImpl(
       const xla::HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
@@ -117,11 +168,14 @@ class HloFunctionImporter {
   StatusOr<mlir::Operation*> ImportInstructionWithLayout(
       const xla::HloInstruction* instruction,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
-      mlir::OpBuilder* func_builder);
+      mlir::OpBuilder* func_builder,
+      DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
+
   StatusOr<mlir::Operation*> ImportInstructionImpl(
       const HloInstruction* instruction,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
-      mlir::OpBuilder* func_builder);
+      mlir::OpBuilder* func_builder,
+      DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
 
   // Gets the MLIR operand values from an HLO Instruction.
   StatusOr<llvm::SmallVector<mlir::Value, 4>> GetOperands(
@@ -130,8 +184,11 @@ class HloFunctionImporter {
   // Converts xla Tensor type to the corresponding MLIR type.
   StatusOr<mlir::RankedTensorType> ConvertTensorType(const xla::Shape& shape);
 
-  // Converts an XLA shape/layout to the corresponding MLIR layout
-  StatusOr<mlir::Attribute> ConvertShapeToMlirLayout(const xla::Shape& shape);
+  // Converts an XLA shape/layout to the corresponding MLIR layout, in
+  // flattened_attr, while flattening the tuple layout.
+  Status ConvertShapeToMlirLayout(
+      const xla::Shape& shape,
+      llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr);
 
   // Returns the output type of an HloInstruction.
   StatusOr<mlir::Type> GetReturnType(const xla::HloInstruction* instruction);

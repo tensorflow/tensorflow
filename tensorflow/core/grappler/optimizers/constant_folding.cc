@@ -1017,7 +1017,12 @@ bool ConstantFolding::IsFoldableUncached(
       }
     }
     for (const auto& output_prop : output_props) {
-      const PartialTensorShape output_shape(output_prop.shape());
+      PartialTensorShape output_shape;
+      if (!PartialTensorShape::BuildPartialTensorShape(output_prop.shape(),
+                                                       &output_shape)
+               .ok()) {
+        return false;
+      }
       if (output_shape.IsFullyDefined()) {
         const int64_t num_bytes =
             output_shape.num_elements() * DataTypeSize(output_prop.dtype());
@@ -1362,6 +1367,11 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
           strings::StrCat("A tensor in the input node, with TensorId of ",
                           input_tensor.ToString(),
                           " has a dtype of DT_INVALID."));
+    }
+    if (IsRefType(raw_val.dtype())) {
+      return errors::InvalidArgument(
+          "Not allowed to construct a tensor with reference dtype, got ",
+          DataTypeString(raw_val.dtype()));
     }
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     if (!value->FromProto(raw_val)) {
@@ -3500,6 +3510,9 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
 
   NodeDef* mul_left_child = node_map_->GetNode(node->input(0));
   NodeDef* mul_right_child = node_map_->GetNode(node->input(1));
+  if (mul_left_child == nullptr || mul_right_child == nullptr) {
+    return false;
+  }
   // One child must be constant, and the second must be Conv op.
   const bool left_child_is_constant = IsReallyConstant(*mul_left_child);
   const bool right_child_is_constant = IsReallyConstant(*mul_right_child);

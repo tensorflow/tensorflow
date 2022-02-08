@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -754,6 +755,31 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
   )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
+}
+
+TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
+  const char *const kHloString = R"(
+  HloModule RowReduce
+
+  Sum {
+    x.1 = f32[] parameter(0)
+    y.1 = f32[] parameter(1)
+    ROOT add.1 = f32[] add(x.1, y.1)
+  }
+
+  ENTRY reduce.1 {
+    parameter = f32[4,1048576,1024,1024] parameter(0)
+    init_value = f32[] constant(0)
+    ROOT reduce = f32[4,1048576,1024] reduce(parameter, init_value), dimensions={3}, to_apply=Sum
+  }
+  )";
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  Status status = CompileToExecutable(std::move(hlo_module)).status();
+  EXPECT_EQ(status.code(), tensorflow::error::Code::FAILED_PRECONDITION);
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::HasSubstr(
+          "Number of physical blocks (4294967296) does not fit in an i32"));
 }
 
 }  // namespace

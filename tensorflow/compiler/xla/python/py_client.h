@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -151,8 +152,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   StatusOr<std::shared_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
-  StatusOr<std::shared_ptr<PyExecutable>> CompileMlir(
-      absl::string_view mlir_module, CompileOptions options);
+  StatusOr<std::shared_ptr<PyExecutable>> CompileMlir(std::string mlir_module,
+                                                      CompileOptions options);
 
   StatusOr<pybind11::bytes> SerializeExecutable(
       const PyExecutable& executable) const;

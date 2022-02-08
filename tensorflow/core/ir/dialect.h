@@ -62,6 +62,8 @@ using mlir::tf_type::Uint8RefType;       // NOLINT
 using mlir::tf_type::VariantRefType;     // NOLINT
 using mlir::tf_type::VariantType;        // NOLINT
 using mlir::tf_type::VersionAttr;        // NOLINT
+
+class TFGraphOpAsmInterface;
 }  // namespace tfg
 }  // namespace mlir
 // Dialect main class is defined in ODS, we include it here.

@@ -81,6 +81,14 @@ class MapDatasetOp::Dataset : public DatasetBase {
     }
   }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    if (preserve_cardinality_) {
+      return input_->Cardinality(options);
+    } else {
+      return kUnknownCardinality;
+    }
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return Status::OK();

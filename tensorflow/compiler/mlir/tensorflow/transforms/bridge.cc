@@ -92,8 +92,15 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(CreateTPUReorderReplicateAndPartitionedInputsPass());
   pm.addPass(CreateTPUClusterFormationPass());
+  // Run TPU cluster cleanup attributes so ops with no outside compiled
+  // attribute have no host device attribute.
+  pm.addPass(CreateTPUClusterCleanupAttributesPass());
   pm.addPass(CreateOutsideCompiledToHostLaunchPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
+  // Running canonicalizer before decomposing resource ops in cluster helps the
+  // latter pass to converge faster as it does not have to spend time folding
+  // away dead ops.
+  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
   // because DecomposeResourceOpsPass uses pattern rewriter which hoists
   // changed constants out of tf_device.Launch.
@@ -158,10 +165,10 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPUResourceReadForWritePass());
+  pm.addPass(TFDevice::CreateMarkInputOutputAliasesPass());
   pm.addPass(CreateTPUShardingIdentificationPass());
   pm.addNestedPass<FuncOp>(CreateTPUResourceReadsWritesPartitioningPass());
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
-  pm.addPass(TFDevice::CreateMarkInputOutputAliasesPass());
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
@@ -169,7 +176,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(
       TF::CreateHoistReplicateInvariantResourceWritesPass());
   pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
-  pm.addPass(CreateTPUVariableReformattingPass());
+  pm.addPass(CreateTPUVariableRuntimeReformattingPass());
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 

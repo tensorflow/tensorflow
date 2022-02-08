@@ -105,6 +105,7 @@ namespace xla {
   V(kLogistic, "logistic", 1)                                                  \
   V(kAnd, "and", 2)                                                            \
   V(kNot, "not", 1)                                                            \
+  V(kOptimizationBarrier, "opt-barrier", 1)                                    \
   V(kOr, "or", 2)                                                              \
   V(kXor, "xor", 2)                                                            \
   V(kMap, "map", kHloOpcodeIsVariadic)                                         \
@@ -170,10 +171,10 @@ enum {
 };
 
 // Returns a string representation of the opcode.
-string HloOpcodeString(HloOpcode opcode);
+std::string HloOpcodeString(HloOpcode opcode);
 
 // Retrieves the opcode enum by name if the opcode exists.
-StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name);
+StatusOr<HloOpcode> StringToHloOpcode(const std::string& opcode_name);
 
 inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {
   return os << HloOpcodeString(opcode);

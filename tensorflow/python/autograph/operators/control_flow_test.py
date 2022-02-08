@@ -796,6 +796,32 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     self.assertEqual(v, (12345,))
     self.assertOpCreated('While')
 
+  def test_tensor_failing_to_create_variable(self):
+
+    def body():
+      nonlocal i, s
+      i = constant_op.constant(2)
+      raise ValueError('testing')
+      s = i ** 5  # pylint: disable=unreachable
+
+    def set_state(loop_vars):
+      nonlocal i, s
+      i, s = loop_vars
+
+    i = variable_operators.Undefined('i')
+    s = constant_op.constant(0)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        re.compile('must be defined.*tried to determine.*testing', re.DOTALL)):
+      control_flow.while_stmt(
+          test=lambda: math_ops.equal(s, 0),
+          body=body,
+          get_state=lambda: (i, s),
+          set_state=set_state,
+          symbol_names=('i', 's'),
+          opts={})
+
   def test_tensor_with_python_state(self):
     class MutableObject(object):
       field = constant_op.constant(0, dtype=dtypes.int32)

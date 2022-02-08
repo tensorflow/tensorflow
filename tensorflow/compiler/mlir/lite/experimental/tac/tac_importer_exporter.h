@@ -30,7 +30,7 @@ class TacImporter {
   virtual ~TacImporter() {}
 
   // Imports and returns the Module for the imported program.
-  virtual absl::StatusOr<mlir::OwningModuleRef> Import() = 0;
+  virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Import() = 0;
 };
 
 // Interface for exporting a module.

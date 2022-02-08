@@ -33,9 +33,11 @@ def FallbackAsync_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tfrt::fallback_async";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
-class FallbackAsync_Op<string mnemonic, list<OpTrait> traits = []> :
+class FallbackAsync_Op<string mnemonic, list<Trait> traits = []> :
     Op<FallbackAsync_Dialect, mnemonic, !listconcat(traits, [IsolatedFromAbove])> {
 }
 

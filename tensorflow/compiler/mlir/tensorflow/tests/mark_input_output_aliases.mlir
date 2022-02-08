@@ -92,3 +92,39 @@ func @skip_multiple_reads_of_resource(%arg0: !tf_res_f32, %arg1: !tf_res_f32) {
 func @device_func_4(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   return %arg1, %arg0 : tensor<f32>, tensor<f32>
 }
+
+// CHECK-LABEL: func @device_func_5
+// CHECK-SAME: [[ARG0:%.*]]: tensor<f32> {tf.aliasing_output = 1 : i64}
+// CHECK-SAME: [[ARG1:%.*]]: tensor<f32> {tf.aliasing_output = 0 : i64}
+func @device_func_5(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  return %arg1, %arg0 : tensor<f32>, tensor<f32>
+}
+
+// CHECK-LABEL: func @device_func_6
+// CHECK-SAME: [[ARG2:%.*]]: tensor<f32> {tf.aliasing_output = 1 : i64}
+// CHECK-SAME: [[ARG3:%.*]]: tensor<f32> {tf.aliasing_output = 0 : i64}
+func @device_func_6(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+  return %arg1, %arg0 : tensor<f32>, tensor<f32>
+}
+
+// Test that aliasing works if `cluster_func` is wrapped in `parallel_execute`.
+// CHECK-LABEL: func @parallel_execute
+func @parallel_execute(%arg0: !tf_res_f32, %arg1: !tf_res_f32, %arg2: !tf_res_f32, %arg3: !tf_res_f32) {
+  %0 = "tf.ReadVariableOp"(%arg0) : (!tf_res_f32) -> tensor<f32>
+  %1 = "tf.ReadVariableOp"(%arg1) : (!tf_res_f32) -> tensor<f32>
+  %2 = "tf.ReadVariableOp"(%arg2) : (!tf_res_f32) -> tensor<f32>
+  %3 = "tf.ReadVariableOp"(%arg3) : (!tf_res_f32) -> tensor<f32>
+  %4:4 = "tf_device.parallel_execute"() ({
+    %5:2 = "tf_device.cluster_func"(%0, %2)  {_tpu_replicate = "tpu", func = @device_func_5} : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+    tf_device.return %5#0, %5#1 : tensor<f32>, tensor<f32>
+  }, {
+    %6:2 = "tf_device.cluster_func"(%1, %3)  {_tpu_replicate = "tpu", func = @device_func_6} : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+    tf_device.return %6#0, %6#1 : tensor<f32>, tensor<f32>
+  }) : () -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>)
+  "tf.AssignVariableOp"(%arg2, %4#0) : (!tf_res_f32, tensor<f32>) -> ()
+  "tf.AssignVariableOp"(%arg0, %4#1) : (!tf_res_f32, tensor<f32>) -> ()
+  "tf.AssignVariableOp"(%arg3, %4#2) : (!tf_res_f32, tensor<f32>) -> ()
+  "tf.AssignVariableOp"(%arg1, %4#3) : (!tf_res_f32, tensor<f32>) -> ()
+
+  return
+}

@@ -537,7 +537,7 @@ void ChangeFunctionInputSignature(
     if (grad_it == grads.end()) continue;
     llvm::StringMap<Value> grads_map;
     for (const string& source : grad_it->getSecond()) {
-      auto g = func.front().addArgument(t);
+      auto g = func.front().addArgument(t, func.getLoc());
       (*stats)[g].accumulate_on_write = true;
       grads_map[source] = g;
     }

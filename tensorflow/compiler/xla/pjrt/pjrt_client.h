@@ -16,10 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_PJRT_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_PJRT_CLIENT_H_
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
@@ -41,25 +45,41 @@ limitations under the License.
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
 
 namespace xla {
 
-using PjRtPlatformId = uint64;
+using PjRtPlatformId = uint64_t;
 
-constexpr char kCpuName[] = "cpu";
-constexpr char kGpuName[] = "gpu";
-constexpr char kTpuName[] = "tpu";
-static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(kCpuName);
-static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(kGpuName);
-static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(kTpuName);
+inline const char* CpuName() {
+  static constexpr char kCpuName[] = "cpu";
+  return kCpuName;
+}
+inline const char* GpuName() {
+  static constexpr char kGpuName[] = "gpu";
+  return kGpuName;
+}
+inline const char* TpuName() {
+  static constexpr char kTpuName[] = "tpu";
+  return kTpuName;
+}
+inline PjRtPlatformId CpuId() {
+  static const PjRtPlatformId kCpuId = tensorflow::Fingerprint64(CpuName());
+  return kCpuId;
+}
+inline PjRtPlatformId GpuId() {
+  static const PjRtPlatformId kGpuId = tensorflow::Fingerprint64(GpuName());
+  return kGpuId;
+}
+inline PjRtPlatformId TpuId() {
+  static const PjRtPlatformId kTpuId = tensorflow::Fingerprint64(TpuName());
+  return kTpuId;
+}
 
 enum PjRtRuntimeType { kStreamExecutor, kTfrt };
-static constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
+inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
   switch (type) {
     case kStreamExecutor:
       return "stream_executor";
@@ -126,12 +146,45 @@ struct PjRtCrossHostRecvBuffer {
   // The buffer that will hold the result of the transfer.
   std::unique_ptr<PjRtBuffer> buffer;
 };
+// Function that the client should call at the receiver if it needs to cancel a
+// cross-host send, for example because the buffer that the remote host wanted
+// to send is not available. The serialized descriptor should match one of the
+// descriptors returned in a PjRtCrossHostRecvBuffer. on_canceled will be called
+// once cancellation is complete and indicates whether cancellation was
+// successful or not.
+//
+// For each serialized_descriptor provided in a PjRtCrossHostRecvBuffer,
+// *either* the sending host must successfully complete a CopyToRemoteDevice
+// for that descriptor, *or* the receiving host must cancel. If there is a
+// duplicate (e.g., both send and cancel) then the system will be left in an
+// undefined state. If there is no send or cancellation then the system will
+// hang indefinitely.
+using PjRtCrossHostSendCancelNotifier =
+    std::function<void(absl::string_view serialized_descriptor, Status reason,
+                       std::function<void(Status)> on_canceled)>;
 using PjRtCrossHostRecvNotifier =
-    std::function<void(StatusOr<std::vector<PjRtCrossHostRecvBuffer>>&&)>;
+    std::function<void(StatusOr<std::pair<std::vector<PjRtCrossHostRecvBuffer>,
+                                          PjRtCrossHostSendCancelNotifier>>&&)>;
 
-struct MultiSliceOptions {
-  // Number of connected slices to compile for.
-  int32_t num_slices;
+// Provides configuration for implementations that support compile and execute
+// spanning multiple slices. A slice is a set of devices connected by dedicated
+// high speed interconnect. Connectivity between slices is typically over data
+// center networks. Concrete implementations of MultiSliceConfig contain
+// environment specific information to enable communication between devices on
+// different slices. Passed as options during compile and execute.
+// Implementations that do not support this are allowed to pass nullptr.
+class MultiSliceConfig {
+ public:
+  virtual ~MultiSliceConfig();
+
+  // Returns the total number of slices.
+  virtual int32_t NumSlices() const = 0;
+
+  // Returns the SliceID at this host - an integer in [0, NumSlices)
+  virtual int32_t SliceId() const = 0;
+
+  // Returns the number of devices on each slice indexed by SliceId.
+  virtual absl::flat_hash_map<int32_t, int32_t> NumDevicesPerSlice() const = 0;
 };
 
 struct CompileOptions {
@@ -151,9 +204,9 @@ struct CompileOptions {
   // compiled for one device doesn't run on another.
   bool compile_portable_executable = false;
 
-  // Set multi_slice_options to trigger compilation for DCN connected multi
+  // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
-  absl::optional<MultiSliceOptions> multi_slice_options = absl::nullopt;
+  const MultiSliceConfig* multi_slice_config = nullptr;
 };
 
 class PjRtExecutable;
@@ -645,10 +698,21 @@ class PjRtBuffer {
   // of the corresponding shape. serialized_descriptor is the string returned by
   // the callback along with the corresponding destination buffer.
   //
+  // When the send either completes or fails, on_done will be called. If
+  // status is Ok then it is guaranteed that sends_were_enqueued==true.
+  // Otherwise, if sends_were_enqueued==false then the sender should contact
+  // the receiver out of band to request cancellation of the transfer. If
+  // !status.ok() and sends_were_enqueued==true then it is not possible to
+  // determine whether the transfer succeeded and the system is in an
+  // undefined state. This undefined state almost certainly indicates an
+  // unrecoverable hardware error.
+  //
   // See note on semantics of cross-device copies in the class definition
   // comment for PjRtClient.
-  virtual Status CopyToRemoteDevice(
-      absl::string_view serialized_descriptor) = 0;
+  using RemoteSendCallback =
+      std::function<void(Status status, bool sends_were_enqueued)>;
+  virtual void CopyToRemoteDevice(absl::string_view serialized_descriptor,
+                                  RemoteSendCallback on_done) = 0;
   struct ScatterDetails {
     // The dimensions of the corresponding buffer that the scatter slices
     // across. These dimensions must be the major dimensions in the on-device
@@ -666,13 +730,30 @@ class PjRtBuffer {
     // The start and end indices of the slices.
     std::vector<std::pair<int64_t, int64_t>> slices;
   };
-  virtual Status CopyToRemoteDeviceScattered(
-      absl::Span<const std::string> serialized_descriptors,
+  virtual void CopyToRemoteDeviceScattered(
+      absl::Span<const std::pair<std::string, RemoteSendCallback>>
+          serialized_descriptors_and_callbacks,
       const ScatterDetails& scatter_details) = 0;
 
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
   virtual Status BlockHostUntilReady() = 0;
+
+  // Calls callback when the buffer is ready.
+  //
+  //   buf->OnReady(callback);
+  //
+  // is semantically almost identical to:
+  //
+  //   ForkThread([]() { callback(buf->BlockHostUntilReady()); });
+  //
+  // the only difference being that the callback may happen immediately on the
+  // calling thread. (The implementation may also be more efficient.)
+  //
+  // The interface makes no assumptions about what thread calls callback, so the
+  // caller must ensure that callback returns quickly and hands off long-running
+  // work or any blocking operation to a caller-managed threadpool.
+  virtual void OnReady(std::function<void(Status)> callback) = 0;
 
   // Whether this buffer is on CPU and thus allows for certain optimizations.
   virtual bool IsOnCpu() const = 0;
@@ -696,13 +777,18 @@ struct ExecuteOptions {
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
   // the launch IDs may be used by the runtime to detect the mismatch.
-  int32 launch_id = 0;
+  int32_t launch_id = 0;
   // If non-null, an opaque context passed to an execution that may be used to
   // supply additional arguments to a derived class of PjRtExecutable.
   const ExecuteContext* context = nullptr;
   // If true, check that the PjRtBuffer argument shapes match the compiled
   // shapes. Otherwise, any shape with the right size on device may be passed.
   bool strict_shape_checking = true;
+
+  // Set multi_slice_config when the computation spans multiple slices. The
+  // config should match what was used during compilation to generate this
+  // executable.
+  const MultiSliceConfig* multi_slice_config = nullptr;
 };
 
 // Represents a compiled computation that can be executed given handles to

@@ -98,7 +98,7 @@ void DefaultExecutionProvider::LogParams(const ToolParams& params,
 
 TfLiteDelegatePtr DefaultExecutionProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
-  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
 }
 
 std::pair<TfLiteDelegatePtr, int>

@@ -43,7 +43,7 @@ namespace tac {
 namespace {
 
 struct DeviceTransformGPUPass
-    : public mlir::PassWrapper<DeviceTransformGPUPass, FunctionPass> {
+    : public mlir::PassWrapper<DeviceTransformGPUPass, OperationPass<FuncOp>> {
   llvm::StringRef getArgument() const final {
     return "tfl-device-transform-gpu";
   }
@@ -53,20 +53,19 @@ struct DeviceTransformGPUPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void DeviceTransformGPUPass::runOnFunction() {
-  auto func = getFunction();
+void DeviceTransformGPUPass::runOnOperation() {
+  auto func = getOperation();
   auto* ctx = &getContext();
-  OwningRewritePatternList patterns = GetHardwareRewritePatternsGPU(ctx);
+  RewritePatternSet patterns = GetHardwareRewritePatternsGPU(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
-
-OwningRewritePatternList GetHardwareRewritePatternsGPU(MLIRContext* context) {
+RewritePatternSet GetHardwareRewritePatternsGPU(MLIRContext* context) {
   GpuHardware gpu_hardware;
   return gpu_hardware.GetTransformations(context);
 }

@@ -77,7 +77,7 @@ BufferLayoutConstraint::BufferLayoutConstraint(const Layout& layout,
   CHECK(LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()).ok());
 }
 
-string BufferLayoutConstraint::ToString() const {
+std::string BufferLayoutConstraint::ToString() const {
   return absl::StrFormat("BufferLayoutConstraint %s: %s", buffer_->ToString(),
                          LayoutUtil::HumanString(layout_));
 }
@@ -97,13 +97,13 @@ OperandLayoutConstraint::OperandLayoutConstraint(
       << operand_no << " of instruction " << instruction->ToString() << ")";
 }
 
-string OperandLayoutConstraint::ToString() const {
+std::string OperandLayoutConstraint::ToString() const {
   return absl::StrFormat("OperandLayoutConstraint %s, operand %d: %s",
                          instruction_->name(), operand_no_,
                          shape_layout_.ToString());
 }
 
-string ComputationLayoutConstraint::ToString() const {
+std::string ComputationLayoutConstraint::ToString() const {
   return absl::StrFormat("ComputationLayoutConstraint (status=%d): %s",
                          layout_state_, computation_layout_.ToString());
 }
@@ -387,8 +387,9 @@ const ShapeLayout* LayoutAssignment::LayoutConstraints::ResultLayout() const {
              : nullptr;
 }
 
-string LayoutAssignment::ToString(const LayoutConstraints& constraints) const {
-  string output;
+std::string LayoutAssignment::ToString(
+    const LayoutConstraints& constraints) const {
+  std::string output;
   absl::StrAppend(&output, "LayoutConstraints for computation ",
                   constraints.computation()->name(), "\n");
   for (auto* instruction :
@@ -808,6 +809,11 @@ Status CheckWhileLayout(HloInstruction* while_inst,
   return Status::OK();
 }
 
+Status CheckOptimizationBarrierLayout(HloInstruction* inst) {
+  TF_RET_CHECK(LayoutsInShapesEqual(inst->operand(0)->shape(), inst->shape()));
+  return Status::OK();
+}
+
 Status CheckConditionalLayout(
     HloInstruction* instruction,
     absl::Span<const ComputationLayout> branch_computation_layouts) {
@@ -1087,6 +1093,9 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
               FindOrDie(computation_layouts_, instruction->while_body())
                   ->computation_layout()));
           break;
+        case HloOpcode::kOptimizationBarrier:
+          TF_RETURN_IF_ERROR(CheckOptimizationBarrierLayout(instruction));
+          break;
         case HloOpcode::kConditional: {
           std::vector<ComputationLayout> branch_computation_layouts;
           const auto& branch_computations = instruction->branch_computations();
@@ -1170,7 +1179,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
 
     const Shape& output_shape = instruction->shape();
     Shape output_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
-        output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
+        output_shape.element_type(), output_shape.dimensions(),
         LayoutUtil::MinorToMajor(output_layout));
     Shape operand_shape = operand->shape();
     *operand_shape.mutable_layout() =
@@ -1251,8 +1260,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       return nullptr;
     }
     Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
-        operand->shape().element_type(),
-        AsInt64Slice(operand->shape().dimensions()),
+        operand->shape().element_type(), operand->shape().dimensions(),
         LayoutUtil::MinorToMajor(operand_layout));
     Shape output_shape = user->shape();
     *output_shape.mutable_layout() =
@@ -2409,7 +2417,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
-    case HloOpcode::kConditional:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kAllGather:
@@ -2435,6 +2442,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kOr:
     case HloOpcode::kXor:
     case HloOpcode::kPad:
@@ -2481,6 +2489,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCall:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kConditional:
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
     case HloOpcode::kCopy:

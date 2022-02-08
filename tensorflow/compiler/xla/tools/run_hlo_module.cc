@@ -48,16 +48,17 @@ namespace xla {
 namespace {
 
 // Writes the given literal to a file in the test temporary directory.
-void WriteLiteralToTempFile(const LiteralSlice& literal, const string& name) {
+void WriteLiteralToTempFile(const LiteralSlice& literal,
+                            const std::string& name) {
   // Bazel likes for tests to write "debugging outputs" like these to
   // TEST_UNDECLARED_OUTPUTS_DIR.  This plays well with tools that inspect test
   // results, especially when they're run on remote machines.
   auto* env = tensorflow::Env::Default();
-  string binary_filename;
-  string text_filename;
-  string outdir;
+  std::string binary_filename;
+  std::string text_filename;
+  std::string outdir;
   if (tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
-    string filename = tensorflow::io::JoinPath(
+    std::string filename = tensorflow::io::JoinPath(
         outdir, absl::StrFormat("tempfile-%d-%s", env->NowMicros(), name));
     binary_filename = absl::StrCat(filename, ".pb");
     text_filename = absl::StrCat(filename, ".txt");
@@ -113,7 +114,7 @@ Literal ExecuteWithRunner(std::unique_ptr<HloModule> module,
 }  // namespace
 
 Status RunAndCompare(
-    const std::string& hlo_filename, HloRunnerInterface* test_runner,
+    std::unique_ptr<HloModule> test_module, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
     const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto,
@@ -125,11 +126,6 @@ Status RunAndCompare(
       config->set_seed(42);
     };
   }
-
-  std::unique_ptr<HloModule> test_module =
-      LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
-                         options.input_format, config_modifier_hook)
-          .ValueOrDie();
 
   if (options.flatten_control_flow) {
     HloControlFlowFlattening control_flow_flattening(
@@ -228,4 +224,20 @@ Status RunAndCompare(
                                   /*detailed_message=*/true, &OnMiscompare);
 }
 
+Status RunAndCompare(
+    const std::string& hlo_filename, HloRunnerInterface* test_runner,
+    HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
+    const RunHloModuleOptions& options,
+    xla::RunHloModuleIterationLiterals* iteration_literals_proto,
+    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
+        reference_module_modifier_hook,
+    std::function<void(HloModuleConfig*)> config_modifier_hook) {
+  std::unique_ptr<HloModule> test_module =
+      LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
+                         options.input_format, config_modifier_hook)
+          .ValueOrDie();
+  return RunAndCompare(std::move(test_module), test_runner, reference_runner,
+                       engine, options, iteration_literals_proto,
+                       reference_module_modifier_hook, config_modifier_hook);
+}
 }  // namespace xla

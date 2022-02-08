@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -62,11 +61,11 @@ XLA_TEST_F(CopyOpTest, CopyR0Bool) {
 }
 
 XLA_TEST_F(CopyOpTest, CopyR1S0U32) {
-  TestCopyOp(LiteralUtil::CreateR1<uint32>({}));
+  TestCopyOp(LiteralUtil::CreateR1<uint32_t>({}));
 }
 
 XLA_TEST_F(CopyOpTest, CopyR1S3U32) {
-  TestCopyOp(LiteralUtil::CreateR1<uint32>({1, 2, 3}));
+  TestCopyOp(LiteralUtil::CreateR1<uint32_t>({1, 2, 3}));
 }
 
 XLA_TEST_F(CopyOpTest, CopyR3F32_2x2x3) {
@@ -81,7 +80,7 @@ XLA_TEST_F(CopyOpTest, CopyR4S32_2x2x3x2) {
 }
 
 XLA_TEST_F(CopyOpTest, CopyR4S32_0x2x3x2) {
-  TestCopyOp(LiteralUtil::CreateR4FromArray4D(Array4D<int32>(0, 2, 3, 2)));
+  TestCopyOp(LiteralUtil::CreateR4FromArray4D(Array4D<int32_t>(0, 2, 3, 2)));
 }
 
 XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
@@ -156,7 +155,7 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
 }
 
 void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
-  Array3D<int32> a(n1, n2, n3);
+  Array3D<int32_t> a(n1, n2, n3);
   for (size_t i = 0; i < n1; ++i) {
     for (size_t j = 0; j < n2; ++j) {
       for (size_t k = 0; k < n3; ++k) {
@@ -188,7 +187,7 @@ void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
 void CopyOpTest::TestCopyConstantLayoutR4(
     size_t n1, size_t n2, size_t n3, size_t n4,
     absl::Span<const int64_t> permutation) {
-  Array4D<int32> a(n1, n2, n3, n4);
+  Array4D<int32_t> a(n1, n2, n3, n4);
   for (size_t i = 0; i < n1; ++i) {
     for (size_t j = 0; j < n2; ++j) {
       for (size_t k = 0; k < n3; ++k) {

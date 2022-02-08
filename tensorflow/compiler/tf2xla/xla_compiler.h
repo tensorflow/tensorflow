@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
@@ -161,16 +162,13 @@ class XlaCompiler {
     // for CPU.
     bool allow_cpu_custom_calls = false;
 
-    // If both this and 'allow_cpu_custom_calls' are true then tf.fake_quant_*
-    // ops will be emitted as custom calls to a 'fake_quant_with_min_max_vars'
-    // function accepting the input, min, max, num_bits, and narrow_range values
-    // as runtime arguments.
-    bool custom_fake_quant_op_calls = false;
-
-    // If set, the XLA representation of variables represented to XLA as the
-    // shape given by this shape function. Variables are reshaped to this shape
-    // on write, and reshaped to their original shape on read.
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn;
+    // A ShapeDeterminationFns (i.e., a bundle of LayoutSelectionFn and
+    // ShapeRepresentationFn). Each bundle describes the XLA representation of
+    // arguments represented to XLA as the shape given by this shape function.
+    // Arguments are input activations or weights to an XLA entry computation.
+    // Variables are reshaped to this shape on write, and reshaped to their
+    // original shape on read.
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
 
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
