@@ -29,7 +29,8 @@ export PYENV_VERSION=3.10.0
 setup_python_from_pyenv_macos "${PYENV_VERSION}"
 
 PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/pip-whl"
-bazel_build_wheel ${PIP_WHL_DIR}
+bazel_build_wheel ${PIP_WHL_DIR} --nightly_flag
 
-WHL_PATH=$(ls "${PIP_WHL_DIR}"/*.whl)
-bazel_test_wheel ${WHL_PATH}
+for WHL_PATH in $(ls "${PIP_WHL_DIR}"/tf_nightly_cpu*.whl); do
+  bazel_test_wheel ${WHL_PATH}
+done

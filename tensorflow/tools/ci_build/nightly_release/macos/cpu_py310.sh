@@ -30,12 +30,7 @@ setup_python_from_pyenv_macos "${PYENV_VERSION}"
 
 PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/pip-whl"
 ./tensorflow/tools/ci_build/update_version.py --nightly
-bazel_build_wheel ${PIP_WHL_DIR} --cpu --nightly_flag
-
-# Copy and rename to tf_nightly
-for f in $(ls pip_pkg/tf_nightly_cpu-*dev*macosx*.whl); do
-  copy_to_new_project_name "${f}" tf_nightly python
-done
+bazel_build_wheel ${PIP_WHL_DIR} --nightly_flag
 
 # Upload the built packages to pypi.
 for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
