@@ -9,6 +9,7 @@ cuda_library(
     name = "plugin_common",
     srcs = [
         "plugin/common/kernels/common.cu.cc",
+        "plugin/common/checkMacrosPlugin.cc",
     ],
     hdrs = [
         "plugin/common/bboxUtils.h",
@@ -23,17 +24,29 @@ cuda_library(
 )
 
 cc_library(
+    name = "nms_plugin_tftrt_hdrs",
+    hdrs = [
+        "plugin/efficientNMSPlugin/tftrt/efficientNMSExplicitTFTRTPlugin.h",
+        "plugin/efficientNMSPlugin/tftrt/efficientNMSImplicitTFTRTPlugin.h",
+    ],
+    strip_include_prefix = "plugin/efficientNMSPlugin/tftrt",
+)
+
+cc_library(
     name = "nms_plugin_hdrs",
     hdrs = [
         "plugin/efficientNMSPlugin/efficientNMSInference.h",
         "plugin/efficientNMSPlugin/efficientNMSParameters.h",
         "plugin/efficientNMSPlugin/efficientNMSPlugin.h",
     ],
+    strip_include_prefix = "plugin/efficientNMSPlugin",
 )
 
 cuda_library(
     name = "nvinfer_plugin_nms",
     srcs = [
+        "plugin/efficientNMSPlugin/tftrt/efficientNMSExplicitTFTRTPlugin.cpp",
+        "plugin/efficientNMSPlugin/tftrt/efficientNMSImplicitTFTRTPlugin.cpp",
         "plugin/efficientNMSPlugin/efficientNMSInference.cu.cc",
         "plugin/efficientNMSPlugin/efficientNMSInference.cu.h",
         "plugin/efficientNMSPlugin/efficientNMSInference.h",
@@ -42,6 +55,8 @@ cuda_library(
         "plugin/efficientNMSPlugin/efficientNMSPlugin.h",
     ],
     hdrs = [
+        "plugin/efficientNMSPlugin/tftrt/efficientNMSExplicitTFTRTPlugin.h",
+        "plugin/efficientNMSPlugin/tftrt/efficientNMSImplicitTFTRTPlugin.h",
         "plugin/efficientNMSPlugin/efficientNMSInference.h",
         "plugin/efficientNMSPlugin/efficientNMSParameters.h",
         "plugin/efficientNMSPlugin/efficientNMSPlugin.h",
@@ -51,6 +66,7 @@ cuda_library(
     strip_include_prefix = "plugin/efficientNMSPlugin",
     visibility = ["//visibility:public"],
     deps = [
+        ":nms_plugin_tftrt_hdrs",
         ":nms_plugin_hdrs",
         ":plugin_common",
         "@local_config_tensorrt//:tensorrt",

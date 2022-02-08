@@ -35,6 +35,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
+#include "tensorflow/compiler/tf2tensorrt/plugin/utils.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -133,9 +134,12 @@ class InitializeTRTResource : public OpKernel {
         engine_input_shapes.emplace_back(shape);
       }
 
-      TrtUniquePtrType<IRuntime> infer(
-          nvinfer1::createInferRuntime(TRTEngineCacheResource::GetLogger()));
+      Logger logger = TRTEngineCacheResource::GetLogger();
+      TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
       infer->setGpuAllocator(allocator);
+      // Need to initialize plugins in order to deserialize engines that contain
+      // plugins.
+      MaybeInitializeTrtPlugins(&logger);
       TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
           infer->deserializeCudaEngine(
               engine_instance.serialized_engine().c_str(),

@@ -51,6 +51,7 @@ limitations under the License.
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
+#include "tensorflow/compiler/tf2tensorrt/plugin/utils.h"
 
 namespace tensorflow {
 namespace tensorrt {

@@ -84,9 +84,6 @@ namespace tensorrt {
 
 #define LOG_WARNING_WITH_PREFIX LOG(WARNING) << "TF-TRT Warning: "
 
-// Initializes the TensorRT plugin registry if this hasn't been done yet.
-void MaybeInitializeTrtPlugins(nvinfer1::ILogger* trt_logger);
-
 class IONamePrefixes {
  public:
   static constexpr const char* const kInputPHName = "TensorRTInputPH_";

@@ -942,6 +942,14 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       return self._MakeSavedModelV2(run_params)
     return self._MakeSavedModelV1(run_params)
 
+  def _GenerateRandomData(self, np_shape, np_dtype, spec, scale):
+    # TODO(laigd): add debug options. E.g. we can set the input data to be
+    # continuous natural numbers:
+    # seq = np.arange(np.prod(np_shape))
+    # seq.resize(np_shape)
+    # current_inputs_data.append(scale * seq.astype(np_dtype))
+    return (scale * np.random.random_sample(np_shape)).astype(np_dtype)
+
   def RunTest(self, run_params):
     with trace.Trace(run_params.test_name):
       should_run, reason_for_skipping = self.ShouldRunTest(run_params)
@@ -961,12 +969,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           # Multiply the input by some constant to avoid all zeros input for
           # integer types.
           scale = 10.0 if np.issubdtype(np_dtype, np.integer) else 1.0
-          # TODO(laigd): add debug options. E.g. we can set the input data to be
-          # continuous natural numbers:
-          # seq = np.arange(np.prod(np_shape))
-          # seq.resize(np_shape)
-          # current_inputs_data.append(scale * seq.astype(np_dtype))
-          data = (scale * np.random.random_sample(np_shape)).astype(np_dtype)
+          data = self._GenerateRandomData(np_shape, np_dtype, spec, scale)
           if run_params.is_v2:
             with ops.device("/GPU:0"):
               data = ops.convert_to_tensor(data)

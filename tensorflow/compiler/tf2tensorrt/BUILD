@@ -41,12 +41,6 @@ package(
     licenses = ["notice"],
 )
 
-# Whether or not to use the EfficientNMSPlugin from NVIDIA OSS archive.
-config_setting(
-    name = "use_efficient_nms_plugin",
-    define_values = {"use_efficient_nms_plugin": "1"},
-)
-
 # Config setting to conditionally link GPU targets.
 alias(
     name = "efficient_nms_plugin_wrapper",
@@ -92,10 +86,6 @@ tf_cuda_cc_test(
     srcs = [
         "tensorrt_test.cc",
     ],
-    extra_copts = select({
-        ":use_efficient_nms_plugin": ["-DTF_TRT_USE_EFFICIENT_NMS_PLUGIN=1"],
-        "//conditions:default": [],
-    }),
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
@@ -111,10 +101,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
         ":tensorrt_lib",
-    ]) + select({
-        ":use_efficient_nms_plugin": [":efficient_nms_plugin"],
-        "//conditions:default": [],
-    }),
+        ":efficient_nms_plugin",
+    ]),
 )
 
 cc_library(
@@ -621,10 +609,6 @@ tf_cuda_library(
         "convert/ops/slice_ops.h",
         "convert/trt_optimization_pass.h",
     ],
-    copts = tf_copts() + select({
-        ":use_efficient_nms_plugin": ["-DTF_TRT_USE_EFFICIENT_NMS_PLUGIN=1"],
-        "//conditions:default": [],
-    }),
     deps = [
         ":common_utils",
         ":logger_registry",
@@ -664,10 +648,10 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
-    ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps() + select({
-        ":use_efficient_nms_plugin": [":efficient_nms_plugin"],
-        "//conditions:default": [],
-    }),
+    ] + if_tensorrt([
+        ":tensorrt_lib",
+        ":efficient_nms_plugin",
+    ]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
 
@@ -862,12 +846,22 @@ tf_cuda_cc_test(
 
 tf_cuda_library(
     name = "trt_plugins",
-    srcs = ["plugin/trt_plugin.cc"],
-    hdrs = ["plugin/trt_plugin.h"],
+    srcs = [
+        "plugin/trt_plugin.cc",
+        "plugin/utils.cc",
+    ],
+    hdrs = [
+        "plugin/trt_plugin.h",
+        "plugin/utils.h",
+    ],
     deps = [
+        ":common_utils",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([":tensorrt_lib"]),
+    ] + if_tensorrt([
+        ":tensorrt_lib",
+        ":efficient_nms_plugin",
+    ]),
 )
 
 cc_library(

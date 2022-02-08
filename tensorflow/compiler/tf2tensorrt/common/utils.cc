@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-#include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/errors.h"
@@ -86,48 +85,6 @@ Status GetTrtBindingIndex(int network_input_index, int profile_index,
       absl::StrCat(IONamePrefixes::kInputPHName, network_input_index);
   return GetTrtBindingIndex(input_name.c_str(), profile_index, cuda_engine,
                             binding_index);
-}
-
-namespace {
-
-void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
-  LOG(INFO) << "Linked TensorRT version: "
-            << absl::StrJoin(GetLinkedTensorRTVersion(), ".");
-  LOG(INFO) << "Loaded TensorRT version: "
-            << absl::StrJoin(GetLoadedTensorRTVersion(), ".");
-
-  bool plugin_initialized = initLibNvInferPlugins(trt_logger, "");
-  if (!plugin_initialized) {
-    LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
-                  "fail later.";
-  }
-
-  int num_trt_plugins = 0;
-  nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
-      getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
-  if (!trt_plugin_creator_list) {
-    LOG_WARNING_WITH_PREFIX << "Can not find any TensorRT plugins in registry.";
-  } else {
-    VLOG(1) << "Found the following " << num_trt_plugins
-            << " TensorRT plugins in registry:";
-    for (int i = 0; i < num_trt_plugins; ++i) {
-      if (!trt_plugin_creator_list[i]) {
-        LOG_WARNING_WITH_PREFIX
-            << "TensorRT plugin at index " << i
-            << " is not accessible (null pointer returned by "
-               "getPluginCreatorList for this plugin)";
-      } else {
-        VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
-      }
-    }
-  }
-}
-
-}  // namespace
-
-void MaybeInitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
-  static absl::once_flag once;
-  absl::call_once(once, InitializeTrtPlugins, trt_logger);
 }
 
 }  // namespace tensorrt

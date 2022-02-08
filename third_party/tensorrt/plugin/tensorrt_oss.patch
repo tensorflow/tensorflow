@@ -1,3 +1,7 @@
+diff --git a/plugin/common/checkMacrosPlugin.cpp b/plugin/common/checkMacrosPlugin.cc
+similarity index 100%
+rename from plugin/common/checkMacrosPlugin.cpp
+rename to plugin/common/checkMacrosPlugin.cc
 diff --git a/plugin/common/checkMacrosPlugin.h b/plugin/common/checkMacrosPlugin.h
 index 2cff9f8..a803765 100644
 --- a/plugin/common/checkMacrosPlugin.h
@@ -84,61 +88,8 @@ index f02a2f8..44fa20b 100644
 +#include "efficientNMSInference.cu.h"
  #include "efficientNMSInference.h"
  
- using namespace nvinfer1;
+ #define NMS_TILES 5
 diff --git a/plugin/efficientNMSPlugin/efficientNMSInference.cuh b/plugin/efficientNMSPlugin/efficientNMSInference.cu.h
 similarity index 100%
 rename from plugin/efficientNMSPlugin/efficientNMSInference.cuh
 rename to plugin/efficientNMSPlugin/efficientNMSInference.cu.h
-diff --git a/plugin/efficientNMSPlugin/efficientNMSPlugin.cpp b/plugin/efficientNMSPlugin/efficientNMSPlugin.cpp
-index 2d05c5c..acda183 100644
---- a/plugin/efficientNMSPlugin/efficientNMSPlugin.cpp
-+++ b/plugin/efficientNMSPlugin/efficientNMSPlugin.cpp
-@@ -31,11 +31,6 @@ const char* EFFICIENT_NMS_ONNX_PLUGIN_VERSION{"1"};
- const char* EFFICIENT_NMS_ONNX_PLUGIN_NAME{"EfficientNMS_ONNX_TRT"};
- } // namespace
- 
--PluginFieldCollection EfficientNMSPluginCreator::mFC{};
--PluginFieldCollection EfficientNMSONNXPluginCreator::mFC{};
--std::vector<PluginField> EfficientNMSPluginCreator::mPluginAttributes;
--std::vector<PluginField> EfficientNMSONNXPluginCreator::mPluginAttributes;
--
- EfficientNMSPlugin::EfficientNMSPlugin(EfficientNMSParameters param)
-     : mParam(param)
- {
-@@ -386,7 +381,7 @@ EfficientNMSPluginCreator::EfficientNMSPluginCreator()
-     mPluginAttributes.emplace_back(PluginField("max_output_boxes", nullptr, PluginFieldType::kINT32, 1));
-     mPluginAttributes.emplace_back(PluginField("background_class", nullptr, PluginFieldType::kINT32, 1));
-     mPluginAttributes.emplace_back(PluginField("score_activation", nullptr, PluginFieldType::kINT32, 1));
--    mPluginAttributes.emplace_back(PluginField("box_coding", nullptr, PluginFieldType::kINT32, 1));
-+    mPluginAttributes.emplace_back(PluginField("box_coding", nullptr, PluginFieldType::kINT32, 1));    
-     mFC.nbFields = mPluginAttributes.size();
-     mFC.fields = mPluginAttributes.data();
- }
-diff --git a/plugin/efficientNMSPlugin/efficientNMSPlugin.h b/plugin/efficientNMSPlugin/efficientNMSPlugin.h
-index b342b09..84d5e69 100644
---- a/plugin/efficientNMSPlugin/efficientNMSPlugin.h
-+++ b/plugin/efficientNMSPlugin/efficientNMSPlugin.h
-@@ -85,9 +85,9 @@ public:
-         const char* name, const void* serialData, size_t serialLength) noexcept override;
- 
- protected:
--    static PluginFieldCollection mFC;
-+    PluginFieldCollection mFC;
-     EfficientNMSParameters mParam;
--    static std::vector<PluginField> mPluginAttributes;
-+    std::vector<PluginField> mPluginAttributes;
-     std::string mPluginName;
- };
- 
-@@ -107,9 +107,9 @@ public:
-         const char* name, const void* serialData, size_t serialLength) noexcept override;
- 
- protected:
--    static PluginFieldCollection mFC;
-+    PluginFieldCollection mFC;
-     EfficientNMSParameters mParam;
--    static std::vector<PluginField> mPluginAttributes;
-+    std::vector<PluginField> mPluginAttributes;
-     std::string mPluginName;
- };
- 
