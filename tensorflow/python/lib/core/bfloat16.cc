@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 #include <array>
+#include <cmath>
 #include <limits>
 #include <locale>
 // Place `<locale>` before <Python.h> to avoid a build failure in macOS.
