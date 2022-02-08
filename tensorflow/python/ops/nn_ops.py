@@ -954,9 +954,9 @@ def _get_strides_and_dilation_rate(num_spatial_dims, strides, dilation_rate):
 
   Args:
     num_spatial_dims: int
-    strides: Optional.  List of N ints >= 1.  Defaults to [1]*N.  If any value
+    strides: Optional.  List of N ints >= 1.  Defaults to `[1]*N`.  If any value
       of strides is > 1, then all values of dilation_rate must be 1.
-    dilation_rate: Optional.  List of N ints >= 1.  Defaults to [1]*N.  If any
+    dilation_rate: Optional.  List of N ints >= 1.  Defaults to `[1]*N`.  If any
       value of dilation_rate is > 1, then all values of strides must be 1.
 
   Returns:
@@ -1031,10 +1031,10 @@ def convolution(
      num_input_channels,
      num_output_channels],
 
-  an optional `dilation_rate` tensor of shape N (defaulting to [1]*N)
-  specifying the filter upsampling/input downsampling rate, and an optional list
-  of N `strides` (defaulting [1]*N), this computes for each N-D spatial output
-  position (x[0], ..., x[N-1]):
+  an optional `dilation_rate` tensor of shape N (defaults to `[1]*N`) specifying
+  the filter upsampling/input downsampling rate, and an optional list of N
+  `strides` (defaults to `[1]*N`), this computes for each N-D spatial output
+  position `(x[0], ..., x[N-1])`:
 
   ```
   output[b, x[0], ..., x[N-1], k] =
@@ -1080,7 +1080,7 @@ def convolution(
       [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
       for more information.
     strides: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
-      Defaults to [1]*N.  If any value of strides is > 1, then all values of
+      Defaults to `[1]*N`.  If any value of strides is > 1, then all values of
       dilation_rate must be 1.
     dilation_rate: Optional.  Sequence of N ints >= 1.  Specifies the filter
       upsampling/input downsampling rate.  In the literature, the same parameter
@@ -1523,9 +1523,9 @@ def pool(
     padding: The padding algorithm, must be "SAME" or "VALID".
       See the "returns" section of `tf.nn.convolution` for details.
     dilation_rate: Optional.  Dilation rate.  List of N ints >= 1.
-      Defaults to [1]*N.  If any value of dilation_rate is > 1, then all values
-      of strides must be 1.
-    strides: Optional.  Sequence of N ints >= 1.  Defaults to [1]*N.
+      Defaults to `[1]*N`.  If any value of dilation_rate is > 1, then all
+      values of strides must be 1.
+    strides: Optional.  Sequence of N ints >= 1.  Defaults to `[1]*N`.
       If any value of strides is > 1, then all values of dilation_rate must be
       1.
     name: Optional. Name of the op.
@@ -1700,7 +1700,7 @@ def pool_v2(
       with "NC".  Pooling happens over the spatial dimensions only.
     window_shape: Sequence of N ints >= 1.
     pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
-    strides: Optional. Sequence of N ints >= 1.  Defaults to [1]*N. If any value of
+    strides: Optional. Sequence of N ints >= 1.  Defaults to `[1]*N`. If any value of
       strides is > 1, then all values of dilation_rate must be 1.
     padding: The padding algorithm, must be "SAME" or "VALID". Defaults to "SAME".
       See
@@ -1713,7 +1713,7 @@ def pool_v2(
       "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW". For
       N=3, the valid values are "NDHWC" (default) and "NCDHW".
     dilations: Optional.  Dilation rate.  List of N ints >= 1. Defaults to
-      [1]*N.  If any value of dilation_rate is > 1, then all values of strides
+      `[1]*N`.  If any value of dilation_rate is > 1, then all values of strides
       must be 1.
     name: Optional. Name of the op.
 
