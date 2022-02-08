@@ -183,7 +183,7 @@ createLegalizeTrigonometricToApproximationPass() {
 void PopulateTrigonometricToApproximationPatterns(mlir::MLIRContext *context,
                                                   RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<ApproximateTanhLowering>(context);
+  patterns->add<ApproximateTanhLowering>(context);
   // clang-format on
 }
 

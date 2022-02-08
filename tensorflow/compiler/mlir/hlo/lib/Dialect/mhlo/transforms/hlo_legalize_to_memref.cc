@@ -341,11 +341,11 @@ void populateHLOToMemrefConversionPattern(
     RemoveSignTypeConverter* sign_converter, RewritePatternSet* patterns,
     const std::function<bool(Operation*)>& enforce_identity_maps) {
   MLIRContext* context = patterns->getContext();
-  patterns->insert<HloToMemrefDynamicBroadcastInDimOpConverter>(
+  patterns->add<HloToMemrefDynamicBroadcastInDimOpConverter>(
       *converter, sign_converter, context, enforce_identity_maps);
-  patterns->insert<HloToMemrefDynamicReshapeConverter,
-                   HloToMemrefReshapeUnrankedConverter>(
-      *converter, sign_converter, context);
+  patterns->add<HloToMemrefDynamicReshapeConverter,
+                HloToMemrefReshapeUnrankedConverter>(*converter, sign_converter,
+                                                     context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToMemrefPass() {

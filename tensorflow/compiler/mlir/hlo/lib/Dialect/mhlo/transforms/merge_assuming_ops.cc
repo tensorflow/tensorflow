@@ -450,7 +450,7 @@ struct MergeAssumingOpsPass
 void PopulateMergeAssumingOpsPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       EliminateDuplicateCstrBroadcastableOps,
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MergeAssumingOpsPattern,

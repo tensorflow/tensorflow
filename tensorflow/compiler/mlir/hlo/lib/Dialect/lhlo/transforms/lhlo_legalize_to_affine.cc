@@ -637,7 +637,7 @@ struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
 void populateLHLOToAffineConversionPattern(MLIRContext* context,
                                            RewritePatternSet* patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       BinaryOpConverter<lmhlo::AddOp>,
       BinaryOpConverter<lmhlo::AndOp>,
       BinaryOpConverter<lmhlo::DivOp>,

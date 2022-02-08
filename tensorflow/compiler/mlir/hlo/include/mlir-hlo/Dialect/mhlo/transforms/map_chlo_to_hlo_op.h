@@ -51,10 +51,10 @@ template <template <typename, typename, typename> class Pattern,
 void PopulateForBroadcastingBinaryOp(MLIRContext *context,
                                      RewritePatternSet *patterns,
                                      ConstructorArgs &&...args) {
-#define POPULATE_BCAST(ChloOp, HloOp)                                    \
-  patterns->insert<                                                      \
-      Pattern<ChloOp, HloOp, HloNaryElementwiseAdaptor<ChloOp, HloOp>>>( \
-      context, args...);
+#define POPULATE_BCAST(ChloOp, HloOp)                                          \
+  patterns                                                                     \
+      ->add<Pattern<ChloOp, HloOp, HloNaryElementwiseAdaptor<ChloOp, HloOp>>>( \
+          context, args...);
 
   POPULATE_BCAST(BroadcastAddOp, mhlo::AddOp);
   POPULATE_BCAST(BroadcastAndOp, mhlo::AndOp);

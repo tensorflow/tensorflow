@@ -333,14 +333,14 @@ void PopulateTFToJITInvocationPatterns(
     int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
     bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {
   if (jit_i64_indexed_for_large_tensors) {
-    patterns->insert<TFToI64JITInvocationForLargeTensorsPattern>(ctx);
+    patterns->add<TFToI64JITInvocationForLargeTensorsPattern>(ctx);
   } else {
-    patterns->insert<TFToJITInvocationsPattern>(ctx);
+    patterns->add<TFToJITInvocationsPattern>(ctx);
   }
 
   bool index_64bit_if_jit_compiling =
       jit_i64_indexed_for_large_tensors ? true : index_64bit;
-  patterns->insert<PackJITCompileOpPattern>(
+  patterns->add<PackJITCompileOpPattern>(
       ctx, tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
       index_64bit_if_jit_compiling, cpu_codegen);
 }

@@ -937,15 +937,15 @@ struct RankSpecializationToSCFPass
 
 void PopulateRankSpecializationClusterPatterns(MLIRContext *context,
                                                RewritePatternSet *patterns) {
-  patterns->insert<MergeRankSpecializationClusterOpsPattern,
-                   RankSpecializationClusterPattern>(context);
+  patterns->add<MergeRankSpecializationClusterOpsPattern,
+                RankSpecializationClusterPattern>(context);
 }
 
 void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
                                              RewritePatternSet *patterns,
                                              int64_t max_target_rank) {
-  patterns->insert<LowerRankSpecializationClusterPattern>(context,
-                                                          max_target_rank);
+  patterns->add<LowerRankSpecializationClusterPattern>(context,
+                                                       max_target_rank);
   shape::BroadcastOp::getCanonicalizationPatterns(*patterns, context);
   shape::ShapeOfOp::getCanonicalizationPatterns(*patterns, context);
   shape::AnyOp::getCanonicalizationPatterns(*patterns, context);

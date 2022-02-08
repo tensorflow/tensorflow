@@ -2844,7 +2844,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           TypeConverter& type_converter,
                                           RewritePatternSet* patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       BroadcastConverter<mhlo::BroadcastOp>, ConcatenateConverter,
       ConstConverterTensor, HloDynamicBroadcastInDimConverter,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp>,
@@ -2917,16 +2917,15 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       TorchIndexSelectOpConversion,
       PadOpConversion>(type_converter, context);
   // clang-format on
-  patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,
-                   ReduceRegionXLAOpConversion<mhlo::AndOp>,
-                   ReduceRegionXLAOpConversion<mhlo::CompareOp>,
-                   ReduceRegionXLAOpConversion<mhlo::MaxOp>,
-                   ReduceRegionXLAOpConversion<mhlo::MinOp>,
-                   ReduceRegionXLAOpConversion<mhlo::MulOp>,
-                   ReduceRegionXLAOpConversion<mhlo::OrOp>,
-                   ReduceRegionXLAOpConversion<mhlo::SelectOp>,
-                   ReduceRegionReturnOpConversion>(context,
-                                                   PatternBenefit(1000));
+  patterns->add<ReduceRegionXLAOpConversion<mhlo::AddOp>,
+                ReduceRegionXLAOpConversion<mhlo::AndOp>,
+                ReduceRegionXLAOpConversion<mhlo::CompareOp>,
+                ReduceRegionXLAOpConversion<mhlo::MaxOp>,
+                ReduceRegionXLAOpConversion<mhlo::MinOp>,
+                ReduceRegionXLAOpConversion<mhlo::MulOp>,
+                ReduceRegionXLAOpConversion<mhlo::OrOp>,
+                ReduceRegionXLAOpConversion<mhlo::SelectOp>,
+                ReduceRegionReturnOpConversion>(context, PatternBenefit(1000));
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {

@@ -5352,7 +5352,7 @@ class ConvertInfeedDequeueTupleOp
   LogicalResult matchAndRewrite(TF::InfeedDequeueTupleOp op,
                                 PatternRewriter &rewriter) const override {
     std::vector<Type> result_types(op.outputs().size());
-    for (const auto& idx_and_output : llvm::enumerate(op.outputs())) {
+    for (const auto &idx_and_output : llvm::enumerate(op.outputs())) {
       result_types[idx_and_output.index()] = (idx_and_output.value().getType());
     }
 
@@ -7274,7 +7274,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
   // clang-format off
-  patterns->insert<
+  patterns->add<
     ConvertAllOp,
     ConvertAnyOp,
     ConvertArgMaxOp,
