@@ -17,6 +17,7 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
+source tensorflow/tools/ci_build/release/mac_build_utils.sh
 install_bazelisk
 
 # Selects a version of Xcode.
@@ -27,25 +28,9 @@ sudo xcode-select -s "${DEVELOPER_DIR}"
 export PYENV_VERSION=3.10.0
 setup_python_from_pyenv_macos "${PYENV_VERSION}"
 
-# Set up and install MacOS pip dependencies.
-install_macos_pip_deps
-
-# For python3 path on Mac
-export PATH=$PATH:/usr/local/bin
-
+PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/pip-whl"
 ./tensorflow/tools/ci_build/update_version.py --nightly
-
-export PYTHON_BIN_PATH=$(which python)
-
-# Build the pip package
-# Pass PYENV_VERSION since we're using pyenv. See b/182399580
-bazel build \
-  --config=release_cpu_macos \
-  --action_env=PYENV_VERSION="$PYENV_VERSION" \
-  tensorflow/tools/pip_package:build_pip_package
-
-mkdir pip_pkg
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
+bazel_build_wheel ${PIP_WHL_DIR} --cpu --nightly_flag
 
 # Copy and rename to tf_nightly
 for f in $(ls pip_pkg/tf_nightly_cpu-*dev*macosx*.whl); do
@@ -54,22 +39,5 @@ done
 
 # Upload the built packages to pypi.
 for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
-  # Change 10_15 to 10_14
-  NEW_WHL_PATH=${f/macosx_10_15/macosx_10_14}
-  mv ${f} ${NEW_WHL_PATH}
-  f=${NEW_WHL_PATH}
-  # test the whl pip package
-  chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
-  ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${f}
-  RETVAL=$?
-
-  # Upload the PIP package if whl test passes.
-  if [ ${RETVAL} -eq 0 ]; then
-    echo "Basic PIP test PASSED, Uploading package: ${f}"
-    python -m pip install 'twine ~= 3.2.0'
-    python -m twine upload -r pypi-warehouse "${f}"
-  else
-    echo "Basic PIP test FAILED, will not upload ${f} package"
-    return 1
-  fi
+  upload_nightly_wheel ${f}
 done

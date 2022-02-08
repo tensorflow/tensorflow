@@ -77,6 +77,7 @@ tensorflow/tools/ci_build/a100/nightly.sh:
 tensorflow/tools/ci_build/horovod/gpu/nightly.sh:
 tensorflow/tools/ci_build/release/common.sh:
 tensorflow/tools/ci_build/release/common_win.bat:
+tensorflow/tools/ci_build/release/mac_build_utils.sh:
 tensorflow/tools/ci_build/release/ubuntu_16/custom_op/nightly.sh:
 tensorflow/tools/ci_build/release/ubuntu_16/custom_op/release.sh:
 tensorflow/tools/ci_build/release/ubuntu_16/sanity/build.sh:
