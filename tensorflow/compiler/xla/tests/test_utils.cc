@@ -716,9 +716,9 @@ StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
                                          .shape()
                                    : params[i]->shape();
 
-    arguments[i] = MakeConstrainedArgument(*dataflow, *params[i], param_shape,
-                                           engine, use_large_range)
-                       .ValueOrDie();
+    TF_ASSIGN_OR_RETURN(arguments[i], MakeConstrainedArgument(
+                                          *dataflow, *params[i], param_shape,
+                                          engine, use_large_range));
   }
   return std::move(arguments);
 }
