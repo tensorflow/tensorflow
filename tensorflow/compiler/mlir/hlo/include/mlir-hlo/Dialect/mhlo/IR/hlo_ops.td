@@ -461,9 +461,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
     }
   }];
 
-  let results = (outs HLO_Tensor);
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let results = (outs HLO_Tensor:$result);
+  let assemblyFormat = "operands attr-dict `:` type($result)";
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
@@ -496,7 +495,8 @@ def HLO_ComplexOp: HLO_BinaryElementwiseOp<"complex",
     a complex value.
   }];
   let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
-  let results = (outs HLO_ComplexTensor);
+  let results = (outs HLO_ComplexTensor:$result);
+  let assemblyFormat = "`(`operands`)` attr-dict `:` `(`type(operands)`)` `->` type($result)";
   let hasFolder = 1;
 }
 
