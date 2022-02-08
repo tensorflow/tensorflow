@@ -16,4 +16,8 @@ tf_module {
     name: "TensorLike"
     mtype: "typing.Union"
   }
+  member {
+    name: "func"
+    mtype: "<type \'module\'>"
+  }
 }

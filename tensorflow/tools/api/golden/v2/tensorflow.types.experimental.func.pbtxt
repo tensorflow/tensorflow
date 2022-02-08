@@ -1,0 +1,15 @@
+path: "tensorflow.types.experimental.func"
+tf_module {
+  member {
+    name: "SupportsTracingProtocol"
+    mtype: "<class \'typing._ProtocolMeta\'>"
+  }
+  member {
+    name: "TraceType"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TracingContext"
+    mtype: "<type \'type\'>"
+  }
+}
