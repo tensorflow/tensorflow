@@ -102,24 +102,25 @@ class CoordinationServiceInterface {
   }
 
   // Register a worker to the service.
-  virtual void RegisterWorker(const std::string& job_name, int task_id,
-                              uint64 incarnation, StatusCallback done) = 0;
+  // TODO(hanyangtay): Standardize all incarnation integer types in both service
+  // and agent code.
+  virtual void RegisterWorker(const CoordinatedTask& task, uint64 incarnation,
+                              StatusCallback done) = 0;
 
   // Wait for all tasks to be up and running, and register local device
   // info. The callback is invoked when all tasks are up and registered, or some
   // error occurs.
-  virtual void WaitForAllTasks(const std::string& job_name, int task_id,
+  virtual void WaitForAllTasks(const CoordinatedTask& task,
                                const CoordinationServiceDeviceInfo& devices,
                                StatusCallback done) = 0;
 
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
-  virtual Status RecordHeartbeat(const std::string& job_name, int task_id,
+  virtual Status RecordHeartbeat(const CoordinatedTask& task,
                                  uint64 incarnation) = 0;
 
   // Set a task in error state permanently.
-  virtual Status ReportTaskError(const std::string& job_name, int task_id,
-                                 Status error) = 0;
+  virtual Status ReportTaskError(const CoordinatedTask& task, Status error) = 0;
 
   // Insert a configuration key-value in the coordination service.
   // For now, a key-value can only be inserted once and cannot be updated.

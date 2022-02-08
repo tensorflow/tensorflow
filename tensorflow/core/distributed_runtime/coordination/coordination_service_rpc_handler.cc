@@ -42,12 +42,10 @@ void CoordinationServiceRpcHandler::RegisterWorkerAsync(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  const std::string& job_name = request->job();
-  const int task_id = request->task();
+  const CoordinatedTask& task = request->source_task();
   const uint64 incarnation = request->incarnation();
   service->RegisterWorker(
-      job_name, task_id, incarnation,
-      [this, response, done = std::move(done)](Status s) {
+      task, incarnation, [this, response, done = std::move(done)](Status s) {
         response->set_leader_incarnation(leader_incarnation_id_);
         done(s);
       });
@@ -63,10 +61,9 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  const std::string& job_name = request->job();
-  const int task_id = request->task();
+  const CoordinatedTask& task = request->source_task();
   const uint64 incarnation = request->incarnation();
-  Status s = service->RecordHeartbeat(job_name, task_id, incarnation);
+  Status s = service->RecordHeartbeat(task, incarnation);
   if (!s.ok()) {
     done(s);
     return;
@@ -86,7 +83,7 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
     return;
   }
   service->WaitForAllTasks(
-      request->job(), request->task(), request->local_device_info(),
+      request->source_task(), request->local_device_info(),
       [response, service, done = std::move(done)](Status s) {
         if (s.ok()) {
           *response->mutable_cluster_device_info() =
@@ -101,9 +98,10 @@ void CoordinationServiceRpcHandler::ReportErrorToAgentAsync(
     ReportErrorToAgentResponse* response, StatusCallback done) {
   const CoordinationServiceError& error_payload = request->error_payload();
   Status error(static_cast<error::Code>(request->error_code()),
-               strings::StrCat("Error reported from /job:", error_payload.job(),
-                               "/task:", error_payload.task(), ": ",
-                               request->error_message()));
+               strings::StrCat("Error reported from /job:",
+                               error_payload.source_task().job_name(),
+                               "/task:", error_payload.source_task().task_id(),
+                               ": ", request->error_message()));
   error = MakeCoordinationError(error, error_payload);
   agent_->SetError(error);
   done(Status::OK());
@@ -120,11 +118,11 @@ void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
     return;
   }
   done(service->ReportTaskError(
-      request->source_job(), request->source_task(),
+      request->error_origin(),
       MakeCoordinationError(
           Status{static_cast<error::Code>(request->error_code()),
                  request->error_message()},
-          request->source_job(), request->source_task(),
+          request->error_origin(),
           /*is_reported_error=*/true)));
 }
 

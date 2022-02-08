@@ -27,6 +27,7 @@ limitations under the License.
 
 namespace tensorflow {
 class CoordinationServiceConfig;
+class CoordinatedTask;
 class Env;
 class ServerDef;
 
@@ -66,6 +67,10 @@ class CoordinationServiceAgent {
       std::unique_ptr<CoordinationClientCache> client_cache,
       StatusCallback error_fn) = 0;
   virtual Status Initialize(Env* env, const std::string& job_name, int task_id,
+                            const CoordinationServiceConfig& configs,
+                            std::unique_ptr<CoordinationClient> leader_client,
+                            StatusCallback error_fn) = 0;
+  virtual Status Initialize(Env* env, const CoordinatedTask& task,
                             const CoordinationServiceConfig& configs,
                             std::unique_ptr<CoordinationClient> leader_client,
                             StatusCallback error_fn) = 0;
@@ -109,8 +114,7 @@ class CoordinationServiceAgent {
   };
 
   // Get status of a remote task.
-  virtual StatusOr<TaskState> GetTaskStatus(const std::string& job_name,
-                                            const int task_id) = 0;
+  virtual StatusOr<TaskState> GetTaskStatus(const CoordinatedTask& task) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to

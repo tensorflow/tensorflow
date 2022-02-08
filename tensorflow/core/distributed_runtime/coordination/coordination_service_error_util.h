@@ -37,12 +37,10 @@ inline Status MakeCoordinationError(Status s) {
 // errors), and indicate error origin.
 // Errors reported via the agent API by the user should set `is_reported_error`
 // to true.
-inline Status MakeCoordinationError(Status s, absl::string_view job_name,
-                                    int32_t task_id,
+inline Status MakeCoordinationError(Status s, const CoordinatedTask& origin,
                                     bool is_reported_error = false) {
   CoordinationServiceError error;
-  error.set_job(string(job_name));
-  error.set_task(task_id);
+  *error.mutable_source_task() = origin;
   error.set_is_reported_error(is_reported_error);
   s.SetPayload(CoordinationErrorPayloadKey(), error.SerializeAsString());
   return s;

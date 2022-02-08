@@ -51,6 +51,10 @@ std::string GetTaskName(const std::string& job_name, int task_id) {
   return strings::StrCat("/job:", job_name, "/replica:", 0, "/task:", task_id);
 }
 
+std::string GetTaskName(const CoordinatedTask& task) {
+  return GetTaskName(task.job_name(), task.task_id());
+}
+
 bool is_multi_client_leader(const ServerDef& server_def) {
   const auto& config = server_def.default_session_config();
   const std::string& leader =
@@ -81,15 +85,14 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       const ServerDef& server_def);
   ~CoordinationServiceStandaloneImpl() override { Stop(); }
 
-  void RegisterWorker(const std::string& job_name, int task_id,
-                      uint64 incarnation, StatusCallback done) override;
-  void WaitForAllTasks(const std::string& job_name, int task_id,
+  void RegisterWorker(const CoordinatedTask& task, uint64 incarnation,
+                      StatusCallback done) override;
+  void WaitForAllTasks(const CoordinatedTask& task,
                        const CoordinationServiceDeviceInfo& devices,
                        StatusCallback done) override;
-  Status RecordHeartbeat(const std::string& job_name, int task_id,
+  Status RecordHeartbeat(const CoordinatedTask& task,
                          uint64 incarnation) override;
-  Status ReportTaskError(const std::string& job_name, int task_id,
-                         Status error) override;
+  Status ReportTaskError(const CoordinatedTask& task, Status error) override;
   Status InsertKeyValue(const std::string& key,
                         const std::string& value) override;
   StatusOr<std::string> GetKeyValue(const std::string& key) override;
@@ -102,7 +105,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void StartCheckStaleness();
   void Stop();
-  void PropagateError(const std::string& job, int task_id, Status error,
+  void PropagateError(const CoordinatedTask& task, Status error,
                       bool is_reported_by_agent = false)
       TF_LOCKS_EXCLUDED(state_mu_);
   void DoneClusterRegistration(Status s) TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
@@ -297,7 +300,10 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             }
           }
           if (!status.ok()) {
-            PropagateError(parsed.job, parsed.task, status);
+            CoordinatedTask task;
+            task.set_job_name(parsed.job);
+            task.set_task_id(parsed.task);
+            PropagateError(task, status);
           }
         }
       }));
@@ -322,25 +328,23 @@ void CoordinationServiceStandaloneImpl::Stop() {
 }
 
 void CoordinationServiceStandaloneImpl::RegisterWorker(
-    const std::string& job_name, int task_id, uint64 incarnation,
-    StatusCallback done) {
-  const std::string& task_name = GetTaskName(job_name, task_id);
+    const CoordinatedTask& task, uint64 incarnation, StatusCallback done) {
+  const std::string& task_name = GetTaskName(task);
 
   Status status;
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
       done(MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected worker registered with job_name=", job_name,
-          ", task_id=", task_id)));
+          "Unexpected worker registered with task_name=", task_name)));
       // Note: unexpected task register should not be propagated to other tasks
       return;
     } else if (cluster_state_[task_name]->GetState() ==
                TaskState::State::CONNECTED) {
       Status s = MakeCoordinationError(
-          errors::Aborted("Duplicate worker registration with job_name=",
-                          job_name, ", task_id=", task_id),
-          job_name, task_id);
+          errors::Aborted("Duplicate worker registration with with task_name=",
+                          task_name),
+          task);
       cluster_state_[task_name]->SetError(s);
       status = s;
       DoneClusterRegistration(s);
@@ -351,19 +355,20 @@ void CoordinationServiceStandaloneImpl::RegisterWorker(
       cluster_state_[task_name]->SetConnected(incarnation);
     }
   }
-  if (!status.ok()) PropagateError(job_name, task_id, status);
+  if (!status.ok()) {
+    PropagateError(task, status);
+  }
   done(status);
 }
 
 void CoordinationServiceStandaloneImpl::WaitForAllTasks(
-    const std::string& job_name, int task_id,
-    const CoordinationServiceDeviceInfo& devices, StatusCallback done) {
-  const std::string& task_name = GetTaskName(job_name, task_id);
+    const CoordinatedTask& task, const CoordinationServiceDeviceInfo& devices,
+    StatusCallback done) {
+  const std::string& task_name = GetTaskName(task);
   mutex_lock l(state_mu_);
   if (!cluster_state_.contains(task_name)) {
     done(MakeCoordinationError(errors::InvalidArgument(
-        "Unexpected worker request with job_name=", job_name,
-        ", task_id=", task_id)));
+        "Unexpected worker request with task_name=", task_name)));
     return;
   }
   DCHECK_GT(cluster_pending_workers_, 0);
@@ -390,14 +395,13 @@ void CoordinationServiceStandaloneImpl::DoneClusterRegistration(Status s) {
 }
 
 Status CoordinationServiceStandaloneImpl::ReportTaskError(
-    const std::string& job_name, int task_id, Status error) {
-  const std::string& task_name = GetTaskName(job_name, task_id);
+    const CoordinatedTask& task, Status error) {
+  const std::string& task_name = GetTaskName(task);
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
       return MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected worker request with job_name=", job_name,
-          ", task_id=", task_id));
+          "Unexpected worker request with task_name=", task_name));
     } else if (cluster_state_[task_name]->GetState() !=
                TaskState::State::CONNECTED) {
       return MakeCoordinationError(errors::FailedPrecondition(
@@ -406,46 +410,43 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
       cluster_state_[task_name]->SetError(error);
     }
   }
-  PropagateError(job_name, task_id, error, /*is_reported_by_agent=*/true);
+  PropagateError(task, error, /*is_reported_by_agent=*/true);
   return Status::OK();
 }
 
 Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
-    const std::string& job_name, int task_id, uint64 incarnation) {
-  const std::string& task_name = GetTaskName(job_name, task_id);
+    const CoordinatedTask& task, uint64 incarnation) {
+  const std::string& task_name = GetTaskName(task);
   Status s = Status::OK();
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
       return MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected worker heartbeat with job_name=", job_name,
-          ", task_id=", task_id));
+          "Unexpected worker request with task_name=", task_name));
     } else if (!cluster_state_[task_name]->GetStatus().ok()) {
       return cluster_state_[task_name]->GetStatus();
     } else if (cluster_state_[task_name]->GetState() ==
                TaskState::State::DISCONNECTED) {
       return MakeCoordinationError(errors::InvalidArgument(
-          "Task with job_name=", job_name, ", task_id=", task_id,
+          "Task with task_name=", task_name,
           " must be registered before sending heartbeat messages"));
     }
     s = cluster_state_[task_name]->RecordHeartbeat(incarnation);
   }
   if (!s.ok()) {
-    PropagateError(job_name, task_id, s);
+    PropagateError(task, s);
   }
   return s;
 }
 
 void CoordinationServiceStandaloneImpl::PropagateError(
-    const std::string& job_name, int task_id, Status error,
-    bool is_reported_by_agent) {
+    const CoordinatedTask& task, Status error, bool is_reported_by_agent) {
   assert(!error.ok());
   ReportErrorToAgentRequest request;
   request.set_error_code(error.code());
   request.set_error_message(error.error_message());
   CoordinationServiceError* payload = request.mutable_error_payload();
-  payload->set_job(job_name);
-  payload->set_task(task_id);
+  *payload->mutable_source_task() = task;
   payload->set_is_reported_error(is_reported_by_agent);
   std::vector<std::shared_ptr<Notification>> notifications;
 

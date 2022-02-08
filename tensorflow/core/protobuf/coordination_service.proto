@@ -7,17 +7,24 @@ import "tensorflow/core/framework/device_attributes.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
+// Represents a remote worker task, specified by job name and task id.
+message CoordinatedTask {
+  string job_name = 1;
+  int32 task_id = 2;
+}
+
 // Status payload for all coordination service errors.
 // Note: an empty proto may be set if the error is triggered by the task's own
 // agent calls (i.e. not propagated by the service from another remote task).
 message CoordinationServiceError {
-  // Denotes which worker hit the error. If unset, the error originated from the
-  // same task that is processing this error.
-  string job = 1;
-  int32 task = 2;
+  // Removed fields which used to specify the error origin.
+  reserved 1, 2;
   // If true, error is reported via the agent API by the user (and not an
   // internal service error).
   bool is_reported_error = 3;
+  // Denotes which task hit the error. If unset, the error originated from the
+  // same task that is processing this error.
+  CoordinatedTask source_task = 4;
 }
 
 // Represent device information from different runtimes.
@@ -39,12 +46,13 @@ message CoordinationServiceDeviceInfo {
 // `incarnation` to uniquely identify a worker process. Leader responds with its
 // `incarnation` to identify a leader process.
 message RegisterWorkerRequest {
-  string job = 1;
-  int32 task = 2;
+  // Removed fields which used to specify the task.
+  reserved 1, 2;
   fixed64 incarnation = 3;
   // Moved the field `local_device_attributes` from this request message to
   // WaitForAllTasksRequest defined below.
   reserved 4;
+  CoordinatedTask source_task = 5;
 }
 
 message RegisterWorkerResponse {
@@ -53,9 +61,10 @@ message RegisterWorkerResponse {
 
 // Request and response messages for sending heartbeats.
 message HeartbeatRequest {
-  string job = 1;
-  int32 task = 2;
+  // Removed fields which used to specify the remote task.
+  reserved 1, 2;
   fixed64 incarnation = 3;
+  CoordinatedTask source_task = 4;
 }
 
 message HeartbeatResponse {
@@ -66,12 +75,13 @@ message HeartbeatResponse {
 
 // Request and response messages for waiting for all tasks.
 message WaitForAllTasksRequest {
-  string job = 1;
-  int32 task = 2;
+  // Removed fields which used to specify the remote task.
+  reserved 1, 2;
   // Removed field that specifically used TF device info.
   reserved 3;
   // All local device attributes on the request sender.
   CoordinationServiceDeviceInfo local_device_info = 4;
+  CoordinatedTask source_task = 5;
 }
 
 message WaitForAllTasksResponse {
@@ -97,8 +107,9 @@ message ReportErrorToAgentResponse {}
 message ReportErrorToServiceRequest {
   int32 error_code = 1;
   string error_message = 2;
-  string source_job = 3;
-  int32 source_task = 4;
+  // Removed fields which used to specify the error origin.
+  reserved 3, 4;
+  CoordinatedTask error_origin = 5;
 }
 
 message ReportErrorToServiceResponse {}

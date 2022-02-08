@@ -133,6 +133,16 @@ TEST(CoordinationServiceTest, TestStandaloneService) {
   Status status = Status::OK();
   const uint64 w0_incarnation = random::New64();
   const uint64 w1_incarnation = random::New64();
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
+  // Not specified in server def.
+  CoordinatedTask worker_2;
+  worker_2.set_job_name("worker");
+  worker_2.set_task_id(2);
 
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   TestCoordinationClient wi0;
@@ -145,45 +155,55 @@ TEST(CoordinationServiceTest, TestStandaloneService) {
           std::move(client_cache));
 
   absl::Notification register0;
-  coord_service->RegisterWorker("worker", 0, w0_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_0, w0_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register0.Notify();
   });
   register0.WaitForNotification();
   absl::Notification wait_for_all;
-  coord_service->WaitForAllTasks("worker", 0, {}, [&](Status s) {
+  coord_service->WaitForAllTasks(worker_0, {}, [&](Status s) {
     TF_ASSERT_OK(s);
     wait_for_all.Notify();
   });
   // Not all workers are registered, so must not be notified here.
   ASSERT_FALSE(wait_for_all.HasBeenNotified());
   absl::Notification register1;
-  coord_service->RegisterWorker("worker", 1, w1_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_1, w1_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register1.Notify();
   });
   register1.WaitForNotification();
-  coord_service->WaitForAllTasks("worker", 1, {},
+  coord_service->WaitForAllTasks(worker_1, {},
                                  [&](Status s) { TF_ASSERT_OK(s); });
   // All tasks have registered.
   wait_for_all.WaitForNotification();
 
-  TF_ASSERT_OK(coord_service->RecordHeartbeat("worker", 0, w0_incarnation));
-  TF_ASSERT_OK(coord_service->RecordHeartbeat("worker", 1, w1_incarnation));
-  EXPECT_TRUE(errors::IsInvalidArgument(
-      coord_service->RecordHeartbeat("worker", 2, 0)));
+  TF_ASSERT_OK(coord_service->RecordHeartbeat(worker_0, w0_incarnation));
+  TF_ASSERT_OK(coord_service->RecordHeartbeat(worker_1, w1_incarnation));
+  EXPECT_TRUE(
+      errors::IsInvalidArgument(coord_service->RecordHeartbeat(worker_2, 0)));
 
   // Sending heartbeat with incarnation mismatch leads to Aborted error
-  EXPECT_TRUE(
-      errors::IsAborted(coord_service->RecordHeartbeat("worker", 1, 0)));
-  EXPECT_TRUE(
-      errors::IsAborted(coord_service->RecordHeartbeat("worker", 1, 0)));
+  EXPECT_TRUE(errors::IsAborted(coord_service->RecordHeartbeat(worker_1, 0)));
+  EXPECT_TRUE(errors::IsAborted(coord_service->RecordHeartbeat(worker_1, 0)));
   // Error is propagated to other workers
   EXPECT_TRUE(errors::IsAborted(wi0.GetStatus()));
 }
 
 TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   ServerDef server_def = GetMultiClientServerDef("chief", 1);
+  CoordinatedTask chief;
+  chief.set_job_name("chief");
+  chief.set_task_id(0);
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
+  CoordinatedTask evaluator;
+  evaluator.set_job_name("evaluator");
+  evaluator.set_task_id(0);
 
   // Add a worker job with 2 tasks
   ClusterDef* cluster_def = server_def.mutable_cluster();
@@ -219,25 +239,25 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
           std::move(client_cache));
 
   absl::Notification register_chief;
-  coord_service->RegisterWorker("chief", 0, 0, [&](Status s) {
+  coord_service->RegisterWorker(chief, 0, [&](Status s) {
     TF_ASSERT_OK(s);
-    coord_service->WaitForAllTasks("chief", 0, {}, [&](Status s) {
+    coord_service->WaitForAllTasks(chief, {}, [&](Status s) {
       TF_ASSERT_OK(s);
       register_chief.Notify();
     });
   });
   absl::Notification register_worker0;
-  coord_service->RegisterWorker("worker", 0, 0, [&](Status s) {
+  coord_service->RegisterWorker(worker_0, 0, [&](Status s) {
     TF_ASSERT_OK(s);
-    coord_service->WaitForAllTasks("worker", 0, {}, [&](Status s) {
+    coord_service->WaitForAllTasks(worker_0, {}, [&](Status s) {
       TF_ASSERT_OK(s);
       register_worker0.Notify();
     });
   });
   absl::Notification register_worker1;
-  coord_service->RegisterWorker("worker", 1, 0, [&](Status s) {
+  coord_service->RegisterWorker(worker_1, 0, [&](Status s) {
     TF_ASSERT_OK(s);
-    coord_service->WaitForAllTasks("worker", 1, {}, [&](Status s) {
+    coord_service->WaitForAllTasks(worker_1, {}, [&](Status s) {
       TF_ASSERT_OK(s);
       register_worker1.Notify();
     });
@@ -250,7 +270,7 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   Status status = Status::OK();
   // Registering the evaluator task is unexpected
   absl::Notification register_evaluator;
-  coord_service->RegisterWorker("evaluator", 0, 0, [&](Status s) {
+  coord_service->RegisterWorker(evaluator, 0, [&](Status s) {
     status = s;
     register_evaluator.Notify();
   });
@@ -262,6 +282,12 @@ TEST(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
   ServerDef server_def = GetMultiClientServerDef("worker", 2);
   const uint64 w0_incarnation = random::New64();
   const uint64 w1_incarnation = random::New64();
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
 
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   TestCoordinationClient wi0;
@@ -280,13 +306,13 @@ TEST(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
           std::move(client_cache));
 
   absl::Notification register0;
-  coord_service->RegisterWorker("worker", 0, w0_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_0, w0_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register0.Notify();
   });
   register0.WaitForNotification();
   absl::Notification register1;
-  coord_service->RegisterWorker("worker", 1, w1_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_1, w1_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register1.Notify();
   });
@@ -295,15 +321,21 @@ TEST(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
   // No heartbeat for a while, leader consider the worker as stale
   Env::Default()->SleepForMicroseconds(2 * kHeartbeatTimeoutMs * 1000);
   EXPECT_TRUE(errors::IsUnavailable(
-      coord_service->RecordHeartbeat("worker", 0, w0_incarnation)));
+      coord_service->RecordHeartbeat(worker_0, w0_incarnation)));
   EXPECT_TRUE(errors::IsUnavailable(
-      coord_service->RecordHeartbeat("worker", 1, w1_incarnation)));
+      coord_service->RecordHeartbeat(worker_1, w1_incarnation)));
 }
 
 TEST(CoordinationServiceTest, TestWorkerRestart) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 2);
   const uint64 w0_incarnation = random::New64();
   const uint64 w1_incarnation = random::New64();
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
 
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   TestCoordinationClient wi0;
@@ -316,13 +348,13 @@ TEST(CoordinationServiceTest, TestWorkerRestart) {
           std::move(client_cache));
 
   absl::Notification register0;
-  coord_service->RegisterWorker("worker", 0, w0_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_0, w0_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register0.Notify();
   });
   register0.WaitForNotification();
   absl::Notification register1;
-  coord_service->RegisterWorker("worker", 1, w1_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_1, w1_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register1.Notify();
   });
@@ -330,7 +362,7 @@ TEST(CoordinationServiceTest, TestWorkerRestart) {
 
   // Simulate worker restart scenario: trying to register to cluster again.
   absl::Notification n_repeated_register;
-  coord_service->RegisterWorker("worker", 1, random::New64(), [&](Status s) {
+  coord_service->RegisterWorker(worker_1, random::New64(), [&](Status s) {
     EXPECT_TRUE(errors::IsAborted(s));
     n_repeated_register.Notify();
   });
@@ -341,6 +373,9 @@ TEST(CoordinationServiceTest, TestWorkerRestart) {
 
 TEST(CoordinationServiceTest, TestSetGetValues) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 1);
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
   Status status = Status::OK();
 
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
@@ -399,6 +434,15 @@ TEST(CoordinationServiceTest, TestSetGetValues) {
 // propagate the aggregated cluster device info correctly.
 TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 3);
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
+  CoordinatedTask worker_2;
+  worker_2.set_job_name("worker");
+  worker_2.set_task_id(2);
   Status status = Status::OK();
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
@@ -421,11 +465,11 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
 
   // Each worker sends its device info.
   CoordinationServiceDeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks("worker", 0, local_devices_0,
+  coord_service->WaitForAllTasks(worker_0, local_devices_0,
                                  [&](Status s) { TF_ASSERT_OK(s); });
-  coord_service->WaitForAllTasks("worker", 1, local_devices_1,
+  coord_service->WaitForAllTasks(worker_1, local_devices_1,
                                  [&](Status s) { TF_ASSERT_OK(s); });
-  coord_service->WaitForAllTasks("worker", 2, local_devices_2, [&](Status s) {
+  coord_service->WaitForAllTasks(worker_2, local_devices_2, [&](Status s) {
     TF_ASSERT_OK(s);
     // Gather the cluster device info.
     cluster_devices = coord_service->ListClusterDevices();
@@ -448,6 +492,15 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
 
 TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 3);
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
+  CoordinatedTask worker_2;
+  worker_2.set_job_name("worker");
+  worker_2.set_task_id(2);
   Status status = Status::OK();
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
@@ -475,11 +528,11 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
 
   // Each worker sends its device info.
   CoordinationServiceDeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks("worker", 0, local_devices_0,
+  coord_service->WaitForAllTasks(worker_0, local_devices_0,
                                  [&](Status s) { TF_ASSERT_OK(s); });
-  coord_service->WaitForAllTasks("worker", 1, local_devices_1,
+  coord_service->WaitForAllTasks(worker_1, local_devices_1,
                                  [&](Status s) { TF_ASSERT_OK(s); });
-  coord_service->WaitForAllTasks("worker", 2, local_devices_2, [&](Status s) {
+  coord_service->WaitForAllTasks(worker_2, local_devices_2, [&](Status s) {
     TF_ASSERT_OK(s);
     // Gather the cluster device info.
     cluster_devices = coord_service->ListClusterDevices();
