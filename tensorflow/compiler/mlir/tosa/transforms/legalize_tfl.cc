@@ -27,15 +27,15 @@ limitations under the License.
 #include <unordered_set>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
-#include "mlir/Dialect/Traits.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"        // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"      // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"       // from @llvm-project
+#include "mlir/Dialect/Traits.h"                // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"          // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"               // from @llvm-project
+#include "mlir/IR/Matchers.h"                   // from @llvm-project
+#include "mlir/IR/PatternMatch.h"               // from @llvm-project
+#include "mlir/Support/LLVM.h"                  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
@@ -3044,7 +3044,11 @@ LogicalResult ConvertTFLGatherOp::matchAndRewrite(
   auto tfl_gather_op = cast<TFL::GatherOp>(op);
 
   int32_t axis = tfl_gather_op.axisAttr().getInt();
-  int32_t batch_dims = 0;  // Not a parameter in tfl.Gather; default to 0.
+  auto batch_attr = tfl_gather_op.batch_dimsAttr();
+  int32_t batch_dims = 0;
+  if (batch_attr) {
+    batch_dims = static_cast<int32_t>(batch_attr.getInt());
+  }
 
   llvm::Optional<Value> result = convertGatherOp(
       rewriter, op, tfl_gather_op.getResult(), tfl_gather_op.params(),
