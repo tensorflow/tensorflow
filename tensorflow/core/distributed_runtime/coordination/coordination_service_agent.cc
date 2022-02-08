@@ -90,7 +90,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
 
  private:
   Env* env_;                     // Not owned.
-  const int64_t incarnation_id_ = random::New64();
+  const uint64_t incarnation_id_ = random::New64();
   CoordinatedTask task_;
   CoordinationServiceConfig configs_;
   std::unique_ptr<CoordinationClient> leader_client_;
@@ -106,7 +106,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   State state_ TF_GUARDED_BY(state_mu_) = State::UNINITIALIZED;
   Status status_ TF_GUARDED_BY(state_mu_) = Status::OK();
 
-  uint64 leader_incarnation_;
+  uint64_t leader_incarnation_;
   CoordinationServiceDeviceInfo cluster_devices_;
 
   mutex heartbeat_thread_shutdown_mu_;

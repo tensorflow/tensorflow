@@ -131,8 +131,8 @@ xla::DeviceProto CreateTestXlaDevice(absl::string_view name,
 TEST(CoordinationServiceTest, TestStandaloneService) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 2);
   Status status = Status::OK();
-  const uint64 w0_incarnation = random::New64();
-  const uint64 w1_incarnation = random::New64();
+  const uint64_t w0_incarnation = random::New64();
+  const uint64_t w1_incarnation = random::New64();
   CoordinatedTask worker_0;
   worker_0.set_job_name("worker");
   worker_0.set_task_id(0);
@@ -280,8 +280,8 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
 
 TEST(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
   ServerDef server_def = GetMultiClientServerDef("worker", 2);
-  const uint64 w0_incarnation = random::New64();
-  const uint64 w1_incarnation = random::New64();
+  const uint64_t w0_incarnation = random::New64();
+  const uint64_t w1_incarnation = random::New64();
   CoordinatedTask worker_0;
   worker_0.set_job_name("worker");
   worker_0.set_task_id(0);
@@ -328,8 +328,8 @@ TEST(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
 
 TEST(CoordinationServiceTest, TestWorkerRestart) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 2);
-  const uint64 w0_incarnation = random::New64();
-  const uint64 w1_incarnation = random::New64();
+  const uint64_t w0_incarnation = random::New64();
+  const uint64_t w1_incarnation = random::New64();
   CoordinatedTask worker_0;
   worker_0.set_job_name("worker");
   worker_0.set_task_id(0);

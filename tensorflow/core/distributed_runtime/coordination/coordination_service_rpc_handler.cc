@@ -43,7 +43,7 @@ void CoordinationServiceRpcHandler::RegisterWorkerAsync(
     return;
   }
   const CoordinatedTask& task = request->source_task();
-  const uint64 incarnation = request->incarnation();
+  const uint64_t incarnation = request->incarnation();
   service->RegisterWorker(
       task, incarnation, [this, response, done = std::move(done)](Status s) {
         response->set_leader_incarnation(leader_incarnation_id_);
@@ -62,7 +62,7 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
     return;
   }
   const CoordinatedTask& task = request->source_task();
-  const uint64 incarnation = request->incarnation();
+  const uint64_t incarnation = request->incarnation();
   Status s = service->RecordHeartbeat(task, incarnation);
   if (!s.ok()) {
     done(s);

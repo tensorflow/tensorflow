@@ -102,9 +102,7 @@ class CoordinationServiceInterface {
   }
 
   // Register a worker to the service.
-  // TODO(hanyangtay): Standardize all incarnation integer types in both service
-  // and agent code.
-  virtual void RegisterWorker(const CoordinatedTask& task, uint64 incarnation,
+  virtual void RegisterWorker(const CoordinatedTask& task, uint64_t incarnation,
                               StatusCallback done) = 0;
 
   // Wait for all tasks to be up and running, and register local device
@@ -117,7 +115,7 @@ class CoordinationServiceInterface {
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
   virtual Status RecordHeartbeat(const CoordinatedTask& task,
-                                 uint64 incarnation) = 0;
+                                 uint64_t incarnation) = 0;
 
   // Set a task in error state permanently.
   virtual Status ReportTaskError(const CoordinatedTask& task, Status error) = 0;
