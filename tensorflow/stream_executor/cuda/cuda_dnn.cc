@@ -697,9 +697,9 @@ const json* CudnnExecutionPlanEngineFilterRuntime() {
 }
 
 // Unique IDs for tensors in dnn::ConvSigature.
-static const int64_t kUnfusedConvUids[] = {'x', 'w', 'y'};
+static const int64_t kUnfusedConvUids[3] = {'x', 'w', 'y'};
 // Unique IDs for tensors in dnn::FusedConvSigature.
-static const int64_t kFusedConvUids[] = {'x', 'w', 'z', 'b', 'y'};
+static const int64_t kFusedConvUids[5] = {'x', 'w', 'z', 'b', 'y'};
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 // A helper function to decide whether to use
@@ -4425,11 +4425,11 @@ template <typename Sig>
 class CudnnExecutionPlanRunner;
 // An OpRunner implemented by an ExecutionPlan.
 //
-// This is an ad-hoc base class holding the implementation of ToString and
+// This is the class holding the implementation of ToString and
 // GetWorkspaceSize, and operator() for use by the cudnn frontend op runners.
 template <typename... Args>
-class CudnnExecutionPlanRunner <port::Status(Args...)> :
-    public dnn::OpRunner<port::Status(Args...)> {
+class CudnnExecutionPlanRunner <void(Args...)> :
+    public dnn::OpRunner<void(Args...)> {
  public:
   std::string ToString() const override { return plan_.getTag(); }
 
@@ -4456,6 +4456,8 @@ class CudnnExecutionPlanRunner <port::Status(Args...)> :
     absl::InlinedVector<void*, sizeof...(Args)> data_ptrs = {
         inputs.opaque()...};
 
+    // TODO(kaixih@nvidia): Remove the const_cast after cudnn frontend can take
+    // in const int64 pointer.
     auto variantPack = cudnn_frontend::VariantPackBuilder()
                            .setWorkspacePointer(scratch_memory.opaque())
                            .setDataPointers(data_ptrs.size(), data_ptrs.data())
@@ -4507,7 +4509,7 @@ class CudnnExecutionPlanRunner <port::Status(Args...)> :
   static port::StatusOr<CudnnExecutionPlanRunner> Create(
       GpuExecutor* parent, CudnnAccess* cudnn,
       cudnn_frontend::ExecutionPlan plan,
-      const int64_t* uids) {
+      absl::Span<const int64_t> uids) {
     auto workspace_size = static_cast<uint64_t>(plan.getWorkspaceSize());
     RETURN_MSG_IF_CUDNN_ERROR(plan);
     return {{parent, cudnn, std::move(plan), workspace_size, uids}};
@@ -4517,15 +4519,12 @@ class CudnnExecutionPlanRunner <port::Status(Args...)> :
   CudnnExecutionPlanRunner(
       GpuExecutor* parent, CudnnAccess* cudnn,
       cudnn_frontend::ExecutionPlan plan, size_t workspace_size,
-      const int64_t* uids)
+      absl::Span<const int64_t> uids)
       : parent_(parent),
         cudnn_(cudnn),
         plan_(std::move(plan)),
-        workspace_size_(workspace_size) {
-    for (int i = 0; i < sizeof...(Args); i++) {
-      data_uids_.push_back(uids[i]);
-    }
-  }
+        workspace_size_(workspace_size),
+        data_uids_(uids.begin(), uids.end()) {}
   GpuExecutor* parent_;
   CudnnAccess* cudnn_;
   cudnn_frontend::ExecutionPlan plan_;
