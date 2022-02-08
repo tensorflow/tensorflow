@@ -1047,8 +1047,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     with self.assertRaises(ValueError) as error:
       quantized_converter.convert()
     self.assertEqual(
-        'representative_dataset is required when specifying '
-        'TFLITE_BUILTINS_INT8 or INT8 supported types.', str(error.exception))
+        'For full integer quantization, a `representative_dataset` '
+        'must be specified.', str(error.exception))
 
   def testQuantizeUInt8(self):
     with ops.Graph().as_default():
@@ -1220,8 +1220,10 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     with self.assertRaises(ValueError) as error:
       quantized_converter.convert()
     self.assertEqual(
-        'TFLITE_BUILTINS_INT8 requires smallest supported type to be INT8.',
-        str(error.exception))
+        'As full integer quantization has been enabled by setting '
+        '`target_spec.supported_ops`={tf.lite.OpsSet.TFLITE_BUILTINS_INT8}, '
+        'thus `target_spec.supported_types` should be left uninitizalized '
+        'or set to {tf.int8}.', str(error.exception))
 
   @parameterized.named_parameters(('InferenceType_INT8', dtypes.int8),
                                   ('InferenceType_UINT8', dtypes.uint8))
