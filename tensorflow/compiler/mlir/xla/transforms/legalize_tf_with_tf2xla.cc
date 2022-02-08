@@ -736,12 +736,12 @@ class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
 
   LegalizeTF(const LegalizeTF&) {}
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.insert<Tf2XlaRewritePattern>(
         &getContext(), device_type_, prefer_tf2xla_, legalize_test_only_ops_);
     if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
+            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       signalPassFailure();
   }
 
