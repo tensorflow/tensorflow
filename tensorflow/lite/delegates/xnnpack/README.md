@@ -394,81 +394,48 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 #### `ADD`
 
-* Inputs and outputs must be originally in 32-bit floating-point format.
-* Only addition with two inputs is supported.
-* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
-  but fused `TANH` and `SIGN_BIT` activations are not.
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `CONV_2D`
 
-* Inputs and outputs must be originally in 32-bit floating-point format.
-* Bias is mandatory.
-* Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
-* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
-  but fused `TANH` and `SIGN_BIT` activations are not.
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `DEPTHWISE_CONV_2D`
 
-* Inputs and outputs must be originally in 32-bit floating-point format.
-* Bias is mandatory.
-* Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
-* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
-  but fused `TANH` and `SIGN_BIT` activations are not.
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `HARD_SWISH`
 
-* Inputs and outputs must be originally in 32-bit floating-point format.
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `LEAKY_RELU`
 
-* Inputs and outputs must be originally in 32-bit floating-point format.
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `MAX_POOL_2D`
 
-* Inputs and outputs must be originally in 32-bit floating-point format.
-* 1x1 pooling with non-unit stride is not supported.
-* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
-  but fused `TANH` and `SIGN_BIT` activations are not.
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `MEAN`
 
-* The first input and the output must be 4D tensors originally in 32-bit
-  floating-point format.
-* The second input (the input with the axes specification) must be static
-  (use `kTfLiteMmapRo` allocation type).
-* Only [1, 2] or [2, 1] axes specification (i.e. reduction across spatial
-  dimensions) is supported.
-* Only `keep_dims = True` parameter value is supported.
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `PAD`
 
-* The first input and the output must be originally in 32-bit floating-point
-  format.
-* The second input (the input with the padding specification) must be static
-  (use `kTfLiteMmapRo` allocation type).
-* The numbers of padding elements must be non-negative.
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `PRELU`
 
-* Inputs and outputs must be originally in 32-bit floating-point format.
-* Slope must be static (use `kTfLiteMmapRo` allocation type).
-* Slope must be either a 1D tensor, or have all its non-channel dimensions equal
-  1.
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `RESHAPE`
 
-* The first input and the output must be originally in 32-bit floating-point
-  format.
-* The second input (the input with the new shape specification) must be either
-  static (use `kTfLiteMmapRo` allocation type), or absent (with the new shape
-  specified via `ReshapeOptions` table).
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `TRANSPOSE_CONV`
 
-* Input, filter, bias (if present) and output tensors must be originally in
-  32-bit floating-point format.
-* Output size, filter and bias (if present) must be static (use
-  `kTfLiteMmapRo` allocation type).
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 ### Quantized Operators
 
