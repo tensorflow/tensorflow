@@ -17,10 +17,11 @@
 PYTHON_VERSION=$1
 dpkg --add-architecture armhf
 dpkg --add-architecture arm64
-echo 'deb [arch=arm64,armhf] http://ports.ubuntu.com/ xenial main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
-echo 'deb [arch=arm64,armhf] http://ports.ubuntu.com/ xenial-updates main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
-echo 'deb [arch=arm64,armhf] http://ports.ubuntu.com/ xenial-security main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
-echo 'deb [arch=arm64,armhf] http://ports.ubuntu.com/ xenial-backports main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
+debian_codename=$(lsb_release -c | awk '{print $2}')
+echo "deb [arch=arm64,armhf] http://ports.ubuntu.com/ ${debian_codename} main restricted universe multiverse" >> /etc/apt/sources.list.d/armhf.list
+echo "deb [arch=arm64,armhf] http://ports.ubuntu.com/ ${debian_codename}-updates main restricted universe multiverse" >> /etc/apt/sources.list.d/armhf.list
+echo "deb [arch=arm64,armhf] http://ports.ubuntu.com/ ${debian_codename}-security main restricted universe multiverse" >> /etc/apt/sources.list.d/armhf.list
+echo "deb [arch=arm64,armhf] http://ports.ubuntu.com/ ${debian_codename}-backports main restricted universe multiverse" >> /etc/apt/sources.list.d/armhf.list
 sed -i 's#deb http://archive.ubuntu.com/ubuntu/#deb [arch=amd64] http://archive.ubuntu.com/ubuntu/#g' /etc/apt/sources.list
 yes | add-apt-repository ppa:deadsnakes/ppa
 apt-get update
