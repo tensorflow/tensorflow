@@ -18,6 +18,7 @@ import collections
 import copy
 import itertools
 import math
+import sys
 from typing import Type
 
 from absl.testing import absltest
@@ -114,10 +115,25 @@ class Bfloat16Test(parameterized.TestCase):
     self.assertEqual("-inf", repr(bfloat16(float("-inf"))))
     self.assertEqual("nan", repr(bfloat16(float("nan"))))
 
-  def testHash(self):
-    self.assertEqual(0, hash(bfloat16(0.0)))
-    self.assertEqual(0x3f80, hash(bfloat16(1.0)))
-    self.assertEqual(0x7fc0, hash(bfloat16(float("nan"))))
+  def testHashZero(self):
+    """Tests that negative zero and zero hash to the same value."""
+    self.assertEqual(hash(bfloat16(-0.0)), hash(bfloat16(0.0)))
+
+  @parameterized.parameters(FLOAT_VALUES)
+  def testHashNumbers(self, value):
+    self.assertEqual(hash(value), hash(bfloat16(value)), str(value))
+
+  @parameterized.named_parameters(("PositiveNan", bfloat16(float("nan"))),
+                                  ("NegativeNan", bfloat16(float("-nan"))))
+  def testHashNan(self, nan):
+    nan_hash = hash(nan)
+    nan_object_hash = object.__hash__(nan)
+    # The hash of a NaN is either 0 or a hash of the object pointer.
+    self.assertIn(nan_hash, (sys.hash_info.nan, nan_object_hash), str(nan))
+
+  def testHashInf(self):
+    self.assertEqual(sys.hash_info.inf, hash(bfloat16(float("inf"))), "inf")
+    self.assertEqual(-sys.hash_info.inf, hash(bfloat16(float("-inf"))), "-inf")
 
   # Tests for Python operations
   def testNegate(self):

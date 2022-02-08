@@ -336,11 +336,24 @@ PyObject* PyBfloat16_Str(PyObject* self) {
   return PyUnicode_FromString(v.c_str());
 }
 
-// Hash function for PyBfloat16. We use the identity function, which is a weak
-// hash function.
+// _Py_HashDouble changed its prototype for Python 3.10 so we use an overload to
+// handle the two possibilities.
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+Py_hash_t HashImpl(Py_hash_t (*hash_double)(PyObject*, double), PyObject* self,
+                   double value) {
+  return hash_double(self, value);
+}
+
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+Py_hash_t HashImpl(Py_hash_t (*hash_double)(double), PyObject* self,
+                   double value) {
+  return hash_double(value);
+}
+
+// Hash function for PyBfloat16.
 Py_hash_t PyBfloat16_Hash(PyObject* self) {
-  return Eigen::numext::bit_cast<uint16_t>(
-      reinterpret_cast<PyBfloat16*>(self)->value);
+  bfloat16 x = reinterpret_cast<PyBfloat16*>(self)->value;
+  return HashImpl(&_Py_HashDouble, self, static_cast<double>(x));
 }
 
 // Python type for PyBfloat16 objects.
