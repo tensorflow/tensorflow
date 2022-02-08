@@ -19,6 +19,12 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// Convert from clock cycles to seconds.
+inline double CyclesToSeconds(double cycles, double frequency_hz) {
+  // cycles / (cycles/s) = s.
+  return cycles / frequency_hz;
+}
+
 // Checks the divisor and returns 0 to avoid divide by zero.
 inline double SafeDivide(double dividend, double divisor) {
   constexpr double kEpsilon = 1.0E-10;

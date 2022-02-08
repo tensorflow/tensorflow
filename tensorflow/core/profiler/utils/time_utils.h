@@ -36,6 +36,8 @@ inline uint64 MillisToPicos(double ms) { return ms * 1E9; }
 inline uint64 MillisToNanos(double ms) { return ms * 1E6; }
 inline double MillisToSeconds(double ms) { return ms / 1E3; }
 inline uint64 SecondsToNanos(double s) { return s * 1E9; }
+inline double SecondsToPicos(double s) { return s * 1E12; }
+inline double SecondsToMicros(double s) { return s * 1E6; }
 
 // Returns the current CPU wallclock time in nanoseconds.
 int64_t GetCurrentTimeNanos();
