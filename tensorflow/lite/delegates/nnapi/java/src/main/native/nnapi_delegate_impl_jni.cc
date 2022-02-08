@@ -40,7 +40,7 @@ using tflite::StatefulNnApiDelegate;
 extern "C" {
 
 JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
+Java_org_tensorflow_lite_nnapi_NnApiDelegateImpl_createDelegate(
     JNIEnv* env, jclass clazz, jint preference, jstring accelerator_name,
     jstring cache_dir, jstring model_token, jint max_delegated_partitions,
     jboolean override_disallow_cpu, jboolean disallow_cpu_value,
@@ -182,9 +182,9 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
 }
 
 JNIEXPORT jint JNICALL
-Java_org_tensorflow_lite_nnapi_NnApiDelegate_getNnapiErrno(JNIEnv* env,
-                                                           jclass clazz,
-                                                           jlong delegate) {
+Java_org_tensorflow_lite_nnapi_NnApiDelegateImpl_getNnapiErrno(JNIEnv* env,
+                                                               jclass clazz,
+                                                               jlong delegate) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   TfLiteOpaqueDelegate* nnapi_delegate =
       reinterpret_cast<TfLiteOpaqueDelegate*>(delegate);
@@ -197,9 +197,8 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_getNnapiErrno(JNIEnv* env,
 }
 
 JNIEXPORT void JNICALL
-Java_org_tensorflow_lite_nnapi_NnApiDelegate_deleteDelegate(JNIEnv* env,
-                                                            jclass clazz,
-                                                            jlong delegate) {
+Java_org_tensorflow_lite_nnapi_NnApiDelegateImpl_deleteDelegate(
+    JNIEnv* env, jclass clazz, jlong delegate) {
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
   TfLiteOpaqueDelegate* nnapi_delegate =
       reinterpret_cast<TfLiteOpaqueDelegate*>(delegate);

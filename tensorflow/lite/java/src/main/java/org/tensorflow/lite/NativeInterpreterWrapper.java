@@ -83,6 +83,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
         createInterpreter(modelHandle, errorHandle, options.getNumThreads(), delegateHandles);
     this.originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
     addDelegates(options);
+    initDelegatesWithInterpreterFactory();
     delegateHandles.ensureCapacity(delegates.size());
     for (Delegate delegate : delegates) {
       delegateHandles.add(Long.valueOf(delegate.getNativeHandle()));
@@ -510,6 +511,16 @@ class NativeInterpreterWrapper implements AutoCloseable {
     }
     // Finally add the XNNPACK delegate if enabled.
     maybeAddXnnpackDelegate(options);
+  }
+
+  // Complete the initialization of any delegates that require an InterpreterFactoryApi instance.
+  void initDelegatesWithInterpreterFactory() {
+    InterpreterFactoryApi interpreterFactoryApi = new InterpreterFactoryImpl();
+    for (Delegate delegate : delegates) {
+      if (delegate instanceof NnApiDelegate) {
+        ((NnApiDelegate) delegate).initWithInterpreterFactoryApi(interpreterFactoryApi);
+      }
+    }
   }
 
   // Optionally add the XNNPACK delegate.
