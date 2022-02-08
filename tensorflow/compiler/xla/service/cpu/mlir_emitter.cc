@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -45,7 +45,7 @@ std::unique_ptr<llvm::Module> MakeLLVMModule(
                             mlir::OpPassManager::Nesting::Implicit);
   manager.addPass(mlir::createConvertLinalgToLoopsPass());
   manager.addPass(mlir::createLowerAffinePass());
-  manager.addPass(mlir::createLowerToCFGPass());
+  manager.addPass(mlir::createConvertSCFToCFPass());
   manager.addPass(mlir::createConvertVectorToLLVMPass(
       mlir::LowerVectorToLLVMOptions().enableReassociateFPReductions(
           kReassociateFPReductions)));

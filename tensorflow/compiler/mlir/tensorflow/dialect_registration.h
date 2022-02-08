@@ -32,7 +32,7 @@ namespace mlir {
 inline void RegisterAllTensorFlowDialects(DialectRegistry &registry) {
   registry.insert<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
                   mlir::TF::TensorFlowDialect, mlir::tf_type::TFTypeDialect,
-                  mlir::complex::ComplexDialect,
+                  mlir::cf::ControlFlowDialect, mlir::complex::ComplexDialect,
                   mlir::tf_device::TensorFlowDeviceDialect,
                   mlir::tf_executor::TensorFlowExecutorDialect,
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,

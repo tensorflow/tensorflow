@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
@@ -251,8 +252,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     ConversionTarget target(context);
     target.addLegalDialect<
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
-        complex::ComplexDialect, memref::MemRefDialect, StandardOpsDialect,
-        scf::SCFDialect, tensor::TensorDialect,
+        cf::ControlFlowDialect, complex::ComplexDialect, memref::MemRefDialect,
+        StandardOpsDialect, scf::SCFDialect, tensor::TensorDialect,
         tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
         lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
         vector::VectorDialect>();

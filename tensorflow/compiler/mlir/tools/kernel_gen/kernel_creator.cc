@@ -26,8 +26,8 @@ limitations under the License.
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
@@ -397,7 +397,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // Constraints are removed as late as possible and before lowering to CFG.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addPass(::mlir::createLowerToCFGPass());
+  pm.addPass(::mlir::createConvertSCFToCFPass());
   if (cpu_codegen) pm.addPass(::mlir::createConvertVectorToLLVMPass());
   // Map asserts to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
@@ -422,7 +422,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
   // pm.enableVerifier(false);
   tensorflow::applyTensorflowAndCLOptions(pm);
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
-  kernelPm.addPass(::mlir::createLowerToCFGPass());
+  kernelPm.addPass(::mlir::createConvertSCFToCFPass());
 #if TENSORFLOW_USE_ROCM
   kernelPm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToRocdlPass());
 #elif GOOGLE_CUDA

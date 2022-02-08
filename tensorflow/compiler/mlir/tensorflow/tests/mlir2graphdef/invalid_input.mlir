@@ -4,7 +4,7 @@
 
 func @main() {
   ^bb:
-    br ^bb1
+    cf.br ^bb1
   ^bb1:
     return
 }

@@ -1288,6 +1288,7 @@ cc_library(
         "@llvm-project//mlir:AffineAnalysis",
         "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ControlFlowOps",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",

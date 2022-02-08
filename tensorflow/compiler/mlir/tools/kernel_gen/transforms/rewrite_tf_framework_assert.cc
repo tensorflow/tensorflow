@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -53,9 +54,9 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
     rewriter.create<ReturnOp>(loc, null_memrefs);
 
     rewriter.restoreInsertionPoint(ip);
-    rewriter.replaceOpWithNewOp<CondBranchOp>(op, adaptor.arg(), split_block,
-                                              llvm::None, error_reporting_block,
-                                              llvm::None);
+    rewriter.replaceOpWithNewOp<cf::CondBranchOp>(
+        op, adaptor.arg(), split_block, llvm::None, error_reporting_block,
+        llvm::None);
     return success();
   }
 };
@@ -88,10 +89,10 @@ class RewriteTFFrameworkAssertPass
 
     // Set target.
     ConversionTarget target(getContext());
-    target.addLegalDialect<tf_framework::TFFrameworkDialect,
-                           StandardOpsDialect>();
+    target.addLegalDialect<tf_framework::TFFrameworkDialect, StandardOpsDialect,
+                           cf::ControlFlowDialect>();
     target.addIllegalOp<TFAssertOp>();
-    target.addDynamicallyLegalOp<AssertOp>(IsNotInsideTfEntryFunction);
+    target.addDynamicallyLegalOp<cf::AssertOp>(IsNotInsideTfEntryFunction);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
