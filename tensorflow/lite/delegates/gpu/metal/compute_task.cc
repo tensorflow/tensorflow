@@ -214,57 +214,30 @@ absl::Status ComputeTask::Compile(MetalDevice* device) {
 absl::Status ComputeTask::CompileProgram(
     MetalDevice* device, const std::string& code,
     const std::map<std::string, std::string>& defines) {
+  id<MTLComputePipelineState> program;
   if (use_arguments_buffer_) {
-    if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
-      id<MTLFunction> function;
-      RETURN_IF_ERROR(CreateFunction(device->device(), code, "ComputeFunction",
-                                     defines, &function));
-      arguments_encoder_ = [function newArgumentEncoderWithBufferIndex:0];
-      if (!arguments_encoder_) {
-        return absl::InternalError("Failed to get MTLArgumentEncoder.");
-      }
-      arg_buffer_ =
-          [device->device() newBufferWithLength:arguments_encoder_.encodedLength
-                                        options:0];
-      if (!arg_buffer_) {
-        return absl::InternalError("Failed to create MTLBuffer.");
-      }
-      MTLComputePipelineDescriptor* pipeline_desc =
-          [[MTLComputePipelineDescriptor alloc] init];
-      pipeline_desc.computeFunction = function;
-      if (need_icb_support_) {
-        if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
-          pipeline_desc.supportIndirectCommandBuffers = TRUE;
-        } else {
-          return absl::InternalError(
-              "Indirect compute command buffer available since ios 13");
-        }
-      }
-      NSError* error = nil;
-      program_ = [device->device()
-          newComputePipelineStateWithDescriptor:pipeline_desc
-                                        options:MTLPipelineOptionNone
-                                     reflection:nullptr
-                                          error:&error];
-      if (!program_) {
-        NSString* error_string = [NSString
-            stringWithFormat:@"newComputePipelineStateWithDescriptor: %@",
-                             [error localizedDescription]];
-        return absl::InternalError([error_string UTF8String]);
-      }
+    id<MTLArgumentEncoder> arguments_encoder;
+    if (need_icb_support_) {
+      RETURN_IF_ERROR(CreateComputeProgramWithICBSupport(
+          device->device(), code, "ComputeFunction", defines, &program,
+          &arguments_encoder));
     } else {
-      return absl::InternalError(
-          "Metal argument buffers available since ios 11.");
+      RETURN_IF_ERROR(CreateComputeProgramWithArgumentBuffer(
+          device->device(), code, "ComputeFunction", defines, &program,
+          &arguments_encoder));
+    }
+    arguments_encoder_ = arguments_encoder;
+    arg_buffer_ =
+        [device->device() newBufferWithLength:arguments_encoder_.encodedLength
+                                      options:0];
+    if (!arg_buffer_) {
+      return absl::InternalError("Failed to create MTLBuffer.");
     }
   } else {
-    id<MTLComputePipelineState> program;
     RETURN_IF_ERROR(CreateComputeProgram(device->device(), code,
                                          "ComputeFunction", defines, &program));
-    if (!program) {
-      return absl::InternalError("Unknown shader compilation error");
-    }
-    program_ = program;
   }
+  program_ = program;
   return absl::OkStatus();
 }
 
