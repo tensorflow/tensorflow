@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 
-#include <fcntl.h>
-#include <filesystem>
-#include <fstream>
 #include <dirent.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+#include <filesystem>
+#include <fstream>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -62,21 +63,18 @@ bool PrintFdMessage(long tgid) {
   long deviceId;
   path = absl::StrCat("/proc/", tgid, "/fd");
   fd = opendir(path.c_str());
-  if(!fd) {
+  if (!fd) {
     return false;
   }
-  while(ent = readdir(fd)) {
-    if(!isdigit(*ent->d_name))
-      continue;
+  while (ent = readdir(fd)) {
+    if (!isdigit(*ent->d_name)) continue;
     deviceId = strtol(ent->d_name, NULL, 10);
     string paths;
     int statusfd;
     paths = absl::StrCat("/proc/", tgid, "/fd", deviceId);
     statusfd = readlink(paths.c_str(), line, 100);
-    if (!statusfd)
-      return false;
-    if(strncmp(line, "/dev/accel0",11) != 0)
-      continue;
+    if (!statusfd) return false;
+    if (strncmp(line, "/dev/accel0", 11) != 0) continue;
     closedir(fd);
     return true;
   }
@@ -84,23 +82,24 @@ bool PrintFdMessage(long tgid) {
   return false;
 }
 
-bool FindProcessInProc(){
+bool FindProcessInProc() {
   DIR* proc = opendir("/proc");
   struct dirent* ent;
   long tgid;
 
-  if(proc == NULL) {
+  if (proc == NULL) {
     return false;
   }
 
-  while(ent = readdir(proc)) {
-    if(!isdigit(*ent->d_name))
-      continue;
+  while (ent = readdir(proc)) {
+    if (!isdigit(*ent->d_name)) continue;
 
     tgid = strtol(ent->d_name, NULL, 10);
-    
-    if(PrintFdMessage(tgid)){
-      string message= "libtpu.so is already in use by this process (PID: " + std::to_string(tgid) + "). Not attempting to load libtpu.so";
+
+    if (PrintFdMessage(tgid)) {
+      string message = "libtpu.so is already in use by this process (PID: " +
+                       std::to_string(tgid) +
+                       "). Not attempting to load libtpu.so";
       LOG(INFO) << message;
       closedir(proc);
       return true;
@@ -150,13 +149,13 @@ bool TryAcquireTpuLock() {
       // This lock is held until the process exits intentionally. The underlying
       // TPU device will be held on until it quits.
       if (lockf(fd, F_TLOCK, 0) != 0) {
-	if (!FindProcessInProc()){
-	  LOG(INFO) << "libtpu.so already in use by another process probably" 
+        if (!FindProcessInProc()) {
+          LOG(INFO) << "libtpu.so already in use by another process probably"
                        " owned by another user. "
                        "Run \"$ sudo lsof -w /dev/accel0\" to figure out "
                        "which process is using the TPU. Not "
                        "attempting to load libtpu.so in this process.";
-	}
+        }
         should_load_library = false;
       } else {
         should_load_library = true;
