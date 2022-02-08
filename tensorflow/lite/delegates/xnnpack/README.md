@@ -143,7 +143,7 @@ operators. Unsupported operators will fall back to the default implementations,
 so models using a combination of supported and unsupported operators can still
 benefit from XNNPACK delegate.
 
-### Floating-Point Operators
+### Floating-Point (IEEE FP32) Operators
 
 Below is the list of currently supported floating-point operators:
 
@@ -329,6 +329,144 @@ Below is the list of currently supported floating-point operators:
 
 * Input, filter, bias (if present) and output tensors must be in 32-bit
   floating-point format.
+* Output size, filter and bias (if present) must be static (use
+  `kTfLiteMmapRo` allocation type).
+
+### Floating-Point (IEEE FP16) Operators (experimental)
+
+XNNPACK supports half-precision (using IEEE FP16 format) inference for a subset
+of floating-point operators. XNNPACK automatically enables half-precision
+inference when the following conditions are met:
+
+* XNNPACK runs on hardware that natively supports computations in IEEE FP16
+format. Currently, this hardware is limited to ARM64 devices with ARMv8.2 FP16
+arithmetics extension, and includes Android phones starting with Pixel 3,
+Galaxy S9 (Snadrapgon SoC), Galaxy S10 (Exynos SoC), iOS devices with A11 or
+newer SoCs, and all Apple Silicon Macs.
+
+* IEEE FP16 inference is supported for every floating-point operator in the
+model.
+
+* The model's "reduced_precision_support" metadata indicates that the model
+is compatible with FP16 inference.
+
+When the above conditions are met, XNNPACK replace FP32 operators with their
+FP16 equivalents, and insert additional operators to convert model inputs
+from FP32 to FP16 and convert model outputs back from FP16 to FP32. If the
+above conditions are not met, XNNPACK will perform model inference with FP32
+calculations.
+
+Additionally, XNNPACK delegate provides an option to force FP16 inference
+regardless of model metadata. This option is intended for development workflows,
+and in particular for testing end-to-end accuracy of model when FP16 inference
+is used. Forcing FP16 inference has several effects:
+
+* Besides ARM64 devices with ARMv8.2 FP16 arithmetics extension, forced FP16
+inference is supported on x86/x86-64 devices with AVX2 extension in emulation
+mode: all elementary floating-point operations are computed in FP32, then
+converted to FP16 and back to FP32. Note that such simulation is not exactly
+equivalent to native FP16 inference, but simulates the effects of restricted
+mantissa precision and exponent range in the native FP16 arithmetics.
+
+* On devices that support neither the native FP16 arithmetics (ARM64 devices
+with ARMv8.2 FP16 arithmetics extension), nor emulation (x86/x86-64 devices with
+AVX2 extension), inference will fail rather than fall back to FP32.
+
+* If any floating-point operator offloaded to XNNPACK is not supported for FP16
+inference, inference will fail rather than fall back to FP32.
+
+To force FP16 inference, either build the delegate with
+`--define xnnpack_force_float_precision=fp16` option, or add
+`TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16` flag to the
+`TfLiteXNNPackDelegateOptions.flags` bitmask passed into
+the `TfLiteXNNPackDelegateCreate` call:
+
+```c
+TfLiteXNNPackDelegateOptions xnnpack_options =
+    TfLiteXNNPackDelegateOptionsDefault();
+...
+xnnpack_options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16;
+TfLiteDelegate* xnnpack_delegate =
+    TfLiteXNNPackDelegateCreate(&xnnpack_options);
+```
+
+Below is the list of operators supported in IEEE FP16 inference:
+
+#### `ADD`
+
+* Inputs and outputs must be originally in 32-bit floating-point format.
+* Only addition with two inputs is supported.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `CONV_2D`
+
+* Inputs and outputs must be originally in 32-bit floating-point format.
+* Bias is mandatory.
+* Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `DEPTHWISE_CONV_2D`
+
+* Inputs and outputs must be originally in 32-bit floating-point format.
+* Bias is mandatory.
+* Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `HARD_SWISH`
+
+* Inputs and outputs must be originally in 32-bit floating-point format.
+
+#### `LEAKY_RELU`
+
+* Inputs and outputs must be originally in 32-bit floating-point format.
+
+#### `MAX_POOL_2D`
+
+* Inputs and outputs must be originally in 32-bit floating-point format.
+* 1x1 pooling with non-unit stride is not supported.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `MEAN`
+
+* The first input and the output must be 4D tensors originally in 32-bit
+  floating-point format.
+* The second input (the input with the axes specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* Only [1, 2] or [2, 1] axes specification (i.e. reduction across spatial
+  dimensions) is supported.
+* Only `keep_dims = True` parameter value is supported.
+
+#### `PAD`
+
+* The first input and the output must be originally in 32-bit floating-point
+  format.
+* The second input (the input with the padding specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* The numbers of padding elements must be non-negative.
+
+#### `PRELU`
+
+* Inputs and outputs must be originally in 32-bit floating-point format.
+* Slope must be static (use `kTfLiteMmapRo` allocation type).
+* Slope must be either a 1D tensor, or have all its non-channel dimensions equal
+  1.
+
+#### `RESHAPE`
+
+* The first input and the output must be originally in 32-bit floating-point
+  format.
+* The second input (the input with the new shape specification) must be either
+  static (use `kTfLiteMmapRo` allocation type), or absent (with the new shape
+  specified via `ReshapeOptions` table).
+
+#### `TRANSPOSE_CONV`
+
+* Input, filter, bias (if present) and output tensors must be originally in
+  32-bit floating-point format.
 * Output size, filter and bias (if present) must be static (use
   `kTfLiteMmapRo` allocation type).
 

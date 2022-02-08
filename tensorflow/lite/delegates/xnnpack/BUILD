@@ -22,8 +22,8 @@ exports_files([
 
 # Force XNNPACK to run FP32 models as FP16, regardless of model metadata.
 config_setting(
-    name = "xnnpack_force_precision_explicit_fp16",
-    define_values = {"xnnpack_force_precision": "fp16"},
+    name = "xnnpack_force_float_precision_explicit_fp16",
+    define_values = {"xnnpack_force_float_precision": "fp16"},
 )
 
 cc_library(
@@ -32,7 +32,7 @@ cc_library(
     hdrs = ["xnnpack_delegate.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + select({
-        ":xnnpack_force_precision_explicit_fp16": ["-DXNNPACK_FORCE_PRECISION_FP16"],
+        ":xnnpack_force_float_precision_explicit_fp16": ["-DXNNPACK_FORCE_PRECISION_FP16"],
         "//conditions:default": [],
     }),
     linkstatic = True,
