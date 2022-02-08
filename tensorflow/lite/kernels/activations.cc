@@ -66,9 +66,9 @@ struct OpData {
   int32_t input_range_radius = 0;
   int diff_min = 0;
   union {
-    uint8_t lut_uint8[lut_size<uint8_t>()];
-    int8_t lut_int8[lut_size<int8_t>()];
-    int16_t lut_int16[lut_size<int16_t>()];
+    uint8_t lut_uint8[LUTSize<uint8_t>()];
+    int8_t lut_int8[LUTSize<int8_t>()];
+    int16_t lut_int16[LUTSize<int16_t>()];
   };
 };
 
@@ -79,7 +79,7 @@ struct SoftmaxOpData {
   uint8_t uint8_table1[256];
   uint8_t uint8_table2[256];
 #endif
-  static constexpr int kInt16LUTArraySize = lut_size<int16_t>();
+  static constexpr int kInt16LUTArraySize = LUTSize<int16_t>();
   int16_t exp_lut[kInt16LUTArraySize];  // int16 LUT for exp(x), where x uniform
                                         // distributed between [-10.0 , 0.0]
   int16_t one_over_one_plus_x_lut[kInt16LUTArraySize];  // int16 LUT for 1 /
@@ -350,16 +350,16 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (kernel_type == kGenericOptimized || kernel_type == kReference) {
     if (input->type == kTfLiteUInt8) {
-      PopulateLookupTable<uint8_t>(
-          input->params.scale, input->params.zero_point, output->params.scale,
-          output->params.zero_point,
-          [](float value) { return std::tanh(value); }, data->lut_uint8);
+      LUTPopulate<uint8_t>(input->params.scale, input->params.zero_point,
+                           output->params.scale, output->params.zero_point,
+                           [](float value) { return std::tanh(value); },
+                           data->lut_uint8);
 
     } else if (input->type == kTfLiteInt8) {
-      PopulateLookupTable<int8_t>(
-          input->params.scale, input->params.zero_point, output->params.scale,
-          output->params.zero_point,
-          [](float value) { return std::tanh(value); }, data->lut_int8);
+      LUTPopulate<int8_t>(input->params.scale, input->params.zero_point,
+                          output->params.scale, output->params.zero_point,
+                          [](float value) { return std::tanh(value); },
+                          data->lut_int8);
     }
   }
 
@@ -461,14 +461,14 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
   if (kernel_type == kGenericOptimized || kernel_type == kReference) {
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
-      PopulateLookupTable<uint8_t>(
+      LUTPopulate<uint8_t>(
           input->params.scale, input->params.zero_point, output->params.scale,
           output->params.zero_point,
           [](float value) { return 1.0f / (1.0f + std::exp(-value)); },
           data->lut_uint8);
     } else if (input->type == kTfLiteInt8) {
       TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
-      PopulateLookupTable<int8_t>(
+      LUTPopulate<int8_t>(
           input->params.scale, input->params.zero_point, output->params.scale,
           output->params.zero_point,
           [](float value) { return 1.0f / (1.0f + std::exp(-value)); },
@@ -595,14 +595,14 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     // insignificant. Use a symmetric output range of [-1.0; 1.0] and double as
     // FloatT for backward compatibility.
     data->params.exp_lut = data->exp_lut;
-    PopulateLookupTable<int16_t, double>(
+    LUTPopulate<int16_t, double>(
         10.0 / range, std::numeric_limits<int16_t>::max(), 2.0 / range, 0,
         [](double value) { return std::exp(value); }, data->params.exp_lut);
 
     // Input is in the [0; 1] range and use a symmetric output range of
     // [-1.0; 1.0] and double as FloatT for backward compatibility.
     data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
-    PopulateLookupTable<int16_t, double>(
+    LUTPopulate<int16_t, double>(
         1.0 / range, std::numeric_limits<int16_t>::min(), 2.0 / range, 0,
         [](double value) { return 1.0 / (1.0 + value); },
         data->params.one_over_one_plus_x_lut);
@@ -1456,7 +1456,7 @@ TfLiteStatus EluPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Use LUT to handle quantized elu path.
   if (input->type == kTfLiteInt8) {
-    PopulateLookupTable<int8_t>(
+    LUTPopulate<int8_t>(
         input->params.scale, input->params.zero_point, output->params.scale,
         output->params.zero_point,
         [](float value) { return value < 0.0f ? std::expm1(value) : value; },
@@ -1505,7 +1505,7 @@ TfLiteStatus GeluPrepare(TfLiteContext* context, TfLiteNode* node) {
   // lambda with capture. Add an if/else condition to avoid capture of
   // params->approximate.
   if (input->type == kTfLiteInt8) {
-    PopulateLookupTable<int8_t>(
+    LUTPopulate<int8_t>(
         input->params.scale, input->params.zero_point, output->params.scale,
         output->params.zero_point,
         params->approximate
@@ -1513,7 +1513,7 @@ TfLiteStatus GeluPrepare(TfLiteContext* context, TfLiteNode* node) {
             : [](float v) { return reference_ops::GeluTransform(false)(v); },
         data->lut_int8);
   } else if (input->type == kTfLiteUInt8) {
-    PopulateLookupTable<uint8_t>(
+    LUTPopulate<uint8_t>(
         input->params.scale, input->params.zero_point, output->params.scale,
         output->params.zero_point,
         params->approximate

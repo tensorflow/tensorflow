@@ -2572,7 +2572,7 @@ LogicalResult ConvertTFLLogisticOp::matchAndRewrite(
       double input_min = -32768 * input_qtype.getScale();
       double input_max = 32767 * input_qtype.getScale();
 
-      // Generate table with PopulateLookupTable<int16_t>() in
+      // Generate table with LUTPopulate<int16_t>() in
       // tensorflow/lite/kernels/internal/common.h
       Value table_const = getTosaConst16bitTable(rewriter, op, sigmoid_func,
                                                  input_min, input_max);
@@ -2645,7 +2645,7 @@ LogicalResult ConvertTFLTanhOp::matchAndRewrite(
       double input_min = -32768 * input_qtype.getScale();
       double input_max = 32767 * input_qtype.getScale();
 
-      // Generate table with PopulateLookupTable<int16_t>() in
+      // Generate table with LUTPopulate<int16_t>() in
       // tensorflow/lite/kernels/internal/common.h
       Value table_const =
           getTosaConst16bitTable(rewriter, op, tanh_func, input_min, input_max);

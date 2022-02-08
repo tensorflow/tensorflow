@@ -381,7 +381,7 @@ inline Integer FloorLog2(Integer n) {
 // 513-entries LUT for int16 cases, 512 for the 9-bit indexing and 1 extra entry
 // to interpolate the last value.
 template <typename T>
-constexpr int lut_size() {
+constexpr int LUTSize() {
   static_assert(std::is_same<T, uint8_t>::value ||
                     std::is_same<T, int8_t>::value ||
                     std::is_same<T, int16_t>::value,
@@ -401,9 +401,8 @@ template <typename T>
 inline typename std::enable_if<std::is_same<T, uint8_t>::value ||
                                    std::is_same<T, int8_t>::value,
                                void>::type
-PopulateLookupTable(float input_scale, int32_t input_zero_point,
-                    float output_scale, int32_t output_zero_point,
-                    float (*transform)(float), T* lut) {
+LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
+            int32_t output_zero_point, float (*transform)(float), T* lut) {
   uint8_t* lut_uint8 = reinterpret_cast<uint8_t*>(lut);
   const float inverse_scale = 1 / output_scale;
   int32_t maxval = std::numeric_limits<T>::max();
@@ -423,9 +422,8 @@ PopulateLookupTable(float input_scale, int32_t input_zero_point,
 // should be used for FloatT by default.
 template <typename T, typename FloatT>
 inline typename std::enable_if<std::is_same<T, int16_t>::value, void>::type
-PopulateLookupTable(FloatT input_scale, int32_t input_zero_point,
-                    FloatT output_scale, int32_t output_zero_point,
-                    FloatT (*transform)(FloatT), T* lut) {
+LUTPopulate(FloatT input_scale, int32_t input_zero_point, FloatT output_scale,
+            int32_t output_zero_point, FloatT (*transform)(FloatT), T* lut) {
   static_assert(std::is_floating_point<FloatT>::value,
                 "FloatT must be a floating-point type.");
   const FloatT input_min =
@@ -473,16 +471,15 @@ PopulateLookupTable(FloatT input_scale, int32_t input_zero_point,
 
 template <typename T>
 inline typename std::enable_if<std::is_same<T, int16_t>::value, void>::type
-PopulateLookupTable(float input_scale, int32_t input_zero_point,
-                    float output_scale, int32_t output_zero_point,
-                    float (*transform)(float), T* lut) {
-  PopulateLookupTable<T, float>(input_scale, input_zero_point, output_scale,
-                                output_zero_point, transform, lut);
+LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
+            int32_t output_zero_point, float (*transform)(float), T* lut) {
+  LUTPopulate<T, float>(input_scale, input_zero_point, output_scale,
+                        output_zero_point, transform, lut);
 }
 
 // int16_t -> int16_t table lookup with interpolation
 // LUT must have 513 values
-inline int16_t lut_lookup(int16_t value, const int16_t* lut) {
+inline int16_t LUTLookup(int16_t value, const int16_t* lut) {
   // 512 base values, lut[513] is only used to calculate the slope
   const uint16_t index = static_cast<uint16_t>(256 + (value >> 7));
   assert(index < 512 && "LUT index out of range.");
@@ -502,15 +499,15 @@ inline int16_t lut_lookup(int16_t value, const int16_t* lut) {
 
 // int8_t -> int8_t table lookup without interpolation
 // LUT must have 256 values
-// PopulateLookupTable<int8_t> has ordered the LUT so that indexing it with an
+// LUTPopulate<int8_t> has ordered the LUT so that indexing it with an
 // int8_t is just done by casting it to an uint8_t.
-inline int8_t lut_lookup(int8_t value, const int8_t* lut) {
+inline int8_t LUTLookup(int8_t value, const int8_t* lut) {
   return lut[static_cast<uint8_t>(value)];
 }
 
 // uint8_t -> uint8_t table lookup without interpolation
 // LUT must have 256 values
-inline uint8_t lut_lookup(uint8_t value, const uint8_t* lut) {
+inline uint8_t LUTLookup(uint8_t value, const uint8_t* lut) {
   return lut[value];
 }
 

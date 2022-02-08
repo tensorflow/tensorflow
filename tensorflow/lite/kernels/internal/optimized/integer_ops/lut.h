@@ -54,7 +54,7 @@ inline void LookupTable(const uint8_t* input_data, int num_elements,
   }
 }
 
-// PopulateLookupTable<int8_t> has ordered the LUT so that indexing it with an
+// LUTPopulate<int8_t> has ordered the LUT so that indexing it with an
 // int8_t is just done by casting it to an uint8_t. We can thus reuse the uint8
 // LookupTable function.
 inline void LookupTable(const int8_t* input_data, int num_elements,

@@ -51,10 +51,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(table), 1);
   if (input->type == kTfLiteInt8) {
-    TF_LITE_ENSURE_EQ(context, NumElements(table), lut_size<int8_t>());
+    TF_LITE_ENSURE_EQ(context, NumElements(table), LUTSize<int8_t>());
   } else {
     TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt16);
-    TF_LITE_ENSURE_EQ(context, NumElements(table), lut_size<int16_t>());
+    TF_LITE_ENSURE_EQ(context, NumElements(table), LUTSize<int16_t>());
   }
 
   return context->ResizeTensor(context, output,

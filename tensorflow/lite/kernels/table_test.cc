@@ -103,15 +103,15 @@ void TableWithExpLUTTest() {
       GetLUTTolerance<T>(input_min, input_max, output_min, output_max);
 
   TableOpModel m({GetTensorType<T>(), {1, 2, 3, 1}, input_min, input_max},
-                 {GetTensorType<T>(), {lut_size<T>()}},
+                 {GetTensorType<T>(), {LUTSize<T>()}},
                  {GetTensorType<T>(), {}, output_min, output_max});
-  T table[lut_size<T>()];
-  PopulateLookupTable<T>(m.GetScale(m.input()), m.GetZeroPoint(m.input()),
-                         m.GetScale(m.output()), m.GetZeroPoint(m.output()),
-                         [](float v) { return std::exp(v); }, table);
+  T table[LUTSize<T>()];
+  LUTPopulate<T>(m.GetScale(m.input()), m.GetZeroPoint(m.input()),
+                 m.GetScale(m.output()), m.GetZeroPoint(m.output()),
+                 [](float v) { return std::exp(v); }, table);
 
   m.QuantizeAndPopulate<T>(m.input(), {-0.5f, -0.2f, 0.0f, 0.1f, 0.3f, 0.8f});
-  m.PopulateTensor<T>(m.table(), 0, table, table + lut_size<T>());
+  m.PopulateTensor<T>(m.table(), 0, table, table + LUTSize<T>());
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<T>(),
               ElementsAreArray(ArrayFloatNear(
