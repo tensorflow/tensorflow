@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/logging.h"
+//#include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -55,57 +56,54 @@ bool GetEnvBool(const char* name, bool defval) {
 
 }  // namespace
 
-bool PrintFdMessage(long tgid) {
-  string path;
-  char line[100];
-  DIR* fd;
-  struct dirent* ent;
-  long deviceId;
-  path = absl::StrCat("/proc/", tgid, "/fd");
-  fd = opendir(path.c_str());
-  if (!fd) {
+// This function gets pid of a process and checks if that process is using tpu.
+// It is not able to check processes that are owned by another user.
+
+bool IsTpuUsed(long pid) {
+  std::string path = absl::StrCat("/proc/", pid, "/fd");
+  DIR* raw_fd_dir = opendir(path.c_str());
+  if (!raw_fd_dir) {
     return false;
   }
-  while (ent = readdir(fd)) {
+  std::unique_ptr<DIR, int (*)(DIR*)> fd_dir(raw_fd_dir, closedir);
+  struct dirent* ent;
+  char line[100];
+  while (ent = readdir(raw_fd_dir)) {
     if (!isdigit(*ent->d_name)) continue;
-    deviceId = strtol(ent->d_name, NULL, 10);
-    string paths;
-    int statusfd;
-    paths = absl::StrCat("/proc/", tgid, "/fd", deviceId);
-    statusfd = readlink(paths.c_str(), line, 100);
-    if (!statusfd) return false;
+    long fd = strtol(ent->d_name, NULL, 10);
+    path = absl::StrCat("/proc/", pid, "/fd/", fd);
+    if (!readlink(path.c_str(), line, 100)) return false;
     if (strncmp(line, "/dev/accel0", 11) != 0) continue;
-    closedir(fd);
     return true;
   }
-  closedir(fd);
   return false;
 }
 
-bool FindProcessInProc() {
+// This function iterates through all the processes in /proc and logs if any
+// process it was able to check is using the TPU. It does not have permission to
+// processes owned by another user. todo (shahrokhi) use
+// tensorflow/core/platform/filesystem (GetChildren) for this.
+bool FindLibtpuProcess() {
   DIR* proc = opendir("/proc");
-  struct dirent* ent;
-  long tgid;
 
   if (proc == NULL) {
     return false;
   }
-
+  std::unique_ptr<DIR, int (*)(DIR*)> proc_dir(proc, closedir);
+  struct dirent* ent;
+  long pid;
   while (ent = readdir(proc)) {
     if (!isdigit(*ent->d_name)) continue;
 
-    tgid = strtol(ent->d_name, NULL, 10);
+    pid = strtol(ent->d_name, NULL, 10);
 
-    if (PrintFdMessage(tgid)) {
-      string message = "libtpu.so is already in use by this process (PID: " +
-                       std::to_string(tgid) +
-                       "). Not attempting to load libtpu.so";
-      LOG(INFO) << message;
-      closedir(proc);
+    if (IsTpuUsed(pid)) {
+      LOG(INFO) << "libtpu.so is already in use by this process (PID: "
+                << std::to_string(pid)
+                << "). Not attempting to load libtpu.so in this process.";
       return true;
     }
   }
-  closedir(proc);
   return false;
 }
 
@@ -149,7 +147,7 @@ bool TryAcquireTpuLock() {
       // This lock is held until the process exits intentionally. The underlying
       // TPU device will be held on until it quits.
       if (lockf(fd, F_TLOCK, 0) != 0) {
-        if (!FindProcessInProc()) {
+        if (!FindLibtpuProcess()) {
           LOG(INFO) << "libtpu.so already in use by another process probably"
                        " owned by another user. "
                        "Run \"$ sudo lsof -w /dev/accel0\" to figure out "
