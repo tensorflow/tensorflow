@@ -123,7 +123,7 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
                               unroll_factors, max_supported_rank,
                               embed_memref_prints, print_ptx, print_llvmir,
                               enable_ftz, index_64bit, cpu_codegen, jit_compile,
-                              jit_i64_indexed_for_large_tensor));
+                              jit_i64_indexed_for_large_tensors));
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
 
