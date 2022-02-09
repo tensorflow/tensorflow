@@ -166,12 +166,6 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(op)) {
     return Thunk::Kind::kGemm;
   }
-  if (mlir::isa<mlir::gpu::MemcpyOp>(op)) {
-    return Thunk::Kind::kCopy;
-  }
-  if (mlir::isa<mlir::gpu::MemsetOp>(op)) {
-    return Thunk::Kind::kMemset32BitValue;
-  }
   if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {
     return Thunk::Kind::kNcclAllGather;
   }
