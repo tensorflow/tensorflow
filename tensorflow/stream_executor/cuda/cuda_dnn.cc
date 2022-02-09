@@ -4559,15 +4559,16 @@ class ScalingParam {
   float as_float_;
 };
 
+#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 namespace {
 
 template<typename Sig>
 port::Status CreateOpRunners(
-    Stream* stream, CudnnHandle &cudnn, GpuExecutor* gpu_executor,
+    Stream* stream, CudnnHandle& cudnn, GpuExecutor* gpu_executor,
     CudnnAccess* cudnn_access,
     std::unique_ptr<cudnn_frontend::OperationGraph> op_graph,
     dnn::ConvolutionKind kind, dnn::DataType input_type,
-    const int64_t* input_uids, bool use_fallback,
+    absl::Span<const int64_t> input_uids, bool use_fallback,
     std::vector<std::unique_ptr<const dnn::OpRunner<Sig>>>* out_runners) {
   cudnn_frontend::EngineConfigList filtered_configs;
   auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
@@ -4669,6 +4670,7 @@ port::Status CreateOpRunners(
 }
 
 } // namespace
+#endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 port::Status CudnnSupport::GetConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
@@ -5202,13 +5204,16 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  SE_ASSIGN_OR_RETURN(
-      auto op_graph,
-      GetCudnnFusedOperationGraph(
-          kind, input_type, bias_type, output_type, conv_scale,
-          side_input_scale, input_descriptor, filter_descriptor,
-          bias_descriptor, output_descriptor, convolution_descriptor,
-          activation_mode, cudnn));
+  auto op_graph_status = GetCudnnFusedOperationGraph(
+      kind, input_type, bias_type, output_type, conv_scale, side_input_scale,
+      input_descriptor, filter_descriptor, bias_descriptor, output_descriptor,
+      convolution_descriptor, activation_mode, cudnn);
+  if (!op_graph_status.status().ok()) {
+    return port::Status(port::error::INTERNAL,
+                        absl::StrCat("Cudnn graph failed to build: ",
+                                     op_graph_status.status().ToString()));
+  }
+  auto op_graph = op_graph_status.ConsumeValueOrDie();
 
   return CreateOpRunners<dnn::FusedConvSignature>(
       stream, cudnn, parent_, cudnn_.get(), std::move(op_graph), kind,
