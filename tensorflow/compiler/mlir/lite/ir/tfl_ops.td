@@ -478,6 +478,8 @@ def TFL_ComparisonBinaryBuilder :
 // TFL op base class.
 //===----------------------------------------------------------------------===//
 
+// LINT.IfChange
+
 class TFL_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFL_Dialect, mnemonic, !listconcat(traits,
       [DeclareOpInterfaceMethods<TFL_RuntimeVerification>])> {
@@ -5420,4 +5422,5 @@ No value constant op.
 
 #endif // TFL_OPS
 
+// LINT.ThenChange()
 // LINT.ThenChange(//tensorflow/lite/tools/versioning/op_version.cc)
