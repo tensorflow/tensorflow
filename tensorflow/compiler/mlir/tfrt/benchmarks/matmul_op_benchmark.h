@@ -34,6 +34,7 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::HostContexAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::ReturnValueConverter;
@@ -80,9 +81,14 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   ReturnValueConverter<ResultConversionCtx> converter(results);
   converter.AddConversion(FreeReturnedMemref);
 
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContexAsyncTaskRunner async_task_runner(host.get());
+  opts.async_task_runner = &async_task_runner;
+
   // Get an executable that might be specialized to the operands.
   llvm::Expected<AsyncValuePtr<Executable>> executable =
-      jit_executable.GetExecutable(operands, exec_ctx);
+      jit_executable.GetExecutable(operands);
   if (auto err = executable.takeError())
     LOG(FATAL) << "Failed to specialize executable";
 
@@ -99,9 +105,8 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
-    (*executable)->Execute(call_frame, exec_ctx);
-    if (auto err =
-            (*executable)->ReturnResults(converter, exec_ctx, &call_frame))
+    (*executable)->Execute(call_frame, opts);
+    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 

@@ -127,7 +127,7 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
 
   // Get an executable that might be specialized to the operands.
   llvm::Expected<AsyncValuePtr<Executable>> executable =
-      jit_executable.GetExecutable(operands, exec_ctx);
+      jit_executable.GetExecutable(operands);
   if (auto err = executable.takeError())
     LOG(FATAL) << "Failed to specialize executable: " << tfrt::StrCat(err);
 
@@ -159,9 +159,8 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
 
   for (auto _ : state) {
     call_frame.args[0] = nullptr;  // reset kernel context argument
-    (*executable)->Execute(call_frame, exec_ctx, opts);
-    if (auto err =
-            (*executable)->ReturnResults(converter, exec_ctx, &call_frame))
+    (*executable)->Execute(call_frame, opts);
+    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 }

@@ -309,7 +309,7 @@ std::vector<py::array> TfJitRtExecutor::Execute(
 
   // Get an executable that might be specialized to the operands.
   llvm::Expected<AsyncValuePtr<Executable>> executable =
-      jit_executable.GetExecutable(memrefs, exec_ctx);
+      jit_executable.GetExecutable(memrefs);
   if (auto err = executable.takeError())
     throw std::runtime_error(
         StrCat("Failed to get Executable: ", std::move(err)));
@@ -335,7 +335,7 @@ std::vector<py::array> TfJitRtExecutor::Execute(
   // Convert returned memrefs to python arrays.
   PyBindingReturnValueConverter converter(results);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
-  if (auto err = (*executable)->Execute(memrefs, converter, exec_ctx, opts))
+  if (auto err = (*executable)->Execute(memrefs, converter, opts))
     throw std::runtime_error(StrCat("Unsupported argument: ", err));
 
   // Pull Python arrays out of async values.

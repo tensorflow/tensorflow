@@ -642,7 +642,7 @@ static void ExecuteImpl(Executable& executable,
 
   // Execution error automatically forwarded to all results, we only need to
   // notify the HostContext to emit the diagnostics for the kernel invocation.
-  if (auto err = executable.Execute(memrefs, converter, exec_ctx, opts)) {
+  if (auto err = executable.Execute(memrefs, converter, opts)) {
     EmitError(exec_ctx, StrCat(err));
     return;
   }
@@ -669,8 +669,8 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   // Get an executable that might be specialized to the operands.
   DebugListener debug_listener;
 
-  Expected<AsyncValuePtr<Executable>> executable = jit_executable.GetExecutable(
-      memrefs, exec_ctx, debug ? &debug_listener : nullptr);
+  Expected<AsyncValuePtr<Executable>> executable =
+      jit_executable.GetExecutable(memrefs, debug ? &debug_listener : nullptr);
   if (auto err = executable.takeError())
     return ReturnErrors(results, std::move(err), exec_ctx);
 
