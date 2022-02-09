@@ -123,8 +123,8 @@ class CompilationThreadPool : public SharedContext {
   explicit CompilationThreadPool(HostContext* host)
       : thread_pool_(Env::Default(), "tf-jitrt-compiler", /*num_threads=*/32) {}
 
-  static CompilationThreadPool& Get(const ExecutionContext& exec_ctx) {
-    return exec_ctx.host()->GetOrCreateSharedContext<CompilationThreadPool>();
+  static CompilationThreadPool& Get(HostContext* host) {
+    return host->GetOrCreateSharedContext<CompilationThreadPool>();
   }
 
   template <typename Task>
@@ -295,6 +295,16 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // Attributes required for tracing compilation.
   int64_t request_id = exec_ctx.request_ctx()->id();
 
+  // TODO(ezhulenev): We capture host by value in the `runner` under the
+  // assumption that it will never be destructed (the assumption holds in
+  // practice). If it's not the case we must make compilation thread pool
+  // reference counted.
+  HostContext* host = exec_ctx.host();
+
+  // We capture the session name when we create the JitExecutable, because we
+  // assume that BEF file is always executed within the same session.
+  std::string session_name = GetSessionName(exec_ctx);
+
   // Compilation (specialized executable compilation) events should be rare, so
   // we can afford to do detailed tracing for every compilation. If compilation
   // events happen too often, it is a much larger problem than the excessive
@@ -302,11 +312,10 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
   // Custom runner for compiling specializations that schedules compilation task
   // into the dedicated thread pool and adds tracing.
-  auto runner = [kernel, request_id](size_t specialization,
-                                     ArrayRef<OperandConstraint> constraints,
-                                     ArrayRef<MemrefDesc> operands,
-                                     TaskFunction compile,
-                                     const ExecutionContext& exec_ctx) {
+  auto runner = [kernel, request_id, host, session_name](
+                    size_t specialization,
+                    ArrayRef<OperandConstraint> constraints,
+                    ArrayRef<MemrefDesc> operands, TaskFunction compile) {
     assert(operands.size() == constraints.size());
 
     // Prepare arguments for the compilation tracing in the caller thread,
@@ -327,10 +336,10 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     }
 
     // Schedule specialization compilation task into the dedicated thread pool.
-    CompilationThreadPool& thread_pool = CompilationThreadPool::Get(exec_ctx);
+    CompilationThreadPool& thread_pool = CompilationThreadPool::Get(host);
 
     thread_pool.Schedule([request_id, kernel, specialization,
-                          compile = std::move(compile), exec_ctx,
+                          compile = std::move(compile), session_name,
                           args = std::move(args)]() mutable {
       // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
       // theory can be unloaded before the completion of the compilation task.
@@ -363,13 +372,13 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
       auto compile_start_time = absl::Now();
       LOG(INFO) << "Started JitExecutable specialization compilation for "
-                << name << " (" << GetSessionName(exec_ctx) << ")";
+                << name << " (" << session_name << ")";
       compile();
       auto compile_duration = absl::Now() - compile_start_time;
 
       LOG(INFO) << "JitExecutable specialization compilation for " << name
                 << " took " << absl::ToInt64Milliseconds(compile_duration)
-                << " ms (" << GetSessionName(exec_ctx) << ")";
+                << " ms (" << session_name << ")";
 
       if (compile_duration > absl::Seconds(1))
         LOG(INFO) << "Expensive JitExecutable specialization compilation ("
@@ -379,10 +388,10 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   };
 
   // Compile kernel asynchronously in the compilation thread pool.
-  CompilationThreadPool& thread_pool = CompilationThreadPool::Get(exec_ctx);
+  CompilationThreadPool& thread_pool = CompilationThreadPool::Get(host);
 
   thread_pool.Schedule([kernel, request_id, runner, workers = *worker_threads,
-                        exec_ctx, ptr = entry.ptr, tf_jitrt_opts = opts]() {
+                        session_name, ptr = entry.ptr, tf_jitrt_opts = opts]() {
     TraceMe trace_me([&] {
       absl::string_view name(kernel.root_symbol().data(),
                              kernel.root_symbol().size());
@@ -444,8 +453,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // Instantiate new JitExecutable from the MLIR source.
     auto compile_start_time = absl::Now();
     LOG(INFO) << "Started JitExecutable instantiation compilation for "
-              << kernel.root_symbol().str() << " (" << GetSessionName(exec_ctx)
-              << ")";
+              << kernel.root_symbol().str() << " (" << session_name << ")";
     Expected<JitExecutable> jit_executable =
         JitExecutable::Instantiate(module, entrypoint, std::move(opts), runner);
     auto compile_duration = absl::Now() - compile_start_time;
@@ -453,7 +461,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     LOG(INFO) << "JitExecutable instantiation for "
               << kernel.root_symbol().str() << " took "
               << absl::ToInt64Milliseconds(compile_duration) << " ms ("
-              << GetSessionName(exec_ctx) << ")";
+              << session_name << ")";
 
     if (compile_duration > absl::Seconds(1))
       LOG(INFO) << "Expensive JitExecutable instantiation ("
