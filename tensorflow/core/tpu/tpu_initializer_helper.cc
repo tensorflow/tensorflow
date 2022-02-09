@@ -57,7 +57,6 @@ bool GetEnvBool(const char* name, bool defval) {
 
 // This function gets pid of a process and checks if that process is using tpu.
 // It is not able to check processes that are owned by another user.
-
 bool IsTpuUsed(long pid) {
   std::string path = absl::StrCat("/proc/", pid, "/fd");
   DIR* raw_fd_dir = opendir(path.c_str());
@@ -95,7 +94,6 @@ bool FindLibtpuProcess() {
     if (!isdigit(*ent->d_name)) continue;
 
     pid = strtol(ent->d_name, NULL, 10);
-
     if (IsTpuUsed(pid)) {
       LOG(INFO) << "libtpu.so is already in use by this process (PID: "
                 << std::to_string(pid)
