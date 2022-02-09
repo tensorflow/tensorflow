@@ -15,6 +15,8 @@
 // This file implements the XLIR kernels.
 
 #include <iterator>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -24,9 +26,11 @@
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/kernels/kernels_detail.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 
@@ -360,11 +364,195 @@ static llvm::Error CustomCall(
   return llvm::Error::success();
 }
 
+static llvm::Error CheckShapeCompatibleWithBuffer(const Shape& parent_shape,
+                                                  const ShapeIndex& shape_index,
+                                                  size_t buffer_size) {
+  const Shape& shape = ShapeUtil::GetSubshape(parent_shape, shape_index);
+  if (buffer_size != ShapeUtil::ByteSizeOf(shape)) {
+    return tfrt::MakeStringError(
+        absl::StrCat("Mismatch between buffer shape ",
+                     ShapeUtil::HumanStringWithLayout(shape),
+                     " and buffer size ", buffer_size));
+  }
+  return llvm::Error::success();
+}
+
+static llvm::Error InfeedBlockingWork(
+    tfrt::AsyncValueRef<tfrt::gpu::GpuStream> stream,
+    const tfrt::RCArray<tfrt::AsyncValue> outputs,
+    const XlaGpuParams* xla_gpu_params) {
+  auto context = tfrt::gpu::wrapper::CtxSetCurrent(stream->context()->get());
+  if (!context) {
+    return context.takeError();
+  }
+
+  ShapeTree<se::ScopedDeviceMemory<uint8_t>> source_buffers =
+      xla_gpu_params->infeed_manager->BlockingGetNextDestination();
+  // Make sure that the outputs and the input buffers match.
+  const size_t num_outputs = outputs.size();
+  const int64_t leaf_count = source_buffers.leaf_count();
+  if (num_outputs != leaf_count)
+    return tfrt::MakeStringError(
+        absl::StrCat("Mismatch between number of infeed outputs (", num_outputs,
+                     ") and input buffers (", leaf_count, ")"));
+
+  // TODO(bixia): Switch to use zip, may need to add operator += to
+  //   RepeatedArguments to support this.
+  for (const auto& source_and_index :
+       llvm::enumerate(source_buffers.leaves())) {
+    const auto& source = source_and_index.value();
+    const Shape& parent_shape = source_buffers.shape();
+    const ShapeIndex& shape_index = source.first;
+    const size_t index = source_and_index.index();
+    tfrt::gpu::GpuBuffer& output =
+        outputs[index]->template get<tfrt::gpu::GpuBuffer>();
+    const size_t buffer_size = output.size();
+    if (auto error = CheckShapeCompatibleWithBuffer(parent_shape, shape_index,
+                                                    buffer_size)) {
+      return error;
+    }
+
+    // Enqueue the memory copy.
+    const se::ScopedDeviceMemory<uint8_t>& source_buffer = source.second;
+    tfrt::gpu::wrapper::Pointer<const void> source_pointer(
+        source_buffer.ptr()->opaque(), context->platform());
+    if (auto error = tfrt::gpu::wrapper::MemcpyAsync(
+            *context, output.pointer(), source_pointer,
+            source_buffer.ptr()->size(), stream->get()))
+      return error;
+  }
+
+  // Wait for the memory copy operations to finish.
+  return tfrt::gpu::wrapper::StreamSynchronize(stream->get());
+}
+
+static tfrt::AsyncValueRef<tfrt::Chain> Infeed(
+    tfrt::Argument<tfrt::gpu::GpuStream> stream,
+    tfrt::RepeatedArguments<tfrt::gpu::GpuBuffer> outputs_then_chain,
+    const tfrt::ExecutionContext& exec_ctx) {
+  VLOG(2) << "Infeeding to GPU";
+
+  auto* xla_gpu_params =
+      exec_ctx.request_ctx()->GetDataIfExists<XlaGpuParams>();
+  if (!xla_gpu_params) {
+    return tfrt::MakeErrorAsyncValueRef("Failed to get XlaGpuParams");
+  }
+
+  // Capture a reference to the output buffers to ensure that the buffers
+  // won't be released before the MemcpyAsync operations complete, even if
+  // the results of the memory copy aren't used.
+  return tfrt::EnqueueBlockingWork(
+      exec_ctx.host(),
+      [=, stream = stream.ValueRef(),
+       outputs = tfrt::RCArray<tfrt::AsyncValue>(
+           outputs_then_chain.values().drop_back())]() mutable
+      -> llvm::Expected<tfrt::Chain> {
+        // Move to local so that the stream/outputs are released before
+        // returning, or else, they will be released when this lambda is
+        // destructed, which is after returning.
+        if (auto error = InfeedBlockingWork(std::move(stream),
+                                            std::move(outputs), xla_gpu_params))
+          return error;
+        VLOG(2) << "Infeeding to GPU complete";
+        return tfrt::Chain();
+      });
+}
+
+static llvm::Error OutfeedBlockingWork(
+    tfrt::AsyncValueRef<tfrt::gpu::GpuStream> stream,
+    const tfrt::RCArray<tfrt::AsyncValue> inputs,
+    const XlaGpuParams* xla_gpu_params) {
+  VLOG(2) << "Outfeeding from GPU";
+
+  auto context = tfrt::gpu::wrapper::CtxSetCurrent(stream->context()->get());
+  if (!context) {
+    return context.takeError();
+  }
+
+  ShapeTree<std::unique_ptr<OutfeedBuffer>>* dest_buffers =
+      xla_gpu_params->outfeed_manager->BlockingGetNextDestination();
+  const int64_t leaf_count = dest_buffers->leaf_count();
+
+  // Check that the inputs and the output buffers match.
+  const size_t num_inputs = inputs.size();
+  if (num_inputs != leaf_count)
+    return tfrt::MakeStringError(
+        absl::StrCat("Mismatch between number of outfeed inputs (", num_inputs,
+                     ") and output buffers (", leaf_count, ")"));
+
+  std::vector<OutfeedBuffer*> buffers;
+  for (const auto& iter_and_index : llvm::enumerate(dest_buffers->leaves())) {
+    auto& leaf_iter = iter_and_index.value();
+    const Shape& parent_shape = dest_buffers->shape();
+    const ShapeIndex& shape_index = leaf_iter.first;
+    const size_t index = iter_and_index.index();
+    tfrt::gpu::GpuBuffer& input =
+        inputs[index]->template get<tfrt::gpu::GpuBuffer>();
+    const size_t buffer_size = input.size();
+    if (auto error = CheckShapeCompatibleWithBuffer(parent_shape, shape_index,
+                                                    buffer_size)) {
+      return error;
+    }
+
+    // Enqueue the memory copy.
+    const std::unique_ptr<OutfeedBuffer>& dest_buffer = leaf_iter.second;
+    tfrt::gpu::wrapper::Pointer<void> dest_pointer(
+        dest_buffer->destination()->untyped_data(), context->platform());
+    if (auto error = tfrt::gpu::wrapper::MemcpyAsync(
+            *context, dest_pointer, input.pointer(), dest_buffer->length(),
+            stream->get()))
+      tfrt::MakeErrorAsyncValueRef(tfrt::DecodedDiagnostic(error));
+
+    // Collect the OutfeedBuffer that we will need to notify after all the
+    // memory copy operations finish. The buffers are owned by the outfeed
+    // manager.
+    buffers.push_back(dest_buffer.get());
+  }
+
+  // Wait for the memory copy operations to finish and notify the destination
+  // buffers.
+  if (auto error = tfrt::gpu::wrapper::StreamSynchronize(stream->get()))
+    return error;
+  for (auto& buffer : buffers) buffer->Done();
+  return llvm::Error::success();
+}
+
+static tfrt::AsyncValueRef<tfrt::Chain> Outfeed(
+    tfrt::Argument<tfrt::gpu::GpuStream> stream,
+    tfrt::RepeatedArguments<tfrt::gpu::GpuBuffer> inputs_then_chain,
+    const tfrt::ExecutionContext& exec_ctx) {
+  VLOG(2) << "Outfeeding from GPU";
+
+  auto* xla_gpu_params =
+      exec_ctx.request_ctx()->GetDataIfExists<XlaGpuParams>();
+  if (!xla_gpu_params) {
+    return tfrt::MakeErrorAsyncValueRef("Failed to get XlaGpuParams");
+  }
+
+  return tfrt::EnqueueBlockingWork(
+      exec_ctx.host(),
+      [=, stream = stream.ValueRef(),
+       inputs = tfrt::RCArray<tfrt::AsyncValue>(
+           inputs_then_chain.values().drop_back())]() mutable
+      -> llvm::Expected<tfrt::Chain> {
+        // Move to local so that the stream/inputs are released before
+        // returning, or else, they will be released when this lambda is
+        // destructed, which is after returning.
+        if (auto error = OutfeedBlockingWork(std::move(stream),
+                                             std::move(inputs), xla_gpu_params))
+          return error;
+        VLOG(2) << "Outfeeding to GPU complete";
+        return tfrt::Chain();
+      });
+}
+
 static void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
   kernel_reg->AddKernel("xlir.custom_call",
                         TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
   // This kernel is only used for bef thunks, not bef executables.
   kernel_reg->AddKernel("xlir.module.load", TFRT_KERNEL(ModuleLoad));
+  kernel_reg->AddKernel("xlir.infeed", TFRT_KERNEL(Infeed));
+  kernel_reg->AddKernel("xlir.outfeed", TFRT_KERNEL(Outfeed));
   kernel_reg->AddKernel("xlir.replica_id",
                         TFRT_KERNEL_WITH_CHAIN_RESULT(ReplicaId));
   kernel_reg->AddKernel("xlir.partition_id",
