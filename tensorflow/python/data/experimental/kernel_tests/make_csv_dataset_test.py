@@ -170,8 +170,10 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     inputs = [[",".join(x for x in column_names), "さる,猿", "とり,鳥"], [
         ",".join(x for x in column_names), "いぬ,犬", "ねこ,猫"
     ]]
-    expected_output = [["さる", "猿"], ["とり", "鳥"],
-                       ["いぬ", "犬"], ["ねこ", "猫"]]
+    expected_output = [["さる".encode("shift-jis"), "猿".encode("shift-jis")],
+                       ["とり".encode("shift-jis"), "鳥".encode("shift-jis")],
+                       ["いぬ".encode("shift-jis"), "犬".encode("shift-jis")],
+                       ["ねこ".encode("shift-jis"), "猫".encode("shift-jis")]]
     label = "col0"
 
     self._test_dataset(
