@@ -96,7 +96,9 @@ StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
     case PRED:
       return DLDataType{kDLUInt, 8, 1};
     case C64:
+      return DLDataType{kDLComplex, 64, 1};
     case C128:
+      return DLDataType{kDLComplex, 128, 1};
     default:
       return Unimplemented("XLA type %s has no DLPack equivalent",
                            PrimitiveType_Name(type));
@@ -158,6 +160,17 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
         default:
           return Unimplemented(
               "Invalid or unsupported DLPack Bfloat width: %d bits", type.bits);
+      }
+    case kDLComplex:
+      switch (type.bits) {
+        case 64:
+          return C64;
+        case 128:
+          return C128;
+        default:
+          return Unimplemented(
+              "Invalid or unsupported DLPack complex width: %d bits",
+              type.bits);
       }
     default:
       return Unimplemented("Unknown or invalid DLPack type code %d", type.code);

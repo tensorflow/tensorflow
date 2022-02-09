@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/eager/dlpack.h"
 
+#include <string>
+
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -96,6 +98,10 @@ DLDataType GetDlDataType(TF_DataType data_type, TF_Status* status) {
       break;
     case TF_DataType::TF_BFLOAT16:
       dtype.code = DLDataTypeCode::kDLBfloat;
+      break;
+    case TF_DataType::TF_COMPLEX64:
+    case TF_DataType::TF_COMPLEX128:
+      dtype.code = DLDataTypeCode::kDLComplex;
       break;
     default:
       status->status = tensorflow::errors::InvalidArgument(
@@ -211,6 +217,19 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
         default:
           return tensorflow::errors::InvalidArgument(
               "Unsupported BFloat bits: ", dtype.bits);
+      }
+      break;
+    case DLDataTypeCode::kDLComplex:
+      switch (dtype.bits) {
+        case 64:
+          *tf_dtype = TF_DataType::TF_COMPLEX64;
+          return Status::OK();
+        case 128:
+          *tf_dtype = TF_DataType::TF_COMPLEX128;
+          return Status::OK();
+        default:
+          return tensorflow::errors::InvalidArgument(
+              "Unsupported Complex bits: ", dtype.bits);
       }
       break;
     default:
