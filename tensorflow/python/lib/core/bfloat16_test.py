@@ -119,7 +119,8 @@ class Bfloat16Test(parameterized.TestCase):
     """Tests that negative zero and zero hash to the same value."""
     self.assertEqual(hash(bfloat16(-0.0)), hash(bfloat16(0.0)))
 
-  @parameterized.parameters(FLOAT_VALUES)
+  @parameterized.parameters(
+      np.extract(np.isfinite(FLOAT_VALUES), FLOAT_VALUES))
   def testHashNumbers(self, value):
     self.assertEqual(hash(value), hash(bfloat16(value)), str(value))
 
