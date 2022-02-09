@@ -131,6 +131,8 @@ absl::Status InferenceContext::InitFromGraph(
   if (serialized_model) {
     gpu_model_fb = tflite::gpu::Encode(gpu_model, &builder);
   }
+  RETURN_IF_ERROR(AllocateConstTensors(gpu_model, &env->context()));
+  RETURN_IF_ERROR(AllocateVariableTensors(gpu_model, &env->context()));
   CopyFromGpuModel(&gpu_model);
 
   CreationContext creation_context;
@@ -195,7 +197,6 @@ absl::Status InferenceContext::InitFromGraph(
     std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
                 builder.GetSize());
   }
-  ReleaseCPURepresentation();
   return absl::OkStatus();
 }
 
@@ -217,6 +218,8 @@ absl::Status InferenceContext::RestoreDeserialized(
   }
   GpuModel gpu_model;
   RETURN_IF_ERROR(tflite::gpu::Decode(decoded_fb->gpu_model(), &gpu_model));
+  RETURN_IF_ERROR(AllocateConstTensors(gpu_model, &env->context()));
+  RETURN_IF_ERROR(AllocateVariableTensors(gpu_model, &env->context()));
   CopyFromGpuModel(&gpu_model);
 
   // deserializing kernels into program_cache
@@ -271,16 +274,12 @@ absl::Status InferenceContext::RestoreDeserialized(
   for (auto& external_tensor : external_mutable_tensors_) {
     external_tensor.second = nullptr;
   }
-  ReleaseCPURepresentation();
   return absl::OkStatus();
 }
 
 void InferenceContext::CopyFromGpuModel(GpuModel* gpu_model) {
   for (const auto& input : gpu_model->input_ids_and_refs) {
     input_ids_.push_back(input.first);
-  }
-  for (const auto& variable_input : gpu_model->variable_ids_and_refs) {
-    variable_ids_and_refs_[variable_input.first] = variable_input.second;
   }
   for (const auto& output : gpu_model->output_ids_and_refs) {
     output_ids_.push_back(output.first);
@@ -292,7 +291,6 @@ void InferenceContext::CopyFromGpuModel(GpuModel* gpu_model) {
     nodes_[i].outputs = gpu_model->nodes[i].outputs;
     nodes_[i].name = gpu_model->nodes[i].name;
   }
-  const_tensors_descs_ = std::move(gpu_model->const_tensors);
   tensors_descs_ = std::move(gpu_model->tensors);
 }
 
@@ -355,30 +353,36 @@ InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
 
 absl::Status InferenceContext::AllocateMemory(const GpuInfo& gpu_info,
                                               CLContext* context) {
-  RETURN_IF_ERROR(AllocateMemoryForConstTensors(context));
-  RETURN_IF_ERROR(AllocateMemoryForVariableTensors(context));
   RETURN_IF_ERROR(AllocateMemoryForBuffers(gpu_info, context));
   RETURN_IF_ERROR(AllocateMemoryForStrongShapes(gpu_info, context));
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::AllocateMemoryForConstTensors(
-    CLContext* context) {
-  for (auto& description : const_tensors_descs_) {
+absl::Status InferenceContext::AllocateConstTensors(const GpuModel& gpu_model,
+                                                    CLContext* context) {
+  for (auto& description : gpu_model.const_tensors) {
     RETURN_IF_ERROR(const_tensors_[description.first].CreateFromDescriptor(
         description.second, context));
   }
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::AllocateMemoryForVariableTensors(
-    CLContext* context) {
+absl::Status InferenceContext::AllocateVariableTensors(
+    const GpuModel& gpu_model, CLContext* context) {
+  for (const auto& variable_input : gpu_model.variable_ids_and_refs) {
+    variable_ids_and_refs_[variable_input.first] = variable_input.second;
+  }
+
   std::map<ValueId, int> ref_value_to_tensor_index;
 
   for (auto value_and_ref_value : variable_ids_and_refs_) {
     if (ref_value_to_tensor_index.find(value_and_ref_value.second) ==
         ref_value_to_tensor_index.end()) {
-      const auto& t = tensors_descs_[value_and_ref_value.first];
+      auto it = gpu_model.tensors.find(value_and_ref_value.first);
+      if (it == gpu_model.tensors.end()) {
+        return absl::InternalError("No variable tensor with this id.");
+      }
+      const auto& t = it->second;
       const auto& shape = t.shape;
       const auto& descriptor = t;
 
@@ -452,7 +456,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
     RETURN_IF_ERROR(AssignOffsetsToTensors(
         buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
         &offset_assignment, base_align_bytes));
-    if (offset_assignment.total_size < TotalSize(buffer_assignment) &&
+    if (offset_assignment.total_size <= TotalSize(buffer_assignment) &&
         offset_assignment.total_size <= gpu_info.GetMaxBufferSize()) {
       use_offset_assignment = true;
     }
@@ -838,10 +842,6 @@ absl::Status InferenceContext::GetOutputTensor(ValueId id,
   result->shape = dst_shape;
   result->data.resize(dst_shape.DimensionsProduct());
   return gpu_tensor.ReadData(queue, result);
-}
-
-void InferenceContext::ReleaseCPURepresentation() {
-  const_tensors_descs_.clear();
 }
 
 flatbuffers::Offset<data::InferenceContext> InferenceContext::Encode(

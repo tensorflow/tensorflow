@@ -119,9 +119,11 @@ class InferenceContext {
 
   absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
 
-  absl::Status AllocateMemoryForConstTensors(CLContext* context);
+  absl::Status AllocateConstTensors(const GpuModel& gpu_model,
+                                    CLContext* context);
 
-  absl::Status AllocateMemoryForVariableTensors(CLContext* context);
+  absl::Status AllocateVariableTensors(const GpuModel& gpu_model,
+                                       CLContext* context);
 
   absl::Status AllocateMemoryForBuffers(const GpuInfo& gpu_info,
                                         CLContext* context);
@@ -143,8 +145,6 @@ class InferenceContext {
   void PrepareExternal();
 
   void InitRecordableQueue(Environment* env);
-
-  void ReleaseCPURepresentation();
 
   absl::Status ProfileTime(ProfilingCommandQueue* queue, ProfilingInfo* result);
 
@@ -176,10 +176,12 @@ class InferenceContext {
   absl::flat_hash_map<ValueId, Tensor*> external_mutable_tensors_;
   absl::flat_hash_map<ValueId, std::vector<int>> external_tensor_to_nodes_;
   absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
-  absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors_descs_;
+
   std::map<ValueId, Tensor> const_tensors_;
 
+  std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::map<ValueId, Tensor> variable_tensors_;
+
   Buffer shared_buffers_parent_;
   std::vector<Buffer> shared_buffers_;
   std::vector<Tensor>
@@ -190,7 +192,6 @@ class InferenceContext {
   std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
 
   std::vector<ValueId> input_ids_;
-  std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::vector<ValueId> output_ids_;
 
   std::unique_ptr<RecordableQueue> recordable_queue_ = nullptr;
