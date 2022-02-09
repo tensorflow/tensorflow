@@ -64,6 +64,8 @@ class XlaConstOutputCache {
 class XlaConstantOutputResource : public ResourceBase {
  public:
   XlaConstOutputCache& FindConstOutput(const xla::Executable* exec) {
+    // Protect cache_ when multi sessions(or threads) insert diffient executables to cache_.
+    mutex_lock ml(m_);
     return cache_[exec];
   }
 
@@ -72,6 +74,7 @@ class XlaConstantOutputResource : public ResourceBase {
  private:
   typedef std::map<const xla::Executable*, XlaConstOutputCache> ClusterCache;
   ClusterCache cache_;
+  mutex m_;
 };
 
 // Information about the state of a variable passed as input to the _XlaCompile

@@ -322,7 +322,9 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
 
+  // Reduce the cost of LookupOrCreate by cache_ == nullptr. 
   if (cache_ == nullptr) {
+    // Each op takes its own resources, and LookupOrCreate is thread safe .
     rm_ = ctx->resource_manager();
     OP_REQUIRES_OK(ctx, rm_->LookupOrCreate<XlaConstantOutputResource>(
         def().name(), def().name(), &cache_,
