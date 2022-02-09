@@ -286,7 +286,7 @@ PyObject* PyBfloat16_New(PyTypeObject* type, PyObject* args, PyObject* kwds) {
     }
   }
   PyErr_Format(PyExc_TypeError, "expected number, got %s",
-               arg->ob_type->tp_name);
+               Py_TYPE(arg)->tp_name);
   return nullptr;
 }
 
@@ -454,7 +454,7 @@ int NPyBfloat16_SetItem(PyObject* item, void* data, void* arr) {
   bfloat16 x;
   if (!CastToBfloat16(item, &x)) {
     PyErr_Format(PyExc_TypeError, "expected number, got %s",
-                 item->ob_type->tp_name);
+                 Py_TYPE(item)->tp_name);
     return -1;
   }
   memcpy(data, &x, sizeof(bfloat16));
