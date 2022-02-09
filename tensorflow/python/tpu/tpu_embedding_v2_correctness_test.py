@@ -44,12 +44,24 @@ from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.util import nest
 
+try:
+  from cloud_tpu_client import client  # pylint: disable=g-import-not-at-top
+except ImportError:
+  from tensorflow.python.tpu.client import client  # pylint: disable=g-import-not-at-top
+
 FLAGS = flags.FLAGS
 flags.DEFINE_string('tpu', '', 'Name of TPU to connect to.')
 flags.DEFINE_string('project', None, 'Name of GCP project with TPU.')
 flags.DEFINE_string('zone', None, 'Name of GCP zone with TPU.')
 flags.DEFINE_string('model_dir', os.environ.get('TEST_TMPDIR'),
                     'A temporary directory.')
+
+
+def reinitialize_cloud_tpu_runtime():
+  """Use the cloud tpu client to reinitialize the tpu runtime."""
+  if FLAGS.project is not None or FLAGS.zone is not None:
+    c = client.Client(tpu=FLAGS.tpu, zone=FLAGS.zone, project=FLAGS.project)
+    c.configure_tpu_version(version='nightly', restart_type='always')
 
 
 class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
@@ -155,6 +167,7 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     self.feature_friends_row_lengths_high_dimensional = self.feature_friends_row_lengths * self.data_batch_size
 
   def _get_strategy(self):
+    reinitialize_cloud_tpu_runtime()
     self.resolver = tpu_cluster_resolver.TPUClusterResolver(
         tpu=FLAGS.tpu, zone=FLAGS.zone, project=FLAGS.project)
     remote.connect_to_cluster(self.resolver)
@@ -194,6 +207,7 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
                      is_high_dimensional):
     if optimizer_name != 'sgd' or not training:
       self.skip_if_oss()
+
     strategy, mid_level_api, optimizer = (
         self._create_strategy_and_mid_level(optimizer_name))
 

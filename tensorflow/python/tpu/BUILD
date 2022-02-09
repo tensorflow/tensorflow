@@ -602,7 +602,6 @@ tpu_py_test(
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
-    tags = ["no_oss"],  # TODO(cpgaffney): Reenable in OSS when "socket closed" and timeout issue resolved.
     deps = [
         ":tpu_embedding",
         ":tpu_embedding_v2",
@@ -620,6 +619,7 @@ tpu_py_test(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/tpu/client",
         "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
     ],
@@ -635,7 +635,6 @@ tpu_py_test(
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
-    tags = ["no_oss"],  # TODO(cpgaffney): Reenable in OSS when "socket closed" and timeout issue resolved.
     deps = [
         ":tpu_embedding",
         ":tpu_embedding_v2",
@@ -650,6 +649,7 @@ tpu_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:remote",
+        "//tensorflow/python/tpu/client",
         "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
     ],
