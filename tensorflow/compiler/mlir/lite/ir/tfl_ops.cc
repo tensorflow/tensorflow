@@ -969,7 +969,7 @@ struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
 
 void BroadcastToOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
-  results.insert<ConvertBroadcastToReshape>(context);
+  results.add<ConvertBroadcastToReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1123,7 +1123,7 @@ LogicalResult FullyConnectedOp::fold(ArrayRef<Attribute> operands,
 
 void FullyConnectedOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                    MLIRContext *context) {
-  results.insert<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
+  results.add<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
 }
 
 int64_t FullyConnectedOp::GetArithmeticCount(Operation *op) {
@@ -1143,7 +1143,7 @@ void Conv2DOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
-  // results.insert<RemoveOptionalZeroBias<Conv2DOp>>(context);
+  // results.add<RemoveOptionalZeroBias<Conv2DOp>>(context);
 }
 
 static LogicalResult ComputeConvWindowedOutputSize(
@@ -1265,7 +1265,7 @@ void DepthwiseConv2DOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                     MLIRContext *context) {
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
-  // results.insert<RemoveOptionalZeroBias<DepthwiseConv2DOp>>(context);
+  // results.add<RemoveOptionalZeroBias<DepthwiseConv2DOp>>(context);
 }
 
 int64_t DepthwiseConv2DOp::GetArithmeticCount(Operation *op) {
@@ -1706,7 +1706,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
 void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
-  results.insert<RemoveAdjacentReshape, ConvertShapeTo1D>(context);
+  results.add<RemoveAdjacentReshape, ConvertShapeTo1D>(context);
 }
 
 using ReshapeErrorHandler =
@@ -1925,7 +1925,7 @@ struct ReplacePackWithReshape : public RewritePattern {
 
 void PackOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.insert<RemoveRedundantUnpackPack, ReplacePackWithReshape>(context);
+  results.add<RemoveRedundantUnpackPack, ReplacePackWithReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2060,7 +2060,7 @@ struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
 
 void SliceOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<CastDonwInt64BeginEndToInt32>(context);
+  results.add<CastDonwInt64BeginEndToInt32>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2165,7 +2165,7 @@ struct DropFakeQuant : public RewritePattern {
 
 void FakeQuantOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<DropFakeQuant>(context);
+  results.add<DropFakeQuant>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2513,7 +2513,7 @@ struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
 
 void LSTMOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.insert<RemoveLSTMOpZeroBias>(context);
+  results.add<RemoveLSTMOpZeroBias>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2859,7 +2859,7 @@ struct FoldPseudoConstOp : public OpRewritePattern<ConstOp> {
 
 void ConstOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<FoldPseudoConstOp>(context);
+  results.add<FoldPseudoConstOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3439,7 +3439,7 @@ struct PolyCallResultOperandsMatchAndImplicitCapture
 
 void PolyCallOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<PolyCallResultOperandsMatchAndImplicitCapture>(context);
+  results.add<PolyCallResultOperandsMatchAndImplicitCapture>(context);
 }
 
 void PolyCallOp::getSuccessorRegions(
@@ -3591,7 +3591,7 @@ struct WhileResultOperandsMatchAndImplicitCapture
 
 void WhileOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<WhileResultOperandsMatchAndImplicitCapture>(context);
+  results.add<WhileResultOperandsMatchAndImplicitCapture>(context);
 }
 
 Region &WhileOp::getLoopBody() { return body(); }

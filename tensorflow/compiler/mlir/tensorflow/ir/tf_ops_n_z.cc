@@ -360,7 +360,7 @@ struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
 
 void PackOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.insert<ConvertPackToReshape>(context);
+  results.add<ConvertPackToReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -524,7 +524,7 @@ OpFoldResult PowOp::fold(ArrayRef<Attribute> operands) {
 
 void QuantizeAndDequantizeV2Op::getCanonicalizationPatterns(
     RewritePatternSet &results, MLIRContext *context) {
-  results.insert<QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4>(context);
+  results.add<QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -556,7 +556,7 @@ LogicalResult QrOp::verify() {
 
 void ReadVariableOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                  MLIRContext *context) {
-  results.insert<ReadVariableOfCast>(context);
+  results.add<ReadVariableOfCast>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -719,7 +719,7 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 
 void RealDivOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
-  results.insert<RealDivWithSqrtDivisor, RealDivWithConstDivisor>(context);
+  results.add<RealDivWithSqrtDivisor, RealDivWithConstDivisor>(context);
 }
 
 OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
@@ -872,7 +872,7 @@ void ReshapeOp::build(OpBuilder &builder, OperationState &result, Value tensor,
 
 void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
-  results.insert<RedundantReshape, ReshapeToSelfShape>(context);
+  results.add<RedundantReshape, ReshapeToSelfShape>(context);
 }
 
 OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
@@ -1169,7 +1169,7 @@ class ShapeNToShape : public OpRewritePattern<ShapeNOp> {
 
 void ShapeNOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<ShapeNToShape, ShapeNPartialStaticInputShape>(context);
+  results.add<ShapeNToShape, ShapeNPartialStaticInputShape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1615,7 +1615,7 @@ LogicalResult SplitVOp::verify() {
 
 void SquareOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<SquareOfSub>(context);
+  results.add<SquareOfSub>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1648,7 +1648,7 @@ LogicalResult SqueezeOp::verify() {
 
 void SubOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
-  results.insert<SubOfNeg>(context);
+  results.add<SubOfNeg>(context);
 }
 
 OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
@@ -2523,7 +2523,7 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
 
 void ToBoolOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<ToBoolOfRankedTensor>(context);
+  results.add<ToBoolOfRankedTensor>(context);
 }
 
 LogicalResult ToBoolOp::inferReturnTypes(
@@ -2677,7 +2677,7 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 
 void TruncateDivOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
-  results.insert<TruncateDivWithSqrtDivisor>(context);
+  results.add<TruncateDivWithSqrtDivisor>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2716,7 +2716,7 @@ class NMSV3ToNMSV4Op : public OpRewritePattern<NonMaxSuppressionV3Op> {
 
 void NonMaxSuppressionV3Op::getCanonicalizationPatterns(
     RewritePatternSet &results, MLIRContext *context) {
-  results.insert<NMSV3ToNMSV4Op>(context);
+  results.add<NMSV3ToNMSV4Op>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2751,7 +2751,7 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
 
 void FusedBatchNormOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                    MLIRContext *context) {
-  results.insert<ConvertFusedBatchNorm>(context);
+  results.add<ConvertFusedBatchNorm>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2844,7 +2844,7 @@ LogicalResult HoistCwiseUnaryOutOfUnpack::matchAndRewrite(
 
 void UnpackOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<HoistCwiseUnaryOutOfUnpack>(context);
+  results.add<HoistCwiseUnaryOutOfUnpack>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2960,7 +2960,7 @@ void VarIsInitializedOp::getCanonicalizationPatterns(
 
 void VariableOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<VariableToVariableV2>(context);
+  results.add<VariableToVariableV2>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3244,7 +3244,7 @@ struct WhileRegionEliminatePassThrough
 
 void WhileRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
-  results.insert<WhileRegionEliminatePassThrough>(context);
+  results.add<WhileRegionEliminatePassThrough>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3253,7 +3253,7 @@ void WhileRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<XdivyWithSqrtDivisor>(context);
+  results.add<XdivyWithSqrtDivisor>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3406,7 +3406,7 @@ class XlaReduceToXlaVariadicReduceV2
 
 void XlaReduceOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<XlaReduceToXlaVariadicReduceV2>(context);
+  results.add<XlaReduceToXlaVariadicReduceV2>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3584,7 +3584,7 @@ class XlaVariadicReduceToV2 : public OpRewritePattern<TF::XlaVariadicReduceOp> {
 
 void XlaVariadicReduceOp::getCanonicalizationPatterns(
     RewritePatternSet &results, MLIRContext *context) {
-  results.insert<XlaVariadicReduceToV2>(context);
+  results.add<XlaVariadicReduceToV2>(context);
 }
 
 //===----------------------------------------------------------------------===//

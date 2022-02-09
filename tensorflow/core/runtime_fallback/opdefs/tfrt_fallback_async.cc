@@ -426,8 +426,8 @@ struct RemoveDoubleTensorConversion
 
 void CoreRTTensorHandleToFallbackTensorOp::getCanonicalizationPatterns(
     RewritePatternSet &results, MLIRContext *context) {
-  results.insert<ConstCoreRTTensorHandleToFallbackTensorCanonicalization,
-                 RemoveDoubleTensorConversion>(context);
+  results.add<ConstCoreRTTensorHandleToFallbackTensorCanonicalization,
+              RemoveDoubleTensorConversion>(context);
 }
 
 }  // namespace fallback_async

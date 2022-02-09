@@ -642,11 +642,11 @@ struct LoopResultsFolder : public OpRewritePattern<LoopOp> {
 
 void LoopOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.insert<LoopInputsFolder, LoopResultsFolder,
-                 DimOfLoopInsOutsFolder<tensor::DimOp>,
-                 DimOfLoopInsOutsFolder<memref::DimOp>,
-                 DimOfLoopResultFolder<tensor::DimOp>,
-                 DimOfLoopResultFolder<memref::DimOp>>(context);
+  results.add<LoopInputsFolder, LoopResultsFolder,
+              DimOfLoopInsOutsFolder<tensor::DimOp>,
+              DimOfLoopInsOutsFolder<memref::DimOp>,
+              DimOfLoopResultFolder<tensor::DimOp>,
+              DimOfLoopResultFolder<memref::DimOp>>(context);
 }
 
 /// This is used for patterns of the form

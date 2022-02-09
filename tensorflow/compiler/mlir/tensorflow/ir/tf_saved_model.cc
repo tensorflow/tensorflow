@@ -494,7 +494,7 @@ class OptimizeSessionInitializerPattern
 
 void SessionInitializerOp::getCanonicalizationPatterns(
     RewritePatternSet &results, MLIRContext *context) {
-  results.insert<OptimizeSessionInitializerPattern>(context);
+  results.add<OptimizeSessionInitializerPattern>(context);
 }
 
 SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp op) {
