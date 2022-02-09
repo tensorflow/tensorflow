@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 
@@ -212,6 +213,29 @@ StatusOr<py::object> PyClient::BufferFromPyval(
     device = pjrt_client_->addressable_devices().front();
   }
   CHECK(device != nullptr);
+
+  auto transfer_guard_formatter = [&argument, dst_device = device] {
+    auto type = py::cast<std::string>(py::str(argument.get_type()));
+    // Catch exceptions because shape and dtype properties convertible to str
+    // are not guaranteed to present in an arbitrary argument.
+    std::string shape;
+    std::string dtype;
+    try {
+      shape = py::cast<std::string>(py::str(argument.attr("shape")));
+    } catch (const std::exception& e) {
+      shape = "<unknown>";
+    }
+    try {
+      dtype = py::cast<std::string>(py::str(argument.attr("dtype")));
+    } catch (const std::exception& e) {
+      dtype = "<unknown>";
+    }
+    return absl::StrCat("type=", type, ", shape=", shape, ", dtype=", dtype,
+                        ", dst_device=", dst_device->DebugString());
+  };
+  TF_RETURN_IF_ERROR(
+      jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
+
   TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,
                       pjrt_client_->LookupDevice(device->id()));
   if (found_device != device) {
