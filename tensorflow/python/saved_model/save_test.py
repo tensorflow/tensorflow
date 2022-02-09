@@ -762,6 +762,10 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     result = save.save(root, save_dir)
     self.assertIsNone(result)
 
+
+class DependencyTest(test.TestCase):
+  """Tests for deserialization dependencies (saving-related only)."""
+
   def test_validate_dependencies(self):
 
     class Valid(tracking.AutoTrackable):
@@ -803,6 +807,39 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 "dependency cycle in the saved Trackable"):
       save.save(cycle1, save_dir)
+
+  def test_none_dependency(self):
+
+    class Valid(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.v = variables.Variable(1.0)
+
+      def _trackable_children(self, *unused_args, **unused_kwargs):
+        return {"v": self.v}
+
+      def _deserialization_dependencies(self):
+        return {"v": None}
+
+    root = Valid()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+
+    class Invalid(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.v = variables.Variable(1.0)
+
+      def _trackable_children(self, *unused_args, **unused_kwargs):
+        return {"v": self.v}
+
+      def _deserialization_dependencies(self):
+        return {"not_v": None}
+
+    root = Invalid()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegex(KeyError, "key: 'not_v'"):
+      save.save(root, save_dir)
 
 
 class VariablePolicyEnumTest(test.TestCase):

@@ -1353,11 +1353,17 @@ class Trackable(object):
       - `_deserialize_from_proto` [loading]
 
     SavedModel loads with the bottom-up approach, by first creating all objects
-    (in the order defined by the dependencies), then connecting the children.
+    in the order defined by the dependencies, then connecting the children.
+
+    Unlike `_trackable_children`, this function does not define the
+    `SavedObjectGraph`. It only changes the order in which things are
+    saved/loaded. Therefore, if there are dependencies that are not in the
+    `SavedObjectGraph`, saving will fail.
 
     Returns:
-      A dictionary mapping names to `Trackable` dependencies. All trackables
-      returned must also be in the `_checkpoint_dependencies` dict.
+      A dictionary mapping names to `Trackable` or `None`. When the value is
+      `None`, the `Trackable` returned from `_trackable_children` with the
+      corresponding key is retrieved.
     """
     return {}
 

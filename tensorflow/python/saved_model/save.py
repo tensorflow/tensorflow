@@ -154,7 +154,22 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
       TypeError: if any of the returned dependencies are not instances of
         `Trackable`.
     """
+    if obj not in self._children_cache:
+      # Slot variables do not appear in the children_cache.
+      children = {}
+    else:
+      children = self._children_cache[obj]
     for name, dep in obj._deserialization_dependencies().items():  # pylint: disable=protected-access
+      if dep is None:
+        try:
+          dep = children[name]
+        except KeyError as e:
+          raise KeyError(
+              f"Object of type {type(obj)} returned a dependency of `None` type"
+              f" for the key: '{name}'. This is only allowed if there is a "
+              "trackable child with the same name, but there isn't one. Valid "
+              f"keys are: {list(children.keys())}") from e
+
       if not isinstance(dep, base.Trackable):
         raise TypeError(
             f"The dependency of type {type(dep)} is not an instance `Trackable`"
