@@ -48,6 +48,7 @@ TfLiteType GetTensorType(const ArrayDataType type) {
       {ArrayDataType::kInt8, kTfLiteInt8},
       {ArrayDataType::kUint8, kTfLiteUInt8},
       {ArrayDataType::kInt16, kTfLiteInt16},
+      {ArrayDataType::kUint16, kTfLiteUInt16},
       {ArrayDataType::kInt32, kTfLiteInt32},
       {ArrayDataType::kUint32, kTfLiteUInt32},
       {ArrayDataType::kInt64, kTfLiteInt64},
