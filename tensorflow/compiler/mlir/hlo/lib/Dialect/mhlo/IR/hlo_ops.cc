@@ -500,7 +500,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
 
 void GatherOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
-  results.insert<GatherSlice>(context);
+  results.add<GatherSlice>(context);
 }
 
 namespace {
@@ -926,7 +926,7 @@ struct IotaBroadcast : public OpRewritePattern<IotaOp> {
 
 void IotaOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* context) {
-  results.insert<IotaBroadcast>(context);
+  results.add<IotaBroadcast>(context);
 }
 
 OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
@@ -1016,8 +1016,8 @@ struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
 
 void DynamicIotaOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.insert<DynamicIotaIsStatic>(context);
-  results.insert<DynamicIotaBroadcast>(context);
+  results.add<DynamicIotaIsStatic>(context);
+  results.add<DynamicIotaBroadcast>(context);
 }
 
 static Value castToIndexTensor(OpBuilder& builder, Location loc,
@@ -1158,7 +1158,7 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
 void ConvertOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
-  results.insert<EliminateIdentityConvert>(context);
+  results.add<EliminateIdentityConvert>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1286,7 +1286,7 @@ struct UnpackRepackSameTuple : public OpRewritePattern<TupleOp> {
 
 void TupleOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
-  results.insert<UnpackRepackSameTuple>(context);
+  results.add<UnpackRepackSameTuple>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1627,7 +1627,7 @@ class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
 
 void BroadcastInDimOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                    MLIRContext* context) {
-  results.insert<BroadcastInDimSimplifier>(context);
+  results.add<BroadcastInDimSimplifier>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1756,10 +1756,10 @@ class ChainedDynamicBroadcastInDimCanonicalization
 
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     RewritePatternSet& results, MLIRContext* context) {
-  results.insert<ChainedDynamicBroadcastInDimCanonicalization,
-                 DynamicBroadcastInDimOpNotActuallyDynamic,
-                 DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
-                 DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
+  results.add<ChainedDynamicBroadcastInDimCanonicalization,
+              DynamicBroadcastInDimOpNotActuallyDynamic,
+              DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
+              DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
 }
 
@@ -2070,7 +2070,7 @@ LogicalResult ConcatenateOp::inferReturnTypes(
 
 void ConcatenateOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.insert<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
+  results.add<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
 }
 
 template <typename T>
@@ -2349,7 +2349,7 @@ class DynamicReshapeOpSameShapeOpResult
 void DynamicReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                    MLIRContext* context) {
   // clang-format off
-  results.insert<
+  results.add<
       DynamicReshapeOpNotActuallyDynamic,
       DynamicReshapeOpSameShapeOpResult,
       RemoveRedundantDynamicBroadcast,
@@ -2416,7 +2416,7 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
 
 void DynamicSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                  MLIRContext* context) {
-  results.insert<DynamicSliceToSlice>(context);
+  results.add<DynamicSliceToSlice>(context);
 }
 
 // Verifies that the number of slice sizes and the number of start indices match
@@ -2532,7 +2532,7 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
 
 void RealDynamicSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                      MLIRContext* context) {
-  results.insert<RealDynamicSliceIsStatic, RealDSliceToSlice>(context);
+  results.add<RealDynamicSliceIsStatic, RealDSliceToSlice>(context);
 }
 
 LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
@@ -3639,7 +3639,7 @@ struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
 
 void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
-  results.insert<LowerBoolSplatConstantsIntoRegion>(context);
+  results.add<LowerBoolSplatConstantsIntoRegion>(context);
 }
 
 LogicalResult ReduceOp::reifyReturnTypeShapes(
@@ -3998,7 +3998,7 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
 
 void DynamicPadOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                MLIRContext* context) {
-  results.insert<DPadToPad>(context);
+  results.add<DPadToPad>(context);
 }
 
 LogicalResult DynamicPadOp::verify() {
@@ -4154,8 +4154,8 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
 void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
-  results.insert<IdentityBroadcastReshape, IdentityBroadcastInDimReshape,
-                 EliminateRedundantReshape, EliminateIdentityReshape>(context);
+  results.add<IdentityBroadcastReshape, IdentityBroadcastInDimReshape,
+              EliminateRedundantReshape, EliminateIdentityReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4821,7 +4821,7 @@ struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
 
 void SliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
-  results.insert<SimplifyConcatSlice>(context);
+  results.add<SimplifyConcatSlice>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4954,8 +4954,8 @@ static LogicalResult SortOpInferDefaultDimension(SortOp op,
 
 void SortOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* /*context*/) {
-  results.insert(SortDropEmptyUseArgs);
-  results.insert(SortOpInferDefaultDimension);
+  results.add(SortDropEmptyUseArgs);
+  results.add(SortOpInferDefaultDimension);
 }
 
 //===----------------------------------------------------------------------===//
@@ -5021,8 +5021,8 @@ static LogicalResult EliminateBroadcastInDimTranspose(
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                               MLIRContext* /*context*/) {
-  results.insert(EliminateRedundantTranspse);
-  results.insert(EliminateBroadcastInDimTranspose);
+  results.add(EliminateRedundantTranspse);
+  results.add(EliminateBroadcastInDimTranspose);
 }
 
 LogicalResult TransposeOp::reifyReturnTypeShapes(
@@ -5199,7 +5199,7 @@ void TupleOp::build(OpBuilder& builder, OperationState& result,
 
 void UnaryEinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.insert<UnaryEinsumToEinsum>(context);
+  results.add<UnaryEinsumToEinsum>(context);
 }
 
 //===----------------------------------------------------------------------===//

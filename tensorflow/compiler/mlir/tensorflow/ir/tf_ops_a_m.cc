@@ -91,7 +91,7 @@ namespace {
 
 void AddOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
-  results.insert<AddToAddV2>(context);
+  results.add<AddToAddV2>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -146,7 +146,7 @@ OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
 
 void AddV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<AddV2OfNegLeft, AddV2OfNegRight>(context);
+  results.add<AddV2OfNegLeft, AddV2OfNegRight>(context);
 }
 
 OpFoldResult AddV2Op::fold(ArrayRef<Attribute> operands) {
@@ -199,7 +199,7 @@ struct AssertWithTrue : public OpRewritePattern<AssertOp> {
 
 void AssertOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<AssertWithTrue>(context);
+  results.add<AssertWithTrue>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -306,12 +306,12 @@ LogicalResult BatchMatMulV2Op::verify() { return Verify(*this); }
 
 void BatchMatMulOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
-  results.insert<BatchMatMulToV2>(context);
+  results.add<BatchMatMulToV2>(context);
 }
 
 void BatchMatMulV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                                   MLIRContext *context) {
-  results.insert<BatchMatMulV2ToMatMul>(context);
+  results.add<BatchMatMulV2ToMatMul>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -460,7 +460,7 @@ LogicalResult BatchToSpaceOp::verify() {
 
 void BatchToSpaceOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                  MLIRContext *context) {
-  results.insert<BatchToSpaceToBatchToSpaceND>(context);
+  results.add<BatchToSpaceToBatchToSpaceND>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -586,7 +586,7 @@ LogicalResult BiasAddGradOp::verify() {
 
 void BiasAddV1Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<BiasAddV1ToBiasAdd>(context);
+  results.add<BiasAddV1ToBiasAdd>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -595,7 +595,7 @@ void BiasAddV1Op::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void BitcastOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
-  results.insert<BitcastSameType, BitcastNested>(context);
+  results.add<BitcastSameType, BitcastNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -802,7 +802,7 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
 
 void CaseOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.insert<FoldConstantCaseOp, DropAttributes<CaseOp>>(context);
+  results.add<FoldConstantCaseOp, DropAttributes<CaseOp>>(context);
 }
 
 static LogicalResult VerifyCaseOpBase(Operation *op, Value branch_index) {
@@ -979,7 +979,7 @@ class CaseOrIfRegionEliminatePassThrough
 
 void CaseRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
-  results.insert<CaseOrIfRegionEliminatePassThrough<TF::CaseRegionOp>>(context);
+  results.add<CaseOrIfRegionEliminatePassThrough<TF::CaseRegionOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1021,7 +1021,7 @@ LogicalResult ConcatV2Op::verify() { return Verify(*this); }
 
 void ConcatOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<ConvertToConcatV2>(context);
+  results.add<ConvertToConcatV2>(context);
 }
 
 namespace {
@@ -1351,8 +1351,7 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(
 
 void ConcatV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<HoistCwiseBinaryOutOfConcat, HoistCwiseUnaryOutOfConcat>(
-      context);
+  results.add<HoistCwiseBinaryOutOfConcat, HoistCwiseUnaryOutOfConcat>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2140,8 +2139,7 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
 
 void DivNoNanOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<DivNoNanOrMulNoNanConstantY<TF::DivNoNanOp, TF::DivOp>>(
-      context);
+  results.add<DivNoNanOrMulNoNanConstantY<TF::DivNoNanOp, TF::DivOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2150,7 +2148,7 @@ void DivNoNanOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void DivOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
-  results.insert<DivWithSqrtDivisor>(context);
+  results.add<DivWithSqrtDivisor>(context);
 }
 
 OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
@@ -2449,12 +2447,12 @@ static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter &rewriter) {
 
 void EqualOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert(flipComatibleShapeError<EqualOp>);
+  results.add(flipComatibleShapeError<EqualOp>);
 }
 
 void NotEqualOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert(flipComatibleShapeError<NotEqualOp>);
+  results.add(flipComatibleShapeError<NotEqualOp>);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2819,7 +2817,7 @@ LogicalResult GatherV2Op::verify() {
 
 void GatherOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<GatherToV2>(context);
+  results.add<GatherToV2>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2887,7 +2885,7 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
 
 void IfOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                        MLIRContext *context) {
-  results.insert<FoldConstantIfOp, DropAttributes<IfOp>>(context);
+  results.add<FoldConstantIfOp, DropAttributes<IfOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2964,8 +2962,8 @@ LogicalResult FoldConstantIfRegionOp::matchAndRewrite(
 
 void IfRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<FoldConstantIfRegionOp,
-                 CaseOrIfRegionEliminatePassThrough<TF::IfRegionOp>>(context);
+  results.add<FoldConstantIfRegionOp,
+              CaseOrIfRegionEliminatePassThrough<TF::IfRegionOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3014,7 +3012,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 void LogOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
-  results.insert<LogOfSoftmax, LogToLog1p>(context);
+  results.add<LogOfSoftmax, LogToLog1p>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3023,9 +3021,10 @@ void LogOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void LogicalNotOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
-  results.insert<LogicalNotOfEqual, LogicalNotOfNotEqual, LogicalNotOfGreater,
-                 LogicalNotOfGreaterEqual, LogicalNotOfLess,
-                 LogicalNotOfLessEqual>(context);
+  results
+      .add<LogicalNotOfEqual, LogicalNotOfNotEqual, LogicalNotOfGreater,
+           LogicalNotOfGreaterEqual, LogicalNotOfLess, LogicalNotOfLessEqual>(
+          context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3058,7 +3057,7 @@ LogicalResult MatrixBandPartOp::verify() {
 
 void MatrixDiagOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
-  results.insert<MatrixDiagToV3>(context);
+  results.add<MatrixDiagToV3>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3067,7 +3066,7 @@ void MatrixDiagOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void MatrixSetDiagOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                   MLIRContext *context) {
-  results.insert<MatrixSetDiagToV3>(context);
+  results.add<MatrixSetDiagToV3>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3076,7 +3075,7 @@ void MatrixSetDiagOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 void MatrixSetDiagV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                                     MLIRContext *context) {
-  results.insert<MatrixSetDiagV2ToV3>(context);
+  results.add<MatrixSetDiagV2ToV3>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3182,8 +3181,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
 void MulNoNanOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<DivNoNanOrMulNoNanConstantY<TF::MulNoNanOp, TF::MulOp>>(
-      context);
+  results.add<DivNoNanOrMulNoNanConstantY<TF::MulNoNanOp, TF::MulOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3199,9 +3197,9 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 void HashTableOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<HashTableAndInitializeTableToV2>(context);
-  results.insert<HashTableAndLookupTableSizeToV2>(context);
-  results.insert<HashTableAndLookupTableFindToV2>(context);
+  results.add<HashTableAndInitializeTableToV2>(context);
+  results.add<HashTableAndLookupTableSizeToV2>(context);
+  results.add<HashTableAndLookupTableFindToV2>(context);
 }
 
 //===----------------------------------------------------------------------===//

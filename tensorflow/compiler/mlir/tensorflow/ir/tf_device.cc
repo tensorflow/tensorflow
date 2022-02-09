@@ -755,7 +755,7 @@ static LogicalResult EliminatePassThroughResults(ClusterOp op,
 
 void ClusterOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
-  results.insert(EliminatePassThroughResults);
+  results.add(EliminatePassThroughResults);
 }
 
 //===----------------------------------------------------------------------===//
@@ -784,7 +784,7 @@ struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
 
 void LaunchOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
-  results.insert<DropEmptyLaunch>(context);
+  results.add<DropEmptyLaunch>(context);
 }
 
 }  // namespace tf_device
