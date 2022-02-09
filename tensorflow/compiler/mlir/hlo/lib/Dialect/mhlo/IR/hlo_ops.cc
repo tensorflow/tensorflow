@@ -1410,6 +1410,47 @@ LogicalResult BatchNormTrainingOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// BatchNormInferenceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchNormInferenceOp::verify() {
+  // The following properties are already enforced by the ODS:
+  //  1. 'operand' and 'result' are ranked tensors.
+  //  2. 'scale', 'offset', 'mean', 'variance' are 1D tensors.
+  //  3. Types of 'operand' and 'result' matches.
+  //  4. Same shapes for 'scale', 'offset', 'mean', & 'variance'.
+
+  auto operand_type = operand().getType().cast<RankedTensorType>();
+  if (static_cast<int64_t>(feature_index()) >= operand_type.getRank())
+    return emitOpError() << "expects feature_index to be smaller "
+                            "than the rank of operand type; got feature_index "
+                         << feature_index() << ", and rank "
+                         << operand_type.getRank() << ".";
+
+  if (static_cast<int64_t>(feature_index()) < 0)
+    return emitOpError() << "expects feature_index to be a "
+                         << "non-negative number, got "
+                         << static_cast<int64_t>(feature_index()) << ".";
+
+  // Note:A valid value of feature-index implies 'operand_type.getRank() >=1'.
+
+  const int64_t feature_count = operand_type.getShape()[feature_index()];
+  const int64_t scale_size =
+      scale().getType().cast<RankedTensorType>().getShape()[0];
+  // Check number of elements in input 'scale' equals feature_count.
+  // Together with (4) implies that 'scale', 'offset', 'mean', &
+  // 'variance' all have the same shape.
+  if (scale_size != feature_count)
+    return emitOpError() << "expects the size of scale factor to be "
+                            "same as the feature count,"
+                            " but the size of scale factor is "
+                         << scale_size << " and the feature count is "
+                         << feature_count << ".";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BitcastConvertOp
 //===----------------------------------------------------------------------===//
 

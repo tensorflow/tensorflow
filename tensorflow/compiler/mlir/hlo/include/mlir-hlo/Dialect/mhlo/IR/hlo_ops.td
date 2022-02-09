@@ -1198,7 +1198,8 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]> {
 }
 
 def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
-    [NoSideEffect, SameOperandsAndResultElementType]> {
+    [NoSideEffect, AllTypesMatch<["operand", "result"]>,
+    AllShapesMatch<["scale", "offset", "mean", "variance"]>]> {
   let summary = "Batch Normalization for Inference";
   let description = [{
     Normalizes an array across batch and spatial dimensions.
@@ -1207,16 +1208,18 @@ def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
   }];
 
   let arguments = (ins
-    HLO_Tensor:$operand,
-    HLO_Tensor:$scale,
-    HLO_Tensor:$offset,
-    HLO_Tensor:$mean,
-    HLO_Tensor:$variance,
+    RankedTensorOf<[AnyFloat]>:$operand,
+    1DTensorOf<[AnyFloat]>:$scale,
+    1DTensorOf<[AnyFloat]>:$offset,
+    1DTensorOf<[AnyFloat]>:$mean,
+    1DTensorOf<[AnyFloat]>:$variance,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
-  let results = (outs HLO_Tensor);
+  let results = (outs RankedTensorOf<[AnyFloat]>:$result);
+
+  let hasVerifier = 1;
 }
 
 def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training",
