@@ -1729,6 +1729,8 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(InitializeVarOnTPU(ctx, var, &ndef, device_ordinal,
                                               var_info.fast_mem));
+        VLOG(3) << "Initialized variable on TPU: " << sname
+                << " device_ordinal: " << device_ordinal;
       }
       tpu_variables[handle_fp] = new_node;
     }
