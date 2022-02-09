@@ -173,8 +173,8 @@ class CoordinationServiceAgent {
   // Barrier fails after agent_2’s call because it specifies a different set of
   // participating tasks.
   //
-  // If no tasks are specified (default), the barrier will block for the
-  // entire cluster.
+  // If no tasks are specified (default), the barrier will block for all the
+  // connected tasks.
   //
   // Possible service errors:
   //   - DeadlineExceeded: Timed out waiting for specified tasks at the barrier.

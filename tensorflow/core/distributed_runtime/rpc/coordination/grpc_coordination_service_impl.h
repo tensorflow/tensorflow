@@ -82,6 +82,7 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   HANDLER(InsertKeyValue);
   HANDLER(GetKeyValue);
   HANDLER(DeleteKeyValue);
+  HANDLER(Barrier);
 #undef HANDLER
 
   thread::ThreadPool& compute_pool_;

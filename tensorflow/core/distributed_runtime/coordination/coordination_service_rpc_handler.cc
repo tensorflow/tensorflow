@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -171,6 +172,24 @@ void CoordinationServiceRpcHandler::DeleteKeyValueAsync(
     return;
   }
   done(service->DeleteKeyValue(request->key()));
+}
+
+void CoordinationServiceRpcHandler::BarrierAsync(const BarrierRequest* request,
+                                                 BarrierResponse* response,
+                                                 StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  std::vector<CoordinatedTask> tasks = {request->tasks().begin(),
+                                        request->tasks().end()};
+  service->BarrierAsync(
+      request->barrier_id(),
+      absl::Milliseconds(request->barrier_timeout_in_ms()), tasks,
+      [done = std::move(done)](const Status& status) { done(status); });
 }
 
 }  // namespace tensorflow

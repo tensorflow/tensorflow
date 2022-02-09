@@ -147,6 +147,24 @@ message DeleteKeyValueRequest {
 
 message DeleteKeyValueResponse {}
 
+// Request and response messages for generic sync barriers.
+message BarrierRequest {
+  string barrier_id = 1;
+  int64 barrier_timeout_in_ms = 2;
+  // Denotes list of tasks that will wait for the barrier. If unspecified, it
+  // implies that the entire cluster is participating in the barrier.
+  repeated CoordinatedTask tasks = 3;
+}
+
+message BarrierResponse {}
+
+// Request and response messages for  cancelling generic sync barriers.
+message CancelBarrierRequest {
+  string barrier_id = 1;
+}
+
+message CancelBarrierResponse {}
+
 // Coordination Service defines a TensorFlow service that controls and
 // coordinates distributed execution in a cluster of multiple workers.
 //
@@ -194,4 +212,35 @@ service CoordinationService {
   // Delete configuration key-value. If is_directory is set in request,
   // recursively clean up all key-values under the path specified by `key`.
   rpc DeleteKeyValue(DeleteKeyValueRequest) returns (DeleteKeyValueResponse);
+
+  // Blocks until all (or a subset of) tasks are at the barrier or the barrier
+  // fails.
+  //
+  // `barrier_id` should be unique across barriers. Once the barrier has passed
+  // or failed, subsequent calls will not block, and immediately respond with
+  // the previous response.
+  //
+  // The first WaitAtBarrier() call received by the service for a particular
+  // barrier id is special in that it determines the barrier deadline based on
+  // timeout duration.
+  // However, if subsequent calls by different agents specify a different set of
+  // `tasks` for the same `barrier_id`, the barrier will fail instantly.
+  //
+  // If no tasks are specified (default), the barrier will block for all the
+  // connected tasks.
+  //
+  // Possible service errors:
+  //   - DeadlineExceeded: Timed out waiting for specified tasks at the barrier.
+  //      Deadline is determined by the server timestamp when it receives the
+  //      first WaitAtBarrier() + timeout duration.
+  //   - Cancelled: One of the tasks called CancelBarrier().
+  //   - Internal: Any participating task is in ERROR state.
+  //   - InvalidArgument: Conflicting tasks specified by different agents for
+  //       the same barrier.
+  rpc Barrier(BarrierRequest) returns (BarrierResponse);
+
+  // Aborts the barrier if it is ongoing.
+  // Current and future WaitAtBarrier() calls with the same id will return a
+  // CANCELLED error status.
+  rpc CancelBarrier(CancelBarrierRequest) returns (CancelBarrierResponse);
 }

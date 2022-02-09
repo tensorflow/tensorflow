@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -137,6 +138,40 @@ class CoordinationServiceInterface {
   // Delete configuration key-value. If key is a directory, recursively clean
   // up all key-values under the directory.
   virtual Status DeleteKeyValue(const std::string& key) = 0;
+
+  // Blocks until all (or a subset of) tasks are at the barrier or the barrier
+  // fails.
+  //
+  // `barrier_id` should be unique across barriers. Once the barrier has passed
+  // or failed, subsequent calls will not block, and immediately respond with
+  // the previous response.
+  //
+  // The first WaitAtBarrier() call received by the service for a particular
+  // barrier id is special in that it determines the barrier deadline based on
+  // timeout duration.
+  // However, if subsequent calls by different agents specify a different set of
+  // `tasks` for the same `barrier_id`, the barrier will fail instantly.
+  //
+  // If no tasks are specified (default), the barrier will block for all the
+  // connected tasks.
+  //
+  // Possible service errors:
+  //   - DeadlineExceeded: Timed out waiting for specified tasks at the barrier.
+  //      Deadline is determined by the server timestamp when it receives the
+  //      first WaitAtBarrier() + timeout duration.
+  //   - Cancelled: One of the tasks called CancelBarrier().
+  //   - Internal: Any participating task is in ERROR state.
+  //   - InvalidArgument: Conflicting tasks specified by different agents for
+  //       the same barrier.
+  virtual void BarrierAsync(const std::string& barrier_id,
+                            absl::Duration timeout,
+                            const std::vector<CoordinatedTask>& tasks,
+                            StatusCallback done) = 0;
+
+  // Aborts the barrier if it is ongoing.
+  // Current and future WaitAtBarrier() calls with the same id will return a
+  // CANCELLED error status.
+  virtual Status CancelBarrier(const std::string& barrier_id) = 0;
 
  private:
   friend class CoordinationServiceRpcHandler;

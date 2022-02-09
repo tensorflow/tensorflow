@@ -35,6 +35,7 @@ cc_library(
     deps = [
         ":coordination_client",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -55,6 +56,7 @@ tf_cuda_library(
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )
@@ -126,6 +128,7 @@ cc_library(
     deps = [
         ":coordination_service_error_util",
         ":coordination_service_agent",
+        "@com_google_absl//absl/time",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

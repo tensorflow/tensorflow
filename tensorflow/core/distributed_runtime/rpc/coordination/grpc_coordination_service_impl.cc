@@ -44,6 +44,7 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(InsertKeyValue);
   ENQUEUE_REQUEST(GetKeyValue);
   ENQUEUE_REQUEST(DeleteKeyValue);
+  ENQUEUE_REQUEST(Barrier);
 #undef ENQUEUE_REQUEST
 
   void* tag;  // Matches the operation started against this cq_.

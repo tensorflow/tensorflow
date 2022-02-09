@@ -59,6 +59,9 @@ class CoordinationServiceRpcHandler {
                            DeleteKeyValueResponse* response,
                            StatusCallback done);
 
+  void BarrierAsync(const BarrierRequest* request, BarrierResponse* response,
+                    StatusCallback done);
+
  private:
   const uint64_t leader_incarnation_id_ = random::New64();
   CoordinationServiceAgent* agent_;

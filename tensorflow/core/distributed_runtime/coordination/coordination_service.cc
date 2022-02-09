@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -99,6 +100,10 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void GetKeyValueAsync(const std::string& key,
                         StatusOrValueCallback done) override;
   Status DeleteKeyValue(const std::string& key) override;
+  void BarrierAsync(const std::string& barrier_id, absl::Duration timeout,
+                    const std::vector<CoordinatedTask>& tasks,
+                    StatusCallback done) override;
+  Status CancelBarrier(const std::string& barrier_id) override;
 
  private:
   const CoordinationServiceDeviceInfo& ListClusterDevices() override
@@ -579,6 +584,19 @@ Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
     kv_store_.erase(iter);
   }
   return Status::OK();
+}
+
+void CoordinationServiceStandaloneImpl::BarrierAsync(
+    const std::string& barrier_id, absl::Duration timeout,
+    const std::vector<CoordinatedTask>& tasks, StatusCallback done) {
+  return done(MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceImpl::BarrierAsync is not implemented.")));
+}
+
+Status CoordinationServiceStandaloneImpl::CancelBarrier(
+    const std::string& barrier_id) {
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceImpl::CancelBarrier is not implemented."));
 }
 
 }  // namespace
