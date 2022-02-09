@@ -409,38 +409,48 @@ static StatusOr<Tensor> GetOrCreateTensorForOutput(
 // Sets output `output_num` for `ctx` provided it is known at a compile time.
 static Status SetOutputForConstant(
     OpKernelContext* ctx, se::Stream* stream,
-    const XlaCompiler::CompilationResult* compilation_result, int output_num) {
+    const XlaCompiler::CompilationResult* compilation_result, int output_num, XlaConstOutputCache& cache) {
   CHECK(compilation_result->outputs[output_num].is_constant);
   const Tensor& const_tensor =
       compilation_result->outputs[output_num].constant_value;
   Tensor* output_tensor;
   if (stream && const_tensor.TotalBytes() > 0) {
-    // Copy host -> device. (Empty tensors don't have backing buffers.)
-    // Manually allocate memory using an XlaTensorBuffer so we can allocate
-    // as much memory as the device requires (as given by
-    // GetByteSizeRequirement). This avoids XlaTransferManager having to
-    // reallocate the device buffer later.
-    VLOG(1) << "Constant output tensor on device";
+    Tensor cache_tensor;
+    // H2D if cache miss .
+    if (!cache.FindConstOutput(output_num, &cache_tensor)) {
+      // Copy host -> device. (Empty tensors don't have backing buffers.)
+      // Manually allocate memory using an XlaTensorBuffer so we can allocate
+      // as much memory as the device requires (as given by
+      // GetByteSizeRequirement). This avoids XlaTransferManager having to
+      // reallocate the device buffer later.
+      VLOG(1) << "Constant output tensor on device";
 
-    TF_RETURN_IF_ERROR(
-        ctx->allocate_output(output_num, const_tensor.shape(), &output_tensor));
-    Device* device = dynamic_cast<Device*>(ctx->device());
-    if (device == nullptr) {
-      return errors::Internal("DeviceBase was not a Device.");
-    }
-    ctx->op_device_context()->CopyCPUTensorToDevice(
-        &const_tensor, device, output_tensor,
-        [&](Status status) { TF_CHECK_OK(status); });
+      TF_RETURN_IF_ERROR(
+          ctx->allocate_output(output_num, const_tensor.shape(), &output_tensor));
+      Device* device = dynamic_cast<Device*>(ctx->device());
+      if (device == nullptr) {
+        return errors::Internal("DeviceBase was not a Device.");
+      }
+      ctx->op_device_context()->CopyCPUTensorToDevice(
+          &const_tensor, device, output_tensor,
+          [&](Status status) { TF_CHECK_OK(status); });
 
-    if (device->device_type() == DEVICE_GPU) {
-      // The GPUDeviceContext enqueues the host->device transfer in a
-      // separate stream from the main compute stream. We must ensure the
-      // compute stream is synchronized with the host->device transfer
-      // stream now otherwise we will create a race condition.
-      auto* gpu_device_context =
-          static_cast<GPUDeviceContext*>(ctx->op_device_context());
-      gpu_device_context->stream()->ThenWaitFor(
-          gpu_device_context->host_to_device_stream());
+      if (device->device_type() == DEVICE_GPU) {
+        // The GPUDeviceContext enqueues the host->device transfer in a
+        // separate stream from the main compute stream. We must ensure the
+        // compute stream is synchronized with the host->device transfer
+        // stream now otherwise we will create a race condition.
+        auto* gpu_device_context =
+            static_cast<GPUDeviceContext*>(ctx->op_device_context());
+        gpu_device_context->stream()->ThenWaitFor(
+            gpu_device_context->host_to_device_stream());
+      }
+      // Add GPU output tensor to cache .
+      cache.SetConstOutput(output_num, output_tensor);
+    } else {
+      // Cache hit .
+      ctx->set_output(output_num, cache_tensor);
+      output_tensor = ctx->mutable_output(output_num);
     }
   } else {
     // No copy required.
@@ -578,7 +588,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
 
     if (compilation_result->outputs[i].is_constant) {
       TF_RETURN_IF_ERROR(
-          SetOutputForConstant(ctx, stream, compilation_result, i));
+          SetOutputForConstant(ctx, stream, compilation_result, i, cache));
     } else if (type == DT_RESOURCE) {
       int input_index =
           compilation_result->outputs[i].input_index - missing_ctx_input_prefix;
