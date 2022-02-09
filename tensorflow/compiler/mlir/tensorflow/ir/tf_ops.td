@@ -1605,6 +1605,7 @@ target computation.
 'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
 types of the inputs to the computation, as well as a mapping onto the TPU pod
 topology.
+'producer_name' is a string describing the name of the framework that add support for running this portion of the model on TPUs.
   }];
 
   let arguments = (ins
@@ -1612,7 +1613,8 @@ topology.
     Variadic<TF_I32OrI64Tensor>:$static_shapes,
     OptionalAttr<I32ArrayAttr>:$operands_with_static_shape,
     DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
-    StrAttr:$metadata
+    StrAttr:$metadata,
+    StrAttr:$producer_name
   );
 
   let results = (outs
