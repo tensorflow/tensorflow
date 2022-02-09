@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/logging.h"
-//#include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
 namespace tpu {
