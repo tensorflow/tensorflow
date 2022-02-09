@@ -154,6 +154,8 @@ message BarrierRequest {
   // Denotes list of tasks that will wait for the barrier. If unspecified, it
   // implies that the entire cluster is participating in the barrier.
   repeated CoordinatedTask tasks = 3;
+  // Task that is making the request.
+  CoordinatedTask source_task = 4;
 }
 
 message BarrierResponse {}
@@ -161,6 +163,8 @@ message BarrierResponse {}
 // Request and response messages for  cancelling generic sync barriers.
 message CancelBarrierRequest {
   string barrier_id = 1;
+  // Task that is making the request.
+  CoordinatedTask source_task = 2;
 }
 
 message CancelBarrierResponse {}

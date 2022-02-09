@@ -188,8 +188,22 @@ void CoordinationServiceRpcHandler::BarrierAsync(const BarrierRequest* request,
                                         request->tasks().end()};
   service->BarrierAsync(
       request->barrier_id(),
-      absl::Milliseconds(request->barrier_timeout_in_ms()), tasks,
+      absl::Milliseconds(request->barrier_timeout_in_ms()),
+      request->source_task(), tasks,
       [done = std::move(done)](const Status& status) { done(status); });
+}
+
+void CoordinationServiceRpcHandler::CancelBarrierAsync(
+    const CancelBarrierRequest* request, CancelBarrierResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  done(service->CancelBarrier(request->barrier_id(), request->source_task()));
 }
 
 }  // namespace tensorflow
