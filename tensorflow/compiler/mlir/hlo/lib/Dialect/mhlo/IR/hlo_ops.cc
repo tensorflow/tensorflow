@@ -199,6 +199,37 @@ Value MaybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
   return b.create<arith::IndexCastOp>(loc, type, value);
 }
 
+//===----------------------------------------------------------------------===//
+// Utilities for verifiers
+//===----------------------------------------------------------------------===//
+
+// Return true if type1 and type2 are tensors and have the same
+// element-type, else return false. With float element-types, ignore comparing
+// floating-point precision if ignoreFpPrecision is True.
+static bool tensorsHaveSameElType(Type type1, Type type2,
+                                  bool ignoreFpPrecision) {
+  auto tensorTy1 = type1.dyn_cast<TensorType>();
+  auto tensorTy2 = type2.dyn_cast<TensorType>();
+
+  if (!tensorTy1 || !tensorTy2) return false;
+
+  if (ignoreFpPrecision && tensorTy1.getElementType().isa<FloatType>() &&
+      tensorTy2.getElementType().isa<FloatType>())
+    return true;
+
+  return tensorTy1.getElementType() == tensorTy2.getElementType();
+}
+
+// Return true if type1 and type2 are shape-compatible and have same element
+// type. If 'ignoreFpPrecision' is True, then allow floats with different
+// precisions while checking element-types.
+static bool compatibleShapeAndElementType(Type type1, Type type2,
+                                          bool ignoreFpPrecision = false) {
+  if (failed(verifyCompatibleShape(type1, type2))) return false;
+  return tensorsHaveSameElType(type1.cast<ShapedType>(),
+                               type2.cast<ShapedType>(), ignoreFpPrecision);
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -1332,6 +1363,48 @@ LogicalResult AllGatherOp::verify() {
            << resultType.getDimSize(allGatherDimIndex)
            << ", expected to be a multiple of operand gather dimension size "
            << operandType.getDimSize(allGatherDimIndex);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BatchNormTrainingOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchNormTrainingOp::verify() {
+  // The following properties are already enforced by the ODS:
+  //  1. 'operand' and 'output' are ranked tensors.
+  //  2. 'scale', 'offset', 'batch_mean', 'batch_var' are 1D tensors.
+  //  3. Types of 'operand' and 'output' matches.
+  //  4. Same element-types for 'operand', 'batch_mean', & 'batch_var'.
+  //  5. Same shapes for 'scale', 'offset', 'batch_mean', & 'batch_var'.
+
+  auto operand_type = operand().getType().cast<RankedTensorType>();
+  if (static_cast<int64_t>(feature_index()) >= operand_type.getRank())
+    return emitOpError() << "expects feature_index to be smaller "
+                            "than the rank of operand type; got feature_index "
+                         << feature_index() << ", and rank "
+                         << operand_type.getRank() << ".";
+
+  if (static_cast<int64_t>(feature_index()) < 0)
+    return emitOpError() << "expects feature_index to be a "
+                         << "non-negative number, got "
+                         << static_cast<int64_t>(feature_index()) << ".";
+
+  // Note:A valid value of feature-index implies 'operand_type.getRank() >=1'.
+
+  const int64_t feature_count = operand_type.getShape()[feature_index()];
+  const int64_t scale_shape =
+      scale().getType().cast<RankedTensorType>().getShape()[0];
+  // Check number of elements in input 'scale' equals feature_count.
+  // Together with (5) implies that 'scale', 'offset', 'batch_mean', &
+  // 'batch_var' all have the same shape.
+  if (scale_shape != feature_count)
+    return emitOpError() << "expects the size of scale factor to be "
+                            "same as the feature count,"
+                            " but the size of scale factor is "
+                         << scale_shape << " and the feature count is "
+                         << feature_count << ".";
 
   return success();
 }
@@ -3275,33 +3348,6 @@ ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
   result.addAttribute("dimensions", GetI64ElementsAttr(dimensions, &builder));
 
   return success();
-}
-
-// Return true if type1 and type2 are tensors and have the same
-// element-type, else return false. With float element-types, ignore comparing
-// floating-point precision if ignoreFpPrecision is True.
-static bool tensorsHaveSameElType(Type type1, Type type2,
-                                  bool ignoreFpPrecision) {
-  auto tensorTy1 = type1.dyn_cast<TensorType>();
-  auto tensorTy2 = type2.dyn_cast<TensorType>();
-
-  if (!tensorTy1 || !tensorTy2) return false;
-
-  if (ignoreFpPrecision && tensorTy1.getElementType().isa<FloatType>() &&
-      tensorTy2.getElementType().isa<FloatType>())
-    return true;
-
-  return tensorTy1.getElementType() == tensorTy2.getElementType();
-}
-
-// Return true if type1 and type2 are shape-compatible and have same element
-// type. If 'ignoreFpPrecision' is True, then allow floats with different
-// precisions while checking element-types.
-static bool compatibleShapeAndElementType(Type type1, Type type2,
-                                          bool ignoreFpPrecision = false) {
-  if (failed(verifyCompatibleShape(type1, type2))) return false;
-  return tensorsHaveSameElType(type1.cast<ShapedType>(),
-                               type2.cast<ShapedType>(), ignoreFpPrecision);
 }
 
 static LogicalResult verifyReducerShape(

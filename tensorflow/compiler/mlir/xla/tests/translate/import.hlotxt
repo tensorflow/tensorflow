@@ -141,7 +141,7 @@ add {
   %scale = f32[2] parameter(1)
   %offset = f32[2] parameter(2)
 
-  // CHECK:  %[[OUT:.+]]:3 = "mhlo.batch_norm_training"
+  // CHECK:  %[[OUT:.+]], %[[MEAN:.+]], %[[VAR:.+]] = "mhlo.batch_norm_training"
   // CHECK-SAME:  epsilon = 1.000000e-03 : f32
   // CHECK-SAME:  feature_index = 1 : i64
   // CHECK:  %[[TUPLE:.+]] = "mhlo.tuple"
