@@ -249,7 +249,6 @@ cc_library(
         ":python_ref_manager",
         ":python_utils",
         ":traceback",
-        ":transfer_guard_lib",
         ":types",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -550,27 +549,6 @@ cc_library(
 )
 
 cc_library(
-    name = "transfer_guard_lib",
-    srcs = ["transfer_guard_lib.cc"],
-    hdrs = ["transfer_guard_lib.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:util",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
-        "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
-    ],
-)
-
-cc_library(
     name = "xla_compiler",
     srcs = ["xla_compiler.cc"],
     hdrs = ["xla_compiler.h"],
@@ -630,7 +608,6 @@ pybind_extension(
         ":pmap_lib",
         ":pprof_profile_builder",
         ":profiler",
-        ":transfer_guard_lib",
         ":py_client",
         ":pytree",
         ":python_ref_manager",
