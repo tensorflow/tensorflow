@@ -23,7 +23,7 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-SAME:                  %[[INPUT:.*]]: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:       %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG:       %[[C8:.*]] = arith.constant 8 : index
+// CHECK-DAG:       %[[STEP:.*]] = arith.constant 8 : index
 // CHECK-NOT:       tensor.dim
 // CHECK-DAG:       %[[DIM0:.*]] = tensor.dim %[[INPUT]], %[[C0]]
 // CHECK-DAG:       %[[DIM1:.*]] = tensor.dim %[[INPUT]], %[[C1]]
@@ -33,7 +33,7 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK:           %[[OUTPUT:.*]] = linalg.tiled_loop
 // CHECK-SAME:          (%[[ARG1:.*]], %[[ARG2:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-SAME:          to (%[[DIM0_OUT]], %[[DIM1_OUT]])
-// CHECK-SAME:          step (%[[C1]], %[[C8]])
+// CHECK-SAME:          step (%[[C1]], %[[STEP]])
 // CHECK-SAME:          ins (%[[IN_TENS:.*]] = %[[INPUT]]: tensor<?x?xf32>)
 // CHECK-SAME:          outs (%[[OUT_TENS:.*]] = %[[INIT]]: tensor<?x?xf32>) {
 // CHECK:           %[[IN_SLICE:.*]] = tensor.extract_slice
@@ -59,3 +59,24 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-NEXT:      }
 // CHECK-NEXT:      return %[[FINAL_OUTPUT:.*]] : tensor<?x?xf32>
 // CHECK-NEXT:    }
+
+// -----
+
+func @fill(%tensor : tensor<64xf32>, %value : f32) -> tensor<64xf32> {
+  %0 = linalg.fill(%value, %tensor) : f32, tensor<64xf32> -> tensor<64xf32>
+  return %0 : tensor<64xf32>
+}
+
+// CHECK-LABEL: func @fill(
+// CHECK-SAME:             %[[TNSR:.*]]: tensor<64xf32>,
+// CHECK-SAME:             %[[VAL:.*]]: f32) -> tensor<64xf32> {
+// CHECK-DAG:     %[[STEP:.*]] = arith.constant 8 : index
+// CHECK-DAG:     %[[C64:.*]] = arith.constant 64 : index
+// CHECK-DAG:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         linalg.tiled_loop (%[[I:.*]]) = (%[[C0]]) to (%[[C64]])
+// CHECK-SAME:        step (%[[STEP]])
+// CHECK-SAME:        ins (%[[VAL_:.*]] = %[[VAL]]: f32)
+// CHECK-SAME:        outs (%[[OUT_:.*]] = %[[TNSR]]: tensor<64xf32>)
+// CHECK:           %[[SLICE_:.*]] = tensor.extract_slice %[[OUT_]][%[[I]]] [%[[STEP]]] [1]
+// CHECK:           %[[FILLED_:.*]] = linalg.fill(%[[VAL_]], %[[SLICE_]])
+// CHECK:           linalg.yield %[[FILLED_:.*]]
