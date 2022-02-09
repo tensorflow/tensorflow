@@ -33,6 +33,6 @@ PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/pip-whl"
 bazel_build_wheel ${PIP_WHL_DIR} --nightly_flag
 
 # Upload the built packages to pypi.
-for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
+for f in $(ls "${PIP_WHL_DIR}"/tf_nightly*dev*macosx*.whl); do
   upload_nightly_wheel ${f}
 done
