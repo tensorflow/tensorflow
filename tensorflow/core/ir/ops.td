@@ -239,24 +239,6 @@ def TFGraph_GetResultOp : TFGraph_Op<"get_result",
 // op-specific cases.
 // TODO(jeffniu): Also, many of these should be derived attributes (e.g. types).
 
-// A cast operation.
-def TFGraph_CastOp : TFGraph_Op<"Cast", [NoSideEffect]> {
-  let summary = "Cast between two compatible tensor types.";
-
-  let arguments = (ins
-    // Op operands.
-    TFGraph_Tensor:$x,
-    Variadic<ControlType>:$ctls,
-    // Required attributes.
-    TFGraph_TypeOrPlaceholder:$SrcT,
-    TFGraph_TypeOrPlaceholder:$DstT,
-    DefaultValuedAttr<BoolAttr, "false">:$Truncate
-  );
-  let results = (outs AnyType:$y, ControlType:$ctl);
-
-  let hasFolder = 1;
-}
-
 // Base class for TFGraph concrete ops.
 class TFGraph_ConcreteOp<string mnemonic, list<Trait> traits = []> :
     TFGraph_Op<mnemonic, traits>;

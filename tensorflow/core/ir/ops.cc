@@ -909,26 +909,6 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
 }
 
 //===----------------------------------------------------------------------===//
-// CastOp
-
-LogicalResult CastOp::fold(ArrayRef<Attribute> operands,
-                           SmallVectorImpl<OpFoldResult> &results) {
-  // If the op has control operands, we can't fold.
-  if (!ctls().empty()) return failure();
-  // GetResultOp gets the value from uninstantiated op and it can't be folded.
-  if (x().getDefiningOp<GetResultOp>()) return failure();
-
-  ShapedType x_shape = x().getType().dyn_cast<ShapedType>();
-  ShapedType y_shape = y().getType().dyn_cast<ShapedType>();
-  if (!x_shape || x_shape != y_shape || !x_shape.hasStaticShape())
-    return failure();
-
-  results.push_back(x());
-  results.push_back(LookupControlDependency(x()));
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // If-Like Ops
 
 template <typename IfLikeOp>
