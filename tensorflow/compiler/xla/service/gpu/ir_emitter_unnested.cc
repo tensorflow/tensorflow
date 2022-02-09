@@ -107,6 +107,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
@@ -123,6 +124,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/logging.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1372,7 +1374,6 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
 
   std::vector<CustomCallThunk::OptionalSlice> operands;
   std::vector<CustomCallThunk::OptionalSlice> results;
-
   if (custom_call.target_arg_mapping()) {
     auto values_to_slices_with_token_holes =
         [&](mlir::ValueRange operands, mlir::ArrayAttr op_to_target_mapping,
@@ -1508,33 +1509,61 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
-  auto triangular_solve_op = mlir::cast<mlir::lmhlo::TriangularSolveOp>(op);
-  auto has_fortran_layout = [](mlir::DenseIntElementsAttr layout_attr) {
-    int64_t n = layout_attr.getNumElements();
-    return layout_attr.getValues<int64_t>()[0] == n - 2 &&
-           layout_attr.getValues<int64_t>()[1] == n - 1;
-  };
-  TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_a()));
-  TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_b()));
-  TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_output()));
+Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
+  auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
 
-  const Shape b_shape = GetShape(triangular_solve_op.b());
+  auto operands = op->getOperands();
+  TF_RET_CHECK(operands.size() == 4);
 
-  const Shape output_shape = GetShape(triangular_solve_op.output());
+  // We expect Fortran layout for everything other than the temp buffer (the
+  // last operand).  Fortran layout is is XLA default layout with elements 0 and
+  // 1 swapped.  For example instead of default layout {3,2,1,0} we'd have
+  // Fortran layout {2,3,1,0}.
+  TF_RET_CHECK(absl::c_all_of(operands.drop_back(1), [&](mlir::Value v) {
+    const Shape& shape = GetShape(v);
+    const Layout& layout = shape.layout();
+    int n = layout.minor_to_major_size();
+    if (n < 2) {
+      return false;
+    }
+    // Unfortunately the HLO -> LMHLO -> HLO conversion loses layout information
+    // if the shape has any dimensions of size 1: In that case, the new HLO
+    // (which we see here) will have an arbitrary value for the location of the
+    // size-1 dimension.  Just skip this assertion if the shape has any
+    // degenerate dimensions.
+    if (absl::c_any_of(shape.dimensions(),
+                       [](int64_t dim) { return dim == 1; })) {
+      return true;
+    }
+    return layout.minor_to_major(0) == n - 2 &&
+           layout.minor_to_major(1) == n - 1 &&
+           std::is_sorted(layout.minor_to_major().begin() + 2,
+                          layout.minor_to_major().end(),
+                          std::greater<int64_t>());
+  }));
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_slice,
-                      GetAllocationSlice(triangular_solve_op.a()));
+                      GetAllocationSlice(operands[0]));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b_slice,
-                      GetAllocationSlice(triangular_solve_op.b()));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
-                      GetAllocationSlice(triangular_solve_op.output()));
-  TF_ASSIGN_OR_RETURN(TriangularSolveOptions_Transpose transpose_a,
-                      ConvertTranspose(triangular_solve_op.transpose_a()));
+                      GetAllocationSlice(operands[1]));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                      GetAllocationSlice(operands[2]));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice temp_slice,
+                      GetAllocationSlice(operands[3]));
+
+  const Shape b_shape = GetShape(operands[1]);
+  const PrimitiveType elem_ty = b_shape.element_type();
+  TriangularSolveOptions backend_config;
+  TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(
+      custom_call.backend_config().str(), &backend_config));
 
   if (IsBefThunkEnabled()) {
-    std::vector<BufferAllocation::Slice> buffers = {a_slice, b_slice,
-                                                    output_slice};
+    std::vector<BufferAllocation::Slice> buffers;
+    for (auto v : operands) {
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice, GetAllocationSlice(v));
+      buffers.push_back(slice);
+    }
+
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Thunk> thunk,
         CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
@@ -1546,11 +1575,11 @@ Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
 
   // Triangular solve is in-place on 'b', so copy 'b' to the output if they
   // aren't the same buffer.
-  if (b_slice != output_slice) {
+  if (b_slice != result_slice) {
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
         Thunk::ThunkInfo(),
         /*source_address=*/b_slice,
-        /*destination_buffer=*/output_slice,
+        /*destination_buffer=*/result_slice,
         /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape)));
   }
 
@@ -1559,21 +1588,15 @@ Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
   int64_t batch_size = std::accumulate(
       b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
       [](int64_t a, int64_t b) { return a * b; });
-  int64_t elem_size =
-      ShapeUtil::ByteSizeOfPrimitiveType(output_shape.element_type());
+  int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_ty);
   int64_t a_batch_stride =
-      triangular_solve_op.left_side() ? m * m * elem_size : n * n * elem_size;
+      backend_config.left_side() ? m * m * elem_size : n * n * elem_size;
   int64_t b_batch_stride = m * n * elem_size;
-  TriangularSolveOptions options;
-  options.set_left_side(triangular_solve_op.left_side());
-  options.set_lower(triangular_solve_op.lower());
-  options.set_unit_diagonal(triangular_solve_op.unit_diagonal());
-  options.set_transpose_a(transpose_a);
   thunks.push_back(absl::make_unique<TriangularSolveThunk>(
-      GetThunkInfo(op), options,
-      /*a_input_buffer=*/a_slice,
-      /*b_input_buffer=*/output_slice, output_shape.element_type(), batch_size,
-      m, n, a_batch_stride, b_batch_stride));
+      GetThunkInfo(op), backend_config,
+      PtxOptsFromDebugOptions(hlo_module_config_.debug_options()),
+      /*a_buffer=*/a_slice, /*b_buffer=*/result_slice, temp_slice, elem_ty,
+      batch_size, m, n, a_batch_stride, b_batch_stride));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {
@@ -5475,6 +5498,9 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     if (call.call_target_name() == "SliceToDynamic") {
       return EmitSliceToDynamic(op);
     }
+    if (call.call_target_name() == kTriangularSolveCallTarget) {
+      return EmitTriangularSolveCustomCall(op);
+    }
     return EmitCustomCallThunk(op);
   }
 
@@ -5501,7 +5527,9 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   }
 
   if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
-    return EmitTriangularSolve(op);
+    return InternalError(
+        "TriangularSolve is implemented as a custom-call; we do not expect to "
+        "lower a true HLO TriangularSolve op.");
   }
 
   if (mlir::isa<mlir::lmhlo::FusionOp>(op)) {

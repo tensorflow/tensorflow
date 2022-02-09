@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -147,6 +148,10 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   // Find the fastest algorithm for GEMMs.
   post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+
+  // Transform TriangularSolve ops into custom-calls, so we can add temp memory.
+  post_pipeline.AddPass<TriangularSolveRewriter>();
+
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
   return Status::OK();

@@ -360,11 +360,13 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:ir_builder_mixin",
         "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
         "//tensorflow/compiler/xla/service/llvm_ir:sort_util",
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:human_readable_json",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -708,6 +710,7 @@ cc_library(
         ":ir_emission_utils",
         ":nccl_collective_thunks",
         ":launch_dimensions",
+        ":precompiled_kernels",
         ":stream_assignment",
         ":stream_executor_util",
         ":thunk",
@@ -1735,6 +1738,7 @@ cc_library(
         ":ir_emission_utils",
         ":nvptx_helper",
         ":target_constants",
+        ":triangular_solve_rewriter",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/types:optional",
@@ -2602,5 +2606,38 @@ cc_library(
     hdrs = ["metrics.h"],
     deps = [
         "//tensorflow/core/lib/monitoring:sampler",
+    ],
+)
+
+cc_library(
+    name = "precompiled_kernels",
+    srcs = ["precompiled_kernels.cc"],
+    hdrs = ["precompiled_kernels.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:stream_header",
+        "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "triangular_solve_rewriter",
+    srcs = ["triangular_solve_rewriter.cc"],
+    hdrs = ["triangular_solve_rewriter.h"],
+    deps = [
+        ":cublas_cudnn",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/strings",
     ],
 )
