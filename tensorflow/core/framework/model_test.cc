@@ -904,7 +904,8 @@ TEST(SnapshotTest, Model) {
 }
 
 TEST(SaveModelTest, Model) {
-  model::Model model;
+  model::Model model(
+      Model::BudgetParams({/*cpu_budget=*/64, /*ram_budget=*/1024}));
   std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
   model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
                 nullptr, &root);
@@ -960,28 +961,14 @@ TEST(SaveModelTest, Model) {
   }
 
   // Make Save->Load roundtrip.
-  ModelProto::OptimizationParams optimization_params;
-  optimization_params.set_algorithm(AutotuneAlgorithm::GRADIENT_DESCENT);
-  optimization_params.set_cpu_budget(64);
-  optimization_params.set_ram_budget(1024);
-  optimization_params.set_model_input_time(43653.34534);
-  TF_ASSERT_OK(model.Save("/tmp/autotune_model_test",
-                          model.output()->Snapshot(), optimization_params));
+  TF_ASSERT_OK(model.Save("/tmp/autotune_model_test"));
 
   std::unique_ptr<model::Model> restored_model;
-  ModelProto::OptimizationParams restored_optimization_params;
-  TF_ASSERT_OK(model.Load("/tmp/autotune_model_test", &restored_model,
-                          &restored_optimization_params));
+  TF_ASSERT_OK(model.Load("/tmp/autotune_model_test", &restored_model));
 
   // Check optimization parameters.
-  EXPECT_EQ(optimization_params.algorithm(),
-            restored_optimization_params.algorithm());
-  EXPECT_EQ(optimization_params.cpu_budget(),
-            restored_optimization_params.cpu_budget());
-  EXPECT_EQ(optimization_params.ram_budget(),
-            restored_optimization_params.ram_budget());
-  EXPECT_EQ(optimization_params.model_input_time(),
-            restored_optimization_params.model_input_time());
+  EXPECT_EQ(64, restored_model->CpuBudget());
+  EXPECT_EQ(1024, restored_model->RamBudget());
 
   std::shared_ptr<Node> restored_root = restored_model->output();
   std::shared_ptr<Node> restored_current = restored_root;
@@ -1118,7 +1105,7 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
                             std::make_shared<SharedState>(
                                 /*value=*/model::kAutotune, mutex1, cv1),
                             /*min=*/1, /*max=*/5)});
-  node1->record_buffer_event(1, 1);
+  node1->record_buffer_event(10, 1);
   node1->record_element();
 
   std::shared_ptr<mutex> mutex2 = std::make_shared<mutex>();
@@ -1130,7 +1117,7 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
                             std::make_shared<SharedState>(
                                 /*value=*/model::kAutotune, mutex2, cv2),
                             /*min=*/0, /*max=*/6)});
-  node2->record_buffer_event(1, 1);
+  node2->record_buffer_event(10, 1);
   node2->record_element();
 
   std::shared_ptr<mutex> mutex3 = std::make_shared<mutex>();
@@ -1142,7 +1129,7 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
                             std::make_shared<SharedState>(
                                 /*value=*/model::kAutotune, mutex3, cv3),
                             /*min=*/1, /*max=*/7)});
-  node3->record_buffer_event(1, 1);
+  node3->record_buffer_event(10, 1);
   node3->record_element();
 
   EXPECT_EQ(node1->parameter_value("parallelism"), model::kAutotune);
@@ -1158,7 +1145,7 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
                 &node3);
 
   CancellationManager cancellation_manager;
-  model.Optimize(algorithm, 40, 0, 0, &cancellation_manager);
+  model.Optimize(algorithm, 0, &cancellation_manager);
   EXPECT_EQ(node1->parameter_value("parallelism"), 1);
   EXPECT_EQ(node2->parameter_value("buffer_size"), 0);
   EXPECT_EQ(node3->parameter_value("parallelism"), 1);
@@ -1174,6 +1161,64 @@ TEST(RecordTimeTest, RecordTimeTest) {
   EXPECT_TRUE(source->is_recording());
   source->record_stop(200);
   EXPECT_FALSE(source->is_recording());
+}
+
+TEST(ModelTest, CanIncreaseNodeBuffer) {
+  std::shared_ptr<mutex> mutex1 = std::make_shared<mutex>();
+  std::shared_ptr<condition_variable> cv1 =
+      std::make_shared<condition_variable>();
+  std::shared_ptr<Node> node1 = model::MakeAsyncKnownRatioNode(
+      {/*id=*/1, /*name=*/"1", nullptr}, /*ratio=*/1,
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(
+                                /*value=*/1, mutex1, cv1),
+                            /*min=*/1, /*max=*/5)});
+  // Sets values s.t. ram usage for this node is 20
+  node1->record_buffer_event(200, 10);
+
+  std::shared_ptr<mutex> mutex2 = std::make_shared<mutex>();
+  std::shared_ptr<condition_variable> cv2 =
+      std::make_shared<condition_variable>();
+  std::shared_ptr<SharedState> buffer_size = std::make_shared<SharedState>(
+      /*value=*/1, mutex2, cv2);
+  std::shared_ptr<Node> node2 = model::MakeAsyncKnownRatioNode(
+      {/*id=*/2, /*name=*/"2", node1}, /*ratio=*/1,
+      {model::MakeParameter("buffer_size", buffer_size,
+                            /*min=*/0, /*max=*/10)});
+  // Sets values s.t. ram usage for this node is 10
+  node2->record_buffer_event(100, 10);
+
+  model::Model model(
+      Model::BudgetParams({/*cpu_budget=*/100, /*ram_budget=*/50}));
+  model.AddNode([&node2](model::Node::Args args) { return node2; }, "2",
+                nullptr, &node2);
+  model.AddNode([&node1](model::Node::Args args) { return node1; }, "1", node2,
+                &node1);
+
+  CancellationManager cancellation_manager;
+  // Calls Optimize to update the model->cached_maximum_buffered_bytes_.
+  model.Optimize(AutotuneAlgorithm::HILL_CLIMB, 100, &cancellation_manager);
+  EXPECT_EQ(node2->parameter_value("buffer_size"), 1);
+  // Total ram usage is 20 + 10 = 30. Adding 10 bytes gives 20 + 20 = 40, which
+  // is < 50 (budget)
+  EXPECT_TRUE(model.AllocateBufferedBytes(10));
+  {
+    // Commits the added bytes by doubling the buffer_size parameter
+    mutex_lock l(*mutex2);
+    buffer_size->value *= 2;
+  }
+  // Calls Optimize to update the model->cached_maximum_buffered_bytes_.
+  model.Optimize(AutotuneAlgorithm::HILL_CLIMB, 100, &cancellation_manager);
+  EXPECT_EQ(node2->parameter_value("buffer_size"), 2);
+  // Total ram usage is 20 + 20 = 40. Adding 20 bytes gives 20 + 20 + 20 = 60,
+  // which is > 50 (budget)
+  EXPECT_FALSE(model.AllocateBufferedBytes(20));
+  // Total ram usage is 20 + 20 = 40. Adding 5 bytes gives 20 + 20 + 5 = 45,
+  // which is < 50 (budget)
+  EXPECT_TRUE(model.AllocateBufferedBytes(5));
+  // Total ram usage is 20 + 20 = 40. Promised but uncommited allocation = 5.
+  // Adding 5 bytes gives 20 + 20 + 5 + 5 = 50, which is < 50 (budget)
+  EXPECT_TRUE(model.AllocateBufferedBytes(5));
 }
 
 }  // namespace
