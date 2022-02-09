@@ -95,6 +95,7 @@ using ::tfrt::TaskFunction;
 using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
+using ::tfrt::jitrt::EigenThreadPoolAsyncTaskRunner;
 using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::JitExecutableCache;
@@ -620,10 +621,15 @@ static void ExecuteImpl(Executable& executable,
   if (auto err = worker_threads.takeError())
     return ReturnErrors(results, std::move(err), exec_ctx);
 
-  // Override async runtime worker threads with fallback Eigen thread pool.
+  // TODO(ezhulenev): Async task runner might not outlive the execution of all
+  // async tasks, and shoud be kept alive until all tasks are completed.
+  assert(!executable.IsAsync() && "async executables are not yet supported");
+
+  // Use Eigen thread pool to execute all async tasks.
+  EigenThreadPoolAsyncTaskRunner async_task_runner(*worker_threads);
+
   Executable::ExecuteOpts opts;
-  opts.async_runtime_worker_threads = *worker_threads;
-  // Pass kernel context pointer to be emitted in the compiled function.
+  opts.async_task_runner = &async_task_runner;
   opts.kernel_context = &converter.context();
 
   // Execution error automatically forwarded to all results, we only need to

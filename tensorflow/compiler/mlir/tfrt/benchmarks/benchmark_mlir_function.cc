@@ -52,6 +52,7 @@ using ::tfrt::RequestContextBuilder;
 using ::tfrt::ResourceContext;
 
 using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::ReturnValueConverter;
@@ -151,9 +152,14 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(host.get());
+  opts.async_task_runner = &async_task_runner;
+
   for (auto _ : state) {
     call_frame.args[0] = nullptr;  // reset kernel context argument
-    (*executable)->Execute(call_frame, exec_ctx);
+    (*executable)->Execute(call_frame, exec_ctx, opts);
     if (auto err =
             (*executable)->ReturnResults(converter, exec_ctx, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";

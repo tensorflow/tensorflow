@@ -35,6 +35,7 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::ReturnValueConverter;
@@ -117,8 +118,13 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
   if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(b.exec_ctx.host());
+  opts.async_task_runner = &async_task_runner;
+
   // Execute once.
-  b.executable->Execute(call_frame, b.exec_ctx);
+  b.executable->Execute(call_frame, b.exec_ctx, opts);
   if (auto err =
           b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
     LOG(FATAL) << "Failed to return compiled kernel results";

@@ -57,6 +57,7 @@ using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
@@ -326,10 +327,15 @@ std::vector<py::array> TfJitRtExecutor::Execute(
 
   RemainingResults results(result_storage);
 
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(&host_context_);
+  opts.async_task_runner = &async_task_runner;
+
   // Convert returned memrefs to python arrays.
   PyBindingReturnValueConverter converter(results);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
-  if (auto err = (*executable)->Execute(memrefs, converter, exec_ctx))
+  if (auto err = (*executable)->Execute(memrefs, converter, exec_ctx, opts))
     throw std::runtime_error(StrCat("Unsupported argument: ", err));
 
   // Pull Python arrays out of async values.
