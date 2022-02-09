@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/external/external_delegate.h"
 
 #include <string>
+#include <locale>
 #include <vector>
 
 #include "tensorflow/lite/minimal_logging.h"
@@ -29,10 +30,12 @@ struct ExternalLib {
       const char**, const char**, size_t,
       void (*report_error)(const char*))>::type;
   using DestroyDelegatePtr = std::add_pointer<void(TfLiteDelegate*)>::type;
+  struct wchar_codecvt : public std::codecvt<wchar_t, char, std::mbstate_t> {};
+  std::wstring_convert<wchar_codecvt> converter;
 
   // Open a given delegate library and load the create/destroy symbols
   bool load(const std::string library) {
-    void* handle = SharedLibrary::LoadLibrary(library.c_str());
+    void* handle = SharedLibrary::LoadLibrary(converter.from_bytes(library.c_str()).c_str());
     if (handle == nullptr) {
       TFLITE_LOG(TFLITE_LOG_INFO, "Unable to load external delegate from : %s",
                  library.c_str());
