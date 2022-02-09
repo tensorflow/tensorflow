@@ -112,6 +112,7 @@ cc_library(
         ":hipsparse",
         ":roctracer",
         ":rocsolver",
+        ":hipsolver",
     ],
 )
 
@@ -155,6 +156,12 @@ cc_library(
     name = "rocsolver",
     srcs = ["rocm/lib/%{rocsolver_lib}"],
     data = ["rocm/lib/%{rocsolver_lib}"],
+)
+
+cc_library(
+    name = "hipsolver",
+    srcs = ["rocm/lib/%{hipsolver_lib}"],
+    data = ["rocm/lib/%{hipsolver_lib}"],
 )
 
 filegroup(
