@@ -57,6 +57,7 @@ def histogram_fixed_width_bins(values,
     TypeError: If any unsupported dtype is provided.
     tf.errors.InvalidArgumentError: If value_range does not
         satisfy value_range[0] < value_range[1].
+    ValueError: If the value of nbins is negative.
 
   Examples:
 
@@ -69,6 +70,11 @@ def histogram_fixed_width_bins(values,
   >>> indices.numpy()
   array([0, 0, 1, 2, 4, 4], dtype=int32)
   """
+  if isinstance(nbins, list):
+    raise ValueError('nbins shape must be of rank 0')
+  if nbins < 0:
+    raise ValueError(f'nbins should be positive number, but got \'{nbins}\'.')
+
   with ops.name_scope(name, 'histogram_fixed_width_bins',
                       [values, value_range, nbins]):
     values = ops.convert_to_tensor(values, name='values')
@@ -124,6 +130,7 @@ def histogram_fixed_width(values,
     TypeError: If any unsupported dtype is provided.
     tf.errors.InvalidArgumentError: If value_range does not
         satisfy value_range[0] < value_range[1].
+    tf.errors.InvalidArgumentError: If the value of nbins is negative.
 
   Examples:
 
