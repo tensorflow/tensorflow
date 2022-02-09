@@ -149,22 +149,22 @@ void LoopOp::build(OpBuilder &builder, OperationState &result,
   }
 }
 
-void print(OpAsmPrinter &p, LoopOp op) {
-  p << " (" << op.getInductionVars() << ") = (" << op.lowerBound() << ") to ("
-    << op.upperBound() << ") step (" << op.step() << ")";
+void LoopOp::print(OpAsmPrinter &p) {
+  p << " (" << getInductionVars() << ") = (" << lowerBound() << ") to ("
+    << upperBound() << ") step (" << step() << ")";
 
-  if (!op.inputs().empty()) {
+  if (!inputs().empty()) {
     p << " ins (";
-    llvm::interleaveComma(llvm::zip(op.getRegionInputArgs(), op.inputs()), p,
+    llvm::interleaveComma(llvm::zip(getRegionInputArgs(), inputs()), p,
                           [&](auto it) {
                             p << std::get<0>(it) << " = " << std::get<1>(it)
                               << ": " << std::get<1>(it).getType();
                           });
     p << ")";
   }
-  if (!op.outputs().empty()) {
+  if (!outputs().empty()) {
     p << " outs (";
-    llvm::interleaveComma(llvm::zip(op.getRegionOutputArgs(), op.outputs()), p,
+    llvm::interleaveComma(llvm::zip(getRegionOutputArgs(), outputs()), p,
                           [&](auto it) {
                             p << std::get<0>(it) << " = " << std::get<1>(it)
                               << ": " << std::get<1>(it).getType();
@@ -172,25 +172,25 @@ void print(OpAsmPrinter &p, LoopOp op) {
     p << ")";
   }
 
-  if (llvm::any_of(op.iterator_types(), [](Attribute attr) {
+  if (llvm::any_of(iterator_types(), [](Attribute attr) {
         return attr.cast<StringAttr>().getValue() !=
                LoopOp::getParallelIteratorTypeName();
       }))
-    p << " iterators" << op.iterator_types();
+    p << " iterators" << iterator_types();
 
-  if (op.distribution_types().hasValue())
-    p << " distribution" << op.distribution_types().getValue();
+  if (distribution_types().hasValue())
+    p << " distribution" << distribution_types().getValue();
 
   p << ' ';
-  p.printRegion(op.region(), /*printEntryBlockArgs=*/false);
+  p.printRegion(region(), /*printEntryBlockArgs=*/false);
   p.printOptionalAttrDict(
-      op->getAttrs(),
+      getOperation()->getAttrs(),
       /*elidedAttrs=*/{LoopOp::getOperandSegmentSizeAttr(),
                        LoopOp::getIteratorTypesAttrName(),
                        LoopOp::getDistributionTypesAttrName()});
 }
 
-ParseResult parseLoopOp(OpAsmParser &parser, OperationState &result) {
+ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
   // Parse an opening `(` followed by induction variables followed by `)`
   SmallVector<OpAsmParser::OperandType, 4> ivs;

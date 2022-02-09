@@ -3109,15 +3109,15 @@ static bool isEligibleForCompactPrint(ReduceOp op) {
   return llvm::equal(innerOp.getResults(), retOp.getOperands());
 }
 
-void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
+void ReduceOp::print(OpAsmPrinter& p) {
   {
     // Print the pairs of operands under the form:
     //   (%arg0 init: %arg3), (%arg1 init: %arg4), (%arg2 init: %arg5)
     StringRef comma = "";
-    int numOperandPairs = op.getNumOperands() / 2;
+    int numOperandPairs = getNumOperands() / 2;
     for (int opId : llvm::seq<int>(0, numOperandPairs)) {
-      p << comma << "(" << op.getOperand(opId)
-        << " init: " << op.getOperand(opId + numOperandPairs) << ")";
+      p << comma << "(" << getOperand(opId)
+        << " init: " << getOperand(opId + numOperandPairs) << ")";
       comma = ", ";
     }
   }
@@ -3127,30 +3127,30 @@ void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
   // Note: We are not printing the function type of reduction operation. We
   // have some simplifying assumptions (refer to IsEligibleForCompactPrint::E3)
   // to derive the type from that of reduce-op.
-  if (isEligibleForCompactPrint(op)) {
-    Operation& innerOp = op.body().front().front();
+  if (isEligibleForCompactPrint(*this)) {
+    Operation& innerOp = body().front().front();
     p << " applies ";
     printEscapedString(innerOp.getName().getStringRef(), p.getStream());
 
     p << " across dimensions = [";
-    llvm::interleaveComma(op.dimensions().getValues<int64_t>(), p);
+    llvm::interleaveComma(dimensions().getValues<int64_t>(), p);
     p << "]";
     p << " : ";
-    p.printFunctionalType(op);
+    p.printFunctionalType(*this);
   } else {
     p << " across dimensions = [";
-    llvm::interleaveComma(op.dimensions().getValues<int64_t>(), p);
+    llvm::interleaveComma(dimensions().getValues<int64_t>(), p);
     p << "]";
-    p.printOptionalAttrDict(op->getAttrs(), {"dimensions"});
+    p.printOptionalAttrDict(getOperation()->getAttrs(), {"dimensions"});
     p << " : ";
-    p.printFunctionalType(op);
+    p.printFunctionalType(*this);
     p.printNewline();
     p << " reducer";
     {
       // Print the pairs of block operands under the form:
       //   (%arg0_elt, %arg0_acc) (%arg1_elt, %arg1_acc):
-      Block& reducer = op.body().front();
-      int numOperandPairs = op.getNumOperands() / 2;
+      Block& reducer = body().front();
+      int numOperandPairs = getNumOperands() / 2;
       for (int opId : llvm::seq<int>(0, numOperandPairs)) {
         p << "(";
         p.printRegionArgument(reducer.getArgument(opId));
@@ -3160,11 +3160,11 @@ void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
       }
     }
     p << ' ';
-    p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
+    p.printRegion(body(), /*printEntryBlockArgs=*/false);
   }
 }
 
-ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
+ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   Location currLocation = parser.getEncodedSourceLoc(loc);
 
@@ -5624,29 +5624,28 @@ LogicalResult WhileOp::verify() {
 ///         `do` region
 /// assignment-list ::= assignment | assignment `,` assignment-list
 /// assignment ::= ssa-value `=` ssa-value
-void printWhileOp(WhileOp op, OpAsmPrinter& p) {
+void WhileOp::print(OpAsmPrinter& p) {
   p << '(';
-  llvm::interleaveComma(
-      llvm::zip(op.getBody()->getArguments(), op->getOperands()), p,
-      [&](auto zip) {
-        p.printOperand(std::get<0>(zip));
-        p << " = ";
-        p.printOperand(std::get<1>(zip));
-      });
+  llvm::interleaveComma(llvm::zip(getBody()->getArguments(), getOperands()), p,
+                        [&](auto zip) {
+                          p.printOperand(std::get<0>(zip));
+                          p << " = ";
+                          p.printOperand(std::get<1>(zip));
+                        });
   p << ")";
-  if (op->getNumOperands()) {
+  if (getNumOperands()) {
     p << " : ";
-    llvm::interleaveComma(op->getOperandTypes(), p);
+    llvm::interleaveComma(getOperandTypes(), p);
   }
-  p.printOptionalAttrDictWithKeyword(op->getAttrs());
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
   p.printNewline();
   p << " cond ";
-  p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
+  p.printRegion(getRegion(0), /*printEntryBlockArgs=*/false);
   p << " do ";
-  p.printRegion(op->getRegion(1), /*printEntryBlockArgs=*/false);
+  p.printRegion(getRegion(1), /*printEntryBlockArgs=*/false);
 }
 
-ParseResult parseWhileOp(OpAsmParser& parser, OperationState& result) {
+ParseResult WhileOp::parse(OpAsmParser& parser, OperationState& result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   // Parse the operands of the while: these are of the form:
   //   %iter_arg = %init_val

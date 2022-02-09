@@ -916,10 +916,8 @@ def HLO_WhileOp: HLO_Op<"while", [
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
   let hasCanonicalizer = 1;
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
-  let printer = [{ return ::mlir::mhlo::printWhileOp(*this, p); }];
-  let parser = [{ return ::mlir::mhlo::parseWhileOp(parser, result); }];
-
 }
 
 def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
@@ -1024,16 +1022,14 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
     OpBuilder<(ins "ValueRange":$inputs, "ValueRange":$init_values,
       "DenseIntElementsAttr":$dimensions)>];
 
-  let hasFolder = 1;
   let hasCanonicalizer = 1;
+  let hasCustomAssemblyFormat = 1;
+  let hasFolder = 1;
   let hasVerifier = 1;
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
-
-  let printer = [{ return ::mlir::mhlo::printReduceOp(*this, p); }];
-  let parser = [{ return ::mlir::mhlo::parseReduceOp(parser, result); }];
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
