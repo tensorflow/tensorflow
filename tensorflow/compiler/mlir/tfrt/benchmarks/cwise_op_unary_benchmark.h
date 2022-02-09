@@ -153,7 +153,7 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
 
   // Execute async tasks in the HostContext work queue.
   Executable::ExecuteOpts opts;
-  HostContexAsyncTaskRunner async_task_runner(b.exec_ctx.host());
+  HostContextAsyncTaskRunner async_task_runner(b.exec_ctx.host());
   opts.async_task_runner = &async_task_runner;
 
   for (auto _ : state) {

@@ -34,7 +34,7 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::jitrt::Executable;
-using ::tfrt::jitrt::HostContexAsyncTaskRunner;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::ReturnValueConverter;
@@ -83,7 +83,7 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   // Execute async tasks in the HostContext work queue.
   Executable::ExecuteOpts opts;
-  HostContexAsyncTaskRunner async_task_runner(host.get());
+  HostContextAsyncTaskRunner async_task_runner(host.get());
   opts.async_task_runner = &async_task_runner;
 
   // Get an executable that might be specialized to the operands.
