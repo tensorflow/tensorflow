@@ -38,36 +38,6 @@ namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-// The created `SessionOptions` contains the Grappler configs.
-static tensorflow::SessionOptions CreateSessionOptions(
-    const GraphExecutor::Options& options) {
-  tensorflow::SessionOptions session_options;
-  auto& config = session_options.config;
-
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_disable_meta_optimizer(!options.compile_options.enable_grappler);
-
-  // The following configs are constant.
-
-  // Avoid grappler logic that lowers to v1 control flow.
-  config.mutable_experimental()->set_use_tfrt(true);
-  config.mutable_graph_options()
-      ->mutable_optimizer_options()
-      ->set_do_function_inlining(false);
-  // Do not skip grappler optimization even for small graphs.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_min_graph_nodes(-1);
-  // Disable function inlining because it may cause restore graphs to be removed
-  // as we optimize all graphs together.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_function_optimization(tensorflow::RewriterConfig::OFF);
-
-  return session_options;
-}
-
 class GraphExecutorTest : public grappler::GrapplerTest {};
 
 TEST_F(GraphExecutorTest, Vanilla) {
@@ -84,7 +54,7 @@ TEST_F(GraphExecutorTest, Vanilla) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   GraphExecutor::Options options(runtime.get());
   auto statusor_fallback_state = tensorflow::tfrt_stub::FallbackState::Create(
-      CreateSessionOptions(options), graph_def.library());
+      CreateDefaultSessionOptions(options), graph_def.library());
   ASSERT_TRUE(statusor_fallback_state.ok());
   tensorflow::tfrt_stub::FallbackState* fallback_state =
       statusor_fallback_state.ValueOrDie().get();
