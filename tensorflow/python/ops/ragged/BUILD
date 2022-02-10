@@ -266,6 +266,7 @@ py_library(
         ":ragged_map_ops",
         ":ragged_math_ops",
         ":ragged_operators",
+        ":ragged_shape",
         ":ragged_squeeze_op",
         ":ragged_string_ops",
         ":ragged_tensor",

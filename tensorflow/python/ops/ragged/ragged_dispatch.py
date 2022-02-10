@@ -17,6 +17,7 @@
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_shape
 from tensorflow.python.util import dispatch
@@ -34,6 +35,12 @@ def ragged_unary_elementwise_op(op, x):
 
 @dispatch.dispatch_for_binary_elementwise_apis(ragged_tensor.RaggedOrDense,
                                                ragged_tensor.RaggedOrDense)
+def ragged_binary_elementwise_op_bridge(op, x, y):
+  """Binary elementwise api handler for RaggedTensors."""
+  return ragged_shape.ragged_binary_elementwise_op_impl(op, x, y)
+
+
+# TODO(martinz): This is deprecated. Delete.
 def ragged_binary_elementwise_op(op, x, y):
   """Binary elementwise api handler for RaggedTensors."""
   x_is_ragged = ragged_tensor.is_ragged(x)
