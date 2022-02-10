@@ -88,6 +88,13 @@ namespace {
 // Utilities for the canonicalize patterns
 //===----------------------------------------------------------------------===//
 
+// This is an arbitrary limit into how many elements can a splat attribute
+// covers before we prevent folding from happening. Without such limit we can
+// expand a single element splat to a multi-GB large tensor.
+// The limit is arbitrary set low to allow expanding small computations, like
+// shape manipulations for example.
+constexpr int64_t kFoldExpandSplatEltLimit = 16;
+
 // Clamps value to the range [lower, upper].  Requires lower <= upper.
 template <typename T>
 static T Clamp(const T& value, const T& lower, const T& upper) {
@@ -5489,6 +5496,10 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   auto index = operands[1].dyn_cast_or_null<DenseIntElementsAttr>();
   auto update = operands[2].dyn_cast_or_null<DenseElementsAttr>();
   if (!base || !index || !update) return {};
+
+  // Prevent splat to be expanded if too large.
+  if (base.isSplat() && base.getNumElements() > kFoldExpandSplatEltLimit)
+    return {};
 
   auto base_type = base.getType().dyn_cast<RankedTensorType>();
   auto index_type = index.getType().dyn_cast<RankedTensorType>();
