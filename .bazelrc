@@ -67,10 +67,12 @@
 #     rbe_linux: General RBE options used on all linux builds.
 #     rbe_win:   General RBE options used on all windows builds.
 #
-#     rbe_cpu_linux:           RBE options to build with only CPU support.
-#     rbe_linux_cuda_nvcc_py*: RBE options to build with GPU support using nvcc.
+#     rbe_cpu_linux:                  RBE options to build with only CPU support.
+#     rbe_cpu_linux_ml2014:           RBE options to build with only CPU support (manylinux2014 compatible).
+#     rbe_linux_cuda_nvcc_py*:        RBE options to build with GPU support using nvcc.
 #
-#     rbe_linux_py3: Linux Python 3 RBE config
+#     rbe_linux_py3:        Linux Python 3 RBE config
+#     rbe_linux_py3_ml2014: Linux Python 3 RBE config (manylinux2014 compatible)
 #
 #     rbe_win_py37: Windows Python 3.7 RBE config
 #     rbe_win_py38: Windows Python 3.8 RBE config
@@ -446,6 +448,15 @@ build:rbe_cpu_linux_base --platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-c
 build:rbe_cpu_linux --config=rbe_linux
 build:rbe_cpu_linux --config=rbe_cpu_linux_base
 
+# rbe config option that uses the manylinux2014 toolchain
+build:rbe_cpu_linux_ml2014 --config=rbe_linux
+build:rbe_cpu_linux_ml2014 --host_crosstool_top="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_cpu_linux_ml2014 --crosstool_top="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_cpu_linux_ml2014 --extra_toolchains="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_cpu_linux_ml2014 --extra_execution_platforms="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux_ml2014 --host_platform="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux_ml2014 --platforms="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+
 build:rbe_lite_linux --config=rbe_linux_base
 build:rbe_lite_linux --config=rbe_cpu_linux_base
 build:rbe_lite_linux --config=rbe_linux_py3_base
@@ -524,6 +535,10 @@ build:rbe_linux_py3 --config=rbe_linux
 build:rbe_linux_py3 --config=rbe_linux_py3_base
 build:rbe_linux_py3_base --python_path="/usr/local/bin/python3.9"
 build:rbe_linux_py3_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
+
+# rbe_linux_py3 with manylinux2014 toolchain
+build:rbe_linux_py3_ml2014 --config=rbe_linux_py3
+build:rbe_linux_py3_ml2014 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 build:rbe_win --config=rbe
 build:rbe_win --crosstool_top="@tf_toolchains//toolchains/win/tf_win_02082022:toolchain"
