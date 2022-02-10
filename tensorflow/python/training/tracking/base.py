@@ -1332,7 +1332,7 @@ class Trackable(object):
     """
     self._track_trackable(value, name, overwrite=True)
 
-  def _deserialization_dependencies(self):
+  def _deserialization_dependencies(self, children):
     """Returns a dictionary containing `Trackables` that this object depends on.
 
     Dependencies define the order to serialize and deserialize objects in the
@@ -1340,7 +1340,7 @@ class Trackable(object):
 
     class A(Trackable):
       b = B()
-      def _deserialization_dependencies(self):
+      def _deserialization_dependencies(self, children):
         return {'b': self.b}
 
     class B(Trackable):
@@ -1360,11 +1360,13 @@ class Trackable(object):
     saved/loaded. Therefore, if there are dependencies that are not in the
     `SavedObjectGraph`, saving will fail.
 
+    Args:
+      children: Dict returned from `_trackable_children`.
+
     Returns:
-      A dictionary mapping names to `Trackable` or `None`. When the value is
-      `None`, the `Trackable` returned from `_trackable_children` with the
-      corresponding key is retrieved.
+      A dictionary mapping names to `Trackable`.
     """
+    del children  # Unused.
     return {}
 
   def _trackable_children(self, save_type=SaveType.CHECKPOINT, **kwargs):
