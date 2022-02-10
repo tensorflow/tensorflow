@@ -127,11 +127,8 @@ struct ConvertTensor {
     // Convert TFRT data type into Tensorflow data type.
     auto dtype = tfd::GetTfDataType(tfrt::GetDType<T>());
 
-    // Build a Tensorflow TensorShape from memref sizes. It should never fail.
-    TensorShape shape;
-    auto st = TensorShapeUtils::MakeShape(memref_sizes, &shape);
-    assert(st.ok() && "failed to build a TensorShape from memref sizes");
-    (void)st;
+    // Build a Tensorflow TensorShape from memref sizes.
+    TensorShape shape(memref_sizes);
 
     // Check if returned memref already has corresponding runtime tensor.
     auto it = ctx.runtime_tensors.find(memref->data);
