@@ -26,6 +26,7 @@ sudo xcode-select -s "${DEVELOPER_DIR}"
 # Set up py38 via pyenv and check it worked
 PY_VERSION=3.8.9
 setup_python_from_pyenv_macos "${PY_VERSION}"
+python -m venv .tf-venv && source .tf-venv/bin/activate
 
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps
