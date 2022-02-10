@@ -18,7 +18,7 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-update_bazel_linux
+install_bazelisk
 
 # Setup virtual environment and install dependencies
 setup_venv_ubuntu python3.10

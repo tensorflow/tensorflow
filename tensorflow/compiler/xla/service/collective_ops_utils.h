@@ -329,7 +329,7 @@ class Rendezvous {
   // Initialize the rendezvous by the first ("primary") thread which reaches the
   // barrier. Returns whether this thread is primary.
   bool InitializationBarrier() {
-    tensorflow::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     if (!initialized_) {
       initialized_ = true;
       return true;
@@ -337,7 +337,7 @@ class Rendezvous {
     return false;
   }
 
-  tensorflow::mutex mu_;
+  absl::Mutex mu_;
 
   bool initialized_ ABSL_GUARDED_BY(mu_) = false;
 
@@ -353,7 +353,7 @@ class Rendezvous {
   StatusOr<std::pair<O, std::shared_ptr<tensorflow::BlockingCounter>>>
   SubmitParticipant(const I& participant) {
     {
-      tensorflow::mutex_lock lock(mu_);
+      absl::MutexLock lock(&mu_);
       CHECK(!initialized_);
 
       // Spot check for consistent replica counts among submitting threads.

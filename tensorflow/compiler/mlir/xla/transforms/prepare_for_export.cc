@@ -42,7 +42,7 @@ namespace {
 // Prepare module for export to XLA HLO.
 struct PrepareForExportPass
     : public PrepareForExportPassBase<PrepareForExportPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 }  // end namespace
@@ -141,8 +141,8 @@ void prepareBroadcastInDim(BroadcastInDimOp bcast) {
       DenseIntElementsAttr::get(dims.getType(), transposedDim));
 }
 
-void PrepareForExportPass::runOnFunction() {
-  getFunction().walk([&](Operation *op) {
+void PrepareForExportPass::runOnOperation() {
+  getOperation().walk([&](Operation *op) {
     mlir::SplatElementsAttr attr;
     if (matchPattern(op, m_Constant(&attr))) return prepareConstantOp(op, attr);
 

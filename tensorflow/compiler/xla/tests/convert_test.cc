@@ -519,8 +519,7 @@ XLA_TEST_F(ConvertTest, ConvertS64U64) {
   XlaBuilder builder(TestName());
   std::vector<int64_t> signed_x = {{42, -1, INT64_MIN}};
   ConvertElementType(ConstantR1<int64_t>(&builder, signed_x), U64);
-  std::vector<uint64_t> unsigned_x = {
-      {42, UINT64_MAX, tensorflow::MathUtil::IPow<uint64_t>(2, 63)}};
+  std::vector<uint64_t> unsigned_x = {{42, UINT64_MAX, IPow<uint64_t>(2, 63)}};
   ComputeAndCompareR1<uint64_t>(&builder, unsigned_x, {});
 }
 

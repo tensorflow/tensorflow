@@ -306,6 +306,11 @@ class DatasetTestBase(test.TestCase):
           ]))
 
   def verifyRandomAccess(self, dataset, expected):
+    self.verifyRandomAccessInfiniteCardinality(dataset, expected)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=len(expected)))
+
+  def verifyRandomAccessInfiniteCardinality(self, dataset, expected):
     """Tests randomly accessing elements of a dataset."""
     # Tests accessing the elements in a shuffled order with repeats.
     len_expected = len(expected)
@@ -320,8 +325,6 @@ class DatasetTestBase(test.TestCase):
     for i in indices:
       self.assertAllEqual(expected[i],
                           self.evaluate(random_access.at(dataset, i)))
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(random_access.at(dataset, index=len_expected))
 
   def textFileInitializer(self, vals):
     file = os.path.join(self.get_temp_dir(), "text_file_initializer")

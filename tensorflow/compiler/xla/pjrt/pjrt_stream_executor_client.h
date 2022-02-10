@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
@@ -605,6 +604,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       const ScatterDetails& scatter_details) override;
 
   Status BlockHostUntilReady() override;
+
+  void OnReady(std::function<void(Status)> callback) override;
 
   bool IsOnCpu() const override;
 

@@ -35,6 +35,7 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::ReturnValueConverter;
@@ -74,13 +75,22 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   auto result_values = std::array<RCReference<AsyncValue>, 1>{{}};
   RemainingResults results(result_values);
 
+  // Record data ptrs of inputs.
+  llvm::SmallVector<void*> input_ptrs;
+  for (auto& operand : operands) {
+    input_ptrs.push_back(operand.data);
+  }
+
   // Free memory owned by the returned memrefs.
-  ReturnValueConverter<ResultConversionCtx> converter(results);
+  auto result_ctx =
+      std::make_unique<ResultConversionCtx>(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results,
+                                                      std::move(result_ctx));
   converter.AddConversion(FreeReturnedMemref);
 
   // Get an executable that might be specialized to the operands.
   llvm::Expected<AsyncValuePtr<Executable>> executable =
-      jit_executable.GetExecutable(operands, exec_ctx);
+      jit_executable.GetExecutable(operands);
   if (auto err = executable.takeError())
     LOG(FATAL) << "Failed to specialize executable";
 
@@ -117,10 +127,14 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
   if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(b.exec_ctx.host());
+  opts.async_task_runner = &async_task_runner;
+
   // Execute once.
-  b.executable->Execute(call_frame, b.exec_ctx);
-  if (auto err =
-          b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
+  b.executable->Execute(call_frame, opts);
+  if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
     LOG(FATAL) << "Failed to return compiled kernel results";
 }
 
@@ -146,11 +160,15 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
   if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(b.exec_ctx.host());
+  opts.async_task_runner = &async_task_runner;
+
   for (auto _ : state) {
     call_frame.args[0] = nullptr;  // reset kernel context argument
-    b.executable->Execute(call_frame, b.exec_ctx);
-    if (auto err =
-            b.executable->ReturnResults(b.converter, b.exec_ctx, &call_frame))
+    b.executable->Execute(call_frame, opts);
+    if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 

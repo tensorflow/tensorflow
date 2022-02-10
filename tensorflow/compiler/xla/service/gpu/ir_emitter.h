@@ -212,6 +212,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   StatusOr<llvm::Function*> EmitAtomicFunctionForNestedComputation(
       const HloComputation& nested_computation, llvm::Type* element_ir_type);
 
+  // A convenience method to determine whether or not IR is emitted for AMDGPU.
+  bool IsEmittingForAMDGPU() const;
+
+  // Emits atomic add operation for AMD GPU.
+  void EmitAMDGPUAtomicAdd(llvm::Value* output_address, llvm::Value* source);
+
+  // A convenience method to determine the proper sync scope for an atomic op.
+  llvm::SyncScope::ID DetermineSyncScope() const;
+
   // Map nested computations to emitted IR functions. This serves as a cache so
   // that IrEmitter does not emit multiple functions for the same
   // HloComputation.

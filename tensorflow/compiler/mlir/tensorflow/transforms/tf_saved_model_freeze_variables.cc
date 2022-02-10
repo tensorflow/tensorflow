@@ -372,11 +372,13 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
       // op in the function. 3) Update function result to match the terminator.
       llvm::BitVector result_indices_to_erase;
       UpdateTerminatorArguments(func, args_to_erase, result_indices_to_erase);
-      func.eraseArguments(args_to_erase);
-      std::vector<unsigned int> indices_to_erase;
+      llvm::BitVector args_to_erase_bit_vector(func.getNumArguments());
+      for (auto i : args_to_erase) args_to_erase_bit_vector.set(i);
+      func.eraseArguments(args_to_erase_bit_vector);
+      llvm::BitVector indices_to_erase(func.getNumResults());
       const int indices_to_erase_size = result_indices_to_erase.size();
       for (int i = 0; i < indices_to_erase_size; ++i)
-        if (result_indices_to_erase.test(i)) indices_to_erase.push_back(i);
+        if (result_indices_to_erase.test(i)) indices_to_erase.set(i);
       func.eraseResults(indices_to_erase);
     } else if (auto read_var = dyn_cast<TF::ReadVariableOp>(user_op)) {
       // Read variables was already replaced by constant op. Just remove the op.
@@ -393,8 +395,14 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
       llvm::BitVector erase_indices;
       UpdateTerminatorArguments(new_while_op.body(), args_to_erase,
                                 erase_indices);
-      new_while_op.body().front().eraseArguments(args_to_erase);
-      new_while_op.cond().front().eraseArguments(args_to_erase);
+      llvm::BitVector body_bit_vector(
+          new_while_op.body().front().getNumArguments());
+      for (auto i : args_to_erase) body_bit_vector.set(i);
+      new_while_op.body().front().eraseArguments(body_bit_vector);
+      llvm::BitVector cond_bit_vector(
+          new_while_op.cond().front().getNumArguments());
+      for (auto i : args_to_erase) cond_bit_vector.set(i);
+      new_while_op.cond().front().eraseArguments(cond_bit_vector);
       while_op->erase();
     } else {
       llvm::BitVector erase_indices(user_op->getNumOperands());

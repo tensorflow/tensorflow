@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <utility>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -290,9 +292,12 @@ struct LegalizeGeneralDotPass
     : public LegalizeGeneralDotPassBase<LegalizeGeneralDotPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
   void runOnOperation() override {
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     PopulateGeneralDotOpLoweringPatterns(&patterns, &getContext());
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 
@@ -301,8 +306,8 @@ struct LegalizeGeneralDotPass
 }  // namespace mlir
 
 void mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(
-    OwningRewritePatternList *patterns, MLIRContext *ctx) {
-  patterns->insert<GeneralDotConvert>(ctx);
+    RewritePatternSet *patterns, MLIRContext *ctx) {
+  patterns->add<GeneralDotConvert>(ctx);
 }
 
 std::unique_ptr<::mlir::Pass> mlir::mhlo::createLegalizeGeneralDotPass() {

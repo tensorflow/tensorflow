@@ -1,9 +1,9 @@
 path: "tensorflow.metrics.MeanRelativeError"
 tf_class {
-  is_instance: "<class \'keras.metrics.MeanRelativeError\'>"
-  is_instance: "<class \'keras.metrics.Mean\'>"
-  is_instance: "<class \'keras.metrics.Reduce\'>"
-  is_instance: "<class \'keras.metrics.Metric\'>"
+  is_instance: "<class \'keras.metrics.metrics.MeanRelativeError\'>"
+  is_instance: "<class \'keras.metrics.base_metric.Mean\'>"
+  is_instance: "<class \'keras.metrics.base_metric.Reduce\'>"
+  is_instance: "<class \'keras.metrics.base_metric.Metric\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.autotrackable.AutoTrackable\'>"

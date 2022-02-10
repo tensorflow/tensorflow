@@ -309,7 +309,6 @@ cc_library(
         ":shape",
         ":status",
         ":tensor",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:variant",
     ],
 )

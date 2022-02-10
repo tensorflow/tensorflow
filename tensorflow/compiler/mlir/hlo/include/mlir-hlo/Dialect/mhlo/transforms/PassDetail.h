@@ -21,10 +21,13 @@ limitations under the License.
 namespace mlir {
 namespace scf {
 class SCFDialect;
-}
+}  // namespace scf
 namespace memref {
 class MemRefDialect;
-}
+}  // namespace memref
+namespace tensor {
+class TensorDialect;
+}  // namespace tensor
 
 namespace mhlo {
 class MhloDialect;

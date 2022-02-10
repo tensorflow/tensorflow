@@ -31,14 +31,14 @@ class GpuExecutorXLAState {
   explicit GpuExecutorXLAState(stream_executor::StreamExecutor *) {}
 
   InfeedManager *getOrCreateInfeedManager(stream_executor::StreamExecutor *se) {
-    tensorflow::mutex_lock l(this->mu_);
+    absl::MutexLock l(&this->mu_);
     if (!infeed_manager_) infeed_manager_ = std::make_unique<InfeedManager>(se);
     return infeed_manager_.get();
   }
 
   OutfeedManager *getOrCreateOutfeedManager(
       stream_executor::StreamExecutor *se) {
-    tensorflow::mutex_lock l(this->mu_);
+    absl::MutexLock l(&this->mu_);
     if (!outfeed_manager_)
       outfeed_manager_ = std::make_unique<OutfeedManager>();
     return outfeed_manager_.get();
@@ -53,7 +53,7 @@ class GpuExecutorXLAState {
     return ptr.get();
   }
 
-  tensorflow::mutex mu_;
+  absl::Mutex mu_;
   std::unique_ptr<InfeedManager> infeed_manager_ ABSL_GUARDED_BY(mu_);
   std::unique_ptr<OutfeedManager> outfeed_manager_ ABSL_GUARDED_BY(mu_);
 };

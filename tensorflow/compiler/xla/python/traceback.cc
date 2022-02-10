@@ -132,15 +132,19 @@ void BuildTracebackSubmodule(py::module& m) {
     collection is disabled, returns ``None``.
     )doc");
   traceback.def_property_readonly("frames", &Traceback::Frames);
-  traceback.def("raw_frames", [](const Traceback& tb) -> py::list {
-    py::list out(tb.raw_frames().size());
+  traceback.def("raw_frames", [](const Traceback& tb) -> py::tuple {
+    // We return a tuple of lists, rather than a list of tuples, because it
+    // is cheaper to allocate only three Python objects for everything rather
+    // than one per frame.
+    py::list out_code(tb.raw_frames().size());
+    py::list out_lasti(tb.raw_frames().size());
     for (size_t i = 0; i < tb.raw_frames().size(); ++i) {
       const auto& frame = tb.raw_frames()[i];
-      out[i] = py::make_tuple(py::reinterpret_borrow<py::object>(
-                                  reinterpret_cast<PyObject*>(frame.first)),
-                              py::int_(frame.second));
+      out_code[i] = py::reinterpret_borrow<py::object>(
+          reinterpret_cast<PyObject*>(frame.first));
+      out_lasti[i] = py::int_(frame.second);
     }
-    return out;
+    return py::make_tuple(out_code, out_lasti);
   });
   traceback.def("__str__", &Traceback::ToString);
   traceback.def("__eq__",

@@ -183,14 +183,14 @@ class ConvertWhileRegionOp : public OpRewritePattern<WhileRegionOp> {
 }  // end anonymous namespace
 
 void populateTfControlFlowToScfPatterns(MLIRContext* context,
-                                        OwningRewritePatternList* patterns) {
-  patterns->insert<ConvertIfRegionOp, ConvertWhileRegionOp>(context);
+                                        RewritePatternSet* patterns) {
+  patterns->add<ConvertIfRegionOp, ConvertWhileRegionOp>(context);
 }
 
 struct ConvertTfControlFlowToScf
     : public ConvertTfControlFlowToScfPassBase<ConvertTfControlFlowToScf> {
   void runOnOperation() override {
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     populateTfControlFlowToScfPatterns(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }

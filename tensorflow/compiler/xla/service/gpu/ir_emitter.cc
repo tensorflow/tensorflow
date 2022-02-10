@@ -232,11 +232,17 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
       }
     }
 
+    if (IsEmittingForAMDGPU() &&
+        (element_type == F32)) /* is atomic add supported? */ {
+      EmitAMDGPUAtomicAdd(output_address, source);
+      return true;
+    }
+
     if (is_atomic_integral) {
       // integral + integral
-      AtomicRMW(llvm::AtomicRMWInst::Add, output_address, source,
-                llvm::MaybeAlign(),
-                llvm::AtomicOrdering::SequentiallyConsistent);
+      AtomicRMW(
+          llvm::AtomicRMWInst::Add, output_address, source, llvm::MaybeAlign(),
+          llvm::AtomicOrdering::SequentiallyConsistent, DetermineSyncScope());
       return true;
     }
   }
@@ -248,7 +254,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
                       ? llvm::AtomicRMWInst::Max
                       : llvm::AtomicRMWInst::UMax;
     AtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
-              llvm::AtomicOrdering::SequentiallyConsistent);
+              llvm::AtomicOrdering::SequentiallyConsistent,
+              DetermineSyncScope());
     return true;
   }
 
@@ -258,7 +265,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
                       ? llvm::AtomicRMWInst::Min
                       : llvm::AtomicRMWInst::UMin;
     AtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
-              llvm::AtomicOrdering::SequentiallyConsistent);
+              llvm::AtomicOrdering::SequentiallyConsistent,
+              DetermineSyncScope());
     return true;
   }
 
@@ -417,7 +425,7 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   llvm::Value* ret_value = AtomicCmpXchg(
       atomic_memory_address, cas_old_output, cas_new_output, llvm::MaybeAlign(),
       llvm::AtomicOrdering::SequentiallyConsistent,
-      llvm::AtomicOrdering::SequentiallyConsistent);
+      llvm::AtomicOrdering::SequentiallyConsistent, DetermineSyncScope());
 
   // Extract the memory value returned from atomicCAS and store it as
   // cas_old_output.
@@ -450,6 +458,42 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
 
   return EmitAtomicOperationUsingCAS(computation, output_address,
                                      source_address);
+}
+
+bool IrEmitter::IsEmittingForAMDGPU() const {
+  llvm::Triple target_triple = llvm::Triple(module_->getTargetTriple());
+  return target_triple.isAMDGPU();
+}
+
+void IrEmitter::EmitAMDGPUAtomicAdd(llvm::Value* output_address,
+                                    llvm::Value* source) {
+  CHECK(IsEmittingForAMDGPU());
+  auto output_address_type =
+      llvm::dyn_cast<llvm::PointerType>(output_address->getType());
+  CHECK_NE(output_address_type, nullptr);
+
+  auto output_ptr =
+      (output_address_type->getPointerAddressSpace() != 3)
+          ?
+          // the compiler will only generate a global_atomic_fadd if the pointer
+          // is in global addrspace (1)
+          b_.CreateAddrSpaceCast(
+              output_address, llvm::PointerType::get(
+                                  output_address_type->getPointerElementType(),
+                                  /*AddressSpace=*/1))
+          :
+          // adds to shared memory are always atomic.
+          output_address;
+
+  AtomicRMW(llvm::AtomicRMWInst::FAdd, output_ptr, source, llvm::MaybeAlign(),
+            llvm::AtomicOrdering::SequentiallyConsistent,
+            b_.getContext().getOrInsertSyncScopeID("agent"));
+}
+
+llvm::SyncScope::ID IrEmitter::DetermineSyncScope() const {
+  return (IsEmittingForAMDGPU())
+             ? b_.getContext().getOrInsertSyncScopeID("agent")
+             : llvm::SyncScope::System;
 }
 
 Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {

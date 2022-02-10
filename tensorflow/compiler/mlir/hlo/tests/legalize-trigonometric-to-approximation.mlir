@@ -51,13 +51,13 @@ func @tanh_f32(%arg0 : f32) -> f32 {
   // CHECK-DAG: %[[TMP20:.*]] = arith.divf %[[TMP13]], %[[TMP19]] : f32
   // CHECK-DAG: %[[TMP21:.*]] = math.abs %[[ARG]] : f32
   // CHECK-DAG: %[[TMP22:.*]] = arith.cmpf olt, %[[TMP21]], %[[C10]] : f32
-  // CHECK-DAG: %[[TMP23:.*]] = select %[[TMP22]], %[[ARG]], %[[TMP20]] : f32
+  // CHECK-DAG: %[[TMP23:.*]] = arith.select %[[TMP22]], %[[ARG]], %[[TMP20]] : f32
   // CHECK-DAG: %[[TMP24:.*]] = arith.cmpf ugt, %[[ARG]], %[[C11]] : f32
   // CHECK-DAG: %[[TMP25:.*]] = arith.cmpf ult, %[[ARG]], %[[C12]] : f32
   // CHECK-DAG: %[[IS_NAN:.*]] = arith.cmpf une, %[[ARG]], %[[ARG]] : f32
-  // CHECK-DAG: %[[TMP26:.*]] = select %[[TMP24]], %[[C13]], %[[TMP23]] : f32
-  // CHECK-DAG: %[[TMP27:.*]] = select %[[TMP25]], %[[C14]], %[[TMP26]] : f32
-  // CHECK-DAG: %[[RESULT:.*]] = select %[[IS_NAN]], %[[ARG]], %[[TMP27]] : f32
+  // CHECK-DAG: %[[TMP26:.*]] = arith.select %[[TMP24]], %[[C13]], %[[TMP23]] : f32
+  // CHECK-DAG: %[[TMP27:.*]] = arith.select %[[TMP25]], %[[C14]], %[[TMP26]] : f32
+  // CHECK-DAG: %[[RESULT:.*]] = arith.select %[[IS_NAN]], %[[ARG]], %[[TMP27]] : f32
   // CHECK: return %[[RESULT]] : f32
   %res = math.tanh %arg0 : f32
   return %res : f32

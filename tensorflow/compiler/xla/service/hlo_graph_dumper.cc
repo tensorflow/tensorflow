@@ -52,9 +52,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/stream_executor/dnn.h"
@@ -332,11 +334,19 @@ class HloDotDumper {
 
   // Returns a CSS id assigned to the instruction, if that exists.
   absl::optional<std::string> CssIdForInstruction(const HloInstruction& instr) {
+    if (instr.opcode() == HloOpcode::kFusion) {
+      // For fusion we render it as a subcomputation.
+      auto it = cluster_ids_.find(instr.called_computations()[0]);
+      if (it == cluster_ids_.end()) {
+        return absl::nullopt;
+      }
+      return StrCat("#a_clust", it->second, " path");
+    }
     auto it = node_ids_.find(&instr);
     if (it == node_ids_.end()) {
       return absl::nullopt;
     }
-    return StrCat("node", it->second);
+    return StrCat("#node", it->second, " polygon");
   }
 
  private:
@@ -419,7 +429,7 @@ class HloDotDumper {
   int64_t next_edge_id_ = 1;
   std::unordered_multimap<
       std::pair<const HloInstruction*, const HloInstruction*>, int64_t,
-      tensorflow::hash<std::pair<const HloInstruction*, const HloInstruction*>>>
+      absl::Hash<std::pair<const HloInstruction*, const HloInstruction*>>>
       edge_ids_;
 
   // Each HloComputation that's emitted gets a monotonically-increasing ID.
@@ -1729,13 +1739,13 @@ std::string WrapDotInHtml(absl::string_view dot) {
   return absl::StrCat(html_prefix, dot, html_suffix);
 }
 
-tensorflow::mutex url_renderer_mu(tensorflow::LINKER_INITIALIZED);
+absl::Mutex url_renderer_mu(absl::kConstInit);
 std::function<StatusOr<std::string>(absl::string_view)>* url_renderer
     ABSL_GUARDED_BY(url_renderer_mu) = nullptr;
 
 // Storage for fusion visualization: (module_id, computation_id) -> sequence of
 // fusion states.
-tensorflow::mutex fusion_visualizer_state_mu(tensorflow::LINKER_INITIALIZED);
+absl::Mutex fusion_visualizer_state_mu(absl::kConstInit);
 namespace {
 
 // Fusion state: a sequence of rendered graphs in DOT formats with explanations.
@@ -1775,12 +1785,6 @@ static std::pair<int, int> FusionVisualizerStateKey(
                         computation.unique_id());
 }
 
-// Escapes JavaScript template string surrounded with backquotes: escaping
-// backquotes and $ is sufficient.
-static std::string EscapeJSTemplateString(absl::string_view s) {
-  return absl::StrReplaceAll(s, {{"`", "|"}, {"$", "|"}});
-}
-
 // Precondition: (url_renderer != nullptr || format != kUrl).
 //
 // (We specify this as a precondition rather than checking it in here and
@@ -1805,15 +1809,74 @@ StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
 
 }  // namespace
 
+// Compress with zlib + b64 encode.
+static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
+  class WritableStringFile : public tensorflow::WritableFile {
+   public:
+    explicit WritableStringFile(std::string* data) : data_(data){};
+    ~WritableStringFile() override = default;
+
+    Status Append(absl::string_view data) override {
+      absl::StrAppend(data_, data);
+      return Status::OK();
+    }
+
+    Status Close() override { return Status::OK(); }
+    Status Flush() override { return Status::OK(); }
+    Status Sync() override { return Status::OK(); }
+
+   private:
+    std::string* data_;
+  };
+
+  std::string compressed;
+  WritableStringFile f(&compressed);
+
+  auto gz_opts = tensorflow::io::ZlibCompressionOptions::GZIP();
+  tensorflow::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
+                                           gz_opts.output_buffer_size, gz_opts);
+  TF_RETURN_IF_ERROR(gz_file.Init());
+  TF_RETURN_IF_ERROR(gz_file.Append(input));
+  TF_RETURN_IF_ERROR(gz_file.Close());
+
+  std::string encoded;
+  TF_RETURN_IF_ERROR(tensorflow::Base64Encode(compressed, &encoded));
+  return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
+}
+
+static std::string EscapeJSONString(absl::string_view raw) {
+  return absl::StrCat(
+      "\"",
+      absl::StrReplaceAll(raw, {{"\n", "\\n"}, {"\"", "\\\""}, {"\\", "\\\\"}}),
+      "\"");
+}
+
 StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
-  tensorflow::mutex_lock lock(fusion_visualizer_state_mu);
+  absl::MutexLock lock(&fusion_visualizer_state_mu);
   using absl::StrAppend;
   using absl::StrFormat;
+  using absl::StrJoin;
   const FusionVisualizerProgress& visualizer_progress =
       fusion_visualizer_states[FusionVisualizerStateKey(computation)];
   if (visualizer_progress.frames.empty()) {
     return InternalError("Empty");
   }
+
+  std::string dot_graphs =
+      StrFormat("[%s]", StrJoin(visualizer_progress.dot_graphs, ", ",
+                                [&](std::string* out, const std::string& dot) {
+                                  StrAppend(out, EscapeJSONString(dot));
+                                }));
+
+  std::string frames = StrJoin(
+      visualizer_progress.frames, ", ", [&](std::string* out, const auto& p) {
+        StrAppend(out, StrFormat("[%d, %s, %s]", p.dot_graph,
+                                 EscapeJSONString(p.label),
+                                 EscapeJSONString(p.to_highlight)));
+      });
+
+  TF_ASSIGN_OR_RETURN(std::string dot_graphs_compressed,
+                      CompressAndEncode(dot_graphs));
 
   return absl::StrReplaceAll(
       R"(
@@ -1836,16 +1899,19 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
   </style>
 </head>
 <body>
-  $JS_INCLUDE
+  <script src="https://www.gstatic.com/external_hosted/hpcc_js_wasm/index.min.js"
+      integrity="sha384-LigJPbR3TOfU/Xbb+PjiN1dGJYPweLk7kiGnaMgmxnUmKWaCFKbb5tH6iLlyVhPZ"
+      crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/external_hosted/svg_pan_zoom/svg-pan-zoom.js">
+  </script>
 
   <title>Fusion Explorer: $TITLE</title>
-  <div id='rendered'></div>
+  <div id='rendered'><center>Loading...</center></div>
   <ul id='frames_list'></ul>
   <p>Use j/k for keyboard navigation.</p>
-  <p id='performance_note'></p>
+  <p id='performance_note'>Loading data...</p>
   <script>
   <!--
-  let currId = 0;
   const renderCache = {};
 
   const cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
@@ -1853,11 +1919,16 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
 
   const getIdFromHash = () => {
     let hash = window.location.hash;
+    if (hash.indexOf('frame') == -1) {
+      return 0;
+    }
     return parseInt(window.location.hash.substring('#frame'.length, window.location.hash.length));
   }
 
-  const renderFrame = () => {
+  const renderCurrentFrame = () => {
+    if (!window.loaded) { return; }
     const frames_list = document.getElementById('frames_list');
+    const currId = getIdFromHash();
 
     for (let selected of frames_list.getElementsByClassName('selected')) {
         selected.classList.remove('selected');
@@ -1869,7 +1940,7 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
 
     const frame = frames[currId];
     const dot_ptr = frame[0];
-    let dot_txt = dots[dot_ptr];
+    let dot_txt = window.dots[dot_ptr];
     const label = frame[1];
     document.getElementById('performance_note').innerText = "Rendering...";
     const results = cssregex.exec(dot_txt)
@@ -1890,7 +1961,7 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
       var panzoom = svgPanZoom(area.children[0], {
           zoomEnabled: true, controlIconsEnabled: true, });
       var to_highlight = frame[2].length ?
-        document.querySelector(`#${frame[2]} polygon`) : null;
+        document.querySelector(`${frame[2]}`) : null;
       if (to_highlight) {
         to_highlight.style.setProperty('fill', 'red');
       }
@@ -1904,31 +1975,14 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
     }
   };
 
-  window.addEventListener('hashchange', () => {
-    currId = getIdFromHash();
-    renderFrame();
-  });
-
   const update = (delta) => {
+    let currId = getIdFromHash();
     currId = (currId + delta + frames.length) % frames.length;
     window.location.hash = `#frame${currId}`
   };
 
-  window.addEventListener("keydown", (event) => {
-    if (event.defaultPrevented) {
-      return;
-    }
-    if (event.key == "j") {
-      update(1);
-    } else if (event.key == "k") {
-      update(-1);
-    } else {
-      return;
-    }
-    event.preventDefault();
-  }, true);
-
-  const renderFrameList = function() {
+  const renderFrameList = () => {
+    const currId = getIdFromHash();
     const frames_list = document.getElementById('frames_list');
     for (let i=0; i<frames.length; i++) {
       const f = frames[i];
@@ -1945,44 +1999,60 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
     }
   };
 
-  document.addEventListener("DOMContentLoaded", () => {
-    if (window.location.hash.indexOf('frame') != -1) {
-      currId = getIdFromHash();
-    }
-    renderFrameList();
-    renderFrame();
+  const decompress = async function(compressed) {
+    const ds = new DecompressionStream('gzip');
+    const in_fetch = await fetch(`data:application/octet-stream;base64,${compressed}`);
+    const in_blob = await in_fetch.blob();
+    const out_stream = in_blob.stream().pipeThrough(ds);
+    const out_blob = await new Response(out_stream).blob();
+    return await out_blob.text();
+  }
+
+  const dots_compressed = "$DOTS";
+  const frames = [$FRAMES];
+  let loaded = false;
+
+  window.addEventListener('hashchange', () => {
+    renderCurrentFrame();
   });
 
-  const dots = [$DOTS];
-  const frames = [$FRAMES];
+  window.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (event.key == "j") {
+      update(1);
+    } else if (event.key == "k") {
+      update(-1);
+    } else {
+      return;
+    }
+    event.preventDefault();
+  }, true);
+
+  document.addEventListener("DOMContentLoaded", () => {
+    decompress(dots_compressed).then(text => {
+      window.dots = JSON.parse(text);
+      window.loaded = true;
+      renderFrameList();
+      renderCurrentFrame();
+    });
+  });
 
   //-->
   </script>
   </body>
 </html>
   )",
-      {{"$JS_INCLUDE", kRenderDotJS},
-       {"$DOTS", absl::StrJoin(visualizer_progress.dot_graphs, ", ",
-                               [&](std::string* out, const std::string& dot) {
-                                 StrAppend(out, "String.raw`",
-                                           EscapeJSTemplateString(dot), "`");
-                               })},
-       {"$FRAMES",
-        absl::StrJoin(
-            visualizer_progress.frames, ", ",
-            [&](std::string* out, const auto& p) {
-              StrAppend(out,
-                        StrFormat("[%d, String.raw`%s`, String.raw`%s`]",
-                                  p.dot_graph, EscapeJSTemplateString(p.label),
-                                  EscapeJSTemplateString(p.to_highlight)));
-            })},
+      {{"$DOTS", dot_graphs_compressed},
+       {"$FRAMES", frames},
        {"$TITLE",
         absl::StrCat(computation.parent()->name(), "_", computation.name())}});
 }
 
 void RegisterGraphToURLRenderer(
     std::function<StatusOr<std::string>(absl::string_view)> renderer) {
-  tensorflow::mutex_lock lock(url_renderer_mu);
+  absl::MutexLock lock(&url_renderer_mu);
   if (url_renderer != nullptr) {
     LOG(WARNING) << "Multiple calls to RegisterGraphToURLRenderer.  Last call "
                     "wins, but because order of initialization in C++ is "
@@ -1997,7 +2067,7 @@ void RegisterFusionState(const HloComputation& computation,
                          absl::string_view label,
                          const HloInstruction& consumer,
                          const HloInstruction* producer) {
-  tensorflow::mutex_lock lock(fusion_visualizer_state_mu);
+  absl::MutexLock lock(&fusion_visualizer_state_mu);
   FusionVisualizerProgress& fusion_progress =
       fusion_visualizer_states[FusionVisualizerStateKey(computation)];
 
@@ -2029,7 +2099,7 @@ StatusOr<std::string> RenderGraph(
     const DebugOptions& debug_options, RenderedGraphFormat format,
     const HloExecutionProfile* hlo_execution_profile,
     HloRenderOptions hlo_render_options) {
-  tensorflow::mutex_lock lock(url_renderer_mu);
+  absl::MutexLock lock(&url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return Unavailable("Can't render as URL; no URL renderer was registered.");
   }
@@ -2045,7 +2115,7 @@ StatusOr<std::string> RenderNeighborhoodAround(
     const HloInstruction& node, int radius, RenderedGraphFormat format,
     HloRenderOptions hlo_render_options,
     const absl::flat_hash_set<const HloInstruction*>& boundary) {
-  tensorflow::mutex_lock lock(url_renderer_mu);
+  absl::MutexLock lock(&url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return FailedPrecondition(
         "Can't render as URL; no URL renderer was registered.");
@@ -2065,7 +2135,7 @@ StatusOr<std::string> RenderNeighborhoodAround(
 StatusOr<std::string> RenderAllPathsFromTo(
     const HloInstruction& from, const HloInstruction& to, int64_t max_nodes,
     RenderedGraphFormat format, HloRenderOptions hlo_render_options) {
-  tensorflow::mutex_lock lock(url_renderer_mu);
+  absl::MutexLock lock(&url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return FailedPrecondition(
         "Can't render as URL; no URL renderer was registered.");

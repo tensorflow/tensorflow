@@ -163,7 +163,6 @@ KERAS_API_INIT_FILES = [
     "keras/losses/__init__.py",
     "keras/metrics/__init__.py",
     "keras/mixed_precision/__init__.py",
-    "keras/mixed_precision/experimental/__init__.py",
     "keras/premade/__init__.py",
     "keras/models/__init__.py",
     "keras/optimizers/__init__.py",

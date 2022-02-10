@@ -96,7 +96,7 @@ auto* tflite_quantizer_usage_stats = tensorflow::monitoring::Counter<1>::New(
 // making the quantization rule for some operations in the quantization-aware
 // training quantization simpler.
 class PrepareQuantizePass
-    : public PassWrapper<PrepareQuantizePass, FunctionPass> {
+    : public PassWrapper<PrepareQuantizePass, OperationPass<FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<TensorFlowLiteDialect, ::mlir::quant::QuantizationDialect>();
@@ -126,7 +126,7 @@ class PrepareQuantizePass
     return "Prepare TFL dialect for quantization";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   // Set the quantization parameters of the input nodes. These parameters are
@@ -343,8 +343,8 @@ bool PrepareQuantizePass::ContainsQuantizeOps(FuncOp func) {
 using PrepareQuantStats =
     quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
-void PrepareQuantizePass::runOnFunction() {
-  FuncOp func = getFunction();
+void PrepareQuantizePass::runOnOperation() {
+  FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
   ConvertTFLQuantOpsToMlirQuantOps(func);
 
@@ -378,7 +378,7 @@ void PrepareQuantizePass::runOnFunction() {
   // LSTM's restrict_scale requirement should be handled before converting stats
   // to Q-DQ ops. The pattern is applied for non-PTQ case to make op ordering
   // consistent. Otherwise some FileCheck tests would fail.
-  OwningRewritePatternList patterns_1(&getContext());
+  RewritePatternSet patterns_1(&getContext());
   if (quant_specs_.post_training_quantization) {
     patterns_1.insert<PrepareLstmOutputScale<LSTMOp>>(ctx);
     patterns_1.insert<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(
@@ -388,7 +388,7 @@ void PrepareQuantizePass::runOnFunction() {
 
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
-  OwningRewritePatternList patterns_2(&getContext());
+  RewritePatternSet patterns_2(&getContext());
   if (is_signed) {
     patterns_2.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(
         ctx);

@@ -27,8 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 
@@ -113,7 +111,7 @@ class AllocationTracker {
   // maintained per device ordinal.
   using AllocationMap = absl::flat_hash_map<const void*, Allocation>;
 
-  mutable tensorflow::mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   // Backend to use with this tracker. The backend supplies the memory allocator
   // to use when deallocating memory.

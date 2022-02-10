@@ -150,7 +150,7 @@ int main(int argc, char **argv) {
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
-  StatusOr<mlir::OwningModuleRef> module;
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module;
   std::unordered_set<std::string> tags;
 
   tensorflow::GraphImportConfig specs;
@@ -217,8 +217,8 @@ int main(int argc, char **argv) {
     } else if (hlo_import_type == HloImportType::proto) {
       module = xla::HloToMlirHloTranslateFunction(content, &context, false);
     } else {
-      module =
-          mlir::OwningModuleRef(mlir::parseSourceString(content, &context));
+      module = mlir::OwningOpRef<mlir::ModuleOp>(
+          mlir::parseSourceString(content, &context));
     }
   } else {
     // Graphdef import path.

@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -38,10 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace xla {
@@ -134,6 +133,21 @@ class AotCompilationOptions {
   se::StreamExecutor* executor() const { return executor_; }
   void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
 
+  // Optional session_id and cache key may be used to trigger recompilation
+  // when a compilation cache is used.
+  uint64_t session_id() const { return session_id_; }
+  void set_session_id(uint64_t session_id) { session_id_ = session_id; }
+
+  absl::string_view cache_key() const { return cache_key_; }
+  void set_cache_key(absl::string_view cache_key) {
+    cache_key_ = std::string(cache_key);
+  }
+
+  bool run_backend_only() const { return run_backend_only_; }
+  void set_run_backend_only(bool run_backend_only) {
+    run_backend_only_ = run_backend_only;
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -146,6 +160,9 @@ class AotCompilationOptions {
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
   se::StreamExecutor* executor_ = nullptr;
+  uint64_t session_id_ = 0;
+  std::string cache_key_;
+  bool run_backend_only_ = false;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -327,7 +344,7 @@ class Compiler {
 
  private:
   // Mutex that guards the platform-compiler map.
-  static tensorflow::mutex platform_compiler_mutex_;
+  static absl::Mutex platform_compiler_mutex_;
 
   // Map from platform kind to compiler factory.
   static std::map<se::Platform::Id, CompilerFactory>*

@@ -37,7 +37,7 @@ using mlir::AffineMap;
 using mlir::Operation;
 using mlir::OpOperand;
 using mlir::OpResult;
-using mlir::OwningRewritePatternList;
+using mlir::RewritePatternSet;
 
 namespace linalg = mlir::linalg;
 
@@ -85,10 +85,10 @@ static bool ControlElementwiseOpsFusion(const OpResult &producer_result,
 }
 
 struct FusionPass : public FusionBase<FusionPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     Operation *op = getOperation();
 
-    OwningRewritePatternList patterns(op->getContext());
+    RewritePatternSet patterns(op->getContext());
     linalg::populateElementwiseOpsFusionPatterns(
         patterns,
         linalg::LinalgElementwiseFusionOptions()
@@ -98,7 +98,7 @@ struct FusionPass : public FusionBase<FusionPass> {
   }
 };
 
-std::unique_ptr<mlir::FunctionPass> CreateFusionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateFusionPass() {
   return std::make_unique<FusionPass>();
 }
 

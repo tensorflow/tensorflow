@@ -37,7 +37,8 @@ namespace TFL {
 namespace {
 
 class DecomposeHybridQuantizationPass
-    : public PassWrapper<DecomposeHybridQuantizationPass, FunctionPass> {
+    : public PassWrapper<DecomposeHybridQuantizationPass,
+                         OperationPass<FuncOp>> {
  public:
   DecomposeHybridQuantizationPass() = default;
   DecomposeHybridQuantizationPass(const DecomposeHybridQuantizationPass &) {}
@@ -52,7 +53,7 @@ class DecomposeHybridQuantizationPass
            "(some arguments/results left in floating point).";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
@@ -68,22 +69,29 @@ class DequantizeConverter : public OpRewritePattern<SrcOp> {
                                 PatternRewriter &rewriter) const final {
     Operation *op = srcop.getOperation();
     bool allTypesFp = true;
-    bool allTypesQuantized = true;
+    bool allTypesQuantizedOrInt = true;
     for (auto operand : op->getOperands()) {
       ShapedType type = operand.getType().template dyn_cast<ShapedType>();
       if (!type) continue;
       allTypesFp &= !type.getElementType().isa<quant::QuantizedType>();
-      allTypesQuantized &= type.getElementType().isa<quant::QuantizedType>();
+      allTypesQuantizedOrInt &=
+          (type.getElementType().isa<quant::QuantizedType>() ||
+           type.getElementType().isa<IntegerType>());
     }
 
     for (auto result : op->getResults()) {
       ShapedType type = result.getType().template cast<ShapedType>();
       allTypesFp &= !type.getElementType().isa<quant::QuantizedType>();
-      allTypesQuantized &= type.getElementType().isa<quant::QuantizedType>();
+      allTypesQuantizedOrInt &=
+          (type.getElementType().isa<quant::QuantizedType>() ||
+           type.getElementType().isa<IntegerType>());
     }
 
     // If all quantized or floating point then types are consistent.
-    if (allTypesFp || allTypesQuantized) return failure();
+    // Int is valid in combination with both quantized and floating point.
+    // This occurs when doing qi16 convolution, as bias is passed as a
+    // non-quantized int64
+    if (allTypesFp || allTypesQuantizedOrInt) return failure();
 
     Location loc = op->getLoc();
     SmallVector<Value> newOperands;
@@ -133,15 +141,15 @@ class DequantizeConverter : public OpRewritePattern<SrcOp> {
   }
 };
 
-void DecomposeHybridQuantizationPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void DecomposeHybridQuantizationPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   auto *ctx = &getContext();
-  auto func = getFunction();
-  patterns.insert<DequantizeConverter<TFL::Conv2DOp>,
-                  DequantizeConverter<TFL::Conv3DOp>,
-                  DequantizeConverter<TFL::DepthwiseConv2DOp>,
-                  DequantizeConverter<TFL::FullyConnectedOp>,
-                  DequantizeConverter<TFL::TransposeConvOp>>(ctx);
+  auto func = getOperation();
+  patterns.add<DequantizeConverter<TFL::Conv2DOp>,
+               DequantizeConverter<TFL::Conv3DOp>,
+               DequantizeConverter<TFL::DepthwiseConv2DOp>,
+               DequantizeConverter<TFL::FullyConnectedOp>,
+               DequantizeConverter<TFL::TransposeConvOp>>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

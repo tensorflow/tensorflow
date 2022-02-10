@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bits.h"
 
 // Used by rank 2+ operands
 const uint64_t kTpuLaneTiling = 128;
@@ -230,11 +229,11 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 }
 
 inline uint32_t log2_floor(uint64_t value) {
-  return value == 0 ? 0 : tensorflow::Log2Floor64(value);
+  return value == 0 ? 0 : Log2Floor(value);
 }
 
 inline uint32_t log2_ceil(uint64_t value) {
-  return value == 0 ? 0 : tensorflow::Log2Ceiling64(value);
+  return value == 0 ? 0 : Log2Ceiling(value);
 }
 
 StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(

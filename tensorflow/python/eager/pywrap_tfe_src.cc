@@ -4004,7 +4004,7 @@ namespace {
 // object currently active. This object is opaque and wrapped inside a Python
 // Capsule. However, the EagerContext object it holds is tracked by the
 // global_c_eager_context object.
-// Also see eager_context.cc.
+// Also see common_runtime/eager/context.cc.
 PyObject* global_py_eager_context = nullptr;
 }  // namespace
 

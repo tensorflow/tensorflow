@@ -92,7 +92,7 @@ CreateConvertReferenceVariableToResourceVariablePass();
 // reusing the pass logic in a custom pass with additional conversions.
 mlir::LogicalResult TFSavedModelToCoreRTConversionPassRun(
     mlir::MLIRContext* context, mlir::FuncOp func,
-    mlir::ConversionTarget* target, mlir::OwningRewritePatternList* patterns,
+    mlir::ConversionTarget* target, mlir::RewritePatternSet* patterns,
     CoreRTConverter* corert_converter);
 
 // Create an operation pass that converts each tfrt_dist.remote_execute_func op
@@ -108,7 +108,8 @@ CreateRemoveDeviceAttributePass();
 
 // Create an operation pass that inserts corert.transfer op to make sure any
 // argument of any op is on the same device of the op itself.
-std::unique_ptr<mlir::FunctionPass> CreateCrossDeviceTransferPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateCrossDeviceTransferPass();
 
 struct TfrtPipelineOptions
     : public mlir::PassPipelineOptions<TfrtPipelineOptions> {

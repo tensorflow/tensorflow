@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <vector>

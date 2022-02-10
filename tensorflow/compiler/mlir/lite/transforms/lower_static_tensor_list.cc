@@ -1470,16 +1470,16 @@ void LowerStaticTensorListPass::runOnOperation() {
   target.addLegalOp<TFL::UnidirectionalSequenceRNNOp>();
   target.addLegalOp<TFL::BidirectionalSequenceLSTMOp>();
 
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   populateWithGenerated(patterns);
-  patterns.insert<ConvertConst, ConvertIdentity, ConvertTensorListGetItem,
-                  ConvertTensorListLength, ConvertTensorListPushBack,
-                  ConvertTensorListSetItem, ConvertTensorListStack,
-                  ConvertTensorListResize, ConvertWhile, ConvertWhileRegion,
-                  ConvertIf, ConvertReturn, ConvertYield>(context);
-  patterns.insert<ConvertEmptyTensorList, ConvertTensorListConcatV2,
-                  ConvertTensorListReserve>(
-      context, allow_tensorlist_pass_through, default_to_single_batch);
+  patterns.add<ConvertConst, ConvertIdentity, ConvertTensorListGetItem,
+               ConvertTensorListLength, ConvertTensorListPushBack,
+               ConvertTensorListSetItem, ConvertTensorListStack,
+               ConvertTensorListResize, ConvertWhile, ConvertWhileRegion,
+               ConvertIf, ConvertReturn, ConvertYield>(context);
+  patterns.add<ConvertEmptyTensorList, ConvertTensorListConcatV2,
+               ConvertTensorListReserve>(context, allow_tensorlist_pass_through,
+                                         default_to_single_batch);
   ModuleOp module = getOperation();
   if (!allow_tensorlist_pass_through) {
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {

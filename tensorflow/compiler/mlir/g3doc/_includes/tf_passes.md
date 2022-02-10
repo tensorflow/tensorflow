@@ -658,6 +658,12 @@ will be transformed into this functional operation
     then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
   } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
 ```
+### `-tf-replica-id-to-device-ordinal`: Set device ordinal with replica id
+This pass sets the device ordinal attribute of the ops using the replica id
+attribute. This is run immediately after the replica_to_island pass which
+sets the replica id attribute of these ops. Note for single chip usecase,
+the pass will check if there is one op and sets the device ordinal attribute
+to be zero.
 ### `-tf-replicate-invariant-op-hoisting`: Hoists replicate invariant operations out of replicate
 This pass looks for replicate invariant ops in a `tf_device.replicate` op
 region and hoists them out. It also makes `tf.Shape` ops replicate invariant

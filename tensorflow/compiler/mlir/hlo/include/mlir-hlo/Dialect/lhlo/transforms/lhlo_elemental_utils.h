@@ -35,7 +35,7 @@ class ParallelOp;
 
 namespace memref {
 class LoadOp;
-}
+}  // namespace memref
 
 namespace lmhlo {
 

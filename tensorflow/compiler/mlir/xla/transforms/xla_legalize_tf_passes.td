@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
+def LegalizeTF : Pass<"xla-legalize-tf", "mlir::FuncOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
   let description = [{
@@ -53,7 +53,7 @@ def LegalizeTF : FunctionPass<"xla-legalize-tf"> {
                            "shape::ShapeDialect", "StandardOpsDialect"];
 }
 
-def LegalizeTFNoFallback : FunctionPass<"xla-legalize-tf-no-fallback"> {
+def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::FuncOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
   let description = [{

@@ -5,8 +5,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     tf_http_archive(
         name = "dlpack",
-        strip_prefix = "dlpack-3efc489b55385936531a06ff83425b719387ec63",
-        sha256 = "b59586ce69bcf3efdbf3cf4803fadfeaae4948044e2b8d89cf912194cf28f233",
-        urls = tf_mirror_urls("https://github.com/dmlc/dlpack/archive/3efc489b55385936531a06ff83425b719387ec63.tar.gz"),
+        strip_prefix = "dlpack-790d7a083520398268d92d0bd61cf85dfa32ee98",
+        sha256 = "147cc89904375dcd0b0d664a2b72dfadbb02058800ad8cba84516094bc406208",
+        urls = tf_mirror_urls("https://github.com/dmlc/dlpack/archive/790d7a083520398268d92d0bd61cf85dfa32ee98.tar.gz"),
         build_file = "//third_party/dlpack:dlpack.BUILD",
     )

@@ -716,13 +716,49 @@ func @main(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
 
 // CHECK:  HloModule
 func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token> {
-  %0 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[[0,1], [0]], unit]} : (!mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
-  return %0 : tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
+  %0:3 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[0, 1], [0]]} : (!mhlo.token) -> (tensor<3x3xi32>, tensor<i1>, !mhlo.token)
+  %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3x3xi32>, tensor<i1>) -> tuple<tensor<3x3xi32>, tensor<i1>>
+  %2 = "mhlo.tuple"(%1, %0#2) : (tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
+
+  return %2 : tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
 }
 
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = token[] parameter(0)
-// CHECK:  ROOT %[[RESULT:.*]] = ((s32[3,3], pred[]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
+// CHECK:  [[INFEED:%.*]] = ((s32[3,3], pred[]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
+// CHECK:  [[GTE1:%.*]] = (s32[3,3], pred[]) get-tuple-element(((s32[3,3], pred[]), token[]) [[INFEED]]), index=0
+// CHECK:  [[GTE2:%.*]] = s32[3,3] get-tuple-element((s32[3,3], pred[]) [[GTE1]]), index=0
+// CHECK:  [[GTE3:%.*]] = pred[] get-tuple-element((s32[3,3], pred[]) [[GTE1]]), index=1
+// CHECK:  [[GTE4:%.*]] = token[] get-tuple-element(((s32[3,3], pred[]), token[]) [[INFEED]]), index=1
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: !mhlo.token) -> tensor<3x3xi32> {
+  %0:2 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[0,1]]} : (!mhlo.token) -> (tensor<3x3xi32>, !mhlo.token)
+  return %0#0 : tensor<3x3xi32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = token[] parameter(0)
+// CHECK:  [[INFEED:%.*]] = ((s32[3,3]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
+// CHECK:  [[GTE0:%.*]] = (s32[3,3]) get-tuple-element(((s32[3,3]), token[]) [[INFEED]]), index=0
+// CHECK:  ROOT [[GTE1:%.*]] = s32[3,3] get-tuple-element((s32[3,3]) [[GTE0]]), index=0
+// CHECK:  [[GTE2:%.*]] = token[] get-tuple-element(((s32[3,3]), token[]) [[INFEED]]), index=1
+
+// -----
+
+// CHECK:  HloModule
+
+func @main(%arg0: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout = [], xla_shape = "((), token[])"} : (!mhlo.token) -> !mhlo.token
+  return %0 : !mhlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = token[] parameter(0)
+// CHECK:  [[INFEED:%.*]] = ((), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
+// CHECK:   ROOT [[TOKEN:%.*]] = token[] get-tuple-element(((), token[]) [[INFEED]]), index=1
 
 // -----
 
@@ -772,8 +808,37 @@ func @main(%data: tensor<3xi32>, %token: !mhlo.token) -> !mhlo.token {
 
 // CHECK:  ENTRY
 // CHECK:  [[DATA:%.*]] = s32[3] parameter(0)
-// CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
-// CHECK:  ROOT %[[RESULT:.*]] = token[] outfeed(s32[3] [[DATA]], token[] [[TOKEN]]), outfeed_shape=s32[3]{0}, outfeed_config="foobar"
+// CHECK-DAG: [[DATATUPLE:%.*]] = (s32[3]) tuple(s32[3] [[DATA]])
+// CHECK-DAG:  [[TOKEN:%.*]] = token[] parameter(1)
+// CHECK:  ROOT %[[RESULT:.*]] = token[] outfeed((s32[3]) [[DATATUPLE]], token[] [[TOKEN]]), outfeed_shape=(s32[3]{0}), outfeed_config="foobar"
+
+// -----
+
+// CHECK:  HloModule
+func @main(%data1: tensor<3xi32>, %data2: tensor<3xi32>, %token: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.outfeed"(%data1, %data2,  %token) {outfeed_config = "foobar"} : (tensor<3xi32>, tensor<3xi32>, !mhlo.token) -> !mhlo.token
+  return %0 : !mhlo.token
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[DATA1:%.*]] = s32[3] parameter(0)
+// CHECK:  [[DATA2:%.*]] = s32[3] parameter(1)
+// CHECK-DAG:  [[TUPLE:%.*]] = (s32[3], s32[3]) tuple(s32[3] [[DATA1]], s32[3] [[DATA2]])
+// CHECK-DAG:  [[TOKEN:%.*]] = token[] parameter(2)
+// CHECK:  ROOT %[[RESULT:.*]] = token[] outfeed((s32[3], s32[3]) [[TUPLE]], token[] [[TOKEN]]), outfeed_shape=(s32[3]{0}, s32[3]{0}), outfeed_config="foobar"
+
+// -----
+
+// CHECK:  HloModule
+func @main(%token: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.outfeed"(%token) {outfeed_config = "foobar"} : (!mhlo.token) -> !mhlo.token
+  return %0 : !mhlo.token
+}
+
+// CHECK: ENTRY
+// CHECK-DAG:   [[EMPTY_TUPLE:%.*]] = () tuple()
+// CHECK-DAG:   [[TOKEN:%.*]] = token[] parameter(0)
+// CHECK:   ROOT [[RESULT:%.*]] = token[] outfeed(() [[EMPTY_TUPLE]], token[] [[TOKEN]]), outfeed_shape=(), outfeed_config="foobar"
 
 // -----
 
@@ -793,41 +858,63 @@ func @main(%arg: tensor<4x6xf32>, %pad: tensor<f32>) -> tensor<13x19xf32> {
 
 // CHECK:  HloModule
 func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
-  %0 = "mhlo.recv"(%token) {
+  %0:2 = "mhlo.recv"(%token) {
     channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },
     is_host_transfer = true
-  } : (!mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token>
-  return %0 : tuple<tensor<3x4xi32>, !mhlo.token>
+  } : (!mhlo.token) -> (tensor<3x4xi32>, !mhlo.token)
+  %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3x4xi32>, !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token>
+  return %1 : tuple<tensor<3x4xi32>, !mhlo.token>
 }
 
 // CHECK:  ENTRY
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
 // CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5, is_host_transfer=true
-// CHECK:  ROOT
-// CHECK-SAME:  (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5, is_host_transfer=true
+// CHECK:  (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5, is_host_transfer=true
 
 // -----
 
 // CHECK:  HloModule
 func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
+  %0:2 = "mhlo.recv"(%token) {
+    channel_handle = {
+      handle = 5 : i64,
+      type = 1 : i64  // Device to device channel
+    },
+    is_host_transfer = false
+  } : (!mhlo.token) -> (tensor<3x4xi32>, !mhlo.token)
+  %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3x4xi32>, !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token>
+  return %1 : tuple<tensor<3x4xi32>, !mhlo.token>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
+// CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5
+// CHECK:  (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5
+
+
+// -----
+
+// CHECK:  HloModule
+func @main(%token: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.recv"(%token) {
     channel_handle = {
       handle = 5 : i64,
       type = 1 : i64  // Device to device channel
     },
     is_host_transfer = false
-  } : (!mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token>
-  return %0 : tuple<tensor<3x4xi32>, !mhlo.token>
+  } : (!mhlo.token) -> (!mhlo.token)
+  return %0 : !mhlo.token
 }
 
 // CHECK:  ENTRY
-// CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
-// CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5
-// CHECK:  ROOT
-// CHECK-SAME:  (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5
+// CHECK-NEXT:  [[ARG:%.*]] = token[] parameter(0)
+// CHECK-NEXT:  [[RECV:%.*]] = ((), u32[], token[]) recv(token[] [[ARG]]), channel_id=5
+// CHECK-NEXT:  [[RECV_DONE:%.*]] = ((), token[]) recv-done(((), u32[], token[]) [[RECV]]), channel_id=5
+// CHECK-NEXT:  [[DATA:%.*]] =   () get-tuple-element(((), token[]) [[RECV_DONE]]), index=0
+// CHECK-NEXT:  ROOT [[TOKEN:%.*]] =   token[] get-tuple-element(((), token[]) [[RECV_DONE]]), index=1
 
 
 // -----
@@ -1061,6 +1148,27 @@ func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
 // CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send(s32[3,4] [[ARG]], token[] [[TOKEN]]), channel_id=5
 // CHECK:  ROOT
 // CHECK-SAME:  token[] send-done((s32[3,4], u32[], token[]) [[SEND]]), channel_id=5
+
+// -----
+
+// CHECK:  HloModule
+func @main(%token: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.send"(%token) {
+    channel_handle = {
+      handle = 5 : i64,
+      type = 1 : i64
+    },
+    is_host_transfer = false
+  } : (!mhlo.token) -> !mhlo.token
+  return %0 : !mhlo.token
+}
+
+// CHECK: ENTRY
+// CHECK-DAG:   [[ARG:%.*]] = () tuple()
+// CHECK-DAG:   [[TOKEN:%.*]] = token[] parameter(0)
+// CHECK:   [[SEND:%.*]] = ((), u32[], token[]) send(() [[ARG]], token[] [[TOKEN]]), channel_id=5
+// CHECK:  ROOT
+// CHECK-SAME:   token[] send-done(((), u32[], token[]) [[SEND]]), channel_id=5
 
 // -----
 
@@ -1314,8 +1422,9 @@ func @main(%arg0: tensor<4xi32>) -> tensor<*xi32> {
 // CHECK:  HloModule
 func @main(%arg: tensor<3x4xf32>, %token: !mhlo.token) -> tuple<tensor<3x4xf32>, !mhlo.token> {
   %0 = "mhlo.send"(%arg, %token) {channel_handle = {handle = 1 : i64, type = 2 : i64}, is_host_transfer = true, mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_dtoh_0"}} : (tensor<3x4xf32>, !mhlo.token) -> !mhlo.token
-  %1 = "mhlo.recv"(%0) {channel_handle = {handle = 2 : i64, type = 3 : i64}, is_host_transfer = true, mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_htod_0"}} : (!mhlo.token) -> tuple<tensor<3x4xf32>, !mhlo.token>
-  return %1 : tuple<tensor<3x4xf32>, !mhlo.token>
+  %1:2 = "mhlo.recv"(%0) {channel_handle = {handle = 2 : i64, type = 3 : i64}, is_host_transfer = true, mhlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_htod_0"}} : (!mhlo.token) -> (tensor<3x4xf32>, !mhlo.token)
+  %2 = "mhlo.tuple"(%1#0, %1#1) : (tensor<3x4xf32>, !mhlo.token) -> tuple<tensor<3x4xf32>, !mhlo.token>
+  return %2 : tuple<tensor<3x4xf32>, !mhlo.token>
 }
 
 // CHECK:  ENTRY
@@ -1325,7 +1434,7 @@ func @main(%arg: tensor<3x4xf32>, %token: !mhlo.token) -> tuple<tensor<3x4xf32>,
 // CHECK-SAME: frontend_attributes={_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="channel_dtoh_0"}
 // CHECK:  %[[RECV:.*]] = (f32[3,4], u32[], token[]) recv(token[] %[[SEND_DONE]])
 // CHECK-SAME: frontend_attributes={_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="channel_htod_0"}
-// CHECK:  ROOT %{{.*}} = (f32[3,4], token[]) recv-done((f32[3,4], u32[], token[]) %[[RECV]])
+// CHECK:  %{{.*}} = (f32[3,4], token[]) recv-done((f32[3,4], u32[], token[]) %[[RECV]])
 // CHECK-SAME: frontend_attributes={_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="channel_htod_0"}
 
 // -----

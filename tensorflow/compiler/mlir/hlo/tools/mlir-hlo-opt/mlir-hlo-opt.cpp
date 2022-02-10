@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -31,6 +32,7 @@ int main(int argc, char **argv) {
   mlir::lmhlo::registerAllLmhloPasses();
   mlir::hlo::registerAllHloPasses();
   mlir::gml_st::registerGmlStPasses();
+  mlir::gml_st::registerGmlStTestPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

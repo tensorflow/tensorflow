@@ -518,7 +518,7 @@ func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
 // CHECK: linalg.init_tensor [2, 2] : tensor<2x2xf32>
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[PRED_IN:.*]]: i1, %[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %{{.*}}: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = select %[[PRED_IN]], %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.select %[[PRED_IN]], %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -542,7 +542,7 @@ func @select_scalar_pred_dyn(%pred : tensor<i1>, %lhs: tensor<2x?xf32>, %rhs: te
 // CHECK-SAME:   outs(%[[DST]] : tensor<2x?xf32>)
 // CHECK-SAME:   {someattr}
 // CHECK:      ^bb0(%[[PRED_:.*]]: i1, %[[LHS_:.*]]: f32, %[[RHS_:.*]]: f32, %{{.*}}: f32):
-// CHECK:        %[[RES:.*]] = select %[[PRED_]], %[[LHS_]], %[[RHS_]] : f32
+// CHECK:        %[[RES:.*]] = arith.select %[[PRED_]], %[[LHS_]], %[[RHS_]] : f32
 // CHECK:        linalg.yield %[[RES]]
 
 // -----
@@ -654,18 +654,6 @@ func @broadcast_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> {
 
 // -----
 
-// CHECK-LABEL: @get_dim_size
-func @get_dim_size(%arg0: tensor<?xi32>) -> tensor<i32> {
-  // CHECK: %[[IDX:.+]] = arith.constant 0
-  // CHECK: %[[DIM:.+]] = tensor.dim %arg0, %[[IDX]]
-  // CHECK: %[[CAST:.+]] = arith.index_cast %[[DIM]]
-  // CHECK: %[[TENSOR:.+]] = tensor.from_elements %[[CAST]]
-  %0 = "mhlo.get_dimension_size"(%arg0) { dimension = 0 : i64 } : (tensor<?xi32>) -> tensor<i32>
-  return %0 : tensor<i32>
-}
-
-// -----
-
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d0, d3, d2)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 // CHECK-LABEL: func @transpose
@@ -705,6 +693,69 @@ func @transpose_dynamic(%arg0: tensor<?x?x9x?xi32>) -> tensor<?x?x?x9xi32> {
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
 // CHECK-SAME: ins(%arg0 : tensor<?x?x9x?xi32>) outs(%[[INIT]] : tensor<?x?x?x9xi32>)
 // CHECK-SAME: {someattr}
+
+// -----
+
+// CHECK-LABEL: func @real_dynamic_slice
+// CHECK-SAME: (%[[OPERAND:.*]]: tensor<256x?xf32>, %[[START_INDICES:.*]]: tensor<2xindex>, %[[LIMIT_INDICES:.*]]: tensor<2xindex>, %[[STRIDES:.*]]: tensor<2xindex>)
+func @real_dynamic_slice(%input: tensor<256x?xf32>, %start_indices: tensor<2xindex>, %limit_indices: tensor<2xindex>, %strides: tensor<2xindex>) -> tensor<256x?xf32> {
+  %0 = "mhlo.real_dynamic_slice"(%input, %start_indices, %limit_indices, %strides) : (tensor<256x?xf32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<256x?xf32>
+  return %0 : tensor<256x?xf32>
+}
+// CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0 : i64
+
+// 1.   For dimension 0.
+// CHECK-NEXT: %[[DIM0:.*]] = arith.constant 0 : index
+
+// 1.1. Fetch start index, limit index and stride.
+// CHECK-NEXT: %[[START0:.*]] = tensor.extract %[[START_INDICES]][%[[DIM0]]] : tensor<2xindex>
+// CHECK-NEXT: %[[LIMIT0:.*]] = tensor.extract %[[LIMIT_INDICES]][%[[DIM0]]] : tensor<2xindex>
+// CHECK-NEXT: %[[STRIDE0:.*]] = tensor.extract %[[STRIDES]][%[[DIM0]]] : tensor<2xindex>
+
+// 1.2. Since 0-th dimension size of the result is known, we set it as size[0]
+// CHECK-NEXT: %[[SIZE0:.*]] = arith.constant 256 : index
+
+// 1.3. Compute upper bound for starting index = operand_dim[0] - size[0].
+//      where, size[0] is computed at step 1.2
+// CHECK-NEXT: %[[OPERAND_DIM0:.*]] = arith.constant 256 : index
+// CHECK-NEXT: %[[UB:.*]] = arith.constant 0 : index
+
+// 1.4. Clamp starting index : 0 <= start <= ub
+//      where upper bound (ub) is computed at step 1.3
+// CHECK-NEXT: %[[START0_Int:.*]] = arith.index_cast %[[START0]] : index to i64
+// CHECK-NEXT: %[[UB0:.*]] = arith.index_cast %[[UB]] : index to i64
+// CHECK-NEXT: %[[MIN0:.*]] = arith.minsi %[[START0_Int]], %[[UB0]] : i64
+// CHECK-NEXT: %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[ZERO]] : i64
+// CHECK-NEXT: %[[CLAMPED_START0:.*]] = arith.index_cast %[[MAX0]] : i64 to index
+
+// 2.   For dimension 1.
+// CHECK-NEXT: %[[DIM1:.*]] = arith.constant 1 : index
+
+// 2.1. Fetch start index, limit index and stride.
+// CHECK-NEXT: %[[START1:.*]] = tensor.extract %[[START_INDICES]][%[[DIM1]]] : tensor<2xindex>
+// CHECK-NEXT: %[[LIMIT1:.*]] = tensor.extract %[[LIMIT_INDICES]][%[[DIM1]]] : tensor<2xindex>
+// CHECK-NEXT: %[[STRIDE1:.*]] = tensor.extract %[[STRIDES]][%[[DIM1]]] : tensor<2xindex>
+
+// 2.2. Since 1-th dimension of result is unknown we compute result size at 1-th
+//      dimension as size[1] = (limit - start)/stride
+// CHECK-NEXT: %[[DELTA1:.*]] = arith.subi %[[LIMIT1]], %[[START1]] : index
+// CHECK-NEXT: %[[SIZE1:.*]] = arith.ceildivui %[[DELTA1]], %[[STRIDE1]] : index
+
+// 2.3. Compute upper bound for starting index = operand_dim[1] - size[1].
+//      where, size[1] is computed at step 2.2
+// CHECK-NEXT: %[[OPERAND_DIM1:.*]] = tensor.dim %[[OPERAND]], %[[DIM1]] : tensor<256x?xf32>
+// CHECK-NEXT: %[[UB:.*]] = arith.subi %[[OPERAND_DIM1]], %[[SIZE1]] : index
+
+// 2.4. Clamp starting index : 0 <= start <= ub
+//      where upper bound (ub) is computed at step 2.3
+// CHECK-NEXT: %[[START1_Int:.*]] = arith.index_cast %[[START1]] : index to i64
+// CHECK-NEXT: %[[UB1:.*]] = arith.index_cast %[[UB]] : index to i64
+// CHECK-NEXT: %[[MIN1:.*]] = arith.minsi %[[START1_Int]], %[[UB1]] : i64
+// CHECK-NEXT: %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[ZERO]] : i64
+// CHECK-NEXT: %[[CLAMPED_START1:.*]] = arith.index_cast %[[MAX1]] : i64 to index
+
+// CHECK-NEXT: %[[SLICE:.*]] = tensor.extract_slice %[[OPERAND]][%[[CLAMPED_START0]], %[[CLAMPED_START1]]] [256, %[[SIZE1]]] [%[[STRIDE0]], %[[STRIDE1]]] : tensor<256x?xf32> to tensor<256x?xf32>
+// CHECK-NEXT: return %[[SLICE]] : tensor<256x?xf32>
 
 // -----
 
@@ -1402,7 +1453,7 @@ func @integer_pow(%lhs: tensor<2x2xi32>,
   //   CHECK: %[[AND:[a-zA-Z0-9_]*]] = arith.andi %[[ITER2]], %c1
   //   CHECK: %[[COND:[a-zA-Z0-9_]*]] = arith.cmpi eq, %[[AND]], %c1
   //   CHECK: %[[MUL:[a-zA-Z0-9_]*]] = arith.muli %[[ITER0]], %[[ITER1]]
-  //   CHECK: %[[ACCUM:[a-zA-Z0-9_]*]] = select %[[COND]], %[[MUL]], %[[ITER0]]
+  //   CHECK: %[[ACCUM:[a-zA-Z0-9_]*]] = arith.select %[[COND]], %[[MUL]], %[[ITER0]]
   //   CHECK: %[[BASE:[a-zA-Z0-9_]*]] = arith.muli %[[ITER1]], %[[ITER1]]
   //   CHECK: %[[EXP:[a-zA-Z0-9_]*]] = arith.shrui %[[ITER2]], %c1
   //   CHECK: scf.yield %[[ACCUM]], %[[BASE]], %[[EXP]]
@@ -1411,10 +1462,10 @@ func @integer_pow(%lhs: tensor<2x2xi32>,
   // CHECK: %[[RHS_NEG:.*]] = arith.cmpi slt, %[[ARG1]], %c0
   // CHECK: %[[LHS_ONE:.*]] = arith.cmpi eq, %[[ARG0]], %c1
   // CHECK: %[[LHS_NEG_ONE:.*]] = arith.cmpi eq, %[[ARG0]], %c-1
-  // CHECK: %[[VAL5:.*]] = select %[[LHS_ONE]], %c1_i32, %c0
-  // CHECK: %[[VAL6:.*]] = select %[[RHS_EVEN]], %c1{{.*}}, %c-1
-  // CHECK: %[[VAL7:.*]] = select %[[LHS_NEG_ONE]], %[[VAL6]], %[[VAL5]]
-  // CHECK: %[[RESULT:.*]] = select %[[RHS_NEG]], %[[VAL7]], %[[FOR_RESULT]]#0
+  // CHECK: %[[VAL5:.*]] = arith.select %[[LHS_ONE]], %c1_i32, %c0
+  // CHECK: %[[VAL6:.*]] = arith.select %[[RHS_EVEN]], %c1{{.*}}, %c-1
+  // CHECK: %[[VAL7:.*]] = arith.select %[[LHS_NEG_ONE]], %[[VAL6]], %[[VAL5]]
+  // CHECK: %[[RESULT:.*]] = arith.select %[[RHS_NEG]], %[[VAL7]], %[[FOR_RESULT]]#0
   // CHECK: linalg.yield %[[RESULT]]
   %0 = "mhlo.power"(%lhs, %rhs) : (tensor<2x2xi32>,
                                    tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -2235,11 +2286,11 @@ func @variadic_reduce(%arg0: tensor<9x2xi32>, %arg1: tensor<9x2xi32>) -> (tensor
 // CHECK-SAME:    outs(%[[FILL0]], %[[FILL1]] : tensor<2xi32>, tensor<2xi32>)
 // CHECK-NEXT:   ^bb0(%[[IN0:.*]]: i32, %[[IN1:.*]]: i32, %[[OUT0:.*]]: i32, %[[OUT1:.*]]: i32):
 // CHECK-NEXT:     %[[T1:.*]] = arith.cmpi sge, %[[IN0]], %[[OUT0]] : i32
-// CHECK-NEXT:     %[[T2:.*]] = select %[[T1]], %[[IN0]], %[[OUT0]] : i32
+// CHECK-NEXT:     %[[T2:.*]] = arith.select %[[T1]], %[[IN0]], %[[OUT0]] : i32
 // CHECK-NEXT:     %[[T3:.*]] = arith.cmpi eq, %[[IN0]], %[[OUT0]] : i32
 // CHECK-NEXT:     %[[T4:.*]] = arith.minsi %[[IN1:.*]], %[[OUT1]] : i32
-// CHECK-NEXT:     %[[T5:.*]] = select %[[T1]], %[[IN1]], %[[OUT1]] : i32
-// CHECK-NEXT:     %[[T6:.*]] = select %[[T3]], %[[T4]], %[[T5]] : i32
+// CHECK-NEXT:     %[[T5:.*]] = arith.select %[[T1]], %[[IN1]], %[[OUT1]] : i32
+// CHECK-NEXT:     %[[T6:.*]] = arith.select %[[T3]], %[[T4]], %[[T5]] : i32
 // CHECK-NEXT:     linalg.yield %[[T2]], %[[T6]]
 
 // -----
@@ -2274,8 +2325,8 @@ func @variadic_diff_type_reduce(%arg0: tensor<128x10xf32>, %arg1: tensor<128x10x
 // CHECK-SAME:    outs(%[[FILL0]], %[[FILL1]] : tensor<128xf32>, tensor<128xi32>)
 // CHECK-NEXT:   ^bb0(%[[LHS0:.*]]: f32, %[[LHS1:.*]]: i32, %[[RHS0:.*]]: f32, %[[RHS1:.*]]: i32):
 // CHECK-NEXT:      %[[B0:.*]] = arith.cmpf oge, %[[LHS0]], %[[RHS0]] : f32
-// CHECK-NEXT:      %[[RES0:.*]] = select %[[B0]], %[[LHS0]], %[[RHS0]] : f32
-// CHECK-NEXT:      %[[RES1:.*]] = select %[[B0]], %[[LHS1]], %[[RHS1]] : i32
+// CHECK-NEXT:      %[[RES0:.*]] = arith.select %[[B0]], %[[LHS0]], %[[RHS0]] : f32
+// CHECK-NEXT:      %[[RES1:.*]] = arith.select %[[B0]], %[[LHS1]], %[[RHS1]] : i32
 // CHECK-NEXT:      linalg.yield %[[RES0]], %[[RES1]] : f32, i32
 
 // -----
@@ -3931,7 +3982,7 @@ func @scatter_update_scalar(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
 // CHECK:           %[[CMP_IDX:.*]] = linalg.index 0 : index
 // CHECK:           %[[IDX:.*]] = arith.index_cast %[[IDX_I32]] : i32 to index
 // CHECK:           %[[PRED:.*]] = arith.cmpi eq, %[[CMP_IDX]], %[[IDX]] : index
-// CHECK:           %[[SELECT:.*]] = select %[[PRED]], %[[UPDATE]], %[[OUT]] : i32
+// CHECK:           %[[SELECT:.*]] = arith.select %[[PRED]], %[[UPDATE]], %[[OUT]] : i32
 // CHECK:           linalg.yield %[[SELECT]] : i32
 // CHECK:         } -> tensor<3xi32>
 // CHECK:         return %[[RES]] : tensor<3xi32>
@@ -3971,7 +4022,7 @@ func @scatter_update_slice(%arg0: tensor<6x3xi32>, %arg1: tensor<2x1xi32>,
 // CHECK:           %[[CMP_IDX:.*]] = linalg.index 0 : index
 // CHECK:           %[[IDX:.*]] = arith.index_cast %[[IDX_I32]] : i32 to index
 // CHECK:           %[[PRED:.*]] = arith.cmpi eq, %[[CMP_IDX]], %[[IDX]] : index
-// CHECK:           %[[SELECT:.*]] = select %[[PRED]], %[[UPDATE]], %[[OUT]] : i32
+// CHECK:           %[[SELECT:.*]] = arith.select %[[PRED]], %[[UPDATE]], %[[OUT]] : i32
 // CHECK:           linalg.yield %[[SELECT]] : i32
 // CHECK:         } -> tensor<6x3xi32>
 // CHECK:         return %[[RES]] : tensor<6x3xi32>

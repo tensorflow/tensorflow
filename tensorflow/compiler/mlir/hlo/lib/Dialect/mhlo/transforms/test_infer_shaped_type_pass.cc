@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
@@ -90,10 +92,13 @@ struct TestInferShapedTypeMethodsPass
     registry.insert<shape::ShapeDialect>();
   }
   void runOnOperation() override {
-    OwningRewritePatternList patterns(&getContext());
-    patterns.insert<ReifyReturnTypeShapesPattern>(&getContext());
-    patterns.insert<InferReturnTypeComponentsPattern>(&getContext());
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    RewritePatternSet patterns(&getContext());
+    patterns.add<ReifyReturnTypeShapesPattern>(&getContext());
+    patterns.add<InferReturnTypeComponentsPattern>(&getContext());
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 

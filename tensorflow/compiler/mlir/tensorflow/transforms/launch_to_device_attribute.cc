@@ -31,7 +31,7 @@ constexpr char kDeviceAttr[] = "device";
 
 struct LaunchToDeviceAttributePass
     : public LaunchToDeviceAttributePassBase<LaunchToDeviceAttributePass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Assign all ops in region with specified device from launch.
@@ -90,7 +90,7 @@ LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
   return success();
 }
 
-void LaunchToDeviceAttributePass::runOnFunction() {
+void LaunchToDeviceAttributePass::runOnOperation() {
   const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     getOperation().emitError() << "'tf' dialect is not registered";

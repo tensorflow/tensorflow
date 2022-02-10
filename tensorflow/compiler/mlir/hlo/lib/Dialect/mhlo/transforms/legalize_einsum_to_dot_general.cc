@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -105,16 +107,19 @@ struct LegalizeEinsumToDotGeneralPass
     : public LegalizeEinsumToDotGeneralPassBase<
           LegalizeEinsumToDotGeneralPass> {
   void runOnOperation() override {
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     PopulateEinsumToDotGeneralPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 }  // namespace
 
 void PopulateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
-                                        OwningRewritePatternList *patterns) {
-  patterns->insert<EinsumToDotGeneralPattern>(context);
+                                        RewritePatternSet *patterns) {
+  patterns->add<EinsumToDotGeneralPattern>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeEinsumToDotGeneralPass() {

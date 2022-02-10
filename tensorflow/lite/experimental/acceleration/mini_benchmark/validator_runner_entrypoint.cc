@@ -93,7 +93,7 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
         }
 
         tflite_settings.nnapi_settings->support_library_handle =
-            reinterpret_cast<uint64_t>(nnapi_sl_handle.get());
+            reinterpret_cast<uint64_t>(nnapi_sl_handle->getFL5());
       }
 
       flatbuffers::FlatBufferBuilder fbb;

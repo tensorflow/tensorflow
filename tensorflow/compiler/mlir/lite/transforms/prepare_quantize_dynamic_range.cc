@@ -76,7 +76,8 @@ using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 // This pass runs before the quantization pass and apply preprocess if
 // applicable.
 class PrepareDynamicRangeQuantizePass
-    : public PassWrapper<PrepareDynamicRangeQuantizePass, FunctionPass> {
+    : public PassWrapper<PrepareDynamicRangeQuantizePass,
+                         OperationPass<FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<TensorFlowLiteDialect, ::mlir::quant::QuantizationDialect>();
@@ -115,7 +116,7 @@ class PrepareDynamicRangeQuantizePass
   // method preprocess the function to remove all stats ops.
   void removeAllStatsOp(FuncOp func);
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   QuantizationSpecs quant_specs_;
@@ -410,7 +411,7 @@ class PrepareDynamicRangeQuantizableOp
       // old ConstantOp is guaranteed to have one F32->F16 cast regardless of
       // its number of users.
       rewriter.setInsertionPointAfter(op);
-      auto new_const = rewriter.create<ConstantOp>(
+      auto new_const = rewriter.create<arith::ConstantOp>(
           op->getLoc(), new_result_type, new_value_attr);
       auto dq = rewriter.create<DQ>(op->getLoc(), old_result_type, new_const);
       cast_op->replaceAllUsesWith(dq);
@@ -434,15 +435,15 @@ void PrepareDynamicRangeQuantizePass::removeAllStatsOp(FuncOp func) {
   });
 }
 
-void PrepareDynamicRangeQuantizePass::runOnFunction() {
-  FuncOp func = getFunction();
+void PrepareDynamicRangeQuantizePass::runOnOperation() {
+  FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
   ConvertTFLQuantOpsToMlirQuantOps(func);
   removeAllStatsOp(func);
 
-  OwningRewritePatternList patterns(&getContext());
-  patterns.insert<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
+  RewritePatternSet patterns(&getContext());
+  patterns.add<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   ConvertMlirQuantOpsToTFLQuantOps(func);

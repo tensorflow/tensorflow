@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -487,6 +488,70 @@ outputs: A TensorList of embedding activations containing one Tensor per
 num_tables: The number of output activation tensors. If feature descriptor is
     present in the tpu embedding config, it is equal to the number of features
     otherwise equal to number of embedding tables in the model.
+config: Serialized TPUEmbeddingConfiguration proto.
+)doc");
+
+REGISTER_OP("_SendTPUEmbeddingGradients")
+    .Input("gradients: NumTables * float32")
+    .Input("learning_rates: NumLearningRateTags * float32")
+    .Input("deduplication_data: variant")
+    .Attr("NumTables: int >= 1")
+    .Attr("NumLearningRateTags: int >= 0 = 0")
+    .Attr("config: string")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+      int learning_rate_tag_count;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("NumLearningRateTags", &learning_rate_tag_count));
+      std::vector<shape_inference::ShapeHandle> learning_rates;
+      TF_RETURN_IF_ERROR(c->input("learning_rates", &learning_rates));
+      for (int i = 0; i < learning_rate_tag_count; ++i) {
+        // Verify that each learning_rates element is scalar
+        shape_inference::ShapeHandle learning_rates_shape;
+        TF_RETURN_IF_ERROR(
+            c->WithRank(learning_rates[i], 0, &learning_rates_shape));
+      }
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+An op that performs gradient updates of embedding tables.
+
+The gradients argument is a TensorList having the same length and shapes as the
+return value of _RecvTPUEmbeddingActivations, but contains gradients of the
+model's loss with respect to the embedding activations. The embedding tables are
+updated from these gradients via the optimizer specified in the
+TPUEmbeddingConfiguration proto given to tpu.initialize_system.
+
+gradients: A TensorList of gradients with which to update embedding tables.
+learning_rates: A TensorList of learning rates used for updating the embedding
+    tables via the optimizer. The length of the TensorList must be equal to the
+    number of dynamic learning rate tags specified in the
+    TPUEmbeddingConfiguration proto.
+deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
+    data. The tensor is an XLA nested tuple containing N elements (where N is
+    the ratio of the number of embedding to tensor cores per TPU chip). Each
+    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+    contains indices (DT_UINT32) for embedding lookup on the TensorCore or
+    weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
+config: Serialized TPUEmbeddingConfiguration proto.
+)doc");
+
+REGISTER_OP("_RecvTPUEmbeddingDeduplicationData")
+    .Output("output: variant")
+    .Attr("config: string")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(R"doc(
+Receives deduplication data (indices and weights) from the embedding core.
+
+The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
+XLA nested tuple containing N elements (where N is the ratio of the number of
+embedding to tensor cores per TPU chip). Each element of the nested tuple is a
+tuple of rank 1 tensors. Each tensor either contains indices (DT_UINT32) for
+embedding lookup on the TensorCore or weights (DT_FLOAT) to apply to the output
+of the embedding lookup operation.
+
 config: Serialized TPUEmbeddingConfiguration proto.
 )doc");
 

@@ -58,6 +58,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_c_runner_utils",
+        "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
@@ -204,9 +205,9 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
-    name = "sum_1d_op_benchmark",
+    name = "sum_full_op_benchmark",
     testonly = 1,
-    srcs = ["sum_1d_op_benchmark.cc"],
+    srcs = ["sum_full_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([
@@ -221,43 +222,9 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
-    name = "sum_2d_op_benchmark",
+    name = "sum_transposed_op_benchmark",
     testonly = 1,
-    srcs = ["sum_2d_op_benchmark.cc"],
-    # Args() not supported. Enable when we got rid of tf benchmark and use the
-    # standard gunit benchmark.
-    tags = if_oss([
-        "no_oss",
-        "manual",
-    ]),
-    deps = [
-        ":benchmark",
-        ":benchmark_mlir_function",
-        ":reduction_benchmark",
-    ],
-)
-
-tf_cc_binary(
-    name = "sum_4d_op_benchmark",
-    testonly = 1,
-    srcs = ["sum_4d_op_benchmark.cc"],
-    # Args() not supported. Enable when we got rid of tf benchmark and use the
-    # standard gunit benchmark.
-    tags = if_oss([
-        "no_oss",
-        "manual",
-    ]),
-    deps = [
-        ":benchmark",
-        ":benchmark_mlir_function",
-        ":reduction_benchmark",
-    ],
-)
-
-tf_cc_binary(
-    name = "sum_3d_op_benchmark",
-    testonly = 1,
-    srcs = ["sum_3d_op_benchmark.cc"],
+    srcs = ["sum_transposed_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([

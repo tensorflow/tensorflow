@@ -230,7 +230,7 @@ struct ShapeSimplification
     registry.insert<tensor::TensorDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(&getContext());
 
@@ -239,11 +239,10 @@ struct ShapeSimplification
         op.getCanonicalizationPatterns(patterns, context);
     }
 
-    patterns.insert<BroadcastRemoveSubsumedOperandsPattern,
-                    ExtractFromBroadcastedTensorCanonicalizationPattern>(
-        context);
+    patterns.add<BroadcastRemoveSubsumedOperandsPattern,
+                 ExtractFromBroadcastedTensorCanonicalizationPattern>(context);
 
-    auto func = getFunction();
+    auto func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       return signalPassFailure();
   }
@@ -251,7 +250,7 @@ struct ShapeSimplification
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateShapeSimplification() {
+std::unique_ptr<OperationPass<FuncOp>> CreateShapeSimplification() {
   return std::make_unique<ShapeSimplification>();
 }
 

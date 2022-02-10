@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -52,18 +53,19 @@ class LowerComplexPass : public LowerComplexPassBase<LowerComplexPass> {
 // Lowers the complex operations that can be represented using other operations.
 void LowerComplexPass::runOnOperation() {
   // Add lowering patterns to the list.
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
-  (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    return signalPassFailure();
 }
 
 }  // end anonymous namespace
 }  // end namespace mhlo
 }  // end namespace mlir
 
-void mlir::mhlo::PopulateComplexLoweringPatterns(
-    MLIRContext* /*context*/, OwningRewritePatternList* patterns) {
+void mlir::mhlo::PopulateComplexLoweringPatterns(MLIRContext* /*context*/,
+                                                 RewritePatternSet* patterns) {
   populateWithGenerated(*patterns);
 }
 

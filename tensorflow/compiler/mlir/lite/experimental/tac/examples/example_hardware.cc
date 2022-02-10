@@ -24,12 +24,12 @@ namespace tac {
 
 constexpr char ExampleHardware::kId[];  // Define kId.
 
-mlir::OwningRewritePatternList ExampleHardware::GetTransformations(
+mlir::RewritePatternSet ExampleHardware::GetTransformations(
     MLIRContext* context) const {
-  mlir::OwningRewritePatternList patterns(context);
+  mlir::RewritePatternSet patterns(context);
 
-  patterns.insert<LowerPackIntoConcatReshape, UnrollSplit, UnrollSplitV,
-                  PadSlice, PadConcat>(context);
+  patterns.add<LowerPackIntoConcatReshape, UnrollSplit, UnrollSplitV, PadSlice,
+               PadConcat>(context);
   return patterns;
 }
 

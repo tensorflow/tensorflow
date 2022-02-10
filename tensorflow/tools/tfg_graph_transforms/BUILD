@@ -4,7 +4,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = ["//tensorflow/tools/tfg_graph_transforms:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -82,6 +82,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:lib",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/transforms:PassRegistration",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -96,6 +97,7 @@ cc_library(
     srcs = [
         "tfg_graph_transforms_main.cc",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":export",
         ":import",
@@ -104,6 +106,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:lib",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/transforms:PassRegistration",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

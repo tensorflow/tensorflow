@@ -53,10 +53,12 @@ using tensorflow::AttrValue;
 using tensorflow::DT_BOOL;
 using tensorflow::DT_COMPLEX64;
 using tensorflow::DT_FLOAT;
+using tensorflow::DT_INT16;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
 using tensorflow::DT_QUINT8;
 using tensorflow::DT_STRING;
+using tensorflow::DT_UINT16;
 using tensorflow::DT_UINT32;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
@@ -184,6 +186,10 @@ ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
     return ArrayDataType::kFloat;
   else if (dtype == DT_BOOL)
     return ArrayDataType::kBool;
+  else if (dtype == DT_INT16)
+    return ArrayDataType::kInt16;
+  else if (dtype == DT_UINT16)
+    return ArrayDataType::kUint16;
   else if (dtype == DT_INT32)
     return ArrayDataType::kInt32;
   else if (dtype == DT_UINT32)

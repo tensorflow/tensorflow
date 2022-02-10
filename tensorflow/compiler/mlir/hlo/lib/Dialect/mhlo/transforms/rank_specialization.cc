@@ -26,6 +26,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -608,10 +610,11 @@ Value RecusivelyMaterializeTargetRankSpecializationCases(
   // If only a unique target rank is left, we can lower to an assert instead
   // of the usual if operation.
   if (min_target_rank == max_target_rank) {
-    b.create<AssertOp>(loc, condition,
-                       "Input for dynamic binary or n-ary op lowering was of "
-                       "a rank greater than " +
-                           std::to_string(max_target_rank));
+    b.create<cf::AssertOp>(
+        loc, condition,
+        "Input for dynamic binary or n-ary op lowering was of "
+        "a rank greater than " +
+            std::to_string(max_target_rank));
     return MaterializeTargetRankSpecializationCase(b, loc, op, shapes,
                                                    min_target_rank);
   }
@@ -653,7 +656,7 @@ Value MaterializeGenericRankSpecializationCases(
     if (!max_rank) {
       max_rank = rank;
     } else {
-      max_rank = b.create<mlir::SelectOp>(
+      max_rank = b.create<mlir::arith::SelectOp>(
           loc,
           b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::sgt, max_rank,
                                   rank),
@@ -917,7 +920,7 @@ struct RankSpecializationToSCFPass
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, chlo::HloClientDialect,
-                    shape::ShapeDialect, scf::SCFDialect>();
+                    StandardOpsDialect, shape::ShapeDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {
@@ -934,17 +937,17 @@ struct RankSpecializationToSCFPass
 
 }  // namespace
 
-void PopulateRankSpecializationClusterPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns) {
-  patterns->insert<MergeRankSpecializationClusterOpsPattern,
-                   RankSpecializationClusterPattern>(context);
+void PopulateRankSpecializationClusterPatterns(MLIRContext *context,
+                                               RewritePatternSet *patterns) {
+  patterns->add<MergeRankSpecializationClusterOpsPattern,
+                RankSpecializationClusterPattern>(context);
 }
 
 void PopulateRankSpecializationToSCFPatterns(MLIRContext *context,
-                                             OwningRewritePatternList *patterns,
+                                             RewritePatternSet *patterns,
                                              int64_t max_target_rank) {
-  patterns->insert<LowerRankSpecializationClusterPattern>(context,
-                                                          max_target_rank);
+  patterns->add<LowerRankSpecializationClusterPattern>(context,
+                                                       max_target_rank);
   shape::BroadcastOp::getCanonicalizationPatterns(*patterns, context);
   shape::ShapeOfOp::getCanonicalizationPatterns(*patterns, context);
   shape::AnyOp::getCanonicalizationPatterns(*patterns, context);

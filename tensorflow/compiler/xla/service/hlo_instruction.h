@@ -1628,9 +1628,7 @@ class HloInstruction {
   bool IsElementwiseBinary() const;
 
   // Returns whether this instruction may reuse elements of its `i`th operand.
-  bool ReusesOperandElements(int64_t i) const {
-    return OperandElementUse(i) == UseKind::kReuse;
-  }
+  bool ReusesOperandElements(int64_t i) const;
 
   // Returns the indices that the given operand appear in the operand list of
   // this instruction. Note that an instruction can use the same operand
@@ -2072,38 +2070,6 @@ class HloInstruction {
   // Old methods kept for smooth subclassing transition END.
 
  protected:
-  // Indicates how an instruction uses a value (such as an operand).
-  //
-  // Does it (a) not use it, (b) use it, or (c) use it multiple times?
-  //
-  // In the kUse case (i.e. (b)) we may either (i) use the value elementwise, or
-  // (ii) use it after having permuted it somehow, e.g. through a reshape.  If
-  // the use is a permuting use, we set permutation_instr to the instruction
-  // that did the permuting.
-  struct UseKind {
-    enum Kind { kReuse, kUse, kNoUse };
-
-    // Creates a UseKind that represents a use that permutes an instruction's
-    // elements according to the given instruction.
-    static UseKind Permuting(const HloInstruction* permutation_instr) {
-      UseKind k(kUse);
-      k.permutation_instr = permutation_instr;
-      return k;
-    }
-
-    UseKind(Kind kind)  // NOLINT intentionally nonexplicit
-        : kind(kind), permutation_instr(nullptr) {}
-
-    bool friend operator==(UseKind a, Kind b) { return a.kind == b; }
-    bool friend operator==(Kind a, UseKind b) { return b == a; }
-
-    Kind kind;
-    const HloInstruction* permutation_instr;
-  };
-
-  // Helper class for computing OperandElementUse for kFusion.
-  class FusionReusesParamElements;
-
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
@@ -2197,9 +2163,6 @@ class HloInstruction {
 
   // Removes a user for this instruction.
   void RemoveUser(HloInstruction* user);
-
-  // Returns how this instruction uses elements of its operand at operand_num.
-  UseKind OperandElementUse(int64_t operand_num) const;
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.

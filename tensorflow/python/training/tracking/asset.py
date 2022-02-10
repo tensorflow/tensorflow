@@ -18,9 +18,12 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training.tracking import base
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
+
 
 # TODO(b/205183809): Remove once nested_structure_coder no longer adds
 # dependency cycles.
@@ -96,6 +99,21 @@ class Asset(base.Trackable):
 
   def _add_trackable_child(self, name, value):
     setattr(self, name, value)
+
+  def _export_to_saved_model_graph(self, object_map, tensor_map, options):
+    del object_map, options  # Unused.
+    # TODO(b/205008097): Instead of mapping 1-1 between trackable asset
+    # and asset in the graph def consider deduping the assets that
+    # point to the same file.
+    asset_path_initializer = array_ops.placeholder(
+        shape=self.asset_path.shape,
+        dtype=dtypes.string,
+        name="asset_path_initializer")
+    asset_variable = resource_variable_ops.ResourceVariable(
+        asset_path_initializer)
+
+    tensor_map[self.asset_path] = asset_variable
+    return [self.asset_path]
 
 
 ops.register_tensor_conversion_function(

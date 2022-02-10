@@ -46,10 +46,11 @@ void RunRoundTrip(const std::string& input_file) {
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::MLIRContext context(registry);
 
-  tensorflow::StatusOr<mlir::OwningModuleRef> module_ref_status =
+  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref_status =
       mlir::tfg::graph_transforms::ImportSavedModel(&context, input_file);
 
-  mlir::OwningModuleRef module_ref = std::move(module_ref_status.ValueOrDie());
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
+      std::move(module_ref_status.ValueOrDie());
 
   // Generate the Temp file and use it for the export.
   std::string output_file;
@@ -63,12 +64,12 @@ void RunRoundTrip(const std::string& input_file) {
 
   tensorflow::SavedModel original_model, final_model;
 
-  status = mlir::tfg::graph_transforms::ReadSavedModelProto(input_file,
-                                                            original_model);
+  status = mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
+      input_file, original_model);
   ASSERT_TRUE(status.ok());
 
-  status = mlir::tfg::graph_transforms::ReadSavedModelProto(output_file,
-                                                            final_model);
+  status = mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
+      output_file, final_model);
   ASSERT_TRUE(status.ok());
 
   tensorflow::MetaGraphDef* original_metagraph =

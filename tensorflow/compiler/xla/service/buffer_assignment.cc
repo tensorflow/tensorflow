@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <deque>
+#include <numeric>
 #include <ostream>
 #include <utility>
 
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 
 namespace xla {

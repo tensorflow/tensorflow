@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "llvm/Support/SourceMgr.h"
@@ -51,6 +52,7 @@ using ::tfrt::RequestContextBuilder;
 using ::tfrt::ResourceContext;
 
 using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::ReturnValueConverter;
@@ -118,14 +120,18 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   // Generate random inputs based on the tensor specs.
   llvm::SmallVector<Tensor> input_tensors = GetInputTensors(input_specs);
 
+  // Record data ptrs of inputs.
+  llvm::SmallVector<void*> input_ptrs;
   // Convert input tensors to memref descriptors.
   llvm::SmallVector<MemrefDesc> operands;
-  for (const Tensor& tensor : input_tensors)
+  for (const Tensor& tensor : input_tensors) {
+    input_ptrs.push_back(tensor.data());
     operands.emplace_back(TensorToMemrefDesc(tensor));
+  }
 
   // Get an executable that might be specialized to the operands.
   llvm::Expected<AsyncValuePtr<Executable>> executable =
-      jit_executable.GetExecutable(operands, exec_ctx);
+      jit_executable.GetExecutable(operands);
   if (auto err = executable.takeError())
     LOG(FATAL) << "Failed to specialize executable: " << tfrt::StrCat(err);
 
@@ -142,7 +148,10 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   RemainingResults results(result_values);
 
   // Free memory owned by the returned memrefs.
-  ReturnValueConverter<ResultConversionCtx> converter(results);
+  auto result_ctx =
+      std::make_unique<ResultConversionCtx>(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results,
+                                                      std::move(result_ctx));
   converter.AddConversion(FreeReturnedMemref);
 
   // Initialize call frame with MemrefDesc operands.
@@ -150,11 +159,15 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(host.get());
+  opts.async_task_runner = &async_task_runner;
+
   for (auto _ : state) {
     call_frame.args[0] = nullptr;  // reset kernel context argument
-    (*executable)->Execute(call_frame, exec_ctx);
-    if (auto err =
-            (*executable)->ReturnResults(converter, exec_ctx, &call_frame))
+    (*executable)->Execute(call_frame, opts);
+    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 }
@@ -218,7 +231,8 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
       llvm::MemoryBuffer::getMemBuffer(mlir_input, "benchmark"), llvm::SMLoc());
 
   // Parse a kernel source code into the MLIR Module.
-  mlir::OwningModuleRef module(mlir::parseSourceFile(source_mgr, &context));
+  mlir::OwningOpRef<mlir::ModuleOp> module(
+      mlir::parseSourceFile(source_mgr, &context));
   CHECK(module) << "failed to parse mlir module";
 
   // Collect all diagnostics emitted while lowering parsed kernel module.
@@ -228,16 +242,17 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
                                            os);
 
   // Convert TF to TFRT fallback dialect.
-  TfrtPipelineOptions core_rt_opts;
-  core_rt_opts.hoist_invariant_ops = true;
-  core_rt_opts.enable_native_ops = false;
-  core_rt_opts.cost_threshold = 1024;
-  core_rt_opts.upper_cost_threshold = 100000;
-  core_rt_opts.merge_inter_dependent_streams = true;
-  core_rt_opts.func_use_fallback_tensor = true;
+  TfrtPipelineOptions pipeline_opts;
+  pipeline_opts.default_device = kDefaultHostDeviceName;
+  pipeline_opts.hoist_invariant_ops = true;
+  pipeline_opts.enable_native_ops = false;
+  pipeline_opts.cost_threshold = 1024;
+  pipeline_opts.upper_cost_threshold = 100000;
+  pipeline_opts.merge_inter_dependent_streams = true;
+  pipeline_opts.func_use_fallback_tensor = true;
 
   mlir::PassManager pm(module->getContext());
-  pm.addPass(CreateTfToTfrtConversionPass(core_rt_opts));
+  pm.addPass(CreateTfToTfrtConversionPass(pipeline_opts));
 
   CHECK(mlir::succeeded(pm.run(*module)))
       << "Failed to lower module to TFRT: " << os.str();
@@ -315,9 +330,11 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
     // Wait for the function execution to finish, as well as the side-effects.
     host->Await(results);
 
-    // First result is always a chain, check if it has error.
-    if (auto* error = results[0]->GetErrorIfPresent())
-      LOG(FATAL) << "Failed to execute a function";
+    // Check that all results are available.
+    for (unsigned i = 1; i < results.size(); ++i) {
+      if (auto* error = results[i]->GetErrorIfPresent())
+        LOG(FATAL) << "Failed to execute a function: " << StrCat(*error);
+    }
   }
 
   // Deallocate arguments.

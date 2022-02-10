@@ -905,6 +905,26 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               ],
           ]),
           rtol=1e-6),
+      dict(
+          op=array_ops.bitcast,
+          kwargs={
+              'input': ragged_factory_ops.constant_value([[1, 2], [-1]],
+                                                         dtype=dtypes.int64),
+              'type': dtypes.uint64
+          },
+          expected=ragged_factory_ops.constant_value([[1, 2], [-1]],
+                                                     dtype=dtypes.uint64)),
+      dict(
+          op=array_ops.split,
+          kwargs={
+              'value': ragged_factory_ops.constant_value([[1], [2, 3, 4]]),
+              'num_or_size_splits': 2,
+          },
+          result_is_list=True,
+          expected=[
+              ragged_factory_ops.constant_value([[1]]),
+              ragged_factory_ops.constant_value([[2, 3, 4]]),
+          ]),
   ])
   def testRaggedDispatch(self,
                          op,
@@ -972,22 +992,23 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def test_ragged_op_list(self):
     # Ops that should be listed as supported in both v1 and v2.
     supported_ops = [
-        'bitwise.bitwise_and', 'bitwise.bitwise_or', 'bitwise.bitwise_xor',
-        'bitwise.invert', 'bitwise.left_shift', 'bitwise.right_shift',
-        'clip_by_value', 'concat', 'debugging.check_numerics', 'cast',
-        'dtypes.complex', 'dtypes.saturate_cast', 'expand_dims', 'gather_nd',
-        'gather', 'io.decode_base64', 'io.decode_compressed',
-        'io.encode_base64', 'math.abs', 'math.acos', 'math.acosh', 'math.add_n',
-        'math.add', 'math.angle', 'math.asin', 'math.asinh', 'math.atan2',
-        'math.atan', 'math.atanh', 'math.bessel_i0', 'math.bessel_i0e',
-        'math.bessel_i1', 'math.bessel_i1e', 'math.ceil', 'math.conj',
-        'math.cos', 'math.cosh', 'math.digamma', 'math.divide_no_nan',
-        'math.divide', 'math.equal', 'math.erf', 'math.erfc', 'math.erfcinv',
-        'math.erfinv', 'math.exp', 'math.expm1', 'math.floor', 'math.floordiv',
-        'math.floormod', 'math.greater_equal', 'math.greater', 'math.imag',
-        'math.is_finite', 'math.is_inf', 'math.is_nan', 'math.less_equal',
-        'math.less', 'math.lgamma', 'math.log1p', 'math.log_sigmoid',
-        'math.log', 'math.logical_and', 'math.logical_not', 'math.logical_or',
+        'bitcast', 'bitwise.bitwise_and', 'bitwise.bitwise_or',
+        'bitwise.bitwise_xor', 'bitwise.invert', 'bitwise.left_shift',
+        'bitwise.right_shift', 'clip_by_value', 'concat',
+        'debugging.check_numerics', 'cast', 'dtypes.complex',
+        'dtypes.saturate_cast', 'expand_dims', 'gather_nd', 'gather',
+        'io.decode_base64', 'io.decode_compressed', 'io.encode_base64',
+        'math.abs', 'math.acos', 'math.acosh', 'math.add_n', 'math.add',
+        'math.angle', 'math.asin', 'math.asinh', 'math.atan2', 'math.atan',
+        'math.atanh', 'math.bessel_i0', 'math.bessel_i0e', 'math.bessel_i1',
+        'math.bessel_i1e', 'math.ceil', 'math.conj', 'math.cos', 'math.cosh',
+        'math.digamma', 'math.divide_no_nan', 'math.divide', 'math.equal',
+        'math.erf', 'math.erfc', 'math.erfcinv', 'math.erfinv', 'math.exp',
+        'math.expm1', 'math.floor', 'math.floordiv', 'math.floormod',
+        'math.greater_equal', 'math.greater', 'math.imag', 'math.is_finite',
+        'math.is_inf', 'math.is_nan', 'math.less_equal', 'math.less',
+        'math.lgamma', 'math.log1p', 'math.log_sigmoid', 'math.log',
+        'math.logical_and', 'math.logical_not', 'math.logical_or',
         'math.logical_xor', 'math.maximum', 'math.minimum',
         'math.multiply_no_nan', 'math.multiply', 'math.negative',
         'math.nextafter', 'math.not_equal', 'math.pow', 'math.real',
@@ -1001,14 +1022,14 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         'math.unsorted_segment_mean', 'math.unsorted_segment_min',
         'math.unsorted_segment_prod', 'math.unsorted_segment_sqrt_n',
         'math.unsorted_segment_sum', 'one_hot', 'ones_like', 'rank', 'realdiv',
-        'math.reduce_all', 'size', 'squeeze', 'stack', 'strings.as_string',
-        'strings.join', 'strings.length', 'strings.reduce_join',
-        'strings.regex_full_match', 'strings.regex_replace', 'strings.strip',
-        'strings.substr', 'strings.to_hash_bucket_fast',
-        'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
-        'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse',
-        'nn.dropout', 'strings.format', 'print'
+        'math.reduce_all', 'size', 'split', 'squeeze', 'stack',
+        'strings.as_string', 'strings.join', 'strings.length',
+        'strings.reduce_join', 'strings.regex_full_match',
+        'strings.regex_replace', 'strings.strip', 'strings.substr',
+        'strings.to_hash_bucket_fast', 'strings.to_hash_bucket_strong',
+        'strings.to_hash_bucket', 'strings.to_number', 'strings.unicode_script',
+        'tile', 'truncatediv', 'truncatemod', 'zeros_like', 'dynamic_partition',
+        'reverse', 'nn.dropout', 'strings.format', 'print'
     ]
 
     # Ops that should be listed as supported in v1 only.

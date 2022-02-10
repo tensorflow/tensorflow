@@ -15,11 +15,13 @@ limitations under the License.
 
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
+#include <utility>
+
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/Pass.h"
@@ -299,8 +301,8 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     for (unsigned i = 0; i < start_indices_numbers; i++) {
       Value i_val = rewriter.create<mlir::arith::ConstantIntOp>(
           loc, i, start_indices_type.getElementType());
-      i_val = rewriter.create<arith::IndexCastOp>(loc, i_val,
-                                                  rewriter.getIndexType());
+      i_val = rewriter.create<arith::IndexCastOp>(loc, rewriter.getIndexType(),
+                                                  i_val);
       start_indices_index.push_back(i_val);
     }
 
@@ -311,7 +313,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     SmallVector<Value, 4> S_in;
     SmallVector<Value, 4> O_in;
     Value zero_index_val = rewriter.create<arith::IndexCastOp>(
-        loc, zero_int_val, rewriter.getIndexType());
+        loc, rewriter.getIndexType(), zero_int_val);
     for (unsigned i = 0; i < operand_rank; i++) {
       S_in.push_back(zero_index_val);
       O_in.push_back(zero_index_val);
@@ -381,7 +383,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
         Value start_index = rewriter.create<AffineLoadOp>(loc, start_indices,
                                                           batch_induction_vars);
         start_index = rewriter.create<arith::IndexCastOp>(
-            loc, start_index, rewriter.getIndexType());
+            loc, rewriter.getIndexType(), start_index);
         S_in[start_index_map[i]] = start_index;
         batch_induction_vars.erase(batch_induction_vars.begin() +
                                    index_vector_dim);
@@ -392,7 +394,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
       Value start_index = rewriter.create<AffineLoadOp>(loc, start_indices,
                                                         batch_induction_vars);
       start_index = rewriter.create<arith::IndexCastOp>(
-          loc, start_index, rewriter.getIndexType());
+          loc, rewriter.getIndexType(), start_index);
       S_in[0] = start_index;
     }
 
@@ -442,7 +444,7 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
     // We use the loaded value if the index computed by adding offsets to
     // starting index is equal to the current operand index. We use 0 as a value
     // otherwise.
-    Value select_load = rewriter.create<mlir::SelectOp>(
+    Value select_load = rewriter.create<mlir::arith::SelectOp>(
         loc, result_predicate, load_value, zero_load_value);
     // We load value at output array.
     Value output_value =
@@ -457,6 +459,107 @@ class GatherOpConverter : public OpRewritePattern<GatherOp> {
                                                     select_load, output_value);
     rewriter.create<AffineStoreOp>(loc, output_value, output,
                                    output_induction_vars);
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
+/// Converts PadOp to Affine nest form.
+/// Pseudocode:
+///   1. Fill `output` tensor with `padding_value`.
+///   2. Compute AffineMap for store into `output`.
+///      out_idx = edge_padding_low +
+///                operand_idx * (1 + interior_padding)
+///   3. Create nested loop from `operand` shape.
+///      3.1 load from `operand`.
+///      3.2 store into `output`.
+/// NOTE: The lowering handles only ranked shapes and bails out in case any of
+///       output type/edge_padding_low/edge_padding_high/interior_padding size
+///       doesn't match that of the operand's rank.
+/// Limitation for now:
+///   interior_padding == 0 && edge_padding_* >= 0
+struct PadOpConverter : public OpRewritePattern<PadOp> {
+  using OpRewritePattern<PadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PadOp op,
+                                PatternRewriter& rewriter) const override {
+    Value operand = op.operand();
+    Value padding_value = op.padding_value();
+    Value output = op.output();
+
+    auto operand_type = operand.getType().dyn_cast<ShapedType>();
+    auto output_type = output.getType().dyn_cast<ShapedType>();
+    // We allow lowering for only ranked input/output.
+    if (!(operand_type && output_type && operand_type.hasRank() &&
+          output_type.hasRank()))
+      return failure();
+    unsigned rank = operand_type.getRank();
+
+    auto edge_pad_low_ranges = op.edge_padding_low().getValues<int64_t>();
+    auto edge_pad_high_ranges = op.edge_padding_high().getValues<int64_t>();
+    auto interior_pad_ranges = op.interior_padding().getValues<int64_t>();
+    // Check whether the constraints for the lowering are satisfied :-
+    //   1. interior_padding[i] == 0
+    //   2. edge_padding_*[i] >= 0
+    for (auto paddings : llvm::zip(edge_pad_low_ranges, edge_pad_high_ranges,
+                                   interior_pad_ranges)) {
+      // Only handle non-negative edge padding.
+      if (std::get<0>(paddings) < 0 || std::get<1>(paddings) < 0)
+        return rewriter.notifyMatchFailure(
+            op, "expected non-negative edge padding");
+      // Only handle interior padding being zero for now.
+      if (std::get<2>(paddings) != 0)
+        return rewriter.notifyMatchFailure(op,
+                                           "expected zero interior padding");
+    }
+
+    SmallVector<int64_t> edge_padding_low(edge_pad_low_ranges.begin(),
+                                          edge_pad_low_ranges.end());
+    SmallVector<int64_t> edge_padding_high(edge_pad_high_ranges.begin(),
+                                           edge_pad_high_ranges.end());
+    SmallVector<int64_t> interior_padding(interior_pad_ranges.begin(),
+                                          interior_pad_ranges.end());
+
+    ArrayRef<int64_t> operand_shape = operand_type.getShape();
+    ArrayRef<int64_t> output_shape = output_type.getShape();
+
+    // Mapping the `operand` index to the `output` index.
+    SmallVector<AffineExpr, 4> expr;
+    for (unsigned i = 0; i < rank; i++) {
+      AffineExpr dim_expr = rewriter.getAffineDimExpr(i);
+      expr.push_back(dim_expr + edge_padding_low[i]);
+    }
+    AffineMap map =
+        AffineMap::get(rank, /*symbolCount=*/0, expr, rewriter.getContext());
+
+    SmallVector<Value, 4> indices;
+
+    Location loc = op.getLoc();
+    // Set padding_value to output.
+    {
+      OpBuilder::InsertionGuard regionGuard(rewriter);
+      Value scalar_padding_value = rewriter.create<AffineLoadOp>(
+          loc, padding_value, SmallVector<Value, 4>());
+      AffineForOp init_for_op;
+      for (unsigned i = 0; i < rank; i++) {
+        init_for_op = rewriter.create<AffineForOp>(loc, 0, output_shape[i]);
+        indices.push_back(init_for_op.getInductionVar());
+        rewriter.setInsertionPointToStart(init_for_op.getBody());
+      }
+      rewriter.create<AffineStoreOp>(loc, scalar_padding_value, output,
+                                     indices);
+    }
+
+    // Store `operand` into `output`, loop upper bounds from `operand` shape.
+    indices.clear();
+    AffineForOp pad_for_op;
+    for (unsigned i = 0; i < rank; i++) {
+      pad_for_op = rewriter.create<AffineForOp>(loc, 0, operand_shape[i]);
+      indices.push_back(pad_for_op.getInductionVar());
+      rewriter.setInsertionPointToStart(pad_for_op.getBody());
+    }
+    Value store_val = rewriter.create<AffineLoadOp>(loc, operand, indices);
+    rewriter.create<AffineStoreOp>(loc, store_val, output, map, indices);
     rewriter.eraseOp(op);
     return success();
   }
@@ -532,9 +635,9 @@ struct UnaryOpConverter : public OpRewritePattern<LhloOpTy> {
 };
 
 void populateLHLOToAffineConversionPattern(MLIRContext* context,
-                                           OwningRewritePatternList* patterns) {
+                                           RewritePatternSet* patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       BinaryOpConverter<lmhlo::AddOp>,
       BinaryOpConverter<lmhlo::AndOp>,
       BinaryOpConverter<lmhlo::DivOp>,
@@ -545,6 +648,7 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
       ConcatOpConverter,
       DotOpConverter,
       GatherOpConverter,
+      PadOpConverter,
       UnaryOpConverter<lmhlo::LogOp>>(context);
   // clang-format on
 }
@@ -556,9 +660,10 @@ struct LhloLegalizeToAffinePass
   }
   void runOnOperation() override {
     auto func = getOperation();
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     populateLHLOToAffineConversionPattern(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+      return signalPassFailure();
   }
 };
 

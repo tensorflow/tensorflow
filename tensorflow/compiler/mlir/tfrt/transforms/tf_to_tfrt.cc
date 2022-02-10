@@ -1480,16 +1480,16 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
 
 // Helper function for inserting TFRT JitRt dialect conversions.
 void PopulateJitRtConversionPatterns(MLIRContext *context,
-                                     OwningRewritePatternList *patterns,
+                                     RewritePatternSet *patterns,
                                      CoreRTConverter *corert_converter) {
   // Lower jitrt.call to the pair of compile and execute operations.
-  patterns->insert<JitRtCallToJitRtCompileAndExecuteConversion>(context);
+  patterns->add<JitRtCallToJitRtCompileAndExecuteConversion>(context);
 }
 
 // Helper function for inserting TF dialect to TFRT dialect op conversion
 // patterns.
 void PopulateTFToTFRTConversionPatterns(
-    mlir::MLIRContext *context, mlir::OwningRewritePatternList *patterns,
+    mlir::MLIRContext *context, mlir::RewritePatternSet *patterns,
     CoreRTConverter *corert_converter,
     tfrt_compiler::FallbackConverter *fallback_converter,
     mlir::SymbolTable *symbol_table,
@@ -1499,11 +1499,11 @@ void PopulateTFToTFRTConversionPatterns(
     bool enable_native_ops, bool func_use_fallback_tensor,
     bool tpu_lower_to_fallback, bool target_tpurt) {
   // By default, we lower all TF ops to fallback ops.
-  patterns->insert<FallbackExecuteOpConversion>(
+  patterns->add<FallbackExecuteOpConversion>(
       context, corert_converter, fallback_converter, cost_analysis,
       tpu_lower_to_fallback, target_tpurt);
-  patterns->insert<FallbackConstOpConversion, FallbackSetResourceOp,
-                   FallbackGetResourceOp>(context, corert_converter);
+  patterns->add<FallbackConstOpConversion, FallbackSetResourceOp,
+                FallbackGetResourceOp>(context, corert_converter);
 
   // For control flow ops, we handle them according to the option.
   mlir::TypeConverter *func_type_converter;
@@ -1512,22 +1512,21 @@ void PopulateTFToTFRTConversionPatterns(
   } else {
     func_type_converter = corert_converter;
   }
-  patterns->insert<TFRTFuncOpSignatureConversion>(context, func_type_converter);
-  patterns->insert<TFRTReturnOpConversion>(context, corert_converter,
-                                           func_use_fallback_tensor);
-  patterns->insert<TFRTWhileOpConversion>(
+  patterns->add<TFRTFuncOpSignatureConversion>(context, func_type_converter);
+  patterns->add<TFRTReturnOpConversion>(context, corert_converter,
+                                        func_use_fallback_tensor);
+  patterns->add<TFRTWhileOpConversion>(
       context, func_type_converter, corert_converter, symbol_table,
       tensor_array_side_effect_analysis, func_use_fallback_tensor);
-  patterns->insert<TFRTCallOpConversion<mlir::TF::StatefulPartitionedCallOp>,
-                   TFRTCallOpConversion<mlir::TF::PartitionedCallOp>,
-                   TFRTCallOpConversion<mlir::TF::LegacyCallOp>,
-                   TFRTCaseOpConversion, TFRTCondOpConversion>(
+  patterns->add<TFRTCallOpConversion<mlir::TF::StatefulPartitionedCallOp>,
+                TFRTCallOpConversion<mlir::TF::PartitionedCallOp>,
+                TFRTCallOpConversion<mlir::TF::LegacyCallOp>,
+                TFRTCaseOpConversion, TFRTCondOpConversion>(
       context, func_type_converter, corert_converter, func_use_fallback_tensor);
 
   // For tf.BatchFunction, we need a special fallback op to batch a BEF
   // function.
-  patterns->insert<FallbackBatchFunctionOpConversion>(context,
-                                                      corert_converter);
+  patterns->add<FallbackBatchFunctionOpConversion>(context, corert_converter);
 
   // Below patterns are preferred over fallback lowering as we want to use
   // CoreRT interface for native kernels. This is only temporary and it will
@@ -1535,14 +1534,13 @@ void PopulateTFToTFRTConversionPatterns(
 
   // Here we use specialized patterns for tf.Const on CPU as it is incorrect to
   // use ExecuteOp pattern to convert string tensor attribute.
-  patterns->insert<CoreRTConstStringTensorOpConversion,
-                   CoreRTConstDenseTensorOpConversion>(context,
-                                                       corert_converter);
+  patterns->add<CoreRTConstStringTensorOpConversion,
+                CoreRTConstDenseTensorOpConversion>(context, corert_converter);
 
   // For tf.Const op on GPU, we still lower it to corert.executeop temporarily.
   //
   // TODO(chky): Use specialized patterns for tf.Const ops on GPU.
-  patterns->insert<CoreRTExecuteOpConversion<TF::ConstOp>>(
+  patterns->add<CoreRTExecuteOpConversion<TF::ConstOp>>(
       context, corert_converter, kGpuDeviceName);
 
   if (enable_native_ops) {
@@ -1550,40 +1548,40 @@ void PopulateTFToTFRTConversionPatterns(
     // invoke TFRT native op if implemented.
     // TODO(b/187942369): Pattern registration for TF operations is not
     // sustainable currently. We need to figure out a plan.
-    patterns->insert<CoreRTExecuteOpConversion<TF::AddV2Op>,
-                     // TODO(chky): Move the ReadVariableOp + Identity pattern
-                     // to optimizer.
-                     // CoreRTExecuteOpConversion<TF::IdentityOp>,
-                     CoreRTExecuteOpConversion<TF::MulOp>,
-                     CoreRTExecuteOpConversion<TF::BiasAddOp>,
-                     CoreRTExecuteOpConversion<TF::Conv2DOp>,
-                     CoreRTExecuteOpConversion<TF::ConcatV2Op>,
-                     CoreRTExecuteOpConversion<TF::CastOp>,
-                     CoreRTExecuteOpConversion<TF::ExpandDimsOp>,
-                     CoreRTExecuteOpConversion<TF::TransposeOp>,
-                     CoreRTExecuteOpConversion<TF::FusedBatchNormV3Op>,
-                     CoreRTExecuteOpConversion<TF::_FusedBatchNormExOp>,
-                     CoreRTExecuteOpConversion<TF::LogOp>,
-                     CoreRTExecuteOpConversion<TF::Log1pOp>,
-                     CoreRTExecuteOpConversion<TF::LogSoftmaxOp>,
-                     CoreRTExecuteOpConversion<TF::MatMulOp>,
-                     CoreRTExecuteOpConversion<TF::_FusedMatMulOp>,
-                     CoreRTExecuteOpConversion<TF::MaxPoolOp>,
-                     CoreRTExecuteOpConversion<TF::MeanOp>,
-                     CoreRTExecuteOpConversion<TF::MulOp>,
-                     CoreRTExecuteOpConversion<TF::PadOp>,
-                     CoreRTExecuteOpConversion<TF::RealDivOp>,
-                     CoreRTExecuteOpConversion<TF::ReluOp>,
-                     CoreRTExecuteOpConversion<TF::ReshapeOp>,
-                     CoreRTExecuteOpConversion<TF::RsqrtOp>,
-                     CoreRTExecuteOpConversion<TF::SoftmaxOp>,
-                     CoreRTExecuteOpConversion<TF::ShapeOp>,
-                     CoreRTExecuteOpConversion<TF::SigmoidOp>,
-                     CoreRTExecuteOpConversion<TF::SubOp>,
-                     CoreRTExecuteOpConversion<TF::TileOp>,
-                     CoreRTExecuteOpConversion<TF::TanhOp>,
-                     CoreRTExecuteOpConversion<TF::ZerosLikeOp>>(
-        context, corert_converter);
+    patterns->add<CoreRTExecuteOpConversion<TF::AddV2Op>,
+                  // TODO(chky): Move the ReadVariableOp + Identity pattern
+                  // to optimizer.
+                  // CoreRTExecuteOpConversion<TF::IdentityOp>,
+                  CoreRTExecuteOpConversion<TF::MulOp>,
+                  CoreRTExecuteOpConversion<TF::BiasAddOp>,
+                  CoreRTExecuteOpConversion<TF::Conv2DOp>,
+                  CoreRTExecuteOpConversion<TF::ConcatV2Op>,
+                  CoreRTExecuteOpConversion<TF::CastOp>,
+                  CoreRTExecuteOpConversion<TF::ExpandDimsOp>,
+                  CoreRTExecuteOpConversion<TF::TransposeOp>,
+                  CoreRTExecuteOpConversion<TF::FusedBatchNormV3Op>,
+                  CoreRTExecuteOpConversion<TF::_FusedBatchNormExOp>,
+                  CoreRTExecuteOpConversion<TF::LogOp>,
+                  CoreRTExecuteOpConversion<TF::Log1pOp>,
+                  CoreRTExecuteOpConversion<TF::LogSoftmaxOp>,
+                  CoreRTExecuteOpConversion<TF::MatMulOp>,
+                  CoreRTExecuteOpConversion<TF::_FusedMatMulOp>,
+                  CoreRTExecuteOpConversion<TF::MaxPoolOp>,
+                  CoreRTExecuteOpConversion<TF::MeanOp>,
+                  CoreRTExecuteOpConversion<TF::MulOp>,
+                  CoreRTExecuteOpConversion<TF::PadOp>,
+                  CoreRTExecuteOpConversion<TF::RealDivOp>,
+                  CoreRTExecuteOpConversion<TF::ReluOp>,
+                  CoreRTExecuteOpConversion<TF::ReshapeOp>,
+                  CoreRTExecuteOpConversion<TF::RsqrtOp>,
+                  CoreRTExecuteOpConversion<TF::SoftmaxOp>,
+                  CoreRTExecuteOpConversion<TF::ShapeOp>,
+                  CoreRTExecuteOpConversion<TF::SigmoidOp>,
+                  CoreRTExecuteOpConversion<TF::SubOp>,
+                  CoreRTExecuteOpConversion<TF::TileOp>,
+                  CoreRTExecuteOpConversion<TF::TanhOp>,
+                  CoreRTExecuteOpConversion<TF::ZerosLikeOp>>(context,
+                                                              corert_converter);
   }
 }
 
@@ -1630,7 +1628,7 @@ class TfToTfrtConversionPass
       mlir::SymbolTable &symbol_table) {
     auto &context = getContext();
     mlir::ConversionTarget target(context);
-    mlir::OwningRewritePatternList patterns(&getContext());
+    mlir::RewritePatternSet patterns(&getContext());
     CoreRTConverter corert_converter(&context, &side_effect_analysis);
     tfrt_compiler::CostAnalysis cost_analysis(func);
 
@@ -1932,6 +1930,7 @@ class OutlineJitRtClustersPass
   // Creates a nested module with a single function that will be compiled into
   // the kernel at runtime.
   CompiledModule CreateCompiledModule(tf_device::ClusterOp cluster,
+                                      int64_t max_arg_size,
                                       SymbolTable *symbol_table);
 
   // Update compiled module entrypoint signature with inferred operands
@@ -1941,6 +1940,7 @@ class OutlineJitRtClustersPass
   // Outlines cluster operation regions into compiled modules, and replaces
   // cluster operation with a jitrt.call operation.
   LogicalResult OutlineClusterOp(tf_device::ClusterOp cluster,
+                                 int64_t max_arg_size,
                                  SymbolTable *symbol_table);
 
   // Mapping from the outlined module string representation to the module itself
@@ -1951,6 +1951,7 @@ class OutlineJitRtClustersPass
 
 OutlineJitRtClustersPass::CompiledModule
 OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
+                                               int64_t max_arg_size,
                                                SymbolTable *symbol_table) {
   MLIRContext *ctx = cluster->getContext();
   Location loc = cluster.getLoc();
@@ -1959,6 +1960,9 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   // TODO(ezhulenev): Give better names to module and function.
   auto compiled_module = ModuleOp::create(loc, {"kernel"});
   compiled_module->setAttr("tfrt.compiled", UnitAttr::get(ctx));
+  compiled_module->setAttr(
+      "tfrt.max-arg-size",
+      IntegerAttr::get(IntegerType::get(ctx, 64), max_arg_size));
 
   SymbolTable compiled_module_symbol_table(compiled_module);
 
@@ -2053,11 +2057,13 @@ LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
 }
 
 LogicalResult OutlineJitRtClustersPass::OutlineClusterOp(
-    tf_device::ClusterOp cluster, SymbolTable *symbol_table) {
+    tf_device::ClusterOp cluster, int64_t max_arg_size,
+    SymbolTable *symbol_table) {
   Location loc = cluster->getLoc();
   OpBuilder builder(cluster);
 
-  CompiledModule compiled_module = CreateCompiledModule(cluster, symbol_table);
+  CompiledModule compiled_module =
+      CreateCompiledModule(cluster, max_arg_size, symbol_table);
   FuncOp compiled_func = compiled_module.entrypoint;
 
   // Add constraints to the entrypoint arguments.
@@ -2085,6 +2091,17 @@ void OutlineJitRtClustersPass::runOnOperation() {
   ModuleOp module = getOperation();
   SymbolTable symbol_table(module);
 
+  // Keep track of the maximum argument size for each function with tf_device
+  // cluster operations in the function body. We need to pass it to the compiled
+  // module to correctly compute its cost later.
+  llvm::DenseMap<mlir::FuncOp, int64_t> max_arg_size_map;
+
+  auto get_max_arg_size = [&](mlir::FuncOp func) -> int64_t {
+    auto it = max_arg_size_map.find(func);
+    if (it != max_arg_size_map.end()) return it->second;
+    return max_arg_size_map[func] = tf_jitrt::GetMaxArgSize(func);
+  };
+
   OpBuilder builder(module.getContext());
   auto result = module.walk([&](tf_device::ClusterOp cluster) -> WalkResult {
     // Ensure that cluster was formed for TFRT JIT compilation.
@@ -2092,7 +2109,11 @@ void OutlineJitRtClustersPass::runOnOperation() {
     if (!policy || policy.getValue() != "tfrt.auto-fusion")
       return WalkResult::advance();
 
-    if (failed(OutlineClusterOp(cluster, &symbol_table)))
+    // Get the maximum argument size of the parent function.
+    mlir::FuncOp parent_func = cluster->getParentOfType<mlir::FuncOp>();
+    int64_t max_arg_size = get_max_arg_size(parent_func);
+
+    if (failed(OutlineClusterOp(cluster, max_arg_size, &symbol_table)))
       return WalkResult::interrupt();
     return WalkResult::advance();
   });

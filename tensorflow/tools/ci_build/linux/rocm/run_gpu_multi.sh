@@ -92,8 +92,6 @@ bazel test \
 //tensorflow/python/keras/layers/preprocessing:image_preprocessing_distribution_test_2gpu \
 //tensorflow/python/keras/layers/preprocessing:index_lookup_distribution_test_2gpu \
 //tensorflow/python/keras/layers/preprocessing:text_vectorization_distribution_test_2gpu \
-//tensorflow/python/keras/utils:multi_gpu_utils_test_2gpu \
-//tensorflow/python/keras/utils:multi_gpu_utils_test_xla_2gpu \
 //tensorflow/python/kernel_tests:dynamic_partition_op_test_2gpu \
 //tensorflow/python/training:saver_test_2gpu \
 

@@ -368,7 +368,7 @@ class CpuAllToAllRendezvous
     bool is_primary = InitializationBarrier();
 
     if (is_primary) {
-      tensorflow::mutex_lock lock(mu_);
+      absl::MutexLock lock(&mu_);
 
       CHECK(!participants_.empty());
       CHECK(!participants_[0].source_buffers.empty());
@@ -430,7 +430,7 @@ class CpuCollectivePermuteRendezvous
 
     // Perform all copies from the primary thread.
     if (primary) {
-      tensorflow::mutex_lock lock(mu_);
+      absl::MutexLock lock(&mu_);
 
       std::map<int, int> replica_idx_to_participant_idx;
       for (int p_idx = 0; p_idx < participants_.size(); p_idx++) {
@@ -512,7 +512,7 @@ class CpuAllReduceRendezvous
   template <xla::PrimitiveType PT>
   void DoAllReduce(xla::AllReduceParticipantData participant) {
     using T = typename xla::primitive_util::PrimitiveTypeToNative<PT>::type;
-    tensorflow::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     CHECK(!participants_.empty());
     xla::ReductionKind reduction_kind = participant.reduction_kind;
     for (const auto& p : participants_) {

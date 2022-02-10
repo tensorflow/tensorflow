@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 
@@ -400,15 +399,9 @@ class HloModule {
     module->metadata_ = std::move(metadata_);
   }
 
-  void set_autofdo_fingerprint(std::string fingerprint) {
-    autofdo_fingerprint_ = fingerprint;
-  }
+  uint64_t session_id() const { return session_id_; }
 
-  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
-
-  void set_autofdo_profile(const void* profile) { autofdo_profile_ = profile; }
-
-  const void* autofdo_profile() const { return autofdo_profile_; }
+  void set_session_id(uint64_t session_id) { session_id_ = session_id; }
 
   void add_profile_info(HloModuleProto::ProfileType profile_type,
                         double relative_speedup) {
@@ -437,7 +430,7 @@ class HloModule {
   // TODO(b/25995601): Replace with better seed setting or dev/random for
   // where we don't need deterministic execution.
   mutable std::mt19937_64 rng_{42};
-  mutable tensorflow::mutex rng_mutex_;
+  mutable absl::Mutex rng_mutex_;
 
   // Unique name generator for computation and instruction names, which are
   // unique per module.
@@ -479,11 +472,8 @@ class HloModule {
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
 
-  // A fingerprint to search an AutofdoProfile entry.
-  std::string autofdo_fingerprint_;
-
-  // An AutofdoProfile instance pointer.
-  const void* autofdo_profile_ = nullptr;
+  // A compilation session id.
+  uint64_t session_id_ = 0;
 
   // An array of ProfileInfo specifying what optimization profiles this module
   // contains, along with the relative speedups.

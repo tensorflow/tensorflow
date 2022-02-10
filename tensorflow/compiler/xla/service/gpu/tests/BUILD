@@ -346,7 +346,7 @@ tf_cc_test(
     srcs = [
         "swap_conv_operands_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_rocm"] + tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:debug_options_flags",

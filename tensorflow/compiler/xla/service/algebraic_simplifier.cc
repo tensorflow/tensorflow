@@ -58,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -1343,7 +1342,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
 
       auto* quotient = computation->AddInstruction(HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, abs_dividend,
-          MakeScalarLike(abs_dividend, tensorflow::Log2Floor64(b_value))));
+          MakeScalarLike(abs_dividend, Log2Floor<uint64_t>(b_value))));
 
       auto* neqated_quotient =
           computation->AddInstruction(HloInstruction::CreateUnary(
@@ -1358,7 +1357,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
     if (absl::has_single_bit(b_value)) {
       return HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, a,
-          MakeScalarLike(a, tensorflow::Log2Floor64(b_value)));
+          MakeScalarLike(a, Log2Floor(b_value)));
     }
   }
 
@@ -4513,8 +4512,10 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
         // multiply with the multiplier.
         HloInstruction* result = clamped;
         if (index_type != element_type) {
-          result = computation_->AddInstruction(HloInstruction::CreateConvert(
-              ShapeUtil::MakeScalarShape(element_type), clamped));
+          Shape result_shp = result->shape();
+          result_shp.set_element_type(element_type);
+          result = computation_->AddInstruction(
+              HloInstruction::CreateConvert(result_shp, clamped));
         }
 
         if (multiplier) {
@@ -4524,8 +4525,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
 
         return ReplaceWithNewInstruction(
             dynamic_slice,
-            HloInstruction::CreateReshape(
-                ShapeUtil::MakeShape(element_type, {1}), result));
+            HloInstruction::CreateReshape(dynamic_slice->shape(), result));
       }
     }
   }
@@ -6076,20 +6076,6 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   return Status::OK();
 }
 
-bool AlgebraicSimplifierVisitor::TransformToClampIfSameShape(
-    HloInstruction* root, HloInstruction* min, HloInstruction* min_operand,
-    HloInstruction* operand, HloInstruction* max, HloInstruction* max_operand) {
-  // Ensure shapes of min and max operand are equal to match current shape
-  // inference.
-  if (!SameShape(min_operand, max_operand)) {
-    return false;
-  }
-
-  auto clamp = HloInstruction::CreateTernary(root->shape(), HloOpcode::kClamp,
-                                             max_operand, operand, min_operand);
-  TF_CHECK_OK(ReplaceWithNewInstruction(root, std::move(clamp)));
-  return true;
-}
 
 Status AlgebraicSimplifierVisitor::HandleMap(HloInstruction* map) {
   auto* map_computation = map->to_apply();

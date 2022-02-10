@@ -17,15 +17,17 @@ limitations under the License.
 
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
+#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
-#include "mlir/Dialect/StandardOps/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -80,15 +82,15 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       reduction_2d_tile_sizes));
 
-  if (options.fuse_fill) {
-    pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
-  }
   pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.vector_size));
   if (options.peel) {
     pm.addNestedPass<FuncOp>(CreatePeelTiledLoopsPass());
   }
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  if (options.fuse_fill) {
+    pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
+  }
   pm.addNestedPass<FuncOp>(CreateVectorizeTiledOpsPass());
 }
 
@@ -110,12 +112,16 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Transform TF operation to HLO.
+  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFPass());
 
   if (options.legalize_i1_tensors) {
     // Convert 'i1' tensors into 'i8' tensors.
     pm.addPass(CreateJitRtLegalizeI1TypesPass());
   }
+
+  // Remove redundant shape operations left after legalizing to HLO.
+  pm.addPass(mlir::createCSEPass());
 
   // Resolve all shape constraints (e.g. broadcast constraints that can be
   // proved statically and changed to const witness) early to allow more
@@ -140,7 +146,11 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // them through equivalent 1D or 2D reductions, if possible.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
 
+  // Also, try to simplify reshape operations.
+  pm.addNestedPass<FuncOp>(mlir::createReshapeSimplifierPass());
+
   // Transform HLO operations to Linalg and Standard.
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addNestedPass<FuncOp>(
       mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
@@ -159,10 +169,14 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Lower index cast on tensors to tensor.generate.
   pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
+  pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Add linalg passes to perform fusion, tiling, peeling and vectorization.
   AddLinalgTransformations(pm, options);
+
+  // Inline everything, bufferization doesn't model ownership across calls.
+  pm.addPass(mlir::createInlinerPass());
 
   // Bufferize Linalg on tensors program.
   // Always run canonicalizer (which does dead code removal) before bufferizing
@@ -177,12 +191,13 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // of bufferizing to memref dialect) we can remove the remaining references
   // to unsigned types.
   pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
+  // Always run CSE and canonicalizer (which does dead code removal) before
+  // bufferizing anything.
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
-  pm.addPass(mlir::createTensorConstantBufferizePass(/*alignment=*/64));
-  // Always run canonicalizer (which does dead code removal) before bufferizing
-  // anything.
-  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::arith::createConstantBufferizePass(/*alignment=*/64));
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -199,6 +214,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   if (options.vectorize) {
     pm.addNestedPass<FuncOp>(mlir::createConvertLinalgTiledLoopsToSCFPass());
   }
+  pm.addPass(mlir::createBufferizationToMemRefPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 

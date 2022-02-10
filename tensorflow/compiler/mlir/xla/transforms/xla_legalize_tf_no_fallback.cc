@@ -43,13 +43,13 @@ class LegalizeTFNoFallback
     allow_partial_conversion_ = allow_partial_conversion;
   }
   /// Performs the lowering to HLO dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void LegalizeTFNoFallback::runOnFunction() {
-  Operation *op = getFunction();
+void LegalizeTFNoFallback::runOnOperation() {
+  Operation *op = getOperation();
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList patterns(context);
+  RewritePatternSet patterns(context);
 
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &patterns);

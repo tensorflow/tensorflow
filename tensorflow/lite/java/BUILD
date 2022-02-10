@@ -40,7 +40,10 @@ exports_files([
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
     "src/main/java/org/tensorflow/lite/annotations/*.java",
-]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"]
+]) + [
+    "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_api_src",
+    "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_impl_src",
+]
 
 # All Java source files.
 filegroup(
@@ -57,6 +60,7 @@ JAVA_API_SRCS = [
     "src/main/java/org/tensorflow/lite/Tensor.java",
     "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
     "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
+    "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_api_src",
 ]
 
 # Java source files for API uses.
@@ -580,6 +584,31 @@ java_test_with_tflite(
 )
 
 java_test_with_tflite(
+    name = "InterpreterApiNoRuntimeTest",
+    size = "small",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterApiNoRuntimeTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
+        "src/test/java/org/tensorflow/lite/TestInit.java",
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
+    data = [
+        "src/testdata/add.bin",
+    ],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.InterpreterApiNoRuntimeTest",
+    tflite_jni_binaries = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_stable_test_jni.so",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tensorflowlite_api_javalib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+java_test_with_tflite(
     name = "NnApiDelegateTest",
     size = "small",
     srcs = [
@@ -789,7 +818,7 @@ cc_library(
 #-----------------------------------------------------------------------------
 # JNI binary targets for generating the .so files for the JNI code.
 
-# JNI shared libary containing Java API native code, including experimental APIs.
+# JNI shared library containing Java API native code, including experimental APIs.
 # This library will get automatically loaded by TensorFlowLite.init().
 jni_binary_with_tflite(
     name = "libtensorflowlite_jni.so",
@@ -808,7 +837,7 @@ jni_binary_with_tflite(
     ],
 )
 
-# JNI shared libary containing Java API native code, excluding experimental APIs.
+# JNI shared library containing Java API native code, excluding experimental APIs.
 # This library will get automatically loaded by TensorFlowLite.init(),
 # if libtensorflowlite_jni.so isn't found.
 jni_binary_with_tflite(

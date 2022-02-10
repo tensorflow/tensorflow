@@ -45,8 +45,8 @@ class ClusterConstantSinkingPass
       llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter)
       : filter_(filter) {}
 
-  void runOnFunction() override {
-    getFunction().walk([filter = filter_](tf_device::ClusterOp cluster) {
+  void runOnOperation() override {
+    getOperation().walk([filter = filter_](tf_device::ClusterOp cluster) {
       LLVM_DEBUG(llvm::dbgs() << "Visit " << *cluster.getOperation() << "\n");
       // For each launch op, we find the values used that come from a constant
       // defined above and sink these constants in the region body.

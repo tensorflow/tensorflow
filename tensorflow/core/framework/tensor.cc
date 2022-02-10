@@ -340,8 +340,9 @@ PROTO_TRAITS(quint16, int32, int);
 
 template <>
 struct ProtoHelper<int64_t> {
-  static const int64_t* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const int64_t*>(proto.int64_val().begin());
+  static protobuf::RepeatedField<int64_t>::const_iterator Begin(
+      const TensorProto& proto) {
+    return proto.int64_val().begin();
   }
   static size_t NumElements(const TensorProto& proto) {
     return proto.int64_val().size();
@@ -354,8 +355,9 @@ struct ProtoHelper<int64_t> {
 
 template <>
 struct ProtoHelper<uint64> {
-  static const uint64* Begin(const TensorProto& proto) {
-    return reinterpret_cast<const uint64*>(proto.uint64_val().begin());
+  static protobuf::RepeatedField<uint64_t>::const_iterator Begin(
+      const TensorProto& proto) {
+    return proto.uint64_val().begin();
   }
   static size_t NumElements(const TensorProto& proto) {
     return proto.uint64_val().size();

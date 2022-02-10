@@ -16,7 +16,10 @@ func @simple_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   return %0 : tensor<?xf32>
 }
 
-// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %arg0: tensor<?xf32>
 // CHECK-SAME: ) -> tensor<?xf32> {
@@ -41,7 +44,10 @@ func @cluster_with_transpose(%arg0: tensor<?x?xf32>,
   return %0 : tensor<?x?xf32>
 }
 
-// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 2 : i64
+// CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %arg0: tensor<?x?xf32>
 // CHECK-SAME:   %arg1: tensor<2xi32> {jitrt.constraint = "value"}

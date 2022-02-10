@@ -42,14 +42,14 @@ struct Optimize : public tfjs::OptimizePassBase<Optimize> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<TFJSDialect>();
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 #include "tensorflow/compiler/mlir/tfjs/transforms/generated_optimize.inc"
 
-void Optimize::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
+void Optimize::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
 
   populateWithGenerated(patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));

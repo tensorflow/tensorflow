@@ -5451,6 +5451,11 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     }
     // Map inputs to NN API tensor indices.
     for (int input_pos = 0; input_pos < node->inputs->size; ++input_pos) {
+      if (context->tensors[node->inputs->data[input_pos]].type ==
+              kTfLiteFloat16 &&
+          IsConstantTensor(&context->tensors[node->inputs->data[input_pos]])) {
+        input_tensor_flags |= NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION;
+      }
       if (reg->builtin_code == kTfLiteBuiltinTransposeConv) {
         // Everything is added during Map since input tensors
         // have different order.
@@ -6313,11 +6318,7 @@ static std::vector<int> GetSupportedOpsWithFp16WeightRemapping(
                                                        node_supported_fn);
   std::set<std::string> unsupported_nodes_info;
   if (partition_helper.Partition(&unsupported_nodes_info) == kTfLiteOk) {
-    // By default, we simply get 1st largest partition as
-    // 'max_delegate_partions'
-    // is set to 1 by default.
-    supported_nodes = partition_helper.GetNodesOfFirstNLargestPartitions(
-        max_number_delegated_partitions);
+    supported_nodes = partition_helper.GetNodesOfFirstNLargestPartitions();
   }
   return supported_nodes;
 }

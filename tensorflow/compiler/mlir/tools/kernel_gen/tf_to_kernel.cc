@@ -123,7 +123,7 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   // Compile.
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
-      mlir::OwningModuleRef module,
+      mlir::OwningOpRef<mlir::ModuleOp> module,
       GenerateKernelForTfCode(context, tf_code, architectures, tile_sizes,
                               unroll_factors, max_supported_rank,
                               embed_memref_prints, print_ptx, print_llvmir,

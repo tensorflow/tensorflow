@@ -68,13 +68,14 @@ def function_def_to_graph(fdef,
     if input_shapes_attr is not None:
       raw_input_shapes = input_shapes_attr.list.shape
 
-      # Replace resource handle shapes, since they are always stored as a scalar
-      # shape in the _input_shapes attribute.
+      # Replace resource handle shapes in the inputs to disable shape inference.
+      # Setting the shape to either the variable handle shape (which is always
+      # `[]`) or the variable shape can cause shape inference issues.
       input_shapes = []
       for input_shape, arg_def in zip(raw_input_shapes,
                                       fdef.signature.input_arg):
         if arg_def.type == types_pb2.DT_RESOURCE and arg_def.handle_data:
-          input_shapes.append(arg_def.handle_data[0].shape)
+          input_shapes.append(None)
         else:
           input_shapes.append(input_shape)
 
@@ -301,10 +302,15 @@ def _get_num_args(arg_def, node_def):
 
 def _set_handle_data(func_graph, fdef):
   """Adds handle data for resource type inputs and outputs."""
+    # The shape of the handle itself is [], while the variable shape is
+    # saved in `handle_data`. Previously, the shape of the resource handle
+    # was set to `None`. Correct both shapes here.
   for tensor, arg_def in itertools.chain(
       zip(func_graph.inputs, fdef.signature.input_arg),
       zip(func_graph.outputs, fdef.signature.output_arg)):
     if arg_def.handle_data:
+      tensor.set_shape([])
+
       shape_and_dtype = arg_def.handle_data[0]
       handle_data = cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData()
       handle_data.is_set = True

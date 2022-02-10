@@ -51,7 +51,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"
 #include "tensorflow/core/kernels/linalg/einsum_op_impl.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -546,19 +549,6 @@ Status ConvertAxis(int tf_axis, int trt_nb_dims, absl::string_view node_name,
   // Remove batch dimension if it is implicit.
   *trt_axis = use_implicit_batch ? tf_axis - 1 : tf_axis;
   return Status::OK();
-}
-
-inline bool DimsEqual(const nvinfer1::Dims& dim_l,
-                      const nvinfer1::Dims& dim_r) {
-  if (dim_l.nbDims != dim_r.nbDims) {
-    return false;
-  }
-  for (int i = 0; i < dim_l.nbDims; i++) {
-    if (dim_l.d[i] != dim_r.d[i]) {
-      return false;
-    }
-  }
-  return true;
 }
 
 bool AllLengthsEqual(const std::vector<std::vector<int>>& inputs) {
@@ -4415,11 +4405,6 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "is_training", &is_training));
 
-  if (data_format != "NCHW") {
-    return errors::Unimplemented(node_def.op(),
-                                 " only supports data_format=NCHW");
-  }
-
   if (is_training) {
     // Trying to use batchnorm in training mode is a very common problem.
     // Because the error message will only be printed in VLOG(1) by the
@@ -4433,7 +4418,7 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
                                  " only supports is_training=false");
   }
   ITensorProxyPtr tensor = inputs.at(0).tensor();
-  if (!params->use_implicit_batch && tensor->getDimensions().d[1] == -1) {
+  if (!params->use_implicit_batch) {
     // This check is to make sure that channel dimension is known during
     // conversion.
     //
@@ -4442,7 +4427,10 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     // known shapes during conversion even though the shapes may not be known
     // during segmentation (see the actual argument for input_shapes when
     // ConvertGraphDefToEngine is called from TRTEngineOp::BuildEngine).
-    return errors::InvalidArgument("Channel dimension must be static");
+    int channel_dim = (data_format == "NCHW" ? 1 : 3);
+    if (tensor->getDimensions().d[channel_dim] == -1) {
+      return errors::InvalidArgument("Channel dimension must be static");
+    }
   }
   //  Check parameter types
   auto parameter_type = inputs.at(1).weights().TrtDType();
@@ -4528,14 +4516,43 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     }
   }
 
-  nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
-  nvinfer1::IScaleLayer* layer = params->converter->network()->addScale(
-      *tensor->trt_tensor(), mode, combined_offset_weights->GetTrtWeights(),
-      combined_scale_weights->GetTrtWeights(),
-      nvinfer1::Weights{nvinfer1::DataType::kFLOAT, nullptr, 0});
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->converter->SetLayerName(layer, node_def);
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
+  ITensorProxyPtr output_tensor;
+
+  if (data_format == "NCHW") {
+    // IScaleLayer CHANNEL mode requires NCHW format.
+    nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
+    nvinfer1::IScaleLayer* layer = params->converter->network()->addScale(
+        *tensor->trt_tensor(), mode, combined_offset_weights->GetTrtWeights(),
+        combined_scale_weights->GetTrtWeights(),
+        nvinfer1::Weights{nvinfer1::DataType::kFLOAT, nullptr, 0});
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    params->converter->SetLayerName(layer, node_def);
+    output_tensor = layer->getOutput(0);
+  }
+  if (data_format == "NHWC") {
+    // nweight is the number of channels. TensorRT IElementWiseLayer supports
+    // implicit broadcasting for dimensions of size 1.
+    nvinfer1::Dims dims = tensor->getDimensions();
+    for (int i = 0; i < dims.nbDims - 1; i++) {
+      dims.d[i] = 1;
+    }
+    dims.d[dims.nbDims - 1] = nweight;
+    StatusOr<TRTNetworkBuilder> builder = TRTNetworkBuilder::Create(
+        params->converter->network(), params->weight_store);
+    TRT_ENSURE_OK(builder);
+    auto scale_constant_layer = builder->WeightsToConstant(
+        combined_scale_weights->GetTrtWeights(), dims);
+    ITensorProxyPtr scale_constant = (*scale_constant_layer)->getOutput(0);
+    auto scale_layer =
+        builder->Mul(tensor->trt_tensor(), scale_constant->trt_tensor());
+    auto offset_constant_layer = builder->WeightsToConstant(
+        combined_offset_weights->GetTrtWeights(), dims);
+    ITensorProxyPtr offset_constant = (*offset_constant_layer)->getOutput(0);
+    auto offset_layer = builder->Add((*scale_layer)->getOutput(0),
+                                     offset_constant->trt_tensor());
+    output_tensor = (*offset_layer)->getOutput(0);
+  }
+
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
@@ -6640,7 +6657,7 @@ Status ConvertGraphDefToEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
-    bool use_explicit_precision) {
+    bool use_explicit_precision, tensorflow::grappler::Cluster* cluster) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
@@ -6652,12 +6669,46 @@ Status ConvertGraphDefToEngine(
   TF_RETURN_IF_ERROR(statusor.status());
   std::unique_ptr<Converter> converter = std::move(statusor.ValueOrDie());
 
+  GraphDef graph = gdef;
+  if (cluster != nullptr) {
+    bool apply_layout_optim;
+    Status status =
+        ReadBoolFromEnvVar("TF_TRT_ENABLE_LAYOUT_OPTIMIZER",
+                           /*default_value=*/true, &apply_layout_optim);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
+    if (apply_layout_optim) {
+      tensorflow::grappler::GrapplerItem grappler_item;
+      grappler_item.graph = gdef;
+      // TensorRT API requires the input for convolution to be in NCHW.
+      tensorflow::grappler::GenericLayoutOptimizer layout_optimizer("NCHW");
+      TF_RETURN_IF_ERROR(
+          layout_optimizer.Optimize(cluster, grappler_item, &graph));
+
+      grappler_item.graph = graph;
+
+      tensorflow::grappler::ConstantFolding const_optimizer(
+          nullptr,
+          /*disable_compressed_tensor_optimization=*/false,
+          /*fold_quantization_emulation=*/false);
+      TF_RETURN_IF_ERROR(
+          const_optimizer.Optimize(cluster, grappler_item, &graph));
+
+      // The optimizers may break the topological order
+      // so we need these steps to restore it
+      Graph g(OpRegistry::Global());
+      TF_RETURN_IF_ERROR(
+          ConvertGraphDefToGraph(GraphConstructorOptions(), graph, &g));
+      g.ToGraphDef(&graph);
+    }
+  }
   VLOG(1) << "Starting to convert TensorFlow ops to TensorRT layers";
   std::vector<Converter::EngineOutputInfo> output_tensors;
   int num_layers = converter->network()->getNbLayers();
   absl::flat_hash_set<const char*> layer_names;
   // Graph nodes are already topologically sorted during construction
-  for (const auto& node_def : gdef.node()) {
+  for (const auto& node_def : graph.node()) {
     const string& node_name = node_def.name();
     VLOG(2) << "Converting node " << node_name << ", op=" << node_def.op();
     if (IsEngineInput(node_name)) {

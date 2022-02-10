@@ -1068,6 +1068,7 @@ cc_library(
         ":op_def_proto_cc",
         ":tensor",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/container:flat_hash_map",
