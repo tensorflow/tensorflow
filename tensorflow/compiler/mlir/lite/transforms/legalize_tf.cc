@@ -908,11 +908,10 @@ void addPatterns(MLIRContext* context, RewritePatternSet& patterns) {
 
   // Add the generated patterns to the list.
   populateWithGenerated(patterns);
-  patterns
-      .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
-              ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
-              ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFAssertOp,
-              ConvertTFConv3DOp, ConvertTFConv3DBackpropInputV2Op>(context);
+  patterns.add<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
+               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
+               ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFAssertOp,
+               ConvertTFConv3DOp, ConvertTFConv3DBackpropInputV2Op>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.add<LegalizeUnidirectionalSequenceLstm,
@@ -974,25 +973,25 @@ void LegalizeTF::runOnOperation() {
 
   addPatterns(context, stage2Patterns);
 
-  stage2Patterns.insert<ApplyExplicitBroadcasting<TF::LessEqualOp>,
-                        ApplyExplicitBroadcasting<TF::GreaterEqualOp>,
-                        ApplyExplicitBroadcasting<TF::NotEqualOp>,
-                        ApplyExplicitBroadcasting<TF::GreaterOp>,
-                        ApplyExplicitBroadcasting<TF::LessOp>,
-                        ApplyExplicitBroadcasting<TF::EqualOp>,
-                        ApplyExplicitBroadcasting<TF::AddOp>,
-                        ApplyExplicitBroadcasting<TF::AddV2Op>,
-                        ApplyExplicitBroadcasting<TF::MulOp>,
-                        ApplyExplicitBroadcasting<TF::DivOp>,
-                        ApplyExplicitBroadcasting<TF::RealDivOp>,
-                        ApplyExplicitBroadcasting<TF::SubOp>,
-                        ApplyExplicitBroadcasting<TF::FloorDivOp>,
-                        ApplyExplicitBroadcasting<TF::FloorModOp>,
-                        ApplyExplicitBroadcasting<TF::PowOp>,
-                        ApplyExplicitBroadcasting<TF::MaximumOp>,
-                        ApplyExplicitBroadcasting<TF::MinimumOp>,
-                        ApplyExplicitBroadcasting<TF::SquaredDifferenceOp>,
-                        ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
+  stage2Patterns.add<ApplyExplicitBroadcasting<TF::LessEqualOp>,
+                     ApplyExplicitBroadcasting<TF::GreaterEqualOp>,
+                     ApplyExplicitBroadcasting<TF::NotEqualOp>,
+                     ApplyExplicitBroadcasting<TF::GreaterOp>,
+                     ApplyExplicitBroadcasting<TF::LessOp>,
+                     ApplyExplicitBroadcasting<TF::EqualOp>,
+                     ApplyExplicitBroadcasting<TF::AddOp>,
+                     ApplyExplicitBroadcasting<TF::AddV2Op>,
+                     ApplyExplicitBroadcasting<TF::MulOp>,
+                     ApplyExplicitBroadcasting<TF::DivOp>,
+                     ApplyExplicitBroadcasting<TF::RealDivOp>,
+                     ApplyExplicitBroadcasting<TF::SubOp>,
+                     ApplyExplicitBroadcasting<TF::FloorDivOp>,
+                     ApplyExplicitBroadcasting<TF::FloorModOp>,
+                     ApplyExplicitBroadcasting<TF::PowOp>,
+                     ApplyExplicitBroadcasting<TF::MaximumOp>,
+                     ApplyExplicitBroadcasting<TF::MinimumOp>,
+                     ApplyExplicitBroadcasting<TF::SquaredDifferenceOp>,
+                     ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
 
   FrozenRewritePatternSet stage2FrozenPatterns(std::move(stage2Patterns));
   if (!applyPatterns(func, target, stage2FrozenPatterns))

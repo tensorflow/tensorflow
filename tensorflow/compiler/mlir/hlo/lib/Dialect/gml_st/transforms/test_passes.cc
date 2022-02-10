@@ -155,7 +155,7 @@ struct TestGmlStLoopTilingPass
 
     linalg::LinalgTransformationFilter f(ArrayRef<StringAttr>{},
                                          StringAttr::get(ctx, "tile"));
-    patterns.insert<LinalgTilingPattern>(ctx, options, f);
+    patterns.add<LinalgTilingPattern>(ctx, options, f);
     (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
 
     funcOp.walk([](linalg::LinalgOp op) {

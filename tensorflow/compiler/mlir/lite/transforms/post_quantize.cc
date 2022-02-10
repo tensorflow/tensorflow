@@ -258,9 +258,8 @@ void PostQuantizePass::runOnOperation() {
   TFL::populateWithGenerated(patterns);
   patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::LSTMOp>>(ctx);
-  patterns
-      .insert<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
-          ctx);
+  patterns.add<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
+      ctx);
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::CustomOp>>(ctx,
                                                             custom_op_map_);
