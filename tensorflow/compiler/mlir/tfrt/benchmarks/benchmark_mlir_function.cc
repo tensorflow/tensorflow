@@ -120,10 +120,14 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   // Generate random inputs based on the tensor specs.
   llvm::SmallVector<Tensor> input_tensors = GetInputTensors(input_specs);
 
+  // Record data ptrs of inputs.
+  llvm::SmallVector<void*> input_ptrs;
   // Convert input tensors to memref descriptors.
   llvm::SmallVector<MemrefDesc> operands;
-  for (const Tensor& tensor : input_tensors)
+  for (const Tensor& tensor : input_tensors) {
+    input_ptrs.push_back(tensor.data());
     operands.emplace_back(TensorToMemrefDesc(tensor));
+  }
 
   // Get an executable that might be specialized to the operands.
   llvm::Expected<AsyncValuePtr<Executable>> executable =
@@ -144,7 +148,10 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   RemainingResults results(result_values);
 
   // Free memory owned by the returned memrefs.
-  ReturnValueConverter<ResultConversionCtx> converter(results);
+  auto result_ctx =
+      std::make_unique<ResultConversionCtx>(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results,
+                                                      std::move(result_ctx));
   converter.AddConversion(FreeReturnedMemref);
 
   // Initialize call frame with MemrefDesc operands.

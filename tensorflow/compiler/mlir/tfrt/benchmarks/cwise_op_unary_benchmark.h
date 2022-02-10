@@ -75,8 +75,17 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   auto result_values = std::array<RCReference<AsyncValue>, 1>{{}};
   RemainingResults results(result_values);
 
+  // Record data ptrs of inputs.
+  llvm::SmallVector<void*> input_ptrs;
+  for (auto& operand : operands) {
+    input_ptrs.push_back(operand.data);
+  }
+
   // Free memory owned by the returned memrefs.
-  ReturnValueConverter<ResultConversionCtx> converter(results);
+  auto result_ctx =
+      std::make_unique<ResultConversionCtx>(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results,
+                                                      std::move(result_ctx));
   converter.AddConversion(FreeReturnedMemref);
 
   // Get an executable that might be specialized to the operands.

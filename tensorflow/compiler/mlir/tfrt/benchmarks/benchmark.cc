@@ -61,7 +61,7 @@ std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads) {
       kDefaultHostDeviceName);
 }
 
-mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
+mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx& ctx,
                                        RemainingResults results,
                                        unsigned result_index, const Type* type,
                                        const Type* runtime_type,
@@ -70,7 +70,9 @@ mlir::LogicalResult FreeReturnedMemref(const ResultConversionCtx&,
   // Cast result to the arbitrary chosen memref type and rank because we only
   // need to know the base pointer value.
   auto* memref = static_cast<StridedMemRefType<float, 0>*>(result_ptr);
-  free(memref->basePtr);
+  if (llvm::find(ctx.input_ptrs, memref->data) == ctx.input_ptrs.end()) {
+    free(memref->basePtr);
+  }
   return mlir::success();
 }
 
