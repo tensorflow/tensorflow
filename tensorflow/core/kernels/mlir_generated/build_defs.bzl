@@ -157,7 +157,7 @@ def _gen_kernel_bin_impl(ctx):
             "--output=%s" % gpu_bin.path,
             "--enable_ftz=%s" % (ctx.attr.data_type == "f32"),
             "--cpu_codegen=%s" % ctx.attr.cpu_codegen,
-            "--jit_i64_indexed_for_large_tensors=%s" % ctx.attr.jit_i64_indexed_for_large_tensor,
+            "--jit_i64_indexed_for_large_tensors=%s" % ctx.attr.jit_i64_indexed_for_large_tensors,
             "--jit=%s" % ctx.attr.jit,
         ],
         use_default_shell_env = True,
