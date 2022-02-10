@@ -23,6 +23,8 @@ namespace gml_st {
 
 std::unique_ptr<OperationPass<FuncOp>> createTestGmlStLoopPeelingPass();
 
+std::unique_ptr<OperationPass<FuncOp>> createTestGmlStLoopTilingPass();
+
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h.inc"
 

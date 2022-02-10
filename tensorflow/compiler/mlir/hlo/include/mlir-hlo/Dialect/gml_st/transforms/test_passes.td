@@ -25,3 +25,22 @@ def TestGmlStLoopPeeling : Pass<"test-gml-st-loop-peeling", "mlir::FuncOp"> {
            "llvm::cl::OneOrMore, llvm::cl::MiscFlags::CommaSeparated">,
   ];
 }
+
+def TestGmlStLoopTiling : Pass<"test-gml-st-loop-tiling", "mlir::FuncOp"> {
+  let summary = "Tile `gml_st.loop`.";
+  let constructor = "::mlir::gml_st::createTestGmlStLoopTilingPass()";
+  let dependentDialects = [
+    "AffineDialect",
+    "gml_st::GmlStDialect",
+    "linalg::LinalgDialect",
+    "memref::MemRefDialect"
+  ];
+  let options = [
+    ListOption<"tile_sizes", "tile-sizes", "int64_t", "Tile sizes",
+               "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+    ListOption<"distribution_types", "distribution-types", "std::string",
+               "Distribution types",
+               "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">
+
+  ];
+}
