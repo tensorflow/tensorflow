@@ -213,10 +213,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     return false;
   }
 
-  llvm::Triple target_triple = llvm::Triple(module_->getTargetTriple());
-  bool isAMDGPU = target_triple.isAMDGPU();
-
   if (root_opcode == HloOpcode::kAdd) {
+    llvm::Triple target_triple = llvm::Triple(module_->getTargetTriple());
     // NVPTX supports atomicAdd on F32 and integer types.
     if (target_triple.isNVPTX()) {
       // "atom.add.f64 requires sm_60 or higher."
