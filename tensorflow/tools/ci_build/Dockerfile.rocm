@@ -3,10 +3,10 @@
 FROM ubuntu:bionic
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG ROCM_DEB_REPO=http://repo.radeon.com/rocm/apt/4.5.2/
+ARG ROCM_DEB_REPO=http://repo.radeon.com/rocm/apt/5.0/
 ARG ROCM_BUILD_NAME=ubuntu
 ARG ROCM_BUILD_NUM=main
-ARG ROCM_PATH=/opt/rocm-4.5.2
+ARG ROCM_PATH=/opt/rocm-5.0.0
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TF_NEED_ROCM 1
