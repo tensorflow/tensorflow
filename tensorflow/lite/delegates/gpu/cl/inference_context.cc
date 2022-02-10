@@ -56,11 +56,11 @@ namespace cl {
 
 namespace {
 
-std::vector<std::pair<ValueId, TensorDescriptor>> GetCLNodeTensors(
-    const CLNode& node) {
+std::vector<std::pair<ValueId, TensorDescriptor>> GetNodeTensors(
+    const GpuNode& node) {
   std::vector<std::pair<ValueId, TensorDescriptor>> result;
   result.reserve(node.inputs.size() + node.outputs.size());
-  const OperationDef op_def = node.cl_operation.GetDefinition();
+  const OperationDef op_def = node.gpu_operation->GetDefinition();
   for (int j = 0; j < node.inputs.size(); ++j) {
     result.push_back({node.inputs[j], op_def.src_tensors[j]});
   }
@@ -103,6 +103,55 @@ size_t TotalSize(const ObjectsAssignment<size_t>& assignment,
   return total_size;
 }
 
+TensorType GetTensorType(const GpuModel& gpu_model,
+                         const CreateGpuModelInfo* create_info,
+                         const GpuInfo& gpu_info, ValueId id) {
+  bool is_variable = false;
+  for (int i = 0; i < gpu_model.variable_ids_and_refs.size(); ++i) {
+    if (gpu_model.variable_ids_and_refs[i].first == id) {
+      is_variable = true;
+      break;
+    }
+  }
+  if (is_variable) {
+    return TensorType::kVariable;
+  } else if (create_info &&
+             (create_info->external_immutable_tensors.find(id) !=
+                  create_info->external_immutable_tensors.end() ||
+              create_info->external_mutable_tensors.find(id) !=
+                  create_info->external_mutable_tensors.end())) {
+    return TensorType::kExternal;
+  } else if (gpu_model.const_tensors.find(id) !=
+             gpu_model.const_tensors.end()) {
+    return TensorType::kConst;
+  } else {
+    return TensorType::kRuntime;
+  }
+}
+
+void GetUsages(const GpuModel& model,
+               const std::function<bool(ValueId)>& functor,
+               std::map<ValueId, int2>* usages) {
+  for (const auto& in_id : model.input_ids_and_refs) {
+    if (functor(in_id.first)) {
+      AddUsage(in_id.first, 0, usages);
+    }
+  }
+  for (int op_index = 0; op_index < model.nodes.size(); ++op_index) {
+    auto tensors = GetNodeTensors(model.nodes[op_index]);
+    for (auto& tensor : tensors) {
+      if (functor(tensor.first)) {
+        AddUsage(tensor.first, op_index, usages);
+      }
+    }
+  }
+  for (const auto& out_id : model.output_ids_and_refs) {
+    if (functor(out_id.first)) {
+      AddUsage(out_id.first, model.nodes.size(), usages);
+    }
+  }
+}
+
 }  // namespace
 
 void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
@@ -131,9 +180,9 @@ absl::Status InferenceContext::InitFromGraph(
   if (serialized_model) {
     gpu_model_fb = tflite::gpu::Encode(gpu_model, &builder);
   }
-  RETURN_IF_ERROR(AllocateConstTensors(gpu_model, &env->context()));
-  RETURN_IF_ERROR(AllocateVariableTensors(gpu_model, &env->context()));
-  CopyFromGpuModel(&gpu_model);
+  RETURN_IF_ERROR(AllocateMemory(gpu_model, env->GetDevicePtr()->GetInfo(),
+                                 &create_info, &env->context()));
+  InitFromGpuModel(&gpu_model);
 
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
@@ -150,16 +199,14 @@ absl::Status InferenceContext::InitFromGraph(
   std::map<ValueId, Tensor> temp_external_tensors;
   for (const auto& external_tensor : create_info.external_mutable_tensors) {
     RETURN_IF_ERROR(CreateTensor(
-        env->context(), tensors_descs_[external_tensor.first].shape,
-        tensors_descs_[external_tensor.first],
+        env->context(), gpu_model.tensors[external_tensor.first].shape,
+        gpu_model.tensors[external_tensor.first],
         &temp_external_tensors[external_tensor.first]));
     external_mutable_tensors_[external_tensor.first] =
         &temp_external_tensors[external_tensor.first];
   }
   PrepareExternal();
   execution_hints_.Init(env->device().GetInfo());
-  RETURN_IF_ERROR(
-      AllocateMemory(creation_context.GetGpuInfo(), creation_context.context));
   BindMemoryToOperations();
   RETURN_IF_ERROR(Compile(creation_context));
   RETURN_IF_ERROR(UpdateParams());
@@ -218,9 +265,9 @@ absl::Status InferenceContext::RestoreDeserialized(
   }
   GpuModel gpu_model;
   RETURN_IF_ERROR(tflite::gpu::Decode(decoded_fb->gpu_model(), &gpu_model));
-  RETURN_IF_ERROR(AllocateConstTensors(gpu_model, &env->context()));
-  RETURN_IF_ERROR(AllocateVariableTensors(gpu_model, &env->context()));
-  CopyFromGpuModel(&gpu_model);
+  RETURN_IF_ERROR(AllocateMemory(gpu_model, env->GetDevicePtr()->GetInfo(),
+                                 create_info, &env->context()));
+  InitFromGpuModel(&gpu_model);
 
   // deserializing kernels into program_cache
   for (auto binary_program_fb : *decoded_fb->binary_programs()) {
@@ -242,8 +289,8 @@ absl::Status InferenceContext::RestoreDeserialized(
     }
     for (const auto& external_tensor : create_info->external_mutable_tensors) {
       RETURN_IF_ERROR(CreateTensor(
-          env->context(), tensors_descs_[external_tensor.first].shape,
-          tensors_descs_[external_tensor.first],
+          env->context(), gpu_model.tensors[external_tensor.first].shape,
+          gpu_model.tensors[external_tensor.first],
           &temp_external_tensors[external_tensor.first]));
       external_mutable_tensors_[external_tensor.first] =
           &temp_external_tensors[external_tensor.first];
@@ -253,8 +300,6 @@ absl::Status InferenceContext::RestoreDeserialized(
 
   execution_hints_.Init(env->device().GetInfo());
 
-  RETURN_IF_ERROR(
-      AllocateMemory(env->GetDevicePtr()->GetInfo(), &env->context()));
   BindMemoryToOperations();
   for (int i = 0; i < nodes_.size(); ++i) {
     uint64_t fingerprint = (*decoded_fb->fingerprints_per_node())[i];
@@ -277,7 +322,7 @@ absl::Status InferenceContext::RestoreDeserialized(
   return absl::OkStatus();
 }
 
-void InferenceContext::CopyFromGpuModel(GpuModel* gpu_model) {
+void InferenceContext::InitFromGpuModel(GpuModel* gpu_model) {
   for (const auto& input : gpu_model->input_ids_and_refs) {
     input_ids_.push_back(input.first);
   }
@@ -291,7 +336,6 @@ void InferenceContext::CopyFromGpuModel(GpuModel* gpu_model) {
     nodes_[i].outputs = gpu_model->nodes[i].outputs;
     nodes_[i].name = gpu_model->nodes[i].name;
   }
-  tensors_descs_ = std::move(gpu_model->tensors);
 }
 
 void InferenceContext::InitRecordableQueue(Environment* env) {
@@ -310,51 +354,15 @@ absl::Status InferenceContext::InitFromGraphWithTransforms(
   return absl::OkStatus();
 }
 
-void InferenceContext::GetUsages(const std::function<bool(ValueId)>& functor,
-                                 std::map<ValueId, int2>* usages) {
-  for (ValueId in_id : input_ids_) {
-    if (functor(in_id)) {
-      AddUsage(in_id, 0, usages);
-    }
-  }
-  for (int op_index = 0; op_index < nodes_.size(); ++op_index) {
-    auto tensors = GetCLNodeTensors(nodes_[op_index]);
-    for (auto& tensor : tensors) {
-      if (functor(tensor.first)) {
-        AddUsage(tensor.first, op_index, usages);
-      }
-    }
-  }
-  for (ValueId out_id : output_ids_) {
-    if (functor(out_id)) {
-      AddUsage(out_id, nodes_.size(), usages);
-    }
-  }
-}
-
-InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
-    const GpuInfo& gpu_info, ValueId id) {
-  if (external_immutable_tensors_.find(id) !=
-      external_immutable_tensors_.end()) {
-    return TensorMemoryType::kExternal;
-  } else if (external_mutable_tensors_.find(id) !=
-             external_mutable_tensors_.end()) {
-    return TensorMemoryType::kExternal;
-  } else if (const_tensors_.find(id) != const_tensors_.end()) {
-    return TensorMemoryType::kConst;
-  } else if (variable_ids_and_refs_.find(id) != variable_ids_and_refs_.end()) {
-    return TensorMemoryType::kVariable;
-  } else if (IsBufferBased(gpu_info, tensors_descs_[id].storage_type)) {
-    return TensorMemoryType::kBuffer;
-  } else {
-    return TensorMemoryType::kStrongShape;
-  }
-}
-
-absl::Status InferenceContext::AllocateMemory(const GpuInfo& gpu_info,
-                                              CLContext* context) {
-  RETURN_IF_ERROR(AllocateMemoryForBuffers(gpu_info, context));
-  RETURN_IF_ERROR(AllocateMemoryForStrongShapes(gpu_info, context));
+absl::Status InferenceContext::AllocateMemory(
+    const GpuModel& gpu_model, const GpuInfo& gpu_info,
+    const CreateGpuModelInfo* create_info, CLContext* context) {
+  RETURN_IF_ERROR(AllocateConstTensors(gpu_model, context));
+  RETURN_IF_ERROR(AllocateVariableTensors(gpu_model, context));
+  RETURN_IF_ERROR(
+      AllocateBufferBasedTensors(gpu_model, gpu_info, create_info, context));
+  RETURN_IF_ERROR(
+      AllocateStrongShapesTensors(gpu_model, gpu_info, create_info, context));
   return absl::OkStatus();
 }
 
@@ -394,19 +402,23 @@ absl::Status InferenceContext::AllocateVariableTensors(
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
-                                                        CLContext* context) {
+absl::Status InferenceContext::AllocateBufferBasedTensors(
+    const GpuModel& gpu_model, const GpuInfo& gpu_info,
+    const CreateGpuModelInfo* create_info, CLContext* context) {
   std::map<ValueId, int2> buffer_usages;
   GetUsages(
-      [this, &gpu_info](ValueId id) {
-        return GetTensorMemoryType(gpu_info, id) == TensorMemoryType::kBuffer;
+      gpu_model,
+      [&gpu_model, &gpu_info, &create_info](ValueId id) {
+        return GetTensorType(gpu_model, create_info, gpu_info, id) ==
+                   TensorType::kRuntime &&
+               IsBufferBased(gpu_info, gpu_model.tensors.at(id).storage_type);
       },
       &buffer_usages);
 
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
   bool has_buffer_based_images = false;
   for (auto& usage : buffer_usages) {
-    const auto& t = tensors_descs_[usage.first];
+    const auto& t = gpu_model.tensors.at(usage.first);
     const auto& shape = t.shape;
     const auto& descriptor = t;
     const size_t element_size = SizeOf(descriptor.data_type);
@@ -499,14 +511,16 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
   shared_buffer_tensors_.resize(buffer_usage_records.size());
-  for (auto& node : nodes_) {
-    auto tensors = GetCLNodeTensors(node);
+  for (auto& node : gpu_model.nodes) {
+    auto tensors = GetNodeTensors(node);
     for (auto& t : tensors) {
-      if (GetTensorMemoryType(gpu_info, t.first) != TensorMemoryType::kBuffer)
+      if (GetTensorType(gpu_model, create_info, gpu_info, t.first) !=
+              TensorType::kRuntime ||
+          !IsBufferBased(gpu_info, gpu_model.tensors.at(t.first).storage_type))
         continue;
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[t.first];
       if (created_tensors[tensor_index]) continue;
-      const auto& shape_5d = tensors_descs_[t.first].shape;
+      const auto& shape_5d = gpu_model.tensors.at(t.first).shape;
       const auto shape = BHWC(shape_5d.b, shape_5d.h, shape_5d.w, shape_5d.c);
       const int buffer_index = use_offset_assignment
                                    ? tensor_index
@@ -538,13 +552,16 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const GpuInfo& gpu_info,
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::AllocateMemoryForStrongShapes(
-    const GpuInfo& gpu_info, CLContext* context) {
+absl::Status InferenceContext::AllocateStrongShapesTensors(
+    const GpuModel& gpu_model, const GpuInfo& gpu_info,
+    const CreateGpuModelInfo* create_info, CLContext* context) {
   std::map<ValueId, int2> usages;
   GetUsages(
-      [this, &gpu_info](ValueId id) {
-        return GetTensorMemoryType(gpu_info, id) ==
-               TensorMemoryType::kStrongShape;
+      gpu_model,
+      [&gpu_model, &gpu_info, &create_info](ValueId id) {
+        return GetTensorType(gpu_model, create_info, gpu_info, id) ==
+                   TensorType::kRuntime &&
+               !IsBufferBased(gpu_info, gpu_model.tensors.at(id).storage_type);
       },
       &usages);
 
@@ -563,7 +580,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
   std::map<ValueId, ValueId> remap_from_graph_ids;
   for (auto& usage : usages) {
     remap_from_graph_ids[usage.first] = usage_records.size();
-    usage_records.push_back({{tensors_descs_[usage.first]},
+    usage_records.push_back({{gpu_model.tensors.at(usage.first)},
                              static_cast<TaskId>(usage.second.x),
                              static_cast<TaskId>(usage.second.y)});
   }
@@ -572,14 +589,15 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
   RETURN_IF_ERROR(AssignObjectsToTensors(
       usage_records, MemoryStrategy::EQUALITY, &assignment));
 
-  for (auto& node : nodes_) {
-    auto tensors = GetCLNodeTensors(node);
+  for (auto& node : gpu_model.nodes) {
+    auto tensors = GetNodeTensors(node);
     for (auto& t : tensors) {
-      if (GetTensorMemoryType(gpu_info, t.first) !=
-          TensorMemoryType::kStrongShape) {
+      if (GetTensorType(gpu_model, create_info, gpu_info, t.first) !=
+              TensorType::kRuntime ||
+          IsBufferBased(gpu_info, gpu_model.tensors.at(t.first).storage_type)) {
         continue;
       }
-      const auto& shape = tensors_descs_[t.first].shape;
+      const auto& shape = gpu_model.tensors.at(t.first).shape;
       const auto id = assignment.object_ids[remap_from_graph_ids[t.first]];
       graph_ids_to_strong_shape_tensors_[t.first] = id;
       const auto& it = strong_shape_tensors_.find(id);

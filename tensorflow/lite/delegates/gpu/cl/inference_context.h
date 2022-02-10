@@ -61,6 +61,8 @@ struct CLNode {
   CLNode& operator=(const CLNode&) = delete;
 };
 
+enum class TensorType { kVariable, kConst, kExternal, kRuntime };
+
 class InferenceContext {
  public:
   absl::Status InitFromGraph(const CreateGpuModelInfo& create_info,
@@ -102,22 +104,17 @@ class InferenceContext {
   absl::Status SetTensor(const ValueId& tensor_id, Tensor* tensor_ptr);
 
  private:
-  enum class TensorMemoryType {
-    kStrongShape,
-    kBuffer,
-    kVariable,
-    kConst,
-    kExternal
-  };
-
   flatbuffers::Offset<data::InferenceContext> Encode(
       const CLDevice& device, const ProgramCache& program_cache,
       flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
       flatbuffers::FlatBufferBuilder* builder);
 
-  void CopyFromGpuModel(GpuModel* gpu_model);
+  void InitFromGpuModel(GpuModel* gpu_model);
 
-  absl::Status AllocateMemory(const GpuInfo& gpu_info, CLContext* context);
+  absl::Status AllocateMemory(const GpuModel& gpu_model,
+                              const GpuInfo& gpu_info,
+                              const CreateGpuModelInfo* create_info,
+                              CLContext* context);
 
   absl::Status AllocateConstTensors(const GpuModel& gpu_model,
                                     CLContext* context);
@@ -125,17 +122,14 @@ class InferenceContext {
   absl::Status AllocateVariableTensors(const GpuModel& gpu_model,
                                        CLContext* context);
 
-  absl::Status AllocateMemoryForBuffers(const GpuInfo& gpu_info,
-                                        CLContext* context);
+  absl::Status AllocateBufferBasedTensors(const GpuModel& gpu_model,
+                                          const GpuInfo& gpu_info,
+                                          const CreateGpuModelInfo* create_info,
+                                          CLContext* context);
 
-  absl::Status AllocateMemoryForStrongShapes(const GpuInfo& gpu_info,
-                                             CLContext* context);
-
-  // utility function
-  void GetUsages(const std::function<bool(ValueId)>& functor,
-                 std::map<ValueId, int2>* usages);
-
-  TensorMemoryType GetTensorMemoryType(const GpuInfo& gpu_info, ValueId id);
+  absl::Status AllocateStrongShapesTensors(
+      const GpuModel& gpu_model, const GpuInfo& gpu_info,
+      const CreateGpuModelInfo* create_info, CLContext* context);
 
   void BindMemoryToOperations();
   absl::Status Compile(const CreationContext& creation_context);
@@ -175,7 +169,6 @@ class InferenceContext {
   absl::flat_hash_map<ValueId, Tensor*> external_immutable_tensors_;
   absl::flat_hash_map<ValueId, Tensor*> external_mutable_tensors_;
   absl::flat_hash_map<ValueId, std::vector<int>> external_tensor_to_nodes_;
-  absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
 
   std::map<ValueId, Tensor> const_tensors_;
 
