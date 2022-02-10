@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for stateful random-number generation ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 from absl.testing import parameterized
@@ -333,7 +329,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       var = variables.Variable([0, 0], dtype=dtypes.uint32)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
-          "Type mismatch for read of variable .* Expected int64; got"):
+          "Trying to read variable .* Expected int64 got"):
         gen_stateful_random_ops.stateful_standard_normal_v2(
             var.handle, random.RNG_ALG_THREEFRY, shape)
       var = variables.Variable([[0]], dtype=dtypes.int64)

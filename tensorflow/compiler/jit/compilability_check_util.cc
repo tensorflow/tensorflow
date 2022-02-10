@@ -97,6 +97,7 @@ StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &attr_lists));
 
   std::vector<NodeDef> out;
+  out.reserve(attr_lists.size());
   for (int i = 0; i < attr_lists.size(); i++) {
     out.emplace_back();
     NodeDef& inserted = out.back();
@@ -484,6 +485,14 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (!op_filter_.allow_collective_reduce_v2 &&
       node.type_string() == "CollectiveReduceV2") {
     absl::string_view uncompilable_reason = "Collective op";
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              encapsulating_function, uncompilable_nodes);
+    LogNotCompilable(node, uncompilable_reason);
+    return false;
+  }
+
+  if (!op_filter_.allow_unique_op && node.type_string() == "Unique") {
+    absl::string_view uncompilable_reason = "Unique op";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               encapsulating_function, uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);

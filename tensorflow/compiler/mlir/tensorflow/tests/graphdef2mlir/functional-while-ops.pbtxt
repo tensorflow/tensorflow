@@ -4,9 +4,9 @@
 # composite While op in MLIR with is_stateless attribute set accordingly to
 # distinguish between them.
 
-# CHECK-DAG: "tf.While"{{.*}} is_stateless = false{{.*}} loc("StatefulWhile")
-# CHECK-DAG: "tf.While"{{.*}} is_stateless = true{{.*}} loc("StatelessWhile")
-# CHECK-DAG: "tf.While"{{.*}} is_stateless = false{{.*}} shape_invariant{{.*}} -> (tensor<i32>, tensor<*xf32>) loc("WhileWithOutputShapes")
+# CHECK-DAG: "tf.While"{{.*}} is_stateless = false{{.*}} loc(fused["While:", "StatefulWhile"])
+# CHECK-DAG: "tf.While"{{.*}} is_stateless = true{{.*}} loc(fused["StatelessWhile:", "StatelessWhile"])
+# CHECK-DAG: "tf.While"{{.*}} is_stateless = false{{.*}} shape_invariant{{.*}} -> (tensor<i32>, tensor<*xf32>) loc(fused["While:", "WhileWithOutputShapes"])
 
 node {
   name: "StatefulWhile"

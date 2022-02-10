@@ -77,9 +77,6 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kFinishTask:
       FinishTask(update.finish_task());
       break;
-    case Update::kSetElementSpec:
-      SetElementSpec(update.set_element_spec());
-      break;
     case Update::UPDATE_TYPE_NOT_SET:
       return errors::Internal("Update type not set.");
   }
@@ -91,7 +88,8 @@ void DispatcherState::RegisterDataset(
     const RegisterDatasetUpdate& register_dataset) {
   int64_t id = register_dataset.dataset_id();
   int64_t fingerprint = register_dataset.fingerprint();
-  auto dataset = std::make_shared<Dataset>(id, fingerprint);
+  auto dataset =
+      std::make_shared<Dataset>(id, fingerprint, register_dataset.metadata());
   DCHECK(!datasets_by_id_.contains(id));
   datasets_by_id_[id] = dataset;
   DCHECK(!datasets_by_fingerprint_.contains(fingerprint));
@@ -103,8 +101,7 @@ void DispatcherState::RegisterWorker(
     const RegisterWorkerUpdate& register_worker) {
   std::string address = register_worker.worker_address();
   DCHECK(!workers_.contains(address));
-  workers_[address] =
-      std::make_shared<Worker>(address, register_worker.transfer_address());
+  workers_[address] = std::make_shared<Worker>(register_worker);
   tasks_by_worker_[address] =
       absl::flat_hash_map<int64_t, std::shared_ptr<Task>>();
   worker_index_resolver_.AddWorker(address);
@@ -209,9 +206,7 @@ void DispatcherState::CreatePendingTask(
   DCHECK_EQ(task, nullptr);
   auto& job = jobs_[create_pending_task.job_id()];
   DCHECK_NE(job, nullptr);
-  task =
-      std::make_shared<Task>(task_id, job, create_pending_task.worker_address(),
-                             create_pending_task.transfer_address());
+  task = std::make_shared<Task>(create_pending_task, job);
   job->pending_tasks.emplace(task, create_pending_task.starting_round());
   tasks_by_worker_[create_pending_task.worker_address()][task->task_id] = task;
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
@@ -246,8 +241,7 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   DCHECK_EQ(task, nullptr);
   auto& job = jobs_[create_task.job_id()];
   DCHECK_NE(job, nullptr);
-  task = std::make_shared<Task>(task_id, job, create_task.worker_address(),
-                                create_task.transfer_address());
+  task = std::make_shared<Task>(create_task, job);
   tasks_by_job_[create_task.job_id()].push_back(task);
   tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
@@ -268,24 +262,6 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   }
   VLOG(3) << "Job " << task->job->job_id << " finished: " << all_finished;
   jobs_[task->job->job_id]->finished = all_finished;
-}
-
-void DispatcherState::SetElementSpec(
-    const SetElementSpecUpdate& set_element_spec) {
-  int64_t dataset_id = set_element_spec.dataset_id();
-  std::string element_spec = set_element_spec.element_spec();
-  DCHECK(!id_element_spec_info_.contains(dataset_id));
-  id_element_spec_info_[dataset_id] = element_spec;
-}
-
-Status DispatcherState::GetElementSpec(int64_t dataset_id,
-                                       std::string& element_spec) const {
-  auto it = id_element_spec_info_.find(dataset_id);
-  if (it == id_element_spec_info_.end()) {
-    return errors::NotFound("Element_spec with key ", dataset_id, " not found");
-  }
-  element_spec = it->second;
-  return Status::OK();
 }
 
 int64_t DispatcherState::NextAvailableDatasetId() const {
@@ -374,6 +350,16 @@ Status DispatcherState::JobForJobClientId(int64_t job_client_id,
     return errors::NotFound("Job client id not found: ", job_client_id);
   }
   return Status::OK();
+}
+
+std::vector<int64_t> DispatcherState::ListActiveClientIds() {
+  std::vector<int64_t> ids;
+  for (const auto& it : jobs_for_client_ids_) {
+    if (it.second && !it.second->finished) {
+      ids.push_back(it.first);
+    }
+  }
+  return ids;
 }
 
 int64_t DispatcherState::NextAvailableJobClientId() const {

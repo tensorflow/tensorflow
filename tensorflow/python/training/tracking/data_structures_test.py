@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import json
@@ -329,7 +325,7 @@ class ListWrapperTest(test.TestCase):
   def assertUnableToSave(self, l, msg):
     l._maybe_initialize_trackable()  # pylint: disable=protected-access
     with self.assertRaisesRegex(ValueError, msg):
-      return l._checkpoint_dependencies  # pylint: disable=protected-access
+      return l._trackable_children()  # pylint: disable=protected-access
 
 
 class MappingTests(test.TestCase):

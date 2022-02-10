@@ -1131,8 +1131,8 @@ TEST_F(ReduceShapeInferenceTest, ReduceWindowMultiOutput) {
   std::vector<int64_t> window_dimensions = {1, 2, 4};
   std::vector<int64_t> window_strides = {1, 1, 1};
   std::vector<std::pair<int64_t, int64_t>> padding_values =
-      MakePadding(AsInt64Slice(f32_arg_shape.dimensions()), window_dimensions,
-                  window_strides, Padding::kValid);
+      MakePadding(f32_arg_shape.dimensions(), window_dimensions, window_strides,
+                  Padding::kValid);
   TF_ASSERT_OK_AND_ASSIGN(
       Window window,
       ShapeInference::InferWindowFromDimensions(
@@ -1193,8 +1193,8 @@ TEST_F(ReduceShapeInferenceTest, ErrorBadReduceWindowInput) {
   std::vector<int64_t> window_dimensions = {1, 2, 4};
   std::vector<int64_t> window_strides = {1, 1, 1};
   std::vector<std::pair<int64_t, int64_t>> padding_values =
-      MakePadding(AsInt64Slice(f32_arg_shape.dimensions()), window_dimensions,
-                  window_strides, Padding::kValid);
+      MakePadding(f32_arg_shape.dimensions(), window_dimensions, window_strides,
+                  Padding::kValid);
   TF_ASSERT_OK_AND_ASSIGN(
       Window window,
       ShapeInference::InferWindowFromDimensions(
@@ -1902,7 +1902,7 @@ TEST_F(ShapeInferenceTest, BinOpBroadcastBadDimension) {
       ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, tensor, vec8, {});
   ASSERT_FALSE(inferred_status_error1.ok());
   ASSERT_THAT(inferred_status_error1.status().error_message(),
-              HasSubstr("Automatic"));
+              HasSubstr("Shapes must be equal rank"));
 
   // broadcast_dimension out of bounds for tensor's rank
   auto inferred_status_error2 =
@@ -2238,7 +2238,7 @@ TEST_F(ShapeInferenceTest, ConditionalPred) {
       {vector_32_, vector_64_});
   EXPECT_FALSE(inferred_status_error0.ok());
   EXPECT_THAT(inferred_status_error0.status().error_message(),
-              HasSubstr("must be bool or int32"));
+              HasSubstr("must be bool or int32_t"));
 
   auto inferred_status_error1 = ShapeInference::InferConditionalShape(
       pred_,

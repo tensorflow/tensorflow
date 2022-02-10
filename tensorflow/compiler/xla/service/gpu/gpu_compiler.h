@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -30,14 +31,50 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace xla {
 namespace gpu {
+
+class GpuAotCompilationResult : public AotCompilationResult {
+ public:
+  static StatusOr<std::unique_ptr<GpuAotCompilationResult>> FromString(
+      const std::string& serialized) {
+    GpuBefExecutableProto bef_executable;
+    if (!bef_executable.ParseFromString(serialized)) {
+      return InternalError("Failed to parse serialized GpuBefExecutableProto.");
+    }
+    return std::unique_ptr<GpuAotCompilationResult>(
+        new GpuAotCompilationResult(std::move(bef_executable)));
+  }
+
+  GpuAotCompilationResult(HloModuleProto hlo_module_proto,
+                          const std::string& bef,
+                          EntryFunctionAttributes entry_func_attrs) {
+    *bef_executable_.mutable_hlo_module_proto() = hlo_module_proto;
+    bef_executable_.set_bef(bef);
+    *bef_executable_.mutable_entry_func_attrs() = entry_func_attrs;
+  }
+  ~GpuAotCompilationResult() override = default;
+
+  StatusOr<std::string> SerializeAsString() const override {
+    return bef_executable_.SerializeAsString();
+  }
+
+  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler* compiler, se::StreamExecutor* executor) const override;
+
+  const GpuBefExecutableProto& bef_executable() const {
+    return bef_executable_;
+  }
+
+ private:
+  explicit GpuAotCompilationResult(GpuBefExecutableProto bef_executable)
+      : bef_executable_(std::move(bef_executable)) {}
+
+  GpuBefExecutableProto bef_executable_;
+};
 
 // The GPU compiler generates efficient GPU executables.
 class GpuCompiler : public LLVMCompiler {
@@ -52,12 +89,38 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  StatusOr<
-      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-  RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> hlo_module,
-                                   se::StreamExecutor* executor, bool optimize,
-                                   const CompileOptions& options) override;
+  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      const HloModule* hlo_module) override;
 
+  virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
+
+  StatusOr<std::unique_ptr<Executable>> RunBackend(
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+      const CompileOptions& options) override;
+
+  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override;
+
+  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+                     AotCompilationOptions const& options) override;
+
+  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileToTargetBinary(
+      const HloModuleConfig& module_config,
+      std::unique_ptr<llvm::Module> llvm_module,
+      se::StreamExecutor* stream_exec, const CompileOptions& options,
+      const HloModule* debug_module);
+
+  se::Platform::Id PlatformId() const override { return platform_id_; }
+
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
+
+ protected:
+  virtual Status OptimizeHloPostLayoutAssignment(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator);
+
+ private:
   Status OptimizeHloModule(HloModule* hlo_module,
                            se::StreamExecutor* stream_exec,
                            se::DeviceMemoryAllocator* device_allocator);
@@ -66,21 +129,15 @@ class GpuCompiler : public LLVMCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
-  virtual Status OptimizeHloPostLayoutAssignment(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator);
-
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
     return
         [](const HloInstruction*, const HloInstruction*,
            const ShapeIndex&) -> absl::optional<bool> { return absl::nullopt; };
   }
 
-  virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
-
   // TODO(timshen): Replace `debug_module` with some portable debug information
   // that accommodates both HLO and MLIR.
-  virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
+  virtual StatusOr<std::pair<std::string, std::vector<uint8_t>>>
   CompileTargetBinary(const HloModuleConfig& module_config,
                       llvm::Module* llvm_module, GpuVersion gpu_version,
                       se::StreamExecutor* stream_exec, bool relocatable,
@@ -88,44 +145,14 @@ class GpuCompiler : public LLVMCompiler {
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
-  StatusOr<std::unique_ptr<Executable>> RunBackend(
-      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options) override;
-
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
-                     AotCompilationOptions const& options) override;
-
-  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileToTargetBinary(
-      const HloModuleConfig& module_config,
-      std::unique_ptr<llvm::Module> llvm_module,
-      se::StreamExecutor* stream_exec, const CompileOptions& options,
-      const HloModule* debug_module);
-
-  se::Platform::Id PlatformId() const override { return platform_id_; }
-
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    // Capture just the pointer size, not the entire GpuCompiler object.
-    return [pointer_size = pointer_size_](const Shape& shape) {
-      return GetSizeOfShape(shape, pointer_size);
-    };
-  }
-
-  static int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
-    if (shape.is_static() || shape.IsTuple()) {
-      return ShapeUtil::ByteSizeOf(shape, pointer_size);
-    }
-    // Each dynamic dimension size is represented as a S32.
-    int64_t metadata_size = sizeof(int32) * shape.dimensions_size();
-    return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
-  }
-
- private:
-  virtual StatusOr<std::vector<uint8>> LinkModules(
+  virtual StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
-      std::vector<std::vector<uint8>> modules) {
+      std::vector<std::vector<uint8_t>> modules) {
     return Unimplemented("LinkModules is not implemented.");
   }
+
+  // Optional HloProto, stashed for dumping snapshots.
+  std::unique_ptr<HloProto> hlo_proto_;
 
   se::Platform::Id platform_id_;
 
@@ -138,7 +165,8 @@ class GpuCompiler : public LLVMCompiler {
   // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
   const int64_t pointer_size_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
+  GpuCompiler(const GpuCompiler&) = delete;
+  GpuCompiler& operator=(const GpuCompiler&) = delete;
 };
 
 GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec);

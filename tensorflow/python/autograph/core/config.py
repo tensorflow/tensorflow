@@ -14,10 +14,6 @@
 # ==============================================================================
 """Global configuration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.core import config_lib
 
 Action = config_lib.Action
@@ -53,6 +49,7 @@ CONVERSION_RULES = (
     DoNotConvert('pandas'),
     DoNotConvert('tensorflow'),
     DoNotConvert('PIL'),
+    DoNotConvert('absl.logging'),
 
     # TODO(b/133417201): Remove.
     DoNotConvert('tensorflow_probability'),

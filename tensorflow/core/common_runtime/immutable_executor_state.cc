@@ -131,6 +131,7 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
 
     Status s = params_.create_kernel(n->properties(), &item->kernel);
     if (!s.ok()) {
+      params_.delete_kernel(item->kernel);
       item->kernel = nullptr;
       s = AttachDef(s, *n);
       return s;
@@ -316,6 +317,10 @@ Status ImmutableExecutorState::BuildControlFlowInfo(const Graph* g,
     } else if (IsExit(curr_node)) {
       // Exit to the parent frame.
       parent = parent_nodes[curr_id];
+      if (!parent) {
+        return errors::InvalidArgument(
+            "Invalid Exit op: Cannot find a corresponding Enter op.");
+      }
       frame_name = cf_info->frame_names[parent->id()];
       parent = parent_nodes[parent->id()];
     } else {

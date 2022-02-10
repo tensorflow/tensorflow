@@ -128,7 +128,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
@@ -202,13 +202,15 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
+      interleave_depth_ = ctx->interleave_depth();
+
       if (num_parallel_calls_->value == model::kAutotune) {
         // If we copy elements in the same batch in parallel, to be safe, we
         // initialize the parallelism to be 1.
         if (dataset()->parallel_copy_) {
           num_parallel_calls_->value = 1;
         } else {
-          num_parallel_calls_->value = ctx->runner_threadpool_size();
+          num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
         }
       }
       cancellation_manager_ = absl::make_unique<CancellationManager>();
@@ -314,6 +316,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           parallelism == -1
               ? kTraceInfoUnavailable
               : strings::Printf("%lld", static_cast<long long>(parallelism))));
+      result.push_back(std::make_pair(
+          "interleave_depth",
+          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -404,9 +409,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
                     RecordBufferEnqueue(ctx.get(), result->output);
                     return Status::OK();
                   };
-          status =
-              CopyBatch(ctx.get(), *batch_elements, dataset()->parallel_copy_,
-                        std::move(allocation_callback), &result->output);
+          status = CopyBatch(CopyBatchParams(ctx.get()), *batch_elements,
+                             dataset()->parallel_copy_,
+                             std::move(allocation_callback), &result->output);
           result->status.Update(status);
         }
         CallCompleted(ctx, result);
@@ -607,6 +612,12 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
+
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree. We record the interleave depth so that it can be included in the
+    // trace metadata.
+    int64 interleave_depth_ = -1;
   };
 
   const int64_t batch_size_;

@@ -52,32 +52,6 @@ constexpr char kDeviceAttr[] = "device";
 constexpr char kDeviceCPU[] = "CPU";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
-// A pass that allows TPU input layout to be determined after JIT compilation.
-// This is done by adding run-time ops that interpret compilation result and
-// copy the input to device with that layout.
-//
-// Example: original program:
-//
-//   %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
-//   %compile:2 = "tf._TPUCompileMlir"(...)
-//   %execute = "tf.TPUExecute"(%input, ..., %compile#1) {device = "/TPU:0"}
-//
-// Without this pass, later TF graph partitioning passes will insert send/recv
-// between %input and %execute and data will be copied to device in a fixed
-// layout. With this pass, the program will be transformed into:
-//
-//   %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
-//   %compile:2 = "tf._TPUCompileMlir"(...)
-//   %get_layout = "tf.TPUGetLayoutOp"(%compile#1) {...}
-//   %copy_to_device = "tf.TPUCopyWithLayout"(%input, %get_layout)
-//       {device = "/TPU:0"}
-//   %execute = "tf.TPUExecute"(%copy_to_device, ..., %compile#1)
-//       {device = "/TPU:0"}
-//
-// This way, %compile will determine the layout, which will be respected by
-// %copy_to_device. There will not be send/recv ops added by later passes,
-// because tf.TPUCopyWithLayout accepts a host input and produces a device
-// output.
 struct TPUDynamicLayoutPass
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TPUDynamicLayoutPass, TF::ResourceAliasAnalysis> {
@@ -88,8 +62,7 @@ struct TPUDynamicLayoutPass
   StringRef getArgument() const final { return "tf-tpu-dynamic-layout-pass"; }
 
   StringRef getDescription() const final {
-    return "Adds ops that allow TPU program inputs to have layouts determined "
-           "at JIT compile time.";
+    return "Inserts TPU layout ops to determine layout at run time.";
   }
 };
 
@@ -316,8 +289,6 @@ void TPUDynamicLayoutPass::runOnFunction(
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicLayoutPass() {
   return std::make_unique<TPUDynamicLayoutPass>();
 }
-
-static PassRegistration<TPUDynamicLayoutPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

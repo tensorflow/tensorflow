@@ -86,7 +86,7 @@ module attributes {tf_saved_model.semantics} {
   }
 
   func private @f_callee(%arg0: tensor<*x!tf_type.resource>) -> tensor<f32>  {
-    %cst_1 = constant dense<2.0> : tensor<f32>
+    %cst_1 = arith.constant dense<2.0> : tensor<f32>
     return %cst_1 : tensor<f32>
   }
 }

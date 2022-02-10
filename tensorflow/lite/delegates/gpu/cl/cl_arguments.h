@@ -35,19 +35,9 @@ class CLArguments : public ArgumentsBinder {
   CLArguments() = default;
 
   absl::Status Init(const GpuInfo& gpu_info,
-                    const std::map<std::string, std::string>& linkables,
                     CLContext* context, Arguments* args, std::string* code);
   absl::Status Init(const GpuInfo& gpu_info, Arguments* args,
                     CLContext* context);
-
-  // Temporary, will be resolved later
-  void MoveObjectRefsIn(Arguments* args) {
-    object_refs_ = std::move(args->object_refs_);
-  }
-  void MoveObjectRefsOut(Arguments* args) {
-    args->object_refs_ = std::move(object_refs_);
-  }
-  void CopyScalarValues(Arguments* args) const;
 
   // Move only
   CLArguments(CLArguments&& args) = default;
@@ -64,21 +54,7 @@ class CLArguments : public ArgumentsBinder {
 
  private:
   absl::Status AllocateObjects(const Arguments& args, CLContext* context);
-  absl::Status AddObjectArgs(const GpuInfo& gpu_info, Arguments* args);
-
-  absl::Status ResolveSelectorsPass(
-      const GpuInfo& gpu_info, const Arguments& args,
-      const std::map<std::string, std::string>& linkables, std::string* code);
-  absl::Status ResolveSelector(
-      const GpuInfo& gpu_info, const Arguments& args,
-      const std::map<std::string, std::string>& linkables,
-      const std::string& object_name, const std::string& selector,
-      const std::vector<std::string>& function_args,
-      const std::vector<std::string>& template_args, std::string* result);
-  void ResolveObjectNames(const std::string& object_name,
-                          const std::vector<std::string>& member_names,
-                          std::string* code);
-  void ResolveArgsPass(std::string* code);
+  absl::Status AddObjectArgs(const GpuInfo& gpu_info, const Arguments& args);
 
   void CopyArguments(const Arguments& args, bool use_f32_for_halfs);
   void RenameArgumentsInCode(std::string* code);
@@ -93,8 +69,7 @@ class CLArguments : public ArgumentsBinder {
                       const GPUImageBufferDescriptor& desc);
   void AddCustomMemory(const std::string& name,
                        const GPUCustomMemoryDescriptor& desc);
-  void AddGPUResources(const std::string& name, const GPUResources& resources,
-                       Arguments* args);
+  void AddGPUResources(const std::string& name, const GPUResources& resources);
   absl::Status SetObjectsResources(const Arguments& args);
   absl::Status SetGPUResources(const std::string& name,
                                const GPUResourcesWithValue& resources);

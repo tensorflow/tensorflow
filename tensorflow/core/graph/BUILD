@@ -4,6 +4,10 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 package(
     default_visibility = [
@@ -18,6 +22,7 @@ package(
 cc_library(
     name = "mkl_graph_util",
     hdrs = ["mkl_graph_util.h"],
+    deps = ["@com_google_absl//absl/container:flat_hash_map"],
 )
 
 tf_cc_test(
@@ -131,14 +136,14 @@ filegroup(
     srcs = [
         "benchmark_testlib.h",
         "testlib.h",
-    ],
+    ] + if_mkl(["mkl_testlib.h"]),
 )
 
 filegroup(
     name = "testlib_srcs",
     srcs = [
         "testlib.cc",
-    ],
+    ] + if_mkl(["mkl_testlib.cc"]),
 )
 
 filegroup(

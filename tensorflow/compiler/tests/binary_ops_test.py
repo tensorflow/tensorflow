@@ -14,10 +14,6 @@
 # ==============================================================================
 """Test cases for binary operators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 import numpy as np
@@ -1644,6 +1640,12 @@ class BinaryOpsTest(xla_test.XLATestCase):
                      np.array([3, 1], dtype=np.int32),
                      np.array([2, 1, 5], dtype=np.int32),
                      expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(
+        array_ops.broadcast_dynamic_shape,
+        np.array([2, 3, 5], dtype=np.int64),
+        np.array([1], dtype=np.int64),
+        expected=np.array([2, 3, 5], dtype=np.int64))
 
   @test_util.disable_mlir_bridge("Error handling")
   def testBroadcastArgsError(self):

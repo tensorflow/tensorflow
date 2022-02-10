@@ -63,9 +63,9 @@ static inline uint32_t TF_swap32(uint32_t host_int) {
 #endif
 
 #if TF_TSTRING_LITTLE_ENDIAN
-#define TF_le32toh(x) TF_swap32(x)
-#else  // TF_TSTRING_LITTLE_ENDIAN
 #define TF_le32toh(x) x
+#else  // TF_TSTRING_LITTLE_ENDIAN
+#define TF_le32toh(x) TF_swap32(x)
 #endif  // TF_TSTRING_LITTLE_ENDIAN
 
 static inline size_t TF_align16(size_t i) { return (i + 0xF) & ~0xF; }

@@ -392,8 +392,6 @@ StatusOr<bool> TryReshapeMoveOnCandidates(
 
 StatusOr<bool> ReshapeMover::Run(HloModule* module) {
   bool changed = false;
-  VLOG(6) << "Pre ReshapeMover HLO:";
-  XLA_VLOG_LINES(6, module->ToString());
   for (auto* comp : module->MakeNonfusionComputations()) {
     HloInstructionSet reshape_candidates;
     for (HloInstruction* instruction : comp->instructions()) {
@@ -405,8 +403,6 @@ StatusOr<bool> ReshapeMover::Run(HloModule* module) {
                         TryReshapeMoveOnCandidates(&reshape_candidates));
     changed |= did_change;
   }
-  VLOG(6) << "Post ReshapeMover HLO:";
-  XLA_VLOG_LINES(6, module->ToString());
   return changed;
 }
 

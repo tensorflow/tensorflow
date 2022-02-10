@@ -269,7 +269,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       return name_utils::DatasetDebugString(kDatasetType, params);
     }
 
-    int64_t Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -380,7 +382,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
         if (num_parallel_calls_->value == model::kAutotune) {
-          num_parallel_calls_->value = ctx->runner_threadpool_size();
+          num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
         }
         TF_RETURN_IF_ERROR(RegisterCancellationCallback(
             ctx->cancellation_manager(),
@@ -502,6 +504,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           }
           result.end_of_input = reader->Contains(full_name(strings::StrCat(
               kInvocationResults, "[", i, "]", kEndOfInputSuffix)));
+          RecordBufferEnqueue(ctx, result.return_values);
           result.notification.Notify();
         }
         return Status::OK();
@@ -605,8 +608,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             },
             std::move(input_element));
         auto node = model_node();
-        const bool collect_usage =
-            node && ctx->model() && ctx->model()->collect_resource_usage();
+        const bool collect_usage = node && ctx->model();
         // `ctx->runner()` may execute its logic synchronous so we wrap it in
         // `RecordStop` and `RecordStart` to prevent invalid nesting of
         // `RecordStart` calls.

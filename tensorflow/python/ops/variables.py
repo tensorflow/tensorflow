@@ -13,42 +13,38 @@
 # limitations under the License.
 # ==============================================================================
 """Variable class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-import enum  # pylint: disable=g-bad-import-order
-import itertools
+import enum
 import functools
+import itertools
 import os
-
-import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import deprecated_args
-from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.types import core
 
 
 def default_variable_creator(_, **kwds):
@@ -274,7 +270,7 @@ class VariableMetaclass(type):
 
 @tf_export("Variable", v1=[])
 # TODO(mdan): This should subclass core.Tensor, and not all its subclasses?
-class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
+class Variable(trackable.Trackable, metaclass=VariableMetaclass):
   """See the [variable guide](https://tensorflow.org/guide/variable).
 
   A variable maintains shared, persistent state manipulated by a program.
@@ -1038,8 +1034,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     _ = name
     if dtype and not dtype.is_compatible_with(v.dtype):
       raise ValueError(
-          "Incompatible type conversion requested to type '%s' for variable "
-          "of type '%s'" % (dtype.name, v.dtype.name))
+          f"Incompatible type conversion requested to type '{dtype.name}' for "
+          f"variable of type '{v.dtype.name}' (Variable: {v}).")
     if as_ref:
       return v._ref()  # pylint: disable=protected-access
     else:
@@ -1082,8 +1078,9 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
 
   def __hash__(self):
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      raise TypeError("Variable is unhashable. "
-                      "Instead, use tensor.ref() as the key.")
+      raise TypeError(
+          "Variable is unhashable. "
+          f"Instead, use variable.ref() as the key. (Variable: {self})")
     else:
       return id(self)
 
@@ -1106,18 +1103,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       return self is not other
 
   def __iter__(self):
-    """Dummy method to prevent iteration.
-
-    Do not call.
-
-    NOTE(mrry): If we register __getitem__ as an overloaded operator,
-    Python will valiantly attempt to iterate over the variable's Tensor from 0
-    to infinity.  Declaring this method prevents this unintended behavior.
-
-    Raises:
-      TypeError: when invoked.
-    """
-    raise TypeError("'Variable' object is not iterable.")
+    """When executing eagerly, iterates over the value of the variable."""
+    return iter(self.read_value())
 
   # NOTE(mrry): This enables the Variable's overloaded "right" binary
   # operators to run when the left operand is an ndarray, because it
@@ -1260,7 +1247,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     """
     return object_identity.Reference(self)
 
-  class SaveSliceInfo(object):
+  class SaveSliceInfo:
     """Information on how to save this Variable as a slice.
 
     Provides internal support for saving variables as slices of a larger
@@ -1783,7 +1770,9 @@ class RefVariable(VariableV1, core.Tensor):
       # Ensure that we weren't lifted into the eager context.
       if context.executing_eagerly():
         raise RuntimeError(
-            "RefVariable not supported when eager execution is enabled. ")
+            "Reference variables are not supported when eager execution is "
+            "enabled. Please run `tf.compat.v1.enable_resource_variables()` to "
+            "switch to resource variables.")
       with ops.name_scope(name, "Variable",
                           [] if init_from_fn else [initial_value]) as name:
 
@@ -2122,7 +2111,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_sub(
         self._variable,
@@ -2146,7 +2135,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_add(
         self._variable,
@@ -2171,7 +2160,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_max(
         self._variable,
@@ -2196,7 +2185,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_min(
         self._variable,
@@ -2220,7 +2209,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_mul(
         self._variable,
@@ -2244,7 +2233,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_div(
         self._variable,
@@ -2268,7 +2257,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_update(
         self._variable,
@@ -2890,7 +2879,7 @@ def _find_initialized_value_for_variable(variable_op):
   return None
 
 
-class PartitionedVariable(object):
+class PartitionedVariable:
   """A container for partitioned `Variable` objects.
 
   @compatibility(eager) `tf.PartitionedVariable` is not compatible with

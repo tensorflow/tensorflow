@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -586,11 +585,11 @@ struct R4ReduceWindowTestData {
   Reducer reducer;
 };
 
-string R4ReduceWindowTestDataToString(
+std::string R4ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R4ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = absl::StrCat(
+  std::string str = absl::StrCat(
       "base_bounds_", absl::StrJoin(param.base_bounds, "x"),        //
       "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),  //
       "__strides_", absl::StrJoin(param.strides, "x"),              //
@@ -676,7 +675,7 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
     Literal expected_literal = LiteralUtil::CreateFromArray(*expected);
     const Shape& expected_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
         input_literal.shape().element_type(),
-        AsInt64Slice(expected_literal.shape().dimensions()), param.layout);
+        expected_literal.shape().dimensions(), param.layout);
     ComputeAndCompareLiteral(&b, expected_literal, {input_arg.get()},
                              DefaultErrorSpec(), &expected_shape_with_layout);
   }
@@ -746,6 +745,33 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
                            /*strides=*/{2, 2, 1, 1},
                            /*pad_low=*/{0, 0, 0, 0},
                            /*pad_high=*/{2, 3, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
+                           /*reducer=*/kAdd},
+
+    // With negative padding on both ends.
+    R4ReduceWindowTestData{/*base_bounds=*/{10, 10, 17, 140},
+                           /*window_bounds=*/{3, 2, 1, 1},
+                           /*strides=*/{2, 2, 1, 1},
+                           /*pad_low=*/{-3, -2, 0, 0},
+                           /*pad_high=*/{-2, -3, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
+                           /*reducer=*/kAdd},
+
+    // With negative low padding and positive high padding.
+    R4ReduceWindowTestData{/*base_bounds=*/{10, 10, 17, 140},
+                           /*window_bounds=*/{3, 2, 1, 1},
+                           /*strides=*/{2, 2, 1, 1},
+                           /*pad_low=*/{-3, -2, 0, 0},
+                           /*pad_high=*/{2, 3, 0, 0},
+                           /*layout=*/{3, 2, 1, 0},
+                           /*reducer=*/kAdd},
+
+    // With positive low padding and negative high padding.
+    R4ReduceWindowTestData{/*base_bounds=*/{10, 10, 17, 140},
+                           /*window_bounds=*/{3, 2, 1, 1},
+                           /*strides=*/{2, 2, 1, 1},
+                           /*pad_low=*/{3, 2, 0, 0},
+                           /*pad_high=*/{-2, -3, 0, 0},
                            /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
 
@@ -999,11 +1025,11 @@ struct R3ReduceWindowTestData {
      /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
 };
 
-string R3ReduceWindowTestDataToString(
+std::string R3ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R3ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = absl::StrCat(
+  std::string str = absl::StrCat(
       "base_bounds_", absl::StrJoin(param.base_bounds, "x"), "__window_bounds_",
       absl::StrJoin(param.window_bounds, "x"), "__strides_",
       absl::StrJoin(param.strides, "x"), "__padding_",
@@ -1206,13 +1232,34 @@ struct R2ReduceWindowTestData {
      /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
      /*pad_low=*/{0, 0}, /*pad-high=*/{0, 0},
      /*layout=*/{1, 0}, /*reducer=*/Reducer::kAdd},
+    // With negative padding on both ends.
+    {/*base_bounds=*/{4, 18}, /*window_bounds=*/{2, 4},
+     /*strides=*/{1, 2},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, -1}, /*pad_high=*/{0, -1},
+     /*layout=*/{0, 1},
+     /*reducer=*/Reducer::kAdd},
+    // With negative low padding and positive high padding.
+    {/*base_bounds=*/{4, 18}, /*window_bounds=*/{2, 4},
+     /*strides=*/{1, 2},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, -1}, /*pad_high=*/{0, 1},
+     /*layout=*/{0, 1},
+     /*reducer=*/Reducer::kAdd},
+    // With positive low padding and negative high padding.
+    {/*base_bounds=*/{4, 18}, /*window_bounds=*/{2, 4},
+     /*strides=*/{1, 2},
+     /*base_dilation=*/{1, 1}, /*window_dilation=*/{1, 1},
+     /*pad_low=*/{0, 1}, /*pad_high=*/{0, -1},
+     /*layout=*/{0, 1},
+     /*reducer=*/Reducer::kAdd},
 };
 
-string R2ReduceWindowTestDataToString(
+std::string R2ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R2ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str = absl::StrCat(
+  std::string str = absl::StrCat(
       "base_bounds_", absl::StrJoin(param.base_bounds, "x"),            //
       "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),      //
       "__strides_", absl::StrJoin(param.strides, "x"),                  //
@@ -1222,6 +1269,9 @@ string R2ReduceWindowTestDataToString(
       absl::StrJoin(param.pad_high, "x"), "__layout_", param.layout[0], "_",
       param.layout[1],  //
       "__reducer_", param.reducer == kAdd ? "add" : "max");
+
+  // Test names are not allowed to contain the '-' character.
+  std::replace(str.begin(), str.end(), '-', 'n');
   if (::testing::get<1>(data.param)) {
     absl::StrAppend(&str, "_bfloat16");
   }
@@ -1386,6 +1436,27 @@ struct R1ReduceWindowTestData {
      /*pad_high=*/{0},
      /*reducer=*/Reducer::kAdd},
 
+    // With negative padding on both ends.
+    {/*base_bounds=*/{15}, /*window_bounds=*/{5},
+     /*strides=*/{1},
+     /*pad_low=*/{-5},
+     /*pad_high=*/{-5},
+     /*reducer=*/Reducer::kAdd},
+
+    // With negative low padding and positive high padding.
+    {/*base_bounds=*/{15}, /*window_bounds=*/{5},
+     /*strides=*/{1},
+     /*pad_low=*/{-5},
+     /*pad_high=*/{5},
+     /*reducer=*/Reducer::kAdd},
+
+    // With positive low padding and negative high padding.
+    {/*base_bounds=*/{15}, /*window_bounds=*/{5},
+     /*strides=*/{1},
+     /*pad_low=*/{5},
+     /*pad_high=*/{-5},
+     /*reducer=*/Reducer::kAdd},
+
     // The pattern generated by inclusive scan (cumsum/cumprod).
     {/*base_bounds=*/{4096}, /*window_bounds=*/{4096},
      /*strides=*/{1},
@@ -1415,17 +1486,20 @@ struct R1ReduceWindowTestData {
      /*reducer=*/Reducer::kMax},
 };
 
-string R1ReduceWindowTestDataToString(
+std::string R1ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<R1ReduceWindowTestData, bool>>& data) {
   const auto& param = ::testing::get<0>(data.param);
-  string str =
+  std::string str =
       absl::StrCat("base_bounds_", absl::StrJoin(param.base_bounds, "x"),
                    "__window_bounds_", absl::StrJoin(param.window_bounds, "x"),
                    "__strides_", absl::StrJoin(param.strides, "x"),
                    "__pad_low_", absl::StrJoin(param.pad_low, "x"),
                    "__pad_high_", absl::StrJoin(param.pad_high, "x"),
                    "__reducer_", param.reducer == kAdd ? "add" : "max");
+
+  // Test names are not allowed to contain the '-' character.
+  std::replace(str.begin(), str.end(), '-', 'n');
   if (::testing::get<1>(data.param)) {
     absl::StrAppend(&str, "_bfloat16");
   }
@@ -1498,7 +1572,7 @@ INSTANTIATE_TEST_CASE_P(
 class ReduceWindowTextTest : public HloTestBase {};
 
 XLA_TEST_F(ReduceWindowTextTest, R2General256x384) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule R2Window
 mul {
   lhs = f32[] parameter(0)
@@ -1515,7 +1589,7 @@ ENTRY R2Window {
 }
 
 XLA_TEST_F(ReduceWindowTextTest, R2General256x384Layout01) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule R2Window
 mul {
 lhs = f32[] parameter(0)
@@ -1532,7 +1606,7 @@ ROOT reduce-window = f32[256,384]{0,1} reduce-window(operand, constant), window=
 }
 
 XLA_TEST_F(ReduceWindowTextTest, R2General2x5) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule R2Window
 mul {
   lhs = f32[] parameter(0)
@@ -1549,7 +1623,7 @@ ENTRY R2Window {
 }
 
 XLA_TEST_F(ReduceWindowTextTest, R2EffectiveScalar) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule R2Window
 mul {
   lhs = f32[] parameter(0)
@@ -1567,7 +1641,7 @@ ENTRY R2Window {
 }
 
 XLA_TEST_F(ReduceWindowTextTest, R3EffectiveScalar) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule R3Window
 mul {
   lhs = f32[] parameter(0)
@@ -1588,7 +1662,7 @@ ENTRY R3Window {
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowIdentity) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule ReduceWindowIdentity
 identity.pad_to_reduce_window {
   param0 = f32[] parameter(0)
@@ -1608,7 +1682,7 @@ ENTRY reduce-window-identity {
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowIdentityNoPadding) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule ReduceWindowIdentity
 identity.pad_to_reduce_window {
   param0 = f32[] parameter(0)
@@ -1628,7 +1702,7 @@ ENTRY reduce-window-identity {
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowS32) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule reduce-window
 
 %identity.pad_to_reduce_window (param0: s32[], param1: s32[]) -> s32[] {
@@ -1647,7 +1721,7 @@ ENTRY %reduce-window (parameter.0: s32[81,8], parameter.1: s32[]) -> s32[82,8] {
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowS64) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule reduce-window
 
 %identity.pad_to_reduce_window (param0: s64[], param1: s64[]) -> s64[] {
@@ -1666,7 +1740,7 @@ ENTRY %reduce-window (parameter.0: s64[81,8], parameter.1: s64[]) -> s64[82,8] {
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowF16) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule reduce-window
 
 %identity.pad_to_reduce_window (param0: f16[], param1: f16[]) -> f16[] {
@@ -1685,7 +1759,7 @@ ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
 }
 
 XLA_TEST_F(ReduceWindowTextTest, R4OnlyDilation) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
 HloModule R4OnlyDilation
 mul {
   lhs = f32[] parameter(0)

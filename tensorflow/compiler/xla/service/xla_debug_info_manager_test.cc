@@ -27,13 +27,13 @@ class XlaDebugInfoManagerTest : public HloTestBase {
     // We allow same id to be registered multiple times. we need unique id to
     // know which program is referenced (such as in UnregisterProgram).
     int unique_id;
-    string id;
+    std::string id;
     std::shared_ptr<HloModule> module;
     std::shared_ptr<BufferAssignmentProto> buffer_assignment;
   };
 
   // Return unique id of this module.
-  int RegisterProgram(const string& module_id) {
+  int RegisterProgram(const std::string& module_id) {
     DebugMetadata debug_info;
     HloModuleConfig config;
     debug_info.unique_id = ++serial_;
@@ -81,9 +81,6 @@ class XlaDebugInfoManagerTest : public HloTestBase {
     StopProgram(unique_id);
   }
 
-  std::set<ModuleIdentifier> GetRunningModule() {
-    return xla_debug_info_manager_.GetRunningModules();
-  }
   std::set<ModuleIdentifier> GetActiveModule() {
     return xla_debug_info_manager_.GetActiveModules();
   }
@@ -113,22 +110,17 @@ class XlaDebugInfoManagerTest : public HloTestBase {
 TEST_F(XlaDebugInfoManagerTest, NoTraceBasic) {
   auto program0 = RegisterProgram("program0");
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0"));
-  EXPECT_TRUE(GetRunningModule().empty());
 
   auto program1 = RegisterProgram("program1");
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0", "program1"));
 
   StartAndStopProgram(program0);
-  EXPECT_TRUE(GetRunningModule().empty());
   StartProgram(program0);
-  EXPECT_THAT(GetRunningModule(), UnorderedElementsAre("program0"));
   StopProgram(program0);
   UnregisterProgram(program0);
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program1"));
   StartAndStopProgram(program1);
-  EXPECT_TRUE(GetRunningModule().empty());
   StartProgram(program1);
-  EXPECT_THAT(GetRunningModule(), UnorderedElementsAre("program1"));
   StopProgram(program1);
   UnregisterProgram(program1);
   EXPECT_TRUE(GetActiveModule().empty());
@@ -141,17 +133,11 @@ TEST_F(XlaDebugInfoManagerTest, NoTraceDuplicateIds) {
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0", "program1"));
 
   StartProgram(program0A);
-  EXPECT_THAT(GetRunningModule(), UnorderedElementsAre("program0"));
   StartProgram(program0B);
-  EXPECT_THAT(GetRunningModule(), UnorderedElementsAre("program0"));
   StartProgram(program1);
-  EXPECT_THAT(GetRunningModule(), UnorderedElementsAre("program0", "program1"));
   StopProgram(program0A);
-  EXPECT_THAT(GetRunningModule(), UnorderedElementsAre("program0", "program1"));
   StopProgram(program0B);
-  EXPECT_THAT(GetRunningModule(), UnorderedElementsAre("program1"));
   StopProgram(program1);
-  EXPECT_TRUE(GetRunningModule().empty());
 
   UnregisterProgram(program1);
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0"));
@@ -173,15 +159,15 @@ TEST_F(XlaDebugInfoManagerTest, ActiveTrace) {
   StartAndStopProgram(program1);
   auto program2 = RegisterProgram("program2");
   StartAndStopProgram(program0B);
-  EXPECT_THAT(StopTrace(), UnorderedElementsAre("program0", "program1"));
+  EXPECT_THAT(StopTrace(),
+              UnorderedElementsAre("program0", "program1", "program2"));
 
   // Case 1: Trace starts during program is running.
   StartProgram(program0A);
   StartTrace();
   StopProgram(program0A);
   StartAndStopProgram(program1);
-  EXPECT_THAT(StopTrace(), UnorderedElementsAre("program0", "program1"));
-  EXPECT_THAT(GetActiveModule(),
+  EXPECT_THAT(StopTrace(),
               UnorderedElementsAre("program0", "program1", "program2"));
 
   UnregisterProgram(program2);
@@ -201,10 +187,9 @@ TEST_F(XlaDebugInfoManagerTest, UnregisterDuringTrace) {
 
   StartTrace();
   StartAndStopProgram(program1);
-  EXPECT_THAT(GetRunningModule(), UnorderedElementsAre("program1"));
   UnregisterProgram(program1);
   UnregisterProgram(program0B);
-  EXPECT_THAT(StopTrace(), UnorderedElementsAre("program1"));
+  EXPECT_THAT(StopTrace(), UnorderedElementsAre("program0", "program1"));
   EXPECT_THAT(GetActiveModule(), UnorderedElementsAre("program0"));
 
   UnregisterProgram(program0A);

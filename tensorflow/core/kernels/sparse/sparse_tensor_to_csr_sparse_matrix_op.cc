@@ -33,8 +33,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 #if GOOGLE_CUDA
@@ -76,10 +76,18 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t total_nnz = values.NumElements();
 
     // Allocate output Tensors.
-    Tensor batch_ptr(cpu_allocator(), DT_INT32, TensorShape({batch_size + 1}));
-    Tensor csr_col_ind(cpu_allocator(), DT_INT32, TensorShape({total_nnz}));
-    Tensor csr_row_ptr(cpu_allocator(), DT_INT32,
-                       TensorShape({(num_rows + 1) * batch_size}));
+    TensorShape batch_ptr_shape;
+    OP_REQUIRES_OK(
+        ctx, TensorShape::BuildTensorShape({batch_size + 1}, &batch_ptr_shape));
+    Tensor batch_ptr(cpu_allocator(), DT_INT32, batch_ptr_shape);
+    TensorShape csr_col_ind_shape;
+    OP_REQUIRES_OK(
+        ctx, TensorShape::BuildTensorShape({total_nnz}, &csr_col_ind_shape));
+    Tensor csr_col_ind(cpu_allocator(), DT_INT32, csr_col_ind_shape);
+    TensorShape csr_row_ind_shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(
+                            {(num_rows + 1) * batch_size}, &csr_row_ind_shape));
+    Tensor csr_row_ptr(cpu_allocator(), DT_INT32, csr_row_ind_shape);
 
     // Fill the row pointers with zeros.
     functor::SetZeroFunctor<CPUDevice, int32> set_zero;
@@ -190,7 +198,7 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                          TensorShape({batch_size + 1}));
 
       auto batch_ptr = batch_ptr_t.vec<int32>();
-      auto indices = indices_t.matrix<int64>();
+      auto indices = indices_t.matrix<int64_t>();
 
       batch_ptr(0) = 0;
       for (int i = 0; i < batch_size; ++i) {

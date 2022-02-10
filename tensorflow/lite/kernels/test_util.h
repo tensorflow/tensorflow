@@ -181,7 +181,15 @@ class SingleOpModel {
   // Set a delegate that is applied right after graph is prepared. This is
   // useful for testing other runtimes like NN API or GPU.
   // Note: the caller still owns the memory of the passed-in `delegate`.
-  void SetDelegate(TfLiteDelegate* delegate) { delegate_ = delegate; }
+  void SetDelegate(TfLiteDelegate* delegate) {
+    delegate_ = delegate;
+    // As this is a manually-set TF Lite delegate, we assume the intention of
+    // the test is to test against the particular delegate, hence bypassing
+    // applying TfLite default delegates (i.e. the XNNPACK delegate).
+    if (delegate_ != nullptr) {
+      SetBypassDefaultDelegates();
+    }
+  }
 
   TfLiteStatus ApplyDelegate();
 
@@ -601,8 +609,16 @@ class SingleOpModel {
     return result;
   }
 
-  void SetNumThreads(int num_threads) {
+  // Sets the number of threads available to the interpreter.
+  // Reconstruct the interpreter if reset_interpreter is true.
+  void SetNumThreads(int num_threads, bool reset_interpreter = false) {
     CHECK(interpreter_ != nullptr);
+    if (reset_interpreter) {
+      // Reconstruct interpreter as number of threads may affect internal state,
+      // e.g. stratch buffer allocation.
+      BuildInterpreter(input_shapes_, num_threads, allocate_and_delegate_,
+                       apply_delegate_, allocate_and_delegate_);
+    }
     interpreter_->SetNumThreads(num_threads);
   }
 
@@ -616,6 +632,10 @@ class SingleOpModel {
 
  protected:
   int32_t GetTensorSize(int index) const;
+
+  // Tell TF Lite runtime to skip applying default delegates (i.e. XNNPACK
+  // delegate) when handling this op-level model.
+  void SetBypassDefaultDelegates() { bypass_default_delegates_ = true; }
 
   flatbuffers::FlatBufferBuilder builder_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
@@ -864,7 +884,15 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;  // not own the memory.
+  std::vector<std::vector<int>> input_shapes_;
   int num_applied_delegates_ = 0;
+  bool allow_fp32_relax_to_fp16_ = false;
+  bool apply_delegate_ = true;
+  bool allocate_and_delegate_ = true;
+
+  // Whether to bypass the application of TF Lite default delegates (i.e.
+  // XNNPACK delegate) at rutnime.
+  bool bypass_default_delegates_ = false;
 };
 
 // Populate string tensors.
@@ -913,6 +941,7 @@ TensorType GetTensorType() {
   if (std::is_same<T, double>::value) return TensorType_FLOAT64;
   if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, int16_t>::value) return TensorType_INT16;
+  if (std::is_same<T, uint16_t>::value) return TensorType_UINT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
   if (std::is_same<T, uint32_t>::value) return TensorType_UINT32;
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
@@ -973,6 +1002,16 @@ struct TypeUnion<int16_t> {
   // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt16;
   typedef int16_t ScalarType;
+};
+
+template <>
+struct TypeUnion<uint16_t> {
+ public:
+  // NOLINTNEXTLINE
+  static constexpr TensorType tensor_type = TensorType::TensorType_UINT16;
+  // NOLINTNEXTLINE
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteUInt16;
+  typedef uint16_t ScalarType;
 };
 
 template <>

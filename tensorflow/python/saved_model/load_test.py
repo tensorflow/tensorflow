@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for trackable object SavedModel loading."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import functools
@@ -31,10 +27,8 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 
-from google.protobuf import wrappers_pb2
 
 from tensorflow.python.client import session as session_lib
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import backprop
@@ -69,7 +63,6 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_options
-from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import tag_constants
@@ -214,8 +207,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         imported_graph.control_outputs)
 
   def _make_asset(self, contents):
-    filename = tempfile.mktemp(prefix=self.get_temp_dir())
-    with open(filename, "w") as f:
+    fd, filename = tempfile.mkstemp(prefix=self.get_temp_dir())
+    with os.fdopen(fd, "w") as f:
       f.write(contents)
     return filename
 
@@ -1797,49 +1790,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      root.v.aggregation)
 
-  def test_captured_dataset_with_asset(self, cycles):
-
-    class HasDataset(module.Module):
-
-      def __init__(self, temp_dir, file_name):
-        super(HasDataset, self).__init__()
-        file = os.path.join(temp_dir, file_name)
-        with tf_record.TFRecordWriter(file, "GZIP") as f:
-          for v in ["a", "aa", "aaa"]:
-            f.write(str(v))
-        self.dataset = readers.TFRecordDataset([file], compression_type="GZIP")
-
-      @def_function.function
-      def __call__(self, x):
-        current_sum = array_ops.zeros([], dtype=dtypes.int32)
-        for element in self.dataset:
-          current_sum += x * string_ops.string_length(element)
-        return current_sum
-
-    temp_dir = self.get_temp_dir()
-    file_name = "tf_record_asset.tfrecord.gz"
-    root = HasDataset(temp_dir, file_name)
-    self.assertEqual(
-        18,  # 3 * (1 + 2 + 3)
-        root(constant_op.constant(3, dtype=dtypes.int32)).numpy())
-
-    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
-    save.save(root, save_dir)
-
-    file_io.delete_file(os.path.join(temp_dir, file_name))
-    asset_path = os.path.join(save_dir, "assets/{}".format(file_name))
-    if compat.forward_compatible(2021, 9, 20):
-      self.assertTrue(file_io.file_exists(asset_path))
-      load_dir = os.path.join(self.get_temp_dir(), "load_dir")
-      file_io.rename(save_dir, load_dir)
-
-      # TODO(b/188455028): Remove assertRaises block and check that invoking
-      # loaded SavedModel behaves as expected.
-      with self.assertRaises(ValueError) as error:
-        _ = load.load(load_dir)
-      self.assertEqual("Signature specifies 1 arguments, got: 0.",
-                       str(error.exception))
-
   def test_captured_dataset(self, cycles):
 
     class HasDataset(module.Module):
@@ -2130,36 +2080,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(grads, expected_grads)
 
-  def test_load_registered(self, cycles):
-
-    @registration.register_serializable(name=f"Module{cycles}")
-    class Module(tracking.AutoTrackable):
-
-      def __init__(self, name="module"):
-        self.v = variables.Variable(1.)
-        self.name = name
-
-      def _serialize_to_proto(self, **unused_kwargs):
-        return wrappers_pb2.StringValue(value=self.name)
-
-      @classmethod
-      def _deserialize_from_proto(cls, proto, **unused_kwargs):
-        if proto.Is(wrappers_pb2.StringValue.DESCRIPTOR):
-          unpacked = wrappers_pb2.StringValue()
-          proto.Unpack(unpacked)
-          return cls(name=unpacked.value)
-        raise AssertionError(
-            "Did not receive proto of correct type during deserialization. "
-            f"Expected type {wrappers_pb2.StringValue.DESCRIPTOR.full_name}, "
-            f"got {proto.TypeName()}")
-
-    m = Module("a")
-    m.v.assign(5)
-    loaded = cycle(m, cycles)
-    self.assertIsInstance(loaded, Module)
-    self.assertEqual(5, loaded.v.numpy())
-    self.assertEqual("a", loaded.name)
-
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -2215,20 +2135,16 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
     class Extra(tracking.AutoTrackable):
 
-      def _list_extra_dependencies_for_serialization(self, cache):
-        if self not in cache:
-          cache[self] = {"a": variables.Variable(5.)}
-        return cache[self]
+      def _trackable_children(self, save_type, **kwargs):
+        children = super(Extra, self)._trackable_children(save_type, **kwargs)
+        children["a"] = variables.Variable(5.)
+        return children
+
     root = Extra()
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
     imported = load.load(path)
     self.assertEqual(5, self.evaluate(imported.a))
-
-    root.a = variables.Variable(3.)
-    with self.assertRaisesRegex(
-        ValueError, "object has an attribute named 'a', which is reserved."):
-      save.save(root, path)
 
   def test_save_cached_variable(self):
     with ops.Graph().as_default(), session_lib.Session() as session:
@@ -2317,7 +2233,8 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     adder(5)
     self.assertEqual(self.evaluate(v), 6)
 
-    with self.assertRaisesRegex(ValueError, "requires inputs/variables"):
+    with self.assertRaisesRegex(
+        ValueError, "does not include all required objects for loading"):
       imported = load.load_partial(save_dir, ["root.adder"])
 
   def test_load_partial_checkpoint(self):
@@ -2427,6 +2344,46 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     if "Exception ignored in" in stderr.getvalue():
       raise Exception(stderr.getvalue())
 
+  def test_captured_dataset_with_asset(self):
+
+    class HasDataset(module.Module):
+
+      def __init__(self, temp_dir, file_name):
+        super(HasDataset, self).__init__()
+        file = os.path.join(temp_dir, file_name)
+        with tf_record.TFRecordWriter(file, "GZIP") as f:
+          for v in ["a", "aa", "aaa"]:
+            f.write(str(v))
+        self.dataset = readers.TFRecordDataset([file], compression_type="GZIP")
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int32)
+        for element in self.dataset:
+          current_sum += x * string_ops.string_length(element)
+        return current_sum
+
+    temp_dir = self.get_temp_dir()
+    file_name = "tf_record_asset.tfrecord.gz"
+    root = HasDataset(temp_dir, file_name)
+    self.assertEqual(
+        18,  # 3 * (1 + 2 + 3)
+        root(constant_op.constant(3, dtype=dtypes.int32)).numpy())
+
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save(root, save_dir)
+
+    file_io.delete_file(os.path.join(temp_dir, file_name))
+    asset_path = os.path.join(save_dir, "assets/{}".format(file_name))
+    self.assertTrue(file_io.file_exists(asset_path))
+    load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+    file_io.rename(save_dir, load_dir)
+
+    loaded = load.load(load_dir)
+    self.assertEqual(
+        18,  # 3 * (1 + 2 + 3)
+        loaded(constant_op.constant(3, dtype=dtypes.int32)).numpy())
+
 
 class DeferredInitModuleVariablesTest(test.TestCase):
 
@@ -2531,6 +2488,48 @@ class DeferredInitModuleVariablesTest(test.TestCase):
     weight_size = 1024
     export_dir = create_and_save_module(weight_size)
     load_and_run_module(export_dir, weight_size)
+
+  def _make_asset(self, contents):
+    fd, filename = tempfile.mkstemp(prefix=self.get_temp_dir())
+    with os.fdopen(fd, "w") as f:
+      f.write(contents)
+    return filename
+
+  def test_assets(self):
+
+    class MyLookupModel(tracking.AutoTrackable):
+
+      def __init__(self, vocab_file):
+
+        vocab_initializer = lookup_ops.TextFileInitializer(
+            vocab_file,
+            key_dtype=dtypes.string,
+            key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+            value_dtype=dtypes.int64,
+            value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+        self._vocab_table = lookup_ops.StaticHashTable(vocab_initializer,
+                                                       default_value=-1)
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec((None,), dtypes.string)])
+      def __call__(self, inputs):
+        return self._vocab_table.lookup(inputs)
+
+    vocab_file = self._make_asset("\n".join(["a", "b", "c", "d"]))
+    root = MyLookupModel(vocab_file)
+
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save_and_return_nodes(
+        root, save_dir, experimental_skip_checkpoint=True)
+    file_io.delete_file(vocab_file)
+    load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+    file_io.rename(save_dir, load_dir)
+
+    imported = load.load(
+        load_dir,
+        options=load_options.LoadOptions(experimental_skip_checkpoint=True))
+    self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
+                        [3, 1])
 
 
 if __name__ == "__main__":

@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for tensor_list_resize."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
+from tensorflow.lite.testing.zip_test_utils import ExtraConvertOptions
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 from tensorflow.python.ops import list_ops
@@ -56,4 +53,6 @@ def make_tensor_list_resize_tests(options):
                               parameters["element_shape"])
     return [data], sess.run(outputs, feed_dict=dict(zip(inputs, [data])))
 
-  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+  extra_convert_options = ExtraConvertOptions()
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs,
+                    extra_convert_options)

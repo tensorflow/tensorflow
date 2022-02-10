@@ -13,19 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -221,6 +220,15 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
       res = math_ops.reduce_logsumexp(-np.inf)
       self.assertEqual(-np.inf, self.evaluate(res))
 
+  def testRaggedTensor(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.double]:
+      x_rt = ragged_factory_ops.constant([[1, 2], [], [3, 4, 5]], dtype=dtype)
+      x_np = np.array(self.evaluate(x_rt.flat_values))
+      with test_util.use_gpu():
+        y_rt = math_ops.reduce_logsumexp(x_rt)
+        y_np = np.log(np.sum(np.exp(x_np - np.max(x_np)))) + np.max(x_np)
+        self.assertAllClose(y_rt, y_np)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RoundTest(test_util.TensorFlowTestCase):
@@ -237,6 +245,7 @@ class RoundTest(test_util.TensorFlowTestCase):
         self.assertAllClose(y_tf_np, y_np, atol=1e-2)
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class MatMulTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   """Test for matmul."""
@@ -280,7 +289,32 @@ class MatMulTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                             (dtypes.int8, dtypes.uint8),
                             (dtypes.uint8, dtypes.int8))
   # TODO(shivaniagrawal): matmul (dtypes.uint8, dtypes.uint8) fails in xla_gpu.
-  def testInt8Matmul(self, a_dtype, b_dtype):
+  def testInt8MatMul2D(self, a_dtype, b_dtype):
+    a = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=a_dtype)
+    b = constant_op.constant([7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=b_dtype)
+    c = math_ops.matmul(a, b, output_type=dtypes.int32)
+    c_np = constant_op.constant([[58, 64], [139, 154]],
+                                shape=(2, 2),
+                                dtype=dtypes.int32)
+    self.assertAllClose(c, c_np)
+
+  @parameterized.parameters((dtypes.int8), (dtypes.uint8))
+  def testMixPrecMatMul2D(self, b_dtype):
+    a = constant_op.constant([1, 2, 3, 4, 5, 6],
+                             shape=[2, 3],
+                             dtype=dtypes.bfloat16)
+    b = constant_op.constant([7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=b_dtype)
+    c = math_ops.matmul(a, b, output_type=dtypes.bfloat16)
+    c_np = constant_op.constant([[58, 64], [139, 154]],
+                                shape=(2, 2),
+                                dtype=dtypes.bfloat16)
+    self.assertAllClose(c, c_np, atol=1e-2)
+
+  @parameterized.parameters((dtypes.int8, dtypes.int8),
+                            (dtypes.int8, dtypes.uint8),
+                            (dtypes.uint8, dtypes.int8))
+  # TODO(shivaniagrawal): matmul (dtypes.uint8, dtypes.uint8) fails in xla_gpu.
+  def testInt8BatchMatmul(self, a_dtype, b_dtype):
     a = constant_op.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=a_dtype)
     b = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=b_dtype)
     c_np = constant_op.constant(
@@ -291,7 +325,7 @@ class MatMulTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(c, c_np)
 
   @parameterized.parameters((dtypes.int8), (dtypes.uint8))
-  def testMixPrecMatmul(self, b_dtype):
+  def testMixPrecBatchMatmul(self, b_dtype):
     a = constant_op.constant(
         np.arange(1, 13), shape=[2, 2, 3], dtype=dtypes.bfloat16)
     b = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=b_dtype)
@@ -378,6 +412,7 @@ class SquaredDifferenceTest(test_util.TensorFlowTestCase):
         self.assertAllClose(z, z_tf)
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class ApproximateEqualTest(test_util.TensorFlowTestCase):
 
@@ -418,6 +453,20 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
           "Shapes must be equal rank|must be of the same shape"):
         math_ops.approximate_equal(x, y)
 
+  def testApproximateEqualShapeXla(self):
+
+    @def_function.function(jit_compile=True)
+    def approximate_equal(x, y):
+      return math_ops.approximate_equal(x, y)
+
+    for dtype in [np.float32, np.double]:
+      x = np.array([1, 2], dtype=dtype)
+      y = np.array([[1, 2]], dtype=dtype)
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          "Shapes must be equal rank|must be of the same shape"):
+        approximate_equal(x, y)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ScalarMulTest(test_util.TensorFlowTestCase):
@@ -450,7 +499,7 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
   def testAcceptsIndexedSlices(self):
     values = constant_op.constant([2, 3, 5, 7, 0, -1], shape=[3, 2])
     indices = constant_op.constant([0, 2, 5])
-    x = math_ops.scalar_mul(-3, ops.IndexedSlices(values, indices))
+    x = math_ops.scalar_mul(-3, indexed_slices.IndexedSlices(values, indices))
     with test_util.device(use_gpu=True):
       self.assertAllEqual(
           self.evaluate(x.values), [[-6, -9], [-15, -21], [0, 3]])
@@ -519,7 +568,7 @@ class AddNTest(test_util.TensorFlowTestCase):
             [self.evaluate(g) for g in add_n_grad])
 
   def testIndexedSlices(self):
-    slc = ops.IndexedSlices(
+    slc = indexed_slices.IndexedSlices(
         array_ops.constant([1, 2], shape=[1, 2]), array_ops.constant([1]),
         array_ops.constant([2, 2]))
     slc_as_dense = np.array([[0, 0], [1, 2]])
@@ -795,6 +844,19 @@ class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # Results should always be exactly zero.
     self.assertAllEqual(tf_result, zero)
 
+  @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
+                            (dtypes.float32), (dtypes.float64),
+                            (dtypes.complex64), (dtypes.complex128))
+  def testNonFiniteInNumerator(self, dtype):
+    nums = constant_op.constant([np.nan, np.inf, np.NINF], dtype=dtype)
+    zeros = constant_op.constant([0, 0, 0], dtype=dtype)
+    ones = constant_op.constant([1, 1, 1], dtype=dtype)
+    with test_util.use_gpu():
+      tf_result_zeros = math_ops.div_no_nan(nums, zeros)
+      self.assertAllEqual([0, 0, 0], tf_result_zeros)
+      tf_result_ones = math_ops.div_no_nan(nums, ones)
+      self.assertAllEqual(nums / ones, tf_result_ones)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class MultiplyNoNanTest(test_util.TensorFlowTestCase):
@@ -810,6 +872,10 @@ class MultiplyNoNanTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(tf_result_zeros, zeros)
         tf_result_ones = math_ops.multiply_no_nan(x, ones)
         self.assertAllEqual(tf_result_ones, x)
+        # Normal floating point arithmetic if nonfinite values are in the
+        # second argument.
+        tf_result_reverseargs = math_ops.multiply_no_nan(zeros, x)
+        self.assertAllEqual(zeros * x, tf_result_reverseargs)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -971,9 +1037,9 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
           r"Attempt to convert a value .* with an unsupported type")
     else:
       error = TypeError
-      error_message = (r"Failed to convert object of type .* to Tensor")
+      error_message = (r"Failed to convert elements of .* to Tensor")
 
-    class RHSReturnsTrue(object):
+    class RHSReturnsTrue:
 
       def __radd__(self, other):
         return True
@@ -981,7 +1047,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
     a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsTrue()
     self.assertEqual(a, True)
 
-    class RHSRaisesError(object):
+    class RHSRaisesError:
 
       def __radd__(self, other):
         raise TypeError("RHS not implemented")
@@ -990,7 +1056,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSRaisesError()
       self.evaluate(a)
 
-    class RHSReturnsNotImplemented(object):
+    class RHSReturnsNotImplemented:
 
       def __radd__(self, other):
         return NotImplemented
@@ -999,7 +1065,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsNotImplemented()
       self.evaluate(a)
 
-    class RHSNotImplemented(object):
+    class RHSNotImplemented:
       pass
 
     with self.assertRaisesRegex(error, error_message):
@@ -1049,15 +1115,39 @@ class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
       self.assertEqual(y.dtype.base_dtype, x.dtype.base_dtype)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class EqualityTest(test_util.TensorFlowTestCase):
+class EqualityTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
+  @test_util.run_all_in_graph_and_eager_modes
   def testEqualityNone(self):
     x = constant_op.constant([1.0, 2.0, 0.0, 4.0], dtype=dtypes.float32)
     self.assertNotEqual(x, None)
     self.assertNotEqual(None, x)
     self.assertFalse(math_ops.tensor_equals(x, None))
     self.assertTrue(math_ops.tensor_not_equals(x, None))
+
+  @parameterized.named_parameters(
+      (f"-is_equals={is_equals}-float_literal_type={type(float_literal)}"  # pylint: disable=g-complex-comprehension
+       f"-float_literal={float_literal}", is_equals, float_literal)
+      for float_literal in [4.6, np.float32(4.6), 4.4, np.float32(4.4)]
+      for is_equals in [True, False])
+  def testEqualityNoDowncast(self, is_equals, float_literal):
+    if (tf2.enabled() and isinstance(float_literal, np.float32) or
+        not tf2.enabled() and isinstance(float_literal, float)):
+      # TODO(b/199262800): Remove this skip
+      self.skipTest("There is a bug in type promotion.")
+    if is_equals:
+      op = math_ops.tensor_equals
+    else:
+      op = math_ops.tensor_not_equals
+    x = constant_op.constant(4)
+    try:
+      result = op(x, float_literal)
+      if isinstance(result, ops.Tensor):
+        result = self.evaluate(result)
+    except TypeError:
+      # Throwing a TypeError is OK
+      return
+    self.assertEqual(result, not is_equals)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1116,6 +1206,17 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase):
       # Long tensor to ensure works with multithreading/GPU
       values = array_ops.zeros(shape=(193681,), dtype=dtype)
       self.assertAllEqual(math_ops.argmax(values), 0)
+
+  def testArgMaxUint16(self):
+    shape = (24, 8)
+    for dtype in self._getValidDtypes():
+      tf_values = self._generateRandomTensor(dtype, shape)
+      np_values = self.evaluate(tf_values)
+      for axis in range(0, len(shape)):
+        np_max = np.argmax(np_values, axis=axis)
+        tf_max = math_ops.argmax(
+            tf_values, axis=axis, output_type=dtypes.uint16)
+        self.assertAllEqual(tf_max, np_max)
 
   def testArgMin(self):
     shape = (24, 8)

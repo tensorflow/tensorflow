@@ -60,12 +60,10 @@ ops above and associated assignment operations), tf.function traces a second
 time if it sees variables on the first call.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
+import os
 import threading
+import types as types_lib
 import weakref
 import six
 
@@ -75,8 +73,10 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -380,6 +380,10 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
             not_assign_fn, assign_fn)
 
 
+JIT_COMPILE_FUNCTIONS = (
+    os.getenv("TF_FUNCTION_JIT_COMPILE_DEFAULT", "false").lower()
+    in ("true", "1"))
+
 RUN_FUNCTIONS_EAGERLY = False
 
 
@@ -540,7 +544,7 @@ class OptionalXlaContext(object):
 
 # TODO(mdan): Consider expose this type for instance type checking.
 @tf_export("__internal__.function.Function", v1=[])
-class Function(core.GenericFunction):
+class Function(core.GenericFunction, trackable.Trackable):
   """A `tf.types.experimental.GenericFunction` created by `tf.function`.
 
   Currently, individual methods/attributes under this class are not guaranteed
@@ -574,9 +578,9 @@ class Function(core.GenericFunction):
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
     """
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._python_function = python_function
-    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
         python_function,
         input_signature,
         jit_compile=jit_compile,
@@ -604,6 +608,10 @@ class Function(core.GenericFunction):
     self._omit_frequent_tracing_warning = False
     ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
 
+  @property
+  def name(self):
+    return self._name
+
   def __getstate__(self):
     """Custom pickling, to omit unpickleable objects."""
     result = self.__dict__.copy()
@@ -615,7 +623,7 @@ class Function(core.GenericFunction):
   def __setstate__(self, state):
     """Restore from pickled state."""
     self.__dict__ = state
-    self._lock = threading.Lock()
+    self._lock = threading.RLock()
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._key_for_call_stats = self._get_key_for_call_stats()
 
@@ -832,7 +840,7 @@ class Function(core.GenericFunction):
           "Functions cannot be decorated after they have been traced.")
 
     self._python_function = decorator(self._python_function)
-    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+    self._function_spec = function_spec_lib.FunctionSpec.from_function_and_signature(
         self._python_function, self.input_signature)
 
   # TODO: Remove this private method after updating all its uses
@@ -972,9 +980,9 @@ class Function(core.GenericFunction):
         # stateless function.
         return self._stateless_fn(*args, **kwds)
     else:
-      _, _, _, filtered_flat_args = \
+      _, _, filtered_flat_args = (
           self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-              *args, **kwds)
+              *args, **kwds))
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._call_flat(
           filtered_flat_args, self._concrete_stateful_fn.captured_inputs)  # pylint: disable=protected-access
@@ -1034,9 +1042,9 @@ class Function(core.GenericFunction):
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds, _, filtered_flat_args = \
+    canon_args, canon_kwds, filtered_flat_args = (
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-            *args, **kwds)
+            *args, **kwds))
     return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
                                             filtered_flat_args)
 
@@ -1051,9 +1059,9 @@ class Function(core.GenericFunction):
     fn_name = concrete_fn.name
 
     # pylint: disable=protected-access
-    _, _, _, filtered_flat_args = \
+    _, _, filtered_flat_args = (
         concrete_fn._function_spec.canonicalize_function_inputs(
-            *args, **kwargs)
+            *args, **kwargs))
 
     def compiler_ir_generator(stage="hlo", device_name=None):
       # TODO(cheshire): This is a hack to get the current "preferred" device,
@@ -1178,10 +1186,10 @@ class Function(core.GenericFunction):
     # pylint: disable=protected-access
     if self._stateful_fn:
       concrete_functions.extend(
-          self._stateful_fn._function_cache.all_values())
+          self._stateful_fn._list_all_concrete_functions())
     if self._stateless_fn:
       concrete_functions.extend(
-          self._stateless_fn._function_cache.all_values())
+          self._stateless_fn._list_all_concrete_functions())
     # pylint: enable=protected-access
     return concrete_functions
 
@@ -1273,14 +1281,28 @@ class Function(core.GenericFunction):
     #   foo = Foo()
     #   foo.bar()  # `foo.bar` is a `Function` instance
     #
-    # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
-    # new instance of `Function` here to allow different instances each
-    # to create variables once, thereby allowing methods to be decorated with
-    # tf.function. Keeps a cache to avoid retracing the function every time the
-    # descriptor is accessed.
+    # then `instance` will be `foo` (and `owner` will be `Foo`).  For composite
+    # tensors, we can just treat `instance` as a normal parameter.  But for
+    # other types, we create a new instance of `Function` here to allow
+    # different instances each to create variables once, thereby allowing
+    # methods to be decorated with tf.function. Keeps a cache to avoid retracing
+    # the function every time the descriptor is accessed.
+    # TODO(mdan): Identify types which can just be parameters more generically.
+    #
+    # The check for instance._type_spec=None is used because certain classes
+    # (including subclasses of tf.linalg.LinearOperator) are subclasses of
+    # CompositeTensor but do not actually implement the required APIs.
+    # TODO(b/199278478): Fix those classes, then remove the check for
+    # `instance._type_spec is not None`.
+    if (isinstance(instance, composite_tensor.CompositeTensor) and
+        instance._type_spec is not None):  # pylint: disable=protected-access
+      return types_lib.MethodType(self, instance)
     if instance not in self._descriptor_cache:
       if instance is None:
         return self
+      # TODO(mdan): If the CompositeTensor path works, do the same here.
+      # It's unclear whether we need the tf-decorator, or could just call
+      # MethodType(self.clone(), instance)
       self._descriptor_cache[instance] = (
           function_lib.class_method_to_instance_method(self, instance))
     return self._descriptor_cache[instance]
@@ -1327,8 +1349,8 @@ def function(func=None,
 
   ## Features
 
-  `func` may use data-dependent control flow, including `if`, `for`, `while`
-  `break`, `continue` and `return` statements:
+  `func` may use data-dependent Python control flow statements, including `if`,
+  `for`, `while` `break`, `continue` and `return`:
 
   >>> @tf.function
   ... def f(x):
@@ -1578,8 +1600,9 @@ def function(func=None,
       inferred input signature.  If input_signature is specified, every input to
       `func` must be a `Tensor`, and `func` cannot accept `**kwargs`.
     autograph: Whether autograph should be applied on `func` before tracing a
-      graph. Data-dependent control flow requires `autograph=True`. For more
-      information, see the [tf.function and AutoGraph guide](
+      graph. Data-dependent Python control flow statements require
+      `autograph=True`. For more information, see the
+      [tf.function and AutoGraph guide](
       https://www.tensorflow.org/guide/function#autograph_transformations).
     jit_compile: If `True`, compiles the function using
       [XLA](https://tensorflow.org/xla). XLA performs compiler optimizations,
@@ -1640,6 +1663,9 @@ def function(func=None,
     function_lib.validate_signature(input_signature)
   if experimental_follow_type_hints is None:
     experimental_follow_type_hints = False
+
+  if jit_compile is None and JIT_COMPILE_FUNCTIONS:
+    jit_compile = True
 
   def decorated(inner_function):
     try:

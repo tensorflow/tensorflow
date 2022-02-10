@@ -47,10 +47,12 @@ se::StreamExecutor* ExecutorForPlatformDeviceId(
 TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
   const PlatformDeviceId platform_device_id(0);
   auto stream_exec = ExecutorForPlatformDeviceId(platform_device_id);
-  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
-      stream_exec, platform_device_id, false /*use_unified_memory*/, {}, {});
-  GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
-                      platform_device_id);
+  GPUDebugAllocator a(
+      new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
+                              stream_exec, platform_device_id,
+                              false /*use_unified_memory*/, {}, {})),
+                          1 << 30, "", {}),
+      platform_device_id);
 
   for (int s : {8}) {
     std::vector<int64_t> cpu_array(s);
@@ -74,11 +76,12 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
         {
           const PlatformDeviceId platform_device_id(0);
           auto stream_exec = ExecutorForPlatformDeviceId(platform_device_id);
-          DeviceMemAllocator* sub_allocator =
-              new DeviceMemAllocator(stream_exec, platform_device_id,
-                                     false /*use_unified_memory*/, {}, {});
-          GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
-                              platform_device_id);
+          GPUDebugAllocator a(
+              new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
+                                      stream_exec, platform_device_id,
+                                      false /*use_unified_memory*/, {}, {})),
+                                  1 << 30, "", {}),
+              platform_device_id);
 
           std::vector<int64_t> cpu_array(s);
           memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64_t));
@@ -111,11 +114,12 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
         {
           const PlatformDeviceId platform_device_id(0);
           auto stream_exec = ExecutorForPlatformDeviceId(platform_device_id);
-          DeviceMemAllocator* sub_allocator =
-              new DeviceMemAllocator(stream_exec, platform_device_id,
-                                     false /*use_unified_memory*/, {}, {});
-          GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
-                              platform_device_id);
+          GPUDebugAllocator a(
+              new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
+                                      stream_exec, platform_device_id,
+                                      false /*use_unified_memory*/, {}, {})),
+                                  1 << 30, "", {}),
+              platform_device_id);
 
           std::vector<int64_t> cpu_array(s);
           memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64_t));
@@ -145,10 +149,12 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
 TEST(GPUDebugAllocatorTest, ResetToNan) {
   const PlatformDeviceId platform_device_id(0);
   auto stream_exec = ExecutorForPlatformDeviceId(platform_device_id);
-  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
-      stream_exec, platform_device_id, false /*use_unified_memory*/, {}, {});
-  GPUNanResetAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
-                         platform_device_id);
+  GPUNanResetAllocator a(
+      new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
+                              stream_exec, platform_device_id,
+                              false /*use_unified_memory*/, {}, {})),
+                          1 << 30, "", {}),
+      platform_device_id);
 
   std::vector<float> cpu_array(1024);
   std::vector<float> cpu_array_result(1024);
@@ -188,11 +194,11 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
   const PlatformDeviceId platform_device_id(0);
   auto stream_exec = ExecutorForPlatformDeviceId(platform_device_id);
   // NaN reset must be the outer-most allocator.
-  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
-      stream_exec, platform_device_id, false /*use_unified_memory*/, {}, {});
   GPUNanResetAllocator a(
-      new GPUDebugAllocator(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
-                            platform_device_id),
+      new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
+                              stream_exec, platform_device_id,
+                              false /*use_unified_memory*/, {}, {})),
+                          1 << 30, "", {}),
       platform_device_id);
 
   std::vector<float> cpu_array(1024);
@@ -231,22 +237,24 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
 
 TEST(GPUDebugAllocatorTest, TracksSizes) {
   const PlatformDeviceId platform_device_id(0);
-  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
-      ExecutorForPlatformDeviceId(platform_device_id), platform_device_id,
-      false /*use_unified_memory*/, {}, {});
-  GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
-                      platform_device_id);
+  auto stream_exec = ExecutorForPlatformDeviceId(platform_device_id);
+  GPUDebugAllocator a(
+      new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
+                              stream_exec, platform_device_id,
+                              false /*use_unified_memory*/, {}, {})),
+                          1 << 30, "", {}),
+      platform_device_id);
   EXPECT_EQ(true, a.TracksAllocationSizes());
 }
 
 TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
   const PlatformDeviceId platform_device_id(0);
-  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
-      ExecutorForPlatformDeviceId(platform_device_id), platform_device_id,
-      false /*use_unified_memory*/, {}, {});
-  GPUNanResetAllocator a(
-      new GPUDebugAllocator(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
-                            platform_device_id),
+  auto stream_exec = ExecutorForPlatformDeviceId(platform_device_id);
+  GPUDebugAllocator a(
+      new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
+                              stream_exec, platform_device_id,
+                              false /*use_unified_memory*/, {}, {})),
+                          1 << 30, "", {}),
       platform_device_id);
   float* t1 = TypedAllocator::Allocate<float>(&a, 1, {});
   EXPECT_EQ(4, a.RequestedSize(t1));

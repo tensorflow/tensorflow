@@ -301,7 +301,7 @@ do_external_licenses_check(){
   TMP_FILE="$(mktemp)_tmp.log"
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
- bazel cquery "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
+ bazel cquery --experimental_cc_shared_library "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -312,7 +312,7 @@ do_external_licenses_check(){
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
-  bazel cquery "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
+  bazel cquery --experimental_cc_shared_library "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -331,6 +331,7 @@ do_external_licenses_check(){
   # Denylist
   echo ${MISSING_LICENSES_FILE}
   grep \
+    -e "@absl_py//absl" \
     -e "@bazel_tools//platforms" \
     -e "@bazel_tools//third_party/" \
     -e "@bazel_tools//tools" \
@@ -349,6 +350,7 @@ do_external_licenses_check(){
   grep \
     -e "//third_party/mkl" \
     -e "//third_party/mkl_dnn" \
+    -e "@absl_py//" \
     -e "@bazel_tools//src" \
     -e "@bazel_tools//platforms" \
     -e "@bazel_tools//tools/" \
@@ -437,7 +439,7 @@ cmd_status(){
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
   BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
-  BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
+  BUILD_CMD="bazel build --experimental_cc_shared_library --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
 
@@ -454,6 +456,10 @@ do_bazel_deps_query() {
   # necessary since the @androidsdk WORKSPACE dependency is commented out by
   # default in TF WORKSPACE file.
   local BUILD_TARGET="${BUILD_TARGET}"' - kind("android_*", //tensorflow/...)'
+
+  # TODO(pcloudy): Remove the following exclusion after upgrading to a Bazel
+  # which contains fix for https://github.com/bazelbuild/bazel/issues/14639
+  local BUILD_TARGET="${BUILD_TARGET}"' - //tensorflow/lite/experimental/acceleration/...'
 
   # We've set the flag noimplicit_deps as a workaround for
   # https://github.com/bazelbuild/bazel/issues/10544
@@ -556,7 +562,7 @@ _check_no_deps() {
 
   TMP_FILE="$(mktemp)_tmp.log"
   echo "Checking ${TARGET} does not depend on ${DISALLOWED_DEP} ..."
-  bazel cquery ${EXTRA_FLAG} "somepath(${TARGET}, ${DISALLOWED_DEP})" --keep_going> "${TMP_FILE}" 2>&1
+  bazel cquery --experimental_cc_shared_library ${EXTRA_FLAG} "somepath(${TARGET}, ${DISALLOWED_DEP})" --keep_going> "${TMP_FILE}" 2>&1
   if cat "${TMP_FILE}" | grep "Empty query results"; then
       echo "Success."
   else

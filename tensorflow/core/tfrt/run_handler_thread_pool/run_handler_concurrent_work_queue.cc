@@ -17,10 +17,10 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
+#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
-#include "tfrt/support/latch.h"  // from @tf_runtime
 
 namespace tfrt {
 namespace tf {
@@ -56,7 +56,8 @@ RunHandlerThreadWorkQueue::RunHandlerThreadWorkQueue(const Options& options)
   handler_pool_ = absl::make_unique<RunHandlerPool>(pool_options);
 }
 
-tensorflow::Status RunHandlerThreadWorkQueue::InitializeRequest(
+tensorflow::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
+RunHandlerThreadWorkQueue::InitializeRequest(
     tfrt::RequestContextBuilder* request_context_builder,
     tensorflow::thread::ThreadPoolInterface** intra_op_threadpool) const {
   DCHECK(intra_op_threadpool);
@@ -72,36 +73,11 @@ tensorflow::Status RunHandlerThreadWorkQueue::InitializeRequest(
 
   *intra_op_threadpool = handler->AsIntraThreadPoolInterface();
 
-  // insert both the raw pointer and the std::unique_ptr of RunHandler, the raw
-  // pointer is used for accessing methods of RunHandler and can be copied into
-  // other RequestContext, the std::unique_ptr is used for proper life-time
-  // management
-  request_context_builder->context_data().insert(handler.get());
-  request_context_builder->context_data().insert(std::move(handler));
-
-  return tensorflow::Status::OK();
+  return {std::make_unique<RunHandlerWorkQueue>(std::move(handler))};
 }
 
 void RunHandlerThreadWorkQueue::AddTask(TaskFunction work) {
   non_blocking_work_queue_.AddTask(std::move(work));
-}
-
-void RunHandlerThreadWorkQueue::AddTask(const ExecutionContext& exec_ctx,
-                                        TaskFunction work) {
-  exec_ctx.request_ctx()->GetData<RunHandler*>()->ScheduleInterOpClosure(
-      std::move(work));
-}
-
-Optional<TaskFunction> RunHandlerThreadWorkQueue::AddBlockingTask(
-    const tfrt::ExecutionContext& exec_ctx, TaskFunction work,
-    bool allow_queuing) {
-  if (allow_queuing) {
-    exec_ctx.request_ctx()->GetData<RunHandler*>()->ScheduleInterOpClosure(
-        std::move(work));
-  } else {
-    return blocking_work_queue_.RunBlockingTask(std::move(work));
-  }
-  return llvm::None;
 }
 
 Optional<TaskFunction> RunHandlerThreadWorkQueue::AddBlockingTask(
@@ -122,16 +98,7 @@ void RunHandlerThreadWorkQueue::Quiesce() {
 
 void RunHandlerThreadWorkQueue::Await(
     ArrayRef<RCReference<AsyncValue>> values) {
-  // We are done when values_remaining drops to zero.
-  tfrt::latch values_remaining(values.size());
-
-  // As each value becomes available, we decrement the count.
-  for (auto& value : values) {
-    value->AndThen([&values_remaining]() { values_remaining.count_down(); });
-  }
-
-  // Wait until all values are resolved.
-  values_remaining.wait();
+  tfrt::Await(values);
 }
 
 bool RunHandlerThreadWorkQueue::IsInWorkerThread() const {

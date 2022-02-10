@@ -14,12 +14,6 @@
 # ==============================================================================
 """Tests for reaching_definitions module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
-
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import naming
@@ -381,10 +375,7 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
     # Python2 leaks list comprehension symbols. Python3 doesn't.
     # For details, see:
     # https://stackoverflow.com/questions/4198906/list-comprehension-rebinds-names-even-after-scope-of-comprehension-is-this-righ
-    if six.PY2:
-      self.assertSameDef(retval, listcomp_target)
-    else:
-      self.assertHasDefs(retval, 0)
+    self.assertHasDefs(retval, 0)
 
   def test_function_definition(self):
 
@@ -516,7 +507,7 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
 
     self.assertSameDef(local_body[1].test, local_body[2].value.elts[0])
 
-    # Note: the function name is is visible inside the function body. But it's
+    # Note: the function name is visible inside the function body. But it's
     # a closure variable, not a local.
     #
     # Example:

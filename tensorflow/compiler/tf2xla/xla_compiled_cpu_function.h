@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/types.h"
 
 // Forward-declare, rather than include, to reduce code size for users that
@@ -28,7 +29,7 @@ limitations under the License.
 namespace xla {
 class ProgramShapeProto;
 class HloProfilePrinterData;
-}
+}  // namespace xla
 
 namespace tensorflow {
 
@@ -52,7 +53,7 @@ class XlaCompiledCpuFunction {
   using RawFunction = void (*)(void* result,
                                const xla::ExecutableRunOptions* run_options,
                                const void** args, void** temps,
-                               int64_t* profile_counters);
+                               XlaCustomCallStatus*, int64_t* profile_counters);
 
   // StaticData represents the state necessary to run an XLA-compiled
   // function. For JIT this is backed by data in XlaJitCompiledCpuFunction; for
@@ -172,15 +173,15 @@ class XlaCompiledCpuFunction {
   // called for each positional argument, in order to set the argument buffers.
   //
   // Allocated memory must be aligned to the size specified by
-  // xla::cpu_function_runtime::kMinAlign. If possible, use the functions in
+  // xla::cpu_function_runtime::MinAlign(). If possible, use the functions in
   // tensorflow/compiler/tf2xla/cpu_function_runtime.h to ensure correct
   // alignment.
   //
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
   void set_arg_data(size_t index, const void* data) {
-    assert((arg_size(index) < xla::cpu_function_runtime::kMinAlign ||
-            (uintptr_t)data % xla::cpu_function_runtime::kMinAlign == 0) &&
+    assert((arg_size(index) < xla::cpu_function_runtime::MinAlign() ||
+            (uintptr_t)data % xla::cpu_function_runtime::MinAlign() == 0) &&
            "Underaligned pointer!");
     // The const_cast is safe because the generated code does not write to arg
     // buffers.

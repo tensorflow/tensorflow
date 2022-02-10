@@ -109,6 +109,9 @@ class InitializeHostForDistributedTpuOp : public OpKernel {
     ctx->GetAttr("enable_whole_mesh_compilations",
                  &enable_whole_mesh_compilations_)
         .IgnoreError();
+    ctx->GetAttr("tpu_cancellation_closes_chips",
+                 &tpu_cancellation_closes_chips_)
+        .IgnoreError();
   }
 
   void Compute(OpKernelContext* ctx) override;
@@ -123,6 +126,7 @@ class InitializeHostForDistributedTpuOp : public OpKernel {
       const InitializeHostForDistributedTpuOp&) = delete;
 
   bool enable_whole_mesh_compilations_ = false;
+  int tpu_cancellation_closes_chips_ = 0;
 };
 
 // The SetGlobalTPUArray op is used to initialize the TPUPlatform on a

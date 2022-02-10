@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -380,7 +379,9 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
   }
 
   std::vector<DeviceHandle> device_handles;
-  for (const DeviceHandle& device_handle : response.device_handles()) {
+  const auto& response_device_handles = response.device_handles();
+  device_handles.reserve(response_device_handles.size());
+  for (const DeviceHandle& device_handle : response_device_handles) {
     device_handles.push_back(device_handle);
   }
 
@@ -463,7 +464,7 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
   return Shape(response.shape());
 }
 
-StatusOr<string> Client::ExecutionStatsAsString(
+StatusOr<std::string> Client::ExecutionStatsAsString(
     const XlaComputation& computation, const ExecutionProfile& profile) {
   TF_ASSIGN_OR_RETURN(
       auto computation_stats,
@@ -481,7 +482,7 @@ StatusOr<string> Client::ExecutionStatsAsString(
         ", compute cycles: ", cycle_count, ", performance: ", gflops,
         "gflop/s");
   }
-  return string("[Execution Statistics] not available.");
+  return std::string("[Execution Statistics] not available.");
 }
 
 StatusOr<ChannelHandle> Client::CreateChannelHandleByType(

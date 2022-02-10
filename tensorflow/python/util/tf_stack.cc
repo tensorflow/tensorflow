@@ -21,21 +21,27 @@ limitations under the License.
 // Since the graph instantiation goes through the protobuf roundtrip, we store
 // the original stack traces mapping attached in FunctionLibraryDefinition.
 
-#include <Python.h>
+// clang-format off
+// These headers must be at the top, before including Python.h header
+// Otherwise, we get C2039 on MSVC due to 'copysign'
+#include "pybind11/complex.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
+#include "pybind11/stl_bind.h"
+// clang-format on
+
 #include <frameobject.h>
 
 #include <algorithm>
 #include <vector>
 
+#include "Python.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
-#include "pybind11/stl_bind.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/path.h"
@@ -132,7 +138,7 @@ std::string StackFrameToString(
 
 class StackTraceWrapper : public AbstractStackTrace {
  public:
-  StackTraceWrapper(PythonStackTrace&& captured,
+  StackTraceWrapper(StackTrace&& captured,
                     const std::shared_ptr<SourceMap>& source_map,
                     const std::shared_ptr<StringSet>& filter)
       : captured_(std::move(captured)),
@@ -146,7 +152,7 @@ class StackTraceWrapper : public AbstractStackTrace {
   static StackTraceWrapper ExtractStack(
       const std::shared_ptr<SourceMap>& source_map,
       const std::shared_ptr<StringSet>& filter) {
-    return StackTraceWrapper{PythonStackTrace::Capture(-1), source_map, filter};
+    return StackTraceWrapper{StackTrace::Capture(-1), source_map, filter};
   }
 
   absl::Span<StackFrame const> ToFrames() const override {
@@ -248,7 +254,7 @@ class StackTraceWrapper : public AbstractStackTrace {
     return filter_->contains(file_name);
   }
 
-  PythonStackTrace captured_;
+  StackTrace captured_;
   std::shared_ptr<SourceMap> source_map_;
   std::shared_ptr<StringSet> filter_;
 

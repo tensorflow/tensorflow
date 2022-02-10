@@ -95,6 +95,12 @@ ArgMinMaxOpTest/ArgMinMaxOpTest/Get.+ArgOutput64/[46],29
 # basic_rnn_test
 RnnOpTest/BlackBoxTest
 
+# batch_matmul_test
+# broadcasting is not supported
+-BatchMatMulOpTest/BatchMatMulOpTest/.+Broadcast.+
+BatchMatMulOpTest/BatchMatMulOpTest/.+,1000006
+QuantizedBatchMatMulOpTest/QuantizedBatchMatMulOpTest/SimpleTestQuantizedInt8/.+,1000006
+
 # batch_to_space_nd_test
 BatchToSpaceNDOpTest/SimpleConstTest.*
 BatchToSpaceNDOpTest/BatchOneConstTest.*
@@ -275,12 +281,28 @@ Parameterized/LstmOpTest.+/7,29
 MaxMinOpTest/.+nt8Test,29
 MaximumOpTest/.+,29
 
+# mirror_pad_test
+MirrorPadTest/.+,1000007
+
 # mul_test
 FloatMulOpTest/.+
 
 # neg_test
 -NegOpModel/.+Int64
 NegOpModel/.+,29
+
+# pack_test
+# int32 and uint8 are supported since NNAPI FL6
+PackOpTest/Int32.+,1000006
+PackOpTestInt/1/.+,1000006
+# PACK along last axis is supported since NNAPI FL6
+PackOpTest/FloatThreeInputsDifferentAxis,1000006
+PackOpTest/FloatThreeInputsNegativeAxis,1000006
+PackOpTestInt/0/ThreeInputsDifferentAxis,1000006
+PackOpTestInt/0/ThreeInputsNegativeAxis,1000006
+# f32 and int8 are supported since NNAPI 1.3 by decomposition
+PackOpTest/Float.+,30
+PackOpTestInt/0/.+,30
 
 # pad_test
 -PadOpTest/TooManyDimensions
@@ -331,14 +353,15 @@ QuantizeOpTest/INT8,30
 
 # reduce_test
 -Dynamic.+(Mean|Sum|Prod|Max|Min)OpTest/.+
--ConstUint8(Mean|Sum)OpTest/.+
--ConstInt8MeanOpTest.NonSpecialAxisNonSameScale
--ConstInt8MeanOpTest.QuantizedDifferentScale
+-ConstUint8SumOpTest/.+
 ConstUint8(Max|Min)OpTest/.+,29
-ConstUint8(Mean)OpTest/.+
+ConstUint8(Mean)OpTest/.+,29
 -ConstInt8(Max|Min)OpTest/.+,29
--ConstMeanOpTest.*/.+
--MeanOpTestQuantized.*/.+
+ConstInt8MeanOpTest/.+,29
+-ConstMeanOpTest.*/.+Int16
+ConstMeanOpTest.*/.+,29
+-MeanOpTestQuantized.*/.+Int16
+MeanOpTestQuantized.*/.+,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/NotKeepDims,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/KeepDims,29
 ConstFloat(Mean|Any)OpTest/NotKeepDims
@@ -348,9 +371,13 @@ ConstFloat(Sum|Prod|Max|Min)OpTest/ScalarAxis,29
 # reshape_test
 # Acceleration would be only for the test with shape being a constant tensor or
 # as hardcoded options.
-VariedShapeSpec/ReshapeOpTest/InvalidShape/[01]
-VariedShapeSpec/ReshapeOpTest/RegularShapes/[01]
-VariedShapeSpec/ReshapeOpTest/WithStretchDimension/[01]
+ReshapeOpTest/[01]/InvalidShape
+ReshapeOpTest/[01]/RegularShapes
+ReshapeOpTest/[01]/WithStretchDimension
+# int32 is supported since NNAPI FL6
+ReshapeOpTest/3/InvalidShape,1000006
+ReshapeOpTest/3/RegularShapes,1000006
+ReshapeOpTest/3/WithStretchDimension,1000006
 
 # resize_bilinear_test
 // align_corners & half_pixel_centers are not implemented in NNAPI before API 30
@@ -366,6 +393,11 @@ ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*/0,30
 -ResizeNearestNeighborOpTest.+Int16/.+
 // Only models with constant size tensor are accelerated
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest/.+/0,29
+
+# reverse_test
+-ReverseOpTest/Int64.+
+-ReverseOpTest/Int16.+
+ReverseOpTest/.+,1000007
 
 # select_test
 -SelectOpTest/SelectBool
@@ -396,6 +428,18 @@ SpaceToDepthOpModel/int8
 -SplitOpTest/SplitOpTest/.+Int8/.+
 # Only accelerated when axis is a constant tensor
 SplitOpTest/SplitOpTest/.+/0,29
+
+# split_v_test
+# NNAPI does not support int16
+-SplitVOpTypedTest/3/.+
+# NNAPI does not support zero-sized slice
+-SplitVOpTypedTest/.+OneDimensional2
+# Only accelerated when both split_sizes and axis are constant
+SplitVOpTypedTest/.+/ConstSplits.+,30
+
+# squared_difference_test
+FloatSquaredDifferenceOpTest/.+,28
+(Integer|Quantized)SquaredDifferenceOpTest/.+,30
 
 # squeeze_test
 FloatSqueezeOpTest/.+,29
@@ -441,6 +485,18 @@ TransposeConvOpTest/TransposeConvOpTest/.+/0,29
 # unidirectional_sequence_rnn_test
 UnidirectionalRNNOpTest/BlackBoxTest,29
 UnidirectionalRNNOpTest.TimeMajorBlackBoxTest,29
+
+# unpack_test
+# Unpacking along the last axis is not supported
+-UnpackOpTest/.+/ThreeOutputsAxisOne
+-UnpackOpTest/.+/ThreeOutputsNegativeAxisOne
+-UnpackOpTest/.+/ThreeDimensionsOutputs
+# Unpacking 5D tensor is not supported
+-UnpackOpTest/.+/FiveDimensionsOutputs
+# Unpacking a vector to scalar is not supported
+-UnpackOpTest/.+/VectorToScalar
+# float, int8, uint8 only
+UnpackOpTest/(0|2|3)/.+,30
 )";
 
 }  // namespace tflite

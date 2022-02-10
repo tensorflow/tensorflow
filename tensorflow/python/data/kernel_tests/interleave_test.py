@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.interleave()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import multiprocessing
 import os
 
@@ -356,6 +352,31 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       return dataset
 
     self.checkDeterminism(dataset_fn, expect_determinism, elements)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testName(self, num_parallel_calls):
+
+    def fn(x):
+      return dataset_ops.Dataset.from_tensors(x)
+
+    dataset = dataset_ops.Dataset.from_tensors(42).interleave(
+        fn, num_parallel_calls=num_parallel_calls, name="interleave")
+    self.assertDatasetProduces(dataset, [42])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testMapFuncMustReturnDataset(self, num_parallel_calls):
+
+    def map_fn(x):
+      return [x]
+
+    with self.assertRaisesRegex(
+        TypeError, "The `map_func` argument must return a `Dataset` object."):
+      dataset_ops.Dataset.from_tensors(42).interleave(
+          map_fn, num_parallel_calls=num_parallel_calls)
 
 
 class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,

@@ -55,19 +55,19 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case PRED:
       return py::dtype::of<bool>();
     case S8:
-      return py::dtype::of<int8>();
+      return py::dtype::of<int8_t>();
     case S16:
-      return py::dtype::of<int16>();
+      return py::dtype::of<int16_t>();
     case S32:
-      return py::dtype::of<int32>();
+      return py::dtype::of<int32_t>();
     case S64:
       return py::dtype::of<int64_t>();
     case U8:
-      return py::dtype::of<uint8>();
+      return py::dtype::of<uint8_t>();
     case U16:
-      return py::dtype::of<uint16>();
+      return py::dtype::of<uint16_t>();
     case U32:
-      return py::dtype::of<uint32>();
+      return py::dtype::of<uint32_t>();
     case U64:
       return py::dtype::of<uint64_t>();
     case BF16: {

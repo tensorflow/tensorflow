@@ -2,6 +2,7 @@
 // RUN: hlo_to_llvm_ir --ptx --sm=50 %s | FileCheck %s --check-prefix=CHECK-SM50
 // RUN: hlo_to_llvm_ir --ptx --sm=60 %s | FileCheck %s --check-prefix=CHECK-SM60
 // RUN: hlo_to_llvm_ir --ptx --sm=70 %s | FileCheck %s --check-prefix=CHECK-SM70
+// RUN: hlo_to_llvm_ir --ptx --sm=86 %s | FileCheck %s --check-prefix=CHECK-SM86
 
 // CHECK-LABEL: .entry reduce_odd_row
 // CHECK-NOT: ld.global.nc.v2.f32
@@ -21,6 +22,25 @@ ENTRY %main {
   %param_0 = f32[5,4071] parameter(0)
   %constant.3 = f32[] constant(0)
   ROOT %reduce.odd_row = f32[5] reduce(f32[5,4071] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+}
+
+// -----
+
+// CHECK-SM86-LABEL: .entry reduce_small_row
+// CHECK-SM86: .reqntid 96, 1, 1
+
+HloModule ReduceSmallRow
+
+addition {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT out = add(%x, %y)
+}
+
+ENTRY main {
+  p = f32[700000,32] parameter(0)
+  zero = f32[] constant(0)
+  ROOT reduce_small_row = f32[700000] reduce(p, zero), dimensions={1}, to_apply=%addition
 }
 
 // -----
@@ -53,7 +73,7 @@ ENTRY %main {
 
 // CHECK-SM60: .entry exp
 // CHECK-SM60-LABEL: .entry reduce_exp
-// CHECK-SM60-COUNT-8: ld.global.nc.f32
+// CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
 
 // CHECK-SM70: .entry exp
 // CHECK-SM70-LABEL: .entry reduce_exp
@@ -83,7 +103,7 @@ HloModule ReduceTileFit
 // CHECK-SM50-COUNT-8: ld.global.nc.f32
 
 // CHECK-SM60-LABEL: .entry reduce_tile_fit
-// CHECK-SM60-COUNT-8: ld.global.nc.f32
+// CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
 
 // CHECK-SM70-LABEL: .entry reduce_tile_fit
 // CHECK-SM70-COUNT-4: ld.global.nc.v2.f32

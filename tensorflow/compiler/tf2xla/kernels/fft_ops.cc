@@ -115,10 +115,14 @@ class FFTOp : public GenericFftOp {
   explicit FFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::FFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("FFT").TypeConstraint("Tcomplex", DT_COMPLEX64), FFTOp<1>);
-REGISTER_XLA_OP(Name("FFT2D").TypeConstraint("Tcomplex", DT_COMPLEX64),
+REGISTER_XLA_OP(Name("FFT").TypeConstraint("Tcomplex",
+                                           {DT_COMPLEX64, DT_COMPLEX128}),
+                FFTOp<1>);
+REGISTER_XLA_OP(Name("FFT2D").TypeConstraint("Tcomplex",
+                                             {DT_COMPLEX64, DT_COMPLEX128}),
                 FFTOp<2>);
-REGISTER_XLA_OP(Name("FFT3D").TypeConstraint("Tcomplex", DT_COMPLEX64),
+REGISTER_XLA_OP(Name("FFT3D").TypeConstraint("Tcomplex",
+                                             {DT_COMPLEX64, DT_COMPLEX128}),
                 FFTOp<3>);
 
 template <int FFTRank>

@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
+#include <algorithm>
+#include <numeric>
 #include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -139,10 +142,28 @@ HloSharding HloSharding::Subgroup(
   // Normalize the subgroups to simplify two cases:
   //   - Remove trivial dims of size 1.
   //   - Merge dims of the same type.
+  //   - Sort types.
   int64_t data_dims = tile_assignment.num_dimensions() - subgroup_types.size();
   std::vector<int64_t> perm(data_dims);
   std::iota(perm.begin(), perm.end(), 0);
-  std::map<OpSharding::Type, std::vector<int64_t>> type_to_dims;
+  // Make sure the replicate dims are at the end so that we can leverage
+  // PartialTile() to sort the elements.
+  struct CmpTypeRepliateLast {
+    bool operator()(OpSharding::Type a, OpSharding::Type b) const {
+      if (a == b) {
+        return false;
+      }
+      if (a == OpSharding::REPLICATED) {
+        return false;
+      }
+      if (b == OpSharding::REPLICATED) {
+        return true;
+      }
+      return a < b;
+    }
+  };
+  std::map<OpSharding::Type, std::vector<int64_t>, CmpTypeRepliateLast>
+      type_to_dims;
   bool needs_merging = false;
   for (int64_t i = 0; i < subgroup_types.size(); ++i) {
     if (tile_assignment.dim(i + data_dims) == 1) {
@@ -153,6 +174,27 @@ HloSharding HloSharding::Subgroup(
     needs_merging |= !dims.empty();
     dims.push_back(i + data_dims);
   }
+  needs_merging |= type_to_dims.size() > 1;
+  auto create_sharding = [](const Array<int64_t> tiles,
+                            absl::Span<const OpSharding::Type> types,
+                            absl::Span<const OpMetadata> metadata) {
+    if (types.size() == 1 && types.back() == OpSharding::REPLICATED) {
+      // Normalize to partial tile.
+      return PartialTile(tiles, metadata);
+    }
+    if (!types.empty() && types.back() == OpSharding::REPLICATED) {
+      // If the last type is REPLICATED, we first create a partially replicated
+      // sharding without other subgroups so that the elements are sorted. Then
+      // we fix the subgroup types.
+      HloSharding sharding = PartialTile(tiles, metadata);
+      sharding.replicate_on_last_tile_dim_ = false;
+      for (const OpSharding::Type type : types) {
+        sharding.subgroup_types_.push_back(type);
+      }
+      return sharding;
+    }
+    return HloSharding(tiles, types, metadata);
+  };
   if (needs_merging) {
     auto data_tile_shape =
         absl::Span<const int64_t>(tile_assignment.dimensions())
@@ -180,18 +222,9 @@ HloSharding HloSharding::Subgroup(
       *value = tile_assignment(src_indices);
     });
     new_tiles.Reshape(merged_shape);
-    if (merged_types.size() == 1 &&
-        merged_types.back() == OpSharding::REPLICATED) {
-      // Normalize to partial tile.
-      return PartialTile(new_tiles, metadata);
-    }
+    return create_sharding(new_tiles, merged_types, metadata);
   }
-  if (subgroup_types.size() == 1 &&
-      subgroup_types.back() == OpSharding::REPLICATED) {
-    // Normalize to partial tile.
-    return PartialTile(tile_assignment, metadata);
-  }
-  return HloSharding(tile_assignment, subgroup_types, metadata);
+  return create_sharding(tile_assignment, subgroup_types, metadata);
 }
 
 HloSharding HloSharding::Tuple(const ShapeTree<HloSharding>& sub_shardings) {
@@ -240,7 +273,7 @@ HloSharding HloSharding::Single(const Shape& shape,
   return shape.IsTuple() ? SingleTuple(shape, sharding) : sharding;
 }
 
-string HloSharding::ToString(bool include_metadata) const {
+std::string HloSharding::ToString(bool include_metadata) const {
   if (IsTuple()) {
     CHECK(metadata_.empty());
     std::string result = "{";
@@ -432,9 +465,13 @@ int64_t HloSharding::RequiredLeaves(const Shape& shape) {
 }
 
 Status HloSharding::CheckLeafCount(const Shape& shape) const {
-  int64_t shape_leaves = RequiredLeaves(shape);
-  TF_RET_CHECK(shape_leaves == tuple_elements_.size())
-      << "Shape " << ShapeUtil::HumanString(shape) << " has " << shape_leaves
+  int64_t leaf_count = ShapeUtil::GetLeafCount(shape);
+  if (leaf_count == 0 && tuple_elements_.size() == 1) {
+    // Allow (but don't require) empty tuples to have a single sharding
+    return Status::OK();
+  }
+  TF_RET_CHECK(leaf_count == tuple_elements_.size())
+      << "Shape " << ShapeUtil::HumanString(shape) << " has " << leaf_count
       << " leaf nodes while this sharding has " << tuple_elements_.size();
   return Status::OK();
 }
@@ -501,6 +538,10 @@ Status HloSharding::ValidateTuple(const Shape& shape,
         StrCat("Sharding is tuple-shaped but validation shape is not."));
   }
   TF_RETURN_IF_ERROR(CheckLeafCount(shape));
+  if (ShapeUtil::GetLeafCount(shape) == 0 && tuple_elements_.empty()) {
+    // Empty tuples are allowed to not have sharding
+    return Status::OK();
+  }
 
   // Now we've validated the number of tuple elements, it's safe to request a
   // shape tree.
@@ -814,30 +855,6 @@ HloSharding HloSharding::WithoutMetadata() const {
     sub_sharding.metadata_.clear();
   }
   return sharding;
-}
-
-size_t HloSharding::Hash() const {
-  if (tuple_) {
-    size_t h = 0;
-    for (const auto& element : tuple_elements_) {
-      h = tensorflow::Hash64Combine(h, element.Hash());
-    }
-    return h;
-  }
-  if (replicated_) {
-    return 0;
-  }
-  if (manual_) {
-    return 1;
-  }
-  size_t h = 0;
-  for (uint32 v : tile_assignment_) {
-    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(v));
-  }
-  if (replicate_on_last_tile_dim_) {
-    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(1));
-  }
-  return h;
 }
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {

@@ -13,10 +13,6 @@
 # ==============================================================================
 """Implementation of tf.metrics module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -355,6 +351,91 @@ def mean(values,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
     RuntimeError: If eager execution is enabled.
+
+  @compatibility(TF2)
+  `tf.compat.v1.metrics.mean` is not compatible with eager
+  execution or `tf.function`.
+  Please use `tf.keras.metrics.Mean` instead for TF2 migration. After
+  instantiating a `tf.keras.metrics.Mean` object, you can first call the
+  `update_state()` method to record the new values, and then call the
+  `result()` method to get the mean eagerly. You can also attach it to a
+  Keras model with the `add_metric` method.  Please refer to the [migration
+  guide](https://www.tensorflow.org/guide/migrate#new-style_metrics_and_losses)
+  for more details.
+
+  #### Structural Mapping to TF2
+
+  Before:
+
+  ```python
+  mean, update_op = tf.compat.v1.metrics.mean(
+    values=values,
+    weights=weights,
+    metrics_collections=metrics_collections,
+    update_collections=update_collections,
+    name=name)
+  ```
+
+  After:
+
+  ```python
+   m = tf.keras.metrics.Mean(
+     name=name)
+
+   m.update_state(
+     values=values,
+     sample_weight=weights)
+
+   mean = m.result()
+  ```
+
+  #### How to Map Arguments
+
+  | TF1 Arg Name          | TF2 Arg Name    | Note                       |
+  | :-------------------- | :-------------- | :------------------------- |
+  | `values`              | `values`        | In `update_state()` method |
+  | `weights`             | `sample_weight` | In `update_state()` method |
+  | `metrics_collections` | Not supported   | Metrics should be tracked  |
+  :                       :                 : explicitly or with Keras   :
+  :                       :                 : APIs, for example,         :
+  :                       :                 : [add_metric][add_metric],  :
+  :                       :                 : instead of via collections :
+  | `updates_collections` | Not supported   | -                          |
+  | `name`                | `name`          | In constructor             |
+
+  [add_metric]:https://www.tensorflow.org/api_docs/python/tf/keras/layers/Layer#add_metric
+
+
+  #### Before & After Usage Example
+
+  Before:
+
+  >>> g = tf.Graph()
+  >>> with g.as_default():
+  ...   values = [1, 2, 3]
+  ...   mean, update_op = tf.compat.v1.metrics.mean(values)
+  ...   global_init = tf.compat.v1.global_variables_initializer()
+  ...   local_init = tf.compat.v1.local_variables_initializer()
+  >>> sess = tf.compat.v1.Session(graph=g)
+  >>> sess.run([global_init, local_init])
+  >>> sess.run(update_op)
+  >>> sess.run(mean)
+  2.0
+
+
+  After:
+
+  >>> m = tf.keras.metrics.Mean()
+  >>> m.update_state([1, 2, 3])
+  >>> m.result().numpy()
+  2.0
+
+  ```python
+  # Used within Keras model
+  model.add_metric(tf.keras.metrics.Mean()(values))
+  ```
+
+  @end_compatibility
   """
   if context.executing_eagerly():
     raise RuntimeError('tf.metrics.mean is not supported when eager execution '
@@ -499,7 +580,7 @@ def accuracy(labels,
   | `updates_collections` | Not supported   | -                          |
   | `name`                | `name`          | In constructor             |
 
-  [add_metric]:https//www.tensorflow.org/api_docs/python/tf/keras/layers/Layer#add_metric
+  [add_metric]:https://www.tensorflow.org/api_docs/python/tf/keras/layers/Layer#add_metric
 
 
   #### Before & After Usage Example

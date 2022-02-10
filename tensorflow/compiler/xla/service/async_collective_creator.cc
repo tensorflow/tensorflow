@@ -35,12 +35,12 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
     // iterating through them.
     std::vector<HloInstruction*> supported_collectives;
     for (HloInstruction* instruction : computation->instructions()) {
-      if ((convert_all_reduce_ &&
-           instruction->opcode() == HloOpcode::kAllReduce) ||
-          (convert_all_gather_ &&
-           instruction->opcode() == HloOpcode::kAllGather) ||
-          (convert_collective_permute_ &&
-           instruction->opcode() == HloOpcode::kCollectivePermute)) {
+      if ((instruction->opcode() == HloOpcode::kAllReduce &&
+           convert_all_reduce_(instruction)) ||
+          (instruction->opcode() == HloOpcode::kAllGather &&
+           convert_all_gather_(instruction)) ||
+          (instruction->opcode() == HloOpcode::kCollectivePermute &&
+           convert_collective_permute_(instruction))) {
         supported_collectives.push_back(instruction);
       }
     }
@@ -55,11 +55,10 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
     for (HloInstruction* instruction : supported_collectives) {
       if (HloAllReduceInstruction* ar =
               DynCast<HloAllReduceInstruction>(instruction)) {
-        Shape shape = ShapeUtil::MakeTupleShape({ar->shape(), ar->shape()});
         HloInstruction* start =
             computation->AddInstruction(HloInstruction::CreateAllReduceStart(
-                shape, ar->operands(), ar->to_apply(), ar->replica_groups(),
-                ar->constrain_layout(), ar->channel_id(),
+                ar->shape(), ar->operands(), ar->to_apply(),
+                ar->replica_groups(), ar->constrain_layout(), ar->channel_id(),
                 ar->use_global_device_ids()));
         std::unique_ptr<HloInstruction> done = HloInstruction::CreateUnary(
             ar->shape(), HloOpcode::kAllReduceDone, start);

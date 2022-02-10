@@ -19,10 +19,6 @@ It tests that encode_proto is a lossless inverse of decode_proto
 (for the specified fields).
 """
 # Python3 readiness boilerplate
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 

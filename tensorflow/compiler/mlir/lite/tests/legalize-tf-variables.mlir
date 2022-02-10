@@ -32,15 +32,15 @@ module attributes {tf_saved_model.semantics} {
   // CHECK-LABEL: init_all_tables
   func @init_all_tables()
   attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
-    %cst = constant dense<[1, 2, 3, 4]> : tensor<4xi64>
-    %cst_0 = constant dense<["a", "b", "c", "d"]> : tensor<4x!tf_type.string>
+    %cst = arith.constant dense<[1, 2, 3, 4]> : tensor<4xi64>
+    %cst_0 = arith.constant dense<["a", "b", "c", "d"]> : tensor<4x!tf_type.string>
     %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = i64, shared_name = "hash_table_dba2ccaa-f1b1-46d6-b276-98008f69da71", use_node_name_sharing = false, value_dtype = !tf_type.string} : () -> tensor<!tf_type.resource>
     "tf.LookupTableImportV2"(%0, %cst, %cst_0) {device = ""} : (tensor<!tf_type.resource>, tensor<4xi64>, tensor<4x!tf_type.string>) -> ()
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
-    %cst_1 = constant dense<1.0> : tensor<1x10xf32>
+    %cst_1 = arith.constant dense<1.0> : tensor<1x10xf32>
     "tf.AssignVariableOp"(%handle_0, %cst_1) : (tensor<!tf_type.resource<tensor<1x10xf32>>>, tensor<1x10xf32>) -> ()
     return
-    // CHECK: %[[CST:.*]] = constant dense<1.000000e+00> : tensor<1x10xf32>
+    // CHECK: %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<1x10xf32>
     // CHECK: %[[RESOURCE:.*]] = "tfl.var_handle"() {container = "c", shared_name = "a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
     // CHECK: "tfl.assign_variable"(%[[RESOURCE]], %[[CST]]) : (tensor<!tf_type.resource<tensor<1x10xf32>>>, tensor<1x10xf32>) -> ()
   }
@@ -87,7 +87,7 @@ module attributes {tf_saved_model.semantics, tfl._legalize_tfl_variables = true}
   func @serving_default() ->
     () attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = ""}, tf_saved_model.exported_names = ["serving_default"]} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xui64>>>
-    %cst = constant dense<2> : tensor<1x10xui64>
+    %cst = arith.constant dense<2> : tensor<1x10xui64>
     "tf.AssignVariableOp"(%handle_0, %cst) : (tensor<!tf_type.resource<tensor<1x10xui64>>>, tensor<1x10xui64>) -> ()
     return
   }

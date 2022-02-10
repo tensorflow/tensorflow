@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
@@ -298,14 +299,7 @@ void CreateRemoteRunCalls(MLIRContext *context,
 }
 
 class ClusterTFOpsByHostPass
-    : public PassWrapper<ClusterTFOpsByHostPass, OperationPass<ModuleOp>> {
-  StringRef getArgument() const final { return "cluster-tf-ops-by-host"; }
-
-  StringRef getDescription() const final {
-    return "Cluster the TensorFlow ops by host so that each function only "
-           "contains ops placed on the same host";
-  }
-
+    : public ClusterTFOpsByHostPassBase<ClusterTFOpsByHostPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp module_op = getOperation();
@@ -345,8 +339,6 @@ class ClusterTFOpsByHostPass
 std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateClusterTFOpsByHostPass() {
   return std::make_unique<ClusterTFOpsByHostPass>();
 }
-
-static PassRegistration<ClusterTFOpsByHostPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

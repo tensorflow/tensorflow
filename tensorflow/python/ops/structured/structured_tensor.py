@@ -15,10 +15,6 @@
 # ==============================================================================
 """Structured Tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import re
 from typing import Callable, Dict, List, Sequence, Tuple, Union
@@ -37,6 +33,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition as row_partition_lib
 from tensorflow.python.ops.ragged.row_partition import RowPartition
@@ -273,6 +270,46 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         row_partitions,
         internal=_structured_tensor_factory_key)
 
+  @classmethod
+  def from_fields_and_rank(cls, fields, rank, validate=False):
+    """Creates a `StructuredTensor` from a nonempty dictionary of fields.
+
+    Args:
+      fields: A dictionary mapping from string to `Tensor`, `RaggedTensor`, or
+        `StructuredTensor`, providing the values for individual fields in each
+        structure.  If `rank > 0`, then every tensor in `fields` must have
+        the same shape in the first `rank` dimensions. Cannot be empty.
+      rank: The rank of the resulting structured tensor.
+      validate: If true, then add runtime validation ops that check that the
+        field values all have compatible shapes in the outer `rank`
+        dimensions.
+
+    Returns:
+      A `StructuredTensor`.
+    Examples:
+      >>> StructuredTensor.from_fields_and_rank({'x': 1, 'y': [1, 2, 3]}, 0)
+      <StructuredTensor(
+        fields={
+          "x": tf.Tensor(1, shape=(), dtype=int32),
+          "y": tf.Tensor([1 2 3], shape=(3,), dtype=int32)},
+        shape=())>
+      >>> StructuredTensor.from_fields_and_rank({'foo': [1, 2], 'bar': [3, 4]},
+      ...                              1)
+      <StructuredTensor(
+        fields={
+          "bar": tf.Tensor([3 4], shape=(2,), dtype=int32),
+          "foo": tf.Tensor([1 2], shape=(2,), dtype=int32)},
+        shape=(2,))>
+    """
+    if not fields:
+      raise ValueError('Must provide at least one field')
+    if not isinstance(rank, int):
+      raise ValueError('rank must be an integer')
+    if rank < 0:
+      raise ValueError('rank must be nonnegative')
+    return StructuredTensor.from_fields(fields, shape=[None] * rank,
+                                        validate=validate)
+
   def with_updates(
       self,
       updates: Dict[FieldName, Union[FieldValue, FieldFn, None]],
@@ -440,8 +477,8 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       return StructuredTensor.from_fields(
           new_fields,
           shape=self.shape,
-          row_partitions=self._row_partitions,
-          nrows=self._nrows,
+          row_partitions=self.row_partitions,
+          nrows=self.nrows(),
           validate=validate)
 
     except ValueError as e:
@@ -558,31 +595,26 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
     >>> s1 = [[x, x, x, x], [x, x, x, x]]              # shape = [2, 4]
     >>> StructuredTensor.from_pyval(s1).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 4 8], shape=(3,),
-                                          dtype=int64)),)
+    (tf.RowPartition(row_splits=[0 4 8]),)
 
     >>> s2 = [[x, x], [x, x], [x, x], [x, x]]          # shape = [4, 2]
     >>> StructuredTensor.from_pyval(s2).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 2 4 6 8], shape=(5,),
-                                          dtype=int64)),)
+    (tf.RowPartition(row_splits=[0 2 4 6 8]),)
 
     >>> s3 = [[x, x, x], [], [x, x, x, x], [x]]        # shape = [2, None]
     >>> StructuredTensor.from_pyval(s3).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 3 3 7 8], shape=(5,),
-                                          dtype=int64)),)
+    (tf.RowPartition(row_splits=[0 3 3 7 8]),)
 
     >>> s4 = [[[x, x], [x, x]], [[x, x], [x, x]]]      # shape = [2, 2, 2]
     >>> StructuredTensor.from_pyval(s4).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 2 4], shape=(3,), dtype=int64)),
-     tf.RowPartition(row_splits=tf.Tensor([0 2 4 6 8], shape=(5,),
-                                          dtype=int64)))
+    (tf.RowPartition(row_splits=[0 2 4]),
+     tf.RowPartition(row_splits=[0 2 4 6 8]))
 
 
     >>> s5 = [[[x, x], [x]], [[x, x]], [[x, x], [x]]]  # shape = [3, None, None]
     >>> StructuredTensor.from_pyval(s5).row_partitions
-    (tf.RowPartition(row_splits=tf.Tensor([0 2 3 5], shape=(4,), dtype=int64)),
-     tf.RowPartition(row_splits=tf.Tensor([0 2 3 5 7 8], shape=(6,),
-                                          dtype=int64)))
+    (tf.RowPartition(row_splits=[0 2 3 5]),
+     tf.RowPartition(row_splits=[0 2 3 5 7 8]))
 
     Note that shapes for nested fields (such as `x['b']` in the above example)
     are not considered part of the shape of a `StructuredTensor`, and are not
@@ -818,8 +850,8 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     # If rank>0, then re-group each value from dict-of-list to list-of-dict.
     if len(self._shape) > 0:  # pylint: disable=g-explicit-length-test
       if not result:  # special-case for StructuredTensors w/ no fields.
-        return _empty_dict_pylist_from_row_partitions(self._row_partitions,
-                                                      self._nrows)
+        return _empty_dict_pylist_from_row_partitions(self.row_partitions,
+                                                      self.nrows())
       return _pyval_field_major_to_node_major(
           list(result.keys()), list(result.values()), self._shape.rank)
     else:
@@ -1128,6 +1160,10 @@ class StructuredTensorSpec(type_spec.BatchableTypeSpec):
 
     self._shape = shape
     self._field_specs = dict(field_specs)
+
+  @property
+  def shape(self):
+    return self._shape
 
   @property
   def value_type(self):
@@ -1689,3 +1725,35 @@ def _merge_dims_generic(source, outer, inner):
     return source.merge_dims(outer, inner)
   else:
     return ragged_tensor.merge_dims(source, outer, inner)
+
+
+# pylint:disable=protected-access
+def _ragged_shape_init(fields, shape, nrows, row_partitions):
+  """Produce a RaggedShape for StructuredTensor."""
+  assert isinstance(fields, dict), fields
+  assert isinstance(shape, tensor_shape.TensorShape), shape
+  assert nrows is None or isinstance(nrows, ops.Tensor), nrows
+  assert isinstance(row_partitions, tuple), row_partitions
+
+  rank = shape.rank
+  if rank is None:
+    raise TypeError("StructuredTensor's shape must have known rank.")
+
+  # TODO(martinz): figure out whether to validate.
+  dtype = _find_shape_dtype(fields, nrows, row_partitions)
+  if rank == 0:
+    return ragged_shape.RaggedShape._from_inner_shape(
+        array_ops.zeros((0,), dtype=dtype))
+
+  if rank == 1:
+    alt_value = shape[0]
+    if isinstance(alt_value, tensor_shape.Dimension):
+      alt_value = alt_value.value
+    if alt_value is not None:
+      nrows = alt_value
+    return ragged_shape.RaggedShape._from_inner_shape([nrows], dtype=dtype)
+
+  return ragged_shape.RaggedShape.from_row_partitions(row_partitions,
+                                                      dtype=dtype)
+
+

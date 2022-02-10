@@ -32,10 +32,11 @@ namespace {
 
 struct DotTestSpec {
   PrimitiveType primitive_type;
-  string filecheck_lines;
+  std::string filecheck_lines;
 };
 
-string DotTestSpecToString(const ::testing::TestParamInfo<DotTestSpec>& info) {
+std::string DotTestSpecToString(
+    const ::testing::TestParamInfo<DotTestSpec>& info) {
   return PrimitiveType_Name(info.param.primitive_type);
 }
 
@@ -44,7 +45,7 @@ class CpuEigenDotOperationTest
       public ::testing::WithParamInterface<DotTestSpec> {
  protected:
   void CompileAndCheck(std::unique_ptr<HloComputation> entry_computation,
-                       const string& filecheck_lines) {
+                       const std::string& filecheck_lines) {
     CpuAotCompilationOptions options{
         /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
         /*features=*/"",

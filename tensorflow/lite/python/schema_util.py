@@ -15,10 +15,6 @@
 # ==============================================================================
 """Schema utilities to get builtin code from operator code."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.util import all_util
 
 

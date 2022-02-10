@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for MirroredStrategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import sys
 
@@ -33,7 +29,6 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
@@ -41,6 +36,7 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -60,6 +56,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import traceback_utils
 
 
 GPU_TEST = "test_gpu" in sys.argv[0]
@@ -271,7 +268,7 @@ class MirroredTwoDeviceDistributionTest(
     if context.executing_eagerly():
       item = next(iter(dataset))
     else:
-      if isinstance(dataset, input_lib.DistributedDatasetV1):
+      if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
         item = dataset.make_initializable_iterator().get_next()
       else:
         self.skipTest("unsupported test combination")
@@ -293,7 +290,7 @@ class MirroredTwoDeviceDistributionTest(
     if context.executing_eagerly():
       item = next(iter(dataset))
     else:
-      if isinstance(dataset, input_lib.DistributedDatasetV1):
+      if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
         item = dataset.make_initializable_iterator().get_next()
       else:
         self.skipTest("unsupported test combination")
@@ -1451,6 +1448,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return f()
 
       distribution.run(replica_fn)
+
+  def testPreserveTracebackFiltering(self, distribution):
+    traceback_utils.disable_traceback_filtering()
+    self.assertFalse(traceback_utils.is_traceback_filtering_enabled())
+
+    def f():
+      self.assertFalse(traceback_utils.is_traceback_filtering_enabled())
+
+    distribution.run(f)
 
 
 def _replica_id():

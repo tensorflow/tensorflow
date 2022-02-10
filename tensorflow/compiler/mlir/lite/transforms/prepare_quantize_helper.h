@@ -244,7 +244,8 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       if (input.getDefiningOp() == nullptr) continue;
 
       // TODO(b/172517537): make this work with non-PTQ case.
-      if (llvm::isa<ConstantOp, TFL::ConstOp>(input.getDefiningOp())) {
+      if (llvm::isa<ConstantOp, arith::ConstantOp, TFL::ConstOp>(
+              input.getDefiningOp())) {
         // Tensors with derived scale are biases, and handled in propagation.
         if (tensor_property.use_derived_scale) continue;
         // For weights, use quantization scale inferred from the values.
@@ -348,8 +349,8 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       return failure();
     }
     quant::QuantizedType quant_type;
-    double min = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
-    double max = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+    double min = FloatAttr::getValueAsDouble(stats.getValues<APFloat>()[0]);
+    double max = FloatAttr::getValueAsDouble(stats.getValues<APFloat>()[1]);
     // Make sure the range includes zero.
     min = std::min(min, 0.0);
     max = std::max(max, 0.0);

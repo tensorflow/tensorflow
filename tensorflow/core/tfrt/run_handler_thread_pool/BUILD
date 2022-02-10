@@ -12,6 +12,8 @@ package_group(
         # Authorized users go here.
         # copybara:uncomment "//learning/serving/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/tfrt/tfrt_session/...",
+        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/runtime/...",
     ],
@@ -52,6 +54,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//third_party/eigen3",
         "@tf_runtime//:hostcontext",
     ],

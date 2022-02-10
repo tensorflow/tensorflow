@@ -14,10 +14,6 @@
 # ==============================================================================
 """Registration and usage mechanisms for KL-divergences."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -162,7 +158,7 @@ def cross_entropy(ref, other,
 
 
 @tf_export(v1=["distributions.RegisterKL"])
-class RegisterKL(object):
+class RegisterKL:
   """Decorator to register a KL divergence implementation function.
 
   Usage:

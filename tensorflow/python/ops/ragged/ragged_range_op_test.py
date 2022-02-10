@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for ragged_range op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_math_ops

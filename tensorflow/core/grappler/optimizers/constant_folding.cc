@@ -1017,7 +1017,12 @@ bool ConstantFolding::IsFoldableUncached(
       }
     }
     for (const auto& output_prop : output_props) {
-      const PartialTensorShape output_shape(output_prop.shape());
+      PartialTensorShape output_shape;
+      if (!PartialTensorShape::BuildPartialTensorShape(output_prop.shape(),
+                                                       &output_shape)
+               .ok()) {
+        return false;
+      }
       if (output_shape.IsFullyDefined()) {
         const int64_t num_bytes =
             output_shape.num_elements() * DataTypeSize(output_prop.dtype());
@@ -1363,6 +1368,11 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                           input_tensor.ToString(),
                           " has a dtype of DT_INVALID."));
     }
+    if (IsRefType(raw_val.dtype())) {
+      return errors::InvalidArgument(
+          "Not allowed to construct a tensor with reference dtype, got ",
+          DataTypeString(raw_val.dtype()));
+    }
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     if (!value->FromProto(raw_val)) {
       delete (value);
@@ -1620,14 +1630,16 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
 }
 
 Status ConstantFolding::FoldGraph(
-    const GraphProperties& properties, GraphDef* output,
+    const GraphProperties& properties, GraphDef* optimized_graph,
     absl::flat_hash_set<string>* nodes_to_not_simplify) {
-  std::unordered_set<string> processed_nodes;
+  // We build a new optimized_graph by inserting the folded nodes into it, then
+  // copy other nodes that might be needed at the end of this function.
+  absl::flat_hash_set<string> processed_nodes;
   std::deque<NodeDef*> queue;
   for (int i = 0; i < graph_->node_size(); i++) {
-    bool foldable = IsFoldable(graph_->node(i), &properties);
-    VLOG(2) << "foldable(" << graph_->node(i).name() << ") = " << foldable;
-    if (foldable) {
+    const NodeDef& node = graph_->node(i);
+    if (IsFoldable(node, &properties) &&
+        !nodes_to_not_simplify->count(node.name())) {
       queue.push_back(graph_->mutable_node(i));
     }
   }
@@ -1642,7 +1654,7 @@ Status ConstantFolding::FoldGraph(
     std::vector<NodeDef*> fanout =
         node_map_->GetOutputsOrderedByNodeName(node->name());
     bool result_too_large = false;
-    Status s = FoldNode(node, output, &result_too_large);
+    Status s = FoldNode(node, optimized_graph, &result_too_large);
     processed_nodes.insert(node->name());
     if (!s.ok()) {
       VLOG(1) << "Failed to fold node " << node->DebugString()
@@ -1651,9 +1663,10 @@ Status ConstantFolding::FoldGraph(
         nodes_to_not_simplify->emplace(node->name());
       }
     } else {
-      for (auto& output : fanout) {
-        if (IsFoldable(*output, &properties)) {
-          queue.push_back(output);
+      for (auto& fanout_node : fanout) {
+        if (IsFoldable(*fanout_node, &properties) &&
+            !nodes_to_not_simplify->count(fanout_node->name())) {
+          queue.push_back(fanout_node);
         }
       }
     }
@@ -1661,11 +1674,11 @@ Status ConstantFolding::FoldGraph(
 
   // Delete the newly created nodes that don't feed anything.
   std::vector<int> nodes_to_delete;
-  for (int i = 0; i < output->node_size(); i++) {
-    const auto& fanout = node_map_->GetOutputs(output->node(i).name());
+  for (int i = 0; i < optimized_graph->node_size(); i++) {
+    const auto& fanout = node_map_->GetOutputs(optimized_graph->node(i).name());
     if (fanout.empty()) nodes_to_delete.push_back(i);
   }
-  EraseNodesFromGraph(std::move(nodes_to_delete), output);
+  EraseNodesFromGraph(std::move(nodes_to_delete), optimized_graph);
 
   for (int i = 0; i < graph_->node_size(); ++i) {
     NodeDef* node = graph_->mutable_node(i);
@@ -1675,21 +1688,27 @@ Status ConstantFolding::FoldGraph(
     const auto& fanout = node_map_->GetOutputs(node->name());
     if (!fanout.empty() || !has_fetch_ ||
         nodes_to_preserve_.find(node->name()) != nodes_to_preserve_.end()) {
-      *(output->add_node()) = std::move(*node);
+      *(optimized_graph->add_node()) = std::move(*node);
     }
   }
   return Status::OK();
 }
 
-bool ConstantFolding::IsSimplifiableReshape(
+Status ConstantFolding::IsSimplifiableReshape(
     const NodeDef& node, const GraphProperties& properties) const {
   if (!IsReshape(node)) {
-    return false;
+    return errors::Internal("Node ", node.name(), " is not a Reshape node");
   }
-  CHECK_LE(2, node.input_size());
+  if (2 > node.input_size()) {
+    return errors::Internal("Node ", node.name(),
+                            " must have at most 2 inputs but has ",
+                            node.input_size());
+  }
   const NodeDef* new_shape = node_map_->GetNode(node.input(1));
   if (!IsReallyConstant(*new_shape)) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has shape ",
+                            new_shape->DebugString(),
+                            " which is not a constant");
   }
   TensorVector outputs;
   auto outputs_cleanup = gtl::MakeCleanup([&outputs] {
@@ -1700,22 +1719,29 @@ bool ConstantFolding::IsSimplifiableReshape(
 
   Status s = EvaluateNode(*new_shape, TensorVector(), &outputs);
   if (!s.ok()) {
-    return false;
+    return errors::Internal("Could not evaluate node ", node.name());
   }
-  CHECK_EQ(1, outputs.size());
+  if (outputs.size() != 1) {
+    return errors::Internal("Node ", node.name(),
+                            " must have exactly 1 output but has ",
+                            outputs.size());
+  }
 
   const std::vector<OpInfo::TensorProperties>& props =
       properties.GetInputProperties(node.name());
   if (props.empty()) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has no properties");
   }
   const OpInfo::TensorProperties& prop = props[0];
   if (prop.dtype() == DT_INVALID) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has property ",
+                            prop.DebugString(), " with invalid dtype");
   }
   const PartialTensorShape shape(prop.shape());
   if (!shape.IsFullyDefined()) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has property ",
+                            prop.DebugString(), " with shape ",
+                            shape.DebugString(), " which is not fully defined");
   }
 
   PartialTensorShape new_dims;
@@ -1725,17 +1751,24 @@ bool ConstantFolding::IsSimplifiableReshape(
       int32_t dim = outputs[0]->flat<int32>()(i);
       shp.push_back(dim);
     }
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+    s = TensorShapeUtils::MakeShape(shp, &new_dims);
+    if (!s.ok()) return s;
   } else {
     std::vector<int64_t> shp;
     for (int i = 0; i < outputs[0]->NumElements(); ++i) {
       int64_t dim = outputs[0]->flat<int64_t>()(i);
       shp.push_back(dim);
     }
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+    s = TensorShapeUtils::MakeShape(shp, &new_dims);
+    if (!s.ok()) return s;
   }
 
-  return shape.IsCompatibleWith(new_dims);
+  if (!shape.IsCompatibleWith(new_dims)) {
+    return errors::Internal("Expected shape ", shape.DebugString(),
+                            "to be compatible with ", new_dims.DebugString());
+  }
+
+  return Status::OK();
 }
 
 #define IS_VALUE_CASE(DTYPE, VALUE)                   \
@@ -2046,7 +2079,7 @@ Status ConstantFolding::ReplaceOperationWithConstant(
 }
 
 Status ConstantFolding::SimplifyGraph(
-    bool use_shape_info, GraphDef* optimized_graph, GraphProperties* properties,
+    GraphDef* optimized_graph, GraphProperties* properties,
     absl::flat_hash_set<string>* nodes_to_not_simplify) {
   for (int i = 0; i < optimized_graph->node_size(); ++i) {
     NodeDef* node = optimized_graph->mutable_node(i);
@@ -2059,8 +2092,7 @@ Status ConstantFolding::SimplifyGraph(
         continue;
       }
 
-      TF_RETURN_IF_ERROR(
-          SimplifyNode(use_shape_info, node, optimized_graph, properties));
+      TF_RETURN_IF_ERROR(SimplifyNode(node, optimized_graph, properties));
     }
   }
   return Status::OK();
@@ -2078,12 +2110,12 @@ Status ConstantFolding::SimplifyGraph(
   EXPR;                          \
   if (graph_modified_) return Status::OK()
 
-Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
-                                     GraphDef* optimized_graph,
+Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
                                      GraphProperties* properties) {
   bool graph_modified_cached = graph_modified_;
   graph_modified_ = false;
 
+  bool use_shape_info = properties->has_properties();
   RETURN_IF_MODIFIED(RemoveSplitOrSplitV(*properties, optimized_graph, node));
   RETURN_IF_ERROR_OR_MODIFIED(RemoveShuffleOrTranspose(
       *properties, use_shape_info, optimized_graph, node));
@@ -2923,7 +2955,7 @@ bool ConstantFolding::SimplifyReduction(GraphDef* optimized_graph,
 bool ConstantFolding::SimplifyReshape(const GraphProperties& properties,
                                       bool use_shape_info, NodeDef* node) {
   if (!use_shape_info || node->attr().count("T") == 0 ||
-      !IsSimplifiableReshape(*node, properties)) {
+      !IsSimplifiableReshape(*node, properties).ok()) {
     return false;
   }
   DataType output_type = node->attr().at("T").type();
@@ -3478,6 +3510,9 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
 
   NodeDef* mul_left_child = node_map_->GetNode(node->input(0));
   NodeDef* mul_right_child = node_map_->GetNode(node->input(1));
+  if (mul_left_child == nullptr || mul_right_child == nullptr) {
+    return false;
+  }
   // One child must be constant, and the second must be Conv op.
   const bool left_child_is_constant = IsReallyConstant(*mul_left_child);
   const bool right_child_is_constant = IsReallyConstant(*mul_right_child);
@@ -3949,7 +3984,9 @@ Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
 
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
                                             GrapplerItem* item,
+                                            GraphProperties* properties,
                                             GraphDef* optimized_graph) {
+  optimized_graph->Clear();
   graph_ = &item->graph;
   node_map_.reset(new NodeMap(graph_));
   nodes_allowlist_.clear();
@@ -3967,31 +4004,19 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     }
   }
 
-  GraphProperties properties(*item);
-  // It's possible to feed a placeholder with a tensor of any shape: make sure
-  // that the shape inference deals with this conservatively unless we're in
-  // aggressive mode.
-  const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
-  Status s = properties.InferStatically(assume_valid_feeds,
-                                        /*aggressive_shape_inference=*/false,
-                                        /*include_input_tensor_values=*/false,
-                                        /*include_output_tensor_values=*/true);
-
-  const bool can_use_shape_info = s.ok();
-  VLOG(1) << "can_use_shape_info = " << can_use_shape_info;
-
   absl::flat_hash_set<string> nodes_to_not_simplify;
-  if (can_use_shape_info) {
-    TF_RETURN_IF_ERROR(MaterializeShapes(properties));
-    TF_RETURN_IF_ERROR(MaterializeConstants(properties));
+  if (properties->has_properties()) {
+    TF_RETURN_IF_ERROR(MaterializeShapes(*properties));
+    TF_RETURN_IF_ERROR(MaterializeConstants(*properties));
     TF_RETURN_IF_ERROR(
-        FoldGraph(properties, optimized_graph, &nodes_to_not_simplify));
+        FoldGraph(*properties, optimized_graph, &nodes_to_not_simplify));
   } else {
     *optimized_graph = *graph_;
   }
   node_map_.reset(new NodeMap(optimized_graph));
-  TF_RETURN_IF_ERROR(SimplifyGraph(can_use_shape_info, optimized_graph,
-                                   &properties, &nodes_to_not_simplify));
+
+  TF_RETURN_IF_ERROR(
+      SimplifyGraph(optimized_graph, properties, &nodes_to_not_simplify));
 
   return Status::OK();
 }
@@ -4022,17 +4047,31 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   has_fetch_ = !item.fetch.empty();
   GrapplerItem item_to_optimize = item;
+  GraphProperties properties(item_to_optimize);
+  // It's possible to feed a placeholder with a tensor of any shape: make sure
+  // that the shape inference deals with this conservatively unless we're in
+  // aggressive mode.
+  const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
+  if (!properties
+           .InferStatically(assume_valid_feeds,
+                            /*aggressive_shape_inference=*/false,
+                            /*include_input_tensor_values=*/false,
+                            /*include_output_tensor_values=*/true)
+           .ok()) {
+    properties.Clear();
+  }
+
   *optimized_graph = GraphDef();
   item_to_optimize.graph.Swap(optimized_graph);
   int64_t node_count;
+
   do {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     graph_modified_ = false;
     item_to_optimize.graph.Swap(optimized_graph);
-    optimized_graph->Clear();
     node_count = item_to_optimize.graph.node_size();
-    TF_RETURN_IF_ERROR(
-        RunOptimizationPass(cluster, &item_to_optimize, optimized_graph));
+    TF_RETURN_IF_ERROR(RunOptimizationPass(cluster, &item_to_optimize,
+                                           &properties, optimized_graph));
   } while (graph_modified_ || optimized_graph->node_size() != node_count);
   *optimized_graph->mutable_library() = item.graph.library();
   *optimized_graph->mutable_versions() = item.graph.versions();

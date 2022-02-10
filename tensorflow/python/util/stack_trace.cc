@@ -41,7 +41,7 @@ const char* GetPythonString(PyObject* o) {
 
 namespace tensorflow {
 
-std::vector<StackFrame> PythonStackTrace::ToStackFrames(
+std::vector<StackFrame> StackTrace::ToStackFrames(
     const SourceMap& source_map, const StackTraceFilter& filtered,
     bool reverse_traversal, int limit) const {
   DCheckPyGilStateForStackTrace();
@@ -55,7 +55,7 @@ std::vector<StackFrame> PythonStackTrace::ToStackFrames(
 
     const std::pair<PyCodeObject*, int>& code_obj = code_objs_[idx];
     const char* file_name = GetPythonString(code_obj.first->co_filename);
-    const int line_number = PyCode_Addr2Line(code_obj.first, code_obj.second);
+    const int line_number = code_obj.second;
 
     if (filtered && filtered(file_name)) {
       continue;
@@ -77,31 +77,13 @@ std::vector<StackFrame> PythonStackTrace::ToStackFrames(
   return result;
 }
 
-PythonStackTrace* PythonStackTraceManager::Get(int id) {
+StackTrace* StackTraceManager::Get(int id) {
   DCheckPyGilStateForStackTrace();
   if (next_id_ - id > kStackTraceCircularBufferSize) return nullptr;
 
   return &stack_traces_[id & (kStackTraceCircularBufferSize - 1)];
 }
 
-PythonStackTraceManager* const python_stack_trace_manager =
-    new PythonStackTraceManager();
-
-std::string GetPythonStackTraceString() {
-  DCHECK(Py_IsInitialized());
-  PyGILState_STATE py_threadstate;
-  py_threadstate = PyGILState_Ensure();
-  PyObject* m_dict = PyDict_New();
-  PyDict_SetItemString(m_dict, "__builtins__", PyEval_GetBuiltins());
-  PyMapping_SetItemString(m_dict, "traceback",
-                          PyImport_ImportModule("traceback"));
-  PyObject* trace = PyRun_String("''.join(traceback.format_stack())",
-                                 Py_eval_input, m_dict, m_dict);
-  std::string trace_string(GetPythonString(trace));
-  PyGILState_Release(py_threadstate);
-  Py_DECREF(m_dict);
-  Py_DECREF(trace);
-  return trace_string;
-}
+StackTraceManager* const stack_trace_manager = new StackTraceManager();
 
 }  // namespace tensorflow

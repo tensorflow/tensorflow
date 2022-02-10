@@ -14,12 +14,7 @@
 # ==============================================================================
 """Functional tests for Unstack Op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -115,7 +110,7 @@ class UnstackOpTest(test.TestCase):
       data = np.random.randn(*shape)
       x = constant_op.constant(data)
 
-      for i in xrange(shape[0]):
+      for i in range(shape[0]):
         def func(x, shape=shape, i=i):
           return array_ops.unstack(x, num=shape[0])[i]
 
@@ -129,7 +124,7 @@ class UnstackOpTest(test.TestCase):
       data = np.random.randn(*shape)
       x = constant_op.constant(data)
 
-      for i in xrange(shape[1]):
+      for i in range(shape[1]):
         def func(x, shape=shape, i=i):
           return array_ops.unstack(x, num=shape[1], axis=1)[i]
 
@@ -149,8 +144,8 @@ class UnstackOpTest(test.TestCase):
     # Testing unknown shape in graph mode.
     with ops.Graph().as_default():
       x = array_ops.placeholder(np.float32)
-      with self.assertRaisesRegex(ValueError,
-                                  r'Cannot infer num from shape <unknown>'):
+      with self.assertRaisesRegex(
+          ValueError, r'Cannot infer argument `num` from shape <unknown>'):
         array_ops.unstack(x)
 
   def testUnknownShapeOkWithNum(self):
@@ -164,7 +159,7 @@ class UnstackOpTest(test.TestCase):
     with ops.Graph().as_default():
       x = array_ops.placeholder(np.float32, shape=(None,))
       with self.assertRaisesRegex(
-          ValueError, r'Cannot infer num from shape \((\?|None),\)'):
+          ValueError, r'Cannot infer argument `num` from shape \((\?|None),\)'):
         array_ops.unstack(x)
 
   def testAgainstNumpy(self):
@@ -190,12 +185,14 @@ class UnstackOpTest(test.TestCase):
 
   def testAxisOutOfRange(self):
     a = constant_op.constant([[1, 2, 3], [4, 5, 6]], name='a')
-    with self.assertRaisesRegex(ValueError, r'axis = 2 not in \[-2, 2\)'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Argument `axis` = 2 not in range \[-2, 2\)'):
       array_ops.unstack(a, axis=2)
 
   def testAxisOutOfNegativeRange(self):
     a = constant_op.constant([[1, 2, 3], [4, 5, 6]], name='a')
-    with self.assertRaisesRegex(ValueError, r'axis = -3 not in \[-2, 2\)'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Argument `axis` = -3 not in range \[-2, 2\)'):
       array_ops.unstack(a, axis=-3)
 
   def testZeroLengthDim(self):

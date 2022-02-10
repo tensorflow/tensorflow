@@ -48,6 +48,9 @@ const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
 
+const absl::string_view kDeviceVendorNvidia = "Nvidia";
+const absl::string_view kDeviceVendorAMD = "AMD";
+
 namespace {
 
 constexpr int kNumHostEventTypes =
@@ -152,8 +155,10 @@ const StatTypeMap& GetStatTypeMap() {
       {"node_ordinal", kNodeOrdinal},
       {"model_id", kModelId},
       {"queue_addr", kQueueAddr},
+      {"queue_id", kQueueId},
       {"request_id", kRequestId},
       {"run_id", kRunId},
+      {"replica_id", kReplicaId},
       {"graph_type", kGraphType},
       {"step_num", kStepNum},
       {"iter_num", kIterNum},
@@ -192,7 +197,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"Memset_details", kMemsetDetails},
       {"MemoryResidency_details", kMemoryResidencyDetails},
       {"kernel_details", kKernelDetails},
-      {"annotation", kKernelAnnotation},
       {"nvtx_range", kNVTXRange},
       {"stream", kStream},
       // Stats added when processing traces.
@@ -202,7 +206,9 @@ const StatTypeMap& GetStatTypeMap() {
       {"level 0", kLevel0},
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
+      {"hlo_category", kHloCategory},
       {"hlo_module", kHloModule},
+      {"program_id", kProgramId},
       {"equation", kEquation},
       {"is_eager", kIsEager},
       {"tf_function_call", kTfFunctionCall},
@@ -213,13 +219,13 @@ const StatTypeMap& GetStatTypeMap() {
       {"source", kSourceInfo},
       {"model_name", kModelName},
       {"model_version", kModelVersion},
+      {"bytes_transferred", kBytesTransferred},
+      {"queue", kDmaQueue},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
       {"Thread Id", kThreadId},
       // XLA metadata map related.
-      {"SELF_DURATION_PS", kSelfDurationPs},
-      {"MIN_DURATION_PS", kMinDurationPs},
       {"Hlo Proto", kHloProto},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},
@@ -228,6 +234,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"memory_size", kDevCapMemorySize},
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
+      {"device_vendor", kDevVendor},
       // Batching related.
       {"batch_size_after_padding", kBatchSizeAfterPadding},
       {"padding_amount", kPaddingAmount},

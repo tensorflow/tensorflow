@@ -65,7 +65,8 @@ func @while_test() -> (tensor<i32>) {
   // CHECK: [[CONST:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[CONST_TH]]
   // CHECK: (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
   // CHECK: [[pred_res:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"([[ARG0]], [[CONST]]) : (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, i1)
-  // CHECK: [[while_res:%.]]:2 = tfrt.while [[pred_res]]#1 @"while_body_add2/tfrt_body"([[pred_res]]#0, [[CONST]]) : (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
+  // CHECK: [[while_res:%.]]:2 = tfrt.while [[pred_res]]#1 @"while_body_add2/tfrt_body"([[pred_res]]#0, [[CONST]])
+  // CHECK-SAME: (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
   %1 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
   // CHECK: [[out_chain:%.*]] = tfrt.merge.chains [[while_res]]#0, [[ARG0]]
   // CHECK: tfrt.return [[out_chain]], [[while_res]]#1 : !tfrt.chain, !tfrt_fallback.tf_tensor
@@ -163,7 +164,7 @@ func @callee(%arg0: tensor<i32>) -> (tensor<i32>) {
 
 // CHECK-LABEL: func @call_test
 // CHECK-SAME: ([[chain:%.*]]: !tfrt.chain,
-func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
   %0 = "tf.Add"(%arg0, %arg0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: [[results_0:%.*]]:2 = tfrt.call @callee([[chain]]
   // CHECK-SAME: (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
@@ -171,8 +172,11 @@ func @call_test(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
   // CHECK-NEXT: [[results_1:%.*]]:2 = tfrt.call @callee([[chain]]
   // CHECK-SAME: (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
   %2 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<i32>) -> (tensor<i32>)
-  // CHECK: [[results_0]]#1, [[results_1]]#1
-  return %1, %2 : tensor<i32>, tensor<i32>
+  // CHECK-NEXT: [[results_2:%.*]]:2 = tfrt.call @callee([[chain]]
+  // CHECK-SAME: (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
+  %3 = "tf.LegacyCall"(%0) {f = @callee} : (tensor<i32>) -> (tensor<i32>)
+  // CHECK: [[results_0]]#1, [[results_1]]#1, [[results_2]]#1
+  return %1, %2, %3 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
 func @branch0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {

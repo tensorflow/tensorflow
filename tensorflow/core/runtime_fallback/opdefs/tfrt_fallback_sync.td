@@ -31,9 +31,11 @@ def FallbackSync_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tfrt::fallback_sync";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
-class FallbackSync_Op<string mnemonic, list<OpTrait> traits = []> :
+class FallbackSync_Op<string mnemonic, list<Trait> traits = []> :
     Op<FallbackSync_Dialect, mnemonic, !listconcat(traits, [IsolatedFromAbove])> {
   // Each registered op in the fallback namespace needs to provide all of a
   // verifier, a printer and a parser.
@@ -62,38 +64,6 @@ def ExecuteOp : FallbackSync_Op<"executeop",
 
   let results = (outs
     Variadic<TensorType>:$results
-  );
-
-  let extraClassDeclaration = [{
-    void getOpAttrs(SmallVectorImpl<std::pair<StringRef, Attribute>>* op_attrs);
-  }];
-
-  let builders = [
-    OpBuilder<(ins "ArrayRef<Type>":$results, "ValueRange":$operands,
-      "ArrayRef<std::pair<StringRef, Attribute>>":$op_attrs,
-      "StringRef":$op_name)>];
-}
-
-def KNFBExecThinOp : FallbackSync_Op<"knfb_exec_thin",
-    [NoSideEffect, CoreRT_TypedAttributeTrait]> {
-  let summary = "The Fallback Sync Executeop2";
-  let description = [{
-    The KNFBExecThinOp executes an operation on the specified device.
-
-    Example:
-      %res = tfrt_fallback_sync.knfb_exec_thin "some.op"(%arg) : 1
-
-    Note that the trailing number indicates the number of results.
-  }];
-
-  let arguments = (ins
-    Variadic<TFTensorType>:$operands,
-    ArrayAttr:$op_attrs,
-    StrAttr:$op_name
-  );
-
-  let results = (outs
-    Variadic<TFTensorType>:$results
   );
 
   let extraClassDeclaration = [{

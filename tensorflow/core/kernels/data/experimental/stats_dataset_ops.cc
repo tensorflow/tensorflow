@@ -76,7 +76,9 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
       return "LatencyStatsDatasetOp::Dataset";
     }
 
-    int64_t Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
@@ -199,7 +201,9 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
       return "BytesProducedStatsDatasetOp::Dataset";
     }
 
-    int64_t Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
     Status CheckExternalState() const override {
       return input_->CheckExternalState();

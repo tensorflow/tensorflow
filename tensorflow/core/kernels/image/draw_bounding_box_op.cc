@@ -97,8 +97,8 @@ class DrawBoundingBoxesOp : public OpKernel {
 
         auto colors = colors_tensor.matrix<float>();
         for (int64_t i = 0; i < colors.dimension(0); i++) {
-          std::vector<float> color_value(4);
-          for (int64_t j = 0; j < 4; j++) {
+          std::vector<float> color_value(depth);
+          for (int64_t j = 0; j < depth; j++) {
             color_value[j] = colors(i, j);
           }
           color_table.emplace_back(color_value);

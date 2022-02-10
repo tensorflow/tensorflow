@@ -3,6 +3,8 @@ syntax = "proto3";
 
 package stream_executor.dnn;
 
+import "google/protobuf/wrappers.proto";
+
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/stream_executor";
 
 // Specifies the data type used by an operation.
@@ -107,8 +109,25 @@ message AlgorithmProto {
   }
   int64 algo_id = 1;
   MathType math_type = 2;
-  // cuDNN v8 uses a string to uniquely represent the backend plan.
-  string exec_plan_id = 3;
+  reserved 3;
+
+  map<int64, int64> tuning_knobs = 4;
+  // Legacy algorithm enums and cuDNN Frontend engine numbers need to coexist in
+  // the same proto medium-term, until we can be confident of no longer needing
+  // the legacy cuDNN convolution API.  Once the migration is complete, we can
+  // stop producing legacy algorithm enums and remove this field.
+  bool is_cudnn_frontend = 5;
+
+  // For ROCm only, it's impossible to re-query the required workspace size
+  // after running the algorithm search, so we must store the workspace size
+  // along with the choice of algorithm.  For consistency and convenience,
+  // cuDNN uses this field in the same way, even though it would be possible to
+  // re-query the workspace size from cuDNN at each use.
+  //
+  // Since this message is persisted in files, we need to be able to distinguish
+  // 0 workspace size from unknown workspace size in an old message, so this is
+  // a message field.
+  google.protobuf.UInt64Value workspace_size = 6;
 }
 
 // Proto definition of AlgorithmConfig in "dnn.h".

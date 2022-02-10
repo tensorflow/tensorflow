@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -54,45 +55,9 @@ namespace {
 
 namespace cutil = TF::collection_ops_util;
 
-// A pass that converts stack operations to tensor operations and read/assign
-// ops on local variables. A later resource lifting pass can further remove the
-// local variables.
-//
-// This pass requires that the full shape of the stack can be inferred: 1) the
-// maximum size needs to be a constant and 2) a push op can be found with a
-// known shape, and all push ops need to have the same shape.
-//
-// A stack creation op "tf.StackV2" will be turned in to two zero-initialized
-// variables, for the buffer and current size. Each push will be turned into
-//   %old_val = "tf.ReadVariableOp"(%buffer)
-//   %old_size = "tf.ReadVariableOp"(%size)
-//   %offsets = "tf.ConcatV2"(%old_size, %other_dims_0s, %const0)
-//   %new_val = "tf.XlaDynamicUpdateSlice"(%old_val, %push_val, %offsets)
-//   "tf.AssignVariableOp"(%buffer, %new_val)
-//   %new_size = "tf.AddV2"(%old_size, %const1)
-//   "tf.AssignVariableOp"(%size, %new_size)
-//
-// and each pop will be turned into
-//
-//   %old_val = "tf.ReadVariableOp"(%buffer)
-//   %old_size = "tf.ReadVariableOp"(%size)
-//   %new_size = "tf.Sub"(%old_size, %const1)
-//   %offsets = "tf.ConcatV2"(%old_size, %other_dims_0s, %const0)
-//   %slice = "tf.Slice"(%old_val, %offsets, %slice_size_const)
-//   %pop_result = "tf.Reshape"(%slice, %elem_size_const)
-//   "tf.AssignVariableOp"(%size, %new_size)
-//
-// The pass also works across control flow and functional calls.
 struct StackOpsDecompositionPass
-    : public PassWrapper<StackOpsDecompositionPass, OperationPass<ModuleOp>> {
-  StringRef getArgument() const final { return "tf-stack-ops-decomposition"; }
-
-  StringRef getDescription() const final {
-    return "Decompose stack operations into local variable operations. Needs "
-           "static shapes.";
-  }
-
-  void runOnOperation() override;
+    : public TF::StackOpsDecompositionPassBase<StackOpsDecompositionPass> {
+  void runOnOperation() final;
 };
 
 // Returns the type of the local variable for the stack size.
@@ -135,7 +100,7 @@ void ModifyFunctionSignature(
     if (!stack_type.hasValue()) continue;
     func.getArgument(i).setType(*stack_type);
     new_input_types[i] = *stack_type;
-    auto size_arg = func.front().addArgument(size_var_type);
+    auto size_arg = func.front().addArgument(size_var_type, func.getLoc());
     new_input_types.push_back(size_arg.getType());
     if (stack_var_to_size_var) {
       (*stack_var_to_size_var)[func.getArgument(i)] = size_arg;
@@ -315,7 +280,8 @@ LogicalResult HandlePartitionedCallOp(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
         new_operands, call->getAttrs());
     new_call->setAttr(
-        "f", builder.getSymbolRefAttr(
+        "f", SymbolRefAttr::get(
+                 builder.getContext(),
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));
     for (int64_t i = 0; i < call.getNumResults(); ++i) {
       auto result = call.getResult(i);
@@ -366,8 +332,9 @@ LogicalResult HandlePartitionedCallOp(
     }
     if (lowered_callee != callee) {
       // Add the clone with a new name.
-      lowered_callee.setName(
-          llvm::formatv("{0}_stack_decomposed", callee.getName()).str());
+      lowered_callee.setName(StringAttr::get(
+          callee->getContext(),
+          llvm::formatv("{0}_stack_decomposed", callee.getName()).str()));
       SymbolTable(module).insert(lowered_callee);
       callee = lowered_callee;
     }
@@ -588,8 +555,6 @@ void StackOpsDecompositionPass::runOnOperation() {
     signalPassFailure();
   }
 }
-
-static PassRegistration<StackOpsDecompositionPass> pass;
 
 }  // namespace
 

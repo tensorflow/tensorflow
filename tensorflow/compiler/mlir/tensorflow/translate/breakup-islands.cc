@@ -364,4 +364,3 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateBreakUpIslandsPass() {
 
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::BreakUpIslands> pass;

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for multi-worker distribution strategies."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.training import server_lib
@@ -172,6 +168,31 @@ def collective_leader(cluster_spec, task_type, task_id):
 
   # Only one evaluator, so no need to set collective leader.
   if task_type == "evaluator":
+    return ""
+
+  # Use chief if chief is in the cluster.
+  if "chief" in cluster_spec.jobs:
+    return "/job:chief/replica:0/task:0"
+
+  # Use worker 0 if no chief job.
+  assert "worker" in cluster_spec.jobs
+  return "/job:worker/replica:0/task:0"
+
+
+def coordination_leader(cluster_spec):
+  """Return the task name of the coordination service leader.
+
+  Args:
+    cluster_spec: a dict, `ClusterDef` or `ClusterSpec` object sxpecifying the
+      cluster configurations.
+
+  Returns:
+    a string indicating the task name of the coordination service leader.
+  """
+  cluster_spec = normalize_cluster_spec(cluster_spec)
+
+  # No need to set coordination service leader for local.
+  if not cluster_spec.as_dict():
     return ""
 
   # Use chief if chief is in the cluster.

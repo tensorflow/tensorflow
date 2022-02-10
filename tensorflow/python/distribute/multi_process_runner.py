@@ -15,10 +15,6 @@
 # ==============================================================================
 """Multi-process runner for testing purpose."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import json
@@ -1413,6 +1409,7 @@ def manager():
   This method should only be called after multi_process_runner.test_main() is
   called.
   """
+  _check_initialization()
   global _manager
   with _manager_lock:
     if _manager is None:

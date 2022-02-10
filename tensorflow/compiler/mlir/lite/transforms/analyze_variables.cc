@@ -33,10 +33,20 @@ bool IsSupportedTFLiteResourceOp(Operation* op) {
                    TF::LookupTableSizeV2Op>(op);
 }
 
-// Returns true if 'op' is a TFLite control flow operation.
-bool IsTFLiteControlFlowOp(Operation* op) {
+// Returns true if 'op' is TF/TFLite control flow op that can accept resource
+// type. Usually these ops are just pass through, they call another subgraph and
+// pass the operands to.
+bool IsSupportedTFLiteControlFlow(Operation* op) {
   return llvm::isa<TFL::WhileOp, TFL::IfOp, TFL::CallOnceOp>(op);
 }
+
+// Returns true if the 'op' is one of the supported TF control flow ops or
+// dataset ops. Those ops just forward the operands to other subgraphs.
+bool IsSupportedTFDataForwardingOp(Operation* op) {
+  return llvm::isa<TF::MapDatasetOp, TF::ReduceDatasetOp,
+                   TF::TakeWhileDatasetOp, TF::IfOp, TF::WhileOp>(op);
+}
+
 }  // namespace
 
 // Pass which analyzes the variables in the graph and add an attribute whether
@@ -67,18 +77,16 @@ class AnalyzeVariablesPass
     module.walk([&](Operation* op) {
       // Skip ops that are supported natively by TFLite.
       if (IsSupportedTFLiteResourceOp(op)) return WalkResult::advance();
+      if (IsSupportedTFLiteControlFlow(op)) return WalkResult::advance();
 
       // Check for ops that are legalized to TFLite.
       if (op->getDialect()->getNamespace() == "tfl") {
-        // TODO(b/189370197): Enable control flow ops after updating
-        // checks to handle them.
-        if (IsTFLiteControlFlowOp(op)) {
-          legalize_to_tfl = false;
-          return WalkResult::interrupt();
-        }
         return WalkResult::advance();
       }
       // Check for ops that are not legalized to TFLite.
+      if (IsSupportedTFDataForwardingOp(op)) {
+        return WalkResult::advance();
+      }
 
       // If any of the operands is a resource type, then we break
       // and mark the module as not valid for TFLite legalization.

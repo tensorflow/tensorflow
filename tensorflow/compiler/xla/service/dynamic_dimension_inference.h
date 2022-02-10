@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -37,14 +36,25 @@ namespace xla {
 // represent the runtime real size of those dynamic dimensions.
 class DynamicDimensionInference {
  public:
+  enum ShapeCheckMode {
+    kInvalid = 0,
+    // At compile time, pessimisticly assumes runtime shape checks may fail and
+    // returns a compile-time error.
+    kCompileTime,
+    // Insert runtime checks as Hlo ops.
+    kRuntimeTime,
+    // Ignore shape check.
+    kIgnore,
+  };
   using CustomCallInferenceHandler =
       std::function<Status(HloInstruction*, DynamicDimensionInference*)>;
 
   static StatusOr<DynamicDimensionInference> Run(
       HloModule* module,
-      CustomCallInferenceHandler custom_call_handler = nullptr);
+      CustomCallInferenceHandler custom_call_handler = nullptr,
+      ShapeCheckMode shape_check_mode = ShapeCheckMode::kIgnore);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // If the dimension `dim` of instruction `inst` at `index` has a dynamic size,
   // returns a scalar HloInstruction that represents the runtime size of that
@@ -85,7 +95,8 @@ class DynamicDimensionInference {
 
  private:
   explicit DynamicDimensionInference(
-      HloModule* module, CustomCallInferenceHandler custom_call_handler);
+      HloModule* module, CustomCallInferenceHandler custom_call_handler,
+      ShapeCheckMode shape_check_mode);
 
   // DynamicDimension is used as a key in the dynamic key-value mapping. It
   // unambiguously represents a dynamic dimension of a instruction at a given
@@ -141,6 +152,9 @@ class DynamicDimensionInference {
 
   // A handler for custom calls.
   CustomCallInferenceHandler custom_call_handler_;
+
+  // Indicates what to do at places where shape check is needed.
+  ShapeCheckMode shape_check_mode_;
 };
 
 }  // namespace xla

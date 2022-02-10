@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -44,7 +43,7 @@ class HloAliasAnalysis {
       const HloModule* module,
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Return the buffer containing the given value.
   const HloBuffer& GetBufferContainingValue(const HloValue& value) const {

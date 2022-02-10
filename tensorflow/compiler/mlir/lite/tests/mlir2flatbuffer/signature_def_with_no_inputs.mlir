@@ -40,7 +40,7 @@
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 554 : i32}, tf_saved_model.semantics} {
   func @main() -> (tensor<5xf32> {tf_saved_model.index_path = ["start_logits"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "StatefulPartitionedCall:1"}, tf_saved_model.exported_names = ["serving_default"]} {
-    %cst = constant dense<0.000000e+00> : tensor<5xf32>
+    %cst = arith.constant dense<0.000000e+00> : tensor<5xf32>
     return %cst : tensor<5xf32>
   }
 }

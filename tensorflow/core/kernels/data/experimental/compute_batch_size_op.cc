@@ -98,8 +98,8 @@ class ComputeBatchSizeOp : public OpKernel {
     std::vector<std::pair<string, Tensor>> input_list;
     GraphDef graph_def;
     string dataset_node_name;
-    OP_REQUIRES_OK(ctx, AsGraphDefMinimal(ctx, dataset, &input_list, &graph_def,
-                                          &dataset_node_name));
+    OP_REQUIRES_OK(ctx, AsGraphDefForRewrite(ctx, dataset, &input_list,
+                                             &graph_def, &dataset_node_name));
 
     // Create GraphView for easier traversal of graph.
     grappler::GraphView graph_view(&graph_def);

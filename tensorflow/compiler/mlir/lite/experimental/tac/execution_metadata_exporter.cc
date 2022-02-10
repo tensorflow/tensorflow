@@ -24,6 +24,7 @@
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -39,8 +40,8 @@ namespace tflite {
 namespace {
 
 bool IsConst(mlir::Operation* op) {
-  return llvm::isa<mlir::ConstantOp, mlir::TF::ConstOp, mlir::TFL::ConstOp,
-                   mlir::TFL::QConstOp>(op);
+  return llvm::isa<mlir::arith::ConstantOp, mlir::TF::ConstOp,
+                   mlir::TFL::ConstOp, mlir::TFL::QConstOp>(op);
 }
 
 bool IsOpSupported(mlir::Operation* op, const std::string& hardware) {
@@ -82,7 +83,8 @@ llvm::Optional<std::vector<float>> GetPerDeviceCosts(
   for (const auto& kv : hardware_map) {
     auto cost_attr = device_costs_attr.getNamed(kv.first);
     if (!cost_attr.hasValue()) return llvm::None;
-    float cost = cost_attr->second.dyn_cast_or_null<mlir::FloatAttr>()
+    float cost = cost_attr->getValue()
+                     .dyn_cast_or_null<mlir::FloatAttr>()
                      .getValueAsDouble();
     device_costs[kv.second] = cost;
   }

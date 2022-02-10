@@ -26,7 +26,6 @@ namespace xla {
 
 // Visitor which verifies that the output shape is correctly set. Verifies
 // against the inferred shape for the instruction.
-// TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
   ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision,
@@ -70,6 +69,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   Status HandleInfeed(HloInstruction*) override;
+  Status HandleOptimizationBarrier(HloInstruction* hlo) override;
   Status HandleOutfeed(HloInstruction*) override;
   Status HandleRng(HloInstruction*) override;
   Status HandleRngBitGenerator(HloInstruction*) override;
@@ -167,7 +167,7 @@ class ShapeVerifier : public DfsHloVisitor {
     return equal(a, b);
   }
 
-  string StringifyShape(const Shape& s) {
+  std::string StringifyShape(const Shape& s) {
     return layout_sensitive_ ? ShapeUtil::HumanStringWithLayout(s)
                              : ShapeUtil::HumanString(s);
   }
@@ -213,13 +213,19 @@ class ShapeVerifier : public DfsHloVisitor {
 // An interface used to encapsulate target-specific verification quirks.
 class TargetVerifierMetadata {
  public:
-  TargetVerifierMetadata(
+  explicit TargetVerifierMetadata(
       std::function<int64_t(const Shape&)> shape_size_function)
       : shape_size_function_(shape_size_function) {}
 
   // Returns a target-specific shape size.
   int64_t ShapeSize(const Shape& shape) const {
     return shape_size_function_(shape);
+  }
+
+  void SetShapeSize(std::function<int64_t(const Shape&)> shape_size_function) {
+    CHECK(shape_size_function_ == nullptr)
+        << "shape_size_function_ is already set";
+    shape_size_function_ = shape_size_function;
   }
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
@@ -278,14 +284,14 @@ class HloVerifier : public HloModulePass {
             layout_sensitive, allow_mixed_precision, shape_size_func)),
         instruction_can_change_layout_func_(
             std::move(instruction_can_change_layout_func)),
-        pass_name_("Unknown") {
+        context_("Unknown") {
     CHECK(instruction_can_change_layout_func_ == nullptr || layout_sensitive);
   }
 
   // Uses custom target metadata
   explicit HloVerifier(std::unique_ptr<TargetVerifierMetadata> target_metadata,
-                       absl::string_view pass_name = "Unknown")
-      : target_metadata_(std::move(target_metadata)), pass_name_(pass_name) {}
+                       absl::string_view context = "Unknown")
+      : target_metadata_(std::move(target_metadata)), context_(context) {}
 
   ~HloVerifier() override = default;
   absl::string_view name() const override { return "verifier"; }
@@ -301,7 +307,7 @@ class HloVerifier : public HloModulePass {
       instruction_can_change_layout_func_;
 
   // The hlo pass when the verifier is invoked.
-  std::string pass_name_;
+  std::string context_;
 };
 
 }  // namespace xla

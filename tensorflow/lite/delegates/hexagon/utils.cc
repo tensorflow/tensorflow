@@ -236,6 +236,12 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       // TODO(b/129276536): Add support for activation here.
       const TfLitePoolParams* pool_params =
           reinterpret_cast<const TfLitePoolParams*>(node->builtin_data);
+      // Disable max pool on delegate with activation SAME when filter is > 12.
+      if (pool_params->padding == kTfLitePaddingSame &&
+          (pool_params->filter_height >= 13 ||
+           pool_params->filter_width >= 13)) {
+        return false;
+      }
       return pool_params->activation == kTfLiteActNone;
     }
     case kTfLiteBuiltinAveragePool2d: {
@@ -370,10 +376,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
         return false;
       }
       const auto& size_tensor = context->tensors[node->inputs->data[1]];
-      // TODO(b/143105433): Latency increase significantly with large size
-      // value. Limiting to 65 for now.
-      return NumElements(&size_tensor) == 2 && size_tensor.data.i32[0] < 66 &&
-             size_tensor.data.i32[1] < 66;
+      return NumElements(&size_tensor) == 2;
     }
     case kTfLiteBuiltinNeg: {
       return InputsWithCorrectTypes(node, context,

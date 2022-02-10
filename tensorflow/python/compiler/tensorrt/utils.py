@@ -14,10 +14,6 @@
 # =============================================================================
 """Exposes the Python wrapper conversion to trt_graph."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from distutils import version
 
 from tensorflow.compiler.tf2tensorrt import _pywrap_py_utils
@@ -50,7 +46,7 @@ def disable_non_trt_optimizers_in_rewriter_config(rewriter_config):
   rewriter_config.shape_optimization = off
 
 
-def _version_tuple_to_string(ver_tuple):
+def version_tuple_to_string(ver_tuple):
   assert isinstance(ver_tuple, tuple)
   assert len(ver_tuple) == 3
 
@@ -59,8 +55,8 @@ def _version_tuple_to_string(ver_tuple):
 
 
 def _is_tensorrt_version_greater_equal(trt_ver, target_ver):
-  trt_ver = version.LooseVersion(_version_tuple_to_string(trt_ver))
-  target_ver = version.LooseVersion(_version_tuple_to_string(target_ver))
+  trt_ver = version.LooseVersion(version_tuple_to_string(trt_ver))
+  target_ver = version.LooseVersion(version_tuple_to_string(target_ver))
 
   return trt_ver >= target_ver
 

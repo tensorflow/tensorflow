@@ -114,7 +114,7 @@ class PerDeviceCollector {
 
     status = cudaOccMaxPotentialOccupancyBlockSize(
         &stats.min_grid_size, &stats.suggested_block_size, &device_properties_,
-        &params.attributes, &state, NULL, params.dynamic_smem_size);
+        &params.attributes, &state, nullptr, params.dynamic_smem_size);
     if (status != CUDA_OCC_SUCCESS) {
       return {};
     }
@@ -151,11 +151,6 @@ class PerDeviceCollector {
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kCorrelationId)),
                           event.correlation_id);
-    }
-    if (!event.annotation.empty()) {
-      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                              GetStatTypeStr(StatType::kKernelAnnotation)),
-                          *plane->GetOrCreateStatMetadata(event.annotation));
     }
     if (!event.nvtx_range.empty()) {
       xevent.AddStatValue(
@@ -346,6 +341,10 @@ class PerDeviceCollector {
 
   void GetDeviceCapabilities(int32_t device_ordinal,
                              XPlaneBuilder* device_plane) {
+    device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
+                                   GetStatTypeStr(StatType::kDevVendor)),
+                               kDeviceVendorNvidia);
+
     CUdevice device;
     if (cuDeviceGet(&device, device_ordinal) != CUDA_SUCCESS) return;
 

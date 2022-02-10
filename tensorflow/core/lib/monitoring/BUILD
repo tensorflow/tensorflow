@@ -12,6 +12,7 @@ package(
         "//tensorflow/core/platform:__subpackages__",
         # tensorflow/compiler/xla/pjrt:metrics depends on this package
         "//tensorflow/compiler/xla/pjrt:__subpackages__",
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -83,6 +84,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -126,6 +128,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
     ],
 )
 

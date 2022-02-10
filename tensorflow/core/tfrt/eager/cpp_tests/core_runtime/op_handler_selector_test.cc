@@ -305,6 +305,10 @@ class FakeOperation : public ImmediateExecutionOperation {
     llvm_unreachable("unimplemented method.");
   }
 
+  void SetStepId(int64_t step_id) override {
+    llvm_unreachable("unimplemented method.");
+  }
+
   static bool classof(const AbstractOperation* ptr) { return true; }
 
   AttrBuilder* GetAttrs() { return &attrs_; }
@@ -312,7 +316,7 @@ class FakeOperation : public ImmediateExecutionOperation {
  private:
   std::string op_name_;
   std::string device_name_;
-  SmallVector<tensorflow::core::RefCountPtr<FakeTensorHandle>, 8> args_;
+  llvm::SmallVector<tensorflow::core::RefCountPtr<FakeTensorHandle>, 8> args_;
   AttrBuilder attrs_;
 };
 

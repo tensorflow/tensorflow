@@ -14,10 +14,6 @@
 # =============================================================================
 """Implementation of Neural Net (NN) functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 from tensorflow.python.distribute import distribution_strategy_context as ds
@@ -92,8 +88,8 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
       targets.get_shape().assert_is_compatible_with(log_input.get_shape())
     except ValueError:
       raise ValueError(
-          "log_input and targets must have the same shape (%s vs %s)" %
-          (log_input.get_shape(), targets.get_shape()))
+          "`log_input` and `targets` must have the same shape, received "
+          f"({log_input.get_shape()} vs {targets.get_shape()}).")
 
     result = math_ops.exp(log_input) - log_input * targets
     if compute_full_loss:
@@ -130,8 +126,9 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
     try:
       labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
-                       (logits.get_shape(), labels.get_shape()))
+      raise ValueError("`logits` and `labels` must have the same shape, "
+                       f"received ({logits.get_shape()} vs "
+                       f"{labels.get_shape()}).")
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -154,6 +151,7 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
 # Note: intentionally calling this v2 to not allow existing code with indirect
 # imports to ignore the sentinel behavior.
 @tf_export("nn.sigmoid_cross_entropy_with_logits", v1=[])
+@dispatch.register_binary_elementwise_api
 @dispatch.add_dispatch_support
 def sigmoid_cross_entropy_with_logits_v2(  # pylint: disable=invalid-name
     labels=None,
@@ -325,8 +323,9 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     try:
       labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
-                       (logits.get_shape(), labels.get_shape()))
+      raise ValueError("`logits` and `labels` must have the same shape, "
+                       f"received ({logits.get_shape()} vs "
+                       f"{labels.get_shape()}).")
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -537,11 +536,13 @@ def relu_layer(x, weights, biases, name=None):
 
 
 @tf_export("nn.silu", "nn.swish")
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
-@custom_gradient.custom_gradient
-def swish(features):
+def swish(features, beta=1.0):
   # pylint: disable=g-doc-args
-  """Computes the SiLU or Swish activation function: `x * sigmoid(x)`.
+  """Computes the SiLU or Swish activation function: `x * sigmoid(beta * x)`.
+
+  beta : Hyperparameter for Swish activation function. Default value 1.0.
 
   The SiLU activation function was introduced in "Gaussian Error Linear Units
   (GELUs)" [Hendrycks et al. 2016](https://arxiv.org/abs/1606.08415) and
@@ -553,28 +554,37 @@ def swish(features):
 
   Args:
     features: A `Tensor` representing preactivation values.
+    beta: A 'Tensor' representing value of beta hyperparameter.
 
   Returns:
     The activation value.
   """
   # pylint: enable=g-doc-args
   features = ops.convert_to_tensor(features, name="features")
+  beta = ops.convert_to_tensor(beta, name="beta")
+  beta = math_ops.cast(beta, features.dtype)
 
-  def grad(dy):
-    """Gradient for the Swish activation function"""
-    # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x)
-    # around for backprop, effectively doubling the tensor's memory consumption.
-    # We use a control dependency here so that sigmoid(features) is re-computed
-    # during backprop (the control dep prevents it being de-duped with the
-    # forward pass) and we can free the sigmoid(features) expression immediately
-    # after use during the forward pass.
-    with ops.control_dependencies([dy]):
-      sigmoid_features = math_ops.sigmoid(features)
-    activation_grad = (
-        sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
-    return dy * activation_grad
+  @custom_gradient.custom_gradient
+  def swish_impl(features):
 
-  return features * math_ops.sigmoid(features), grad
+    def grad(dy):
+      """Gradient for the Swish activation function."""
+      # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x)
+      # around for backprop, effectively doubling the tensor's memory
+      # consumption. We use a control dependency here so that sigmoid(features)
+      # is re-computed during backprop (the control dep prevents it being
+      # de-duped with the forward pass) and we can free the sigmoid(features)
+      # expression immediately after use during the forward pass.
+      with ops.control_dependencies([dy]):
+        sigmoid_features = math_ops.sigmoid(beta * features)
+      activation_grad = (
+          sigmoid_features * (1.0 + (beta * features) *
+                              (1.0 - sigmoid_features)))
+      return dy * activation_grad
+
+    return features * math_ops.sigmoid(beta * features), grad
+
+  return swish_impl(features)
 
 
 # pylint: disable=redefined-builtin
@@ -1658,9 +1668,10 @@ def fused_batch_norm(
   """
   if (not is_training or exponential_avg_factor != 1.0) and (
       (mean is None) or (variance is None)):
-    raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
-                     "is_training is False or "
-                     "exponential_avg_factor != 1.0.")
+    raise ValueError("Both `mean` and `variance` must be a 1D tensor when "
+                     "`is_training` is False or `exponential_avg_factor` != "
+                     f"1.0. Received: `mean` {mean!r} and `variance` "
+                     f"{variance!r}")
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
   offset = ops.convert_to_tensor(offset, name="offset")

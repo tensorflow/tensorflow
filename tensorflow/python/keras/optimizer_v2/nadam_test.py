@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import nadam
 from tensorflow.python.ops import math_ops
@@ -83,11 +84,11 @@ class NadamOptimizerTest(test.TestCase):
         var0 = variables.Variable(var0_np)
         var1 = variables.Variable(var1_np)
         grads0_np_indices = np.array([0, 2], dtype=np.int32)
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant(grads0_np[grads0_np_indices]),
             constant_op.constant(grads0_np_indices), constant_op.constant([3]))
         grads1_np_indices = np.array([0, 2], dtype=np.int32)
-        grads1 = ops.IndexedSlices(
+        grads1 = indexed_slices.IndexedSlices(
             constant_op.constant(grads1_np[grads1_np_indices]),
             constant_op.constant(grads1_np_indices), constant_op.constant([3]))
         opt = nadam.Nadam(epsilon=sparse_epsilon)

@@ -567,8 +567,10 @@ LogicalResult RegionResourceHoister::HoistResourcesOutOfWhileRegion(
   // Patch the cond and body regions to have additional arguments, and replace
   // the remaining resource reads (which will be resource reads for written
   // resources) with these arguments.
+  Location loc = op.getLoc();
   for (Region* region : op.getRegions()) {
-    region->addArguments(new_result_types);
+    region->addArguments(new_result_types,
+                         SmallVector<Location>(new_result_types.size(), loc));
     // Point hoisted read for written resources to the region's arguments.
     for (auto& it : hoister.GetResources()) {
       if (!it.second.is_written) continue;
@@ -692,13 +694,13 @@ void RemoveUnusedResourceArgumentsAndForwardedRetvals(
       }
     }
   }
-  llvm::SmallVector<unsigned int, 4> indices_to_erase;
+  llvm::BitVector indices_to_erase(func_op.getNumArguments());
   llvm::SmallVector<Type, 4> new_types;
   int64_t skipped_args = 0;
   for (auto arg : func_op.getArguments()) {
     auto it = infos.find(arg.getArgNumber());
     if (it != infos.end() && !it->getSecond().used) {
-      indices_to_erase.push_back(arg.getArgNumber());
+      indices_to_erase.set(arg.getArgNumber());
       skipped_args++;
       if (old_to_new_arg_indices != nullptr) {
         old_to_new_arg_indices->push_back(-1);
@@ -1040,7 +1042,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   auto name = name_base;
   callee = callee.clone();
   callee.setPrivate();
-  callee.setName(name);
+  callee.setName(mlir::StringAttr::get(callee->getContext(), name));
   SymbolTable(module).insert(callee);
   result->lifted_callee = callee;
 
@@ -1109,8 +1111,9 @@ void UpdatePartitionedCallOpWithNewCallee(
   auto new_call = builder.create<CallOpType>(
       call_op.getLoc(), lifting_info.lifted_callee.getType().getResults(),
       new_operands, call_op->getAttrs());
-  new_call->setAttr(
-      "f", builder.getSymbolRefAttr(lifting_info.lifted_callee.getName()));
+  new_call->setAttr("f",
+                    SymbolRefAttr::get(builder.getContext(),
+                                       lifting_info.lifted_callee.getName()));
   AddLoadsStoresOutsideControlFlowOp(
       new_call, lifting_info.arg_data_type_and_updated_output_index);
   // Replace uses.

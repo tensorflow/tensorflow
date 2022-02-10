@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 
 import numpy as np
@@ -57,17 +53,12 @@ def read_tensor_from_image_file(file_name,
   resized = tf.image.resize_bilinear(dims_expander, [input_height, input_width])
   normalized = tf.divide(tf.subtract(resized, [input_mean]), [input_std])
   sess = tf.compat.v1.Session()
-  result = sess.run(normalized)
-
-  return result
+  return sess.run(normalized)
 
 
 def load_labels(label_file):
-  label = []
   proto_as_ascii_lines = tf.gfile.GFile(label_file).readlines()
-  for l in proto_as_ascii_lines:
-    label.append(l.rstrip())
-  return label
+  return [l.rstrip() for l in proto_as_ascii_lines]
 
 
 if __name__ == "__main__":

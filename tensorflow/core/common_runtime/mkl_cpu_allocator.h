@@ -182,8 +182,12 @@ class MklCPUAllocator : public Allocator {
     // it in MklSmallSizeAllocator.
     small_size_allocator_ =
         new MklSmallSizeAllocator(sub_allocator_, max_mem_bytes, kName);
+
+    BFCAllocator::Options large_allocator_opts;
+    large_allocator_opts.allow_growth = kAllowGrowth;
     large_size_allocator_ =
-        new BFCAllocator(sub_allocator_, max_mem_bytes, kAllowGrowth, kName);
+        new BFCAllocator(absl::WrapUnique(sub_allocator_), max_mem_bytes, kName,
+                         large_allocator_opts);
     return Status::OK();
   }
 

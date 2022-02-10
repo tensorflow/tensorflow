@@ -191,6 +191,13 @@ MinibenchmarkStatus Validator::CheckModel(bool load_only) {
     if (validation_entrypoint_->AllocateTensors() != kTfLiteOk) {
       return kMinibenchmarkAllocateTensorsFailed;
     }
+    // Set initial golden outputs to 0 to avoid accessing uninitialized memory.
+    // Last input is jpeg, skip.
+    for (int i = 0; i < validation_entrypoint_->inputs().size() - 1; i++) {
+      TfLiteTensor* input_tensor =
+          validation_entrypoint_->tensor(validation_entrypoint_->inputs()[i]);
+      memset(input_tensor->data.raw, 0, input_tensor->bytes);
+    }
     TfLiteStatus status = validation_entrypoint_->Invoke();
     if (status != kTfLiteOk) {
       return kMinibenchmarkInvokeFailed;

@@ -37,4 +37,13 @@ def OpaqueTensorType : TFType_Type<"OpaqueTensor"> {
   }];
 }
 
+def TFGraph_Tensor
+    : Type<Or<[AnyTensor.predicate, OpaqueTensorType.predicate]>,
+           "a tensor or opaque tensor type">;
+
+// A value that is either a tensor or a control type.
+def TFGraph_TensorOrControlType
+    : Type<Or<[TFGraph_Tensor.predicate, ControlType.predicate]>,
+           "any tensor or control type">;
+
 #endif // TYPES

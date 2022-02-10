@@ -218,7 +218,7 @@ class MlirAbstractOp : public TracingOperation {
 class MlirFunction : public AbstractFunction {
  public:
   explicit MlirFunction(std::unique_ptr<MLIRContext> context,
-                        OwningModuleRef module, FuncOp func)
+                        OwningOpRef<mlir::ModuleOp> module, FuncOp func)
       : AbstractFunction(kMlir),
         context_(std::move(context)),
         module_(std::move(module)),
@@ -233,7 +233,7 @@ class MlirFunction : public AbstractFunction {
 
  private:
   std::unique_ptr<MLIRContext> context_;
-  OwningModuleRef module_;
+  OwningOpRef<mlir::ModuleOp> module_;
   FuncOp func_;
   std::unique_ptr<tensorflow::FunctionDef> fdef_;
 };
@@ -280,7 +280,7 @@ class MlirFunctionContext : public TracingContext {
   std::unique_ptr<MLIRContext> context_;
   OpBuilder builder_;
   FuncOp func_;
-  OwningModuleRef module_;
+  OwningOpRef<mlir::ModuleOp> module_;
 };
 
 Status MlirAbstractOp::Reset(const char* op, const char* device_name) {
@@ -564,7 +564,8 @@ Status MlirFunctionContext::AddParameter(
   // resolved.
   Type type;
   TF_RETURN_IF_ERROR(ConvertDataTypeToTensor(dtype, builder_, &type));
-  *handle = new MlirTensor(func_.getBody().front().addArgument(type));
+  *handle =
+      new MlirTensor(func_.getBody().front().addArgument(type, func_.getLoc()));
   return Status::OK();
 }
 

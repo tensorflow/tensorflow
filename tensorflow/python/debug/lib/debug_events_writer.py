@@ -14,10 +14,6 @@
 # ==============================================================================
 """Writer class for `DebugEvent` protos in tfdbg v2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from tensorflow.core.protobuf import debug_event_pb2

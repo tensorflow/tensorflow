@@ -32,6 +32,10 @@ class FallbackConverter : public mlir::TypeConverter {
 
   void RegisterFallbackOp(mlir::Operation *op) { fallback_ops_.push_back(op); }
 
+  void ReplaceFallbackOp(int64_t key, mlir::Operation *op) {
+    fallback_ops_[key] = op;
+  }
+
   llvm::ArrayRef<mlir::Operation *> GetFallbackOps() const {
     return fallback_ops_;
   }
@@ -60,15 +64,14 @@ mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
 // Convert operands that might be !tfrt_fallback.tf_tensor for corert operations
 // that take only !corert.tensorhandle.
 mlir::LogicalResult ConvertCoreRTOperands(
-    mlir::Operation *op, llvm::ArrayRef<mlir::Value> operands,
+    mlir::Operation *op, mlir::ValueRange operands,
     llvm::SmallVectorImpl<mlir::Value> *new_operands,
     mlir::ConversionPatternRewriter &rewriter);
 
 // Convert operands that might be !corert.tensorhandle for fallback operations
 // that take only !tfrt_fallback.tf_tensor.
 mlir::LogicalResult ConvertFallbackOperands(
-    mlir::Operation *op, llvm::StringRef device,
-    llvm::ArrayRef<mlir::Value> operands,
+    mlir::Operation *op, llvm::StringRef device, mlir::ValueRange operands,
     llvm::SmallVectorImpl<mlir::Value> *new_operands,
     mlir::ConversionPatternRewriter &rewriter);
 

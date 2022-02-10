@@ -79,9 +79,11 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   xla::ExecutableRunOptions run_options;
   xla::gpu::GpuExecutableRunOptions gpu_options;
   xla::DeviceAssignment device_assignment;
-  TF_RETURN_IF_ERROR(
-      ResolveDeviceAssignment(ctx, result->collective_reduce_info, run_options,
-                              device_assignment, gpu_options));
+  if (result->collective_info) {
+    TF_RETURN_IF_ERROR(ResolveDeviceAssignment(ctx, *result->collective_info,
+                                               run_options, device_assignment,
+                                               gpu_options));
+  }
 
   run_options.set_stream(stream);
   run_options.set_allocator(allocator);

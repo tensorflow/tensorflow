@@ -30,32 +30,8 @@ constexpr std::array<DataType, 9> kEinsumTypes = {
     {DT_INT32, DT_INT64, DT_UINT64, DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE,
      DT_COMPLEX64, DT_COMPLEX128}};
 
-// Kernel which compiles XlaEinsum, an einsum op accepting two inputs.
-class XlaEinsumOp : public XlaOpKernel {
- public:
-  explicit XlaEinsumOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("equation", &equation_));
-  }
-
-  ~XlaEinsumOp() override = default;
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaOp lhs = ctx->Input(0);
-    if (equation_.find(',') == equation_.npos) {
-      ctx->SetOutput(0, xla::Einsum(lhs, equation_));
-    } else {
-      xla::XlaOp rhs = ctx->Input(1);
-      ctx->SetOutput(0, xla::Einsum(lhs, rhs, equation_));
-    }
-  }
-
- private:
-  string equation_;
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaEinsumOp);
-};
-
 REGISTER_XLA_OP(Name("XlaEinsum").TypeConstraint("T", kEinsumTypes),
-                XlaEinsumOp);
+                MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Einsum").TypeConstraint("T", kEinsumTypes),
                 MlirXlaOpKernel);
 

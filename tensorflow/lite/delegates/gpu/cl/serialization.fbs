@@ -12,27 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+include "tensorflow/lite/delegates/gpu/common/gpu_model.fbs";
 include "tensorflow/lite/delegates/gpu/common/task/serialization_base.fbs";
 
 namespace tflite.gpu.cl.data;
-
-table TensorDescWithId {
-  desc:tflite.gpu.data.TensorDescriptor;
-  id:int32;
-}
-
-table CLNode {
-  gpu_op:tflite.gpu.data.GPUOperation;
-  fingerprint:uint64;
-  input_ids:[int32];
-  output_ids:[int32];
-  name:string;
-}
-
-table PairOfValueIds {
-  first:int32;
-  second:int32;
-}
 
 table BinaryProgram {
   fingerprint:uint64;
@@ -40,22 +23,13 @@ table BinaryProgram {
 }
 
 table InferenceContext {
+  gpu_model:tflite.gpu.data.GpuModel;
   driver_version:string;
   binary_programs:[BinaryProgram];
-  need_flush:bool;
-  flush_periodically:bool;
-  flush_period:int32;
-  need_manual_release:bool;
-  precision:tflite.gpu.data.CalculationsPrecision;
-  storage_type:tflite.gpu.data.TensorStorageType;
-  nodes:[CLNode];
-  tensors:[TensorDescWithId];
-  const_tensors:[TensorDescWithId];
-  input_ids:[int32];
-  variable_ids_and_refs:[PairOfValueIds];
-  output_ids:[int32];
-  input_refs:[int64];
-  output_refs:[int64];
+  // Must be serialized after actual OpenCL objects created
+  // Separated from nodes in GpuModel
+  tuned_work_group_sizes_per_node:[tflite.gpu.data.Int3];
+  fingerprints_per_node:[uint64];
 }
 
 root_type InferenceContext;

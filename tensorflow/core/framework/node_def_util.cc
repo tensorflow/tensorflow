@@ -137,8 +137,9 @@ string FormatNodeDefForError(
   return !has_experimental_debug_info ||
                  experimental_debug_info.original_node_names().empty()
              ? errors::FormatNodeNameForError(string(node_name))
-             : errors::FormatNodeNamesForError(
-                   experimental_debug_info.original_node_names());
+             : errors::FormatOriginalNodeLocationForError(
+                   experimental_debug_info.original_node_names(),
+                   experimental_debug_info.original_func_names());
 }
 
 string FormatNodeDefForError(const NodeDef& node_def) {
@@ -293,11 +294,8 @@ DEFINE_TRY_GET_ATTR(
     })
 DEFINE_GET_ATTR(float, f, "float", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(float, f, "float", emplace_back, v, ;)
-// std::vector<bool> specialization does not have emplace_back until
-// c++14, so we have to use push_back (see
-// http://en.cppreference.com/w/cpp/container/vector/emplace_back)
-DEFINE_GET_ATTR(bool, b, "bool", push_back, v, ;)
-DEFINE_TRY_GET_ATTR(bool, b, "bool", push_back, v, ;)
+DEFINE_GET_ATTR(bool, b, "bool", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(bool, b, "bool", emplace_back, v, ;)
 DEFINE_GET_ATTR(DataType, type, "type", emplace_back, static_cast<DataType>(v),
                 ;)
 DEFINE_TRY_GET_ATTR(DataType, type, "type", emplace_back,
@@ -727,6 +725,17 @@ void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
     AttrSlice attrs(*node_def);
     if (attr_def.has_default_value() && !attrs.Find(attr_def.name())) {
       AddNodeAttr(attr_def.name(), attr_def.default_value(), node_def);
+    }
+  }
+}
+
+void StripDefaultsFromNodeDef(const OpDef& op_def, NodeDef* node_def) {
+  AttrSlice attrs(*node_def);
+  for (const auto& attr_def : op_def.attr()) {
+    if (attr_def.has_default_value()) {
+      const AttrValue* attr = attrs.Find(attr_def.name());
+      if (attr && AreAttrValuesEqual(*attr, attr_def.default_value()))
+        node_def->mutable_attr()->erase(attr_def.name());
     }
   }
 }

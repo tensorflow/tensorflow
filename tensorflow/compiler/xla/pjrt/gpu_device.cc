@@ -211,6 +211,27 @@ StatusOr<LocalClient*> GetGpuXlaClient() {
   return ClientLibrary::GetOrCreateLocalClient(options);
 }
 
+void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
+  for (int i = 0; i < executors.size(); ++i) {
+    for (int j = 0; j < executors.size(); ++j) {
+      if (i == j) {
+        continue;
+      }
+      se::StreamExecutor* from = executors[i];
+      se::StreamExecutor* to = executors[j];
+      if (from->CanEnablePeerAccessTo(to)) {
+        Status status = from->EnablePeerAccessTo(to);
+        if (!status.ok()) {
+          LOG(WARNING) << "Unable to enable peer access between GPUs " << i
+                       << " and " << j << "; status: " << status;
+        } else {
+          VLOG(2) << "Enabled peer access from GPU " << i << " to GPU " << j;
+        }
+      }
+    }
+  }
+}
+
 // Builds a LocalDeviceState for each GPU present.
 StatusOr<std::vector<std::unique_ptr<LocalDeviceState>>> BuildLocalDeviceStates(
     LocalClient* xla_client, bool asynchronous) {
@@ -273,10 +294,12 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
                 << " bytes on device " << device_ordinal
                 << " for BFCAllocator.";
     }
+
+    tensorflow::BFCAllocator::Options opts;
+    opts.allow_growth = !preallocate;
     auto gpu_bfc_allocator = absl::make_unique<tensorflow::BFCAllocator>(
-        sub_allocator.release(), allocator_memory,
-        /*allow_growth=*/!preallocate,
-        absl::StrCat("GPU_", device_ordinal, "_bfc"));
+        std::move(sub_allocator), allocator_memory,
+        absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);
     allocators.emplace_back(std::move(gpu_bfc_allocator),
                             local_device->compute_stream());
   }
@@ -325,13 +348,18 @@ StatusOr<std::unique_ptr<se::DeviceMemoryAllocator>> GetGpuDeviceAllocator(
 // transfers. We use a fixed 64MB pool of pinned memory.
 std::unique_ptr<tensorflow::BFCAllocator> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
-  tensorflow::SubAllocator* sub_allocator = new tensorflow::DeviceHostAllocator(
-      executor, /*numa_node=*/0, /*alloc_visitors=*/{}, /*free_visitors=*/{});
+  std::unique_ptr<tensorflow::SubAllocator> sub_allocator(
+      new tensorflow::DeviceHostAllocator(executor, /*numa_node=*/0,
+                                          /*alloc_visitors=*/{},
+                                          /*free_visitors=*/{}));
   // TODO(phawkins): allow the user to tune this.
   const int64_t kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
+
+  tensorflow::BFCAllocator::Options opts;
+  opts.allow_growth = true;
   return absl::make_unique<tensorflow::BFCAllocator>(
-      sub_allocator, kGpuHostMemoryLimitBytes, /*allow_growth=*/true,
-      /*name=*/"xla_gpu_host_bfc");
+      std::move(sub_allocator), kGpuHostMemoryLimitBytes,
+      /*name=*/"xla_gpu_host_bfc", opts);
 }
 
 // A table mapping NcclCliqueKeys to ncclUniqueId values encoded as strings.
@@ -487,6 +515,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
       BuildLocalDeviceStates(xla_client, asynchronous));
+  EnablePeerAccess(xla_client->backend().stream_executors());
   TF_ASSIGN_OR_RETURN(
       auto allocator,
       GetGpuDeviceAllocator(xla_client->platform(), allocator_config,
@@ -505,7 +534,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
   }
 
   return std::unique_ptr<PjRtClient>(std::make_unique<GpuClient>(
-      kGpuName, xla_client, std::move(devices),
+      GpuName(), xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator),
       /*should_stage_host_to_device_transfers=*/true,

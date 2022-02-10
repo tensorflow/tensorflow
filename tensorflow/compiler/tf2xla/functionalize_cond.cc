@@ -975,9 +975,7 @@ Status FunctionalizeCond::AddIdentityNode(const Node* replacee, Node* if_node,
 StatusOr<Node*> FunctionalizeCond::AddIfNode(const NodeDef& def,
                                              const Node* replacee,
                                              const OutputTensor& predicate) {
-  Status status;
-  Node* ret = graph_->AddNode(def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * ret, graph_->AddNode(def));
   VLOG(1) << "Adding If for " << replacee->name();
   StateMap::CondId id = state_map_.LookupCondId(replacee);
   if (id) {
@@ -1000,7 +998,7 @@ Status FunctionalizeCond::PropagateUpdatedState(const Node* replacee) {
   // TODO(jpienaar): The original topological order could also be updated
   // dynamically if needed.
   std::vector<Node*> rev_topo_order;
-  GetPostOrder(*graph_, &rev_topo_order);
+  GetPostOrder(*graph_, &rev_topo_order, NodeComparatorID());
 
   // All the outputs of the new node could potentially be updated.
   std::unordered_set<Node*> changed;
@@ -1519,7 +1517,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   ShapeRefiner shape_refiner{graph_->versions().producer(),
                              graph_->op_registry()};
   std::vector<Node*> nodes;
-  GetReversePostOrder(*graph_, &nodes);
+  GetReversePostOrder(*graph_, &nodes, NodeComparatorID());
   for (auto node : nodes) {
     if (!shape_refiner.AddNode(node).ok()) {
       LOG(WARNING) << "Couldn't deduce shape for " << node->name();

@@ -388,7 +388,6 @@ cc_test(
     ],
     deps = [
         ":cl_test",
-        "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",

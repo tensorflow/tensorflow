@@ -114,6 +114,7 @@ class BufferValueMap {
   // iterate through all buffers stabily.
   std::vector<BufferNumber> ComputeSortedBufferNumbers() const {
     std::vector<BufferNumber> buffer_numbers;
+    buffer_numbers.reserve(buffers_.size());
     for (const auto& pair : buffers_) {
       buffer_numbers.push_back(pair.first);
     }
@@ -484,8 +485,9 @@ Status HloAliasAnalysis::Verify() const {
   return Status::OK();
 }
 
-string HloAliasAnalysis::ToString() const {
-  string out = absl::StrCat("HloAliasAnalysis, module ", module_->name(), "\n");
+std::string HloAliasAnalysis::ToString() const {
+  std::string out =
+      absl::StrCat("HloAliasAnalysis, module ", module_->name(), "\n");
   StrAppend(&out, "  Buffers at each position:\n");
   for (const HloComputation* computation : module_->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
@@ -673,7 +675,7 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
                                 dataflow_analysis())) {
         VLOG(1) << "In buffer " << buffer.id() << " containing values:\n  "
                 << absl::StrJoin(values, ", ",
-                                 [](string* out, const HloValue* value) {
+                                 [](std::string* out, const HloValue* value) {
                                    StrAppend(out, value->ToShortString());
                                  })
 

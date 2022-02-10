@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_FUSED_IR_EMITTER_H_
 
 #include <map>
-#include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
@@ -96,7 +95,7 @@ class FusedIrEmitter {
   // Map from instructions to functions that generate code for the output
   // elements. If an instruction is a GetTupleElement instruction, the
   // instruction produces non-tuple result.
-  std::unordered_map<const HloInstruction*, IndexedGenerator>
+  absl::flat_hash_map<const HloInstruction*, IndexedGenerator>
       indexed_generators_;
 
   // Cache of generated values, lest we regenerate an element of a node with

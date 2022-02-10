@@ -8,6 +8,7 @@ package_group(
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/tfrt/...",
         "//learning/brain/mobile/lite/...",
     ]),
 )
@@ -33,7 +34,7 @@ tf_cc_binary(
         # copybara:uncomment "//tensorflow/core/runtime_fallback/test:forwarding_test_kernels",
         # copybara:uncomment "//tensorflow/core/runtime_fallback/test:tfrt_forwarding_kernels_alwayslink",
         "//tensorflow/core/runtime_fallback/conversion:conversion_alwayslink",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_kernels_alwayslink",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext_alwayslink",
@@ -44,7 +45,7 @@ tf_cc_binary(
         # copybara:uncomment "@tf_runtime//backends/cpu:image_alwayslink",
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:test_ops_alwayslink",
-        "@tf_runtime//backends/cpu:cpurt_corert_kernels_alwayslink",
+        "@tf_runtime//backends/jitrt:jitrt_corert_kernels_alwayslink",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -137,7 +138,8 @@ tf_cc_binary(
         ":tfrt_fallback_registration",
         ":tfrt_fallback_sync_opdefs",
         "@llvm-project//mlir:Translation",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_registration",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:mlirtobef_translate",
     ] + if_google(
@@ -185,6 +187,7 @@ alias(
         ":internal",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "//third_party/tf_runtime_google:__subpackages__",
     ],
 )
 

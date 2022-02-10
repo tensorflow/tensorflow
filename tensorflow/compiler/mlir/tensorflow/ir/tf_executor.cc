@@ -160,9 +160,8 @@ LogicalResult VerifyControlOperandsAfterAllData(Operation *op) {
 
 FetchOp GraphOp::GetFetch() { return llvm::cast<FetchOp>(GetBody().back()); }
 
-namespace {
-
-LogicalResult Verify(GraphOp graph) {
+LogicalResult GraphOp::verify() {
+  GraphOp graph = *this;
   auto *executorDialect = graph->getDialect();
 
   if (graph.GetBody().empty())
@@ -203,15 +202,20 @@ LogicalResult Verify(GraphOp graph) {
     if (i >= num_results)
       return fetch.emitOpError()
              << "operand #" << i << " does not have a graph results to bind";
-    if (graph.getResult(i).getType() != operand.getType())
+    if (graph.getResult(i).getType() != operand.getType()) {
       return fetch.emitOpError()
-             << "operand #" << i << " type mismatch graph results";
+             << "operand #" << i << " type mismatch graph results ("
+             << graph.getResult(i).getType() << " != " << operand.getType()
+             << ")";
+    }
   }
   return success();
 }
 
+namespace {
+
 void Print(GraphOp graph, OpAsmPrinter &p) {
-  p << graph.getOperationName();
+  p << ' ';
   p.printRegion(graph.getOperation()->getRegion(0));
   p.printOptionalAttrDict(graph->getAttrs());
 }
@@ -249,7 +253,7 @@ ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-}  // anonymous namespace
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // tf_executor.fetch
@@ -274,9 +278,8 @@ bool IslandOp::WrapsSingleOp() {
                     wrapped_op.getResults().end(), yield.getOperands().begin());
 }
 
-namespace {
-
-LogicalResult Verify(IslandOp island) {
+mlir::LogicalResult IslandOp::verify() {
+  IslandOp island = *this;
   if (!island.GetBody().args_empty())
     return island.emitOpError() << "expects body without any arguments";
 
@@ -309,8 +312,9 @@ LogicalResult Verify(IslandOp island) {
   return success();
 }
 
+namespace {
+
 void Print(IslandOp op, OpAsmPrinter &p) {
-  p << op.getOperationName();
   if (op.getNumOperands()) {
     // These are always control operand, no explicit type needed.
     p << '(';
@@ -334,6 +338,7 @@ void Print(IslandOp op, OpAsmPrinter &p) {
       return;
     }
   }
+  p << ' ';
   p.printRegion(op.getOperation()->getRegion(0));
   p.printOptionalAttrDict(op->getAttrs());
 }
@@ -436,7 +441,7 @@ ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
 }
 
 void Print(SwitchOp switch_op, OpAsmPrinter &p) {
-  p << switch_op.getOperationName() << ' ';
+  p << ' ';
   p.printOperands(switch_op.getOperands());
   Type data_operand_ty = switch_op.data().getType();
   // If the types aren't perfectly matching, print the functional type syntax
@@ -458,9 +463,8 @@ void Print(SwitchOp switch_op, OpAsmPrinter &p) {
 // tf_executor.SwitchN
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-LogicalResult Verify(SwitchNOp switchn) {
+LogicalResult SwitchNOp::verify() {
+  SwitchNOp switchn = *this;
   IntegerAttr num_outs = switchn->getAttrOfType<IntegerAttr>("num_outs");
   if (!num_outs)
     return switchn.emitOpError() << "expects a `num_outs` integer attribute";
@@ -512,8 +516,10 @@ LogicalResult Verify(SwitchNOp switchn) {
   return success();
 }
 
+namespace {
+
 void Print(SwitchNOp switchn, OpAsmPrinter &p) {
-  p << switchn.getOperationName() << ' ';
+  p << ' ';
   auto operands = switchn.getOperands();
   // Print the 2 data operands.
   p.printOperands(operands.begin(), std::next(operands.begin(), 2));
@@ -577,9 +583,8 @@ ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
 // tf_executor.Merge
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-LogicalResult Verify(MergeOp merge) {
+LogicalResult MergeOp::verify() {
+  MergeOp merge = *this;
   if (!merge.getNumOperands())
     return merge.emitOpError() << "expects at least one operand";
 
@@ -627,6 +632,8 @@ LogicalResult Verify(MergeOp merge) {
   return success();
 }
 
+namespace {
+
 void Print(MergeOp merge, OpAsmPrinter &p) {
   // Use short form only when there are exactly two data operands and their
   // type matches the output type. Otherwise, use the generic printer.
@@ -644,7 +651,7 @@ void Print(MergeOp merge, OpAsmPrinter &p) {
     }
   }
 
-  p << merge.getOperationName() << ' ';
+  p << ' ';
   p.printOperands(merge.getOperands());
 
   // Print the type signature of the operation.
@@ -704,7 +711,7 @@ namespace {
 constexpr int kDefaultParallelIterations = 10;
 
 void Print(EnterOp enter, OpAsmPrinter &p) {
-  p << enter.getOperationName() << ' ';
+  p << ' ';
   p.printOperands(enter.getOperands());
 
   p << " frame \"";
@@ -790,9 +797,8 @@ ParseResult ParseEnterOp(OpAsmParser &parser, OperationState &result) {
 // tf_executor.NextIteration.Source
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-LogicalResult Verify(NextIterationSourceOp source) {
+LogicalResult NextIterationSourceOp::verify() {
+  NextIterationSourceOp source = *this;
   Value token = source.token();
   if (!token.hasOneUse())
     return source.emitOpError() << "expects a single user for produced token";
@@ -801,15 +807,12 @@ LogicalResult Verify(NextIterationSourceOp source) {
   return success();
 }
 
-}  // anonymous namespace
-
 //===----------------------------------------------------------------------===//
 // tf_executor.NextIteration.Sink
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-LogicalResult Verify(NextIterationSinkOp sink) {
+LogicalResult NextIterationSinkOp::verify() {
+  NextIterationSinkOp sink = *this;
   Value token = sink.token();
   Operation *definingOp = token.getDefiningOp();
   if (!definingOp)
@@ -827,8 +830,6 @@ LogicalResult Verify(NextIterationSinkOp sink) {
   return success();
 }
 
-}  // anonymous namespace
-
 NextIterationSourceOp NextIterationSinkOp::GetSource() {
   return cast<NextIterationSourceOp>(token().getDefiningOp());
 }
@@ -840,7 +841,7 @@ NextIterationSourceOp NextIterationSinkOp::GetSource() {
 namespace {
 
 void Print(ExitOp exit, OpAsmPrinter &p) {
-  p << exit.getOperationName() << ' ';
+  p << ' ';
   p.printOperands(exit.getOperands());
   p << " : " << exit.getType(0);
   p.printOptionalAttrDict(exit->getAttrs());
@@ -876,7 +877,7 @@ ParseResult ParseExitOp(OpAsmParser &parser, OperationState &result) {
 namespace {
 
 void Print(LoopCondOp loop_cond, OpAsmPrinter &p) {
-  p << loop_cond.getOperationName() << ' ';
+  p << ' ';
   p.printOperands(loop_cond.getOperands());
 
   // If the types aren't matching (broadcast), print the functional type syntax.
@@ -1015,9 +1016,9 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
 };
 }  // anonymous namespace
 
-void GraphOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void GraphOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<DropEmptyGraph, HoistInnerOpsSingleIslandGraph>(context);
+  results.add<DropEmptyGraph, HoistInnerOpsSingleIslandGraph>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1073,10 +1074,10 @@ struct DropEmptyIslandNoOperandOneDataResult
 
 }  // anonymous namespace
 
-void IslandOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void IslandOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<DropEmptyIslandNoOperandNoDataResult,
-                 DropEmptyIslandNoOperandOneDataResult>(context);
+  results.add<DropEmptyIslandNoOperandNoDataResult,
+              DropEmptyIslandNoOperandOneDataResult>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1103,9 +1104,9 @@ struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
 };
 }  // anonymous namespace
 
-void ControlTriggerOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<DropEmptyControlTrigger>(context);
+void ControlTriggerOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                   MLIRContext *context) {
+  results.add<DropEmptyControlTrigger>(context);
 }
 
 //===----------------------------------------------------------------------===//

@@ -102,7 +102,7 @@ inline bool IsNonArithmeticOp(mlir::Operation* op) {
   if (llvm::isa<ReturnOp, FuncOp>(op)) return true;
   if (op->hasTrait<OpTrait::ConstantLike>()) return true;
   if (llvm::isa<QConstOp, SparseQConstOp>(op)) return true;
-  if (!IsTFLNonQuantDequantizeOp(op)) return true;
+  if (!NotTFLQuantDequantizeOp(op)) return true;
   return false;
 }
 
@@ -126,8 +126,8 @@ double TargetHardware::GetOpCost(mlir::Operation* op) const {
   if (registered_ops == nullptr) {
     return kDefaultFixedValuedCost;
   }
-  auto* abstract_op = op->getAbstractOperation();
-  auto hardware_op = registered_ops->find(abstract_op->typeID);
+  auto abstract_op = op->getRegisteredInfo();
+  auto hardware_op = registered_ops->find(abstract_op->getTypeID());
   if (hardware_op == registered_ops->end()) return kDefaultFixedValuedCost;
   return hardware_op->second->GetOpCost(op);
 }
@@ -137,8 +137,8 @@ bool TargetHardware::IsOpSupported(mlir::Operation* op) const {
   if (registered_ops == nullptr) {
     return false;
   }
-  auto* abstract_op = op->getAbstractOperation();
-  auto hardware_op = registered_ops->find(abstract_op->typeID);
+  auto abstract_op = op->getRegisteredInfo();
+  auto hardware_op = registered_ops->find(abstract_op->getTypeID());
   if (hardware_op == registered_ops->end()) return false;
   return hardware_op->second->IsOpSupported(op);
 }
@@ -277,7 +277,10 @@ bool ProcessTargetDevices(llvm::ArrayRef<std::string> specified_device_specs,
 
   // Make sure all the devices are registered.
   for (const std::string& device : *device_specs) {
-    if (GetTargetHardware(device) == nullptr) return false;
+    if (GetTargetHardware(device) == nullptr) {
+      llvm::errs() << "cannot get target hardware for device: " << device;
+      return false;
+    }
   }
 
   return true;

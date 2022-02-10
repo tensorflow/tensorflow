@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -183,36 +184,12 @@ Status XlaOpKernelContext::ConstantInput(absl::string_view name,
 Status XlaOpKernelContext::ConstantInputReshaped(
     int index, absl::Span<const int64_t> new_dims,
     xla::Literal* constant_literal, xla::ValueInferenceMode mode) {
-  XlaExpression e = InputExpression(index);
-  auto* client = compiler() ? compiler()->client() : nullptr;
-  StatusOr<absl::optional<Tensor>> constant_or_status =
-      e.ResolveConstant(client, dynamic_dimension_is_minus_one_, mode);
-  if (!constant_or_status.ok()) {
-    Status status = constant_or_status.status();
-    errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
-                            context_->op_kernel().type_string(),
-                            " operator as a compile-time constant.");
-    return status;
-  }
-  absl::optional<Tensor> constant = constant_or_status.ValueOrDie();
-  if (!constant.has_value()) {
-    return errors::InvalidArgument(
-        "Input ", index, " to node `", context_->op_kernel().name(),
-        "` with op ", context_->op_kernel().type_string(),
-        " must be a compile-time constant.\n\n"
-        "XLA compilation requires that operator arguments that represent "
-        "shapes or dimensions be evaluated to concrete values at compile time. "
-        "This error means that a shape or dimension argument could not be "
-        "evaluated at compile time, usually because the value of the argument "
-        "depends on a parameter to the computation, on a variable, or on a "
-        "stateful operation such as a random number generator.");
-  }
-
-  Tensor temp(constant->dtype());
-  if (!temp.CopyFrom(*constant, TensorShape(new_dims))) {
+  TF_ASSIGN_OR_RETURN(Tensor constant, ConstantInputTensor(index, mode));
+  Tensor temp(constant.dtype());
+  if (!temp.CopyFrom(constant, TensorShape(new_dims))) {
     return errors::InvalidArgument(
         context_->op_kernel().name(), " input ", index, " has shape ",
-        constant->shape().DebugString(),
+        constant.shape().DebugString(),
         " but was asked to be reshaped to incompatible shape ",
         TensorShape(new_dims).DebugString());
   }
@@ -276,8 +253,8 @@ Status XlaOpKernelContext::ConstantInputAsFloatScalar(
 static Status LiteralToPredVector(const xla::LiteralSlice& literal,
                                   std::vector<bool>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D, rank: ",
-                                   literal.shape().rank());
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   literal.shape().DebugString());
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() != xla::PRED) {
@@ -377,8 +354,8 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
 static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                    std::vector<int64_t>* out) {
   if (literal.shape().rank() != 1) {
-    return errors::InvalidArgument("value is not 1D, rank: ",
-                                   literal.shape().rank());
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   literal.shape().DebugString());
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {
@@ -518,6 +495,35 @@ Status XlaOpKernelContext::ConstantInputList(absl::string_view name,
   return Status::OK();
 }
 
+StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
+    int index, xla::ValueInferenceMode mode) {
+  XlaExpression e = InputExpression(index);
+  auto* client = compiler() ? compiler()->client() : nullptr;
+  StatusOr<absl::optional<Tensor>> constant_or_status =
+      e.ResolveConstant(client, dynamic_dimension_is_minus_one_, mode);
+  if (!constant_or_status.ok()) {
+    Status status = constant_or_status.status();
+    errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
+                            context_->op_kernel().type_string(),
+                            " operator as a compile-time constant.");
+    return status;
+  }
+  absl::optional<Tensor> constant = constant_or_status.ValueOrDie();
+  if (!constant.has_value()) {
+    return errors::InvalidArgument(
+        "Input ", index, " to node `", context_->op_kernel().name(),
+        "` with op ", context_->op_kernel().type_string(),
+        " must be a compile-time constant.\n\n"
+        "XLA compilation requires that operator arguments that represent "
+        "shapes or dimensions be evaluated to concrete values at compile time. "
+        "This error means that a shape or dimension argument could not be "
+        "evaluated at compile time, usually because the value of the argument "
+        "depends on a parameter to the computation, on a variable, or on a "
+        "stateful operation such as a random number generator.");
+  }
+  return *constant;
+}
+
 namespace {
 
 Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
@@ -536,8 +542,8 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   }
   if (variable->type() != type) {
     return errors::InvalidArgument(
-        "Type mismatch for read of variable ", variable->name(), ". Expected ",
-        DataTypeString(type), "; got ", DataTypeString(variable->type()));
+        "Trying to read variable with wrong dtype. Expected ",
+        DataTypeString(type), " got ", DataTypeString(variable->type()));
   }
   if (shape) {
     *shape = variable->shape();
@@ -549,11 +555,15 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
     *value = xla::ConstantLiteral(ctx->builder(), literal);
     return Status::OK();
   }
-
+  auto shape_determination_fns =
+      ctx->compiler()->options().shape_determination_fns;
+  XlaLayoutPreference layout_preference =
+      shape_determination_fns.layout_preference_fn(
+          variable->shape(), variable->type(), absl::nullopt);
   TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
-                      ctx->compiler()->options().shape_representation_fn(
+                      shape_determination_fns.shape_representation_fn(
                           variable->shape(), variable->type(),
-                          /*use_fast_memory=*/false));
+                          /*use_fast_memory=*/false, layout_preference));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       TensorShapeToXLAShape(variable->type(), variable->shape(), &xla_shape));
@@ -693,15 +703,18 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
 
   TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
 
+  auto shape_determination_fns =
+      ctx->compiler()->options().shape_determination_fns;
+  XlaLayoutPreference layout_preference =
+      shape_determination_fns.layout_preference_fn(shape, type, absl::nullopt);
   TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
-                      ctx->compiler()->options().shape_representation_fn(
+                      shape_determination_fns.shape_representation_fn(
                           shape, type,
-                          /*use_fast_memory=*/false));
+                          /*use_fast_memory=*/false, layout_preference));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
   if (!xla::ShapeUtil::Compatible(xla_shape, representation_shape)) {
-    handle = xla::Reshape(handle,
-                          xla::AsInt64Slice(representation_shape.dimensions()));
+    handle = xla::Reshape(handle, representation_shape.dimensions());
   }
   variable->SetRepresentationShape(representation_shape);
   return variable->SetValue(handle);

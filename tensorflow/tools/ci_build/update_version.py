@@ -47,7 +47,7 @@ def check_existence(filename):
   """Check the existence of file or dir."""
   if not os.path.exists(filename):
     raise RuntimeError("%s not found. Are you under the TensorFlow source root"
-                       " directory?")
+                       " directory?" % filename)
 
 
 def check_all_files():

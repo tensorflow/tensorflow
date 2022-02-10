@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.check_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 import numpy as np
@@ -38,6 +34,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -1200,7 +1197,7 @@ class AssertRankTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raises_if_rank_is_not_integer_static(self):
     tensor = constant_op.constant([1, 2], name="my_tensor")
-    with self.assertRaisesRegex(TypeError, "must be of type <dtype: 'int32'>"):
+    with self.assertRaisesRegex(TypeError, "must be of type tf.int32"):
       check_ops.assert_rank(tensor, .5)
 
   @test_util.run_deprecated_v1
@@ -1209,8 +1206,7 @@ class AssertRankTest(test.TestCase):
       tensor = constant_op.constant(
           [1, 2], dtype=dtypes.float32, name="my_tensor")
       rank_tensor = array_ops.placeholder(dtypes.float32, name="rank_tensor")
-      with self.assertRaisesRegex(TypeError,
-                                  "must be of type <dtype: 'int32'>"):
+      with self.assertRaisesRegex(TypeError, "must be of type tf.int32"):
         with ops.control_dependencies(
             [check_ops.assert_rank(tensor, rank_tensor)]):
           array_ops.identity(tensor).eval(feed_dict={rank_tensor: .5})
@@ -1318,7 +1314,7 @@ class AssertRankInTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raises_if_rank_is_not_integer_static(self):
     tensor = constant_op.constant((42, 43), name="my_tensor")
-    with self.assertRaisesRegex(TypeError, "must be of type <dtype: 'int32'>"):
+    with self.assertRaisesRegex(TypeError, "must be of type tf.int32"):
       check_ops.assert_rank_in(tensor, (1, .5,))
 
   @test_util.run_deprecated_v1
@@ -1327,8 +1323,7 @@ class AssertRankInTest(test.TestCase):
       tensor = constant_op.constant(
           (42, 43), dtype=dtypes.float32, name="my_tensor")
       rank_tensor = array_ops.placeholder(dtypes.float32, name="rank_tensor")
-      with self.assertRaisesRegex(TypeError,
-                                  "must be of type <dtype: 'int32'>"):
+      with self.assertRaisesRegex(TypeError, "must be of type tf.int32"):
         with ops.control_dependencies(
             [check_ops.assert_rank_in(tensor, (1, rank_tensor))]):
           array_ops.identity(tensor).eval(feed_dict={rank_tensor: .5})
@@ -1539,9 +1534,18 @@ class AssertTypeTest(test.TestCase):
     self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  def test_raggedtensor_doesnt_raise_when_correct_type(self):
+    x = ragged_factory_ops.constant([[1., 2.], [3.]])
+    with ops.control_dependencies(
+        [check_ops.assert_type(x, dtypes.float32)]):
+      y = array_ops.identity(x)
+    self.assertAllEqual(x, y)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_raises_when_wrong_type(self):
     floats = constant_op.constant([1.0, 2.0], dtype=dtypes.float16)
-    with self.assertRaisesRegex(TypeError, "must be of type.*float32"):
+    with self.assertRaisesRegex(TypeError, "must be of type tf.float32; "
+                                "got tf.float16"):
       check_ops.assert_type(floats, dtypes.float32)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1552,6 +1556,12 @@ class AssertTypeTest(test.TestCase):
         constant_op.constant([500], dtypes.int64))
     with self.assertRaisesRegexp(TypeError, "must be of type.*float32"):
       check_ops.assert_type(sparse_float16, dtypes.float32)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_raggedtensor_raises_when_wrong_type(self):
+    x = ragged_factory_ops.constant([[1, 2], [3]])
+    with self.assertRaisesRegex(TypeError, "must be of type.*float32"):
+      check_ops.assert_type(x, dtypes.float32)
 
   def test_raise_when_tf_type_is_not_dtype(self):
     # Test case for GitHub issue:

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrapper for post training quantization with calibration."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.lite.python.convert_phase import Component
@@ -78,38 +74,68 @@ class Calibrator(object):
       raise ValueError("Failed to parse the model: %s." % e)
     if not self._calibrator:
       raise ValueError("Failed to parse the model.")
+    self._interpreter = None
+
+  def _create_input_array_from_dict(self, signature_key, inputs):
+    input_array = []
+    signature_runner = self._interpreter.get_signature_runner(signature_key)
+    input_details = sorted(
+        signature_runner.get_input_details().items(),
+        key=lambda item: item[1]["index"])
+    for input_name, _ in input_details:
+      input_array.append(inputs[input_name])
+    return input_array
 
   def _feed_tensors(self, dataset_gen, resize_input):
     """Feed tensors to the calibrator."""
-    initialized = False
+    initialized = {}
+
     for sample in dataset_gen():
-      if isinstance(sample, dict):
+      if isinstance(sample, tuple):
+        if not isinstance(sample[1], dict):
+          raise ValueError("You need to provide either a dictionary with input "
+                           "names and values in the second arugment in the "
+                           "tuple")
         # Convert signature based inputs to the tensor index based data.
-        if not hasattr(self, "_interpreter"):
+        if self._interpreter is None:
           self._interpreter = Interpreter(model_content=self._model_content)
-        input_array = []
-        signature_runner = self._interpreter.get_signature_runner()
-        input_details = sorted(
-            signature_runner.get_input_details().items(),
-            key=lambda item: item[1]["index"])
-        for input_name, input_detail in input_details:
-          input_array.append(sample[input_name])
+        signature_key = sample[0]
+        input_array = self._create_input_array_from_dict(
+            signature_key, sample[1])
+      elif isinstance(sample, dict):
+        # Convert signature based inputs to the tensor index based data.
+        if self._interpreter is None:
+          self._interpreter = Interpreter(model_content=self._model_content)
+        signature_key = None
+        input_array = self._create_input_array_from_dict(None, sample)
       elif isinstance(sample, list):
+        signature_key = None
         input_array = sample
       else:
         raise ValueError("You need to provide either a dictionary with input "
-                         "names or values and an array with input values in "
-                         "the order of input tensors of the graph in the "
-                         "representative_dataset function. Unsupported value "
-                         "from dataset: {}.".format(sample))
+                         "names and values, a tuple with signature key and a "
+                         "dictionary with input names and values, or an array "
+                         "with input values in the order of input tensors of "
+                         "the graph in the representative_dataset function. "
+                         "Unsupported value from dataset: {}.".format(sample))
 
-      if not initialized:
-        initialized = True
+      if signature_key not in initialized:
+        initialized[signature_key] = True
         if resize_input:
-          self._calibrator.Prepare([list(s.shape) for s in input_array])
+          if signature_key is not None:
+            self._calibrator.Prepare([list(s.shape) for s in input_array],
+                                     signature_key)
+          else:
+            self._calibrator.Prepare([list(s.shape) for s in input_array])
         else:
-          self._calibrator.Prepare()
-      self._calibrator.FeedTensor(input_array)
+          if signature_key is not None:
+            self._calibrator.Prepare(signature_key)
+          else:
+            self._calibrator.Prepare()
+      if signature_key is not None:
+        self._calibrator.FeedTensor(input_array, signature_key)
+      else:
+        self._calibrator.FeedTensor(input_array)
 
   @convert_phase(Component.OPTIMIZE_TFLITE_MODEL,
                  SubComponent.QUANTIZE_USING_DEPRECATED_QUANTIZER)
@@ -119,6 +145,7 @@ class Calibrator(object):
                              output_type,
                              allow_float,
                              activations_type=dtypes.int8,
+                             bias_type=dtypes.int32,
                              resize_input=True,
                              disable_per_channel=False):
     """Calibrates the model with specified generator and then quantizes it.
@@ -139,6 +166,7 @@ class Calibrator(object):
                    quantized, otherwise the model will fallback to float ops.
       activations_type: A tf.dtype representing the desired type for
                    activations.
+      bias_type: A tf.dtype representing the desired type for bias.
       resize_input: A boolean. True if the shape of the sample data is different
         from the input.
       disable_per_channel: A boolean. True if disabling per-channel
@@ -149,7 +177,7 @@ class Calibrator(object):
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float,
         np.dtype(activations_type.as_numpy_dtype()).num,
-        disable_per_channel)
+        np.dtype(bias_type.as_numpy_dtype()).num, disable_per_channel)
 
   @convert_phase(Component.OPTIMIZE_TFLITE_MODEL,
                  SubComponent.QUANTIZE_USING_DEPRECATED_QUANTIZER)

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 
 namespace tensorflow {
 
@@ -257,6 +258,13 @@ class DenseBincountOp : public OpKernel {
  public:
   explicit DenseBincountOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(
+          ctx, !OpDeterminismRequired(),
+          errors::Unimplemented(
+              "Determinism is not yet supported in GPU implementation of "
+              "DenseBincount."));
+    }
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -268,6 +276,9 @@ class DenseBincountOp : public OpKernel {
     const Tensor& size_t = ctx->input(1);
     const Tensor& weights = ctx->input(2);
 
+    OP_REQUIRES(ctx, size_t.dims() == 0,
+                errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                        size_t.dims()));
     Tidx size = size_t.scalar<Tidx>()();
     OP_REQUIRES(
         ctx, size >= 0,
@@ -364,6 +375,9 @@ class SparseBincountOp : public OpKernel {
     const auto weights = ctx->input(4).flat<T>();
     const int64_t weights_size = weights.size();
 
+    OP_REQUIRES(ctx, size_t.dims() == 0,
+                errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                        size_t.dims()));
     Tidx size = size_t.scalar<Tidx>()();
     OP_REQUIRES(
         ctx, size >= 0,
@@ -397,6 +411,16 @@ class SparseBincountOp : public OpKernel {
       for (int64_t i = 0; i < indices_mat.dimension(0); ++i) {
         const int64_t batch = indices_mat(i, 0);
         const Tidx bin = values(i);
+        OP_REQUIRES(
+            ctx, batch < out.dimension(0),
+            errors::InvalidArgument("Index out of bound. `batch` (", batch,
+                                    ") must be less than the dimension size (",
+                                    out.dimension(0), ")."));
+        OP_REQUIRES(
+            ctx, bin < out.dimension(1),
+            errors::InvalidArgument("Index out ouf bound. `bin` (", bin,
+                                    ") must be less then the dimension size (",
+                                    out.dimension(1), ")."));
         if (bin < size) {
           if (binary_output_) {
             out(batch, bin) = T(1);
@@ -444,6 +468,9 @@ class RaggedBincountOp : public OpKernel {
     const auto weights = ctx->input(3).flat<T>();
     const int64_t weights_size = weights.size();
 
+    OP_REQUIRES(ctx, size_t.dims() == 0,
+                errors::InvalidArgument("Shape must be rank 0 but is rank ",
+                                        size_t.dims()));
     Tidx size = size_t.scalar<Tidx>()();
     OP_REQUIRES(
         ctx, size >= 0,

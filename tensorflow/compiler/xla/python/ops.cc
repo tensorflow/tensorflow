@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/client/lib/approx_topk.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/lu_decomposition.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
@@ -92,6 +93,15 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("concat_dimension"), py::arg("split_count"),
           py::arg("replica_groups") = py::list(),
           py::arg("layout") = absl::nullopt);
+  ops.def("ApproxTopK", &ApproxTopK, py::arg("builder"), py::arg("operands"),
+          py::arg("init_values"), py::arg("top_k"), py::arg("reduction_dim"),
+          py::arg("comparator"), py::arg("recall_target") = 0.9,
+          py::arg("aggregate_to_topk") = true,
+          py::arg("reduction_input_size_override") = -1);
+  ops.def("ApproxTopKReductionOutputSize", &ApproxTopKReductionOutputSize,
+          py::arg("input_size"), py::arg("rank"), py::arg("top_k"),
+          py::arg("recall_target"), py::arg("aggregate_to_topk") = true,
+          py::arg("input_size_override") = -1);
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));
@@ -340,6 +350,7 @@ void BuildOpsSubmodule(py::module* m) {
          bool is_stable) -> XlaOp {
         return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
           std::vector<PrimitiveType> operand_types;
+          operand_types.reserve(operands.size());
           for (const auto& operand : operands) {
             TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
             operand_types.push_back(operand_shape.element_type());
@@ -456,6 +467,7 @@ void BuildOpsSubmodule(py::module* m) {
   UNARY_OP(Real);
   UNARY_OP(Imag);
   UNARY_OP(Conj);
+  UNARY_OP(OptimizationBarrier);
 #undef UNARY_OP
 }
 

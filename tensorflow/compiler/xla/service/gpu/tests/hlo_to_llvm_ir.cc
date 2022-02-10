@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #endif
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -71,8 +72,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                       xla::gpu::CompileModuleToLlvmIr(
                           hlo_module.get(), &llvm_context,
-                          /*target_triple=*/xla::gpu::nvptx::kTargetTriple,
-                          /*data_layout=*/xla::gpu::nvptx::kDataLayout,
+                          /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
+                          /*data_layout=*/xla::gpu::nvptx::DataLayout(),
                           /*platform_name=*/"CUDA", gpu_device_info,
                           cuda_compute_capability, /*pointer_size=*/8));
 

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for multinomial generation ops in the XLA JIT compiler."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 import numpy as np
@@ -29,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 # TODO(srvasude): Merge this with
@@ -105,6 +102,8 @@ class CategoricalTest(xla_test.XLATestCase):
     for output_dtype in self.output_dtypes():
       self._testRngIsNotConstant(rng, dtype, output_dtype)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="Test fails on ROCm.")
   def testCategoricalIsInRange(self):
     for dtype in self.float_types:
       for output_dtype in self.output_dtypes():

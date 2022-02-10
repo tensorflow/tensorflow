@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 
@@ -37,8 +38,8 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
 
   computeMultiplierAndShift(scale, multiplier, shift, scale_width);
 
-  auto rescale_op = rewriter.create<tosa::RescaleOp>(
-      op->getLoc(), output_type, input_val,
+  auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
+      rewriter, op->getLoc(), output_type, input_val,
       rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
       rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
       rewriter.getI32ArrayAttr({multiplier}), rewriter.getI32ArrayAttr({shift}),
@@ -92,6 +93,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
   bool scale32 = isScale32(output_qtype);
   int32_t scale_width = scale32 ? 32 : 16;
+  // Only use double round if we are doing 32 bit scaling
+  bool double_round = scale32;
 
   if (auto weight_per_tensor_qtype =
           weight_type.getElementType()
@@ -106,12 +109,12 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
     computeMultiplierAndShift(op_tensor_scale, multiplier, shift, scale_width);
 
-    auto rescale_op = rewriter.create<tosa::RescaleOp>(
-        op->getLoc(), output_type, conv_val, rewriter.getI32IntegerAttr(0),
-        rewriter.getI32IntegerAttr(output_zp),
+    auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
+        rewriter, op->getLoc(), output_type, conv_val,
+        rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getI32ArrayAttr({multiplier}),
         rewriter.getI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(true), rewriter.getBoolAttr(false));
+        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
 
     return rescale_op.getResult();
 
@@ -119,9 +122,6 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                  weight_type.getElementType()
                      .dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
     // Per-channel quantization
-    auto output_last_axis = output_type.getShape().size() - 1;
-    uint32_t output_channels = output_type.getShape()[output_last_axis];
-
     SmallVector<int32_t> multiplier_arr;
     SmallVector<int32_t> shift_arr;
 
@@ -132,9 +132,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     int64_t output_zp = output_qtype.getZeroPoint();
     double output_scale = output_qtype.getScale();
 
-    for (uint32_t oc = 0; oc < output_channels; oc++) {
-      double weight_scale = weight_scale_arr[oc];
-
+    for (double weight_scale : weight_scale_arr) {
       int32_t multiplier;
       int32_t shift;
 
@@ -147,12 +145,12 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
       shift_arr.push_back(shift);
     }
 
-    auto rescale_op = rewriter.create<tosa::RescaleOp>(
-        op->getLoc(), output_type, conv_val, rewriter.getI32IntegerAttr(0),
-        rewriter.getI32IntegerAttr(output_zp),
+    auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
+        rewriter, op->getLoc(), output_type, conv_val,
+        rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getI32ArrayAttr(multiplier_arr),
         rewriter.getI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(true), rewriter.getBoolAttr(true));
+        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(true));
 
     return rescale_op.getResult();
 
@@ -439,6 +437,12 @@ bool getTransposeConv2dPaddingValues(
     int64_t dim_dilation = dilations[i].template cast<IntegerAttr>().getInt();
     int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
 
+    // These dimensions need to be static to legalize.
+    if (ShapedType::isDynamic(filter_size) || ShapedType::isDynamic(ifm_size) ||
+        ShapedType::isDynamic(ofm_size)) {
+      return false;
+    }
+
     int effective_filter_size = (filter_size - 1) * dim_dilation + 1;
     int total_padding =
         ((ifm_size - 1) * dim_stride + effective_filter_size - ofm_size);
@@ -535,6 +539,65 @@ template llvm::Optional<Value> getConstTensor<int32_t>(PatternRewriter&,
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
   return (output_element_type.getStorageTypeIntegralWidth() == 8);
+}
+
+LogicalResult ApplyPatternsWithShapeResolution(
+    FuncOp func, const FrozenRewritePatternSet& patterns) {
+  // We use top-down traversal so that shape inference can fully infer types
+  // during pattern rewrite.
+  GreedyRewriteConfig config;
+  config.useTopDownTraversal = true;
+  if (failed(applyPatternsAndFoldGreedily(func, patterns, config))) {
+    return failure();
+  }
+
+  // Check that constant attributes types and op types match up. If the lowering
+  // needs to change a type (e.g. fp16 -> fp32) its possible the return type
+  // could be incorrect.
+  //
+  // This should be investigate for whether it is still necessary due to quant
+  // type stripping changing.
+  func.walk([&](tosa::ConstOp op) {
+    auto ety = op.value().getType().getElementType();
+    auto new_ty = op.getType().cast<ShapedType>().clone(ety);
+    op.getResult().setType(new_ty);
+  });
+
+  // Insert UnrealizedConversionCasts to guarantee ReturnOp agrees with
+  // the FuncOp type.
+  IRRewriter rewriter(func.getContext());
+  func.walk([&](ReturnOp op) {
+    FuncOp parent = dyn_cast<FuncOp>(op->getParentOp());
+    if (parent != func) return;
+
+    rewriter.setInsertionPoint(op);
+    FunctionType func_ty = func.getType();
+    auto result_tys = func_ty.getResults();
+
+    bool cast_added = false;
+    SmallVector<Value> return_values;
+    for (auto it : llvm::zip(op->getOperands(), result_tys)) {
+      Value operand = std::get<0>(it);
+      Type current_ty = operand.getType();
+      Type cast_ty = std::get<1>(it);
+      if (current_ty == cast_ty) {
+        return_values.push_back(operand);
+        continue;
+      }
+
+      return_values.push_back(
+          rewriter.create<tensor::CastOp>(op.getLoc(), cast_ty, operand)
+              .getResult());
+
+      cast_added = true;
+    }
+
+    if (cast_added) {
+      rewriter.replaceOpWithNewOp<ReturnOp>(op, return_values);
+    }
+  });
+
+  return success();
 }
 
 }  // namespace tosa

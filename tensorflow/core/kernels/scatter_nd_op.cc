@@ -18,9 +18,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
+#include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#include "tensorflow/core/kernels/scatter_nd_op.h"
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -31,13 +30,15 @@ limitations under the License.
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
+#include "tensorflow/core/kernels/scatter_nd_op.h"
+#include "tensorflow/core/kernels/scatter_nd_util.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/util.h"
-
 
 namespace tensorflow {
 
@@ -771,47 +772,6 @@ TF_CALL_COMPLEX_TYPES(REGISTER_SCATTER_ND_TENSOR_GPU);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
-// Check whether updates.shape = indices.shape[:batch_dim] +
-// params_shape[slice_dim:]
-Status ValidateUpdateShape(const TensorShape& params_shape,
-                           const Tensor& indices, const Tensor& updates) {
-  const int64_t slice_dim =
-      (indices.dims() > 1) ? indices.dim_size(indices.dims() - 1) : 1;
-  const int64_t batch_dim = (indices.dims() > 1) ? indices.dims() - 1 : 1;
-
-  auto shape_err_prefix = [&]() {
-    return errors::InvalidArgument(
-        "Dimensions [0,", batch_dim,
-        ") of indices[shape=", indices.shape().DebugString(),
-        "] must match dimensions [0,", batch_dim,
-        ") of updates[shape=", updates.shape().DebugString(), "]");
-  };
-  auto shape_err_suffix = [&]() {
-    return errors::InvalidArgument(
-        "Dimensions [", slice_dim, ",", params_shape.dims(),
-        ") of input[shape=", params_shape.DebugString(),
-        "] must match dimensions [", slice_dim, ",", updates.dims(),
-        ") of updates[shape=", updates.shape().DebugString(), "]");
-  };
-
-  if (updates.dims() < batch_dim) return shape_err_prefix();
-  if (params_shape.dims() < slice_dim + (updates.dims() - batch_dim)) {
-    return shape_err_suffix();
-  }
-  if (updates.dims() != batch_dim + params_shape.dims() - slice_dim) {
-    return shape_err_suffix();
-  }
-  for (int d = 0; d < batch_dim; ++d) {
-    if (updates.dim_size(d) != indices.dim_size(d)) return shape_err_prefix();
-  }
-  for (int d = 0; d < updates.dims() - batch_dim; ++d) {
-    if (updates.dim_size(d + batch_dim) !=
-        params_shape.dim_size(d + slice_dim)) {
-      return shape_err_suffix();
-    }
-  }
-  return Status::OK();
-}
 
 template <typename Index>
 Status PrepareAndValidateInputs(const TensorShape& params_shape,
@@ -840,7 +800,8 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
         "] = ", indices.dim_size(0), " must match dimensions [0,1) of updates[",
         "shape=", updates_shape.DebugString(), "] = ", updates.dim_size(0));
   }
-  TF_RETURN_IF_ERROR(ValidateUpdateShape(params_shape, indices, updates));
+  TF_RETURN_IF_ERROR(ValidateScatterNdUpdateShape(params_shape, indices.shape(),
+                                                  updates.shape()));
 
   // Check that we have enough index space
   const int64_t N_big = indices.NumElements();
@@ -895,12 +856,101 @@ class IndexFlattener {
   }
 };
 
+namespace {
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// Copies inputs to the CPU, runs DoScatterNd on the CPU, then copies output
+// back to GPU. This is useful because the CPU implementation is deterministic
+// and the GPU implementation is not. Tensor inputs to this function must be on
+// the GPU.
+template <typename T, typename Index, scatter_nd_op::UpdateOp Op>
+Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
+                        const Tensor& updates, const TensorShape& shape,
+                        Tensor* out, bool allocate) {
+  AllocatorAttributes alloc_attr;
+  alloc_attr.set_on_host(true);
+  alloc_attr.set_gpu_compatible(true);
+  auto stream = c->op_device_context()->stream();
+
+  // Copy 'indices' to host.
+  Tensor host_indices;
+  TF_RETURN_IF_ERROR(c->allocate_temp(indices.dtype(), indices.shape(),
+                                      &host_indices, alloc_attr));
+  se::DeviceMemoryBase indices_ptr(
+      const_cast<Tensor&>(indices).flat<Index>().data(),
+      indices.flat<Index>().size() * sizeof(Index));
+  stream->ThenMemcpy(host_indices.flat<Index>().data(), indices_ptr,
+                     indices.NumElements() * sizeof(Index));
+  if (!stream) {
+    return errors::Internal("Failed to copy indices to host");
+  }
+
+  // Copy 'updates' to host.
+  Tensor host_updates;
+  TF_RETURN_IF_ERROR(c->allocate_temp(updates.dtype(), updates.shape(),
+                                      &host_updates, alloc_attr));
+  se::DeviceMemoryBase updates_ptr(
+      const_cast<Tensor&>(updates).flat<T>().data(),
+      updates.flat<T>().size() * sizeof(T));
+  stream->ThenMemcpy(host_updates.flat<T>().data(), updates_ptr,
+                     updates.NumElements() * sizeof(T));
+  if (!stream) {
+    return errors::Internal("Failed to copy updates to host");
+  }
+
+  // Create 'out' on host, copying from device if 'allocate' is false.
+  Tensor host_out;
+  TF_RETURN_IF_ERROR(
+      c->allocate_temp(updates.dtype(), shape, &host_out, alloc_attr));
+  if (allocate) {
+    TF_RETURN_IF_ERROR(c->allocate_temp(DataTypeToEnum<T>::value, shape, out));
+    functor::SetZeroFunctor<CPUDevice, T> fill;
+    fill(c->eigen_device<CPUDevice>(), host_out.flat<T>());
+  } else {
+    CHECK_NOTNULL(out);  // Crash OK
+    se::DeviceMemoryBase out_ptr(out->flat<T>().data(),
+                                 out->flat<T>().size() * sizeof(T));
+    stream->ThenMemcpy(host_out.flat<T>().data(), out_ptr,
+                       host_out.NumElements() * sizeof(T));
+    if (!stream) {
+      return errors::Internal("Failed to copy output to host");
+    }
+  }
+
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  TF_RETURN_IF_ERROR(DoScatterNd<CPUDevice, T, Index, Op>(
+      c, host_indices, host_updates, shape, &host_out, /*allocate=*/false));
+
+  // Copy 'host_out' to device.
+  se::DeviceMemoryBase out_ptr(out->flat<T>().data(),
+                               out->flat<T>().size() * sizeof(T));
+  stream->ThenMemcpy(&out_ptr, host_out.flat<T>().data(),
+                     host_out.NumElements() * sizeof(T));
+  if (!stream) {
+    return errors::Internal("Failed to copy output to device");
+  }
+  // Block host, since 'host_out' cannot be destructed until the copy is done.
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  return Status::OK();
+}
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+}  // namespace
 
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
 Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
                    const Tensor& updates, const TensorShape& shape, Tensor* out,
                    bool allocate) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  if (std::is_same<Device, GPUDevice>::value &&
+      tensorflow::OpDeterminismRequired()) {
+    return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
+                                          allocate);
+  }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   int64_t slice_dim;
   Index num_updates;
   Index slice_size;

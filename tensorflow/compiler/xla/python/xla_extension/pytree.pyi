@@ -17,6 +17,8 @@ from typing import Any, Callable, Hashable, Iterable, List, Optional, Sequence, 
 
 _T = TypeVar("_T")
 
+version: int
+
 def flatten(
     tree: Any,
     leaf_predicate: Optional[Callable[[Any], bool]] = ...,
@@ -30,7 +32,7 @@ class PyTreeDef:
   def compose(self, __inner: PyTreeDef) -> PyTreeDef: ...
   def walk(self,
            __f_node: Callable[[Any], Any],
-           __f_leaf: Callable[[_T], Any],
+           __f_leaf: Optional[Callable[[_T], Any]],
            leaves: Iterable[Any]) -> Any: ...
   def from_iterable_tree(self, __xs: Any): ...
   def children(self) -> Sequence[PyTreeDef]: ...

@@ -236,16 +236,23 @@ tf_proto {
         type: TYPE_BOOL
       }
       field {
-        name: "coordination_service"
-        number: 19
-        label: LABEL_OPTIONAL
-        type: TYPE_STRING
-      }
-      field {
         name: "disable_functional_ops_lowering"
         number: 21
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
+      }
+      field {
+        name: "xla_prefer_single_graph_cluster"
+        number: 22
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "coordination_config"
+        number: 23
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.CoordinationServiceConfig"
       }
       enum_type {
         name: "MlirBridgeRollout"
@@ -273,6 +280,10 @@ tf_proto {
       reserved_range {
         start: 2
         end: 3
+      }
+      reserved_range {
+        start: 19
+        end: 20
       }
       reserved_range {
         start: 20

@@ -96,7 +96,7 @@ func @simpleIsland_with_multiple_control_inputs(%arg0: tensor<*xf32>) -> tensor<
 func @fetchWithControlDep(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %result = tf_executor.graph {
     %val, %ctl_id = tf_executor.island {
-      %val = addf %arg0, %arg0 : tensor<*xf32>
+      %val = arith.addf %arg0, %arg0 : tensor<*xf32>
       tf_executor.yield %arg0 : tensor<*xf32>
     }
 // CHECK: tf_executor.fetch %{{.*}}, %{{.*}} : tensor<*xf32>, !tf_executor.control

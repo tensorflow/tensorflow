@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -32,12 +33,6 @@ auto* graph_runs = monitoring::Counter<0>::New(
 auto* graph_run_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_run_time_usecs",
     "The total time spent on executing graphs in microseconds.");
-
-auto* graph_optimization_usecs =
-    monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
-                                "The total time spent running each graph "
-                                "optimization pass in microseconds.",
-                                "kind", "name");
 
 auto* graph_run_time_usecs_histogram = monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_time_usecs_histogram",
@@ -104,6 +99,21 @@ auto* tf_data_get_next_duration_usecs_histogram = monitoring::Sampler<0>::New(
     {monitoring::Buckets::Explicit(
         {2., 4., 8., 16., 32., 64., 128., 256., 512., 1024., 1e6})});
 
+auto* tf_data_used_vs_budget_ratio_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/used_vs_budget_ratio",
+     "Ratio of tf.data used ram over ram budget when running optimization."},
+    // Uniform linear buckets with count 10 from 0 to 2
+    {monitoring::Buckets::Explicit(
+        {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0})});
+
+auto* tf_data_buffered_vs_budget_ratio_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/buffered_vs_budget_ratio",
+     "Ratio of tf.data max buffer bytes over ram budget when running "
+     "optimization."},
+    // Uniform linear buckets with count 10 from 0 to 2
+    {monitoring::Buckets::Explicit(
+        {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0})});
+
 auto* tf_data_iterator_busy_counter =
     monitoring::Counter<0>::New("/tensorflow/data/iterator_busy",
                                 "The time (in microseconds) during which a "
@@ -115,12 +125,28 @@ auto* tf_data_iterator_lifetime_counter = monitoring::Counter<0>::New(
     "The time (in microseconds) between a tf.data iterator receiving the first "
     "`GetNext()` request and responding to the last `GetNext()` request.");
 
+auto* tf_data_iterator_gap_usec_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/iterator_gap",
+     "The time (in microseconds) between a tf.data iterator responding to a "
+     "`GetNext()` request and receiving the next `GetNext()` request."},
+    // Buckets of 0.1ms, 0.2ms, 0.4ms, ..., 2s.
+    {monitoring::Buckets::Exponential(100, 2, 12)});
+
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
 
 auto* tf_data_service_workers_created_counter =
     monitoring::Counter<0>::New("/tensorflow/data/service/workers_created",
                                 "Number of tf.data service workers created");
+
+auto* tf_data_service_jobs_created_counter = monitoring::Counter<2>::New(
+    "/tensorflow/data/service/jobs_created", "Number of tf.data service jobs.",
+    "processing_mode", "coordinated_read");
+
+auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
+    "/tensorflow/data/service/client_iterators",
+    "Number of tf.data service client iterators created.", "worker_uid",
+    "deployment_mode", "processing_mode", "is_coordinated_read");
 
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
@@ -133,6 +159,26 @@ auto* tf_data_model_gauge =
 auto* tf_data_auto_shard = monitoring::Gauge<int64, 2>::New(
     "/tensorflow/data/autoshard", "tf.data autoshard statistics.", "id",
     "name");
+
+auto* tf_data_auto_shard_rewrite_batch_size_eligible =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/autoshard_rewrite_batch_size/eligible",
+        "Whether tf.data pipelines that are eligible for autoshard "
+        "to rewrite the batch size.",
+        "eligible");
+
+auto* tf_data_auto_shard_rewrite_batch_size_reason =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/autoshard_rewrite_batch_size/reason",
+        "The reasons that tf.data pipelines are ineligible for autoshard "
+        "to rewrite the batch size.",
+        "reason");
+
+auto* tf_data_autotune_stopping_criteria_counter =
+    monitoring::Counter<1>::New("/tensorflow/data/autotune_stopping_criteria",
+                                "The number of times each tf.data autotune "
+                                "algorithm stopping criterion is met.",
+                                "name");
 
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
@@ -187,7 +233,24 @@ auto* tpu_variable_distribution_time_usecs = monitoring::Counter<0>::New(
     "at the start of a call to TPUExecute.  Timer starts at RunGraph "
     "invocation and ends when TPUExecute args are ready on the current task.");
 
+auto* test_counters =
+    monitoring::Counter<2>::New("/tensorflow/core/test_counters",
+                                "Counters used for testing.", "name", "label");
+
 }  // namespace
+
+auto* tpu_op_error_counter = monitoring::Counter<2>::New(
+    "/tensorflow/tpu/op_error_count",
+    "Count the tpu related errors by op and error_type.", "op", "error_type");
+
+monitoring::Counter<2>* GetGraphOptimizationCounter() {
+  static auto* graph_optimization_counter =
+      monitoring::Counter<2>::New("/tensorflow/core/graph_optimization_usecs",
+                                  "The total time spent running each graph "
+                                  "optimization pass in microseconds.",
+                                  "kind", "name");
+  return graph_optimization_counter;
+}
 
 void RecordTFDataAutotune(const string& name) {
   tf_data_autotune_counter->GetCell(name)->IncrementBy(1);
@@ -232,6 +295,18 @@ void RecordTFDataGetNextDuration(uint64 duration_us) {
   tf_data_get_next_duration_cell->Add(duration_us);
 }
 
+void RecordTFDataAutotuneUsedRamBudgetRatio(const double ratio) {
+  static auto* tf_data_used_vs_budget_ratio_histogram_cell =
+      tf_data_used_vs_budget_ratio_histogram->GetCell();
+  tf_data_used_vs_budget_ratio_histogram_cell->Add(ratio);
+}
+
+void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio) {
+  static auto* tf_data_buffered_vs_budget_ratio_histogram_cell =
+      tf_data_buffered_vs_budget_ratio_histogram->GetCell();
+  tf_data_buffered_vs_budget_ratio_histogram_cell->Add(ratio);
+}
+
 void RecordTFDataIteratorBusy(uint64 duration_us) {
   static auto* tf_data_iterator_busy_cell =
       tf_data_iterator_busy_counter->GetCell();
@@ -244,6 +319,12 @@ void RecordTFDataIteratorLifetime(uint64 duration_us) {
   tf_data_iterator_lifetime_cell->IncrementBy(duration_us);
 }
 
+void RecordTFDataIteratorGap(uint64 duration_us) {
+  static auto* tf_data_iterator_gap_usec_histogram_cell =
+      tf_data_iterator_gap_usec_histogram->GetCell();
+  tf_data_iterator_gap_usec_histogram_cell->Add(duration_us);
+}
+
 void RecordTFDataOptimization(const string& name, int64_t num_changes) {
   tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
 }
@@ -252,15 +333,60 @@ void RecordTFDataServiceWorkerCreated() {
   tf_data_service_workers_created_counter->GetCell()->IncrementBy(1);
 }
 
+void RecordTFDataServiceJobsCreated(
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read) {
+  const std::string sharding_policy_str =
+      data::ProcessingModeDef::ShardingPolicy_Name(
+          processing_mode.sharding_policy());
+  const std::string coordinated_read_str =
+      is_coordinated_read ? "true" : "false";
+  tf_data_service_jobs_created_counter
+      ->GetCell(sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceClientIterators(
+    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
+    const tensorflow::data::ProcessingModeDef& processing_mode,
+    bool is_coordinated_read) {
+  const std::string deployment_mode_str =
+      tensorflow::data::DeploymentMode_Name(deployment_mode);
+  const std::string sharding_policy_str =
+      data::ProcessingModeDef::ShardingPolicy_Name(
+          processing_mode.sharding_policy());
+  const std::string coordinated_read_str =
+      is_coordinated_read ? "true" : "false";
+  tf_data_service_client_iterators_counter
+      ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
+                sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
+}
+
 void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
 
 void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
                            int64 num_workers, int64 num_replicas) {
-  tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64>(policy));
+  tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64_t>(policy));
   tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
   tf_data_auto_shard->GetCell(id, "num_replicas")->Set(num_replicas);
+}
+
+void RecordTFDataAutoShardRewriteBatchSize(
+    bool eligible, const std::vector<string>& ineligible_reason) {
+  tf_data_auto_shard_rewrite_batch_size_eligible
+      ->GetCell(eligible ? "true" : "false")
+      ->IncrementBy(1);
+  for (const string& reason : ineligible_reason) {
+    tf_data_auto_shard_rewrite_batch_size_reason->GetCell(reason)->IncrementBy(
+        1);
+  }
+}
+
+void RecordTFDataAutotuneStoppingCriteria(const string& name) {
+  tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordParseDenseFeature(int64 num_features) {
@@ -316,50 +442,6 @@ void UpdateGraphPendingQueueLength(uint64 len) {
   graph_pending_queue_length_cell->Add(len);
 }
 
-void UpdateGraphOptimizationPassTime(const string& pass_name,
-                                     const uint64 running_time_usecs) {
-  if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("GraphOptimizationPass", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
-void UpdateGrapplerPassTime(const string& pass_name,
-                            const uint64 running_time_usecs) {
-  if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("Grappler", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
-void UpdateMlirGraphOptimizationPassTime(const string& pass_name,
-                                         const uint64 running_time_usecs) {
-  // TODO(jpienaar): Name here is temporary, currently the frameworks are
-  // distinct and so useful to be able to differentiate (esp as I have not
-  // checked for name conflicts) but not desirable in end state. Unify these
-  // post cleanups.
-  if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("TfMlir", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
-void UpdateTFDataPassTime(const string& pass_name,
-                          const uint64 running_time_usecs) {
-  if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("TFDataPass", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
-void UpdateGraphOptimizerPassTime(const string& pass_name,
-                                  const uint64 running_time_usecs) {
-  if (running_time_usecs > 0) {
-    graph_optimization_usecs->GetCell("GraphOptimizerPass", pass_name)
-        ->IncrementBy(running_time_usecs);
-  }
-}
-
 void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
     static auto* build_graph_calls_cell = build_graph_calls->GetCell();
@@ -396,6 +478,38 @@ void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs) {
 
 void RecordUnusedOutput(const string& op_name) {
   graph_unused_outputs->GetCell(op_name)->IncrementBy(1);
+}
+
+void IncrementTestCounter(const string& name, const string& label) {
+  test_counters->GetCell(name, label)->IncrementBy(1);
+}
+
+const monitoring::CounterCell* TestCounter(const string& name,
+                                           const string& label) {
+  return test_counters->GetCell(name, label);
+}
+
+TestDelta::TestDelta(const string& name, const string& label)
+    : cell_(TestCounter(name, label)) {
+  Reset();
+}
+
+void TestDelta::Reset() { last_value_ = cell_->value(); }
+
+int64 TestDelta::Get() { return cell_->value() - last_value_; }
+
+void UpdateTfMlirGraphOptimizationPassStateCounter(
+    const std::string& pass_state, const std::string& processing_state) {
+  static auto* metric = monitoring::Counter<2>::New(
+      "/tensorflow/core/tf_mlir_update_graph_optimization_pass_state_counter",
+      "Tracks changes in a graph's UpdateTfMlirGraphOptimizationPassState",
+      "PassState", "ProcessingState");
+
+  metric->GetCell(pass_state, processing_state)->IncrementBy(1);
+}
+
+void UpdateTpuErrorCounter(const string& op, const string& error_type) {
+  tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
 }
 
 }  // namespace metrics

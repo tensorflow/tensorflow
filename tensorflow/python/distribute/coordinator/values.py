@@ -18,10 +18,6 @@
 This is currently under development and the API is subject to change.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import threading
 
@@ -74,7 +70,8 @@ class RemoteValueStatus(enum.Enum):
   READY = "READY"
 
 
-@tf_export("distribute.experimental.coordinator.RemoteValue", v1=[])
+@tf_export("distribute.experimental.coordinator.RemoteValue",
+           "distribute.coordinator.RemoteValue", v1=[])
 class RemoteValue(object):
   """An asynchronously available value of a scheduled function.
 
@@ -252,7 +249,8 @@ class RemoteValueImpl(RemoteValue):
     return self._fetched_tensors
 
 
-@tf_export("distribute.experimental.coordinator.PerWorkerValues", v1=[])
+@tf_export("distribute.experimental.coordinator.PerWorkerValues",
+           "distribute.coordinator.PerWorkerValue", v1=[])
 class PerWorkerValues(composite_tensor.CompositeTensor):
   """A container that holds a list of values, one value per worker.
 

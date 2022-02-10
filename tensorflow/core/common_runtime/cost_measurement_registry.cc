@@ -37,7 +37,10 @@ RegistrationMap* GetRegistrationMap() {
 std::unique_ptr<CostMeasurement> CostMeasurementRegistry::CreateByNameOrNull(
     const std::string& name) {
   const auto it = GetRegistrationMap()->find(name);
-  if (it == GetRegistrationMap()->end()) return nullptr;
+  if (it == GetRegistrationMap()->end()) {
+    LOG_FIRST_N(ERROR, 1) << "Cost type " << name << " is unregistered.";
+    return nullptr;
+  }
   return std::unique_ptr<CostMeasurement>(it->second());
 }
 

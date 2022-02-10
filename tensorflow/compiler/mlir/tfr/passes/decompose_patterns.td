@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 include "mlir/IR/OpBase.td"
+include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.td"
 
@@ -25,8 +26,8 @@ def QuantActRangeNonePattern :
   Pattern<
     (TFR_TFRQuantActRangeOp
      (TFR_ConstOp HasStringAttr<"NONE">:$act), $scale, $zp),
-    [(TFR_ConstantTensorOp (ConstantOp ConstantAttr<I32Attr, "-128">)),
-     (TFR_ConstantTensorOp (ConstantOp ConstantAttr<I32Attr, "127">))]>;
+    [(TFR_ConstantTensorOp (Arith_ConstantOp ConstantAttr<I32Attr, "-128">)),
+     (TFR_ConstantTensorOp (Arith_ConstantOp ConstantAttr<I32Attr, "127">))]>;
 
 def QuantActRangeReluPattern :
   Pattern<
@@ -34,8 +35,8 @@ def QuantActRangeReluPattern :
      (TFR_ConstOp HasStringAttr<"RELU">:$act),
      (ConstantLikeMatcher F32Attr:$scale),
      (ConstantLikeMatcher I64Attr:$zp)),
-    [(TFR_ConstantTensorOp (ConstantOp (Quantize<"0.0f"> $scale, $zp))),
-     (TFR_ConstantTensorOp (ConstantOp ConstantAttr<I32Attr, "127">))]>;
+    [(TFR_ConstantTensorOp (Arith_ConstantOp (Quantize<"0.0f"> $scale, $zp))),
+     (TFR_ConstantTensorOp (Arith_ConstantOp ConstantAttr<I32Attr, "127">))]>;
 
 def QuantActRangeRelu6Pattern :
   Pattern<
@@ -43,8 +44,8 @@ def QuantActRangeRelu6Pattern :
      (TFR_ConstOp HasStringAttr<"RELU6">:$act),
      (ConstantLikeMatcher F32Attr:$scale),
      (ConstantLikeMatcher I64Attr:$zp)),
-    [(TFR_ConstantTensorOp (ConstantOp (Quantize<"0.0f"> $scale, $zp))),
-     (TFR_ConstantTensorOp (ConstantOp (Quantize<"6.0f"> $scale, $zp)))]>;
+    [(TFR_ConstantTensorOp (Arith_ConstantOp (Quantize<"0.0f"> $scale, $zp))),
+     (TFR_ConstantTensorOp (Arith_ConstantOp (Quantize<"6.0f"> $scale, $zp)))]>;
 
 
 def QuantActRangeReluN1To1Pattern :
@@ -53,5 +54,5 @@ def QuantActRangeReluN1To1Pattern :
      (TFR_ConstOp HasStringAttr<"RELU_N1_TO_1">:$act),
      (ConstantLikeMatcher F32Attr:$scale),
      (ConstantLikeMatcher I64Attr:$zp)),
-    [(TFR_ConstantTensorOp (ConstantOp (Quantize<"-1.0f"> $scale, $zp))),
-     (TFR_ConstantTensorOp (ConstantOp (Quantize<"1.0f"> $scale, $zp)))]>;
+    [(TFR_ConstantTensorOp (Arith_ConstantOp (Quantize<"-1.0f"> $scale, $zp))),
+     (TFR_ConstantTensorOp (Arith_ConstantOp (Quantize<"1.0f"> $scale, $zp)))]>;

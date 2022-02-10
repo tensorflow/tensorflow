@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for `tf.data.Options`."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import platform
 import sys
 
@@ -285,6 +281,13 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.apply(testing.assert_next([expected]))
     dataset = dataset.map(lambda x: x*x)
     self.assertDatasetProduces(dataset, expected_output=[0, 1, 4, 9, 16, 25])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42)
+    options = options_lib.Options()
+    dataset = dataset.with_options(options, name="options")
+    self.assertDatasetProduces(dataset, [42])
 
 
 if __name__ == "__main__":

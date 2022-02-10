@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -445,7 +446,7 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 
   // Merge the attributes from the argument list to the derived ones.
   for (auto& attr : argument_attrs) {
-    derived_attrs.insert({attr.first, attr.second});
+    derived_attrs.insert({attr.getName(), attr.getValue()});
   }
 
   // Derive the output types by using the attributes attached to the tfr
@@ -461,11 +462,12 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 }
 
 // Raise TFR call ops to the TF ops.
-class RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
+class RaiseToTFOpsPass
+    : public PassWrapper<RaiseToTFOpsPass, OperationPass<FuncOp>> {
  public:
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFRDialect, TF::TensorFlowDialect, scf::SCFDialect,
-                    StandardOpsDialect>();
+                    arith::ArithmeticDialect, StandardOpsDialect>();
   }
 
   explicit RaiseToTFOpsPass(llvm::Optional<ModuleOp> tfr_module,
@@ -479,22 +481,22 @@ class RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
     return "Raise all the TFR call ops to TF ops.";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   llvm::Optional<ModuleOp> external_tfr_module_;
   const bool materialize_derived_attrs_;
 };
 
-void RaiseToTFOpsPass::runOnFunction() {
-  FuncOp func = getFunction();
+void RaiseToTFOpsPass::runOnOperation() {
+  FuncOp func = getOperation();
   MLIRContext* ctx = &getContext();
   SymbolTable table(external_tfr_module_.hasValue()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 
-  OwningRewritePatternList patterns(&getContext());
-  patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs_);
+  RewritePatternSet patterns(&getContext());
+  patterns.add<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs_);
 
   populateCanonicalizationPatterns(func, patterns);
 

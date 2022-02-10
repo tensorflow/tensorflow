@@ -75,9 +75,12 @@ tf_py_test(
     size = "small",
     srcs = ["compression_ops_test.py"],
     deps = [
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/data/experimental/ops:compression_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -178,7 +181,6 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:random_seed",
-        "//tensorflow/python/data/experimental/ops:interleave_ops",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -570,7 +572,7 @@ tf_py_test(
 
 tf_py_test(
     name = "sql_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["sql_dataset_test.py"],
     shard_count = 4,
     deps = [

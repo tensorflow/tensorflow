@@ -106,8 +106,8 @@ static std::string GetDevice(mlir::Value value, FuncOp parent_func_op) {
 }
 
 struct CrossDeviceTransferPass
-    : public PassWrapper<CrossDeviceTransferPass, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<CrossDeviceTransferPass, OperationPass<FuncOp>> {
+  void runOnOperation() override;
 
   llvm::StringRef getArgument() const final {
     return "tfrt-cross-device-transfer";
@@ -119,7 +119,7 @@ struct CrossDeviceTransferPass
   }
 };
 
-void CrossDeviceTransferPass::runOnFunction() {
+void CrossDeviceTransferPass::runOnOperation() {
   FuncOp func_op = getOperation();
   llvm::DenseMap<mlir::Value, llvm::StringMap<mlir::Value>>
       transferred_value_by_value_and_device;
@@ -179,7 +179,7 @@ void CrossDeviceTransferPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateCrossDeviceTransferPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateCrossDeviceTransferPass() {
   return std::make_unique<CrossDeviceTransferPass>();
 }
 

@@ -23,6 +23,7 @@ removing existing functionality.
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@AutoShardPolicy
+@@AutotuneAlgorithm
 @@AutotuneOptions
 @@CheckpointInputPipelineHook
 @@Counter
@@ -90,10 +91,6 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@UNKNOWN_CARDINALITY
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.data.experimental import service
 from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch
@@ -149,6 +146,7 @@ from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalSpec as OptionalStructure
 from tensorflow.python.data.ops.options import AutoShardPolicy
+from tensorflow.python.data.ops.options import AutotuneAlgorithm
 from tensorflow.python.data.ops.options import AutotuneOptions
 from tensorflow.python.data.ops.options import DistributeOptions
 from tensorflow.python.data.ops.options import ExternalStatePolicy

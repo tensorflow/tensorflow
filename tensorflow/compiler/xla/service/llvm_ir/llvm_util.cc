@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -76,7 +75,7 @@ std::unique_ptr<llvm::Module> DropConstantInitializers(
   return cloned_module;
 }
 
-string DumpModuleToString(const llvm::Module& module) {
+std::string DumpModuleToString(const llvm::Module& module) {
   std::string buffer_string;
   llvm::raw_string_ostream ostream(buffer_string);
   module.print(ostream, nullptr);
@@ -159,7 +158,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       // take up the right amount of space in memory. LLVM does not have a BF16
       // type (the LLVM half type is IEEE 16 bit floating point, not bfloat), so
       // we can't map it directly to an LLVM type. We will not map a BF16
-      // addition to an addition on this type (int16) - this is just the type
+      // addition to an addition on this type (int16_t) - this is just the type
       // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
     case F16:
@@ -209,7 +208,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return llvm::Type::getInt8PtrTy(module->getContext());
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
-      // some placeholder type, so use int8*.
+      // some placeholder type, so use int8_t*.
       return llvm::Type::getInt8PtrTy(module->getContext());
     default:
       LOG(FATAL) << "unsupported type " << element_type;
@@ -246,13 +245,13 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
 }
 
 StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
-                                                         int32* shape_size,
+                                                         int32_t* shape_size,
                                                          llvm::IRBuilder<>* b) {
-  string encoded_shape = shape.SerializeAsString();
-  if (encoded_shape.size() > std::numeric_limits<int32>::max()) {
-    return InternalError("Encoded shape size exceeded int32 size limit.");
+  std::string encoded_shape = shape.SerializeAsString();
+  if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
+    return InternalError("Encoded shape size exceeded int32_t size limit.");
   }
-  *shape_size = static_cast<int32>(encoded_shape.size());
+  *shape_size = static_cast<int32_t>(encoded_shape.size());
   return b->CreateGlobalStringPtr(encoded_shape);
 }
 
@@ -375,7 +374,7 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 // Internal helper that is called from emitted code to log an int64_t value with
 // a tag.
 static void LogS64(const char* tag, int64_t value) {
-  LOG(INFO) << tag << " (int64): " << value;
+  LOG(INFO) << tag << " (int64_t): " << value;
 }
 
 void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
@@ -412,7 +411,7 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
                     llvm::MDNode::get(context, dereferenceable_bytes_metadata));
 }
 
-llvm::Instruction* AddRangeMetadata(int64_t lower, int64_t upper,
+llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
                                     llvm::Instruction* inst) {
   llvm::LLVMContext& context = inst->getParent()->getContext();
   llvm::IntegerType* i32 = llvm::Type::getInt32Ty(context);
@@ -425,24 +424,24 @@ llvm::Instruction* AddRangeMetadata(int64_t lower, int64_t upper,
   return inst;
 }
 
-string IrName(absl::string_view a) {
+std::string IrName(absl::string_view a) {
   std::string s(a);
   s.erase(std::remove(s.begin(), s.end(), '%'), s.end());
   return s;
 }
 
-string IrName(absl::string_view a, absl::string_view b) {
+std::string IrName(absl::string_view a, absl::string_view b) {
   if (!a.empty() && !b.empty()) {
     return IrName(absl::StrCat(a, ".", b));
   }
   return IrName(absl::StrCat(a, b));
 }
 
-string IrName(const HloInstruction* a, absl::string_view b) {
+std::string IrName(const HloInstruction* a, absl::string_view b) {
   return IrName(a->name(), b);
 }
 
-string SanitizeFunctionName(string function_name) {
+std::string SanitizeFunctionName(std::string function_name) {
   // The backend with the strictest requirements on function names is NVPTX, so
   // we sanitize to its requirements.
   //
@@ -570,9 +569,9 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static Status CreateAndWriteStringToFile(const string& directory_name,
-                                         const string& file_name,
-                                         const string& text) {
+static Status CreateAndWriteStringToFile(const std::string& directory_name,
+                                         const std::string& file_name,
+                                         const std::string& text) {
   std::unique_ptr<tensorflow::WritableFile> f;
   TF_RETURN_IF_ERROR(
       tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
@@ -593,7 +592,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
-  string suffix =
+  std::string suffix =
       absl::StrCat("ir-", optimized ? "with" : "no", "-opt",
                    filename_suffix.empty() ? "" : ".", filename_suffix);
   DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
@@ -607,23 +606,6 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
     DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
                     DumpModuleToString(*DropConstantInitializers(llvm_module)));
   }
-}
-
-void DumpIrIfEnabled(mlir::ModuleOp mlir_module, int unique_id,
-                     const DebugOptions& debug_options) {
-  absl::optional<absl::string_view> module_name;
-  if (llvm::Optional<llvm::StringRef> mlir_module_name =
-          mlir_module.getName()) {
-    module_name = AsStringView(*mlir_module_name);
-  }
-  if (!DumpingEnabledForHloModule(module_name.value_or("<unnamed>"),
-                                  debug_options)) {
-    return;
-  }
-
-  DumpToFileInDirOrStdout(debug_options, unique_id, module_name.value_or(""),
-                          /*file_prefix=*/"",
-                          /*file_suffix=*/"lmhlo", DumpToString(mlir_module));
 }
 
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
@@ -704,17 +686,59 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
   return state_ptr;
 }
 
-llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
                                   llvm::IRBuilder<>* builder) {
   llvm::GlobalVariable* state_ptr =
       GetOrCreateVariableForRngState(module, builder);
-  llvm::LoadInst* state_value_old =
-      builder->CreateLoad(state_ptr, "load_state");
+  llvm::LoadInst* state_value_old = builder->CreateLoad(
+      state_ptr->getType()->getPointerElementType(), state_ptr, "load_state");
   llvm::Value* state_value_new = builder->CreateAdd(
       state_value_old,
       llvm::ConstantInt::get(state_value_old->getType(), delta));
   builder->CreateStore(state_value_new, state_ptr);
   return state_value_old;
+}
+
+llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilder<>* b) {
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::BasicBlock* early_return =
+      llvm::BasicBlock::Create(/*Context=*/module->getContext(),
+                               /*Name=*/"early_return",
+                               /*Parent=*/function);
+  b->SetInsertPoint(early_return);
+  b->CreateRetVoid();
+  return early_return;
+}
+
+void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilder<>* b,
+                     llvm::BasicBlock* return_block) {
+  if (!return_block) {
+    return_block = EmitReturnBlock(b);
+  }
+
+  llvm::BasicBlock* continued;
+
+  // Implicitly check whtether we are already at the end of unterminated block.
+  if (b->GetInsertBlock()->getTerminator() == nullptr) {
+    // If we are generating code into an incomplete basic block we can just
+    // create a new basic block to jump to after our conditional branch.
+    continued = llvm_ir::CreateBasicBlock(/*insert_before=*/nullptr,
+                                          /*name=*/"", b);
+  } else {
+    // If we are generating code into a basic block that already has code, we
+    // need to split that block so as to not disturb the existing code.
+    auto original = b->GetInsertBlock();
+    continued = original->splitBasicBlock(b->GetInsertPoint());
+    // Remove the auto-generated unconditional branch to replace with our
+    // conditional branch.
+    original->getTerminator()->eraseFromParent();
+    b->SetInsertPoint(original);
+  }
+
+  b->CreateCondBr(condition, continued, return_block);
+  b->SetInsertPoint(continued, continued->getFirstInsertionPt());
 }
 
 }  // namespace llvm_ir

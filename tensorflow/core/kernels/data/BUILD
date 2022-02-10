@@ -13,34 +13,6 @@ package(
     licenses = ["notice"],
 )
 
-# Export files for use on Android.
-exports_files([
-    "batch_dataset_op.cc",
-    "batch_dataset_op.h",
-    "iterator_ops.cc",
-    "iterator_ops.h",
-    "finalize_dataset_op.h",
-    "finalize_dataset_op.cc",
-    "flat_map_dataset_op.h",
-    "flat_map_dataset_op.cc",
-    "map_dataset_op.cc",
-    "map_dataset_op.h",
-    "model_dataset_op.cc",
-    "model_dataset_op.h",
-    "optimize_dataset_op.cc",
-    "optimize_dataset_op.h",
-    "optional_ops.cc",
-    "optional_ops.h",
-    "reduce_dataset_op.h",
-    "reduce_dataset_op.cc",
-    "repeat_dataset_op.h",
-    "repeat_dataset_op.cc",
-    "take_dataset_op.h",
-    "take_dataset_op.cc",
-    "tensor_slice_dataset_op.cc",
-    "tensor_slice_dataset_op.h",
-])
-
 tf_kernel_library(
     name = "batch_dataset_op",
     srcs = ["batch_dataset_op.cc"],
@@ -81,6 +53,7 @@ tf_kernel_library(
     hdrs = ["cache_dataset_ops.h"],
     deps = [
         ":cache_ops",
+        ":iterator_ops",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -88,6 +61,7 @@ tf_kernel_library(
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
         "//tensorflow/core/util/tensor_bundle",
     ],
 )
@@ -109,6 +83,7 @@ tf_cc_test(
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
     ],
 )
 
@@ -269,6 +244,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:utils",
     ],
 )
 
@@ -444,9 +420,11 @@ tf_kernel_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:finalization_utils",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data:unbounded_thread_pool",
+        "//tensorflow/core/data:utils",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
@@ -554,6 +532,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:finalization_utils",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/kernels:ops_util",
@@ -1246,6 +1225,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:utils",
     ],
 )
 
@@ -1279,6 +1259,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:utils",
     ],
 )
 
@@ -1384,33 +1365,49 @@ tf_cc_test(
     ],
 )
 
+filegroup(
+    name = "portable_all_op_kernels_headers",
+    srcs = [
+        "//tensorflow/core/data:captured_function.h",
+        "//tensorflow/core/data:dataset_utils.h",
+        "//tensorflow/core/data:finalization_utils.h",
+        "//tensorflow/core/data:utils.h",
+        "//tensorflow/core/data:name_utils.h",
+        "//tensorflow/core/data:rewrite_utils.h",
+        "//tensorflow/core/data:root_dataset.h",
+        "//tensorflow/core/data:serialization_utils.h",
+        "//tensorflow/core/data:split_utils.h",
+        "//tensorflow/core/data:stats_utils.h",
+        "//tensorflow/core/data:unbounded_thread_pool.h",
+        "//tensorflow/core/kernels/data/experimental:portable_all_op_kernels_headers",
+    ] + glob(
+        [
+            "*.h",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
     name = "portable_all_op_kernels",
     srcs = [
+        ":portable_all_op_kernels_headers",
         "//tensorflow/core/data:captured_function.cc",
-        "//tensorflow/core/data:captured_function.h",
         "//tensorflow/core/data:dataset_utils.cc",
-        "//tensorflow/core/data:dataset_utils.h",
+        "//tensorflow/core/data:finalization_utils.cc",
         "//tensorflow/core/data:name_utils.cc",
-        "//tensorflow/core/data:name_utils.h",
+        "//tensorflow/core/data:utils.cc",
         "//tensorflow/core/data:rewrite_utils.cc",
-        "//tensorflow/core/data:rewrite_utils.h",
         "//tensorflow/core/data:root_dataset.cc",
-        "//tensorflow/core/data:root_dataset.h",
         "//tensorflow/core/data:serialization_utils.cc",
-        "//tensorflow/core/data:serialization_utils.h",
         "//tensorflow/core/data:split_utils.cc",
-        "//tensorflow/core/data:split_utils.h",
         "//tensorflow/core/data:stats_utils.cc",
-        "//tensorflow/core/data:stats_utils.h",
         "//tensorflow/core/data:unbounded_thread_pool.cc",
-        "//tensorflow/core/data:unbounded_thread_pool.h",
         "//tensorflow/core/kernels/data/experimental:portable_all_op_kernels",
     ] + glob(
         [
             "*.cc",
-            "*.h",
         ],
         exclude = [
             "*test.cc",

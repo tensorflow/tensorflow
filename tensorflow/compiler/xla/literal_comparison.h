@@ -68,7 +68,7 @@ Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
 // 3 minutes.  The utility of printing a literal with >1000 elements is
 // questionable, especially when writing the Literal proto to disk is orders
 // of magnitude faster.
-string ToStringTruncated(const LiteralSlice& literal);
+std::string ToStringTruncated(const LiteralSlice& literal);
 
 }  // namespace literal_comparison
 }  // namespace xla

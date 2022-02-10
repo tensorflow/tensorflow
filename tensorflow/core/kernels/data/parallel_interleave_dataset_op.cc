@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_interleave_dataset_op.h"
 
+#include <sys/types.h>
+
+#include <algorithm>
 #include <atomic>
 #include <deque>
 #include <memory>
@@ -108,7 +111,7 @@ constexpr char kParallelInterleaveDatasetV4[] = "ParallelInterleaveDatasetV4";
 // a remote file) with other computation.
 constexpr double kDefaultCyclePrefetchFactor = 2.0L;
 
-// `kPerIteratorPrefetchFactor * block_length + 1` is the defualt number of
+// `kPerIteratorPrefetchFactor * block_length + 1` is the default number of
 // per-iterator results that will be prefetched ahead of time. The `+ 1` is to
 // match the behavior of the original implementation.
 constexpr double kDefaultPerIteratorPrefetchFactor = 2.0L;
@@ -217,7 +220,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         ParallelInterleaveDatasetOp::kDatasetType, params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality) {
       return n;
@@ -315,14 +318,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           deterministic_(deterministic),
           current_elements_(params.dataset->cycle_length_) {}
 
-    ~ParallelInterleaveIterator() override {
-      CancelThreads(/*wait=*/true);
-    }
+    ~ParallelInterleaveIterator() override { CancelThreads(/*wait=*/true); }
 
     // TODO(jsimsa): Register cancellation callback once the implementation is
     // refactored not to hold mu_ while calling `GetNext` on the input.
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
+      interleave_depth_ = ctx->interleave_depth();
+
       // Note that if `ctx->thread_pool()` is non-null, then instead of creating
       // a dedicated thread pool of size `num_threads`, computation will be
       // scheduled into the shared threadpool. The threadpool is guaranteed to
@@ -341,11 +344,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       thread_pool_ = ctx->CreateThreadPool(
           "data_parallel_interleave_worker_pool", num_threads);
       if (num_parallel_calls_->value == model::kAutotune) {
-        num_parallel_calls_->value = dataset()->cycle_length_;
+        num_parallel_calls_->value = std::min(
+            GetAutotuneDefaultParallelism(ctx), dataset()->cycle_length_);
       }
       ctx_ = std::make_unique<IteratorContext>(*ctx);
       cancellation_manager_ = absl::make_unique<CancellationManager>();
       IteratorContext::Params params(ctx);
+      params.interleave_depth += 1;
       params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           IteratorContext(params), this, prefix(), &input_impl_));
@@ -395,9 +400,21 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
+      bool increase_min =
+          GetExperiments().contains("min_outer_interleave_parallelism") &&
+          (ctx->interleave_depth() == 0);
+      // When the `min_outer_interleave_parallelism` is enabled, we increase
+      // the minimum parallelism based on empirical evidence (see
+      // go/tf-data-max-autotuning for details).
+      double min =
+          increase_min
+              ? std::min(
+                    static_cast<double>(dataset()->cycle_length_),
+                    std::ceil(std::pow(27 * dataset()->cycle_length_, 0.5)))
+              : 1;
       return model::MakeAsyncInterleaveManyNode(
           std::move(args),
-          {model::MakeParameter(kParallelism, num_parallel_calls_, /*min=*/1,
+          {model::MakeParameter(kParallelism, num_parallel_calls_, /*min=*/min,
                                 /*max=*/dataset()->cycle_length_)});
     }
 
@@ -522,6 +539,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           results_ready == -1 ? kTraceInfoUnavailable
                               : strings::Printf("%lld", static_cast<long long>(
                                                             active_elements))));
+      result.push_back(std::make_pair(
+          "interleave_depth",
+          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -973,8 +993,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                {"element_id", result->id}});
         });
         bool end_of_input = false;
-        result->status = iterator->GetNext(ctx_.get(), &result->return_values,
-                                           &end_of_input);
+        result->status =
+            iterator->GetNext(MakeNestedIteratorContext(ctx_.get()),
+                              &result->return_values, &end_of_input);
         if (end_of_input) {
           mutex_lock l(*mu_);
           element->iterator.reset();
@@ -1029,8 +1050,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         }
         element->inputs =
             absl::make_unique<std::vector<Tensor>>(std::move(inputs));
+        IteratorContext::Params params(ctx_.get());
+        params.interleave_depth += 1;
+        IteratorContext ctx(params);
         status = MakeIteratorFromInputElement(
-            ctx_.get(), this, *element->inputs, element->id,
+            &ctx, this, *element->inputs, element->id,
             *instantiated_captured_func_, prefix(), &element->iterator,
             model_node());
         if (!status.ok()) {
@@ -1324,8 +1348,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         }
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(iterator_name, kIdSuffix, &element->id));
+        IteratorContext::Params params(ctx);
+        params.interleave_depth += 1;
+        IteratorContext ctx_copy(params);
         TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-            ctx, this, *element->inputs, element->id,
+            &ctx_copy, this, *element->inputs, element->id,
             *instantiated_captured_func_.get(), prefix(), &iterator,
             model_node()));
       }
@@ -1406,27 +1433,26 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       Status s = Status::OK();
       BlockingCounter counter(size);
       for (int idx = 0; idx < size; ++idx) {
-        thread_pool_->Schedule(
-            [this, ctx, reader, idx, name, &s, &counter, elements] {
-              RecordStart(ctx);
-              auto cleanup = gtl::MakeCleanup([this, ctx, &counter]() {
-                RecordStop(ctx);
-                counter.DecrementCount();
-              });
-              std::shared_ptr<Element> elem;
-              Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
-              mutex_lock l(*mu_);
-              if (cancelled_) {
-                s.Update(
-                    errors::Cancelled("Cancelled in ReadElementsParallel"));
-                return;
-              }
-              if (!ret_status.ok()) {
-                s.Update(ret_status);
-                return;
-              }
-              (*elements)[idx] = elem;
-            });
+        thread_pool_->Schedule([this, ctx, reader, idx, name, &s, &counter,
+                                elements] {
+          RecordStart(ctx);
+          auto cleanup = gtl::MakeCleanup([this, ctx, &counter]() {
+            RecordStop(ctx);
+            counter.DecrementCount();
+          });
+          std::shared_ptr<Element> elem;
+          Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
+          mutex_lock l(*mu_);
+          if (cancelled_) {
+            s.Update(errors::Cancelled("Cancelled in ReadElementsParallel"));
+            return;
+          }
+          if (!ret_status.ok()) {
+            s.Update(ret_status);
+            return;
+          }
+          (*elements)[idx] = elem;
+        });
       }
       counter.Wait();
       return s;
@@ -1577,6 +1603,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Identifies whether background threads should be cancelled.
     bool cancelled_ TF_GUARDED_BY(mu_) = false;
+
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree. We record the interleave depth so that it can be included in the
+    // trace metadata.
+    int64 interleave_depth_ = -1;
   };
 
   const DatasetBase* const input_;

@@ -36,11 +36,6 @@ from tensorflow.python.keras.layers import noise
 from tensorflow.python.keras.layers import pooling
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
-from tensorflow.python.keras.layers import wrappers
-from tensorflow.python.keras.layers.normalization import batch_normalization
-from tensorflow.python.keras.layers.normalization import layer_normalization
-from tensorflow.python.keras.layers.preprocessing import image_preprocessing
-from tensorflow.python.keras.layers.preprocessing import normalization
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.platform import test
 
@@ -49,19 +44,6 @@ def create_mirrored_strategy():
   # The test creates two virtual CPUs, and we use both of them to test with
   # multiple devices.
   return mirrored_strategy.MirroredStrategy(['cpu:0', 'cpu:1'])
-
-
-def _create_normalization_layer_with_adapt():
-  layer = normalization.Normalization()
-  layer.adapt(np.random.normal(size=(10, 4)))
-  return layer
-
-
-def _create_normalization_layer_without_adapt():
-  return normalization.Normalization(
-      mean=np.random.normal(size=(4,)),
-      variance=np.random.uniform(0.5, 2., size=(4,))
-  )
 
 
 class LayerCorrectnessTest(keras_parameterized.TestCase):
@@ -133,11 +115,6 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
       ('GaussianNoise', lambda: noise.GaussianNoise(0.5), (2, 2)),
       ('GaussianDropout', lambda: noise.GaussianDropout(0.5), (2, 2)),
       ('AlphaDropout', lambda: noise.AlphaDropout(0.5), (2, 2)),
-      ('BatchNormalization', batch_normalization.BatchNormalization,
-       (2, 2), 1e-2, 1e-2),
-      ('LayerNormalization', layer_normalization.LayerNormalization, (2, 2)),
-      ('LayerNormalizationUnfused',
-       lambda: layer_normalization.LayerNormalization(axis=1), (2, 2, 2)),
       ('MaxPooling2D', pooling.MaxPooling2D, (2, 2, 2, 1)),
       ('AveragePooling2D', pooling.AveragePooling2D, (2, 2, 2, 1)),
       ('GlobalMaxPooling2D', pooling.GlobalMaxPooling2D, (2, 2, 2, 1)),
@@ -148,10 +125,6 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
       ('LSTM', lambda: recurrent.LSTM(units=4), (4, 4, 4)),
       ('GRUV2', lambda: recurrent_v2.GRU(units=4), (4, 4, 4)),
       ('LSTMV2', lambda: recurrent_v2.LSTM(units=4), (4, 4, 4)),
-      ('TimeDistributed', lambda: wrappers.TimeDistributed(core.Dense(2)),
-       (2, 2, 2)),
-      ('Bidirectional',
-       lambda: wrappers.Bidirectional(recurrent.SimpleRNN(units=4)), (2, 2, 2)),
       ('AttentionLayerCausal', lambda: dense_attention.Attention(causal=True), [
           (2, 2, 3), (2, 3, 3), (2, 3, 3)
       ]),
@@ -159,13 +132,6 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
        lambda: dense_attention.AdditiveAttention(causal=True), [(2, 3, 4),
                                                                 (2, 3, 4),
                                                                 (2, 3, 4)]),
-      ('NormalizationAdapt', _create_normalization_layer_with_adapt, (4, 4)),
-      ('NormalizationNoAdapt', _create_normalization_layer_without_adapt,
-       (4, 4)),
-      ('Resizing', lambda: image_preprocessing.Resizing(3, 3), (2, 5, 5, 1)),
-      ('Rescaling', lambda: image_preprocessing.Rescaling(2., 1.), (6, 6)),
-      ('CenterCrop', lambda: image_preprocessing.CenterCrop(3, 3),
-       (2, 5, 5, 1))
   )
   def test_layer(self, f32_layer_fn, input_shape, rtol=2e-3, atol=2e-3,
                  input_data=None):

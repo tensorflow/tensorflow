@@ -14,6 +14,7 @@ package(
 tf_native_cc_binary(
     name = "tfg-opt-no-passes",
     srcs = ["tfg-opt-no-passes.cc"],
+    # Expose the test driver to core/ir.
     deps = [
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",

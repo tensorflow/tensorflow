@@ -96,10 +96,13 @@ PluggableDeviceBFCAllocator::PluggableDeviceBFCAllocator(
     DeviceMemAllocator* sub_allocator, size_t total_memory,
     const GPUOptions& gpu_options, const string& name,
     bool force_memory_growth_requested)
-    : BFCAllocator(sub_allocator, total_memory,
-                   PluggableDeviceBFCAllocator::GetAllowGrowthValue(
-                       gpu_options, force_memory_growth_requested),
-                   name,
-                   PluggableDeviceBFCAllocator::GetGarbageCollectionValue()) {}
+    : BFCAllocator(absl::WrapUnique(sub_allocator), total_memory, name, [&] {
+        BFCAllocator::Options o;
+        o.allow_growth = PluggableDeviceBFCAllocator::GetAllowGrowthValue(
+            gpu_options, force_memory_growth_requested);
+        o.garbage_collection =
+            PluggableDeviceBFCAllocator::GetGarbageCollectionValue();
+        return o;
+      }()) {}
 
 }  // namespace tensorflow

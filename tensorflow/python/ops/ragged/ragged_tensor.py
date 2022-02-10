@@ -14,13 +14,10 @@
 # ==============================================================================
 """Classes for storing ragged tensors and their values."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import operator
 
+import typing
 import numpy as np
 
 from tensorflow.python import tf2
@@ -43,6 +40,7 @@ from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged.row_partition import RowPartition
+from tensorflow.python.types import core as core_types
 from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -340,7 +338,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       nvals = _nrows(values, row_partition.dtype)
       checks = [
           check_ops.assert_equal(
-              row_partition.nvals(out_type=row_partition.dtype),
+              math_ops.cast(row_partition.nvals(), row_partition.dtype),
               nvals,
               message=msg),
       ]
@@ -374,7 +372,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       nrows: An integer scalar specifying the number of rows.  This should be
         specified if the `RaggedTensor` may containing empty training rows. Must
         be greater than `value_rowids[-1]` (or zero if `value_rowids` is empty).
-        Defaults to `value_rowids[-1]` (or zero if `value_rowids` is empty).
+        Defaults to `value_rowids[-1] + 1` (or zero if `value_rowids` is empty).
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
         a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
@@ -406,7 +404,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
           value_rowids=value_rowids,
           nrows=nrows,
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -454,7 +452,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       row_partition = RowPartition.from_row_splits(
           row_splits=row_splits,
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -498,7 +496,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       row_partition = RowPartition.from_row_lengths(
           row_lengths=row_lengths,
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -539,7 +537,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
           row_starts=row_starts,
           nvals=_nrows(values),
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -574,10 +572,11 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       raise TypeError(f"Argument `validate` must have type bool. "
                       f"Received {validate}.")
     with ops.name_scope(name, "RaggedFromRowLimits", [values, row_limits]):
+      values = _convert_to_ragged_tensor_values(values)
       row_partition = RowPartition.from_row_limits(
           row_limits=row_limits,
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -653,7 +652,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
           nvals=nvals,
           nrows=nrows,
           validate=validate,
-          preferred_dtype=_get_optional_partition_dtype(values))
+          dtype_hint=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
 
   @classmethod
@@ -1190,7 +1189,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
 
     """
     with ops.name_scope(name, "RaggedNRows", [self]):
-      return self._row_partition.nrows(out_type=out_type)
+      if out_type is None:
+        return self._row_partition.nrows()
+      else:
+        return math_ops.cast(self._row_partition.nrows(), dtype=out_type)
 
   def row_starts(self, name=None):
     """Returns the start indices for rows in this ragged tensor.
@@ -2041,7 +2043,18 @@ class RaggedTensor(composite_tensor.CompositeTensor,
   #=============================================================================
   def __repr__(self):
     if self._is_eager():
-      return "<tf.RaggedTensor %s>" % self.to_list()
+      # The np.array2string in _formatter provides a separator argument, but
+      # doesn't handle recursive calls correctly. The np.printoptions handles
+      # recursive calls correctly, but doesn't provide a separator argument.
+      # Combines them together to print elements separated by comma, while
+      # avoiding the redundant array prefixes and dtypes. For example,
+      # the value of tf.ragged.constant([[1, 2], [3, 4]]) will look like
+      #
+      # [[1, 2],
+      #  [3, 4]]
+      with np.printoptions(formatter={"all": _formatter}):
+        value_text = _formatter(self.numpy())
+      return f"<tf.RaggedTensor {value_text}>"
     else:
       return "tf.RaggedTensor(values=%s, row_splits=%s)" % (self.values,
                                                             self.row_splits)
@@ -2090,7 +2103,8 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     # rank=row.rank+1.
     #
     # Manually set dtype as numpy now complains when given ragged rows.
-    dtype = np.object if any(len(row) != len(rows[0]) for row in rows) else None
+    has_variable_length_rows = any(len(row) != len(rows[0]) for row in rows)
+    dtype = np.object_ if has_variable_length_rows else None
     return np.array(rows, dtype=dtype)
 
   def to_list(self):
@@ -2637,7 +2651,7 @@ def convert_to_tensor_or_ragged_tensor(value,
       flat_values = ops.convert_to_tensor(
           value=value.flat_values,
           dtype=dtype,
-          preferred_dtype=preferred_dtype,
+          dtype_hint=preferred_dtype,
           name="flat_values")
       return RaggedTensor.from_nested_row_splits(
           flat_values, value.nested_row_splits, validate=False)
@@ -2701,7 +2715,7 @@ session.register_session_run_conversion_functions(
 #===============================================================================
 # RaggedTensorType
 #===============================================================================
-class RaggedTensorType(object):
+class RaggedTensorType:
   """Encoding of a static type for a `RaggedTensor`.
 
   Use this type to express/declare that an output must have the type of
@@ -3044,3 +3058,20 @@ def _assert_is_supported_ragged_values_type(value):
   if not _is_supported_ragged_values_type(value):
     ok_types = ", ".join(cls.__name__ for cls in _SUPPORTED_RAGGED_VALUE_TYPES)
     raise TypeError(f"type(values) must be one of: {ok_types}, got {value}.")
+
+
+def _formatter(x):
+  """Separate Numpy array elements with comma."""
+  if isinstance(x, np.ndarray):
+    return np.array2string(x, separator=", ")
+  else:
+    return str(x)
+
+# Type annotation indicating that a value is ragged.  Includes RaggedTensor
+# as well as the (deprecated) RaggedTensorValue class from TF 1.x.
+Ragged = typing.Union[RaggedTensor, ragged_tensor_value.RaggedTensorValue]
+
+# Type annotation indicating that a value is a ragged tensor, a dense tensor,
+# or a value that can be converted to a tensor (e.g. np.array).
+# TODO(edloper): Add Variable to TensorLike, and remove it from here.
+RaggedOrDense = typing.Union[Ragged, core_types.TensorLike]

@@ -108,6 +108,10 @@ absl::Status Texture2DDescriptor::PerformReadSelector(
       return absl::OkStatus();
     } else {
       *result = "texelFetch(tex2d, ivec2(" + args[0] + ", " + args[1] + "), 0)";
+      if (element_type == DataType::FLOAT16 &&
+          gpu_info.IsGlslSupportsExplicitFp16()) {
+        *result = "f16vec4(" + *result + ")";
+      }
       return absl::OkStatus();
     }
   } else {

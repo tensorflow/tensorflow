@@ -80,12 +80,12 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
 
     operation->SetDst(&dst[i], i);
   }
+  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
 
   ClOperation cl_op;
   cl_op.Init(std::move(operation));
   RETURN_IF_ERROR(cl_op.Compile(creation_context));
   RETURN_IF_ERROR(cl_op.UpdateParams());
-  cl_op.GetGpuOperation().args_.ReleaseCPURepresentation();
   RETURN_IF_ERROR(cl_op.AddToQueue(creation_context.queue));
   RETURN_IF_ERROR(creation_context.queue->WaitForCompletion());
 
@@ -134,12 +134,12 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
 
     operation->SetDst(&dst[i], i);
   }
+  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
 
   ClOperation cl_op;
   cl_op.Init(std::move(operation));
   RETURN_IF_ERROR(cl_op.Compile(creation_context));
   RETURN_IF_ERROR(cl_op.UpdateParams());
-  cl_op.GetGpuOperation().args_.ReleaseCPURepresentation();
   RETURN_IF_ERROR(cl_op.AddToQueue(creation_context.queue));
   RETURN_IF_ERROR(creation_context.queue->WaitForCompletion());
 
@@ -182,12 +182,12 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
 
     operation->SetDst(&dst[i], i);
   }
+  RETURN_IF_ERROR(operation->AssembleCode(creation_context.device->GetInfo()));
 
   ClOperation cl_op;
   cl_op.Init(std::move(operation));
   RETURN_IF_ERROR(cl_op.Compile(creation_context));
   RETURN_IF_ERROR(cl_op.UpdateParams());
-  cl_op.GetGpuOperation().args_.ReleaseCPURepresentation();
   RETURN_IF_ERROR(cl_op.AddToQueue(creation_context.queue));
   RETURN_IF_ERROR(creation_context.queue->WaitForCompletion());
 

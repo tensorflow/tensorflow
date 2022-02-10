@@ -65,6 +65,7 @@ class HloAliasAnalysisTest : public HloTestBase {
     }
 
     std::vector<HloBuffer> buffers;
+    buffers.reserve(buffer_ids.size());
     for (HloBuffer::Id id : buffer_ids) {
       buffers.push_back(analysis_->GetBuffer(id));
     }
@@ -74,7 +75,9 @@ class HloAliasAnalysisTest : public HloTestBase {
   // Return a vector containing all of the HloValues in the given buffer.
   std::vector<HloValue> GetValuesInBuffer(const HloBuffer& buffer) {
     std::vector<HloValue> values;
-    for (const HloValue* value : buffer.values()) {
+    const auto& buffer_values = buffer.values();
+    values.reserve(buffer_values.size());
+    for (const HloValue* value : buffer_values) {
       values.push_back(*value);
     }
     return values;

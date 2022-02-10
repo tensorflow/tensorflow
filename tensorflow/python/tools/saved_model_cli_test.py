@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for SavedModelCLI tool."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import os
 import pickle
@@ -214,7 +210,7 @@ signature_def['serving_default']:
         name: PartitionedCall:0
   Method name is: tensorflow/serving/predict
 
-Defined Functions:
+Concrete Functions:
   Function Name: '__call__'
     Option #1
       Callable with:
@@ -299,7 +295,7 @@ signature_def['serving_default']:
         name: PartitionedCall:0
   Method name is: tensorflow/serving/predict
 
-Defined Functions:
+Concrete Functions:
   Function Name: 'pure_concrete_function'
     Option #1
       Callable with:
@@ -386,7 +382,7 @@ Defined Functions:
     input_expr_str = 'input3=np.zeros([2,2]);input4=[4,5]'
     input_dict = saved_model_cli.preprocess_inputs_arg_string(input_str)
     input_expr_dict = saved_model_cli.preprocess_input_exprs_arg_string(
-        input_expr_str)
+        input_expr_str, safe=False)
     self.assertTrue(input_dict['input1'] == ('/path/file.txt', 'ab3'))
     self.assertTrue(input_dict['input2'] == ('file2', None))
     print(input_expr_dict['input3'])
@@ -422,6 +418,11 @@ Defined Functions:
           }
     """, feature)
 
+  def testInputPreprocessExampleWithCodeInjection(self):
+    input_examples_str = 'inputs=os.system("echo hacked")'
+    with self.assertRaisesRegex(RuntimeError, 'not a valid python literal.'):
+      saved_model_cli.preprocess_input_examples_arg_string(input_examples_str)
+
   def testInputPreProcessFileNames(self):
     input_str = (r'inputx=C:\Program Files\data.npz[v:0];'
                  r'input:0=c:\PROGRA~1\data.npy')
@@ -438,8 +439,8 @@ Defined Functions:
     with self.assertRaises(RuntimeError):
       saved_model_cli.preprocess_inputs_arg_string(input_str)
     input_str = 'inputx:np.zeros((5))'
-    with self.assertRaises(RuntimeError):
-      saved_model_cli.preprocess_input_exprs_arg_string(input_str)
+    with self.assertRaisesRegex(RuntimeError, 'format is incorrect'):
+      saved_model_cli.preprocess_input_exprs_arg_string(input_str, safe=False)
 
   def testInputParserNPY(self):
     x0 = np.array([[1], [2]])
@@ -868,6 +869,35 @@ Defined Functions:
     makefile_contents = file_io.read_file_to_string(
         '{}_makefile.inc'.format(output_prefix))
     self.assertIn('-D_GLIBCXX_USE_CXX11_ABI=', makefile_contents)
+
+  def testFreezeModel(self):
+    if not test.is_built_with_xla():
+      self.skipTest('Skipping test because XLA is not compiled in.')
+
+    variables_to_feed = 'all'
+    func = 'func2'
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = self.AOTCompileDummyModel()
+    func = getattr(dummy_model, func)
+    with self.cached_session():
+      self.evaluate(dummy_model.var.initializer)
+      self.evaluate(dummy_model.write_var.initializer)
+      save.save(dummy_model, saved_model_dir, signatures={'func': func})
+
+    self.parser = saved_model_cli.create_parser()
+    output_prefix = os.path.join(test.get_temp_dir(), 'aot_compile_cpu_dir/out')
+    args = [  # Use the default seving signature_key.
+        'freeze_model', '--dir', saved_model_dir, '--tag_set', 'serve',
+        '--signature_def_key', 'func', '--output_prefix', output_prefix,
+        '--variables_to_feed', variables_to_feed
+    ]
+    args = self.parser.parse_args(args)
+    with test.mock.patch.object(logging, 'warn'):
+      saved_model_cli.freeze_model(args)
+    self.assertTrue(
+        file_io.file_exists(os.path.join(output_prefix, 'frozen_graph.pb')))
+    self.assertTrue(
+        file_io.file_exists(os.path.join(output_prefix, 'config.pbtxt')))
 
 
 if __name__ == '__main__':

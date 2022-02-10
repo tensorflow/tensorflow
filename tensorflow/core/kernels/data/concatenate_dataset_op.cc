@@ -43,7 +43,9 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
                    const DatasetBase* to_concatenate)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
-        to_concatenate_(to_concatenate) {
+        to_concatenate_(to_concatenate),
+        input_cardinality_(input->Cardinality()),
+        to_concatenate_cardinality_(to_concatenate_->Cardinality()) {
     input_->Ref();
     to_concatenate_->Ref();
 
@@ -83,16 +85,31 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override {
-    int64_t n1 = input_->Cardinality();
-    int64_t n2 = to_concatenate_->Cardinality();
-    if (n1 == kInfiniteCardinality || n2 == kInfiniteCardinality) {
+  int64_t CardinalityInternal() const override {
+    if (input_cardinality_ == kInfiniteCardinality ||
+        to_concatenate_cardinality_ == kInfiniteCardinality) {
       return kInfiniteCardinality;
     }
-    if (n1 == kUnknownCardinality || n2 == kUnknownCardinality) {
+    if (input_cardinality_ == kUnknownCardinality ||
+        to_concatenate_cardinality_ == kUnknownCardinality) {
       return kUnknownCardinality;
     }
-    return n1 + n2;
+    return input_cardinality_ + to_concatenate_cardinality_;
+  }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t input_cardinality = input_->Cardinality(options);
+    int64_t to_concatenate_cardinality = to_concatenate_->Cardinality(options);
+
+    if (input_cardinality == kInfiniteCardinality ||
+        to_concatenate_cardinality == kInfiniteCardinality) {
+      return kInfiniteCardinality;
+    }
+    if (input_cardinality == kUnknownCardinality ||
+        to_concatenate_cardinality == kUnknownCardinality) {
+      return kUnknownCardinality;
+    }
+    return input_cardinality + to_concatenate_cardinality;
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
@@ -104,6 +121,18 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(input_->CheckExternalState());
     return to_concatenate_->CheckExternalState();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    if (index < input_cardinality_) {
+      TF_RETURN_IF_ERROR(input_->Get(ctx, index, out_tensors));
+    } else {
+      TF_RETURN_IF_ERROR(
+          to_concatenate_->Get(ctx, index - input_cardinality_, out_tensors));
+    }
+    return Status::OK();
   }
 
  protected:
@@ -226,6 +255,8 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
   const DatasetBase* input_;
   const DatasetBase* to_concatenate_;
+  const int64_t input_cardinality_;
+  const int64_t to_concatenate_cardinality_;
   std::vector<PartialTensorShape> output_shapes_;
 };
 

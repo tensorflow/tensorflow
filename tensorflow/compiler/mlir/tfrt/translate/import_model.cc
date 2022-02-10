@@ -30,12 +30,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ConvertFunctionToBef(mlir::StringRef function_name,
-                            const tensorflow::FunctionBody* fbody,
-                            const FunctionLibraryDefinition& flib_def,
-                            tfrt::ArrayRef<tfrt::string_view> devices,
-                            tensorflow::TfrtFunctionCompileOptions options,
-                            tfrt::BefBuffer* bef_buffer) {
+Status ConvertFunctionToBef(
+    mlir::StringRef function_name, const tensorflow::FunctionBody* fbody,
+    const FunctionLibraryDefinition& flib_def,
+    tfrt::ArrayRef<tfrt::string_view> devices,
+    const tensorflow::TfrtFunctionCompileOptions& options,
+    tfrt::BefBuffer* bef_buffer) {
   mlir::MLIRContext context;
   // FunctionDef -> TF Dialect
   auto expected_module =
@@ -72,6 +72,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
     TfrtTpuCompileOptions tpu_compile_options;
     tpu_compile_options.move_resource_gather_to_host =
         options.tpu_move_resource_gather_to_host;
+    tpu_compile_options.gather_table_width_threshold_bytes =
+        options.tpu_gather_table_width_threshold_bytes;
 
     auto backward_compat_result =
         tensorflow::RunTPUBackwardCompatConversion(module, tpu_compile_options);
@@ -86,6 +88,13 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
     TF_RETURN_IF_ERROR(
         mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
+  } else if (options.tpu_target == TfrtTpuInfraTarget::kTfFallback) {
+    auto tpu_partitioned_call_fallback_compat_result =
+        tensorflow::RunTPUPartitionedCallFallbackCompatConversion(module);
+    if (mlir::failed(tpu_partitioned_call_fallback_compat_result)) {
+      return diag_handler.Combine(tensorflow::errors::Internal(
+          "Failed to process TPUPartitionedCallOp for fallback execution"));
+    }
   }
 
   if (VLOG_IS_ON(1)) {
@@ -111,6 +120,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
   pass_options.target_tpurt =
       (options.tpu_target == TfrtTpuInfraTarget::kTpurt);
   pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
+  pass_options.use_tpu_host_allocator_for_inputs =
+      options.use_tpu_host_allocator_for_inputs;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
   pass_options.func_use_fallback_tensor = true;
   pass_options.auto_fusion_oplist = options.auto_fusion_oplist;

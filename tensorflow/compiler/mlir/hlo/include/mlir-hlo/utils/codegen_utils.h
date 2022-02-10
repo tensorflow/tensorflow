@@ -32,12 +32,12 @@ namespace codegen_utils {
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Operation* op);
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Value memref);
 
-llvm::SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
-                                              Value linear_index, Value memref);
+llvm::SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
+                                           Value linear_index, Value memref);
 
-llvm::SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
-                                              Value linear_index,
-                                              llvm::ArrayRef<Value> shape);
+llvm::SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
+                                           Value linear_index,
+                                           llvm::ArrayRef<Value> shape);
 
 }  // namespace codegen_utils
 }  // namespace mlir

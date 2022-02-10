@@ -196,6 +196,7 @@ REGISTER_OP("AssignVariableOp")
     .Input("resource: resource")
     .Input("value: dtype")
     .Attr("dtype: type")
+    .Attr("validate_shape: bool = false")
     .SetShapeFn(CreateAssignShapeFn);
 
 REGISTER_OP("AssignAddVariableOp")
@@ -407,6 +408,7 @@ REGISTER_OP("MutexLock")
     .Input("mutex: resource")
     .Output("mutex_lock: variant")
     .SetIsStateful()
+    .SetTypeConstructor(full_type::Nullary(TFT_MUTEX_LOCK))
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Scalar());
       return Status::OK();

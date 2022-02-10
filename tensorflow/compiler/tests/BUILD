@@ -283,6 +283,7 @@ tf_xla_py_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
@@ -487,6 +488,9 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",
+        "nomsan",
+        "notsan",
     ],
     deps = [
         ":xla_test",
@@ -839,7 +843,6 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform_test",
-        "@six_archive//:six",
     ],
 )
 
@@ -907,6 +910,7 @@ tf_xla_py_test(
     srcs = ["matrix_diag_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 8,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1147,7 +1151,7 @@ tf_xla_py_test(
     name = "reduce_window_test",
     size = "small",
     srcs = ["reduce_window_test.py"],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1541,6 +1545,28 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "cast_ops_test",
+    size = "small",
+    srcs = ["cast_ops_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "gather_test",
     size = "medium",
     srcs = ["gather_test.py"],
@@ -1744,6 +1770,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -1763,12 +1790,67 @@ cc_library(
 tf_cuda_cc_test(
     name = "randomized_tests",
     size = "medium",
+    args = ["--tf_xla_test_use_mlir=false"],
     shard_count = 20,
     # This test is randomized, so only run it if explicitly requested.
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "manual",
         "notap",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+tf_cuda_cc_test(
+    name = "randomized_tests_mlir",
+    size = "medium",
+    args = ["--tf_xla_test_use_mlir=true"],
+    shard_count = 20,
+    # This test is randomized, so only run it if explicitly requested.
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "manual",
+        "notap",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+# Create a deterministic version of randomized_tests_mlir with fixed seed.
+# This can be used in presubmit checks as it is no longer randomized.
+tf_cuda_cc_test(
+    name = "randomized_tests_mlir_seeded",
+    size = "medium",
+    args = [
+        "--tf_xla_random_seed=200839030",
+        "--tf_xla_test_use_mlir=true",
+        "--tf_xla_test_device=GPU:0",
+    ],
+    shard_count = 20,
+    tags = [
+        "config-cuda-only",
+        "no_cuda_asan",  # TODO(b/201651800)
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "requires-gpu-nvidia",
+    ] + tf_cuda_tests_tags(),
+    deps = [":randomized_tests_library"],
+)
+
+# Create a deterministic version of randomized_tests with fixed seed.
+# This can be used in presubmit checks as it is no longer randomized.
+tf_cuda_cc_test(
+    name = "randomized_tests_seeded",
+    size = "medium",
+    args = [
+        "--tf_xla_random_seed=200839030",
+        "--tf_xla_test_use_mlir=false",
+        "--tf_xla_test_device=GPU:0",
+    ],
+    shard_count = 20,
+    tags = [
+        "config-cuda-only",
+        "no_cuda_asan",  # TODO(b/201651800)
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -1997,6 +2079,24 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "repeat_op_test",
+    size = "medium",
+    srcs = ["repeat_op_test.py"],
+    enable_mlir_bridge = True,
+    shard_count = 5,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
     name = "ensure_shape_op_test",
     size = "medium",
     srcs = ["ensure_shape_op_test.py"],
@@ -2018,16 +2118,13 @@ tf_xla_py_test(
     name = "where_op_test",
     size = "small",
     srcs = ["where_op_test.py"],
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
     enable_mlir_bridge = False,
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
@@ -2053,6 +2150,24 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/ops/risc:risc_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "const_arg_test",
+    size = "small",
+    srcs = ["const_arg_test.py"],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:is_mlir_bridge_test_false",
+        "//tensorflow/python:platform_test",
     ],
 )
 

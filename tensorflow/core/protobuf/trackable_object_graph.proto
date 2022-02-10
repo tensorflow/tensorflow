@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "google/protobuf/wrappers.proto";
+
 option cc_enable_arenas = true;
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
@@ -31,10 +33,10 @@ message TrackableObjectGraph {
       string full_name = 2;
       // The generated name of the Tensor in the checkpoint.
       string checkpoint_key = 3;
-      // Whether checkpoints should be considered as matching even without this
-      // value restored. Used for non-critical values which don't affect the
-      // TensorFlow graph, such as layer configurations.
-      bool optional_restore = 4;
+      // Deprecated bool field for optional restore. This field has never been
+      // set to True.
+      reserved "optional_restore";
+      reserved 4;
     }
 
     message SlotVariableReference {
@@ -54,7 +56,25 @@ message TrackableObjectGraph {
     repeated SerializedTensor attributes = 2;
     // Slot variables owned by this object.
     repeated SlotVariableReference slot_variables = 3;
+
+    // The registered saver used to save this object. If this saver is not
+    // present when loading the checkpoint, then loading will fail.
+    RegisteredSaver registered_saver = 4;
+
+    // Whether this object has checkpoint values or descendants with checkpoint
+    // values. This is computed at save time to avoid traversing the entire
+    // object graph proto when restoring (which also has to traverse the live
+    // object graph).
+    google.protobuf.BoolValue has_checkpoint_values = 5;
   }
 
   repeated TrackableObject nodes = 1;
+}
+
+message RegisteredSaver {
+  // The name of the registered saver/restore function.
+  string name = 1;
+
+  // Unique auto-generated name of the object.
+  string object_name = 2;
 }

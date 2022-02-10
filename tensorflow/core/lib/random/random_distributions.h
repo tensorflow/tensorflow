@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 #define TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
-#include <string.h>
-
 #include <algorithm>
 #include <cmath>
 #include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/random_distributions_utils.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -33,10 +32,6 @@ namespace random {
 PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x);
 // Helper function to convert a 16-bit integer to a bfloat16 between [0..1).
 PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x);
-// Helper function to convert a 32-bit integer to a float between [0..1).
-PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x);
-// Helper function to convert two 32-bit integers to a double between [0..1).
-PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1);
 
 // Computes a + b. Requires that the result is representable in the destination
 // type and that b is not maximal (i.e. b + 1 is not 0). Notably, the addend b
@@ -377,9 +372,6 @@ template <class Generator, typename RealType>
 class NormalDistribution;
 
 PHILOX_DEVICE_INLINE
-void BoxMullerFloat(uint32 x0, uint32 x1, float* f0, float* f1);
-
-PHILOX_DEVICE_INLINE
 void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
                      double* d1);
 
@@ -671,7 +663,7 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
   ResultType operator()(SingleSampleGenerator* gen) {
     ResultType results;
     int index = 0;
-    while (1) {
+    while (true) {
       const uint32 x0 = (*gen)();
       const uint32 x1 = (*gen)();
       const uint32 x2 = (*gen)();
@@ -694,31 +686,6 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
     }
   }
 };
-
-// Helper function to convert two 32-bit uniform integers to two floats
-// under the unit normal distribution.
-PHILOX_DEVICE_INLINE
-void BoxMullerFloat(uint32 x0, uint32 x1, float* f0, float* f1) {
-  // This function implements the Box-Muller transform:
-  // http://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform#Basic_form
-  // Do not send a really small number to log().
-  // We cannot mark "epsilon" as "static const" because NVCC would complain
-  const float epsilon = 1.0e-7f;
-  float u1 = Uint32ToFloat(x0);
-  if (u1 < epsilon) {
-    u1 = epsilon;
-  }
-  const float v1 = 2.0f * M_PI * Uint32ToFloat(x1);
-  const float u2 = Eigen::numext::sqrt(-2.0f * Eigen::numext::log(u1));
-#if !defined(__linux__)
-  *f0 = Eigen::numext::sin(v1);
-  *f1 = Eigen::numext::cos(v1);
-#else
-  sincosf(v1, f0, f1);
-#endif
-  *f0 *= u2;
-  *f1 *= u2;
-}
 
 // Helper function to convert four 32-bit uniform integers to two doubles
 // under the unit normal distribution.
@@ -781,43 +748,6 @@ PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x) {
   // in [1, 2). The minus will not cause a rounding that makes the result 1.
   // Instead it will just be close to 1.
   return result - bfloat16(1.0);
-}
-
-// Helper function to convert an 32-bit integer to a float between [0..1).
-PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x) {
-  // IEEE754 floats are formatted as follows (MSB first):
-  //    sign(1) exponent(8) mantissa(23)
-  // Conceptually construct the following:
-  //    sign == 0
-  //    exponent == 127  -- an excess 127 representation of a zero exponent
-  //    mantissa == 23 random bits
-  const uint32 man = x & 0x7fffffu;  // 23 bit mantissa
-  const uint32 exp = static_cast<uint32>(127);
-  const uint32 val = (exp << 23) | man;
-
-  // Assumes that endian-ness is same for float and uint32.
-  float result;
-  memcpy(&result, &val, sizeof(val));
-  return result - 1.0f;
-}
-
-// Helper function to convert two 32-bit integers to a double between [0..1).
-PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1) {
-  // IEEE754 doubles are formatted as follows (MSB first):
-  //    sign(1) exponent(11) mantissa(52)
-  // Conceptually construct the following:
-  //    sign == 0
-  //    exponent == 1023  -- an excess 1023 representation of a zero exponent
-  //    mantissa == 52 random bits
-  const uint32 mhi = x0 & 0xfffffu;  // upper 20 bits of mantissa
-  const uint32 mlo = x1;             // lower 32 bits of mantissa
-  const uint64 man = (static_cast<uint64>(mhi) << 32) | mlo;  // mantissa
-  const uint64 exp = static_cast<uint64>(1023);
-  const uint64 val = (exp << 52) | man;
-  // Assumes that endian-ness is same for double and uint64.
-  double result;
-  memcpy(&result, &val, sizeof(val));
-  return result - 1.0;
 }
 
 }  // namespace random

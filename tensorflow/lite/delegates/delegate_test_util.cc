@@ -115,6 +115,11 @@ void TestDelegation::SetUpSubgraph(Subgraph* subgraph) {
                                   &node_index_ignored);
 }
 
+void TestDelegation::AddSubgraphs(int subgraphs_to_add,
+                                  int* first_new_subgraph_index) {
+  interpreter_->AddSubgraphs(subgraphs_to_add, first_new_subgraph_index);
+}
+
 void TestDelegate::SetUp() {
   interpreter_.reset(new Interpreter);
   SetUpSubgraph(&interpreter_->primary_subgraph());

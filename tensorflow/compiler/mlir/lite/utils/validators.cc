@@ -48,8 +48,8 @@ bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
 }
 
 // Returns true if the attribute is an integer list of the form [1, X, Y, 1],
-bool TFIntListIs1XY1(const ArrayAttr &attr) {
-  const auto &elements = attr.getValue();
+bool TFIntListIs1XY1(const Attribute attr) {
+  const auto &elements = attr.cast<ArrayAttr>().getValue();
   if (elements.size() != 4 ||
       std::any_of(elements.begin(), elements.end(),
                   [](Attribute e) { return !e.isa<IntegerAttr>(); }))
@@ -90,8 +90,8 @@ bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
 
 // Returns true if every element of the attribute is 1. All elements of `attr`
 // must be `IntegerAttr`.
-bool TFIntListIsAllOnes(const ArrayAttr &attr) {
-  const auto &elements = attr.getValue();
+bool TFIntListIsAllOnes(const Attribute attr) {
+  const auto &elements = attr.cast<ArrayAttr>().getValue();
 
   return !std::any_of(elements.begin(), elements.end(), [](Attribute e) {
     return e.cast<IntegerAttr>().getValue() != 1;

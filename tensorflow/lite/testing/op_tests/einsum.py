@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for einsum."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -77,7 +73,6 @@ def make_einsum_tests(options):
         outputs, feed_dict=dict(zip(inputs, [input0_value, input1_value])))
     return [input0_value, input1_value], output_values
 
-  options.use_experimental_converter = True
   make_zip_of_tests(
       options,
       test_parameters,

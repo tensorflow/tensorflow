@@ -22,7 +22,7 @@ namespace xla {
 void XlaDebugInfoManager::RegisterModule(
     const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   if (active_modules_.find(module_id) != active_modules_.end()) {
     active_modules_[module_id].instances.emplace_back(hlo_module,
                                                       buffer_assignment);
@@ -40,7 +40,7 @@ void XlaDebugInfoManager::RegisterModule(
 void XlaDebugInfoManager::UnregisterModule(
     const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   CHECK(active_modules_.find(module_id) != active_modules_.end());
   XlaModuleEntry& active_module = active_modules_[module_id];
   auto instance_it =
@@ -61,22 +61,8 @@ void XlaDebugInfoManager::UnregisterModule(
   }
 }
 
-void XlaDebugInfoManager::OnModuleStart(ModuleIdentifier module_id) {
-  tensorflow::mutex_lock lock(mutex_);
-  running_module_ids_[module_id]++;
-}
-
-void XlaDebugInfoManager::OnModuleStop(ModuleIdentifier module_id) {
-  tensorflow::mutex_lock lock(mutex_);
-  if (--running_module_ids_[module_id] == 0) {
-    if (!tracing_active_) {
-      running_module_ids_.erase(module_id);
-    }
-  }
-}
-
 void XlaDebugInfoManager::StartTracing() {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   tracing_active_ = true;
 }
 
@@ -84,16 +70,11 @@ void XlaDebugInfoManager::StopTracing(
     std::vector<XlaModuleDebugInfo>* module_debug_info) {
   std::vector<XlaModuleEntry> modules_to_serialize;
   {
-    tensorflow::mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     if (!tracing_active_) return;
     tracing_active_ = false;
-    for (const auto& running_module_id : running_module_ids_) {
-      const ModuleIdentifier& module_id = running_module_id.first;
-      if (active_modules_.find(module_id) == active_modules_.end()) {
-        LOG(ERROR) << "Cannot find debug info for module: " << module_id;
-        continue;
-      }
-      const XlaModuleEntry& active_module = active_modules_[module_id];
+    for (const auto& traced_module_id : active_modules_) {
+      const XlaModuleEntry& active_module = traced_module_id.second;
 
       // Copy the instance so that we can serialize without holding the lock.
       // All instances are equivalent from the perspective of symbolization.
@@ -103,16 +84,6 @@ void XlaDebugInfoManager::StopTracing(
         e.module_id = active_module.module_id;
         e.instances.push_back(active_module.instances[0]);
         modules_to_serialize.push_back(std::move(e));
-      }
-    }
-
-    // Remove all running_module_ids which has a reference count equal to zero.
-    for (auto it = running_module_ids_.begin();
-         it != running_module_ids_.end();) {
-      if (it->second == 0) {
-        running_module_ids_.erase(it++);
-      } else {
-        ++it;
       }
     }
 

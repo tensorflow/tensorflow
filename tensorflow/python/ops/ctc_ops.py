@@ -14,10 +14,6 @@
 # ==============================================================================
 """CTC (Connectionist Temporal Classification) Operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import uuid
 
 from tensorflow.python.eager import context
@@ -211,13 +207,21 @@ def _ctc_loss_impl(labels,
   # The second, third, etc output tensors contain the gradients.  We use it in
   # _CTCLossGrad() below.
   if not isinstance(labels, sparse_tensor.SparseTensor):
-    raise TypeError("Expected labels (first argument) to be a SparseTensor")
+    raise TypeError("Expected argument `labels` to be a SparseTensor. "
+                    f"Received labels={labels} of type: "
+                    f"{type(labels).__name__}")
 
   # For internal calculations, we transpose to [time, batch, num_classes]
   inputs = deprecation.deprecated_argument_lookup("logits", logits, "inputs",
                                                   inputs)
+
+  inputs = ops.convert_to_tensor(inputs, name="logits")
   if not time_major:
     inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
+
+  orig_dtype = inputs.dtype
+  if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+    inputs = math_ops.cast(inputs, dtypes.float32)
 
   # gen_ctc_ops.ctc_loss_v2 differs from gen_ctc_ops.ctc_loss. v2 assumes the
   # blank index to be 0, but v1 views it as the last index.
@@ -234,6 +238,9 @@ def _ctc_loss_impl(labels,
       preprocess_collapse_repeated=preprocess_collapse_repeated,
       ctc_merge_repeated=ctc_merge_repeated,
       ignore_longer_outputs_than_inputs=ignore_longer_outputs_than_inputs)
+
+  if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+    loss = math_ops.cast(loss, orig_dtype)
 
   return loss
 
@@ -827,7 +834,8 @@ def ctc_loss_v2(labels,
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
-          "blank_index must be given when using SparseTensor labels.")
+          "Argument `blank_index` must be provided when labels is a "
+          "SparseTensor.")
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
@@ -922,10 +930,13 @@ def ctc_loss_v3(labels,
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
-          "blank_index must be given when using SparseTensor labels.")
+          "Argument `blank_index` must be provided when labels is a "
+          "SparseTensor.")
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
+
+    logits = ops.convert_to_tensor(logits, name="logits")
 
     params = {
         "labels": labels,
@@ -1042,6 +1053,10 @@ def ctc_loss_dense(labels,
     label_length = ops.convert_to_tensor(label_length, name="label_length")
     logit_length = ops.convert_to_tensor(logit_length, name="logit_length")
 
+    orig_dtype = logits.dtype
+    if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+      logits = math_ops.cast(logits, dtypes.float32)
+
     if not logits_time_major:
       logits = array_ops.transpose(logits, perm=[1, 0, 2])
 
@@ -1093,7 +1108,10 @@ def ctc_loss_dense(labels,
 
       return result[0], grad
 
-    return compute_ctc_loss(*args)
+    loss = compute_ctc_loss(*args)
+    if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+      loss = math_ops.cast(loss, orig_dtype)
+    return loss
 
 
 @tf_export("nn.collapse_repeated")
@@ -1284,8 +1302,9 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
     perm = [0, 2, 1]
   else:
     raise ValueError(
-        "state_trans_log_probs rank must be known and == 2 or 3, is: %s" %
-        state_trans_log_probs.shape.ndims)
+        "Rank of argument `state_trans_log_probs` must be known and equal to "
+        f"2 or 3. Received state_trans_log_probs={state_trans_log_probs} of "
+        f"rank {state_trans_log_probs.shape.ndims}")
 
   bwd_state_trans_log_probs = array_ops.transpose(state_trans_log_probs, perm)
   batch_size = _get_dim(observed_log_probs, 1)

@@ -64,17 +64,14 @@ bool KernelFallbackExecute(
   for (AsyncValue* input : arguments) {
     inputs.push_back(FormRef(input));
   }
-  llvm::SmallVector<RCReference<AsyncValue>, 4> outputs;
-  inputs.reserve(results.size());
-  for (auto& output : results) {
-    outputs.push_back(output.CopyRef());
-  }
+  llvm::SmallVector<RCReference<AsyncValue>, 4> outputs(results.begin(),
+                                                        results.end());
 
   // Always run TFRTOpKernel::Compute on the blocking thread pool to
   // avoid deadlock. Many TF kernels block until their intra-op closures
   // complete.
   bool work_enqueued = EnqueueBlockingWork(
-      exec_ctx,
+      exec_ctx.host(),
       [exec_ctx, inputs = std::move(inputs), outputs = std::move(outputs),
        op_name_str = std::move(op_name_str), attrs = attrs.freeze(),
        output_type = output_type]() mutable {

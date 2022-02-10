@@ -85,6 +85,12 @@ static LogicalResult verify(ExecuteOp op) {
 static LogicalResult verify(ExecuteOpSeq op) {
   return fallback_common::VerifyFallbackExecuteOp(op);
 }
+static LogicalResult verify(ExecuteOpWithAllocator op) {
+  return fallback_common::VerifyExecuteOpCommon(op);
+}
+static LogicalResult verify(ExecuteOpSeqWithAllocator op) {
+  return fallback_common::VerifyExecuteOpCommon(op);
+}
 static LogicalResult verify(BatchFunctionOp op) {
   return fallback_common::VerifyExecuteOpCommon(op);
 }
@@ -138,6 +144,66 @@ static ParseResult parseExecuteOpSeq(OpAsmParser &parser,
       parser, builder, result, builder.getType<fallback::TFTensorType>(),
       parse_options);
 }
+static ParseResult parseExecuteOpWithAllocator(OpAsmParser &parser,
+                                               OperationState &result) {
+  auto &builder = parser.getBuilder();
+  llvm::SmallVector<mlir::OpAsmParser::OperandType, 1> allocator;
+  if (parser.parseOperandList(allocator,
+                              /*requiredOperandCount=*/1,
+                              mlir::OpAsmParser::Delimiter::Paren))
+    return mlir::failure();
+
+  if (parser.resolveOperands(allocator.front(),
+                             builder.getType<fallback::TFAllocatorType>(),
+                             result.operands))
+    return mlir::failure();
+
+  fallback_common::ParseExecuteOpOptions parse_options;
+  parse_options.has_chain = false;
+  parse_options.has_key = true;
+  parse_options.has_device = true;
+  parse_options.has_func_attr = true;
+  parse_options.has_cost = true;
+
+  return fallback_common::ParseExecuteOpCommon(
+      parser, builder, result, builder.getType<fallback::TFTensorType>(),
+      parse_options);
+}
+static ParseResult parseExecuteOpSeqWithAllocator(OpAsmParser &parser,
+                                                  OperationState &result) {
+  auto &builder = parser.getBuilder();
+  llvm::SmallVector<mlir::OpAsmParser::OperandType, 2> chain_and_allocator;
+  if (parser.parseOperandList(chain_and_allocator,
+                              /*requiredOperandCount=*/2,
+                              mlir::OpAsmParser::Delimiter::Paren))
+    return mlir::failure();
+
+  auto &chain = chain_and_allocator[0];
+  auto &allocator = chain_and_allocator[1];
+
+  if (parser.resolveOperands(chain, builder.getType<compiler::ChainType>(),
+                             result.operands))
+    return mlir::failure();
+
+  if (parser.resolveOperands(allocator,
+                             builder.getType<fallback::TFAllocatorType>(),
+                             result.operands))
+    return mlir::failure();
+
+  // The first result is a chain.
+  result.types.push_back(builder.getType<compiler::ChainType>());
+
+  fallback_common::ParseExecuteOpOptions parse_options;
+  parse_options.has_chain = false;
+  parse_options.has_key = true;
+  parse_options.has_device = true;
+  parse_options.has_func_attr = true;
+  parse_options.has_cost = true;
+
+  return fallback_common::ParseExecuteOpCommon(
+      parser, builder, result, builder.getType<fallback::TFTensorType>(),
+      parse_options);
+}
 
 static ParseResult parseBatchFunctionOp(OpAsmParser &parser,
                                         OperationState &result) {
@@ -181,8 +247,8 @@ static ParseResult parseBatchFunctionOp(OpAsmParser &parser,
 
   SmallVector<Attribute, 4> op_attr_array;
   for (const auto &key_value : op_attrs) {
-    auto key = builder.getStringAttr(key_value.first.strref());
-    auto value = key_value.second;
+    auto key = key_value.getName();
+    auto value = key_value.getValue();
     op_attr_array.push_back(builder.getArrayAttr({key, value}));
   }
 
@@ -193,7 +259,7 @@ static ParseResult parseBatchFunctionOp(OpAsmParser &parser,
 }
 
 static void print(OpAsmPrinter &p, CreateOp op) {
-  p << "tfrt_fallback_async.createop(" << op.in_ch() << ") key("
+  p << "(" << op.in_ch() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") device("
     << op->getAttr("device") << ") " << op->getAttr("op_name") << "()";
 
@@ -205,7 +271,18 @@ static void print(OpAsmPrinter &p, CreateOp op) {
 }
 
 static void print(OpAsmPrinter &p, ExecuteOp op) {
-  p << "tfrt_fallback_async.executeop key("
+  p << " key(" << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt()
+    << ") cost(" << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
+    << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
+    << '(' << op.operands() << ')';
+
+  fallback_common::PrintExecuteOpCommon(p, op);
+  fallback_common::PrintExecuteOpFuncAttribute(p, op);
+  if (!op.results().empty()) p << " : " << op.results().size();
+}
+
+static void print(OpAsmPrinter &p, ExecuteOpSeq op) {
+  p << "(" << op.in_op_chain() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
@@ -216,8 +293,20 @@ static void print(OpAsmPrinter &p, ExecuteOp op) {
   if (!op.results().empty()) p << " : " << op.results().size();
 }
 
-static void print(OpAsmPrinter &p, ExecuteOpSeq op) {
-  p << "tfrt_fallback_async.executeop.seq(" << op.in_op_chain() << ") key("
+static void print(OpAsmPrinter &p, ExecuteOpWithAllocator op) {
+  p << "(" << op.allocator() << ") key("
+    << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
+    << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
+    << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
+    << '(' << op.operands() << ')';
+
+  fallback_common::PrintExecuteOpCommon(p, op);
+  fallback_common::PrintExecuteOpFuncAttribute(p, op);
+  if (!op.results().empty()) p << " : " << op.results().size();
+}
+
+static void print(OpAsmPrinter &p, ExecuteOpSeqWithAllocator op) {
+  p << "(" << op.in_op_chain() << ", " << op.allocator() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
@@ -229,8 +318,8 @@ static void print(OpAsmPrinter &p, ExecuteOpSeq op) {
 }
 
 static void print(OpAsmPrinter &p, BatchFunctionOp op) {
-  p << "tfrt_fallback_async.batch_function(" << op.in_op_chain() << ") "
-    << op->getAttr("f") << " (" << op.operands() << ") ";
+  p << "(" << op.in_op_chain() << ") " << op->getAttr("f") << " ("
+    << op.operands() << ") ";
 
   fallback_common::PrintExecuteOpCommon(p, op);
   if (!op.results().empty()) p << " : " << op.results().size();
@@ -336,9 +425,9 @@ struct RemoveDoubleTensorConversion
 }  // namespace
 
 void CoreRTTensorHandleToFallbackTensorOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<ConstCoreRTTensorHandleToFallbackTensorCanonicalization,
-                 RemoveDoubleTensorConversion>(context);
+    RewritePatternSet &results, MLIRContext *context) {
+  results.add<ConstCoreRTTensorHandleToFallbackTensorCanonicalization,
+              RemoveDoubleTensorConversion>(context);
 }
 
 }  // namespace fallback_async

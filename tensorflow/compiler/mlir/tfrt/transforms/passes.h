@@ -70,6 +70,10 @@ CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 CreateFuseTpuCompileAndExecutePass();
 
+// Create a pass to optimize TF dialect for TFRT workflow.
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateOptimizeTfForTfrtPass();
+
 }  // namespace tfrt_compiler
 
 class CoreRTConverter;
@@ -88,7 +92,7 @@ CreateConvertReferenceVariableToResourceVariablePass();
 // reusing the pass logic in a custom pass with additional conversions.
 mlir::LogicalResult TFSavedModelToCoreRTConversionPassRun(
     mlir::MLIRContext* context, mlir::FuncOp func,
-    mlir::ConversionTarget* target, mlir::OwningRewritePatternList* patterns,
+    mlir::ConversionTarget* target, mlir::RewritePatternSet* patterns,
     CoreRTConverter* corert_converter);
 
 // Create an operation pass that converts each tfrt_dist.remote_execute_func op
@@ -104,7 +108,8 @@ CreateRemoveDeviceAttributePass();
 
 // Create an operation pass that inserts corert.transfer op to make sure any
 // argument of any op is on the same device of the op itself.
-std::unique_ptr<mlir::FunctionPass> CreateCrossDeviceTransferPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateCrossDeviceTransferPass();
 
 struct TfrtPipelineOptions
     : public mlir::PassPipelineOptions<TfrtPipelineOptions> {
@@ -160,6 +165,11 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, transfer the result of tpurt.execute from TPU "
                      "to host."),
       llvm::cl::init(true)};
+  Option<bool> use_tpu_host_allocator_for_inputs{
+      *this, "use-tpu-host-allocator-for-inputs",
+      llvm::cl::desc("If true, fallback executeops that produce inputs to tpu "
+                     "program will use tpu host allocator."),
+      llvm::cl::init(false)};
   Option<bool> enable_native_ops{
       *this, "enable-native-ops",
       llvm::cl::desc(

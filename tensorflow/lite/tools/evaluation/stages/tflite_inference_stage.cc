@@ -109,7 +109,23 @@ TfLiteStatus TfliteInferenceStage::Init(
   }
 
   model_ = FlatBufferModel::BuildFromFile(params.model_file_path().c_str());
-  resolver_.reset(new ops::builtin::BuiltinOpResolver);
+
+  bool apply_default_delegates = true;
+  if (delegate_providers != nullptr) {
+    const auto& provider_params = delegate_providers->GetAllParams();
+    // When --use_xnnpack is explicitly set to false, to honor this, skip
+    // applying the XNNPACK delegate by default in TfLite runtime.
+    if (provider_params.HasParam("use_xnnpack") &&
+        provider_params.HasValueSet<bool>("use_xnnpack") &&
+        !provider_params.Get<bool>("use_xnnpack")) {
+      apply_default_delegates = false;
+    }
+  }
+
+  resolver_.reset(
+      apply_default_delegates
+          ? new ops::builtin::BuiltinOpResolver()
+          : new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
   InterpreterBuilder(*model_, *resolver_)(&interpreter_);
   if (!interpreter_) {
     LOG(ERROR) << "Could not build interpreter";

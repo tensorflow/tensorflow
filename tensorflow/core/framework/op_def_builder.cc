@@ -582,17 +582,17 @@ OpDefBuilder& OpDefBuilder::ControlOutput(string name) {
   return *this;
 }
 
-#ifndef TF_LEAN_BINARY
 OpDefBuilder& OpDefBuilder::Doc(string text) {
+#ifndef TF_LEAN_BINARY
   if (!doc_.empty()) {
     errors_.push_back(
         strings::StrCat("Extra call to Doc() for Op ", op_def()->name()));
   } else {
     doc_ = std::move(text);
   }
+#endif
   return *this;
 }
-#endif
 
 OpDefBuilder& OpDefBuilder::SetIsCommutative() {
   op_def()->set_is_commutative(true);
@@ -633,6 +633,11 @@ OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
 
 OpDefBuilder& OpDefBuilder::SetTypeConstructor(OpTypeConstructor c) {
   op_reg_data_.type_ctor = c;
+  return *this;
+}
+
+OpDefBuilder& OpDefBuilder::SetForwardTypeFn(ForwardTypeInferenceFn f) {
+  op_reg_data_.fwd_type_fn = f;
   return *this;
 }
 

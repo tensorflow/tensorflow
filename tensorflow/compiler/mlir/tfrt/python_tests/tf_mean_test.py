@@ -16,13 +16,13 @@
 
 import numpy as np
 
-import unittest
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
+from tensorflow.python.platform import test
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
-class TfMeanTest(googletest.TestCase):
+class TfMeanTest(test.TestCase):
 
   def test_mean_2d(self):
     mlir_function = """
@@ -33,13 +33,13 @@ class TfMeanTest(googletest.TestCase):
              : (tensor<?x?xf32>, tensor<1xi32>) -> tensor<?x1xf32>
         return %0 : tensor<?x1xf32>
       }"""
-    compiled = cpurt.compile(mlir_function, 'mean')
+    compiled = jitrt.compile(mlir_function, 'mean')
     arg0 = np.random.uniform(0.0, 1.0, size=(100, 200)).astype(np.float32)
-    [res] = cpurt.execute(compiled, [arg0])
+    [res] = jitrt.execute(compiled, [arg0])
     mean = np.mean(arg0, axis=1, keepdims=True)
     np.testing.assert_allclose(res, mean, rtol=1e-05)
 
 
 if __name__ == '__main__':
   np.random.seed(0)
-  googletest.main()
+  test.main()

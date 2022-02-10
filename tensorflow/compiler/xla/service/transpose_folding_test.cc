@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 
 #include <memory>
-#include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -59,7 +59,7 @@ class TransposeFoldingTest : public HloTestBase {
 };
 
 TEST_F(TransposeFoldingTest, FoldDotTranspose) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule FoldDotTranspose
 
 ENTRY entry_computation {
@@ -80,7 +80,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TransposeFoldingTest, DontFoldTransposeOfBatchDim) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule FoldDotTranspose
 
 ENTRY entry_computation {
@@ -108,7 +108,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TransposeFoldingTest, DontFoldTransposeOfRank1Dot) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule FoldDotTranspose
 
 ENTRY entry_computation {
@@ -136,7 +136,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule FoldDotTransposeConstant
 
 ENTRY entry_computation {
@@ -189,7 +189,7 @@ TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
 }
 
 TEST_F(TransposeFoldingTest, FoldDotTransposeInCall) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule FoldDotTransposeInCall
 
 callee {
@@ -256,7 +256,7 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -313,7 +313,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -375,7 +375,7 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   EXPECT_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -443,7 +443,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
   FoldTranspose(module.get());
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set(
+  absl::flat_hash_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
   EXPECT_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
@@ -472,7 +472,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
 }
 
 TEST_F(TransposeFoldingTest, FoldBatchDotTranspose) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule FoldBatchDotTranspose
 
 ENTRY entry_computation {
@@ -493,7 +493,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TransposeFoldingTest, NoFoldBatchDotTransposeBatch) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule NoFoldBatchDotTransposeBatch
 
 ENTRY entry_computation {
@@ -510,7 +510,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TransposeFoldingTest, FoldBatchDotTransposeNonContiguousBatch) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule FoldBatchDotTransposeNonContiguousBatch
 
 ENTRY entry_computation {
@@ -531,7 +531,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TransposeFoldingTest, NoFoldBatchDotTransposeIdentity) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule NoFoldBatchDotTransposeIdentity
 
 ENTRY entry_computation {

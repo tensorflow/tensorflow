@@ -14,12 +14,7 @@
 # ==============================================================================
 """Tests for activity module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import naming
@@ -729,10 +724,7 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     node, _ = self._parse_and_analyze(test_fn)
     fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
-    if six.PY2:
-      self.assertScopeIs(body_scope, ('a',), ('b', 'c'))
-    else:
-      self.assertScopeIs(body_scope, ('a',), ('b',))
+    self.assertScopeIs(body_scope, ('a',), ('b',))
 
   def test_comprehension_targets_are_isolated_in_augassign(self):
 
@@ -742,10 +734,7 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     node, _ = self._parse_and_analyze(test_fn)
     fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
-    if six.PY2:
-      self.assertScopeIs(body_scope, ('a', 'b'), ('b', 'c'))
-    else:
-      self.assertScopeIs(body_scope, ('a', 'b'), ('b',))
+    self.assertScopeIs(body_scope, ('a', 'b'), ('b',))
 
   def test_comprehension_generator_order(self):
 

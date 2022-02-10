@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
+#include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -92,12 +94,12 @@ class Delegate {
     if (options_.max_delegated_partitions <= 0) {
       options_.max_delegated_partitions = 1;
     }
-    if (options->experimental_flags &
+    if (options_.experimental_flags &
             TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION &&
-        options->model_token && options->serialization_dir) {
+        options_.model_token && options_.serialization_dir) {
       SerializationParams params;
-      params.model_token = options->model_token;
-      params.cache_dir = options->serialization_dir;
+      params.model_token = options_.model_token;
+      params.cache_dir = options_.serialization_dir;
       serialization_.reset(new Serialization(params));
     }
   }
@@ -341,8 +343,9 @@ class DelegateKernel {
       if (MaybeInitializeSerializedOpenCL(context, delegate_params, builder,
                                           &options, &env_options, &properties,
                                           serialization)
-              .ok())
+              .ok()) {
         return absl::OkStatus();
+      }
 
       RETURN_IF_ERROR(cl::NewInferenceEnvironment(env_options, &cl_environment_,
                                                   &properties));
@@ -529,9 +532,14 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   };
 
   auto* gpu_delegate = GetDelegate(delegate);
+  absl::flat_hash_set<TfLiteBuiltinOperator> excluded_ops;
+  if (!cl::OpenCLSupported()) {
+    excluded_ops.insert(kTfLiteBuiltinSplit);
+    excluded_ops.insert(kTfLiteBuiltinSplitV);
+  }
   TfLiteIntArray* ops_to_replace =
       GetOpsToReplace(context, gpu_delegate->IsQuantOpsAllowed(),
-                      gpu_delegate->MaxDelegatedPartitions());
+                      gpu_delegate->MaxDelegatedPartitions(), &excluded_ops);
   const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
       context, kRegistration, ops_to_replace, delegate);
   TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Created %d GPU delegate kernels.",

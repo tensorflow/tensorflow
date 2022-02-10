@@ -25,8 +25,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -40,10 +40,10 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 #endif
 
-using mkldnn::lrn_backward;
-using mkldnn::lrn_forward;
-using mkldnn::prop_kind;
-using mkldnn::stream;
+using dnnl::lrn_backward;
+using dnnl::lrn_forward;
+using dnnl::prop_kind;
+using dnnl::stream;
 
 namespace tensorflow {
 
@@ -146,7 +146,7 @@ class MklLRNOp : public OpKernel {
       // Tensorflow's normalization semantics is across channels.
       // MKL-DNN also supports normalization within channel.
       auto lrn_desc = lrn_forward::desc(
-          prop_kind::forward, mkldnn::algorithm::lrn_across_channels,
+          prop_kind::forward, dnnl::algorithm::lrn_across_channels,
           src_dnn_data.GetUsrMemDesc(), kernel_size, new_alpha, beta_, bias_);
       auto lrn_prim_desc = lrn_forward::primitive_desc(lrn_desc, cpu_engine_);
 
@@ -171,12 +171,12 @@ class MklLRNOp : public OpKernel {
       fwd_stream_.reset(CreateStream(&eigen_tp, cpu_engine_));
       net.push_back(lrn_forward(lrn_prim_desc));
       std::vector<std::unordered_map<int, memory>> net_args;
-      net_args.push_back({{MKLDNN_ARG_SRC, src_dnn_data.GetOpMem()},
-                          {MKLDNN_ARG_WORKSPACE, workspace_dnn_data.GetOpMem()},
-                          {MKLDNN_ARG_DST, dst_dnn_data.GetOpMem()}});
+      net_args.push_back({{DNNL_ARG_SRC, src_dnn_data.GetOpMem()},
+                          {DNNL_ARG_WORKSPACE, workspace_dnn_data.GetOpMem()},
+                          {DNNL_ARG_DST, dst_dnn_data.GetOpMem()}});
       net.push_back(lrn_forward(lrn_prim_desc));
       net.at(0).execute(*fwd_stream_, net_args.at(0));
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -213,7 +213,7 @@ class MklLRNOp : public OpKernel {
   }
 
   // Fallback implementation - Taken from lrn_op.cc
-  // TODO(inteltf) Check if we can use EigenLRNOp directly instead of making a
+  // TODO(intel-tf) Check if we can use EigenLRNOp directly instead of making a
   // copy.
   void MklDefaultToEigen(OpKernelContext* context, const Tensor& input) {
     const int batch = static_cast<int>(input.dim_size(0));
@@ -349,8 +349,8 @@ class MklLRNGradOp : public OpKernel {
       GetMklShape(context, kIdxOrigInput, &orig_input_dnn_shape);
       GetMklShape(context, kIdxOrigOutput, &orig_output_dnn_shape);
 
-      // We only use MKLDNN if all of the necessary inputs are present
-      // in mkldnn format, and Channel is the last dimension
+      // We only use oneDNN if all of the necessary inputs are present
+      // in oneDNN format, and Channel is the last dimension
       bool can_use_mkldnn = workspace_enabled_ &&
                             input_grad_dnn_shape.IsMklTensor() &&
                             orig_input_dnn_shape.IsMklTensor() &&
@@ -398,12 +398,12 @@ class MklLRNGradOp : public OpKernel {
       // Create LRN backward primitive descriptor. It requires LRN forward
       // primitive descriptor also.
       auto lrn_fwd_desc = lrn_forward::desc(
-          prop_kind::forward, mkldnn::algorithm::lrn_across_channels,
+          prop_kind::forward, dnnl::algorithm::lrn_across_channels,
           orig_input_md, kernel_size, new_alpha, beta_, bias_);
       auto lrn_fwd_prim_desc =
           lrn_forward::primitive_desc(lrn_fwd_desc, cpu_engine_);
       auto lrn_bwd_desc = lrn_backward::desc(
-          mkldnn::algorithm::lrn_across_channels, original_output_md,
+          dnnl::algorithm::lrn_across_channels, original_output_md,
           target_diff_dst_md, kernel_size, new_alpha, beta_, bias_);
       auto lrn_bwd_prim_desc = lrn_backward::primitive_desc(
           lrn_bwd_desc, cpu_engine_, lrn_fwd_prim_desc);
@@ -435,12 +435,12 @@ class MklLRNGradOp : public OpKernel {
       std::vector<primitive> net;
       std::vector<std::unordered_map<int, memory>> net_args;
       net.push_back(lrn_backward(lrn_bwd_prim_desc));
-      net_args.push_back({{MKLDNN_ARG_SRC, orig_input_dnn_data.GetOpMem()},
-                          {MKLDNN_ARG_DIFF_DST, input_grad_dnn_data.GetOpMem()},
-                          {MKLDNN_ARG_DST, output_dnn_data.GetOpMem()}});
+      net_args.push_back({{DNNL_ARG_SRC, orig_input_dnn_data.GetOpMem()},
+                          {DNNL_ARG_DIFF_DST, input_grad_dnn_data.GetOpMem()},
+                          {DNNL_ARG_DST, output_dnn_data.GetOpMem()}});
       net.push_back(lrn_backward(lrn_bwd_prim_desc));
       net.at(0).execute(*bwd_stream_, net_args.at(0));
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -536,10 +536,10 @@ class MklLRNGradOp : public OpKernel {
       orig_output_tensor = MklGetInput(context, kIdxOrigOutput);
     }
 
-    const int64 batch = static_cast<int64>(input_gradient_tensor.dim_size(0));
-    const int64 rows = static_cast<int64>(input_gradient_tensor.dim_size(1));
-    const int64 cols = static_cast<int64>(input_gradient_tensor.dim_size(2));
-    const int64 depth = static_cast<int64>(input_gradient_tensor.dim_size(3));
+    const int64 batch = static_cast<int64_t>(input_gradient_tensor.dim_size(0));
+    const int64 rows = static_cast<int64_t>(input_gradient_tensor.dim_size(1));
+    const int64 cols = static_cast<int64_t>(input_gradient_tensor.dim_size(2));
+    const int64 depth = static_cast<int64_t>(input_gradient_tensor.dim_size(3));
     const auto nodes = cols * rows;
 
     auto grads_shaped =
@@ -562,8 +562,8 @@ class MklLRNGradOp : public OpKernel {
                   depth](int64 begin, int64 end) {
       for (int64 i = begin; i < end; ++i) {
         for (int64 j = 0; j < depth; ++j) {
-          int64 depth_begin = std::max<int64>(0, j - depth_radius_);
-          int64 depth_end = std::min<int64>(depth, j + depth_radius_ + 1);
+          int64 depth_begin = std::max<int64_t>(0, j - depth_radius_);
+          int64 depth_end = std::min<int64_t>(depth, j + depth_radius_ + 1);
 
           T norm(0);
           for (int64 k = depth_begin; k < depth_end; ++k) {

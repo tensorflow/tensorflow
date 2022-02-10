@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -58,7 +59,7 @@ class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
     }
   }
   /// Performs the lowering to XLA dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Emits debug information which includes the number of ops of each type which
@@ -162,6 +163,17 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::SquaredDifferenceOp>(),
     TypeID::get<TF::TanhOp>(),
     TypeID::get<TF::TanhGradOp>(),
+    TypeID::get<TF::XlaDotOp>(),
+    TypeID::get<TF::XlaDotV2Op>(),
+    TypeID::get<TF::XlaDynamicSliceOp>(),
+    TypeID::get<TF::XlaEinsumOp>(),
+    TypeID::get<TF::XlaReduceWindowOp>(),
+    TypeID::get<TF::XlaReplicaIdOp>(),
+    TypeID::get<TF::XlaRngBitGeneratorOp>(),
+    TypeID::get<TF::XlaSelectAndScatterOp>(),
+    TypeID::get<TF::XlaSortOp>(),
+    TypeID::get<TF::XlaVariadicReduceV2Op>(),
+    TypeID::get<TF::XlaVariadicSortOp>(),
     TypeID::get<TF::XlogyOp>(),
     TypeID::get<TF::ZetaOp>(),
 
@@ -183,6 +195,14 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::InfeedDequeueTupleOp>(),
     TypeID::get<TF::OutfeedEnqueueTupleOp>(),
     TypeID::get<TF::XlaShardingOp>(),
+
+    // These ops have undetermined bugs, may not be legalizable with XlaOpKernel
+    // legalization in TF2XLA fallback. By legalization with MLIR, we can fix
+    // the bug. b/195583695 describes the motivation of this change.
+    // See b/216355804 how to reproduce the bug regarding tf.RandomUniform Op
+    // See b/216353817 how to reproduce the bug regarding tf.StridedSlice Op
+    TypeID::get<TF::RandomUniformOp>(),
+    TypeID::get<TF::StridedSliceOp>(),
   };
   // clang-format on
   return *ops;
@@ -191,10 +211,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
 // Patterns whose root op is in the set `include_ops` are moved from the set
 // `from` to the returned set. This is used to partition patterns by op so they
 // can be cleanly migrated from the old bridge to the MLIR bridge.
-OwningRewritePatternList PatternsIncludeOps(
-    OwningRewritePatternList &from,
-    const llvm::DenseSet<mlir::TypeID> &include_ops) {
-  OwningRewritePatternList to(from.getContext());
+RewritePatternSet PatternsIncludeOps(
+    RewritePatternSet &from, const llvm::DenseSet<mlir::TypeID> &include_ops) {
+  RewritePatternSet to(from.getContext());
   // Filter NativePatterns.
   for (auto &pattern : from.getNativePatterns()) {
     Optional<OperationName> pat_op_name = pattern->getRootKind();
@@ -202,7 +221,7 @@ OwningRewritePatternList PatternsIncludeOps(
     // If the pattern is in include_ops then include it.
     bool include =
         !pat_op_name ||
-        include_ops.count(pat_op_name->getAbstractOperation()->typeID);
+        include_ops.count(pat_op_name->getRegisteredInfo()->getTypeID());
     if (include) to.add(std::move(pattern));
   }
 
@@ -221,7 +240,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
                          llvm::Optional<StringRef> tf2xla_fallback_device_type,
                          bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList legalize_lower_patterns(context);
+  RewritePatternSet legalize_lower_patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
   // 1) Ascending legalization depth (i.e., minimum number of patterns necessary
   //    to arrive at conversion target). This requires relevant patterns to
@@ -230,7 +249,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   //    cases.
   // 2) Descending pattern benefit.
   // 3) Op specific patterns over patterns with MatchAnyOpTypeTag.
-  // 4) Order of patterns in `OwningRewritePatternList`.
+  // 4) Order of patterns in `RewritePatternSet`.
 
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &legalize_lower_patterns);
@@ -251,7 +270,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
   // Set patterns to legalize_lower_patters, where in the prefer_tf2xla case
   // only patterns whose ops are in the set MlirPreferredOps are kept.
-  OwningRewritePatternList patterns =
+  RewritePatternSet patterns =
       (tf2xla_fallback_device_type && prefer_tf2xla)
           ? PatternsIncludeOps(legalize_lower_patterns, MlirPreferredOps())
           : std::move(legalize_lower_patterns);
@@ -280,6 +299,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
     target.addLegalDialect<chlo::HloClientDialect>();
   }
   target.addLegalDialect<MhloDialect>();
+  target.addLegalDialect<arith::ArithmeticDialect>();
   target.addLegalDialect<StandardOpsDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
@@ -304,12 +324,12 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 }
 
 // Performs the lowering to XLA dialect.
-void LegalizeTF::runOnFunction() {
+void LegalizeTF::runOnOperation() {
   llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None;
   if (use_tf2xla_fallback_) {
     tf2xla_fallback_device_type = device_type_;
   }
-  if (failed(legalizeTF(getFunction(), allow_partial_conversion_,
+  if (failed(legalizeTF(getOperation(), allow_partial_conversion_,
                         legalize_chlo_, tf2xla_fallback_device_type,
                         prefer_tf2xla_))) {
     signalPassFailure();

@@ -24,10 +24,6 @@ by jax2tf. Hence, we need to maintain backwards compatibility for these
 operators. Please reach out to the JAX team if you want to make changes.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
@@ -254,7 +250,8 @@ def conv(lhs,
          precision_config=None,
          preferred_element_type=None,
          name=None,
-         use_v2=False):
+         use_v2=False,
+         batch_group_count=1):
   """Wraps the XLA ConvGeneralDilated operator.
 
   ConvGeneralDilated is the most general form of XLA convolution and is
@@ -274,6 +271,7 @@ def conv(lhs,
     preferred_element_type: the result `dtype`.
     name: an optional name for the operator.
     use_v2: an optional request to use the XlaConvV2 op even if not necessary.
+    batch_group_count: number of batch groups or grouped filters.
 
   Returns:
     A tensor representing the output of the convolution.
@@ -281,7 +279,9 @@ def conv(lhs,
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
-  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
+  needs_v2 = (
+      preferred_element_type or (lhs.dtype != rhs.dtype) or
+      batch_group_count > 1)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
   if needs_v2 or use_v2:
@@ -293,6 +293,7 @@ def conv(lhs,
         lhs_dilation=lhs_dilation,
         rhs_dilation=rhs_dilation,
         feature_group_count=feature_group_count,
+        batch_group_count=batch_group_count,
         dimension_numbers=dimension_numbers.SerializeToString(),
         precision_config=precision_config_proto,
         preferred_element_type=preferred_element_type,
@@ -512,8 +513,12 @@ sharding = gen_xla_ops.xla_sharding
 
 @ops.RegisterGradient("XlaSharding")
 def _sharding_grad(op, grad):
+  """Gradient for XlaSharding op."""
   sharding_attr = op.get_attr("sharding")
-  grad_sharding = gen_xla_ops.xla_sharding(grad, sharding=sharding_attr)
+  grad_sharding = gen_xla_ops.xla_sharding(
+      grad,
+      sharding=sharding_attr,
+      unspecified_dims=op.get_attr("unspecified_dims"))
   # pylint: disable=protected-access
   grad_sharding.op._set_attr("_XlaSharding",
                              attr_value_pb2.AttrValue(s=sharding_attr))
@@ -530,7 +535,8 @@ def _spmd_full_to_shard_shape_grad(op, grad):
       grad,
       manual_sharding=op.get_attr("manual_sharding"),
       full_shape=op.inputs[0].shape.as_list(),
-      dim=op.get_attr("dim"))
+      dim=op.get_attr("dim"),
+      unspecified_dims=op.get_attr("unspecified_dims"))
   return [s2f]
 
 
@@ -539,7 +545,8 @@ def _spmd_shard_to_full_shape_grad(op, grad):
   f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
       grad,
       manual_sharding=op.get_attr("manual_sharding"),
-      dim=op.get_attr("dim"))
+      dim=op.get_attr("dim"),
+      unspecified_dims=op.get_attr("unspecified_dims"))
   return [f2s]
 
 

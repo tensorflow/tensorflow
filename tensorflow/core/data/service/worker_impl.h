@@ -92,6 +92,8 @@ class DataServiceWorkerImpl {
     std::unique_ptr<TaskRunner> task_runner;
   };
 
+  // Validates the worker config.
+  Status ValidateWorkerConfig() const;
   // Sends task status to the dispatcher and checks for dispatcher commands.
   Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
@@ -117,6 +119,9 @@ class DataServiceWorkerImpl {
       standalone::Dataset& dataset, const TaskDef& task_def) const;
 
   const experimental::WorkerConfig config_;
+  // Worker Borg job UID for telemetry. -1 if not supported.
+  const int64_t worker_uid_;
+
   // The worker's own address.
   std::string worker_address_;
   std::string transfer_address_;

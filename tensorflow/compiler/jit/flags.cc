@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 
 #include <mutex>  // NOLINT
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -34,6 +36,8 @@ XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
 IntroduceFloatingPointJitterPassFlags* jitter_flags;
 MlirCommonFlags* mlir_flags;
+JitRtFlags* jitrt_flags;
+std::vector<Flag>* jitrt_flag_list;
 
 std::vector<Flag>* flag_list;
 absl::once_flag flags_init;
@@ -129,8 +133,24 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            &mark_for_compilation_flags
                 ->tf_xla_disable_resource_variable_safety_checks_for_debugging,
            "Disable resource variables related safety checks when clustering "
-           "(this is unsound).")};
+           "(this is unsound)."),
+      Flag("tf_xla_deterministic_cluster_names",
+           &mark_for_compilation_flags->tf_xla_deterministic_cluster_names,
+           "Causes the function names assigned by auto clustering to be "
+           "deterministic from run to run.")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
+}
+
+void AllocateAndParseJitRtFlags() {
+  jitrt_flags = new JitRtFlags;
+  jitrt_flags->vectorize = false;
+  jitrt_flags->cost_driven_async_parallel_for = false;
+  jitrt_flag_list = new std::vector<Flag>({
+      Flag("vectorize", &jitrt_flags->vectorize, ""),
+      Flag("cost_driven_async_parallel_for",
+           &jitrt_flags->cost_driven_async_parallel_for, ""),
+  });
+  xla::ParseFlagsFromEnvAndDieIfUnknown("TF_JITRT_FLAGS", *jitrt_flag_list);
 }
 
 void AllocateAndParseFlags() {
@@ -156,6 +176,7 @@ void AllocateAndParseFlags() {
       ->tf_xla_disable_deadness_safety_checks_for_debugging = false;
   mark_for_compilation_flags
       ->tf_xla_disable_resource_variable_safety_checks_for_debugging = false;
+  mark_for_compilation_flags->tf_xla_deterministic_cluster_names = false;
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
@@ -180,11 +201,13 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge_is_explicit = false;
   bool mlir_bridge_safe_mode = false;
   bool enable_mlir_merge_control_flow_pass = false;
-
+  bool enable_mlir_convert_control_to_data_outputs_pass = false;
   auto setter_for_jitter_tensor_names = [](string sequence) {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
     return true;
   };
+  // Dump graphs in TFG dialect.
+  bool use_tfg_graph_dumper = false;
 
   flag_list = new std::vector<Flag>(
       {Flag("tf_xla_enable_lazy_compilation",
@@ -239,12 +262,19 @@ void AllocateAndParseFlags() {
             &enable_mlir_merge_control_flow_pass,
             "Enables MergeControlFlow pass for MLIR-Based TensorFlow Compiler "
             "Bridge."),
+       Flag("tf_mlir_enable_convert_control_to_data_outputs_pass",
+            &enable_mlir_convert_control_to_data_outputs_pass,
+            "Enables `tf-executor-convert-control-to-data-outputs` pass for "
+            "MLIR-Based TensorFlow Compiler Bridge."),
        Flag(
            "tf_mlir_bridge_safe_mode", &mlir_bridge_safe_mode,
            "When tf_mlir_enable_mlir_bridge is true, this field can enable "
            "the MLIR bridge's safe mode. When the MLIR bridge is in safe mode, "
            "it only runs for graphs that use features MLIR bridge currently "
-           "supports.")});
+           "supports."),
+       Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
+            "When tf_dump_graphs_in_tfg is true, graphs after transformations "
+            "are dumped in MLIR TFG dialect and not in GraphDef")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
@@ -267,6 +297,28 @@ void AllocateAndParseFlags() {
   }
   mlir_flags->tf_mlir_enable_merge_control_flow_pass =
       enable_mlir_merge_control_flow_pass;
+  mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
+      enable_mlir_convert_control_to_data_outputs_pass;
+
+  if (use_tfg_graph_dumper) {
+    UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(
+        MlirDumpConfig::Dialect::kTFG));
+  }
+
+  AllocateAndParseJitRtFlags();
+}
+
+void ResetFlags() {
+  delete build_ops_flags;
+  delete mark_for_compilation_flags;
+  delete device_flags;
+  delete ops_flags;
+  delete jitter_flags;
+  delete mlir_flags;
+  delete flag_list;
+  delete jitrt_flags;
+  delete jitrt_flag_list;
+  AllocateAndParseFlags();
 }
 
 }  // namespace
@@ -305,6 +357,13 @@ GetIntroduceFloatingPointJitterPassFlags() {
 MlirCommonFlags* GetMlirCommonFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return mlir_flags;
+}
+
+void ResetJitCompilerFlags() { ResetFlags(); }
+
+const JitRtFlags& GetJitRtFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return *jitrt_flags;
 }
 
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(

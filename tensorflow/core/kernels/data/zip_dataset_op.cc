@@ -85,10 +85,25 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t result = kInfiniteCardinality;
     for (const auto& input : inputs_) {
       int64_t n = input->Cardinality();
+      if (n == kUnknownCardinality) {
+        return kUnknownCardinality;
+      }
+      if (n != kInfiniteCardinality &&
+          (result == kInfiniteCardinality || n < result)) {
+        result = n;
+      }
+    }
+    return result;
+  }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t result = kInfiniteCardinality;
+    for (const auto& input : inputs_) {
+      int64_t n = input->Cardinality(options);
       if (n == kUnknownCardinality) {
         return kUnknownCardinality;
       }
@@ -110,6 +125,19 @@ class ZipDatasetOp::Dataset : public DatasetBase {
   Status CheckExternalState() const override {
     for (const auto& input : inputs_) {
       TF_RETURN_IF_ERROR(input->CheckExternalState());
+    }
+    return Status::OK();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    out_tensors->reserve(output_dtypes().size());
+    for (int i = 0; i < inputs_.size(); ++i) {
+      std::vector<Tensor> input_tensors;
+      TF_RETURN_IF_ERROR(inputs_[i]->Get(ctx, index, &input_tensors));
+      out_tensors->insert(out_tensors->end(), input_tensors.begin(),
+                          input_tensors.end());
     }
     return Status::OK();
   }

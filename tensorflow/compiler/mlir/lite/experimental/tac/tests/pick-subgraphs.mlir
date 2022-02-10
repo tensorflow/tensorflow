@@ -21,7 +21,7 @@ module {
     return %0 : tensor<100xf32>
   }
   func @func_2_GPU_FLOAT(%arg0: tensor<100xf32>, %arg1: tensor<100xf32>) -> tensor<2x100xf32> attributes {tac.cost = 8.040000e+01 : f32, tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} {
-    %cst = constant dense<[2, 100]> : tensor<2xi64>
+    %cst = arith.constant dense<[2, 100]> : tensor<2xi64>
     %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<100xf32>, tensor<100xf32>) -> tensor<200xf32>
     %1 = "tfl.reshape"(%0, %cst) : (tensor<200xf32>, tensor<2xi64>) -> tensor<2x100xf32>
     return %1 : tensor<2x100xf32>
@@ -74,7 +74,7 @@ module {
     return %0 : tensor<2x1x200x200x200xf32>
   }
   func @func_2_GPU_FLOAT(%arg0: tensor<1x200x200x200xf32>, %arg1: tensor<1x200x200x200xf32>) -> tensor<2x1x200x200x200xf32> attributes {tac.cost = 0x4AC35002 : f32, tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} {
-    %cst = constant dense<[2, 1, 200, 200, 200]> : tensor<5xi64>
+    %cst = arith.constant dense<[2, 1, 200, 200, 200]> : tensor<5xi64>
     %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x200x200x200xf32>, tensor<1x200x200x200xf32>) -> tensor<2x200x200x200xf32>
     %1 = "tfl.reshape"(%0, %cst) : (tensor<2x200x200x200xf32>, tensor<5xi64>) -> tensor<2x1x200x200x200xf32>
     return %1 : tensor<2x1x200x200x200xf32>
@@ -145,9 +145,9 @@ module {
     return %5 : tensor<100x!quant.uniform<i8:f32, 2.000000e-01:-3>>
   }
   func private @func_2_GPU_FLOAT(%arg0: tensor<100x!quant.uniform<i8:f32, 2.000000e-01:-3>>, %arg1: tensor<100x!quant.uniform<i8:f32, 2.000000e-01:-3>>) -> tensor<2x100x!quant.uniform<i8:f32, 2.000000e-01:-3>> attributes {tac.cost = 162.200012 : f32, tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} {
-    %cst = constant dense<[1, 1, 1, 100]> : tensor<4xi32>
-    %cst_0 = constant dense<200> : tensor<1xi32>
-    %cst_1 = constant dense<[2, 100]> : tensor<2xi32>
+    %cst = arith.constant dense<[1, 1, 1, 100]> : tensor<4xi32>
+    %cst_0 = arith.constant dense<200> : tensor<1xi32>
+    %cst_1 = arith.constant dense<[2, 100]> : tensor<2xi32>
     %0 = "tfl.dequantize"(%arg0) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<100x!quant.uniform<i8:f32, 2.000000e-01:-3>>) -> tensor<100xf32>
     %1 = "tfl.dequantize"(%arg1) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<100x!quant.uniform<i8:f32, 2.000000e-01:-3>>) -> tensor<100xf32>
     %2 = "tfl.reshape"(%0, %cst) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<100xf32>, tensor<4xi32>) -> tensor<1x1x1x100xf32>

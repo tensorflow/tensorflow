@@ -79,20 +79,35 @@ class SparseDenseBinaryOpShared : public OpKernel {
                     values_t->shape().DebugString(), " and ",
                     shape_t->shape().DebugString()));
     OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(shape_t->shape()),
+        errors::InvalidArgument("Input sp_shape must be a vector. Got: ",
+                                shape_t->shape().DebugString()));
+    OP_REQUIRES(
         ctx, values_t->dim_size(0) == indices_t->dim_size(0),
         errors::InvalidArgument(
             "The first dimension of values and indices should match. (",
             values_t->dim_size(0), " vs. ", indices_t->dim_size(0), ")"));
+    OP_REQUIRES(
+        ctx, shape_t->shape().dim_size(0) == indices_t->shape().dim_size(1),
+        errors::InvalidArgument(
+            "Number of dimensions must match second dimension of indices. ",
+            "Got ", shape_t->shape().dim_size(0),
+            " dimensions, indices shape: ", indices_t->shape().DebugString()));
+    OP_REQUIRES(ctx, shape_t->NumElements() > 0,
+                errors::InvalidArgument(
+                    "The shape argument requires at least one element."));
 
     const auto indices_mat = indices_t->matrix<int64_t>();
     const auto shape_vec = shape_t->vec<int64_t>();
-    const auto lhs_dims = BCast::FromShape(TensorShape(shape_vec));
+    TensorShape lhs_shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(shape_vec, &lhs_shape));
+    const auto lhs_dims = BCast::FromShape(lhs_shape);
     const auto rhs_dims = BCast::FromShape(dense_t->shape());
     BCast b(lhs_dims, rhs_dims, false);  // false for keeping the same num dims.
 
     // True iff (size(lhs) >= size(rhs)) and all dims in lhs is greater or equal
     // to dims in rhs (from right to left).
-    auto VecGreaterEq = [](ArraySlice<int64> lhs, ArraySlice<int64> rhs) {
+    auto VecGreaterEq = [](ArraySlice<int64_t> lhs, ArraySlice<int64_t> rhs) {
       if (lhs.size() < rhs.size()) return false;
       for (size_t i = 0; i < rhs.size(); ++i) {
         if (lhs[lhs.size() - 1 - i] < rhs[rhs.size() - 1 - i]) return false;

@@ -165,11 +165,9 @@ void ProcessConvOperator(Model* model, ConvOperator* op) {
 
 void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   // TransposeConv is unique in that it is specifically given the output shape
-  // as a 1D array on it's 1st input. Theoretically then, resolving the output
-  // shape is as easy as waiting for this input to be resolved. However, we also
-  // have to calculate the padding which requires the weights shape. So, we
-  // might as well calculate the output shape and ensure it matches the
-  // specified one
+  // as a 1D array on it's 1st input. Resolving the output shape is as easy
+  // as waiting for this input to be resolved. However, we also have to
+  // calculate the padding which requires the weights shape.
 
   // SPECIFIED OUTPUT SHAPE
   // The below is the specified, or prescribed output shape, _given_ to the
@@ -183,7 +181,7 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   }
 
   CHECK(specified_output_shape_array.data_type == ArrayDataType::kInt32)
-      << "TransposeConv input_dims must be int32";
+      << "TransposeConv output_shape must be int32";
 
   CHECK(specified_output_shape_array.shape().dimensions_count() == 1 &&
         specified_output_shape_array.shape().dims(0) == 4)

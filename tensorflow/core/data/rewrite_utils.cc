@@ -172,7 +172,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
   GraphDef graph_def;
   string output_node;
   TF_RETURN_IF_ERROR(
-      AsGraphDefMinimal(ctx, input, &input_list, &graph_def, &output_node));
+      AsGraphDefForRewrite(ctx, input, &input_list, &graph_def, &output_node));
 
   VLOG(3) << "Before graph rewrites: " << graph_def.DebugString();
   TF_RETURN_IF_ERROR(
@@ -288,6 +288,39 @@ std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
   // tf.data meta optimizer takes care of optimizing tf.data functions.
   grappler_item->optimization_options().optimize_function_library = false;
   return grappler_item;
+}
+
+absl::flat_hash_set<tstring> SelectOptimizations(
+    const absl::flat_hash_set<string>& experiments,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_disabled,
+    const absl::flat_hash_set<tstring>& optimizations_default) {
+  absl::flat_hash_set<tstring> optimizations;
+
+  // Add the enabled optimizations.
+  optimizations.insert(optimizations_enabled.begin(),
+                       optimizations_enabled.end());
+
+  // Add all default optimization that are not disabled.
+  for (const auto& optimization : optimizations_default) {
+    if (!optimizations_disabled.contains(optimization)) {
+      optimizations.insert(optimization);
+    }
+  }
+
+  // Add experiments that correspond to an optimization unless the optimization
+  // is disabled.
+  const auto& registered_optimizers =
+      grappler::CustomGraphOptimizerRegistry::GetRegisteredOptimizers();
+  for (const auto& experiment : experiments) {
+    if (std::find(registered_optimizers.begin(), registered_optimizers.end(),
+                  experiment) != registered_optimizers.end() &&
+        !optimizations_disabled.contains(experiment)) {
+      optimizations.insert(experiment);
+    }
+  }
+
+  return optimizations;
 }
 
 StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {

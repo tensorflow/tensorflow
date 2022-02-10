@@ -49,7 +49,8 @@ _TfrtGetResourceOp::GetResourceHandleValueAndIdList(
   return resource_vec;
 }
 
-static LogicalResult Verify(_TfrtGetResourceOp get_resource_op) {
+LogicalResult _TfrtGetResourceOp::verify() {
+  _TfrtGetResourceOp get_resource_op = *this;
   // The sizes of indices, shared_name and container must be equal.
   int32_t indices_size =
       get_resource_op->getAttrOfType<mlir::ArrayAttr>("indices").size();
@@ -61,7 +62,7 @@ static LogicalResult Verify(_TfrtGetResourceOp get_resource_op) {
   if (!(indices_size == shared_name_size &&
         shared_name_size == container_size)) {
     return get_resource_op->emitError()
-           << "Length of attribute arrays do not match. indices = "
+           << "length of attribute arrays do not match. indices = "
            << indices_size << ", shared_name = " << shared_name_size
            << ", container = " << container_size;
   }

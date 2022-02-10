@@ -483,7 +483,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
     const uint64 m = in_x.dim_size(adj_x || trans_x ? 2 : 1);
     const uint64 k = in_x.dim_size(adj_x || trans_x ? 1 : 2);
     const uint64 n = in_y.dim_size(adj_y || trans_y ? 1 : 2);
-    const uint64 batch_size = bcast.output_batch_size();
+    const int64_t batch_size = bcast.output_batch_size();
     auto blas_transpose_a = trans[adj_x ? 2 : (trans_x ? 1 : 0)];
     auto blas_transpose_b = trans[adj_y ? 2 : (trans_y ? 1 : 0)];
 
@@ -670,11 +670,11 @@ class BaseBatchMatMulOp : public OpKernel {
                          in1.shape().DebugString()));
     if (adj_x_ || trans_x_) std::swap(d0, d1);
     if (adj_y_ || trans_y_) std::swap(d2, d3);
-    OP_REQUIRES(ctx, d1 == d2,
-                errors::InvalidArgument(
-                    "In[0] mismatch In[1] shape: ", d1, " vs. ", d2, ": ",
-                    in0.shape().DebugString(), " ", in1.shape().DebugString(),
-                    " ", adj_x_, " ", adj_y_));
+    OP_REQUIRES(
+        ctx, d1 == d2,
+        errors::InvalidArgument(
+            "Matrix size-incompatible: In[0]: ", in0.shape().DebugString(),
+            ", In[1]: ", in1.shape().DebugString()));
     out_shape.AddDim(d0);
     out_shape.AddDim(d3);
     Tensor* out = nullptr;

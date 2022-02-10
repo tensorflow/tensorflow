@@ -4,7 +4,7 @@
 
 func @main(tensor<3x2xi32>) -> tensor<3x2xi32> {
 ^bb0(%arg0: tensor<3x2xi32>):
-  %0 = "std.constant"() {name = "Const2", value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  %0 = "arith.constant"() {name = "Const2", value = dense<10> : tensor<i32>} : () -> tensor<i32>
   %1 = "tfl.add"(%0, %arg0) {fused_activation_function = "NONE", name = "add"} : (tensor<i32>, tensor<3x2xi32>) -> tensor<3x2xi32>
   return %1 : tensor<3x2xi32>
 }

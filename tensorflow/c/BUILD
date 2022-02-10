@@ -144,9 +144,17 @@ cc_library(
 
 cc_library(
     name = "c_api_macros",
-    hdrs = ["c_api_macros.h"],
+    hdrs = [
+        "c_api_macros.h",
+        "c_api_macros_internal.h",
+    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
+    deps = [
+        ":tf_status",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
 )
 
 tf_cuda_library(
@@ -200,7 +208,6 @@ tf_cuda_library(
     visibility = [
         "//tensorflow/c:__subpackages__",
         "//tensorflow/python:__subpackages__",
-        "//third_party/llvm/llvm-project:__subpackages__",
     ],
     deps = [
         ":c_api_internal",
@@ -262,6 +269,10 @@ tf_cuda_library(
         "//tensorflow/c:__subpackages__",
         "//tensorflow/cc/experimental/libtf:__pkg__",
         "//tensorflow/cc/experimental/libtf:__subpackages__",
+        # copybara:uncomment_begin(google-only)
+        # "//tensorflow/cc/experimental/tf2:__pkg__",
+        # "//tensorflow/cc/experimental/tf2:__subpackages__",
+        # copybara:uncomment_end
         "//tensorflow/compiler/mlir/tensorflow/c:__subpackages__",
     ],
     deps = select({
@@ -355,6 +366,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:tstring",
     ],
 )

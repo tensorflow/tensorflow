@@ -21,10 +21,6 @@ could not be copied over are accessed using the dependency inversion principle.
 (for details, refer to tensorflow/python/util/keras_deps.py).
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 
 from tensorflow.python.eager import def_function

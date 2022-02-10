@@ -43,6 +43,22 @@ Status CreateFileForDumping(llvm::StringRef name,
                             std::string* filepath,
                             llvm::StringRef dirname = "");
 
+// Dumps the configuration of the pass pipeline and the MLIR module to a file
+// and returns the file name used. The file will be in the same format of an
+// MLIR crash reproducer.
+//
+// If the TF_DUMP_GRAPH_PREFIX environment variable is kCrashReproducerStdErr,
+// then the MLIR operation will be logged (using the LOG(INFO) macro) instead.
+//
+// This will create a file name via prefixing `name` with the value of the
+// TF_DUMP_GRAPH_PREFIX environment variable if `dirname` is empty and
+// suffixing `name` with ".mlir".
+
+std::string DumpCrashReproducerToFile(llvm::StringRef name,
+                                      const mlir::PassManager& pm,
+                                      mlir::Operation* op,
+                                      llvm::StringRef dirname = "");
+
 // Dumps MLIR operation to a file and returns the file name used.
 //
 // If the TF_DUMP_GRAPH_PREFIX environment variable is kCrashReproducerStdErr,
@@ -81,9 +97,7 @@ std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
 // is dumped to the crash analysis system. Note, environment var
 // `MLIR_CRASH_REPRODUCER_DIRECTORY` can be used to override
 // kCrashReproducerCrashAnalysis settings.
-void SetCrashReproducer(
-    mlir::PassManager& pm,
-    llvm::StringRef dir_path = kCrashReproducerCrashAnalysis);
+void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path = "");
 
 // This applies both the PassManagerCLOptions provided by MLIR along with any
 // tensorflow specific options.
@@ -91,9 +105,8 @@ void SetCrashReproducer(
 // Note that this function should be in a more appropriate file, but it is
 // unclear what a proper file would be as no other functions would currently be
 // in the file also.
-void applyTensorflowAndCLOptions(
-    mlir::PassManager& pm,
-    llvm::StringRef dir_path = kCrashReproducerCrashAnalysis);
+void applyTensorflowAndCLOptions(mlir::PassManager& pm,
+                                 llvm::StringRef dir_path = "");
 
 }  // namespace tensorflow
 

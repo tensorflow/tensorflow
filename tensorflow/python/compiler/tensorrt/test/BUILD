@@ -63,7 +63,6 @@ cuda_py_tests(
         "combined_nms_test.py",
         "concatenation_test.py",
         "const_broadcast_test.py",
-        "conv2d_test.py",
         "dynamic_input_shapes_test.py",
         "identity_output_test.py",
         "int32_test.py",
@@ -76,6 +75,7 @@ cuda_py_tests(
         "reshape_transpose_test.py",
         "tf_function_test.py",
         "topk_test.py",
+        "trt_engine_op_shape_test.py",
         "trt_mode_test.py",
         "unary_test.py",
         "vgg_block_nchw_test.py",
@@ -97,14 +97,15 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
-    name = "tf_trt_integration_test2",
+    name = "tf_trt_integration_test_no_oss",
     srcs = [
-        "base_test.py",
+        "base_test.py",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
+        "conv2d_test.py",  # b/198501457
     ],
     python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_oss",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
+        "no_oss",
         "no_rocm",
         "no_windows",
         "nomac",

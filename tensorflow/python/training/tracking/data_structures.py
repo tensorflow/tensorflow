@@ -13,10 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import operator
@@ -175,9 +171,9 @@ class _UntrackableError(ValueError):
     self._value = value
 
   def __str__(self):
-    return (("Only trackable objects (such as Layers or Optimizers) may be "
-             "stored in a List object. Got %s, which does not inherit from "
-             "Trackable.") % (self._value,))
+    return ("Only trackable objects (such as Layers or Optimizers) may be "
+            f"stored in a List object. Got {self._value}, which does not "
+            "inherit from Trackable.")
 
 
 @tf_export("__internal__.tracking.TrackableDataStructure", v1=[])
@@ -418,8 +414,8 @@ class List(TrackableDataStructure, collections_abc.Sequence):
   def __imul__(self, y):
     if y <= 0:
       raise ValueError(
-          "List only supports append, multiplying in place by %d removes "
-          "elements." % y)
+          f"List only supports append, multiplying in place by {y} removes "
+          "elements.")
 
     n = len(self._storage)
     for _ in range(y - 1):
@@ -557,29 +553,38 @@ class ListWrapper(
       return
     self._last_wrapped_list_snapshot = list(self._storage)
 
-  @property
-  def _checkpoint_dependencies(self):
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
     self._check_external_modification()
     if self._non_append_mutation:
       raise ValueError(
-          ("Unable to save the object %s (a list wrapper constructed to track "
-           "trackable TensorFlow objects). A list element was replaced "
-           "(__setitem__, __setslice__), deleted (__delitem__, __delslice__), "
-           "or moved (sort). In order to support restoration on object "
-           "creation, tracking is exclusively for append-only data structures."
-           "\n\nIf you don't need this list checkpointed, wrap it in a "
-           "non-trackable object; it will be subsequently ignored." % (self,)))
+          f"Unable to save the object {self} (a list wrapper constructed to "
+          "track trackable TensorFlow objects). A list element was replaced "
+          "(__setitem__, __setslice__), deleted (__delitem__, __delslice__), "
+          "or moved (sort). In order to support restoration on object "
+          "creation, tracking is exclusively for append-only data structures."
+          "\n\nIf you don't need this list checkpointed, wrap it in a "
+          "non-trackable object; it will be subsequently ignored.")
     if self._external_modification:
       raise ValueError(
-          ("Unable to save the object %s (a list wrapper constructed to track "
-           "trackable TensorFlow objects). The wrapped list was modified "
-           "outside the wrapper (its final value was %s, its value when a "
-           "checkpoint dependency was added was %s), which breaks restoration "
-           "on object creation.\n\nIf you don't need this list checkpointed, "
-           "wrap it in a NoDependency object; it will be "
-           "subsequently ignored." % (
-               self, self._storage, self._last_wrapped_list_snapshot)))
-    return super(ListWrapper, self)._checkpoint_dependencies
+          f"Unable to save the object {self} (a list wrapper constructed to "
+          "track trackable TensorFlow objects). The wrapped list was modified "
+          f"outside the wrapper (its final value was {self._storage}, its value"
+          " when a checkpoint dependency was added was "
+          f"{self._last_wrapped_list_snapshot}), which breaks "
+          "restoration on object creation.\n\nIf you don't need this list "
+          "checkpointed, wrap it in a NoDependency object; it will be "
+          "subsequently ignored.")
+    children = super(ListWrapper, self)._trackable_children(save_type, **kwargs)
+
+    if save_type == base.SaveType.SAVEDMODEL:
+      # Add functions to be serialized.
+      children.update({
+          str(key): value
+          for key, value in enumerate(self)
+          if _is_function(value)
+      })
+
+    return children
 
   def _has_mutation_or_trackable(self):
     """Short-circuits a check for trackables if there's already a mutation."""
@@ -709,12 +714,6 @@ class ListWrapper(
   def __repr__(self):
     return "ListWrapper(%s)" % (repr(self._storage),)
 
-  def _list_functions_for_serialization(self, unused_functions):
-    return {
-        str(key): value for key, value in enumerate(self)
-        if _is_function(value)
-    }
-
 
 class Mapping(TrackableDataStructure, collections_abc.Mapping):
   """An append-only trackable mapping data structure with string keys.
@@ -755,8 +754,7 @@ class Mapping(TrackableDataStructure, collections_abc.Mapping):
   def _name_element(self, key):
     if not isinstance(key, six.string_types):
       raise TypeError(
-          "Mapping accepts only string keys, but got a key %s."
-          % repr(key))
+          f"Mapping accepts only string keys, but got a key {repr(key)}.")
     return str(key)
 
   def __setitem__(self, key, value):
@@ -765,9 +763,9 @@ class Mapping(TrackableDataStructure, collections_abc.Mapping):
     current_value = self._storage.setdefault(key, value)
     if current_value is not value:
       raise ValueError(
-          ("Mappings are an append-only data structure. Tried to overwrite the "
-           "key '%s' with value %s, but it already contains %s")
-          % (key, value, current_value))
+          "Mappings are an append-only data structure. Tried to overwrite the "
+          f"key '{key}' with value {value}, but it already contains "
+          f"{current_value}")
 
   def update(self, *args, **kwargs):
     for key, value in dict(*args, **kwargs).items():
@@ -853,30 +851,37 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
       return ordered[1]
     return []
 
-  @property
-  def _checkpoint_dependencies(self):
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
     """Check that the object is saveable before listing its dependencies."""
     self._check_self_external_modification()
     if self._self_non_string_key:
       raise ValueError(
-          "Unable to save the object %s (a dictionary wrapper constructed "
+          f"Unable to save the object {self} (a dictionary wrapper constructed "
           "automatically on attribute assignment). The wrapped dictionary "
           "contains a non-string key which maps to a trackable object or "
           "mutable data structure.\n\nIf you don't need this dictionary "
           "checkpointed, wrap it in a non-trackable "
-          "object; it will be subsequently ignored." % (self,))
+          "object; it will be subsequently ignored.")
     if self._self_external_modification:
       raise ValueError(
-          "Unable to save the object %s (a dictionary wrapper constructed "
+          f"Unable to save the object {self} (a dictionary wrapper constructed "
           "automatically on attribute assignment). The wrapped dictionary was "
-          "modified outside the wrapper (its final value was %s, its value "
-          "when a checkpoint dependency was added was %s), which breaks "
+          f"modified outside the wrapper (its final value was {self}, its value"
+          " when a checkpoint dependency was added was "
+          f"{self._self_last_wrapped_dict_snapshot}), which breaks "
           "restoration on object creation.\n\nIf you don't need this "
           "dictionary checkpointed, wrap it in a "
-          "non-trackable object; it will be subsequently ignored." % (
-              self, self, self._self_last_wrapped_dict_snapshot))
+          "non-trackable object; it will be subsequently ignored.")
     assert not self._dirty  # Any reason for dirtiness should have an exception.
-    return super(_DictWrapper, self)._checkpoint_dependencies
+    children = super(_DictWrapper,
+                     self)._trackable_children(save_type, **kwargs)
+
+    if save_type == base.SaveType.SAVEDMODEL:
+      # Add functions to be serialized.
+      children.update(
+          {key: value for key, value in self.items() if _is_function(value)})
+
+    return children
 
   @property
   def _dirty(self):
@@ -961,12 +966,6 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
   def update(self, *args, **kwargs):
     for key, value in six.iteritems(dict(*args, **kwargs)):
       self[key] = value
-
-  def _list_functions_for_serialization(self, unused_serialization_cache):
-    return {
-        key: value for key, value in self.items()
-        if _is_function(value)
-    }
 
 
 class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
@@ -1070,16 +1069,15 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     """Avoid running self.__wrapped__ += y, which mutates `self`."""
     return self.__wrapped__ + y
 
-  @property
-  def _checkpoint_dependencies(self):
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
     if not self._self_tuple_is_constructable:
       raise ValueError(
-          ("Unable to save because the namedtuple {} is not constructable from "
-           "its _fields (i.e. __new__ is overridden). Expected keyword "
-           "arguments {}. If you do not need to save this object, consider "
-           "wrapping it in a custom object that does not inherit from tuple.")
-          .format(self.__wrapped__, self.__wrapped__._fields))
-    return super(_TupleWrapper, self)._checkpoint_dependencies
+          f"Unable to save because the namedtuple {self.__wrapped__} is not "
+          "constructable from its _fields (i.e. __new__ is overridden). "
+          f"Expected keyword arguments {self.__wrapped__._fields}. If you do "
+          "not need to save this object, consider wrapping it in a custom "
+          "object that does not inherit from tuple.")
+    return super(_TupleWrapper, self)._trackable_children(save_type, **kwargs)
 
   def __getattribute__(self, name):
     if name != "__wrapped__" and hasattr(self.__wrapped__, name):

@@ -101,11 +101,10 @@ exports_files(
 
 cc_library(
     name = "version",
+    srcs = ["//tensorflow/core/public:version.h"],
     hdrs = ["version.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    # Note that we only use the header defines from :version_lib.
-    deps = ["//tensorflow/core:version_lib"],
 )
 
 # TODO(b/128420794): Migrate clients to use :version directly.
@@ -443,7 +442,28 @@ cc_library(
         "model_builder.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + tflite_copts_warnings(),
+    copts = tflite_copts() + tflite_copts_warnings() +
+            # As xnn_enable_qs8_explicit_true and xnn_enable_qu8_explicit_true
+            # could be specified simultaneously, use two selects here.
+            select({
+                "@XNNPACK//:xnn_enable_qs8_explicit_false": [],
+                "@XNNPACK//:xnn_enable_qs8_explicit_true": [
+                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
+                ],
+                "//tensorflow:emscripten": [
+                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
+                ],
+                "//conditions:default": [],
+            }) + select({
+        "@XNNPACK//:xnn_enable_qu8_explicit_false": [],
+        "@XNNPACK//:xnn_enable_qu8_explicit_true": [
+            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
+        ],
+        "//tensorflow:emscripten": [
+            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
+        ],
+        "//conditions:default": [],
+    }),
     visibility = [
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
@@ -670,6 +690,7 @@ config_setting(
 
 cc_library(
     name = "tflite_with_xnnpack_enabled",
+    compatible_with = get_compatible_with_portable(),
     defines = ["TFLITE_BUILD_WITH_XNNPACK_DELEGATE"],
     visibility = ["//visibility:private"],
     deps = [
@@ -685,14 +706,9 @@ cc_library(
     # configuration conditions will make TFLite interpreter to apply XNNPACK
     # delegate by default.
     deps = select({
-        "//tensorflow:android_arm64": [":tflite_with_xnnpack_enabled"],
-        "//tensorflow:android_arm": [":tflite_with_xnnpack_enabled"],
-        # XNNPACK delivers significant benefits w/ WASM and is already in use
-        # by most WASM clients.
-        "//tensorflow:emscripten": [":tflite_with_xnnpack_enabled"],
         "//tensorflow:macos": [],
-        "//tensorflow:windows": [":tflite_with_xnnpack_enabled"],
-        "//conditions:default": [],
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [":tflite_with_xnnpack_enabled"],
     }),
 )
 
@@ -777,12 +793,29 @@ cc_test(
         ":string",
         ":string_util",
         ":util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
         "//third_party/eigen3",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+# Test subgraph.
+cc_test(
+    name = "subgraph_test",
+    size = "small",
+    srcs = [
+        "core/subgraph_test.cc",
+    ],
+    deps = [
+        ":framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -991,8 +1024,18 @@ cc_library(
     copts = tflite_copts_warnings() + tflite_copts(),
     deps = [
         ":kernel_api",
+        ":macros",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
+    name = "create_op_resolver_header",
+    hdrs = ["create_op_resolver.h"],
+    deps = [
+        ":mutable_op_resolver",
+        ":op_resolver",
     ],
 )
 
@@ -1012,6 +1055,22 @@ cc_library(
     alwayslink = True,
 )
 
+# Defines CreateOpResolver with a selected subset of ops.
+cc_library(
+    name = "create_op_resolver_with_selected_ops",
+    srcs = ["create_op_resolver_with_selected_ops.cc"],
+    hdrs = ["create_op_resolver.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":mutable_op_resolver",
+        ":op_resolver",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+    # Some targets only have an implicit dependency on CreateOpResolver.
+    # This avoids warnings about backwards references when linking.
+    alwayslink = True,
+)
+
 cc_test(
     name = "util_test",
     size = "small",
@@ -1019,6 +1078,7 @@ cc_test(
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",

@@ -48,8 +48,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
-                                         mlir::OwningModuleRef* module) {
+Status HandleInputOutputArraysWithModule(
+    const toco::ModelFlags& model_flags,
+    mlir::OwningOpRef<mlir::ModuleOp>* module) {
   mlir::FuncOp entry_function = nullptr;
   for (auto func : module->get().getOps<mlir::FuncOp>()) {
     if (auto tf_attrs =
@@ -77,7 +78,8 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
     return errors::InvalidArgument("no inputs attribute found");
   }
   auto input_names = input_attr.cast<mlir::StringAttr>().getValue();
-  input_names.split(function_input_names, ",");
+  input_names.split(function_input_names, ",", /*MaxSplit=*/-1,
+                    /*KeepEmpty=*/false);
   const int function_input_names_size = function_input_names.size();
   if (function_input_names_size != model_flags.input_arrays().size()) {
     return errors::InvalidArgument(
@@ -102,7 +104,8 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
     return errors::InvalidArgument("no outputs attribute found");
   }
   auto output_names = output_attr.cast<mlir::StringAttr>().getValue();
-  output_names.split(function_output_names, ",");
+  output_names.split(function_output_names, ",", /*MaxSplit=*/-1,
+                     /*KeepEmpty=*/false);
   const int function_output_names_size = function_output_names.size();
   if (function_output_names_size != model_flags.output_arrays().size()) {
     return errors::InvalidArgument(

@@ -17,7 +17,9 @@ limitations under the License.
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "absl/base/call_once.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/platform/errors.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
 #endif
 
@@ -52,6 +54,40 @@ std::tuple<int, int, int> GetLoadedTensorRTVersion() {
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 namespace tensorflow {
 namespace tensorrt {
+
+Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
+                          const nvinfer1::ICudaEngine* cuda_engine,
+                          int* binding_index) {
+  // If the engine has been built for K profiles, the first getNbBindings() / K
+  // bindings are used by profile number 0, the following getNbBindings() / K
+  // bindings are used by profile number 1 etc.
+  //
+  // GetBindingIndex(tensor_name) returns the binding index for the progile 0.
+  // We can also consider it as a "binding_index_within_profile".
+  *binding_index = cuda_engine->getBindingIndex(tensor_name);
+  if (*binding_index == -1) {
+    const string msg = absl::StrCat("Input node ", tensor_name, " not found");
+    return errors::NotFound(msg);
+  }
+  int n_profiles = cuda_engine->getNbOptimizationProfiles();
+  // If we have more then one optimization profile, then we need to shift the
+  // binding index according to the following formula:
+  // binding_index_within_engine = binding_index_within_profile +
+  //                               profile_index * bindings_per_profile
+  const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
+  *binding_index = *binding_index + profile_index * bindings_per_profile;
+  return Status::OK();
+}
+
+Status GetTrtBindingIndex(int network_input_index, int profile_index,
+                          const nvinfer1::ICudaEngine* cuda_engine,
+                          int* binding_index) {
+  const string input_name =
+      absl::StrCat(IONamePrefixes::kInputPHName, network_input_index);
+  return GetTrtBindingIndex(input_name.c_str(), profile_index, cuda_engine,
+                            binding_index);
+}
+
 namespace {
 
 void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {

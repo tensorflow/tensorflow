@@ -18,16 +18,14 @@
 This is currently under development and the API is subject to change.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
+import threading
 
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
@@ -45,12 +43,24 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
 ALLOWED_TASK_TYPES = ("chief", "worker", "ps")
 
+cluster_coordinator = LazyLoader(
+    "cluster_coordinator", globals(),
+    "tensorflow.python.distribute.coordinator.cluster_coordinator"
+)
 
-@tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
+load_context = LazyLoader(
+    "load_context", globals(),
+    "tensorflow.python.keras.saving.saved_model.load_context"
+)
+
+
+@tf_export("distribute.experimental.ParameterServerStrategy",
+           "distribute.ParameterServerStrategy", v1=[])
 class ParameterServerStrategyV2(distribute_lib.Strategy):
   """An multi-worker tf.distribute strategy with parameter servers.
 
@@ -564,6 +574,7 @@ class ParameterServerStrategyV2Extended(
         reduce_to_device="/device:CPU:0")
     self._cross_device_ops._canonicalize_devices = False  # pylint: disable=protected-access
     self._allow_run_without_coordinator = False
+    self._coordinator_creation_lock = threading.Lock()
 
   def _set_num_gpus(self):
     devices = config.list_logical_devices("GPU")
@@ -779,6 +790,39 @@ class ParameterServerStrategyV2Extended(
         self._variable_count += 1
         return var
 
+  def _resource_creator_scope(self):
+
+    with self._coordinator_creation_lock:
+      if not self._container_strategy()._cluster_coordinator:  # pylint: disable=protected-access
+        cluster_coordinator.ClusterCoordinator(
+            strategy=self._container_strategy())
+
+    # TODO(wxinyi): We should warn the user of the inefficiency of creating
+    # `StaticHashTable` inside a `@tf.function`-wrapped `dataset_fn` to be
+    # distributed with `distribute_datasets_from_function` and
+    # `create_per_worker_dataset`. This is because the `dataset_fn` does not
+    # use the same `default_graph` as `scope` to which the
+    # `resource_creator_stack` belongs. Thus, `StaticHashTable` creation inside
+    # `dataset_fn` is not intercepted. And since its resource creation under a
+    # `tf.function` is lifted out, all workers will share the same resource on
+    # the coordinator which incurs worker-coordinator communication overhead.
+
+    def lookup_creator(next_creator, *args, **kwargs):
+      if load_context.in_load_context():
+        return (ps_values.RestoredDistributedTable(
+            self._container_strategy(), lambda: next_creator(*args, **kwargs)))  # pylint: disable=protected-access
+      else:
+        return ps_values.DistributedTable(self._container_strategy(),
+                                          lambda: next_creator(*args, **kwargs))  # pylint: disable=protected-access
+
+    def restored_lookup_creator(next_creator, *args, **kwargs):
+      return (ps_values.RestoredDistributedTable(
+          self._container_strategy(), lambda: next_creator(*args, **kwargs)))  # pylint: disable=protected-access
+
+    return [ops.resource_creator_scope("StaticHashTable", lookup_creator),
+            ops.resource_creator_scope("RestoredStaticHashTable",
+                                       restored_lookup_creator)]
+
   def _assert_used_with_cluster_coordinator(self):
     if (not self._used_with_coordinator and
         not self._allow_run_without_coordinator):
@@ -792,14 +836,13 @@ class ParameterServerStrategyV2Extended(
   def _assert_being_scheduled_by_cluster_coordinator(self):
     if not self._being_scheduled and not self._allow_run_without_coordinator:
       logging.warning(
-          "It is detected that a function used with "
-          "`tf.distribute.experimental.ParameterServerStrategy` "
-          "is executed locally on the coordinator. This is inefficient but may "
-          "be valid for one-off tasks such as inferring output signature. "
-          "To properly distribute functions to run on workers, `run` or "
-          "`reduce` should be used within a function passed to `"
-          "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`."
-      )
+          "A `tf.distribute.experimental.ParameterServerStrategy` method is "
+          "invoked without using `ClusterCoordinator.schedule`. If you are not "
+          "tracing a tf.function, this method is possibly executed on the "
+          "coordinator, which can be slow. To properly dispatch functions to "
+          "run on workers, methods like `run` or `reduce` should be used "
+          "within a function passed to `tf.distribute.experimental.coordinator."
+          "ClusterCoordinator.schedule`.")
 
   # options is not used right now. But we may want to support options while
   # creating InputWorkers in future, similar to MirroredStrategy.
@@ -815,7 +858,7 @@ class ParameterServerStrategyV2Extended(
     # If this DistributedDataset is created outside ClusterCoordinator, i,e,
     # outside a tf.function, we don't build its underlying datasets immediately
     # until it is passed to ClusterCoordinator.create_per_worker_dataset.
-    return input_lib.get_distributed_dataset(
+    return input_util.get_distributed_dataset(
         dataset,
         input_workers_devices,
         self._container_strategy(),
@@ -838,10 +881,9 @@ class ParameterServerStrategyV2Extended(
     # ClusterCoordinator, i,e, outside a tf.function, we don't build its
     # underlying datasets immediately until it is passed to
     # ClusterCoordinator.create_per_worker_dataset.
-    return input_lib.get_distributed_datasets_from_function(
+    return input_util.get_distributed_datasets_from_function(
         dataset_fn,
-        self._input_workers_with_options(options),
-        [input_context],
+        self._input_workers_with_options(options), [input_context],
         self._container_strategy(),
         options=options,
         build=ops.inside_function())  # will be built by ClusterCoordinator

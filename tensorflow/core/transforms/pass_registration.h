@@ -18,14 +18,18 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/transforms/const_dedupe_hoist/pass.h"
+#include "tensorflow/core/transforms/drop_unregistered_attribute/output_shapes.h"
 #include "tensorflow/core/transforms/graph_to_func/graph_to_func_pass.h"
 #include "tensorflow/core/transforms/toposort/toposort_pass.h"
 
 namespace mlir {
 namespace tfg {
-/// Generate the code for registering passes for command-line parsing.
+
+// Generate the code for registering passes for command-line parsing.
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/core/transforms/passes.h.inc"
+
 }  // namespace tfg
 }  // namespace mlir
 

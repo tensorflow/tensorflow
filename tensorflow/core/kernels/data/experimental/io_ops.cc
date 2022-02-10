@@ -244,7 +244,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -581,7 +581,9 @@ class LoadDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override { return metadata_.num_elements(); }
+  int64_t CardinalityInternal() const override {
+    return metadata_.num_elements();
+  }
 
   Status CheckExternalState() const override {
     return captured_func_->CheckExternalState();

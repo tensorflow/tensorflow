@@ -235,7 +235,7 @@ TEST_F(HloConstantFoldingTest, ConstantFoldReduce) {
   EXPECT_EQ(6, m->entry_computation()
                    ->root_instruction()
                    ->literal()
-                   .GetFirstElement<int32>());
+                   .GetFirstElement<int32_t>());
 }
 
 TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {

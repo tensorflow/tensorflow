@@ -177,8 +177,8 @@ class UnfuseBatchNormInferencePattern
 // do not have special support for fused batchnorm to use simpler arithmetic
 // primitives.
 void PopulateUnfuseBatchNormPatterns(MLIRContext* context,
-                                     OwningRewritePatternList* patterns) {
-  patterns->insert<UnfuseBatchNormInferencePattern>(context);
+                                     RewritePatternSet* patterns) {
+  patterns->add<UnfuseBatchNormInferencePattern>(context);
 }
 
 }  // namespace mhlo

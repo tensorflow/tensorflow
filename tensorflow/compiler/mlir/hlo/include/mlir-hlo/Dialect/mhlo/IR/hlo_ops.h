@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -36,6 +35,7 @@ limitations under the License.
 
 // clang-format off
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
@@ -56,11 +56,27 @@ class MhloDialect : public Dialect {
   Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
                                  Location loc) override;
 
+  // Registered hook to verify region arg attributes on operations.
+  LogicalResult verifyRegionArgAttribute(mlir::Operation *op,
+                                         unsigned region_index,
+                                         unsigned arg_index,
+                                         mlir::NamedAttribute attr) override;
+
+  // Registered hook to verify an attribute from this dialect on operations.
+  LogicalResult verifyOperationAttribute(mlir::Operation *op,
+                                         mlir::NamedAttribute attr) override;
+
   // Parses a type registered to this dialect.
   Type parseType(DialectAsmParser &parser) const override;
 
   // Prints a type registered to this dialect.
   void printType(Type type, DialectAsmPrinter &os) const override;
+
+  // Parses an attribute registered to this dialect.
+  Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
+
+  // Prints an attribute registered to this dialect.
+  void printAttribute(Attribute attr, DialectAsmPrinter &os) const override;
 };
 
 class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {

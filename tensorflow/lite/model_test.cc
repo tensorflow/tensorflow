@@ -335,6 +335,26 @@ TEST(BasicFlatBufferModel, TestSetNumThreads) {
                       reporter.error_messages());
 }
 
+TEST(BasicFlatBufferModel, TestSetNumThreadsWithMultipleSubgraphs) {
+  TestErrorReporter reporter;
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/2_subgraphs.bin", &reporter);
+  ASSERT_TRUE(model);
+  std::unique_ptr<Interpreter> interpreter;
+  TrivialResolver resolver(&dummy_reg);
+  InterpreterBuilder builder(*model, resolver);
+
+  ASSERT_EQ(builder.SetNumThreads(4), kTfLiteOk);
+  interpreter.reset();
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  // Check that each subgraph has the expected number of threads set.
+  for (int i = 0; i < interpreter->subgraphs_size(); ++i) {
+    EXPECT_EQ(interpreter->subgraph(i)->context()->recommended_num_threads, 4);
+  }
+}
+
 // Test that loading a model with TensorFlow ops fails when the flex delegate is
 // not linked into the target.
 TEST(FlexModel, FailureWithoutFlexDelegate) {
@@ -353,7 +373,7 @@ TEST(FlexModel, FailureWithoutFlexDelegate) {
 
   // As the flex ops weren't resolved implicitly by the flex delegate, runtime
   // allocation and execution will fail.
-  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteError);
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteUnresolvedOps);
 }
 
 // This tests on a flatbuffer that defines a shape of 2 to be a memory mapped

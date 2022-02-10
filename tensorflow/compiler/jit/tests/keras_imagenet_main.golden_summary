@@ -1,10 +1,10 @@
-Clustered nodes: 2236
-Unclustered nodes: 671
+Clustered nodes: 2301
+Unclustered nodes: 606
 Number of clusters: 2
 
-unclustered size 671
+unclustered size 606
  AssignAddVariableOp 1
- Const 173
+ Const 108
  DivNoNan 1
  Identity 2
  Merge 53
@@ -13,7 +13,7 @@ unclustered size 671
  Switch 1
  _Arg 435
  _Retval 2
-cluster 0 size 1637
+cluster 0 size 1645
  Add 16
  AddN 71
  ArgMax 1
@@ -21,7 +21,7 @@ cluster 0 size 1637
  BiasAdd 1
  BiasAddGrad 1
  Cast 115
- Const 134
+ Const 142
  Conv2D 53
  Conv2DBackpropFilter 53
  Conv2DBackpropInput 52
@@ -46,11 +46,11 @@ cluster 0 size 1637
  Sum 1
  Tile 1
  Transpose 1
-cluster 1 size 599
+cluster 1 size 656
  AddN 1
  AssignAddVariableOp 1
  AssignSubVariableOp 106
- Const 4
+ Const 61
  DivNoNan 1
  Identity 1
  Mul 161

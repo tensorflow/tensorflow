@@ -29,6 +29,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <random>
 #include <string>
@@ -60,7 +61,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -108,7 +108,8 @@ class ReduceTest : public ClientLibraryTestBase {
         input_data[i] *= -1;
       }
     }
-    Literal input_literal = LiteralUtil::CreateR1(AsSlice(input_data));
+    Literal input_literal =
+        LiteralUtil::CreateR1(absl::MakeConstSpan(input_data));
     std::unique_ptr<GlobalData> input_global_data =
         client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
@@ -160,7 +161,7 @@ class ReduceTest : public ClientLibraryTestBase {
     XlaBuilder builder(TestName());
     const Shape input_shape = ShapeUtil::MakeShape(U8, {rows, cols});
     auto input = Parameter(&builder, 0, input_shape, "input");
-    auto input_pred = Eq(input, ConstantR0<uint8>(&builder, 1));
+    auto input_pred = Eq(input, ConstantR0<uint8_t>(&builder, 1));
 
     XlaOp init_value;
     XlaComputation reduce_op;
@@ -175,7 +176,7 @@ class ReduceTest : public ClientLibraryTestBase {
     Reduce(input_pred, init_value, reduce_op,
            /*dimensions_to_reduce=*/{0});
 
-    Array2D<uint8> input_data(rows, cols);
+    Array2D<uint8_t> input_data(rows, cols);
     input_data.FillRandom(0, 1);
     Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
@@ -246,6 +247,7 @@ class ReduceTest : public ClientLibraryTestBase {
         client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
     std::vector<float> expected;
+    expected.reserve(cols);
     for (int64_t colno = 0; colno < cols; ++colno) {
       float column_sum = 0;
       for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -324,12 +326,12 @@ class ReduceTest : public ClientLibraryTestBase {
           reduction_function_generator_for_type,
       const std::function<float(float, float)>&
           reference_reduction_function_for_floats,
-      const std::function<int32(int32_t, int32_t)>&
+      const std::function<int32_t(int32_t, int32_t)>&
           reference_reduction_function_for_ints,
-      const std::function<uint32(uint32, uint32)>&
+      const std::function<uint32_t(uint32_t, uint32_t)>&
           reference_reduction_function_for_uints,
       float floating_point_identity, int32_t signed_int_identity,
-      uint32 unsigned_int_identity) {
+      uint32_t unsigned_int_identity) {
     // Float version
     RunVectorizedReduceTestForType<float>(
         [&](XlaBuilder* builder) {
@@ -338,14 +340,14 @@ class ReduceTest : public ClientLibraryTestBase {
         reference_reduction_function_for_floats, floating_point_identity);
 
     // Signed int version
-    RunVectorizedReduceTestForType<int32>(
+    RunVectorizedReduceTestForType<int32_t>(
         [&](XlaBuilder* builder) {
           return reduction_function_generator_for_type(S32, builder);
         },
         reference_reduction_function_for_ints, signed_int_identity);
 
     // Unsigned int version
-    RunVectorizedReduceTestForType<uint32>(
+    RunVectorizedReduceTestForType<uint32_t>(
         [&](XlaBuilder* builder) {
           return reduction_function_generator_for_type(U32, builder);
         },
@@ -354,7 +356,7 @@ class ReduceTest : public ClientLibraryTestBase {
 
   Literal literal_2d_;
   Literal literal_3d_;
-  uint32 seed_ = 0xdeadbeef;
+  uint32_t seed_ = 0xdeadbeef;
 };
 
 XLA_TEST_F(ReduceTest, ReduceR1_0_F32_To_R0) { RunR1ToR0Test(0); }
@@ -456,6 +458,7 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
       client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
+  expected.reserve(cols);
   for (int64_t colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -487,6 +490,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
       client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
+  expected.reserve(cols);
   for (int64_t colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -533,6 +537,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
       client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
   std::vector<float> expected;
+  expected.reserve(cols);
   for (int64_t major = 0; major < 2; ++major) {
     for (int64_t colno = 0; colno < cols / 2; ++colno) {
       float column_sum = 0;
@@ -617,26 +622,26 @@ XLA_TEST_F(ReduceTest, MinReduce2DToR0) {
 
 XLA_TEST_F(ReduceTest, UnsignedInt_MinReduce) {
   XlaBuilder builder(TestName());
-  Array2D<uint32> input({{1}, {2}});
+  Array2D<uint32_t> input({{1}, {2}});
   auto min = CreateScalarMinComputation(U32, &builder);
   auto input_literal = LiteralUtil::CreateR2FromArray2D(input);
   auto initial_value =
-      ConstantR0<uint32>(&builder, std::numeric_limits<uint32>::max());
+      ConstantR0<uint32_t>(&builder, std::numeric_limits<uint32_t>::max());
 
   Reduce(ConstantLiteral(&builder, input_literal), initial_value, min, {0, 1});
-  ComputeAndCompareR0<uint32>(&builder, 1, {});
+  ComputeAndCompareR0<uint32_t>(&builder, 1, {});
 }
 
 XLA_TEST_F(ReduceTest, UnsignedInt_MaxReduce) {
   XlaBuilder builder(TestName());
-  Array2D<uint32> input({{1}, {2}});
+  Array2D<uint32_t> input({{1}, {2}});
   auto max = CreateScalarMaxComputation(U32, &builder);
   auto input_literal = LiteralUtil::CreateR2FromArray2D(input);
   auto initial_value =
-      ConstantR0<uint32>(&builder, std::numeric_limits<uint32>::min());
+      ConstantR0<uint32_t>(&builder, std::numeric_limits<uint32_t>::min());
 
   Reduce(ConstantLiteral(&builder, input_literal), initial_value, max, {0, 1});
-  ComputeAndCompareR0<uint32>(&builder, 2, {});
+  ComputeAndCompareR0<uint32_t>(&builder, 2, {});
 }
 
 // Reduces a matrix among dimension 1.
@@ -755,10 +760,10 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Add) {
       static_cast<FuncGeneratorForType>(CreateScalarAddComputation),
       [](float a, float b) { return a + b; },
       [](int32_t a, int32_t b) {
-        return static_cast<int32>(static_cast<uint32>(a) +
-                                  static_cast<uint32>(b));
+        return static_cast<int32_t>(static_cast<uint32_t>(a) +
+                                    static_cast<uint32_t>(b));
       },
-      [](uint32 a, uint32 b) { return a + b; }, 0.0, 0, 0);
+      [](uint32_t a, uint32_t b) { return a + b; }, 0.0, 0, 0);
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Multiply) {
@@ -766,10 +771,10 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Multiply) {
       static_cast<FuncGeneratorForType>(CreateScalarMultiplyComputation),
       [](float a, float b) { return a * b; },
       [](int32_t a, int32_t b) {
-        return static_cast<int32>(static_cast<uint32>(a) *
-                                  static_cast<uint32>(b));
+        return static_cast<int32_t>(static_cast<uint32_t>(a) *
+                                    static_cast<uint32_t>(b));
       },
-      [](uint32 a, uint32 b) { return a * b; }, 1.0, 1, 1);
+      [](uint32_t a, uint32_t b) { return a * b; }, 1.0, 1, 1);
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Max) {
@@ -777,9 +782,9 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Max) {
       static_cast<FuncGeneratorForType>(CreateScalarMaxComputation),
       [](float a, float b) { return std::max(a, b); },
       [](int32_t a, int32_t b) { return std::max(a, b); },
-      [](uint32 a, uint32 b) { return std::max(a, b); },
-      std::numeric_limits<float>::min(), std::numeric_limits<int32>::min(),
-      std::numeric_limits<uint32>::min());
+      [](uint32_t a, uint32_t b) { return std::max(a, b); },
+      std::numeric_limits<float>::min(), std::numeric_limits<int32_t>::min(),
+      std::numeric_limits<uint32_t>::min());
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_Min) {
@@ -787,9 +792,9 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Min) {
       static_cast<FuncGeneratorForType>(CreateScalarMinComputation),
       [](float a, float b) { return std::min(a, b); },
       [](int32_t a, int32_t b) { return std::min(a, b); },
-      [](uint32 a, uint32 b) { return std::min(a, b); },
-      std::numeric_limits<float>::max(), std::numeric_limits<int32>::max(),
-      std::numeric_limits<uint32>::max());
+      [](uint32_t a, uint32_t b) { return std::min(a, b); },
+      std::numeric_limits<float>::max(), std::numeric_limits<int32_t>::max(),
+      std::numeric_limits<uint32_t>::max());
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanAnd) {
@@ -907,12 +912,12 @@ class ReduceInitializerTest : public ReduceTest {
   }
 };
 
-XLA_TEST_F(ReduceInitializerTest, U8Small) { DoTest<uint8>(42, 2); }
+XLA_TEST_F(ReduceInitializerTest, U8Small) { DoTest<uint8_t>(42, 2); }
 
-XLA_TEST_F(ReduceInitializerTest, U8BigPowerOf2) { DoTest<uint8>(42, 4096); }
+XLA_TEST_F(ReduceInitializerTest, U8BigPowerOf2) { DoTest<uint8_t>(42, 4096); }
 
 XLA_TEST_F(ReduceInitializerTest, U8InitializerBigNonPowerOf2) {
-  DoTest<uint8>(42, 4095);
+  DoTest<uint8_t>(42, 4095);
 }
 
 XLA_TEST_F(ReduceInitializerTest, U64InitializerZero) {
@@ -1163,6 +1168,49 @@ XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_argmax) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
+XLA_TEST_F(VariadicReduceTest, Reduce_R1x2_to_R0x2_argmax_column) {
+  absl::string_view hlo_string = R"(
+    HloModule Reduce_R1x2_to_R0x2_argmax
+
+    add {
+      acc = f32[] parameter(1)
+      op = f32[] parameter(0)
+      ROOT out = f32[] add(acc, op)
+    }
+
+    argmax {
+      running_max = f32[] parameter(0)
+      running_max_idx = u32[] parameter(1)
+      current_value = f32[] parameter(2)
+      current_value_idx = u32[] parameter(3)
+
+      current = (f32[], u32[]) tuple(running_max, running_max_idx)
+      potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+      cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+      new_max = f32[] select(cmp_code, current_value, running_max)
+      new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+      ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+    }
+
+    ENTRY main {
+      input = f32[32,128] parameter(0)
+      idxs = u32[32,128] iota(), iota_dimension=0
+      zero = f32[] constant(0)
+      zero_idx = u32[] constant(0)
+
+      ROOT argmax_result = (f32[128], u32[128]) reduce(
+        input, idxs, zero, zero_idx),
+        dimensions={0},
+        to_apply=%argmax
+    }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
 XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicAnd) {
   absl::string_view hlo_string = R"(
     HloModule VariadicReduceMultiOutput
@@ -1190,6 +1238,42 @@ XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicAnd) {
 
       ROOT returned = u32[] get-tuple-element(out), index=1
     }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(VariadicReduceTest, ReduceMultiOutputVariadicDifferentLayout) {
+  absl::string_view hlo_string = R"(
+HloModule ReduceWithLayoutChangeVariadicDifferent
+
+argmax {
+  running_max = f32[] parameter(0)
+  running_max_idx = u32[] parameter(1)
+  current_value = f32[] parameter(2)
+  current_value_idx = u32[] parameter(3)
+
+  current = (f32[], u32[]) tuple(running_max, running_max_idx)
+  potential = (f32[], u32[]) tuple(current_value, current_value_idx)
+
+  cmp_code = pred[] compare(current_value, running_max), direction=GT
+
+  new_max = f32[] select(cmp_code, current_value, running_max)
+  new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
+
+  ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
+}
+
+ENTRY main {
+  arg0 = f32[2,3,4,1024]{2,1,0,3}  parameter(0)
+  idxs = u32[2,3,4,1024]{3,2,1,0}  parameter(1)
+  constant0 = f32[] constant(0)
+  constant1 = u32[] constant(0)
+  ROOT reduce0 = (
+      f32[2,3,4]{2,1,0},
+      u32[2,3,4]{1,0,2}
+    ) reduce(arg0, idxs, constant0,constant1), dimensions={3}, to_apply=argmax
+}
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));

@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-tf-to-hlo-text %s -tf-input-shapes=10,17:17,19 -emit-use-tuple-args -emit-return-tuple | FileCheck %s
+// RUN: tf-mlir-translate -mlir-tf-to-hlo-text %s -tf-input-shapes=10,17:17,19 -tf-xla-emit-use-tuple-args -tf-xla-emit-return-tuple | FileCheck %s
 // RUN: tf-mlir-translate -mlir-tf-to-hlo-text %s -tf-input-shapes=10,17:17,19 | FileCheck -check-prefix=NO_TUPLES %s
 // RUN: tf-mlir-translate -mlir-tf-to-hlo-text-via-builder %s -tf-input-shapes=10,17:17,19 | FileCheck -check-prefix=NO_TUPLES %s
 
@@ -12,5 +12,5 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 // CHECK-LABEL: HloModule main
 // CHECK:       (arg_tuple.{{[0-9]+}}: (f32[10,17], f32[17,19])) -> (f32[10,19])
 
-// NO_TUPLES-LABEL: HloModule main{{.[0-9]*}}
+// NO_TUPLES-LABEL: HloModule main
 // NO_TUPLES:       ({{.+}}: f32[10,17], {{.+}}: f32[17,19]) -> f32[10,19]

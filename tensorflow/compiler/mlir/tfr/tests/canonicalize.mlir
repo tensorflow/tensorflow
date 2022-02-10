@@ -28,8 +28,8 @@ func @equal() -> (i1, i1, i1, i1) {
   %diff_str = tfr.equal %3,%5 -> i1
   return %same_type, %diff_type, %same_str, %diff_str  : i1, i1, i1, i1
 
-// CHECK-DAG: %true = constant true
-// CHECK-DAG: %false = constant false
+// CHECK-DAG: %true = arith.constant true
+// CHECK-DAG: %false = arith.constant false
 // CHECK-NEXT: return %true, %false, %true, %false : i1, i1, i1, i1
 }
 
@@ -50,7 +50,7 @@ func @constant_tensor_array() -> !tfr.tensor {
 
 // CHECK-LABEL: constant_tensor_scalar
 func @constant_tensor_scalar() -> !tfr.tensor {
-  %0 = "std.constant"() {value = 42 : i32} : () -> i32
+  %0 = "arith.constant"() {value = 42 : i32} : () -> i32
   %1 = "tfr.constant_tensor"(%0) : (i32) -> !tfr.tensor
   return %1 : !tfr.tensor
 
@@ -94,11 +94,31 @@ func @quant_raw_data_with_list(%arg0: !tfr.tensor, %arg1: !tfr.tensor) -> !tfr.t
   %8 = tfr.call @tf__concat(%7, %6) : (!tfr.tensor, !tfr.tensor_list) -> !tfr.tensor
   return %8 : !tfr.tensor
 
-// CHECK:          %[[CONST_0:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
-// CHECK:          %[[BUILD_LIST_0:.*]] = "tfr.build_list"(%arg1, %arg0) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor_list
-// CHECK:          %[[CAST_0:.*]] = "tfr.cast"(%[[CONST_0]]) : (tensor<i64>) -> !tfr.tensor
-// CHECK:          %[[CONCAT_O:.*]] = tfr.call @tf__concat(%[[CAST_0]], %[[BUILD_LIST_0]]) : (!tfr.tensor, !tfr.tensor_list) -> !tfr.tensor
-// CHECK:          return %[[CONCAT_O]] : !tfr.tensor
+// CHECK: %[[CONST_0:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
+// CHECK: %[[BUILD_LIST_0:.*]] = "tfr.build_list"(%arg1, %arg0) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor_list
+// CHECK: %[[CAST_0:.*]] = "tfr.cast"(%[[CONST_0]]) : (tensor<i64>) -> !tfr.tensor
+// CHECK: %[[CONCAT_O:.*]] = tfr.call @tf__concat(%[[CAST_0]], %[[BUILD_LIST_0]]) : (!tfr.tensor, !tfr.tensor_list) -> !tfr.tensor
+// CHECK: return %[[CONCAT_O]] : !tfr.tensor
+}
+
+// -----
+
+// CHECK-LABEL:  cast_with_unranked_quant
+func @cast_with_unranked_quant(%arg0: tensor<*xi8>, %arg1: tensor<*xi8>) -> tensor<*xf32> {
+  %0 = "tf.MaximumFloat"(%arg0, %arg1) : (tensor<*xi8>, tensor<*xi8>) -> tensor<*xi8>
+  %1 = "tfr.cast"(%0) : (tensor<*xi8>) -> !tfr.tensor
+  %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>
+  %3 = "tf.DequantizeFloat"(%2) : (tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>) -> tensor<*xf32>
+  return %3 : tensor<*xf32>
+  // The cast ops should not be removed in this case or it will result in an
+  // invalid DequantizeFloat op as following:
+  // %0 = "tf.MaximumFloat"(%arg0, %arg1) : (tensor<*xi8>, tensor<*xi8>) -> tensor<*xi8>
+  // %1 = "tf.DequantizeFloat"(%0) : (tensor<*xi8>) -> tensor<*xf32>
+// CHECK: %[[MAXIMUMFLOAT_0:.*]] = "tf.MaximumFloat"(%arg0, %arg1) : (tensor<*xi8>, tensor<*xi8>) -> tensor<*xi8>
+// CHECK: %[[CAST_0:.*]] = "tfr.cast"(%[[MAXIMUMFLOAT_0]]) : (tensor<*xi8>) -> !tfr.tensor
+// CHECK: %[[CAST_1:.*]] = "tfr.cast"(%[[CAST_0]]) : (!tfr.tensor) -> tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>
+// CHECK: %[[DEQUANTIZEFLOAT_0:.*]] = "tf.DequantizeFloat"(%[[CAST_1]]) : (tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>) -> tensor<*xf32>
+// CHECK: return %[[DEQUANTIZEFLOAT_0]] : tensor<*xf32>
 }
 
 // -----
@@ -111,8 +131,8 @@ func @quant_qparam(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> (tenso
   %2 = "tfr.cast"(%zp) : (!tfr.tensor) -> tensor<i32>
   return %1, %2 : tensor<f32>, tensor<i32>
 
-// CHECK: %[[scale:.*]] = "tf.Const"() {value = dense<1.000000e-01> : tensor<f32>}
-// CHECK: %[[zp:.*]] = "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<1.000000e-01> : tensor<f32>}
+// CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<42> : tensor<i32>} : () -> tensor<i32>
 // CHECK: return %[[scale]], %[[zp]]
 }
 
@@ -124,8 +144,8 @@ func @quant_qparam_per_channel(%arg0: tensor<1x3x!quant.uniform<i8:f32:1, {0.1:1
   %2 = "tfr.cast"(%zp) : (!tfr.tensor) -> tensor<3xi32>
   return %1, %2 : tensor<3xf32>, tensor<3xi32>
 
-// CHECK: %[[scale:.*]] = "tf.Const"() {value = dense<[1.000000e-01, 2.000000e-01, 3.000000e-01]> : tensor<3xf32>}
-// CHECK: %[[zp:.*]] = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<[1.000000e-01, 2.000000e-01, 3.000000e-01]> : tensor<3xf32>}
+// CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
 // CHECK: return %[[scale]], %[[zp]]
 }
 
@@ -141,10 +161,40 @@ func @quant_qparam_invalid(%arg0: tensor<1x3x!quant.calibrated<f32<-1.0:1.0>>>) 
 
 // -----
 
+// CHECK-LABEL: redundant_cast_with_different_element_type
+func @redundant_cast_with_different_element_type(%arg0: tensor<*xf32>) -> (tensor<*xi32>, tensor<2xi32>) {
+  %0 = "tfr.cast"(%arg0) : (tensor<*xf32>) -> !tfr.tensor
+  %1 = "tfr.cast"(%0) : (!tfr.tensor) -> tensor<*xi32>
+  %2 = "tfr.cast"(%0) : (!tfr.tensor) -> tensor<2xi32>
+  return %1, %2 : tensor<*xi32>, tensor<2xi32>
+
+// CHECK: %[[tf_cast_unranked:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi32>
+// CHECK: %[[ensure_shape:.*]] = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<2>} : (tensor<*xf32>) -> tensor<2xf32>
+// CHECK: %[[tf_cast_ranked:.*]] = "tf.Cast"(%[[ensure_shape]]) {Truncate = false} : (tensor<2xf32>) -> tensor<2xi32>
+// CHECK: return %[[tf_cast_unranked]], %[[tf_cast_ranked]] :  tensor<*xi32>, tensor<2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: redundant_cast_with_quant_type
+func @redundant_cast_with_quant_type(%arg0: tensor<10x!quant.uniform<i8:f32, 0.0039133410900831223:-128>>) -> (tensor<10xi32>) {
+  %0 = "tfr.cast"(%arg0) : (tensor<10x!quant.uniform<i8:f32, 0.0039133410900831223:-128>>) -> !tfr.tensor
+  %1 = tfr.quant_raw_data(%0) : (!tfr.tensor) -> !tfr.tensor
+  %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<10xi8>
+  %3 = "tf.Cast"(%2) {Truncate = false} : (tensor<10xi8>) -> tensor<10xi32>
+  return %3 : tensor<10xi32>
+// CHECK: %[[CAST_0:.*]] = "tfr.cast"(%arg0) : (tensor<10x!quant.uniform<i8:f32, 0.0039133410900831223:-128>>) -> !tfr.tensor
+// CHECK: %[[CAST_1:.*]] = "tfr.cast"(%[[CAST_0]]) : (!tfr.tensor) -> tensor<10xi8>
+// CHECK: %[[CAST_2:.*]] = "tf.Cast"(%[[CAST_1]]) {Truncate = false} : (tensor<10xi8>) -> tensor<10xi32>
+// CHECK: return %[[CAST_2]] : tensor<10xi32>
+}
+
+// -----
+
 // CHECK-LABEL: build_const_list
 func @build_const_list() -> !tfr.attr {
-  %0 = "std.constant"() {value = 42 : i32} : () -> i32
-  %1 = "std.constant"() {value = 41 : i32} : () -> i32
+  %0 = "arith.constant"() {value = 42 : i32} : () -> i32
+  %1 = "arith.constant"() {value = 41 : i32} : () -> i32
   %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
   return %2 : !tfr.attr
 
@@ -156,8 +206,8 @@ func @build_const_list() -> !tfr.attr {
 
 // CHECK-LABEL: build_high_dim_const_list
 func @build_high_dim_const_list() -> !tfr.attr {
-  %0 = "std.constant"() {value = 42 : i32} : () -> i32
-  %1 = "std.constant"() {value = 41 : i32} : () -> i32
+  %0 = "arith.constant"() {value = 42 : i32} : () -> i32
+  %1 = "arith.constant"() {value = 41 : i32} : () -> i32
   %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
   %3 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
   %4 = "tfr.build_list"(%2, %3) : (!tfr.attr, !tfr.attr) -> !tfr.attr
@@ -175,6 +225,6 @@ func @get_length(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> index {
   %1 = "tfr.get_length"(%0) : (!tfr.tensor_list) -> index
   return %1 : index
 
-// CHECK-NEXT: %[[c:.*]] = constant 2 : index
+// CHECK-NEXT: %[[c:.*]] = arith.constant 2 : index
 // CHECK-NEXT: return %[[c]] : index
 }

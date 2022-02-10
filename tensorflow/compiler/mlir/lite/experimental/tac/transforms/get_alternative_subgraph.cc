@@ -31,7 +31,9 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -91,6 +93,13 @@ class AlternativeSubgraphPass
     : public mlir::PassWrapper<AlternativeSubgraphPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
+  llvm::StringRef getArgument() const final {
+    return "tfl-get-alternative-subgraph";
+  }
+  llvm::StringRef getDescription() const final {
+    return "Get alternative subgraph representation (if appliable) for all the "
+           "given devices, will by default include the cpu implementation.";
+  }
   AlternativeSubgraphPass() = default;
   AlternativeSubgraphPass(const AlternativeSubgraphPass&) {}
   explicit AlternativeSubgraphPass(llvm::ArrayRef<std::string> device_specs) {
@@ -185,7 +194,9 @@ bool AlternativeSubgraphPass::IsAllSupportedbySpec(
     FuncOp func, const InferenceDeviceType& device_inference_type) {
   bool found_unsupported = false;
   func.walk([&](Operation* op) {
-    if (IsTFLDialectNonConstOp(op) && IsTFLNonQuantDequantizeOp(op) &&
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        NotTFLQuantDequantizeOp(op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op) &&
         !IsSupported(op, device_inference_type.hardware)) {
       found_unsupported = true;
     }
@@ -196,7 +207,7 @@ bool AlternativeSubgraphPass::IsAllSupportedbySpec(
 void AlternativeSubgraphPass::Optimize(FuncOp func,
                                        const std::string& hardware) {
   auto* ctx = &getContext();
-  OwningRewritePatternList patterns = GetHardwareRewritePatterns(ctx, hardware);
+  RewritePatternSet patterns = GetHardwareRewritePatterns(ctx, hardware);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
@@ -238,7 +249,8 @@ FuncOp AlternativeSubgraphPass::GetAlternativeViewForSpec(
 
   // Set device for each op.
   cloned_func.walk([&](Operation* op) {
-    if (IsTFLDialectNonConstOp(op)) {
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        !llvm::isa<ReturnOp, FuncOp, CallableOpInterface>(op)) {
       op->setAttr(kDevice, builder->getStringAttr(
                                target_device_inference_type.hardware));
       op->setAttr(kInferenceType,
@@ -289,10 +301,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateAlternativeSubgraphPass(
   return std::make_unique<AlternativeSubgraphPass>(device_specs);
 }
 
-static PassRegistration<AlternativeSubgraphPass> pass(
-    "tfl-get-alternative-subgraph",
-    "Get alternative subgraph representation (if appliable) for all the given "
-    "devices, will by default include the cpu implementation.");
+static PassRegistration<AlternativeSubgraphPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

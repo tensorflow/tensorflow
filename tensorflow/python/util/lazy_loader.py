@@ -15,10 +15,6 @@
 
 """A LazyLoader class."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import importlib
 import types
 from tensorflow.python.platform import tf_logging as logging

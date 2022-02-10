@@ -24,9 +24,11 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_custom_call_status.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
+#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -134,7 +136,8 @@ using MatMulTestParam = std::tuple<MatMulShape, bool, bool, bool>;
 class EigenMatMulTest : public CpuRuntimeTest,
                         public ::testing::WithParamInterface<MatMulTestParam> {
  public:
-  static string Name(const ::testing::TestParamInfo<MatMulTestParam>& info) {
+  static std::string Name(
+      const ::testing::TestParamInfo<MatMulTestParam>& info) {
     MatMulShape shape = std::get<0>(info.param);
     bool transpose_lhs = std::get<1>(info.param);
     bool transpose_rhs = std::get<2>(info.param);
@@ -171,7 +174,8 @@ INSTANTIATE_TEST_SUITE_P(EigenMatMulTestInstantiaion, EigenMatMulTest,
 class MKLMatMulTest : public CpuRuntimeTest,
                       public ::testing::WithParamInterface<MatMulTestParam> {
  public:
-  static string Name(const ::testing::TestParamInfo<MatMulTestParam>& info) {
+  static std::string Name(
+      const ::testing::TestParamInfo<MatMulTestParam>& info) {
     MatMulShape shape = std::get<0>(info.param);
     bool transpose_lhs = std::get<1>(info.param);
     bool transpose_rhs = std::get<2>(info.param);
@@ -235,6 +239,18 @@ INSTANTIATE_TEST_CASE_P(MKLMatMulTestInstantiaion, MKLMatMulTest,
                                            ::testing::Bool()),
                         MKLMatMulTest::Name);
 #endif  // ENABLE_MKL
+
+TEST_F(CpuRuntimeTest, SuccessStatus) {
+  XlaCustomCallStatus success_status;
+  // Success is the default state.
+  ASSERT_TRUE(__xla_cpu_runtime_StatusIsSuccess(&success_status));
+}
+
+TEST_F(CpuRuntimeTest, FailureStatus) {
+  XlaCustomCallStatus success_status;
+  XlaCustomCallStatusSetFailure(&success_status, "Failed", 6);
+  ASSERT_FALSE(__xla_cpu_runtime_StatusIsSuccess(&success_status));
+}
 
 }  // namespace
 }  // namespace xla

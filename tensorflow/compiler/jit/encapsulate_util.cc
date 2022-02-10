@@ -168,9 +168,7 @@ Status PreprocessDataEdgesBetweenOutsideCompilations(
                                src_output);
       NodeDef placeholder_def;
       TF_RETURN_IF_ERROR(placeholder_builder.Finalize(&placeholder_def));
-      Status s;
-      placeholder_node = g->AddNode(placeholder_def, &s);
-      TF_RETURN_IF_ERROR(s);
+      TF_ASSIGN_OR_RETURN(placeholder_node, g->AddNode(placeholder_def));
       placeholders[placeholder_index] = placeholder_node;
     } else {
       placeholder_node = iter->second;

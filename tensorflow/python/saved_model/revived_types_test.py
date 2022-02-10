@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for revived type matching."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.platform import test

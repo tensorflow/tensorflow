@@ -129,14 +129,14 @@ class AffineOpCoefficient {
   };
 };
 
-// This class provides the API for TFL ops that shouldn't be quantized. This is
-// used as a trait like this:
+// This class provides the API for TFL ops that can be quantized.
+// This is as a trait like this:
 //
-//   class LessOp : public Op<LessOp, OpTrait::quant::NoQuantizableResult> {
+//   class LessOp : public Op<LessOp, OpTrait::quant::QuantizableResult> {
 //
 template <typename ConcreteType>
-class NoQuantizableResult
-    : public QuantizationSpecTraitBase<ConcreteType, NoQuantizableResult> {};
+class QuantizableResult
+    : public QuantizationSpecTraitBase<ConcreteType, QuantizableResult> {};
 
 }  // namespace quant
 }  // namespace OpTrait

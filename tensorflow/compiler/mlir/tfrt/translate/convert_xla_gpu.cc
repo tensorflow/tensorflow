@@ -16,11 +16,8 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu/gpu_passes.h"
+#include "mlir/InitAllDialects.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
@@ -43,30 +40,19 @@ StatusOr<tfrt::gpu::Program> ConvertXlaGpuToGpuProgram(
   mlir::MLIRContext context(registry);
   context.loadAllAvailableDialects();
 
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 
   std::string entry_name = hlo_module->entry_computation()->name();
 
-  // XLA HLO -> LHLO
+  // XLA HLO -> LMHLO
   TF_RETURN_IF_ERROR(mlir::OptimizeAndConvertHloToLmhlo(
-      std::move(hlo_module), *module, platform_name));
+      std::move(hlo_module), *module, platform_name,
+      /*optimize_xla_hlo=*/true));
 
-  // LHLO -> TFRT Dialect (gpu kernels)
-  mlir::PassManager pm(&context, mlir::PassManager::Nesting::Implicit);
-  pm.addPass(tensorflow::createLmhloGpuAsyncConversionPass());
-  pm.addPass(mlir::createGpuAsyncRegionPass());
-  pm.addPass(tensorflow::createAsyncGpuTfrtConversionPass());
-  if (pm.run(*module).failed()) {
-    return errors::Internal(
-        "Failed to lower LHLO to TFRT Dialect with gpu kernels.");
-  }
-
-  // Perform DCE with empty pattern set.
-  if (failed(mlir::applyPatternsAndFoldGreedily(*module,
-                                                RewritePatternSet(&context)))) {
-    return errors::Internal("Failed to remove dead ops.");
-  }
+  // LMHLO -> TFRT Dialect (gpu kernels)
+  TF_RETURN_IF_ERROR(
+      tensorflow::ConvertLmhloToTfrtGpuWithBinary(*module, entry_name, {}));
 
   // TFRT Dialect -> BEF
   std::string bef;

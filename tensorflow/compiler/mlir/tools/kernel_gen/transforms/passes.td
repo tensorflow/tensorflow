@@ -38,13 +38,10 @@ def RewriteTFFrameworkAssert : Pass<"rewrite-tf-framework-assert", "ModuleOp"> {
   let constructor = "tf_framework::CreateRewriteTFFrameworkAssert()";
 }
 
-def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
+def TFToJITInvocationPass : Pass<"tf-to-jit-invocation", "mlir::FuncOp"> {
   let summary = "Pass to rewrite all TF operations to JIT invocations";
   let constructor = "transforms::CreateTFToJITInvocationPass()";
   let options = [
-      ListOption<"architectures_", "architectures", "std::string",
-                 "Target architectures",
-                 "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
       ListOption<"tile_sizes_", "tile-sizes", "int64_t", "Tiling sizes",
                  "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
       ListOption<"unroll_factors_", "unroll-factors", "int64_t",
@@ -54,12 +51,18 @@ def TFToJITInvocationPass : FunctionPass<"tf-to-jit-invocation"> {
              /*default=*/"", "Max rank that this kernel supports">,
       Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
              "Enable the denormal flush to zero mode when generating code">,
+      Option<"index_64bit_", "index_64bit", "bool", /*default=*/"",
+             "Enable the 64 bit indexing for GPU kernels">,
       Option<"cpu_codegen_", "cpu-codegen", "bool", /*default=*/"",
              "CPU codegen (false implies GPU)">,
+      Option<"jit_i64_indexed_for_large_tensors_",
+             "jit_i64_indexed_for_large_tensors", "bool", /*default=*/"false",
+             "Enable JIT compilation of i64-indexed kernels for large input "
+             "tensors.">,
   ];
 }
 
-def BufferReusePass : FunctionPass<"buffer-reuse"> {
+def BufferReusePass : Pass<"buffer-reuse", "mlir::FuncOp"> {
   let summary = "Pass to find and annotate candidates for buffer reuse.";
   let constructor = "transforms::CreateBufferReusePass()";
 }
@@ -73,6 +76,11 @@ def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "Module
   let summary = "Pass to transform compute operations (hlo and linalg) on "
                 "values to buffer based ones.";
   let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
+}
+
+def TiledLoopBufferizePass : Pass<"tiled-loop-bufferize", "mlir::FuncOp"> {
+  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
+  let constructor = "transforms::CreateTiledLoopBufferizePass()";
 }
 
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
@@ -113,30 +121,30 @@ def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let constructor = "transforms::CreateGpuKernelToBlobPass()";
 }
 
-def ParallelLoopsToSequential : FunctionPass<"parallel-loops-to-sequential"> {
+def ParallelLoopsToSequential : Pass<"parallel-loops-to-sequential", "mlir::FuncOp"> {
   let summary = "Pass to convert scf::ParallelOp to scf::ForOp";
   let constructor = "transforms::CreateParallelLoopsToSequential()";
 }
 
 def PropagateTfAbiKnowledgeToKernels
-    : FunctionPass<"propagate-tf-abi-knowledge-to-kernels"> {
+    : Pass<"propagate-tf-abi-knowledge-to-kernels", "mlir::FuncOp"> {
   let summary = "Pass to propagate tensorflow ABI knowledge to kernels";
   let constructor = "transforms::CreatePropagateTfAbiKnowledgeToKernels()";
 }
 
 def PropagateShapeKnowledgeToKernels
-    : FunctionPass<"propagate-shape-knowledge-to-kernels"> {
+    : Pass<"propagate-shape-knowledge-to-kernels", "mlir::FuncOp"> {
   let summary = "Pass to propagate shape information into kernels";
   let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
 }
 
-def EmbedMemRefPrintsPass : FunctionPass<"embed-memref-prints"> {
+def EmbedMemRefPrintsPass : Pass<"embed-memref-prints", "mlir::FuncOp"> {
   let summary = "Pass to print content of memrefs";
   let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
 }
 
 def MapParallelLoopsPass
-    : FunctionPass<"map-parallel-loops-to-gpu"> {
+    : Pass<"map-parallel-loops-to-gpu", "mlir::FuncOp"> {
   let summary = "Greedily maps loops to GPU hardware dimensions.";
   let constructor = "transforms::CreateMapParallelLoopsPass()";
   let description = [{
@@ -145,7 +153,7 @@ def MapParallelLoopsPass
 }
 
 def FuseInnerParallelLoopsPass
-    : FunctionPass<"fuse-inner-parallel-loops"> {
+    : Pass<"fuse-inner-parallel-loops", "mlir::FuncOp"> {
   let summary = "Limited pass to forward stores to loads.";
   let constructor = "transforms::CreateFuseInnerParallelLoopsPass()";
   let description = [{
@@ -156,18 +164,18 @@ def FuseInnerParallelLoopsPass
 }
 
 def LowerIndexCastPass
-    : FunctionPass<"kernelgen-lower-index-cast"> {
+    : Pass<"kernelgen-lower-index-cast", "mlir::FuncOp"> {
   let summary = "Lower index cast on tensors to tensor dialect";
   let constructor = "transforms::CreateLowerIndexCastPass()";
 }
 
 def ShapeSimplification
-    : FunctionPass<"kernelgen-shape-simplification"> {
+    : Pass<"kernelgen-shape-simplification", "mlir::FuncOp"> {
   let summary = "Simplify shape ops";
   let constructor = "transforms::CreateShapeSimplification()";
 }
 
-def VectorizationPass : FunctionPass<"vectorization"> {
+def VectorizationPass : Pass<"vectorization", "mlir::FuncOp"> {
   let summary = "Pass to create vectorized operations for CPU.";
   let constructor = "transforms::CreateVectorizationPass()";
   let description = [{
@@ -176,7 +184,7 @@ def VectorizationPass : FunctionPass<"vectorization"> {
   }];
 }
 
-def VectorizationCleanupPass : FunctionPass<"vectorization-cleanup"> {
+def VectorizationCleanupPass : Pass<"vectorization-cleanup", "mlir::FuncOp"> {
   let summary = "Pass to remove dead code in VectorizationPass.";
   let constructor = "transforms::CreateVectorizationCleanupPass()";
   let description = [{
@@ -186,7 +194,7 @@ def VectorizationCleanupPass : FunctionPass<"vectorization-cleanup"> {
   }];
 }
 
-def CopyCleanupPass : FunctionPass<"copy-cleanup"> {
+def CopyCleanupPass : Pass<"copy-cleanup", "mlir::FuncOp"> {
   let summary = "Pass to remove copies which are consumed by a GenericOp.";
   let constructor = "transforms::CreateCopyCleanupPass()";
   let description = [{

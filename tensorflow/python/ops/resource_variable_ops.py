@@ -15,10 +15,6 @@
 """Ops to use variables as resources."""
 
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import functools
 import weakref
@@ -28,6 +24,7 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -35,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -53,6 +51,7 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
+from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
@@ -251,7 +250,7 @@ def _handle_graph(handle):
       yield
 
 
-class EagerResourceDeleter(object):
+class EagerResourceDeleter:
   """An object which cleans up a resource handle.
 
   An alternative to defining a __del__ method on an object. The intended use is
@@ -330,6 +329,29 @@ def variable_accessed(variable):
     tape.variable_accessed(variable)
 
 
+# TODO(b/202447704): Merge into VariableSpec.
+class VariableType(trace.TraceType):
+  """Represents Variables (and specs) for function tracing purposes."""
+
+  def __init__(self, dtype, shape, local_id):
+    self._components = (dtype, tuple(shape.as_list()), local_id)
+
+  def is_subtype_of(self, other):
+    # TODO(b/202429845): Implement for subtyping.
+    return self == other
+
+  def most_specific_common_supertype(self, others):
+    # TODO(b/202430155) Implement for shape relaxation.
+    return None
+
+  def __hash__(self) -> int:
+    return hash(self._components)
+
+  def __eq__(self, other) -> bool:
+    return isinstance(
+        other, VariableType) and self._components == other._components
+
+
 class BaseResourceVariable(variables.VariableV1, core.Tensor):
   """A python variable from an existing handle."""
 
@@ -362,7 +384,10 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Args:
       trainable: If `True`, GradientTapes automatically watch uses of this
         Variable.
-      shape: The variable's shape.
+      shape: The variable's shape. This shape can be set to tf.TensorShape(None)
+        in order to assign values of different shapes to this variable.
+        Otherwise (i.e. if the shape is fully determined), it will trigger run
+        time checks to ensure that each assignment is of the same shape.
       dtype: The variable's dtype.
       handle: The variable's handle
       constraint: An optional projection function to be applied to the variable
@@ -453,7 +478,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       # ops.value_text when the handle is resolved, so we need to keep that
       # under the try...except if we want to suppress them.
       try:
-        value_text = ops.value_text(self.read_value(), is_repr=True)
+        with ops.device(self.device):
+          value_text = ops.value_text(self.read_value(), is_repr=True)
       except:  # pylint: disable=bare-except
         value_text = "numpy=<unavailable>"
 
@@ -462,6 +488,10 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     else:
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
+
+  def __tf_tracing_type__(self, tracing_context):
+    return VariableType(self.dtype, self.shape,
+                        tracing_context.get_local_id(self._handle._id))  # pylint:disable=protected-access
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -902,8 +932,14 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
             (f"Cannot assign value to variable '{tensor_name}': Shape mismatch."
              f"The variable shape {self._shape}, and the "
              f"assigned value shape {value_tensor.shape} are incompatible."))
+      kwargs = {}
+      if forward_compat.forward_compatible(2022, 2, 23):
+        # If the shape is fully defined, we do a runtime check with the shape of
+        # value.
+        validate_shape = self._shape.is_fully_defined()
+        kwargs["validate_shape"] = validate_shape
       assign_op = gen_resource_variable_ops.assign_variable_op(
-          self.handle, value_tensor, name=name)
+          self.handle, value_tensor, name=name, **kwargs)
       if read_value:
         return self._lazy_read(assign_op)
     return assign_op
@@ -933,7 +969,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -957,7 +993,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -982,7 +1018,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1007,7 +1043,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1031,7 +1067,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1055,7 +1091,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1079,7 +1115,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1133,7 +1169,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError(f"Argument `sparse_delta` must be a "
                       f"`tf.IndexedSlices`. Received arg: {sparse_delta}")
     return self._lazy_read(
@@ -1785,6 +1821,7 @@ class ResourceVariable(BaseResourceVariable):
               shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
+          handle._parent_trackable = weakref.ref(self)
         # pylint: disable=protected-access
         if (self._in_graph_mode and initial_value is not None and
             initial_value.op._get_control_flow_context() is not None):
@@ -2015,6 +2052,8 @@ class UninitializedVariable(BaseResourceVariable):
             name=name,
             graph_mode=self._in_graph_mode,
             initial_value=extra_handle_data)
+        handle._parent_trackable = weakref.ref(self)
+
         if self._in_graph_mode:
           # We only need to add the read_variable_op in TF1.
           with ops.name_scope("Read"):
@@ -2220,7 +2259,7 @@ def _GatherGrad(op, grad):
   values_shape = array_ops.concat([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
-  return (ops.IndexedSlices(values, indices, params_shape), None)
+  return (indexed_slices.IndexedSlices(values, indices, params_shape), None)
 
 
 def _to_proto_fn(v, export_scope=None):
@@ -2325,6 +2364,9 @@ class VariableSpec(tensor_spec.DenseSpec):
     assert len(tensor_list) == 1
     return tensor_list[0]
 
+  def __tf_tracing_type__(self, tracing_context):
+    return VariableType(self.dtype, self.shape,
+                        tracing_context.get_local_id(id(self)))
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 

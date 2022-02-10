@@ -65,9 +65,7 @@ static llvm::cl::opt<bool> tpu_compile_metadata_debug(
     llvm::cl::desc("Serialize TPUCompileMetadataProto metadata in "
                    "'tf._TPUCompileMlir' op as a proto debug string"));
 
-constexpr char kNumReplicasAttr[] = "num_replicas";
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
-constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
 constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";
@@ -96,7 +94,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
   llvm::SmallVector<FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
-  OwningModuleRef module_for_func =
+  OwningOpRef<mlir::ModuleOp> module_for_func =
       ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()));
   auto parent_module = entry_func->getParentOfType<ModuleOp>();
   auto versions_attr = parent_module->getAttr(kVersionsAttr);
@@ -131,7 +129,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     if (clone.getName() == entry_func.getName()) {
       // We can simply change name of TPU program's main function because there
       // should be no other reference to it.
-      clone.setName("main");
+      clone.setName(StringAttr::get(clone.getContext(), "main"));
       clone.setPublic();
     } else {
       clone.setPrivate();
@@ -203,8 +201,8 @@ LogicalResult SetMetadataProtoArgs(
                       op.getNumOperands(), input_shardings.size()));
 
   // Set args metadata in proto.
-  mlir::Identifier replication_attr_name = mlir::Identifier::get(
-      "mhlo.is_same_data_across_replicas", op.getContext());
+  mlir::StringAttr replication_attr_name = mlir::StringAttr::get(
+      op.getContext(), "mhlo.is_same_data_across_replicas");
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int index = operand_type_and_idx.index();
@@ -445,6 +443,9 @@ LogicalResult BuildExecuteOp(
   // TPUExecute has same output types as cluster_func.
   *execute_op = builder->create<TF::TPUExecuteOp>(cluster_func.getLoc(),
                                                   output_types, inputs);
+  auto producer_name_attr = cluster_func->getAttr("_producer_name");
+  if (producer_name_attr)
+    (*execute_op)->setAttr("_producer_name", producer_name_attr);
   return success();
 }
 

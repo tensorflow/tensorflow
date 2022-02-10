@@ -127,7 +127,9 @@ class InitializeTRTResource : public OpKernel {
       TRTEngineInstance engine_instance;
       engine_instance.ParseFromString(record);
       std::vector<TensorShape> engine_input_shapes;
-      for (const TensorShapeProto& shape : engine_instance.input_shapes()) {
+      const auto& input_shapes = engine_instance.input_shapes();
+      engine_input_shapes.reserve(input_shapes.size());
+      for (const TensorShapeProto& shape : input_shapes) {
         engine_input_shapes.emplace_back(shape);
       }
 
@@ -144,7 +146,8 @@ class InitializeTRTResource : public OpKernel {
         // Restore profiles if there are any. Currently only 1 engine is allowed
         // in dynamic mode therefore we call this only for the 0th engine.
         // it is a no-op in implicit batch mode.
-        OP_REQUIRES_OK(ctx, resource->profiles_.RestoreProfiles(raw_engine));
+        OP_REQUIRES_OK(ctx, resource->profiles_.RestoreProfiles(
+                                raw_engine, engine_input_shapes.size()));
         OP_REQUIRES_OK(ctx, resource->profiles_.CreateExecutionContexts(
                                 raw_engine, &ctx_vec));
       } else {
@@ -178,6 +181,8 @@ class SerializeTRTResource : public OpKernel {
  public:
   explicit SerializeTRTResource(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("delete_resource", &delete_resource_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("save_gpu_specific_engines",
+                                     &save_gpu_specific_engines_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -188,9 +193,12 @@ class SerializeTRTResource : public OpKernel {
 
     // Lookup engine cache resource.
     TRTEngineCacheResource* resource = nullptr;
-    OP_REQUIRES_OK(
-        ctx, ctx->resource_manager()->Lookup(std::string(kTfTrtContainerName),
-                                             resource_name, &resource));
+    OP_REQUIRES(
+        ctx,
+        ctx->resource_manager()
+            ->Lookup(std::string(kTfTrtContainerName), resource_name, &resource)
+            .ok(),
+        errors::NotFound("TRTEngineCacheResource not yet created"));
     core::ScopedUnref unref_me(resource);
 
     // Terminate the calibration if any.
@@ -202,26 +210,30 @@ class SerializeTRTResource : public OpKernel {
     auto writer = absl::make_unique<io::RecordWriter>(file.get());
 
     int num_serialized_engines = 0;
-    for (const auto& pair : resource->cache_) {
-      // Ignore engines that failed to build.
-      const std::unique_ptr<EngineContext>& engine = pair.second;
-      if (!engine || !engine->cuda_engine) continue;
+    if (save_gpu_specific_engines_) {
+      for (const auto& pair : resource->cache_) {
+        // Ignore engines that failed to build.
+        const std::unique_ptr<EngineContext>& engine = pair.second;
+        if (!engine || !engine->cuda_engine) continue;
 
-      TRTEngineInstance engine_instance;
-      // Add input shapes.
-      const std::vector<TensorShape>& engine_input_shapes = pair.first;
-      for (const TensorShape& shape : engine_input_shapes) {
-        shape.AsProto(engine_instance.add_input_shapes());
+        TRTEngineInstance engine_instance;
+        // Add input shapes.
+        const std::vector<TensorShape>& engine_input_shapes = pair.first;
+        for (const TensorShape& shape : engine_input_shapes) {
+          shape.AsProto(engine_instance.add_input_shapes());
+        }
+        // Add the serialized engine.
+        TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(
+            engine->cuda_engine->serialize());
+        engine_instance.set_serialized_engine(engine_data->data(),
+                                              engine_data->size());
+
+        OP_REQUIRES_OK(
+            ctx, writer->WriteRecord(engine_instance.SerializeAsString()));
+        ++num_serialized_engines;
       }
-      // Add the serialized engine.
-      TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(
-          engine->cuda_engine->serialize());
-      engine_instance.set_serialized_engine(engine_data->data(),
-                                            engine_data->size());
-
-      OP_REQUIRES_OK(ctx,
-                     writer->WriteRecord(engine_instance.SerializeAsString()));
-      ++num_serialized_engines;
+    } else {
+      VLOG(1) << "TRT Engines are not serialized for op: " << resource_name;
     }
     VLOG(1) << "Serialized " << num_serialized_engines << " TRT engines for op "
             << resource_name << " on device " << ctx->device()->name()
@@ -238,6 +250,7 @@ class SerializeTRTResource : public OpKernel {
 
  private:
   bool delete_resource_ = false;
+  bool save_gpu_specific_engines_ = true;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SerializeTRTResource);
 };

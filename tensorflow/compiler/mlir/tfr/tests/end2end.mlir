@@ -157,16 +157,16 @@ tfr.func @tf__my_expand_dims(%value: !tfr.tensor, %axis: i32 {tfr.name="axis"}) 
 tfr.func @tf__my_pack(%values: !tfr.tensor_list,
                       %n: i32 {tfr.name="N"},
                       %axis: i32 {tfr.name="axis"}) -> !tfr.tensor {
-  %index = constant 0 : index
-  %cst = constant 1 : i32
-  %eq = cmpi eq, %n, %cst : i32
+  %index = arith.constant 0 : index
+  %cst = arith.constant 1 : i32
+  %eq = arith.cmpi eq, %n, %cst : i32
   %v1 = tfr.get_element %values[%index] : (!tfr.tensor_list, index) -> !tfr.tensor
   %temp = tfr.call @tf__my_expand_dims(%v1, %axis) : (!tfr.tensor, i32) -> !tfr.tensor
   %res = scf.if %eq -> !tfr.tensor {
     scf.yield %temp : !tfr.tensor
   } else {
-    %step = index_cast %cst : i32 to index
-    %end = index_cast %n : i32 to index
+    %step = arith.index_cast %cst : i32 to index
+    %end = arith.index_cast %n : i32 to index
     %reduce = scf.for %i = %step to %end step %step iter_args(%reduce_iter=%temp) -> !tfr.tensor {
       %v = tfr.get_element %values[%i] : (!tfr.tensor_list, index) -> !tfr.tensor
       %temp1 =  tfr.call @tf__my_expand_dims(%v, %axis) : (!tfr.tensor, i32) -> !tfr.tensor
@@ -180,15 +180,15 @@ tfr.func @tf__my_pack(%values: !tfr.tensor_list,
 
 tfr.func @tf__my_add_n(%values: !tfr.tensor_list,
                        %n: i32 {tfr.name="N"}) -> !tfr.tensor {
-  %index = constant 0 : index
-  %cst = constant 1 : i32
-  %eq = cmpi eq, %n, %cst : i32
+  %index = arith.constant 0 : index
+  %cst = arith.constant 1 : i32
+  %eq = arith.cmpi eq, %n, %cst : i32
   %v1 = tfr.get_element %values[%index] : (!tfr.tensor_list, index) -> !tfr.tensor
   %res = scf.if %eq -> !tfr.tensor {
     scf.yield %v1 : !tfr.tensor
   } else {
-    %step = index_cast %cst : i32 to index
-    %end = index_cast %n : i32 to index
+    %step = arith.index_cast %cst : i32 to index
+    %end = arith.index_cast %n : i32 to index
     %reduce = scf.for %i = %step to %end step %step iter_args(%reduce_iter=%v1) -> !tfr.tensor {
       %v = tfr.get_element %values[%i] : (!tfr.tensor_list, index) -> !tfr.tensor
       %reduce_next =  tfr.call @tf__risc_add(%reduce_iter, %v) : (!tfr.tensor, !tfr.tensor) -> !tfr.tensor

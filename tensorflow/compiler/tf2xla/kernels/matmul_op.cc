@@ -57,6 +57,10 @@ class MatMulOp : public XlaOpKernel {
     const TensorShape b_shape = ctx->InputShape(1);
 
     // Check that the dimensions of the two matrices are valid.
+    OP_REQUIRES(ctx, a_shape.dims() == b_shape.dims(),
+                errors::InvalidArgument("In[0] and In[1] has different ndims: ",
+                                        a_shape.DebugString(), " vs. ",
+                                        b_shape.DebugString()));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsMatrix(a_shape),
         errors::InvalidArgument("In[0] is not a matrix. Instead it has shape ",

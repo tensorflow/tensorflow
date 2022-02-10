@@ -20,7 +20,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+namespace xla_framework {
+class XLAFrameworkDialect;
+}
+namespace LLVM {
+class LLVMDialect;
+}
 namespace mhlo {
+class MhloDialect;
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"

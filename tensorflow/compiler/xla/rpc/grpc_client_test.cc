@@ -20,10 +20,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
-
-#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/rpc/grpc_stub.h"
@@ -46,8 +45,8 @@ namespace {
 class GRPCClientTestBase : public ::testing::Test {
  protected:
   GRPCClientTestBase() {
-    string test_srcdir = tensorflow::testing::TensorFlowSrcRoot();
-    string service_main_path = tensorflow::io::JoinPath(
+    std::string test_srcdir = tensorflow::testing::TensorFlowSrcRoot();
+    std::string service_main_path = tensorflow::io::JoinPath(
         test_srcdir, "compiler/xla/rpc/grpc_service_main_cpu");
     int port = tensorflow::internal::PickUnusedPortOrDie();
     subprocess_.SetProgram(

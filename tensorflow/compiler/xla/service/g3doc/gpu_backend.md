@@ -1,6 +1,6 @@
 # XLA GPU Backend
 
-<!--* freshness: { owner: ['sanjoy', 'timshen'] reviewed: '2021-05-10' } *-->
+<!--* freshness: { owner: "jurahul" reviewed: "2022-02-04" } *-->
 
 ## Compile time
 
@@ -11,7 +11,6 @@ generates
 whose `ExecuteOnStream` interface will be called by the XLA service at runtime.
 The figure below shows the work flow of `GpuCompiler`.
 
-<!--*
 ```dot
 strict digraph {
   compound=true;
@@ -52,7 +51,6 @@ strict digraph {
   ir_emitter -> { thunk0 thunk1 }
 }
 ```
-*-->
 
 <center><img style="width:25%" src="./images/gpu_backend_chart.svg"></img></center>
 
@@ -84,7 +82,7 @@ allocate and deallocate buffers.
 
 `GpuCompiler` takes the optimized HLO and `BufferAssignment`, and convert them
 to the MLIR dialect
-[`LMHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.td).
+[`LMHLO`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.td).
 
 The `LMHLO` dialect is a graph consists of `LMHLO` ops. `LMHLO` ops are
 buffer-based and sequentially ordered. The sequential order reflects the

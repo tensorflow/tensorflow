@@ -171,10 +171,8 @@ VariableInputLockHolder MaybeLockVariableInputMutexesInOrder(
   auto shared_locks = absl::make_unique<std::vector<tf_shared_lock>>();
   locks->reserve(acquire_order.size());
 
-  for (auto input : acquire_order) {
-    Var* var;
-    mutex* mu = GetTrainingVariableMutex<Device, T>(ctx, input, sparse, &var);
-    core::ScopedUnref scoped_unref(var);
+  for (auto acquire : acquire_order) {
+    mutex* mu = mutexes[acquire];
     if (mu != nullptr) {
       if (!sparse || do_lock) {
         locks->emplace_back(*mu);

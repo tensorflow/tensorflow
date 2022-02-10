@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tf 2.x profiler."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import socket
 
@@ -45,7 +41,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     # Test with a bad logdir, and it correctly raises exception and deletes
     # profiler.
     # pylint: disable=anomalous-backslash-in-string
-    profiler.start('/\/\/:123')
+    profiler.start('/dev/null/\/\/:123')
     # pylint: enable=anomalous-backslash-in-string
     with self.assertRaises(Exception):
       profiler.stop()

@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_RESOURCE_VAR_H_
 #define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_VAR_H_
 
-#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_base.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 
 // Forward declarations to avoid introducing a dependency on headers in
@@ -71,6 +72,14 @@ class Var : public ResourceBase {
   // TODO(ebrevdo): Use LockSet instead of exposing mu.
   mutex* mu() { return &mu_; }
   Tensor* tensor() { return &tensor_; }
+
+  // Uninitializes the variable, by reverting the state of the tensor to
+  // the state when the variable is first created.
+  void Uninitialize() {
+    // move frees the buffer of the tensor after unused goes out of scope.
+    Tensor unused = std::move(tensor_);
+    is_initialized = false;
+  }
 
   Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override;
 

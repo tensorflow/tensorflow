@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for `tf.data.DatasetSpec`."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -54,6 +50,27 @@ class DatasetSpecTest(test_base.DatasetTestBase, parameterized.TestCase):
     inner_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.int32)
     ds_spec = dataset_ops.DatasetSpec(inner_spec)
     self.assertEqual(ds_spec.element_spec, inner_spec)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetSpecTraceType(self):
+    trace_type_1 = dataset_ops.DatasetSpec(
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.int32),
+        [5]).__tf_tracing_type__(None)
+    trace_type_2 = dataset_ops.DatasetSpec(
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.int32),
+        [5]).__tf_tracing_type__(None)
+
+    self.assertEqual(trace_type_1, trace_type_2)
+    self.assertEqual(hash(trace_type_1), hash(trace_type_2))
+    self.assertTrue(trace_type_1.is_subtype_of(trace_type_2))
+    self.assertTrue(trace_type_2.is_subtype_of(trace_type_1))
+
+    trace_type_3 = dataset_ops.DatasetSpec(
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.int32),
+        [6]).__tf_tracing_type__(None)
+    self.assertNotEqual(trace_type_1, trace_type_3)
+    self.assertFalse(trace_type_1.is_subtype_of(trace_type_3))
+    self.assertFalse(trace_type_3.is_subtype_of(trace_type_1))
 
 
 if __name__ == "__main__":

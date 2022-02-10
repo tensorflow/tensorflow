@@ -15,10 +15,6 @@
 """TensorArray: a dynamically sized array of Tensors."""
 # Mixture of pep8 and non-pep8 names, so disable pylint bad-name
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 
 import traceback
@@ -49,7 +45,7 @@ from tensorflow.python.util.tf_export import tf_export
 # _GraphTensorArray accesses many of the hidden generated ops, but is in
 # fact built to wrap these methods.
 # pylint: disable=protected-access
-class _GraphTensorArray(object):
+class _GraphTensorArray:
   """Graph-mode implementation of TensorArray."""
 
   def __init__(self,
@@ -392,7 +388,7 @@ class _GraphTensorArray(object):
         handle=self._handle, name=name)
 
 
-class _GraphTensorArrayV2(object):
+class _GraphTensorArrayV2:
   """Graph-mode implementation of TensorArray backed by TensorLists.
 
   The backing tensor of this TensorArray is a TensorList variant tensor which is
@@ -661,7 +657,7 @@ class _GraphTensorArrayV2(object):
 # pylint: enable=protected-access
 
 
-class _EagerTensorArray(object):
+class _EagerTensorArray:
   """Eager-compatible implementation of TensorArray."""
 
   def __init__(self,
@@ -958,7 +954,7 @@ class _EagerTensorArray(object):
 # pylint: disable=protected-access
 # pylint:disable=line-too-long
 @tf_export("TensorArray")
-class TensorArray(object):
+class TensorArray:
   """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
 
   This class is meant to be used with dynamic iteration primitives such as

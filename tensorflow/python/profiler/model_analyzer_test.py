@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gzip
 import io
 import os
@@ -59,35 +55,35 @@ class PrintModelAnalysisTest(test.TestCase):
   def testDumpToFile(self):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
-    opts = builder(builder.trainable_variables_parameter()
-                  ).with_file_output(outfile).build()
+    opts = builder(builder.trainable_variables_parameter()).with_file_output(
+        outfile).build()
 
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       _ = lib.BuildSmallModel()
       model_analyzer.profile(sess.graph, options=opts)
 
       with gfile.Open(outfile, 'r') as f:
-        self.assertEqual(u'node name | # parameters\n'
-                         '_TFProfRoot (--/451 params)\n'
-                         '  DW (3x3x3x6, 162/162 params)\n'
-                         '  DW2 (2x2x6x12, 288/288 params)\n'
-                         '  ScalarW (1, 1/1 params)\n',
-                         lib.CheckAndRemoveDoc(f.read()))
+        self.assertEqual(
+            u'node name | # parameters\n'
+            '_TFProfRoot (--/451 params)\n'
+            '  DW (3x3x3x6, 162/162 params)\n'
+            '  DW2 (2x2x6x12, 288/288 params)\n'
+            '  ScalarW (1, 1/1 params)\n', lib.CheckAndRemoveDoc(f.read()))
 
   @test_util.run_v1_only('b/120545219')
   def testSelectEverythingDetail(self):
     ops.reset_default_graph()
     dev = '/device:GPU:0' if test.is_gpu_available() else '/device:CPU:0'
     outfile = os.path.join(test.get_temp_dir(), 'dump')
-    opts = (builder(builder.trainable_variables_parameter())
-            .with_file_output(outfile)
-            .with_accounted_types(['.*'])
-            .select(['micros', 'bytes', 'params', 'float_ops', 'occurrence',
-                     'device', 'op_types', 'input_shapes']).build())
+    opts = (
+        builder(builder.trainable_variables_parameter()).with_file_output(
+            outfile).with_accounted_types(['.*']).select([
+                'micros', 'bytes', 'params', 'float_ops', 'occurrence',
+                'device', 'op_types', 'input_shapes'
+            ]).build())
 
-    with profile_context.ProfileContext(test.get_temp_dir(),
-                                        trace_steps=[],
-                                        dump_steps=[]) as pctx:
+    with profile_context.ProfileContext(
+        test.get_temp_dir(), trace_steps=[], dump_steps=[]) as pctx:
       with session.Session(
           config=self._no_rewrite_session_config()) as sess, ops.device(dev):
         x = lib.BuildSmallModel()
@@ -104,15 +100,18 @@ class PrintModelAnalysisTest(test.TestCase):
           dump_str = lib.CheckAndRemoveDoc(f.read())
           outputs = dump_str.split('\n')
 
-          self.assertEqual(outputs[0],
-                           'node name | # parameters | # float_ops | requested bytes | total execution time | accelerator execution time | cpu execution time | assigned devices | op types | op count (run|defined) | input shapes')
+          self.assertEqual(
+              outputs[0],
+              'node name | # parameters | # float_ops | requested bytes | total execution time | accelerator execution time | cpu execution time | assigned devices | op types | op count (run|defined) | input shapes'
+          )
           for o in outputs[1:]:
             if o.find('Conv2D ') > 0:
-              metrics = o[o.find('(') +1: o.find(')')].split(',')
+              metrics = o[o.find('(') + 1:o.find(')')].split(',')
               # Make sure time is profiled.
               gap = 1 if test.is_gpu_available() else 2
               for i in range(3, 6, gap):
-                mat = re.search('(.*)(?:us|ms|sec)/(.*)(?:us|ms|sec)', metrics[i])
+                mat = re.search('(.*)(?:us|ms|sec)/(.*)(?:us|ms|sec)',
+                                metrics[i])
                 self.assertGreater(float(mat.group(1)), 0.0)
                 self.assertGreater(float(mat.group(2)), 0.0)
               # Make sure device is profiled.
@@ -132,7 +131,7 @@ class PrintModelAnalysisTest(test.TestCase):
               self.assertEqual(metrics[9].strip(), '0:2x6x6x3|1:3x3x3x6')
 
             if o.find('DW (3x3x3x6') > 0:
-              metrics = o[o.find('(') +1: o.find(')')].split(',')
+              metrics = o[o.find('(') + 1:o.find(')')].split(',')
               mat = re.search('(.*)/(.*) params', metrics[1].strip())
               self.assertGreater(float(mat.group(1)), 0.0)
               self.assertGreater(float(mat.group(2)), 0.0)
@@ -149,11 +148,12 @@ class PrintModelAnalysisTest(test.TestCase):
   def testSelectEverything(self):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
-    opts = (builder(builder.trainable_variables_parameter())
-            .with_file_output(outfile)
-            .with_accounted_types(['.*'])
-            .select(['params', 'float_ops', 'occurrence', 'device', 'op_types',
-                     'input_shapes']).build())
+    opts = (
+        builder(builder.trainable_variables_parameter()).with_file_output(
+            outfile).with_accounted_types(['.*']).select([
+                'params', 'float_ops', 'occurrence', 'device', 'op_types',
+                'input_shapes'
+            ]).build())
 
     with session.Session(config=self._no_rewrite_session_config()
                         ) as sess, ops.device('/device:CPU:0'):
@@ -161,39 +161,40 @@ class PrintModelAnalysisTest(test.TestCase):
 
       self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
-      _ = sess.run(x,
-                   options=config_pb2.RunOptions(
-                       trace_level=config_pb2.RunOptions.FULL_TRACE),
-                   run_metadata=run_meta)
+      _ = sess.run(
+          x,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE),
+          run_metadata=run_meta)
 
-      model_analyzer.profile(
-          sess.graph, run_meta, options=opts)
+      model_analyzer.profile(sess.graph, run_meta, options=opts)
 
   def testSimpleCodeView(self):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
     # TODO(xpan): Test 'micros'. Since the execution time changes each run,
     # it's a bit difficult to test it now.
-    opts = (builder(builder.trainable_variables_parameter())
-            .with_file_output(outfile)
-            .with_accounted_types(['.*'])
-            .with_node_names(show_name_regexes=['.*model_analyzer_testlib.*'])
-            .account_displayed_op_only(False)
-            .select(['bytes', 'params', 'float_ops', 'num_hidden_ops', 'device',
-                     'input_shapes']).build())
+    opts = (
+        builder(builder.trainable_variables_parameter()).with_file_output(
+            outfile).with_accounted_types(['.*']).with_node_names(
+                show_name_regexes=['.*model_analyzer_testlib.*'
+                                  ]).account_displayed_op_only(False).select([
+                                      'bytes', 'params', 'float_ops',
+                                      'num_hidden_ops', 'device', 'input_shapes'
+                                  ]).build())
 
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildSmallModel()
 
       self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
-      _ = sess.run(x,
-                   options=config_pb2.RunOptions(
-                       trace_level=config_pb2.RunOptions.FULL_TRACE),
-                   run_metadata=run_meta)
+      _ = sess.run(
+          x,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE),
+          run_metadata=run_meta)
 
-      model_analyzer.profile(
-          sess.graph, run_meta, cmd='code', options=opts)
+      model_analyzer.profile(sess.graph, run_meta, cmd='code', options=opts)
 
       with gfile.Open(outfile, 'r') as f:
         # pylint: disable=line-too-long
@@ -206,17 +207,15 @@ class PrintModelAnalysisTest(test.TestCase):
   def testComplexCodeView(self):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
-    opts = (builder(builder.trainable_variables_parameter())
-            .with_file_output(outfile)
-            .with_accounted_types(['.*'])
-            .with_node_names(show_name_regexes=
-                             ['.*model_analyzer_testlib.py.*'])
-            .account_displayed_op_only(False)
-            .select(['params', 'float_ops']).build())
+    opts = (
+        builder(builder.trainable_variables_parameter()).with_file_output(
+            outfile).with_accounted_types(['.*']).with_node_names(
+                show_name_regexes=['.*model_analyzer_testlib.py.*'
+                                  ]).account_displayed_op_only(False).select(
+                                      ['params', 'float_ops']).build())
 
-    with profile_context.ProfileContext(test.get_temp_dir(),
-                                        trace_steps=[],
-                                        dump_steps=[]) as pctx:
+    with profile_context.ProfileContext(
+        test.get_temp_dir(), trace_steps=[], dump_steps=[]) as pctx:
       with session.Session(config=self._no_rewrite_session_config()) as sess:
         x = lib.BuildFullModel()
 
@@ -231,8 +230,8 @@ class PrintModelAnalysisTest(test.TestCase):
           self.assertGreater(len(lines), 5)
           result = '\n'.join(l[:min(len(l), 80)] for l in lines)
           self.assertTrue(
-              compat.as_text(lib.CheckAndRemoveDoc(result))
-              .startswith('node name | # parameters | # float_ops'))
+              compat.as_text(lib.CheckAndRemoveDoc(result)).startswith(
+                  'node name | # parameters | # float_ops'))
 
         self.assertLess(0, tfprof_node.total_exec_micros)
         self.assertEqual(2844, tfprof_node.total_parameters)
@@ -244,49 +243,44 @@ class PrintModelAnalysisTest(test.TestCase):
           self.assertLess(145660, tfprof_node.total_float_ops)
         self.assertEqual(8, len(tfprof_node.children))
         self.assertEqual('_TFProfRoot', tfprof_node.name)
-        self.assertEqual(
-            'model_analyzer_testlib.py:63:BuildFullModel',
-            tfprof_node.children[0].name)
+        self.assertEqual('model_analyzer_testlib.py:63:BuildFullModel',
+                         tfprof_node.children[0].name)
         self.assertEqual(
             'model_analyzer_testlib.py:63:BuildFullModel (gradient)',
             tfprof_node.children[1].name)
-        self.assertEqual(
-            'model_analyzer_testlib.py:67:BuildFullModel',
-            tfprof_node.children[2].name)
+        self.assertEqual('model_analyzer_testlib.py:67:BuildFullModel',
+                         tfprof_node.children[2].name)
         self.assertEqual(
             'model_analyzer_testlib.py:67:BuildFullModel (gradient)',
             tfprof_node.children[3].name)
-        self.assertEqual(
-            'model_analyzer_testlib.py:69:BuildFullModel',
-            tfprof_node.children[4].name)
-        self.assertEqual(
-            'model_analyzer_testlib.py:70:BuildFullModel',
-            tfprof_node.children[5].name)
+        self.assertEqual('model_analyzer_testlib.py:69:BuildFullModel',
+                         tfprof_node.children[4].name)
+        self.assertEqual('model_analyzer_testlib.py:70:BuildFullModel',
+                         tfprof_node.children[5].name)
         self.assertEqual(
             'model_analyzer_testlib.py:70:BuildFullModel (gradient)',
             tfprof_node.children[6].name)
-        self.assertEqual(
-            'model_analyzer_testlib.py:72:BuildFullModel',
-            tfprof_node.children[7].name)
+        self.assertEqual('model_analyzer_testlib.py:72:BuildFullModel',
+                         tfprof_node.children[7].name)
         # pylint: enable=line-too-long
 
   def testCodeViewLeafGraphNode(self):
     ops.reset_default_graph()
-    opts = (builder(builder.trainable_variables_parameter())
-            .with_empty_output()
-            .with_accounted_types(['.*'])
-            .account_displayed_op_only(False)
-            .select(['bytes', 'params', 'float_ops', 'device']).build())
+    opts = (
+        builder(builder.trainable_variables_parameter()).with_empty_output()
+        .with_accounted_types(['.*']).account_displayed_op_only(False).select(
+            ['bytes', 'params', 'float_ops', 'device']).build())
 
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildSmallModel()
 
       self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
-      _ = sess.run(x,
-                   options=config_pb2.RunOptions(
-                       trace_level=config_pb2.RunOptions.FULL_TRACE),
-                   run_metadata=run_meta)
+      _ = sess.run(
+          x,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE),
+          run_metadata=run_meta)
 
       tfprof_node = model_analyzer.profile(
           sess.graph, run_meta, cmd='code', options=opts)
@@ -300,11 +294,10 @@ class PrintModelAnalysisTest(test.TestCase):
   def testTimeline(self):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), 'timeline')
-    opts = (builder(builder.trainable_variables_parameter())
-            .with_max_depth(100000)
-            .with_step(0)
-            .with_timeline_output(outfile)
-            .with_accounted_types(['.*']).build())
+    opts = (
+        builder(builder.trainable_variables_parameter()).with_max_depth(100000)
+        .with_step(0).with_timeline_output(outfile).with_accounted_types(
+            ['.*']).build())
 
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
@@ -333,24 +326,24 @@ class PrintModelAnalysisTest(test.TestCase):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
 
-    opts = (builder(builder.trainable_variables_parameter())
-            .with_file_output(outfile)
-            .with_accounted_types(['.*'])
-            .with_min_occurrence(10)
-            .order_by('occurrence')
-            .select(['params', 'micros', 'bytes',
-                     'peak_bytes', 'residual_bytes',
-                     'output_bytes', 'occurrence', 'input_shapes']).build())
+    opts = (
+        builder(builder.trainable_variables_parameter()).with_file_output(
+            outfile).with_accounted_types(
+                ['.*']).with_min_occurrence(10).order_by('occurrence').select([
+                    'params', 'micros', 'bytes', 'peak_bytes', 'residual_bytes',
+                    'output_bytes', 'occurrence', 'input_shapes'
+                ]).build())
 
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
 
       self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
-      _ = sess.run(x,
-                   options=config_pb2.RunOptions(
-                       trace_level=config_pb2.RunOptions.FULL_TRACE),
-                   run_metadata=run_meta)
+      _ = sess.run(
+          x,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE),
+          run_metadata=run_meta)
 
       tfprof_node = model_analyzer.profile(
           sess.graph, run_meta, cmd='op', options=opts)
@@ -374,8 +367,8 @@ class PrintModelAnalysisTest(test.TestCase):
         self.assertEqual(len(tfprof_node.children), 1)
         tfprof_node = tfprof_node.children[0]
 
-        self.assertEqual(
-            last_total_micros, tfprof_node.total_exec_micros + last_micros)
+        self.assertEqual(last_total_micros,
+                         tfprof_node.total_exec_micros + last_micros)
         last_total_micros = tfprof_node.total_exec_micros
         last_micros = tfprof_node.exec_micros
 
@@ -415,11 +408,11 @@ class PrintModelAnalysisTest(test.TestCase):
   def pprof_test_helper(self, attribute, should_fail=False):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), attribute + '_pprof.pb.gz')
-    opts = (builder(builder.time_and_memory())
-            .select([attribute])
-            .with_max_depth(100000)
-            .with_node_names(trim_name_regexes=['ops.py.*'])
-            .with_pprof_output(outfile).build())
+    opts = (
+        builder(builder.time_and_memory()).select([
+            attribute
+        ]).with_max_depth(100000).with_node_names(
+            trim_name_regexes=['ops.py.*']).with_pprof_output(outfile).build())
 
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
@@ -432,8 +425,7 @@ class PrintModelAnalysisTest(test.TestCase):
               trace_level=config_pb2.RunOptions.FULL_TRACE),
           run_metadata=run_meta)
 
-      _ = model_analyzer.profile(
-          sess.graph, run_meta, cmd='code', options=opts)
+      _ = model_analyzer.profile(sess.graph, run_meta, cmd='code', options=opts)
 
       if should_fail:
         self.assertFalse(gfile.Exists(outfile))
@@ -450,19 +442,17 @@ class PrintModelAnalysisTest(test.TestCase):
       self.assertGreater(len(profile_pb.string_table), 30)
 
       has_rnn = False
-      has_loop = False
       for s in profile_pb.string_table:
         if s.find('rnn') > 0:
           has_rnn = True
-        if s.find('while') > 0:
-          has_loop = True
         self.assertFalse(s.startswith('ops.py'))
       self.assertTrue(has_rnn)
-      self.assertTrue(has_loop)
 
   def testPprof(self):
-    for attr in ['micros', 'bytes', 'accelerator_micros', 'cpu_micros',
-                 'params', 'float_ops']:
+    for attr in [
+        'micros', 'bytes', 'accelerator_micros', 'cpu_micros', 'params',
+        'float_ops'
+    ]:
       self.pprof_test_helper(attr)
     for attr in ['op_types', 'device', 'input_shapes']:
       self.pprof_test_helper(attr, True)
@@ -492,51 +482,52 @@ class PrintModelAnalysisTest(test.TestCase):
       x = lib.BuildSmallModel()
       self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
-      _ = sess.run(x,
-                   options=config_pb2.RunOptions(
-                       trace_level=config_pb2.RunOptions.FULL_TRACE),
-                   run_metadata=run_meta)
+      _ = sess.run(
+          x,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE),
+          run_metadata=run_meta)
 
       min_val = random.randint(0, 10000)
 
-      opts = builder(builder.time_and_memory(min_micros=min_val)
-                    ).with_empty_output().build()
+      opts = builder(builder.time_and_memory(
+          min_micros=min_val)).with_empty_output().build()
       tfprof_node = model_analyzer.profile(
           sess.graph, run_meta=run_meta, options=opts)
       check_min(tfprof_node.children, mm=min_val)
 
-      opts = builder(builder.time_and_memory(min_accelerator_micros=min_val)
-                    ).with_empty_output().build()
+      opts = builder(builder.time_and_memory(
+          min_accelerator_micros=min_val)).with_empty_output().build()
       tfprof_node = model_analyzer.profile(
           sess.graph, run_meta=run_meta, options=opts)
       check_min(tfprof_node.children, mam=min_val)
 
-      opts = builder(builder.time_and_memory(min_cpu_micros=min_val)
-                    ).with_empty_output().build()
+      opts = builder(builder.time_and_memory(
+          min_cpu_micros=min_val)).with_empty_output().build()
       tfprof_node = model_analyzer.profile(
           sess.graph, run_meta=run_meta, options=opts)
       check_min(tfprof_node.children, mcm=min_val)
 
-      opts = builder(builder.time_and_memory(min_bytes=min_val)
-                    ).with_empty_output().build()
+      opts = builder(builder.time_and_memory(
+          min_bytes=min_val)).with_empty_output().build()
       tfprof_node = model_analyzer.profile(
           sess.graph, run_meta=run_meta, options=opts)
       check_min(tfprof_node.children, mb=min_val)
 
-      opts = builder(builder.time_and_memory(min_peak_bytes=min_val)
-                    ).with_empty_output().build()
+      opts = builder(builder.time_and_memory(
+          min_peak_bytes=min_val)).with_empty_output().build()
       tfprof_node = model_analyzer.profile(
           sess.graph, run_meta=run_meta, options=opts)
       check_min(tfprof_node.children, mpb=min_val)
 
-      opts = builder(builder.time_and_memory(min_residual_bytes=min_val)
-                    ).with_empty_output().build()
+      opts = builder(builder.time_and_memory(
+          min_residual_bytes=min_val)).with_empty_output().build()
       tfprof_node = model_analyzer.profile(
           sess.graph, run_meta=run_meta, options=opts)
       check_min(tfprof_node.children, mrb=min_val)
 
-      opts = builder(builder.time_and_memory(min_output_bytes=min_val)
-                    ).with_empty_output().build()
+      opts = builder(builder.time_and_memory(
+          min_output_bytes=min_val)).with_empty_output().build()
       tfprof_node = model_analyzer.profile(
           sess.graph, run_meta=run_meta, options=opts)
       check_min(tfprof_node.children, mob=min_val)
@@ -557,35 +548,35 @@ class PrintModelAnalysisTest(test.TestCase):
       x = lib.BuildSmallModel()
       self.evaluate(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
-      _ = sess.run(x,
-                   options=config_pb2.RunOptions(
-                       trace_level=config_pb2.RunOptions.FULL_TRACE),
-                   run_metadata=run_meta)
+      _ = sess.run(
+          x,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE),
+          run_metadata=run_meta)
 
-      opts = builder(builder.time_and_memory()
-                    ).with_file_output(outfile).select(['micros']).build()
-      _ = model_analyzer.profile(
-          sess.graph, run_meta=run_meta, options=opts)
+      opts = builder(
+          builder.time_and_memory()).with_file_output(outfile).select(
+              ['micros']).build()
+      _ = model_analyzer.profile(sess.graph, run_meta=run_meta, options=opts)
       check_selection(['total execution time', 'accelerator execution time'],
                       ['bytes'])
 
-      opts = builder(builder.time_and_memory()
-                    ).with_file_output(outfile).select(['bytes']).build()
-      _ = model_analyzer.profile(
-          sess.graph, run_meta=run_meta, options=opts)
+      opts = builder(
+          builder.time_and_memory()).with_file_output(outfile).select(
+              ['bytes']).build()
+      _ = model_analyzer.profile(sess.graph, run_meta=run_meta, options=opts)
       check_selection(['requested bytes'],
                       ['peak bytes', 'residual bytes', 'output bytes'])
 
-      opts = builder(builder.time_and_memory()).with_file_output(
-          outfile).select(
+      opts = builder(
+          builder.time_and_memory()).with_file_output(outfile).select(
               ['peak_bytes', 'residual_bytes', 'output_bytes']).build()
-      _ = model_analyzer.profile(
-          sess.graph, run_meta=run_meta, options=opts)
+      _ = model_analyzer.profile(sess.graph, run_meta=run_meta, options=opts)
       check_selection(['peak bytes', 'residual bytes', 'output bytes'],
                       ['requested_bytes'])
 
-  def _trainLoop(self, train_op, train_steps, time_dir, time_step,
-                 memory_dir, memory_step, profile_dir, dump_step):
+  def _trainLoop(self, train_op, train_steps, time_dir, time_step, memory_dir,
+                 memory_step, profile_dir, dump_step):
     with session.Session(config=self._no_rewrite_session_config()) as sess:
       self.evaluate(variables.global_variables_initializer())
       # start from 1 because variable_initializer took one step.
@@ -595,8 +586,8 @@ class PrintModelAnalysisTest(test.TestCase):
           ret = gfile.ListDirectory(time_dir)
           self.assertEqual(len(ret), 1)
           self.assertTrue(
-              gfile.Open(os.path.join(time_dir, ret[0]), 'r').read()
-              .find('execution time') > 0)
+              gfile.Open(os.path.join(time_dir, ret[0]), 'r').read().find(
+                  'execution time') > 0)
           _ = [gfile.Remove(os.path.join(time_dir, x)) for x in ret]
         else:
           self.assertEqual(len(gfile.ListDirectory(time_dir)), 0)
@@ -604,8 +595,8 @@ class PrintModelAnalysisTest(test.TestCase):
           ret = gfile.ListDirectory(memory_dir)
           self.assertEqual(len(ret), 1)
           self.assertTrue(
-              gfile.Open(os.path.join(memory_dir, ret[0]), 'r').read()
-              .find('requested bytes') > 0)
+              gfile.Open(os.path.join(memory_dir, ret[0]), 'r').read().find(
+                  'requested bytes') > 0)
           _ = [gfile.Remove(os.path.join(memory_dir, x)) for x in ret]
         else:
           self.assertEqual(len(gfile.ListDirectory(memory_dir)), 0)
@@ -629,26 +620,25 @@ class PrintModelAnalysisTest(test.TestCase):
     gfile.MkDir(time_dir)
     gfile.MkDir(memory_dir)
 
-    time_opts = (builder(builder.time_and_memory())
-                 .with_file_output(os.path.join(time_dir, 'profile'))
-                 .select(['micros']).build())
-    memory_opts = (builder(builder.time_and_memory())
-                   .with_file_output(os.path.join(memory_dir, 'profile'))
-                   .select(['bytes']).build())
+    time_opts = (
+        builder(builder.time_and_memory()).with_file_output(
+            os.path.join(time_dir, 'profile')).select(['micros']).build())
+    memory_opts = (
+        builder(builder.time_and_memory()).with_file_output(
+            os.path.join(memory_dir, 'profile')).select(['bytes']).build())
 
     time_steps = [2, 3]
     memory_steps = [1, 3]
     dump_steps = [3, 4]
 
     x = lib.BuildSmallModel()
-    with profile_context.ProfileContext(profile_dir,
-                                        trace_steps=[1, 2, 3],
-                                        dump_steps=[3, 4]) as pctx:
+    with profile_context.ProfileContext(
+        profile_dir, trace_steps=[1, 2, 3], dump_steps=[3, 4]) as pctx:
       pctx.add_auto_profiling('scope', time_opts, time_steps)
       pctx.add_auto_profiling('scope', memory_opts, memory_steps)
 
-      self._trainLoop(x, 10, time_dir, time_steps,
-                      memory_dir, memory_steps, profile_dir, dump_steps)
+      self._trainLoop(x, 10, time_dir, time_steps, memory_dir, memory_steps,
+                      profile_dir, dump_steps)
 
   @test_util.run_v1_only('b/120545219')
   def testOOM(self):
@@ -662,14 +652,15 @@ class PrintModelAnalysisTest(test.TestCase):
 
     try:
       with session.Session(config=self._no_rewrite_session_config()) as sess:
-        sess.run(c, options=config_pb2.RunOptions(
-            report_tensor_allocations_upon_oom=True))
+        sess.run(
+            c,
+            options=config_pb2.RunOptions(
+                report_tensor_allocations_upon_oom=True))
     except Exception as e:  # pylint: disable=broad-except
       exception_str = '%s' % e
       # This trace reports allocations for to random tensor.
-      self.assertTrue(
-          'OOM when allocating tensor with shape[30000,10000,20000]' in
-          exception_str)
+      self.assertTrue('OOM when allocating tensor with shape[30000,10000,20000]'
+                      in exception_str)
       mat = re.search('(.*)GiB from test_random2/RandomStandardNormal',
                       exception_str)
       self.assertGreater(float(mat.group(1)), 0.0)
@@ -693,8 +684,10 @@ class PrintModelAnalysisTest(test.TestCase):
 
     try:
       with session.Session(workers[1].target) as sess:
-        sess.run(c, options=config_pb2.RunOptions(
-            report_tensor_allocations_upon_oom=True))
+        sess.run(
+            c,
+            options=config_pb2.RunOptions(
+                report_tensor_allocations_upon_oom=True))
     except Exception as e:  # pylint: disable=broad-except
       exception_str = '%s' % e
       # test_random2 is reported because it's allocated in worker 1.
@@ -747,7 +740,8 @@ class PrintModelAnalysisTest(test.TestCase):
 
   @test_util.run_v1_only('b/120545219')
   def testTraceLoopBytes(self):
-    if not test.is_gpu_available(): return
+    if not test.is_gpu_available():
+      return
     ops.reset_default_graph()
     steps = 100
 
@@ -757,13 +751,13 @@ class PrintModelAnalysisTest(test.TestCase):
       x1 = array_ops.ones((100, 100))
 
       x *= x1
+
       def loop_body(i, x):
         x *= x
         return i + 1, x
 
-      _, y = control_flow_ops.while_loop(
-          lambda i, x: i < n, loop_body,
-          [array_ops.constant(0), x])
+      _, y = control_flow_ops.while_loop(lambda i, x: i < n, loop_body,
+                                         [array_ops.constant(0), x])
 
     grad = gradients.gradients(y, [x1])
 

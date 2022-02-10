@@ -20,10 +20,6 @@ with low latency and a small binary size on Android, iOS, and other operating
 systems.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from setuptools import find_packages
@@ -67,5 +63,6 @@ setup(
     package_dir={'': '.'},
     package_data={'': ['*.so', '*.pyd']},
     install_requires=[
-        'numpy ~= 1.19.2',  # Higher versions have a compatibility issue.
+        'numpy >= 1.19.2',  # Better to keep sync with both TF ci_build
+                            # and OpenCV-Python requirement.
     ])

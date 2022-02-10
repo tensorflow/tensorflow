@@ -19,10 +19,6 @@
 See also `tf.sparse.SparseTensor`.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numbers
 
 import numpy as np
@@ -969,7 +965,7 @@ def sparse_reshape(sp_input, shape, name=None):
 
 
 # TODO(aselle): Remove keyword required once for 1.0 final
-class KeywordRequired(object):
+class KeywordRequired:
 
   def __repr__(self):
     # This is needed to make documentation without fully qualified module paths

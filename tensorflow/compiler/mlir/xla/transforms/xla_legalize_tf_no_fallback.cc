@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/DenseSet.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -42,13 +43,13 @@ class LegalizeTFNoFallback
     allow_partial_conversion_ = allow_partial_conversion;
   }
   /// Performs the lowering to HLO dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void LegalizeTFNoFallback::runOnFunction() {
-  Operation *op = getFunction();
+void LegalizeTFNoFallback::runOnOperation() {
+  Operation *op = getOperation();
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList patterns(context);
+  RewritePatternSet patterns(context);
 
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &patterns);
@@ -59,6 +60,7 @@ void LegalizeTFNoFallback::runOnFunction() {
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
   ConversionTarget target(*context);
+  target.addLegalDialect<arith::ArithmeticDialect>();
   target.addLegalDialect<chlo::HloClientDialect>();
   target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<StandardOpsDialect>();

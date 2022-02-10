@@ -72,6 +72,8 @@ class ImmediateExecutionOperation : public AbstractOperation {
   // Returns the stack trace set by `SetStackTrace` if exists.
   virtual absl::optional<ManagedStackTrace> GetStackTrace() = 0;
 
+  virtual void SetStepId(int64_t step_id) = 0;
+
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {
     return ptr->getKind() == kEager || ptr->getKind() == kTfrt;

@@ -414,7 +414,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
       const Shape& loop_state_shape) {
     auto builder = HloComputation::Builder(TestName() + ".Condition");
     auto limit_const = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(10)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(10)));
     auto loop_state = builder.AddInstruction(
         HloInstruction::CreateParameter(0, loop_state_shape, "loop_state"));
     auto induction_variable =
@@ -443,7 +443,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
     // Update data GTE(1).
@@ -484,7 +484,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
 
     // add0 = Add(in0, 1)
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -556,7 +556,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
     // add0 = Add(in0, 1)
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
@@ -606,7 +606,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto gte0 = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
         induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         gte0->shape(), HloOpcode::kAdd, gte0, inc));
 
@@ -642,7 +642,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
                                         bool nested = false) {
     auto builder = HloComputation::Builder(TestName() + ".While");
     auto induction_var_init = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
 
     auto data_init = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
@@ -762,7 +762,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     const bool nested =
         ShapeUtil::Equal(loop_state_shape, nested_loop_state_shape_);
     auto induction_var_init = builder->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
     auto condition = module_->AddEmbeddedComputation(
         BuildConditionComputation(loop_state_shape));
     auto body = module_->AddEmbeddedComputation(
@@ -823,7 +823,7 @@ TEST_F(WhileCopyInsertionTest, IndependentTupleElements) {
 //                                 |
 //                        WHILE(X) (root)
 TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterWithCopies) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule DependentTupleElements
 
 %DependentTupleElements.Body (loop_state.1: (s32[], f32[8])) -> (s32[], f32[8]) {
@@ -891,7 +891,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
 //                         \      /
 //                           WHILE(PARAMETER) (root)
 TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterNoCopies) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule DependentTupleElements
 
 %DependentTupleElements.Body (loop_state.1: (s32[], f32[8])) -> (s32[], f32[8]) {
@@ -951,7 +951,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
 //                         \      /
 //                           WHILE(PARAMETER) (root)
 TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterBig) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule DependentTupleElements
 
 %DependentTupleElements.Body (loop_state.1: (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0})) -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) {
@@ -2028,7 +2028,7 @@ TEST_F(CopyInsertionTest, WhileBodyWithConstantRoot) {
 }
 
 TEST_F(CopyInsertionTest, TokensShouldNotBeCopied) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule TokensShouldNotBeCopied
 
 %Body (param.1: (s32[], token[])) -> (s32[], token[]) {
@@ -2252,7 +2252,7 @@ BENCHMARK(BM_ParallelWhiles)->Arg(512)->Arg(1024)->Arg(2048)->Arg(4096);
 BENCHMARK(BM_ManyElementTuple)->Arg(1024)->Arg(12288);
 
 TEST_F(CopyInsertionTest, SimpleControlFlowTest) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 if-body.v5 {
@@ -2334,7 +2334,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, ControlFlowTest) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 if-body.v5 {
@@ -2436,7 +2436,7 @@ ENTRY TestComputation {
 TEST_F(CopyInsertionTest, NestedWhiles) {
   // Verify that only no unnecessary copies remain after copy insertion for
   // trivial nested whiles (b/112472605).
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 cond.inner {
@@ -2474,7 +2474,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, NestedWhileAndConditional2) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 on_true
@@ -2523,7 +2523,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, NestedWhileAndConditional) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 on_true
@@ -2569,7 +2569,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, FixpointComputationRequired) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule Module
 
 fused_computation {
@@ -2613,7 +2613,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(CopyInsertionTest, NoAliasCheckViolation) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule cluster
 
 ENTRY Entry {
@@ -2878,7 +2878,7 @@ ENTRY main {
 }
 
 TEST_F(CopyInsertionTest, HorizontalLoopFusionNoCopy) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
     HloModule test
 
     fused_computation {
@@ -2928,7 +2928,7 @@ TEST_F(CopyInsertionTest, HorizontalLoopFusionNoCopy) {
 }
 
 TEST_F(CopyInsertionTest, NestedWhileAndConditional3) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
 on_true.1
@@ -2960,7 +2960,7 @@ on_false
   v4 = f32[2] conditional(pred.1, v1, v2), true_computation=on_true.1, false_computation=on_false.1
   v5 = f32[2] multiply(v4,v2)
   ROOT t2 = (f32[2], f32[2]) tuple(v2,v5)
-  
+
 }
 
 cond.outer {
@@ -2993,7 +2993,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchMustCopy1) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
  branch_0_comp.5.clone {
@@ -3003,7 +3003,7 @@ HloModule TestModule
  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
  ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
  }
- 
+
  branch_1_comp.12.clone {
   %parameter.4 = (s32[2]{0:T(128)}) parameter(0)
   %get-tuple-element.5 = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.4), index=0
@@ -3011,7 +3011,7 @@ HloModule TestModule
   ROOT tuple.6 = (s32[2]{0:T(128)}) tuple(%copy.1)
  }
 
-ENTRY TestComputation { 
+ENTRY TestComputation {
   %parameter.1 = s32[]{:T(128)} parameter(0), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
   %parameter.2 = s32[2]{0:T(128)} parameter(1), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
   %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
@@ -3039,7 +3039,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchMustCopy2) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
  branch_0_comp.5.clone {
@@ -3049,7 +3049,7 @@ HloModule TestModule
  %copy = s32[2]{0:T(128)} copy(s32[2]{0:T(128)} %negate)
  ROOT tuple.5 = (s32[2]{0:T(128)}) tuple(%copy)
  }
- 
+
  branch_1_comp.12.clone {
   %parameter.4 = (s32[2]{0:T(128)}) parameter(0)
   %get-tuple-element.5 = s32[2]{0:T(128)} get-tuple-element((s32[2]{0:T(128)}) %parameter.4), index=0
@@ -3061,7 +3061,7 @@ HloModule TestModule
   ROOT tuple.6 = (s32[2]{0:T(128)}) tuple(%add.1)
  }
 
-ENTRY TestComputation { 
+ENTRY TestComputation {
   %parameter.1 = s32[]{:T(128)} parameter(0), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
   %parameter.2 = s32[2]{0:T(128)} parameter(1), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
   %parameter.3 = s32[2]{0:T(128)} parameter(2), metadata={op_type="cond" op_name="cond[ linear=(False, False) ]"}
@@ -3090,7 +3090,7 @@ ENTRY TestComputation {
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchMustCopy3) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule primitive_computation_cond.19
 %branch_0_comp.5.clone (parameter.0: (s32[2])) -> (s32[2]) {
   %parameter.0 = (s32[2]{0:T(128)}) parameter(0)
@@ -3133,7 +3133,7 @@ ENTRY %primitive_computation_cond.19 (parameter.1: s32[], parameter.2: s32[2], p
 }
 
 TEST_F(CopyInsertionTest, ConditionalBranchDoNotCopy1) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TestModule
 
  branch_0_comp.5.clone {
@@ -3180,7 +3180,7 @@ TEST_F(CopyInsertionTest, RootInstructionNotLast) {
   // This is a test for b/189219227. When the root instruction is scheduled not
   // as the last instruction, it still lives out. So, we make sure that the copy
   // after the root cannot be removed.
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule module, is_scheduled=true
 
 body2 {
@@ -3283,6 +3283,108 @@ ENTRY main {
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_EQ(CountCopies(*module), 2);
+}
+
+TEST_F(CopyInsertionTest, CustomCallAliasingCopyInsertedAliasedParam) {
+  // The custom call specifies aliasing for an operand that is an input to the
+  // computation, but it does not own that buffer so a precautionary copy
+  // must be inserted.
+  const char* const kModuleString = R"(
+    HloModule xla_computation_f
+
+    ENTRY xla_computation_f {
+      parameter.1 = f32[2,3,4,5] parameter(0)
+      parameter.2 = f32[2,3,4,5] parameter(1)
+      ROOT custom-call = f32[2,3,4,5] custom-call(parameter.1, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+  InsertCopies(module.get());
+  HloInstruction* custom_call = module->entry_computation()->root_instruction();
+  EXPECT_THAT(custom_call->operand(0), op::Copy(op::Parameter(0)));
+}
+
+TEST_F(CopyInsertionTest, CustomCallAliasingCopyInsertedAliasedReuse) {
+  // The custom call specifies aliasing for an operand that is later re-used
+  // by a different instruction (add.2) A copy must be inserted so the correct
+  // HloValue is passed to the add, and not the result of the aliased call.
+  const char* const kModuleString = R"(
+    HloModule xla_computation_f
+
+    ENTRY xla_computation_f {
+      parameter.1 = f32[2,3,4,5] parameter(0)
+      parameter.2 = f32[2,3,4,5] parameter(1)
+      add.1 = f32[2,3,4,5] add(parameter.1, parameter.2)
+      custom-call = f32[2,3,4,5] custom-call(add.1, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
+      ROOT add.2 = f32[2,3,4,5] add(custom-call, add.1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+
+  InsertCopies(module.get());
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  CHECK_NE(custom_call, nullptr);
+  EXPECT_THAT(custom_call->operand(0), op::Copy(op::Add()));
+}
+
+TEST_F(CopyInsertionTest, CustomCallAliasingCopyRemoved) {
+  // This custom call aliases an intermediate result, and the value is never
+  // reused. There is no need for a copy.
+  const char* const kModuleString = R"(
+    HloModule xla_computation_f__1
+    ENTRY xla_computation_f {
+      parameter.1 = f32[2,3,4,5] parameter(0)
+      parameter.2 = f32[2,3,4,5] parameter(1)
+      add = f32[2,3,4,5] add(parameter.1, parameter.2)
+      ROOT custom-call = f32[2,3,4,5] custom-call(add, parameter.2), custom_call_target="dm_softmax", operand_layout_constraints={f32[2,3,4,5], f32[2,3,4,5]}, output_to_operand_aliasing={{}: (0, {})}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+
+  InsertCopies(module.get());
+  HloInstruction* custom_call = module->entry_computation()->root_instruction();
+  EXPECT_THAT(custom_call->operand(0), op::Add());
+}
+
+TEST_F(CopyInsertionTest, ReverseInConditional) {
+  const char* const kModuleString = R"(
+HloModule jit_f.0
+
+%region_0.4 (Arg_.5: u8[300,451,3]) -> (u8[300,451,3]) {
+  %Arg_.5 = u8[300,451,3]{1,0,2:T(8,128)(4,1)} parameter(0)
+  ROOT %tuple = (u8[300,451,3]{1,0,2:T(8,128)(4,1)}) tuple(u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_.5)
+}
+
+%region_1.9 (Arg_.10: u8[300,451,3]) -> (u8[300,451,3]) {
+  %Arg_.10 = u8[300,451,3]{1,0,2:T(8,128)(4,1)} parameter(0)
+  %reverse = u8[300,451,3]{1,0,2:T(8,128)(4,1)} reverse(u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_.10), dimensions={0}
+  ROOT %tuple.1 = (u8[300,451,3]{1,0,2:T(8,128)(4,1)}) tuple(u8[300,451,3]{1,0,2:T(8,128)(4,1)} %reverse)
+}
+
+ENTRY %main.13 (Arg_0.1: pred[], Arg_1.2: u8[300,451,3]) -> u8[300,451,3] {
+  %Arg_0.1 = pred[]{:T(1024)} parameter(0)
+  %convert.3 = s32[]{:T(256)} convert(pred[]{:T(1024)} %Arg_0.1)
+  %Arg_1.2 = u8[300,451,3]{1,0,2:T(8,128)(4,1)} parameter(1)
+  %conditional.12.clone = (u8[300,451,3]{1,0,2:T(8,128)(4,1)}) conditional(s32[]{:T(256)} %convert.3, u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_1.2, u8[300,451,3]{1,0,2:T(8,128)(4,1)} %Arg_1.2), branch_computations={%region_0.4, %region_1.9}
+  ROOT %get-tuple-element = u8[300,451,3]{1,0,2:T(8,128)(4,1)} get-tuple-element((u8[300,451,3]{1,0,2:T(8,128)(4,1)}) %conditional.12.clone), index=0
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  HloInstruction* reverse = FindInstruction(module.get(), "reverse");
+  EXPECT_THAT(reverse->operand(0), op::Copy());
 }
 
 }  // namespace

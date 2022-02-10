@@ -1,8 +1,8 @@
 // Note that binary elementwise tests are run with chlo legalization enabled
 // (unlike the rest), since this is the primary use case for such ops and
 // verification of shapes and broadcasts is desired.
-// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=true" -canonicalize %s | FileCheck %s
-// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=false" %s | FileCheck --check-prefix CHLO %s
+// RUN: xla-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=true" -canonicalize %s | FileCheck %s
+// RUN: xla-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=false" %s | FileCheck --check-prefix CHLO %s
 
 //===----------------------------------------------------------------------===//
 // Binary op legalizations.
@@ -98,6 +98,15 @@ func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 func @minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK-NEXT:  mhlo.minimum %arg0, %arg1 : tensor<4xf32>
   %0 = "tf.Minimum"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @mod
+// CHLO-LABEL: func @mod
+func @mod(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NEXT:  mhlo.remainder %arg0, %arg1 : tensor<4xf32>
+  // CHLO: chlo.broadcast_remainder
+  %0 = "tf.Mod"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
 
@@ -257,14 +266,14 @@ func @equal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x
 
 // CHECK-LABEL: func @equal_broadcast_no_incompatible_shapes_error
 func @equal_broadcast_no_incompatible_shapes_error(%arg0: tensor<2xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = false}
+  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = true}
   %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   return %0: tensor<1x2xi1>
 }
 
 // CHECK-LABEL: func @equal_incompatible_shape_broadcastable
 func @equal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> {
-  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = false}
+  // CHECK-NEXT: "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = true}
   %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
   return %0: tensor<?xi1>
 }

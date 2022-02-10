@@ -83,12 +83,12 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
 
   if (options.squash_64bit_types) {
     try {
-      data_int32 = py::cast<int32>(obj);
+      data_int32 = py::cast<int32_t>(obj);
     } catch (const std::exception& e) {
       return InvalidArgument(
           "Unable to convert Python scalar to %s. This most likely means the "
           "value (%s) overflows the range of the type.",
-          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int32>()),
+          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int32_t>()),
           py::repr(obj));
     }
     ptr = &data_int32;
@@ -328,7 +328,7 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
 
   auto res = handlers->find(arg.get_type().ptr());
   if (res == handlers->end()) {
-    for (auto base_class : arg.get_type().attr("mro")()) {
+    for (auto base_class : arg.get_type().attr("__mro__")) {
       res = handlers->find(base_class.ptr());
       if (res != handlers->end()) {
         return res->second(arg, to_device, options);
@@ -537,11 +537,9 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
   }
 
   // Fast-path for ShardedDeviceArray.
-  static PyObject* sda_type = []() {
-    return py::type::handle_of<jax::ShardedDeviceArray>().ptr();
-  }();
-  if (arg.get_type().ptr() == sda_type) {
-    jax::ShardedDeviceArray* sda = py::cast<jax::ShardedDeviceArray*>(arg);
+  if (jax::ShardedDeviceArray::IsShardedDeviceArray(arg)) {
+    jax::ShardedDeviceArray* sda =
+        jax::ShardedDeviceArray::AsShardedDeviceArrayUnchecked(arg);
 
     // TODO(jblespiau): See if we can be faster not accessing the aval attribute
     // and storing these directly.
@@ -555,7 +553,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
   auto res = handlers->find(arg.get_type().ptr());
   if (res == handlers->end()) {
     // We attempt to look at the MRO classes
-    for (auto base_class : arg.get_type().attr("mro")()) {
+    for (auto base_class : arg.get_type().attr("__mro__")) {
       res = handlers->find(base_class.ptr());
       if (res != handlers->end()) {
         return res->second(arg, jax_enable_x64);

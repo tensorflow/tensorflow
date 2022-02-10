@@ -148,6 +148,8 @@ class OpsTestBase : public ::testing::Test {
 
   Allocator* allocator();
 
+  OpKernel* op_kernel();
+
   const DataTypeVector& output_types() const;
 
  protected:

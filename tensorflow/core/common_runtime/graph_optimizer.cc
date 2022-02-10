@@ -35,18 +35,14 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
 
 GraphOptimizer::~GraphOptimizer() {}
 
-void GraphOptimizer::Optimize(
-    FunctionLibraryRuntime* runtime, Env* env, const Device* device,
-    std::unique_ptr<Graph>* graph,
-    const std::unordered_map<string, std::vector<PartialTensorShape>>*
-        shape_map,
-    const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn,
-    bool inline_multi_device_functions,
-    bool inline_impl_selection_group_functions,
-    bool inline_with_single_device_body_placer, bool ignore_noinline) {
+void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
+                              const Device* device,
+                              std::unique_ptr<Graph>* graph,
+                              const Options& options) {
+  static const char* kGraphOptimizerCategory = "GraphOptimizerPass";
+
   Graph* g = graph->get();
   DumpGraph("Initial", g);
-
   bool changed = true;
   const int kMaxRounds = 10;
   for (int rounds = 0; rounds < kMaxRounds; ++rounds) {
@@ -56,8 +52,9 @@ void GraphOptimizer::Optimize(
       changed = true;
     }
 
-    uint64 inlining_start_us = Env::Default()->NowMicros();
-    uint64 inlining_total_us = 0;
+    tensorflow::metrics::ScopedCounter<2> inlining_timings(
+        tensorflow::metrics::GetGraphOptimizationCounter(),
+        {kGraphOptimizerCategory, "function_inlining"});
     if (opts_.do_function_inlining() && RemoveDeadNodes(g)) {
       DumpGraph("RemoveDeadNodes", g);
       changed = true;
@@ -67,14 +64,17 @@ void GraphOptimizer::Optimize(
       changed = true;
     }
     if (opts_.do_function_inlining()) {
-      inlining_total_us += Env::Default()->NowMicros() - inlining_start_us;
+      inlining_timings.AccumulateAndStop();
     }
 
     if (opts_.do_constant_folding()) {
-      const uint64 pass_start_us = Env::Default()->NowMicros();
+      tensorflow::metrics::ScopedCounter<2> timings(
+          tensorflow::metrics::GetGraphOptimizationCounter(),
+          {kGraphOptimizerCategory, "constant_folding"});
+
       ConstantFoldingOptions cf_opts;
-      cf_opts.shape_map = shape_map;
-      cf_opts.consider = cf_consider_fn;
+      cf_opts.shape_map = options.shape_map;
+      cf_opts.consider = options.cf_consider_fn;
       if (opts_.max_folded_constant_in_bytes() > 0) {
         cf_opts.max_constant_size_in_bytes =
             opts_.max_folded_constant_in_bytes();
@@ -87,43 +87,39 @@ void GraphOptimizer::Optimize(
         DumpGraph("ConstFolding", g);
         changed = true;
       }
-      const uint64 pass_end_us = Env::Default()->NowMicros();
-      metrics::UpdateGraphOptimizerPassTime("constant_folding",
-                                            pass_end_us - pass_start_us);
     }
 
-    inlining_start_us = Env::Default()->NowMicros();
-    if (opts_.do_function_inlining() && FixupSourceAndSinkEdges(g)) {
-      DumpGraph("FixupSourceAndSinkEdges", g);
-      changed = true;
-    }
     if (opts_.do_function_inlining()) {
-      inlining_total_us += Env::Default()->NowMicros() - inlining_start_us;
+      inlining_timings.Start();
+      if (FixupSourceAndSinkEdges(g)) {
+        DumpGraph("FixupSourceAndSinkEdges", g);
+        changed = true;
+      }
+      inlining_timings.AccumulateAndStop();
     }
 
     if (opts_.do_common_subexpression_elimination()) {
-      const uint64 pass_start_us = Env::Default()->NowMicros();
-      if (OptimizeCSE(g, cse_consider_fn)) {
+      tensorflow::metrics::ScopedCounter<2> timings(
+          tensorflow::metrics::GetGraphOptimizationCounter(),
+          {kGraphOptimizerCategory, "common_subexpression_elimination"});
+      if (OptimizeCSE(g, options.cse_consider_fn)) {
         DumpGraph("OptimizeCSE", g);
         changed = true;
       }
-      const uint64 pass_end_us = Env::Default()->NowMicros();
-      metrics::UpdateGraphOptimizerPassTime("common_subexpression_elimination",
-                                            pass_end_us - pass_start_us);
     }
     if (opts_.do_function_inlining()) {
-      inlining_start_us = Env::Default()->NowMicros();
+      inlining_timings.Start();
       ExpandInlineFunctionsOptions expand_inline_opts;
       expand_inline_opts.native_options.inlined_function_body_placer =
           InlinedFunctionBodyPlacer::SingleDevice();
 
       // Force single device placement strategy for multi-device function body.
-      if (inline_with_single_device_body_placer) {
+      if (options.inline_with_single_device_body_placer) {
         expand_inline_opts.multi_device_options.inlined_function_body_placer =
             InlinedFunctionBodyPlacer::SingleDevice();
       }
 
-      if (!inline_multi_device_functions) {
+      if (!options.inline_multi_device_functions) {
         // GraphOptimizer is running:
         //   (1) After partitioning when executing with a Session API.
         //   (2) For a single device function body after instantiation.
@@ -131,14 +127,14 @@ void GraphOptimizer::Optimize(
         // might lead to multiple device assignments.
         expand_inline_opts.multi_device_options.disable_inlining = true;
       }
-      if (inline_impl_selection_group_functions) {
+      if (options.inline_impl_selection_group_functions) {
         expand_inline_opts.native_options
             .inline_impl_selection_group_functions = true;
         expand_inline_opts.multi_device_options
             .inline_impl_selection_group_functions = true;
       }
 
-      if (ignore_noinline) {
+      if (options.ignore_noinline) {
         expand_inline_opts.multi_device_options.ignore_noinline = true;
         expand_inline_opts.native_options.ignore_noinline = true;
       }
@@ -149,10 +145,7 @@ void GraphOptimizer::Optimize(
         changed = true;
       }
 
-      const uint64 inlining_end_us = Env::Default()->NowMicros();
-      metrics::UpdateGraphOptimizerPassTime(
-          "function_inlining",
-          (inlining_end_us - inlining_start_us) + inlining_total_us);
+      inlining_timings.ReportAndStop();
     }
     if (!changed) break;
   }
@@ -162,17 +155,6 @@ void GraphOptimizer::Optimize(
   *graph = g->Clone();
 
   DumpGraph("ReCopy", graph->get());
-}
-
-void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
-                              const Device* device,
-                              std::unique_ptr<Graph>* graph,
-                              const Options& options) {
-  Optimize(
-      runtime, env, device, graph, options.shape_map, options.cse_consider_fn,
-      options.cf_consider_fn, options.inline_multi_device_functions,
-      options.inline_impl_selection_group_functions,
-      options.inline_with_single_device_body_placer, options.ignore_noinline);
 }
 
 void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,

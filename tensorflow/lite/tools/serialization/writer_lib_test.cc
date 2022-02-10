@@ -435,7 +435,7 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   const int kExpectedValue = 15;
 
   interpreter_.reset(new Interpreter);
-  interpreter_->AddSubgraphs(2);
+  AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber);
   builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
   builder_->BuildWhileSubgraph(&interpreter_->primary_subgraph());
@@ -491,7 +491,7 @@ TEST_F(WhileTest, TestModelWriterFromSubgraphs) {
   const int kExpectedValue = 15;
 
   interpreter_.reset(new Interpreter);
-  interpreter_->AddSubgraphs(2);
+  AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber);
   builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
   builder_->BuildWhileSubgraph(&interpreter_->primary_subgraph());

@@ -25,9 +25,6 @@ This file is not intended to provide exhaustive test coverage. Exhaustive tests
 using Keras models are in keras*_test.py
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 import os
 from absl.testing import parameterized
 
@@ -101,7 +98,8 @@ class SaveModelForMultipleWorkers(test.TestCase, parameterized.TestCase):
 @combinations.generate(
     combinations.combine(
         strategy=[
-            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+            strategy_combinations.mirrored_strategy_with_two_cpus,
+            strategy_combinations.mirrored_strategy_with_two_gpus,
             strategy_combinations.tpu_strategy,
         ],
         mode="eager",
@@ -297,6 +295,15 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
     with strategy.scope():
       m = Model(tf.saved_model.load(layer_export_dir))
       export_dir = self.get_temp_dir()
+      # Saving a ConcreteFunction should raise an error.
+      with self.assertRaisesRegex(
+          ValueError, "save a tf.function with input_signature instead"):
+        tf.saved_model.save(
+            m,
+            export_dir,
+            signatures={
+                "call": m.__call__.get_concrete_function(),
+            })
       tf.saved_model.save(m, export_dir)
 
     loaded = tf.saved_model.load(export_dir)
@@ -308,7 +315,10 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
 
 @combinations.generate(
     combinations.combine(
-        strategy=[strategy_combinations.mirrored_strategy_with_gpu_and_cpu],
+        strategy=[
+            strategy_combinations.mirrored_strategy_with_two_cpus,
+            strategy_combinations.mirrored_strategy_with_two_gpus,
+        ],
         mode="eager",
     ))
 class SaveAndLoadForTrainingTest(test.TestCase, parameterized.TestCase):
@@ -628,8 +638,15 @@ class PSStrategySaveAndLoadTest(test.TestCase):
 
     with strategy.scope():
       loaded = tf.saved_model.load(model_dir)
-    self.assertRegex(loaded.v1.device, "/job:ps/replica:0/task:0")
-    self.assertRegex(loaded.v2.device, "/job:ps/replica:0/task:1")
+
+    # Make sure that the variables are created on different devices. SavedModel
+    # may load the variables in a different order compared to the creation order
+    # so the devices may not be exactly the same as before.
+    self.assertTrue(
+        ("/job:ps/replica:0/task:0" in loaded.v1.device and
+         "/job:ps/replica:0/task:1" in loaded.v2.device) or
+        ("/job:ps/replica:0/task:1" in loaded.v1.device and
+         "/job:ps/replica:0/task:0" in loaded.v2.device))
     self.assertAllEqual(loaded(tf.identity(1)), [6, 6, 6, 6])
 
   def test_load_to_different_strategy(self):
@@ -685,5 +702,4 @@ class PSStrategySaveAndLoadTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  # TODO(b/172304955): enable logical devices.
-  test_util.main(config_logical_devices=False)
+  test_util.main()

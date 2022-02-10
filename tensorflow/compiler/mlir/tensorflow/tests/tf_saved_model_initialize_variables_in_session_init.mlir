@@ -15,7 +15,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   // CHECK-SAME: {tf_saved_model.exported_names = ["SessionInitializerFunction"]}
   // CHECK: %[[VAR:.*]] = "tf.VarHandleOp"
   // CHECK-SAME: "var1"
-  // CHECK: %[[CST:.*]] = constant dense<> : tensor<0xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<> : tensor<0xf32>
   // CHECK: "tf.AssignVariableOp"(%[[VAR]], %[[CST]])
 }
 
@@ -40,7 +40,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   // CHECK-SAME: {tf_saved_model.exported_names = ["Init"]}
   // CHECK: %[[VAR:.*]] = "tf.VarHandleOp"()
   // CHECK-SAME: "var1"
-  // CHECK: %[[CST:.*]] = constant dense<> : tensor<0xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<> : tensor<0xf32>
   // CHECK: "tf.AssignVariableOp"(%[[VAR]], %[[CST]])
 }
 
@@ -76,7 +76,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   // CHECK-SAME: {tf_saved_model.exported_names = ["SessionInitializerFunction"]}
   // CHECK: %[[VAR:.*]] = "tf.VarHandleOp"()
   // CHECK-SAME: "var1"
-  // CHECK: %[[CST:.*]] = constant dense<> : tensor<0xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<> : tensor<0xf32>
   // CHECK: "tf.AssignVariableOp"(%[[VAR]], %[[CST]])
 }
 

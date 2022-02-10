@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -64,6 +65,10 @@ struct OpWithSameArgsInfo : llvm::DenseMapInfo<mlir::Operation *> {
 //
 //  %r0, %r1, %r2 = tf.If(%cond, %arg) {else = @merge_else, then = @merge_then}
 //
+// Then the inliner pass is run on the module, so the bodies of else_0 and
+// else_1 are inlined into the body of merge_else, and the bodies of then_0 and
+// then_1 are inlined into the body of merge_then.
+//
 // Note that the results will be concatenated.
 class MergeTfIfOpsPass
     : public mlir::PassWrapper<MergeTfIfOpsPass,
@@ -74,15 +79,35 @@ class MergeTfIfOpsPass
   }
 
   void runOnOperation() override {
+    constexpr int kMaxIter = 10;
     auto module = getOperation();
 
-    for (auto func_op :
-         llvm::make_early_inc_range(module.getOps<mlir::FuncOp>())) {
-      ProcessFunction(func_op);
+    bool changed = true;
+    for (int i = 0; i < kMaxIter && changed; ++i) {
+      changed = false;
+      for (auto func_op :
+           llvm::make_early_inc_range(module.getOps<mlir::FuncOp>())) {
+        changed |= ProcessFunction(func_op, i);
+      }
+
+      if (changed) {
+        // Run inliner pass to expose more merge opportunities among the
+        // then-branch functions and the else-branch functions that are now
+        // respectively merged, for the next iteration.
+        mlir::OpPassManager pm(module.getOperationName());
+        pm.addPass(mlir::createInlinerPass());
+        if (mlir::failed(runPipeline(pm, module))) {
+          module.emitWarning(
+              absl::StrCat("could not run inliner pass within the "
+                           "tfrt-merge-tf-if-ops pass iteration ",
+                           i));
+          break;
+        }
+      }
     }
   }
 
-  void ProcessFunction(mlir::FuncOp op) {
+  bool ProcessFunction(mlir::FuncOp op, int iteration) {
     // Use a hash map to group tf.If ops with the same operands.
     llvm::SmallDenseMap<mlir::Operation *, llvm::SmallVector<mlir::TF::IfOp, 2>,
                         2, OpWithSameArgsInfo>
@@ -106,23 +131,28 @@ class MergeTfIfOpsPass
     // Track the tf.If ops that should be removed as they are merged.
     llvm::SmallVector<mlir::TF::IfOp, 4> if_ops_to_remove;
 
+    bool changed = false;
     for (auto &iter : if_ops_to_merge) {
       if (iter.second.size() <= 1) continue;
 
       // Merge tf.If ops that have the same operands. The merged branches will
       // be given unique names.
-      MergeIfOpsWithSameArgs(
-          builder, iter.first->getLoc(),
-          /*branch_prefix=*/
-          absl::StrCat(op.sym_name().str(), "_merged_if_", id++), iter.second);
+      MergeIfOpsWithSameArgs(builder, iter.first->getLoc(),
+                             /*branch_prefix=*/
+                             absl::StrCat(op.sym_name().str(), "_merged_if_",
+                                          iteration, "_", id++),
+                             iter.second);
 
       if_ops_to_remove.append(iter.second.begin(), iter.second.end());
+      changed = true;
     }
 
     // Now that we are no longer using `if_ops_to_merge` or any other data
     // structures that uses the operations that will be removed, we can now
     // erase these if ops.
     for (auto op : if_ops_to_remove) op->erase();
+
+    return changed;
   }
 
   void MergeIfOpsWithSameArgs(mlir::OpBuilder &builder, mlir::Location loc,

@@ -1,5 +1,8 @@
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
 
 # buildifier: disable=same-origin-load
 load(
@@ -29,6 +32,8 @@ package(
 package_group(
     name = "friends",
     packages = [
+        # Edge TPU compiler needs to use some compiler passes from kernel_gen.
+        "//platforms/darwinn/compiler/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/core/kernels/mlir_generated/...",
     ],
@@ -43,6 +48,7 @@ cc_library(
         ":compile_cache_item_proto_cc",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_legalize_shape_ops_to_standard",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
         "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
@@ -58,7 +64,10 @@ cc_library(
         "//tensorflow/core/platform:cuda_libdevice_path",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:AffineUtils",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexToStandard",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToGPURuntimeTransforms",
@@ -76,15 +85,18 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToGPUPass",
         "@llvm-project//mlir:SCFToStandard",
         "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:SCFUtils",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
+        "@llvm-project//mlir:StandardToLLVM",
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
@@ -109,6 +121,7 @@ tf_cc_binary(
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:CodeGen",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:MC",
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
@@ -160,10 +173,10 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:strcat",
+        "//tensorflow/stream_executor:stream_header",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngine",
         "@llvm-project//mlir:ExecutionEngineUtils",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_runner_utils",
     ],
@@ -173,7 +186,6 @@ cc_library(
     name = "tf_jit_cache",
     srcs = ["tf_jit_cache.cc"],
     hdrs = ["tf_jit_cache.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -183,45 +195,30 @@ cc_library(
 
 cc_library(
     name = "tf_gpu_runtime_wrappers",
-    hdrs = ["tf_gpu_runtime_wrappers.h"],
-    deps = if_cuda_is_configured([
-        ":tf_cuda_runtime_wrappers",
-    ]) + if_rocm_is_configured([
-        ":tf_rocm_runtime_wrappers",
-    ]) + ["@llvm-project//mlir:mlir_runner_utils"],
-)
-
-cc_library(
-    name = "tf_cuda_runtime_wrappers",
-    srcs = ["tf_cuda_runtime_wrappers.cc"],
-    compatible_with = get_compatible_with_cloud(),
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
-    deps = if_cuda_is_configured([
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
-        "//tensorflow/stream_executor:stream_header",
+    srcs = if_gpu_is_configured([
+        "tf_gpu_runtime_wrappers.cc",
     ]),
-)
-
-cc_library(
-    name = "tf_rocm_runtime_wrappers",
-    srcs = if_rocm_is_configured(["tf_rocm_runtime_wrappers.cc"]),
-    compatible_with = get_compatible_with_cloud(),
-    copts = if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
-    deps = if_rocm_is_configured([
+    hdrs =
+        if_gpu_is_configured([
+            "tf_gpu_runtime_wrappers.h",
+        ]),
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "-DTENSORFLOW_USE_ROCM=1",
+    ]),
+    deps = [
+        "@llvm-project//mlir:mlir_runner_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "//tensorflow/stream_executor:stream_header",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+    ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
     ]),
 )
 

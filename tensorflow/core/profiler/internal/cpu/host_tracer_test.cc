@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/profiler/internal/cpu/host_tracer.h"
+
 #include <memory>
 #include <ostream>
 #include <string>
@@ -26,17 +28,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
-
-std::unique_ptr<ProfilerInterface> CreateHostTracer(
-    const ProfileOptions& options);
-
 namespace {
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
@@ -44,7 +41,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   std::string thread_name = "MyThreadName";
   XSpace space;
 
-  // We start a thread with a known and controled name. As of the time of
+  // We start a thread with a known and controlled name. As of the time of
   // writing, not all platforms (example: Windows) allow reading through the
   // system to the current thread name/description. By starting a thread with a
   // name, we control this behavior entirely within the TensorFlow subsystems.
@@ -55,7 +52,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
         ASSERT_TRUE(Env::Default()->GetCurrentThreadName(&thread_name));
         thread_id = Env::Default()->GetCurrentThreadId();
 
-        auto tracer = CreateHostTracer(ProfilerSession::DefaultOptions());
+        auto tracer = CreateHostTracer({});
 
         TF_ASSERT_OK(tracer->Start());
         { TraceMe traceme("hello"); }

@@ -13,14 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Python.h"
-#include "absl/types/optional.h"
-#include "third_party/eigen3/Eigen/Core"
+// Must be at top (before any system includes and Python.h).
+// clang-format off
 #include "pybind11/chrono.h"
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+// clang-format on
+
+#include "Python.h"
+#include "absl/types/optional.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -28,6 +32,7 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/version_info.h"
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
@@ -1109,9 +1114,11 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
               tensorflow::make_safe(TF_NewStatus());
           unsigned char value;
           // Release GIL for threading.
-          py::gil_scoped_release release;
-          TF_OperationGetAttrBool(oper, attr_name, &value, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+          {
+            py::gil_scoped_release release;
+            TF_OperationGetAttrBool(oper, attr_name, &value, status.get());
+            tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+          }
           return tensorflow::Pyo(PyBool_FromLong(value));
         });
 
@@ -1144,7 +1151,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def("TF_GetCode", TF_GetCode);
 
   m.def("TF_SetXlaAutoJitMode", TF_SetXlaAutoJitMode);
-  m.def("TF_SetXlaAutoJitMode", TF_SetXlaAutoJitMode);
+  m.def("TF_GetXlaAutoJitEnabled", TF_GetXlaAutoJitEnabled);
   m.def("TF_SetXlaEnableLazyCompilation", TF_SetXlaEnableLazyCompilation);
   m.def("TF_SetTfXlaCpuGlobalJit", TF_SetTfXlaCpuGlobalJit);
   m.def("TF_SetXlaMinClusterSize", TF_SetXlaMinClusterSize);
@@ -1155,11 +1162,11 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   // // Creating getters instead.
 
   m.def("get_version", []() { return TF_VERSION_STRING; });
-  m.def("get_git_version", []() { return tf_git_version(); });
-  m.def("get_compiler_version", []() { return tf_compiler_version(); });
-  m.def("get_cxx11_abi_flag", []() { return tf_cxx11_abi_flag(); });
+  m.def("get_git_version", []() { return TF_GIT_VERSION; });
+  m.def("get_compiler_version", []() { return TF_COMPILER_VERSION; });
+  m.def("get_cxx11_abi_flag", []() { return TF_CXX11_ABI_FLAG; });
   m.def("get_eigen_max_align_bytes", []() { return EIGEN_MAX_ALIGN_BYTES; });
-  m.def("get_monolithic_build", []() { return tf_monolithic_build(); });
+  m.def("get_monolithic_build", []() { return TF_MONOLITHIC_BUILD; });
   m.def("get_graph_def_version", []() { return TF_GRAPH_DEF_VERSION; });
   m.def("get_graph_def_version_min_consumer",
         []() { return TF_GRAPH_DEF_VERSION_MIN_CONSUMER; });

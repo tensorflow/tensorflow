@@ -9,6 +9,7 @@ option cc_enable_arenas = true;
 
 // Describes the result of a TPU compilation. This is also used as TPU
 // compilation result status payload.
+// URI: "type.googleapis.com/tensorflow.tpu.CompilationResultProto"
 message CompilationResultProto {
   // The error message, if any, returned during compilation.
   error.Code status_code = 1;

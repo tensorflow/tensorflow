@@ -23,13 +23,13 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -94,7 +94,8 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   // Load dialects involved in the conversion
   mlir::DialectRegistry registry;
   // clang-format off
-  registry.insert<mlir::StandardOpsDialect,
+  registry.insert<mlir::arith::ArithmeticDialect,
+                  mlir::StandardOpsDialect,
                   mlir::scf::SCFDialect,
                   mlir::shape::ShapeDialect,
                   mlir::TF::TensorFlowDialect,
@@ -110,7 +111,8 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
       llvm::StringRef(tfr_raw_text.data(), tfr_raw_text.size()));
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(memory_buffer), llvm::SMLoc());
-  mlir::OwningModuleRef module = mlir::parseSourceFile(source_mgr, mlir_ctx);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceFile(source_mgr, mlir_ctx);
   // The MLIRContext owns the module
   auto module_op = module.release();
 
@@ -145,7 +147,7 @@ StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
   for (const auto& attr : node_def.attr()) {
     TF_ASSIGN_OR_RETURN(auto mlir_attr,
                         ConvertAttributeValue(attr.second, &builder));
-    attrs.push_back({mlir::Identifier::get(attr.first, context), mlir_attr});
+    attrs.push_back({mlir::StringAttr::get(context, attr.first), mlir_attr});
   }
 
   mlir::Location loc = mlir::UnknownLoc::get(context);

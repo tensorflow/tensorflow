@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for gather_with_constant."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -26,7 +22,7 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
 @register_make_test_function()
 def make_gather_with_constant_tests(options):
-  """Make a set of test which feed a constant to gather toco."""
+  """Make a set of test which feed a constant to gather."""
 
   test_parameters = [{
       "input_shape": [[3]],

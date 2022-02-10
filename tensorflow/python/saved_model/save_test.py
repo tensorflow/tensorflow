@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for trackable object SavedModel save."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
@@ -193,7 +189,8 @@ class SaveTest(test.TestCase, parameterized.TestCase):
       return v.read_value()
 
     root.f = f
-    with self.assertRaisesRegex(AssertionError, "some_unique_name"):
+    with self.assertRaisesRegex(
+        AssertionError, "Trackable referencing this tensor.*some_unique_name"):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
 
   def test_version_information_included(self):
@@ -766,6 +763,85 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     self.assertIsNone(result)
 
 
+class DependencyTest(test.TestCase):
+  """Tests for deserialization dependencies (saving-related only)."""
+
+  def test_validate_dependencies(self):
+
+    class Valid(tracking.AutoTrackable):
+
+      def _deserialization_dependencies(self):
+        return {name: ref for name, ref in self._trackable_children().items()}
+
+    root = Valid()
+    root.f = variables.Variable(1.0)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+
+  def test_validate_dependencies_error_untracked(self):
+    untracked = variables.Variable(1.0)
+
+    class Invalid(tracking.AutoTrackable):
+
+      def _deserialization_dependencies(self):
+        return {"untracked": untracked}
+    invalid_deps = Invalid()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegex(ValueError, "Found an untracked dependency"):
+      save.save(invalid_deps, save_dir)
+
+  def test_validate_dependencies_error_cyclic(self):
+
+    class Invalid(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.cycle_ref = None
+
+      def _deserialization_dependencies(self):
+        return {"cycle_ref": self.cycle_ref}
+    cycle1 = Invalid()
+    cycle2 = Invalid()
+    cycle1.cycle_ref = cycle2
+    cycle2.cycle_ref = cycle1
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegex(ValueError,
+                                "dependency cycle in the saved Trackable"):
+      save.save(cycle1, save_dir)
+
+  def test_none_dependency(self):
+
+    class Valid(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.v = variables.Variable(1.0)
+
+      def _trackable_children(self, *unused_args, **unused_kwargs):
+        return {"v": self.v}
+
+      def _deserialization_dependencies(self):
+        return {"v": None}
+
+    root = Valid()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+
+    class Invalid(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.v = variables.Variable(1.0)
+
+      def _trackable_children(self, *unused_args, **unused_kwargs):
+        return {"v": self.v}
+
+      def _deserialization_dependencies(self):
+        return {"not_v": None}
+
+    root = Invalid()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegex(KeyError, "key: 'not_v'"):
+      save.save(root, save_dir)
+
+
 class VariablePolicyEnumTest(test.TestCase):
 
   def testFromObj(self):
@@ -892,7 +968,7 @@ class SavingOptionsTest(test.TestCase):
         "my_func": root.f,
     })
     save.save(root, save_dir, root.f, options=options)
-    function_cache = list(root.f._stateful_fn._function_cache.all_values())
+    function_cache = root.f._stateful_fn._list_all_concrete_functions()
     function_aliases = loader_impl.parse_saved_model(
         save_dir).meta_graphs[0].meta_info_def.function_aliases
     self.assertLen(function_cache, 1)

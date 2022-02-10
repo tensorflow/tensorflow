@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/test.h"
 
 class LocalClientAotTest : public ::testing::Test {};
@@ -34,7 +34,7 @@ struct OpaqueData {
 // This is the implementation of a custom op which will be called by
 // SumAndDouble.
 extern "C" void SumStructElements(float* out, void** parameters) {
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(parameters, sizeof(OpaqueData*));
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(parameters, sizeof(OpaqueData*));
   const auto* opaque_data = static_cast<OpaqueData*>(parameters[0]);
   *out = opaque_data->field1 + opaque_data->field2 + opaque_data->field3;
 }

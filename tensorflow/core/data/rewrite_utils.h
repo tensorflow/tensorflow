@@ -66,6 +66,18 @@ std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
 // the symbolic `_Retval` node.
 StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def);
 
+// Determines which optimizations should be applied.
+//
+// The result will contain any optimizations that are explicitly enabled, any
+// default optimization that are not explicitly disabled, and any experiment
+// that corresponds to an optimization as long as the optimization is not
+// explicitly disabled.
+absl::flat_hash_set<tstring> SelectOptimizations(
+    const absl::flat_hash_set<string>& experiments,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_disabled,
+    const absl::flat_hash_set<tstring>& optimizations_default);
+
 }  // namespace data
 }  // namespace tensorflow
 #endif  // !IS_MOBILE_PLATFORM

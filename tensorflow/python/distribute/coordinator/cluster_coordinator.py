@@ -18,21 +18,20 @@
 This is currently under development and the API is subject to change.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import os
 import re
 import threading
 import time
 import weakref
+
 from six.moves import queue
 
 from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.distribute.coordinator import metric_utils
 from tensorflow.python.distribute.coordinator import values as values_lib
+from tensorflow.python.distribute.coordinator import watchdog
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -245,10 +244,11 @@ class Closure(object):
 
     with ops.device(worker.device_name):
       with context.executor_scope(worker.executor):
-        with metric_utils.monitored_timer("closure_execution"):
-          output_values = self._function(
-              *nest.map_structure(_maybe_get_remote_value, replica_args),
-              **nest.map_structure(_maybe_get_remote_value, replica_kwargs))
+        with coordinator_context.with_dispatch_context(worker):
+          with metric_utils.monitored_timer("closure_execution"):
+            output_values = self._function(
+                *nest.map_structure(_maybe_get_remote_value, replica_args),
+                **nest.map_structure(_maybe_get_remote_value, replica_kwargs))
     self.maybe_call_with_output_remote_value(
         lambda r: r._set_values(output_values))  # pylint: disable=protected-access
 
@@ -320,10 +320,17 @@ class _CoordinatedClosureQueue(object):
     # of the code.
     self._put_wait_lock = threading.Lock()
 
+    self._watchdog = watchdog.WatchDog(on_triggered=self._on_watchdog_timeout)
+
+  def _on_watchdog_timeout(self):
+    logging.info("inflight_closure_count is %d", self._inflight_closure_count)
+    logging.info("current error is %s:%r", self._error, self._error)
+
   def stop(self):
     with self._queue_lock:
       self._should_process_closures = False
-      self._closures_queued_condition.notifyAll()
+      self._closures_queued_condition.notify_all()
+    self._watchdog.stop()
 
   def _cancel_all_closures(self):
     """Clears the queue and sets remaining closures cancelled error.
@@ -401,9 +408,10 @@ class _CoordinatedClosureQueue(object):
         raise AssertionError("There is no inflight closures to mark_finished.")
       self._inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
-        self._no_inflight_closure_condition.notifyAll()
+        self._no_inflight_closure_condition.notify_all()
       if self._queue.empty() and self._inflight_closure_count == 0:
-        self._stop_waiting_condition.notifyAll()
+        self._stop_waiting_condition.notify_all()
+      self._watchdog.report_closure_done()
 
   def put_back(self, closure):
     """Put the closure back into the queue as it was not properly executed."""
@@ -418,7 +426,7 @@ class _CoordinatedClosureQueue(object):
         self._closures_queued_condition.notify()
       self._inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
-        self._no_inflight_closure_condition.notifyAll()
+        self._no_inflight_closure_condition.notify_all()
 
   def wait(self, timeout=None):
     """Wait for all closures to be finished before returning.
@@ -451,8 +459,8 @@ class _CoordinatedClosureQueue(object):
         self._error = e
       self._inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
-        self._no_inflight_closure_condition.notifyAll()
-      self._stop_waiting_condition.notifyAll()
+        self._no_inflight_closure_condition.notify_all()
+      self._stop_waiting_condition.notify_all()
 
   def done(self):
     """Returns true if the queue is empty and there is no inflight closure.
@@ -531,6 +539,19 @@ class WorkerPreemptionHandler(object):
         logging.error(
             "Remote function on worker %s failed with %r:%s\n"
             "It is treated as a transient connectivity failure for now.",
+            worker_device_name, e, e)
+        if on_transient_failure_fn:
+          on_transient_failure_fn()
+        return
+
+      # If the error is due to temporary connectivity issues that cause the
+      # server-side RPCs to be cancelled, TF might not abort the step and the
+      # closure might timeout. The coordinator ignores certain amount of such
+      # failures without marking worker as failure.
+      if self._cluster._record_and_ignore_transient_timeouts(e):  # pylint: disable=protected-access
+        logging.error(
+            "Remote function on worker %s failed with %r:%s\n"
+            "This derived error is ignored and not reported to users.",
             worker_device_name, e, e)
         if on_transient_failure_fn:
           on_transient_failure_fn()
@@ -675,7 +696,7 @@ class Worker(object):
     """Runs a closure with preemption handling."""
     assert closure is not None
     try:
-      with self._cluster.failure_handler.wait_on_failure(
+      with self.failure_handler.wait_on_failure(
           on_failure_fn=lambda: self._cluster.closure_queue.put_back(closure),
           on_transient_failure_fn=lambda: self._cluster.closure_queue.put_back(
               closure),
@@ -810,6 +831,18 @@ class Cluster(object):
     self._potential_ps_failures_lock = threading.Lock()
     self._potential_ps_failures_count = [0] * self._num_ps
 
+    # Ignore worker timeouts due to transient connection errors.
+    # Transient connectivity issues might cause the server side to unexpectedly
+    # cancel RPC handling logic, leading to closure execution timeouts. When
+    # the _transient_timeout_threshold is set to a positive number, the cluster
+    # coordinator ignores DeadlineExceeded errors from workers for the specified
+    # times before raising the error to users.
+    self._transient_timeouts_threshold = int(
+        os.environ.get("TF_COORDINATOR_IGNORE_TRANSIENT_TIMEOUTS",
+                       self._num_workers // 10))
+    self._transient_timeouts_lock = threading.Lock()
+    self._transient_timeouts_count = 0
+
     self.closure_queue = _CoordinatedClosureQueue()
     self.failure_handler = WorkerPreemptionHandler(context.get_server_def(),
                                                    self)
@@ -844,6 +877,18 @@ class Cluster(object):
           return False
     return True
 
+  def _record_and_ignore_transient_timeouts(self, e):
+    """Records observed timeout error and return if it should be ignored."""
+    if self._transient_timeouts_threshold <= 0:
+      return False
+    if not isinstance(e, errors.DeadlineExceededError):
+      return False
+    with self._transient_timeouts_lock:
+      self._transient_timeouts_count += 1
+      if self._transient_timeouts_count >= self._transient_timeouts_threshold:
+        return False
+    return True
+
   def schedule(self, function, args, kwargs):
     """Schedules `function` to be dispatched to a worker for execution.
 
@@ -874,7 +919,8 @@ class Cluster(object):
     return self.closure_queue.done()
 
 
-@tf_export("distribute.experimental.coordinator.ClusterCoordinator", v1=[])
+@tf_export("distribute.experimental.coordinator.ClusterCoordinator",
+           "distribute.coordinator.ClusterCoordinator", v1=[])
 class ClusterCoordinator(object):
   """An object to schedule and coordinate remote function execution.
 
@@ -1013,7 +1059,7 @@ class ClusterCoordinator(object):
 
     Args:
       fn: A `tf.function`; the function to be dispatched to a worker for
-        execution asynchronously. Regular python funtion is not supported to be
+        execution asynchronously. Regular python function is not supported to be
         scheduled.
       args: Positional arguments for `fn`.
       kwargs: Keyword arguments for `fn`.
@@ -1234,7 +1280,7 @@ def _is_ps_failure(error):
   if isinstance(error, InputError):
     error = error.original_exception
 
-  return (isinstance(error, errors.UnavailableError) and
+  return (isinstance(error, (errors.UnavailableError, errors.AbortedError)) and
           _RPC_ERROR_FROM_PS in str(error))
 
 

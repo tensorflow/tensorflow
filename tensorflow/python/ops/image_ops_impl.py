@@ -14,14 +14,12 @@
 # ==============================================================================
 """Implementation of image ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -674,7 +672,8 @@ def rot90(image, k=1, name=None):
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    k: A scalar integer. The number of times the image is rotated by 90 degrees.
+    k: A scalar integer tensor. The number of times the image(s) are
+      rotated by 90 degrees.
     name: A name for this operation (optional).
 
   Returns:
@@ -1359,7 +1358,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
 
 
 @tf_export(v1=['image.ResizeMethod'])
-class ResizeMethodV1(object):
+class ResizeMethodV1:
   """See `v1.image.resize` for details."""
   BILINEAR = 0
   NEAREST_NEIGHBOR = 1
@@ -1368,7 +1367,7 @@ class ResizeMethodV1(object):
 
 
 @tf_export('image.ResizeMethod', v1=[])
-class ResizeMethod(object):
+class ResizeMethod:
   """See `tf.image.resize` for details."""
   BILINEAR = 'bilinear'
   NEAREST_NEIGHBOR = 'nearest'
@@ -1942,6 +1941,7 @@ def per_image_standardization(image):
 
 
 @tf_export('image.random_brightness')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def random_brightness(image, max_delta, seed=None):
   """Adjust the brightness of images by a random factor.
@@ -1984,6 +1984,7 @@ def random_brightness(image, max_delta, seed=None):
 
 
 @tf_export('image.stateless_random_brightness', v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def stateless_random_brightness(image, max_delta, seed):
   """Adjust the brightness of images by a random factor deterministically.
@@ -2123,6 +2124,7 @@ def stateless_random_contrast(image, lower, upper, seed):
 
 
 @tf_export('image.adjust_brightness')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
@@ -2200,7 +2202,7 @@ def adjust_contrast(images, contrast_factor):
   ...       [4.0, 5.0, 6.0]],
   ...     [[7.0, 8.0, 9.0],
   ...       [10.0, 11.0, 12.0]]]
-  >>> tf.image.adjust_contrast(x, 2)
+  >>> tf.image.adjust_contrast(x, 2.)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
   array([[[-3.5, -2.5, -1.5],
           [ 2.5,  3.5,  4.5]],
@@ -2232,6 +2234,7 @@ def adjust_contrast(images, contrast_factor):
 
 
 @tf_export('image.adjust_gamma')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs [Gamma Correction](http://en.wikipedia.org/wiki/Gamma_correction).
@@ -2297,6 +2300,7 @@ def adjust_gamma(image, gamma=1, gain=1):
 
 
 @tf_export('image.convert_image_dtype')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def convert_image_dtype(image, dtype, saturate=False, name=None):
   """Convert `image` to `dtype`, scaling its values if needed.
@@ -2689,6 +2693,11 @@ def adjust_hue(image, delta, name=None):
   Returns:
     Adjusted image(s), same shape and DType as `image`.
 
+  Raises:
+    InvalidArgumentError: image must have at least 3 dimensions.
+    InvalidArgumentError: The size of the last dimension must be 3.
+    ValueError: if `delta` is not in the interval of `[-1, 1]`.
+
   Usage Example:
 
   >>> image = [[[1, 2, 3], [4, 5, 6]],
@@ -2705,6 +2714,9 @@ def adjust_hue(image, delta, name=None):
         [17, 16, 18]]], dtype=int32)>
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
+    if context.executing_eagerly():
+      if delta < -1 or delta > 1:
+        raise ValueError('delta must be in the interval [-1, 1]')
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
@@ -3381,8 +3393,19 @@ def sample_distorted_bounding_box_v2(image_size,
     bboxes: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing
     the distorted bounding box.
     Provide as input to `tf.image.draw_bounding_boxes`.
+
+  Raises:
+    ValueError: If no seed is specified and op determinism is enabled.
   """
-  seed1, seed2 = random_seed.get_seed(seed) if seed else (0, 0)
+  if seed:
+    seed1, seed2 = random_seed.get_seed(seed)
+  else:
+    if config.is_op_determinism_enabled():
+      raise ValueError(
+          f'tf.image.sample_distorted_bounding_box requires a non-zero seed to '
+          f'be passed in when determinism is enabled, but got seed={seed}. '
+          f'Please pass in a non-zero seed, e.g. by passing "seed=1".')
+    seed1, seed2 = (0, 0)
   with ops.name_scope(name, 'sample_distorted_bounding_box'):
     return gen_image_ops.sample_distorted_bounding_box_v2(
         image_size,
@@ -3621,7 +3644,16 @@ def sample_distorted_bounding_box(image_size,
     bboxes: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing
     the distorted bounding box.
       Provide as input to `tf.image.draw_bounding_boxes`.
+
+  Raises:
+    ValueError: If no seed is specified and op determinism is enabled.
   """
+  if not seed and not seed2 and config.is_op_determinism_enabled():
+    raise ValueError(
+        f'tf.compat.v1.image.sample_distorted_bounding_box requires "seed" or '
+        f'"seed2" to be non-zero when determinism is enabled. Please pass in '
+        f'a non-zero seed, e.g. by passing "seed=1". Got seed={seed} and '
+        f"seed2={seed2}")
   with ops.name_scope(name, 'sample_distorted_bounding_box'):
     return gen_image_ops.sample_distorted_bounding_box_v2(
         image_size,
@@ -3725,12 +3757,12 @@ def non_max_suppression_with_scores(boxes,
   Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
   of other overlapping boxes instead of directly causing them to be pruned.
   Consequently, in contrast to `tf.image.non_max_suppression`,
-  `tf.image.non_max_suppression_padded` returns the new scores of each input box
+  `tf.image.non_max_suppression_with_scores` returns the new scores of each input box
   in the second output, `selected_scores`.
 
   To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
   larger than 0.  When `soft_nms_sigma` equals 0, the behavior of
-  `tf.image.non_max_suppression_padded` is identical to that of
+  `tf.image.non_max_suppression_with_scores` is identical to that of
   `tf.image.non_max_suppression` (except for the extra output) both in function
   and in running time.
 
@@ -4671,7 +4703,7 @@ def crop_and_resize_v2(image,
                        box_indices,
                        crop_size,
                        method='bilinear',
-                       extrapolation_value=0,
+                       extrapolation_value=.0,
                        name=None):
   """Extracts crops from the input image tensor and resizes them.
 
@@ -4717,7 +4749,7 @@ def crop_and_resize_v2(image,
       can be either `"bilinear"` or `"nearest"` and default to `"bilinear"`.
       Currently two sampling methods are supported: Bilinear and Nearest
         Neighbor.
-    extrapolation_value: An optional `float`. Defaults to `0`. Value used for
+    extrapolation_value: An optional `float`. Defaults to `0.0`. Value used for
       extrapolation, when applicable.
     name: A name for the operation (optional).
 

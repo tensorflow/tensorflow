@@ -16,6 +16,7 @@
 # C API for delegate plugins.
 
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -46,6 +47,17 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "nnapi_plugin_test",
+    srcs = ["nnapi_plugin_test.cc"],
+    deps = [
+        ":nnapi_plugin",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "gpu_plugin",
     srcs = ["gpu_plugin.cc"],
@@ -57,5 +69,51 @@ cc_library(
         "//tensorflow/lite/delegates/gpu:delegate",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin_impl",
+    ],
+)
+
+# For non-Android platforms, this should be built with '--copt=-DCL_DELEGATE_NO_GL'.
+# On non-supported platforms (i.e. non-Android platforms if -DCL_DELEGATE_NO_GL wasn't specified),
+# the test srcs are set to the empty list, so the test will succeed without testing anything.
+cc_test(
+    name = "gpu_plugin_test",
+    srcs = select({
+        "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": ["gpu_plugin_test.cc"],
+        "//conditions:default": [],
+    }),
+    linkopts = gpu_delegate_linkopts(),
+    deps = select({
+        "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [":gpu_plugin"],
+        "//conditions:default": [],
+    }) + [
+        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+    ],
+)
+
+cc_library(
+    name = "xnnpack_plugin",
+    srcs = ["xnnpack_plugin.cc"],
+    hdrs = ["xnnpack_plugin.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":delegate_plugin",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+    ],
+)
+
+cc_test(
+    name = "xnnpack_plugin_test",
+    srcs = ["xnnpack_plugin_test.cc"],
+    deps = [
+        ":xnnpack_plugin",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "@com_google_googletest//:gtest_main",
+        "@pthreadpool",
     ],
 )

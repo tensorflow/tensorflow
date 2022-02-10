@@ -23,17 +23,17 @@
 // CHECK:         %[[VAL_19:.*]] = udiv i32 %[[VAL_17]], 1
 // CHECK:         %[[VAL_20:.*]] = icmp ult i32 %[[VAL_17]], 2
 // CHECK:         br i1 %[[VAL_20]], label %[[VAL_21:.*]], label %[[VAL_22:.*]]
-// CHECK:       select-and-scatter.12.in_bounds-after:            ; preds = %[[VAL_23:.*]], %[[VAL_24:.*]]
+// CHECK:       select_and_scatter_12.in_bounds-after:            ; preds = %[[VAL_23:.*]], %[[VAL_24:.*]]
 // CHECK:         ret void
-// CHECK:       select-and-scatter.12.in_bounds-true:             ; preds = %[[VAL_24]]
+// CHECK:       select_and_scatter_12.in_bounds-true:             ; preds = %[[VAL_24]]
 // CHECK:         store i1 false, i1* %[[VAL_2]], align 1
 // CHECK:         store i32 0, i32* %[[VAL_1]], align 4
 // CHECK:         br label %[[VAL_25:.*]]
-// CHECK:       select-and-scatter.12inner.loop_header.window.0:  ; preds = %[[VAL_26:.*]], %[[VAL_21]]
+// CHECK:       select_and_scatter_12inner.loop_header.window.0:  ; preds = %[[VAL_26:.*]], %[[VAL_21]]
 // CHECK:         %[[VAL_27:.*]] = load i32, i32* %[[VAL_1]], align 4
 // CHECK:         %[[VAL_28:.*]] = icmp uge i32 %[[VAL_27]], 3
 // CHECK:         br i1 %[[VAL_28]], label %[[VAL_23]], label %[[VAL_29:.*]]
-// CHECK:       select-and-scatter.12inner.loop_body.window.0:    ; preds = %[[VAL_25]]
+// CHECK:       select_and_scatter_12inner.loop_body.window.0:    ; preds = %[[VAL_25]]
 // CHECK:         %[[VAL_30:.*]] = mul nsw i32 %[[VAL_19]], 3
 // CHECK:         %[[VAL_31:.*]] = add nsw i32 %[[VAL_30]], %[[VAL_27]]
 // CHECK:         %[[VAL_32:.*]] = sub nsw i32 %[[VAL_31]], 0
@@ -44,7 +44,7 @@
 // CHECK:         %[[VAL_38:.*]] = add nuw nsw i32 %[[VAL_27]], 1
 // CHECK:         store i32 %[[VAL_38]], i32* %[[VAL_1]], align 4
 // CHECK:         br label %[[VAL_25]]
-// CHECK:       select-and-scatter.12inner.loop_exit.window.0:    ; preds = %[[VAL_25]]
+// CHECK:       select_and_scatter_12inner.loop_exit.window.0:    ; preds = %[[VAL_25]]
 // CHECK:         %[[VAL_39:.*]] = getelementptr inbounds i32, i32* %[[VAL_3]], i32 0
 // CHECK:         %[[VAL_40:.*]] = load i32, i32* %[[VAL_39]], align 4
 // CHECK:         %[[VAL_41:.*]] = bitcast [2 x float]* %[[VAL_10]] to float*
@@ -113,5 +113,5 @@ ENTRY main () -> f32[6] {
   %operand = f32[6]{0} parameter(0)
   %source = f32[2]{0} parameter(1)
   %init = f32[] constant(0)
-  ROOT %select-and-scatter.12 = f32[6]{0} select-and-scatter(f32[6]{0} %operand, f32[2]{0} %source, f32[] %init), window={size=3 stride=3}, select=%ge_F32, scatter=%add_F32
+  ROOT %select_and_scatter_12 = f32[6]{0} select-and-scatter(f32[6]{0} %operand, f32[2]{0} %source, f32[] %init), window={size=3 stride=3}, select=%ge_F32, scatter=%add_F32
 }

@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -256,7 +256,7 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
         dst_line.SetTimestampNsAndAdjustEventOffsets(line.TimestampNs());
       } else {
         time_offset_ps =
-            NanosToPicos(line.TimestampNs() - dst_line.TimestampNs());
+            NanoToPico(line.TimestampNs() - dst_line.TimestampNs());
       }
       dst_line.SetNameIfEmpty(line.Name());
       // Don't override dst_line's display name because if both lines have name,

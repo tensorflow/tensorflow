@@ -169,7 +169,7 @@ struct gemm_pack_colmajor_block<
   //   patch col and row we need to check that it doesn't correspond to the
   //   padded region of original input.
   template <bool patch_depth_is_multiple_of_packet_size, bool has_padding>
-  EIGEN_ALWAYS_INLINE void packStandardPatches(Scalar* block,
+  EIGEN_ALWAYS_INLINE void packStandardPatches(Scalar* __restrict block,
                                                const DataMapper& rhs,
                                                StorageIndex rows,
                                                StorageIndex cols) {
@@ -349,7 +349,7 @@ struct gemm_pack_colmajor_block<
   }
 
   template <bool patch_depth_is_multiple_of_packet_size>
-  EIGEN_ALWAYS_INLINE void packNonStandardPatches(Scalar* block,
+  EIGEN_ALWAYS_INLINE void packNonStandardPatches(Scalar* __restrict block,
                                                   const DataMapper& rhs,
                                                   StorageIndex rows,
                                                   StorageIndex cols) {

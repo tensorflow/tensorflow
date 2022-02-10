@@ -246,6 +246,17 @@ NodeDef MakeShardNode(StringPiece name, StringPiece input_node_name,
       });
 }
 
+NodeDef MakePrefetchNode(StringPiece name, StringPiece input_node_name,
+                         StringPiece buffer_size) {
+  return test::function::NDef(
+      name, "PrefetchDataset", {string(input_node_name), string(buffer_size)},
+      {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+       {"output_types", gtl::ArraySlice<DataType>{}},
+       {"slack_period", 0},
+       {"legacy_autotune", true},
+       {"buffer_size_min", 0}});
+}
+
 }  // namespace graph_tests_utils
 }  // namespace grappler
 }  // namespace tensorflow

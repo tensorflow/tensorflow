@@ -117,7 +117,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
       return failure();
 
     // Identify the branch to inline.
-    bool cond_value = (*cond.int_value_begin()).getSExtValue();
+    bool cond_value = (*cond.value_begin<APInt>()).getSExtValue();
     FuncOp func = cond_value ? then_func : else_func;
 
     // Make sure that the function has exactly one block to simplify inlining.
@@ -155,9 +155,9 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
 };
 
 void OptimizeFunctionalOpsPass::runOnOperation() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
 
-  patterns.insert<FoldIfOp>(&getContext());
+  patterns.add<FoldIfOp>(&getContext());
 
   ModuleOp module = getOperation();
   (void)applyPatternsAndFoldGreedily(module, std::move(patterns));

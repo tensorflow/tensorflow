@@ -2713,8 +2713,8 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
 
     if (NumNonControlOutputs(*tile, *ctx().node_map) != 1) {
       // Optimization is only worthwile when there is a single output from Tile.
-      // Otherwise, we need to insert addtional Reshape ops that can't be easily
-      // removed.
+      // Otherwise, we need to insert additional Reshape ops that can't be
+      // easily removed.
       return Status::OK();
     }
 
@@ -2757,7 +2757,7 @@ class ReduceUpsamplingDims : public ArithmeticOptimizerStage {
     }
 
     // At this point the graph is validated and can be updated
-    // Note: We can assume shape/multiples are DT_INT32 ony at this point since
+    // Note: We can assume shape/multiples are DT_INT32 only at this point since
     // they're checked in CreateUpdated*Proto()
 
     // 1. Create the constant nodes used by the new Reshape/Tile nodes
@@ -3837,7 +3837,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
             auto t_flat = t.flat<int32>();
             vec->assign(&t_flat(0), &t_flat(t.NumElements()));
           } else if (t.dtype() == DT_INT64) {
-            auto t_flat = t.flat<int64>();
+            auto t_flat = t.flat<int64_t>();
             vec->assign(&t_flat(0), &t_flat(t.NumElements()));
           } else {
             return errors::InvalidArgument("Node ", node->name(),

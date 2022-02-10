@@ -22,7 +22,6 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -95,7 +94,7 @@ bool TrimFunctionsPass::TrimModule() {
       // tensorflow function in MLIR TF import using an entry_point attr.
       if (!llvm::is_contained(trim_funcs_allowlist_, "main") &&
           func.getName() == trim_funcs_allowlist_[0]) {
-        func.setName("main");
+        func.setName(StringAttr::get(func.getContext(), "main"));
       }
     } else {
       funcs_to_trim.push_back(func);

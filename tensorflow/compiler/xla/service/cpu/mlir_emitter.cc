@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -33,8 +33,8 @@ namespace cpu {
 namespace {
 
 // Lower an MLIR module to an LLVM module.
-std::unique_ptr<llvm::Module> MakeLLVMModule(mlir::OwningModuleRef module,
-                                             llvm::LLVMContext *context) {
+std::unique_ptr<llvm::Module> MakeLLVMModule(
+    mlir::OwningOpRef<mlir::ModuleOp> module, llvm::LLVMContext *context) {
   // When set, the LLVM backend will be allowed to reassociate floating-point
   // reductions, which enables much more efficient "horizontal" SIMD
   // implementations.
@@ -45,9 +45,9 @@ std::unique_ptr<llvm::Module> MakeLLVMModule(mlir::OwningModuleRef module,
                             mlir::OpPassManager::Nesting::Implicit);
   manager.addPass(mlir::createConvertLinalgToLoopsPass());
   manager.addPass(mlir::createLowerAffinePass());
-  manager.addPass(mlir::createLowerToCFGPass());
+  manager.addPass(mlir::createConvertSCFToCFPass());
   manager.addPass(mlir::createConvertVectorToLLVMPass(
-      mlir::LowerVectorToLLVMOptions().setReassociateFPReductions(
+      mlir::LowerVectorToLLVMOptions().enableReassociateFPReductions(
           kReassociateFPReductions)));
   CHECK(succeeded(manager.run(*module)));
   return mlir::translateModuleToLLVMIR(*module, *context);
@@ -111,7 +111,7 @@ Status EmitMlirFuncAndCall(
   auto function = mlir::FuncOp::create(
       loc, func_name, mlir::FunctionType::get(context, operand_types, {}));
   function.addEntryBlock();
-  mlir::OwningModuleRef mlir_module = mlir::ModuleOp::create(loc);
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(loc);
   mlir_module->push_back(function);
   mlir::OpBuilder op_builder(&function.getBody());
   emitter(&op_builder, function);

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -148,6 +149,9 @@ class SplitVOp : public XlaOpKernel {
 
     for (int i = 0; i < num_split; ++i) {
       int64_t slice_size = split_sizes[i];
+      OP_REQUIRES(ctx, slice_size >= -1,
+                  errors::InvalidArgument("Split size at index ", i,
+                                          " must be >= -1, Got: ", slice_size));
       if (slice_size == -1) {
         OP_REQUIRES(
             ctx, neg_one_dim == -1,

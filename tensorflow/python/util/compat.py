@@ -43,10 +43,6 @@ sets of python types:
 * `real_types`
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numbers as _numbers
 
 import numpy as _np
@@ -112,10 +108,7 @@ def as_text(bytes_or_text, encoding='utf-8'):
 
 
 def as_str(bytes_or_text, encoding='utf-8'):
-  if _six.PY2:
-    return as_bytes(bytes_or_text, encoding)
-  else:
-    return as_text(bytes_or_text, encoding)
+  return as_text(bytes_or_text, encoding)
 
 tf_export('compat.as_text')(as_text)
 tf_export('compat.as_bytes')(as_bytes)

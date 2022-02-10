@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -33,7 +34,7 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
   using OpConversionPattern<FuncOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      FuncOp func, ArrayRef<Value> operands,
+      FuncOp func, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     // Convert function arguments using the provided TypeConverter.
     auto func_type = func.getType();
@@ -73,7 +74,7 @@ struct AllocOpConverter : public OpConversionPattern<memref::AllocOp> {
   using OpConversionPattern<memref::AllocOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      memref::AllocOp alloc, ArrayRef<Value> operands,
+      memref::AllocOp alloc, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(alloc);
     if (!ctx) return failure();
@@ -88,8 +89,8 @@ struct AllocOpConverter : public OpConversionPattern<memref::AllocOp> {
     auto reuse_output_index =
         alloc->getAttrOfType<IntegerAttr>(TFAllocOp::kReuseOutputAttrName);
     Value buffer = rewriter.replaceOpWithNewOp<TFAllocOp>(
-        alloc, alloc.getType(), *ctx, operands, reuse_input_candidates,
-        reuse_output_index);
+        alloc, alloc.getType(), *ctx, adaptor.getOperands(),
+        reuse_input_candidates, reuse_output_index);
     Location loc = buffer.getLoc();
     Value cond = rewriter.create<IsValidMemRefOp>(
         loc, rewriter.getIntegerType(1), buffer);
@@ -105,38 +106,35 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
   using OpConversionPattern<memref::DeallocOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      memref::DeallocOp dealloc, ArrayRef<Value> operands,
+      memref::DeallocOp dealloc, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(dealloc);
     if (!ctx) return failure();
 
     // Operand with no layout is expected.
     auto operand_memref_type = dealloc.memref().getType().cast<MemRefType>();
-    if (!operand_memref_type.getAffineMaps().empty()) {
+    if (!operand_memref_type.getLayout().isIdentity()) {
       return failure();
     }
-    memref::DeallocOp::Adaptor transformed(operands);
-    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx,
-                                             transformed.memref());
+    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx, adaptor.memref());
     return success();
   }
 };
 
 // Converts std.assert to tf_framework.assert with using OpKernelContextType
 // arg of the parent function.
-struct AssertOpConverter : public OpConversionPattern<AssertOp> {
+struct AssertOpConverter : public OpConversionPattern<cf::AssertOp> {
  public:
-  using OpConversionPattern<AssertOp>::OpConversionPattern;
+  using OpConversionPattern<cf::AssertOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      AssertOp op, ArrayRef<Value> operands,
+      cf::AssertOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
-    AssertOp::Adaptor transformed(operands, op->getAttrDictionary());
-    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, transformed.arg(),
+    rewriter.replaceOpWithNewOp<TFAssertOp>(op, *ctx, adaptor.getArg(),
                                             ErrorCode::INVALID_ARGUMENT,
-                                            transformed.msg().getValue());
+                                            adaptor.getMsg());
     return success();
   }
 };
@@ -146,7 +144,7 @@ struct JITExecuteOpConverter : public OpConversionPattern<JITExecuteOp> {
   using OpConversionPattern<JITExecuteOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      JITExecuteOp op, ArrayRef<Value> operands,
+      JITExecuteOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
@@ -163,7 +161,7 @@ struct JITCompileFromStrOpConverter
   using OpConversionPattern<JITCompileFromStrOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      JITCompileFromStrOp op, ArrayRef<Value> operands,
+      JITCompileFromStrOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
@@ -176,12 +174,12 @@ struct JITCompileFromStrOpConverter
 }  // namespace
 
 void PopulateEmbedTFFrameworkAssertPattern(RewritePatternSet *patterns) {
-  patterns->insert<AssertOpConverter>(patterns->getContext());
+  patterns->add<AssertOpConverter>(patterns->getContext());
 }
 
 void PopulateEmbedTFFrameworkPatterns(RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       AllocOpConverter,
       AssertOpConverter,
       DeallocOpConverter,

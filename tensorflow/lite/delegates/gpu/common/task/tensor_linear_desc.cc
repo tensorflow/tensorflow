@@ -92,7 +92,8 @@ absl::Status TensorLinearDescriptor::PerformReadSelector(
   }
   if (storage_type == LinearStorageType::BUFFER) {
     if (gpu_info.IsGlsl()) {
-      if (element_type == DataType::FLOAT16) {
+      if (element_type == DataType::FLOAT16 &&
+          !gpu_info.IsGlslSupportsExplicitFp16()) {
         if (memory_type == MemoryType::CONSTANT) {
           const std::string arg0 = "(" + args[0] + ")";
           *result =
@@ -129,6 +130,10 @@ absl::Status TensorLinearDescriptor::PerformReadSelector(
         return absl::OkStatus();
       } else {
         *result = "texelFetch(tex2d, ivec2(" + args[0] + ", 0), 0)";
+        if (element_type == DataType::FLOAT16 &&
+            gpu_info.IsGlslSupportsExplicitFp16()) {
+          *result = "f16vec4(" + *result + ")";
+        }
         return absl::OkStatus();
       }
     } else {

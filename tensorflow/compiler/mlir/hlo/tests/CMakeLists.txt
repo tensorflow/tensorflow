@@ -25,6 +25,10 @@ set(MLIR_HLO_TEST_DEPENDS
         mlir-hlo-opt
 )
 
+if(MHLO_ENABLE_BINDINGS_PYTHON)
+  add_subdirectory(python)
+endif()
+
 add_lit_testsuite(check-mlir-hlo-lit "Running the mlir-hlo regression tests"
         ${CMAKE_CURRENT_BINARY_DIR}
         DEPENDS ${MLIR_HLO_TEST_DEPENDS}

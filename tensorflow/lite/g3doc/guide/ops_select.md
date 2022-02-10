@@ -122,7 +122,7 @@ allprojects {
         mavenCentral()
         maven {  // Only for snapshot artifacts
             name 'ossrh-snapshot'
-            url 'http://oss.sonatype.org/content/repositories/snapshots'
+            url 'https://oss.sonatype.org/content/repositories/snapshots'
         }
         mavenLocal()
     }
@@ -202,20 +202,32 @@ Flags`, and add:
 -force_load <path/to/your/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps>
 ```
 
-### C++
+### C/C++
 
-When building TensorFlow Lite libraries using the bazel pipeline, the additional
-TensorFlow ops library can be included and enabled as follows:
+If you're using Bazel or
+[CMake](https://www.tensorflow.org/lite/guide/build_cmake) to build TensorFlow
+Lite interpreter, you can enable Flex delegate by linking a TensorFlow Lite Flex
+delegate shared library. You can build it with Bazel as the following command.
 
-*   Enable monolithic builds if necessary by adding the `--config=monolithic`
-    build flag.
-*   Add the TensorFlow ops delegate library dependency to the build
-    dependencies: `tensorflow/lite/delegates/flex:delegate`.
+```
+bazel build -c opt --config=monolithic tensorflow/lite/delegates/flex:tensorflowlite_flex
+```
+
+This command generates the following shared library in
+`bazel-bin/tensorflow/lite/delegates/flex`.
+
+Platform | Library name
+-------- | ----------------------------
+Linux    | libtensorflowlite_flex.so
+macOS    | libtensorflowlite_flex.dylib
+Windows  | tensorflowlite_flex.dll
 
 Note that the necessary `TfLiteDelegate` will be installed automatically when
-creating the interpreter at runtime as long as the delegate is linked into the
-client library. It is not necessary to explicitly install the delegate instance
-as is typically required with other delegate types.
+creating the interpreter at runtime as long as the shared library is linked. It
+is not necessary to explicitly install the delegate instance as is typically
+required with other delegate types.
+
+**Note:** This feature is available since version 2.7.
 
 ### Python
 

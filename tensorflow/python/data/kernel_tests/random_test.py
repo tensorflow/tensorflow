@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.random()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
@@ -49,6 +45,12 @@ class RandomTest(test_base.DatasetTestBase, parameterized.TestCase):
       # could match, but that is sufficiently unlikely (1/2^128 with perfect
       # random number generation).
       self.assertNotEqual(output_1, output_2)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.random(
+        seed=42, name="random").take(1).map(lambda _: 42)
+    self.assertDatasetProduces(dataset, [42])
 
 
 if __name__ == "__main__":

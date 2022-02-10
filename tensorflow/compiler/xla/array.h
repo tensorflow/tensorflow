@@ -32,10 +32,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -306,6 +304,18 @@ class Array {
     }
   }
 
+  // Fills the array with random uniform variables in the [min_value, max_value]
+  // range. Defined for integral types.
+  template <typename = typename std::enable_if<std::is_integral<T>::value>>
+  void FillRandomUniform(const T& min_value, const T& max_value,
+                         int seed = 12345) {
+    std::mt19937 g(seed);
+    std::uniform_int_distribution<T> distribution(min_value, max_value);
+    for (int64_t i = 0; i < num_elements(); ++i) {
+      values_[i] = static_cast<T>(distribution(g));
+    }
+  }
+
   // Sets all the values in the array to values specified in the container.
   template <typename Container = std::initializer_list<T>>
   void SetValues(const Container& container) {
@@ -506,9 +516,18 @@ class Array {
     CHECK_EQ(num_elements(), old_num_elements);
   }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const Array& array) {
+    return H::combine(std::move(h), absl::MakeSpan(array.begin(), array.end()),
+                      array.dimensions());
+  }
+
   // Returns a string representation of the array suitable for debugging.
-  string ToString() const {
-    std::vector<string> pieces;
+  std::string ToString() const {
+    if (sizes_.empty()) {
+      return "";
+    }
+    std::vector<std::string> pieces;
     std::vector<int64_t> index(sizes_.size());
     do {
       // Emit leading spaces and opening square brackets
@@ -522,21 +541,23 @@ class Array {
           }
         }
       }
-
-      pieces.push_back(absl::StrCat(values_[calculate_index(index)]));
+      int value_index = calculate_index(index);
+      if (value_index < num_elements()) {
+        pieces.push_back(absl::StrCat(values_[value_index]));
+      }
 
       // Emit comma if it isn't the last element
-      if (index.back() != sizes_.back() - 1) {
+      if (index.back() < sizes_.back() - 1) {
         pieces.push_back(", ");
       }
 
       // Emit closing square brackets
       for (int64_t i = sizes_.size() - 1; i >= 0; --i) {
-        if (index[i] != sizes_[i] - 1) {
+        if (index[i] < sizes_[i] - 1) {
           break;
         }
         pieces.push_back("]");
-        if (i != 0 && index[i - 1] != sizes_[i - 1] - 1) {
+        if (i != 0 && index[i - 1] < sizes_[i - 1] - 1) {
           pieces.push_back(",\n");
         }
       }
@@ -545,9 +566,9 @@ class Array {
   }
 
  private:
-  // Converts an initializer_list of type U to a vector of type int64. Used by
-  // the initializer list based constructors to convert the size type into int64
-  // to be passed to the size based constructor.
+  // Converts an initializer_list of type U to a vector of type int64_t. Used by
+  // the initializer list based constructors to convert the size type into
+  // int64_t to be passed to the size based constructor.
   template <typename U>
   static std::vector<int64_t> ToInt64Vector(
       const std::initializer_list<U>& data) {
@@ -557,6 +578,8 @@ class Array {
   // Returns the linear index from the list of per-dimension indexes. Function
   // is templated so can be used with an std::array from operator() to avoid
   // memory allocation.
+  // The returned value may be larger than or equal to the number of elements if
+  // the indexes exceed the array's corresponding dimension size.
   template <typename U>
   int64_t calculate_index(const U& indexes) const {
     CHECK_EQ(sizes_.size(), indexes.size());
@@ -565,7 +588,6 @@ class Array {
       index *= sizes_[i];
       index += indexes[i];
     }
-    DCHECK_LT(index, this->num_elements());
     return index;
   }
 

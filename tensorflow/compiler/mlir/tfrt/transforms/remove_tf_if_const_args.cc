@@ -92,8 +92,10 @@ class RemoveTfIfConstArgs
     // Change the if_op's argumetns to the new arguments, branches to new
     // branches. Note that the outputs are not changed.
     if_op.inputMutable().assign(remaining_args);
-    if_op.then_branchAttr(builder.getSymbolRefAttr(new_then_function_name));
-    if_op.else_branchAttr(builder.getSymbolRefAttr(new_else_function_name));
+    if_op.then_branchAttr(
+        mlir::SymbolRefAttr::get(builder.getContext(), new_then_function_name));
+    if_op.else_branchAttr(
+        mlir::SymbolRefAttr::get(builder.getContext(), new_else_function_name));
   }
 
   llvm::StringRef CreateBranchFunction(
@@ -102,8 +104,10 @@ class RemoveTfIfConstArgs
       llvm::ArrayRef<mlir::TF::ConstOp> const_args,
       llvm::ArrayRef<unsigned> const_arg_indices) {
     // Get the new function type as const args are removed.
+    llvm::BitVector const_arg_indices_bv(branch.getNumArguments());
+    for (auto i : const_arg_indices) const_arg_indices_bv.set(i);
     auto new_branch_type =
-        branch.getType().getWithoutArgsAndResults(const_arg_indices, {});
+        branch.getType().getWithoutArgsAndResults(const_arg_indices_bv, {});
     std::string new_branch_name =
         absl::StrCat(branch.sym_name().str(), branch_suffix);
     // Create the wrapper function with the new arguments that calls the

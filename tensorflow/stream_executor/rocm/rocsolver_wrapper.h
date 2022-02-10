@@ -20,7 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCSOLVER_WRAPPER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCSOLVER_WRAPPER_H_
 
-#include "rocm/include/rocsolver.h"
+#include "rocm/include/rocsolver/rocsolver.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -62,12 +62,43 @@ namespace wrap {
 #endif
 
 // clang-format off
-#define FOREACH_ROCSOLVER_API(__macro) \
-  __macro(rocsolver_spotrf)            \
-  __macro(rocsolver_dpotrf)            \
-  __macro(rocsolver_cpotrf)            \
-  __macro(rocsolver_zpotrf)
-
+#define FOREACH_ROCSOLVER_API(__macro)      \
+  __macro(rocsolver_cgetrf)                 \
+  __macro(rocsolver_dgetrf)                 \
+  __macro(rocsolver_sgetrf)                 \
+  __macro(rocsolver_zgetrf)                 \
+  __macro(rocsolver_cgetrs)                 \
+  __macro(rocsolver_dgetrs)                 \
+  __macro(rocsolver_sgetrs)                 \
+  __macro(rocsolver_zgetrs)                 \
+  __macro(rocsolver_cgetrf_batched)         \
+  __macro(rocsolver_dgetrf_batched)         \
+  __macro(rocsolver_sgetrf_batched)         \
+  __macro(rocsolver_zgetrf_batched)         \
+  __macro(rocsolver_cgetrs_batched)         \
+  __macro(rocsolver_dgetrs_batched)         \
+  __macro(rocsolver_sgetrs_batched)         \
+  __macro(rocsolver_zgetrs_batched)         \
+  __macro(rocsolver_cgetri_batched)         \
+  __macro(rocsolver_dgetri_batched)         \
+  __macro(rocsolver_sgetri_batched)         \
+  __macro(rocsolver_zgetri_batched)         \
+  __macro(rocsolver_cpotrf)         	    \
+  __macro(rocsolver_dpotrf)                 \
+  __macro(rocsolver_spotrf)                 \
+  __macro(rocsolver_zpotrf)                 \
+  __macro(rocsolver_cpotrf_batched)         \
+  __macro(rocsolver_dpotrf_batched)         \
+  __macro(rocsolver_spotrf_batched)         \
+  __macro(rocsolver_zpotrf_batched)         \
+  __macro(rocsolver_cgeqrf)                 \
+  __macro(rocsolver_dgeqrf)                 \
+  __macro(rocsolver_sgeqrf)                 \
+  __macro(rocsolver_zgeqrf)                 \
+  __macro(rocsolver_cunmqr)                 \
+  __macro(rocsolver_zunmqr)                 \
+  __macro(rocsolver_cungqr)                 \
+  __macro(rocsolver_zungqr)
 // clang-format on
 
 FOREACH_ROCSOLVER_API(ROCSOLVER_API_WRAPPER)

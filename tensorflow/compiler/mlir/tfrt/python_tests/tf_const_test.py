@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Tensorflow -> CPURT compilation."""
+"""Tests for Tensorflow -> jitrt compilation."""
 
 import numpy as np
 
-import unittest
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
+from tensorflow.python.platform import test
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
-class TfConstTest(googletest.TestCase):
+class TfConstTest(test.TestCase):
 
   def test_const_i32(self):
     mlir_function = """
@@ -33,8 +33,8 @@ class TfConstTest(googletest.TestCase):
         return %0 : tensor<1xi32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
-    [res] = cpurt.execute(compiled, [])
+    compiled = jitrt.compile(mlir_function, 'test')
+    [res] = jitrt.execute(compiled, [])
     np.testing.assert_allclose(res, 1, rtol=0.0)
 
   def test_constant_folding_i32(self):
@@ -47,9 +47,9 @@ class TfConstTest(googletest.TestCase):
         return %2 : tensor<2xi32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
-    [res] = cpurt.execute(compiled, [])
+    compiled = jitrt.compile(mlir_function, 'test')
+    [res] = jitrt.execute(compiled, [])
     np.testing.assert_allclose(res, [0, 1], rtol=0.0)
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

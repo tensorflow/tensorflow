@@ -53,6 +53,7 @@ cc_library(
     hdrs = ["hardware_type_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":xplane_schema",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "@com_google_absl//absl/strings",
@@ -62,6 +63,9 @@ cc_library(
 cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
+    deps = [
+        "//tensorflow/core/platform:types",
+    ],
 )
 
 cc_library(
@@ -153,7 +157,7 @@ cc_library(
     hdrs = ["timespan.h"],
     copts = tf_profiler_copts(),
     deps = [
-        ":time_utils",
+        ":math_utils",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
@@ -174,6 +178,7 @@ cc_library(
     hdrs = ["time_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":math_utils",
         "//tensorflow/core:lib",
     ] + if_static([
         ":time_utils_impl",
@@ -188,6 +193,7 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     deps = [
+        ":math_utils",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/time",
     ],
@@ -210,11 +216,12 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        ":time_utils",
+        ":math_utils",
         ":timespan",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -257,7 +264,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        ":time_utils",
+        ":math_utils",
         ":timespan",
         ":trace_utils",
         ":xplane_builder",
@@ -274,7 +281,7 @@ tf_cc_test(
     name = "xplane_utils_test",
     srcs = ["xplane_utils_test.cc"],
     deps = [
-        ":time_utils",
+        ":math_utils",
         ":xplane_builder",
         ":xplane_utils",
         ":xplane_visitor",
@@ -411,9 +418,9 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         ":group_events",
+        ":math_utils",
         ":tf_op_utils",
         ":tf_xplane_visitor",
-        ":time_utils",
         ":timespan",
         ":trace_utils",
         ":xplane_builder",

@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/interpreter.h"
-
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -30,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
@@ -47,6 +46,12 @@ TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
   // been allocated. However, AllocateTensors() relies on Control Flow ops to
   // allocate tensors on 'children' subgraphs. Revisit this if required.
   return primary_subgraph().ReleaseNonPersistentMemory();
+}
+
+void Interpreter::EnsureDynamicTensorsAreReleased() {
+  for (auto& subgraph : subgraphs_) {
+    subgraph->EnsureDynamicTensorsAreReleased();
+  }
 }
 
 TfLiteStatus Interpreter::ResetVariableTensors() {
@@ -100,6 +105,10 @@ TfLiteStatus Interpreter::RemoveAllDelegates() {
 }
 
 bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
+
+bool Interpreter::IsFullyDelegated() const {
+  return primary_subgraph().IsFullyDelegated();
+}
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,

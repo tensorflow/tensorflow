@@ -72,7 +72,7 @@ using FusionPlan = std::vector<FusionPattern>;
 // To support using EquivalenceClasses for Value
 class ValueWrapper {
  public:
-  explicit ValueWrapper(Value value) : value_(std::move(value)) {}
+  explicit ValueWrapper(Value value) : value_(value) {}
 
   Value getValue() const { return value_; }
 
@@ -85,14 +85,14 @@ class ValueWrapper {
 };
 
 bool operator<(const ValueWrapper& lhs, const ValueWrapper& rhs) {
-  auto lhs_value = lhs.getValue().getAsOpaquePointer();
-  auto rhs_value = rhs.getValue().getAsOpaquePointer();
+  auto* lhs_value = lhs.getValue().getAsOpaquePointer();
+  auto* rhs_value = rhs.getValue().getAsOpaquePointer();
   return lhs_value < rhs_value;
 }
 
 bool IsMhlo(Operation* op) {
   Dialect* dialect = op->getDialect();
-  return dialect && isa<MhloDialect>(dialect);
+  return isa_and_nonnull<MhloDialect>(dialect);
 }
 
 bool IsFusibleWithOperand(Operation* op) {
@@ -107,7 +107,7 @@ bool IsFusibleWithConsumer(Operation* op) {
 
 Value InferEffectiveWorkloadShape(Value v) {
   Operation* op = v.getDefiningOp();
-  return op && isa<ReduceOp>(op) ? op->getOperand(0) : v;
+  return isa_and_nonnull<ReduceOp>(op) ? op->getOperand(0) : v;
 }
 
 bool IsFusible(Operation* op) {
@@ -483,8 +483,8 @@ class FusionPlanner {
 };
 
 struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
-  void runOnFunction() override {
-    FuncOp func = getFunction();
+  void runOnOperation() override {
+    FuncOp func = getOperation();
     if (!IsTargetFunc(func)) {
       return;
     }
@@ -544,6 +544,37 @@ struct MhloFusionPass : public MhloFusionPassBase<MhloFusionPass> {
       output_types.reserve(outputs.size());
       for (Value v : outputs) {
         output_types.push_back(v.getType());
+      }
+
+      //      /-----\
+      //     /       V
+      // A(fused) -- B -- C(fused) -- D(fused)
+      // mlir ops Adjacency List likely above
+      // the B is consumer of fused A, so B need move behind D
+      // because fusion op create at D's location
+      DenseSet<Operation*> fused_set(pattern.begin(), pattern.end());
+      DenseSet<Operation*> consumers_set;
+      SmallVector<Operation*, 4> consumers_vec;
+      auto first_iter = pattern.front()->getIterator();
+      auto last_iter = pattern.back()->getIterator();
+      for (Operation& cur_op : llvm::make_range(first_iter, last_iter)) {
+        // isn't fused op && consumer's op
+        // move this after fusion op
+        if (!fused_set.contains(&cur_op)) {
+          // fused op's consumer or consumer's consumer
+          bool is_consumer = llvm::any_of(
+              cur_op.getOperands(), [&fused_set, &consumers_set](Value v) {
+                auto* op = v.getDefiningOp();
+                return fused_set.contains(op) || consumers_set.contains(op);
+              });
+          if (is_consumer) {
+            consumers_set.insert(&cur_op);
+            consumers_vec.push_back(&cur_op);
+          }
+        }
+      }
+      for (auto* op : llvm::reverse(consumers_vec)) {
+        op->moveAfter(pattern.back());
       }
 
       FusionOp fusion =

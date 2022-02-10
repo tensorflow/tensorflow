@@ -32,7 +32,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -126,6 +125,8 @@ absl::Status TargetAwareConversionMain() {
   if (!output_mlir || inline_subgraphs) {
     options.debug_mode = false;
   }
+  options.enable_inliner = true;
+  options.legalize_to_tflite_ops = true;
   mlir::TFL::tac::TacModule tac_module(options);
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);

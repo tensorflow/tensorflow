@@ -471,11 +471,11 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
     return false;
   }
 
+#if CUDA_VERSION >= 10010
   // Workaround a cuFFT bug, which mutates the input buffer when it shouldn't.
   // See b/155276727 and go/nvbugs/2959622.
   // TODO(b/155276727): refine the bounding condition.
-  if (input.opaque() != output->opaque() && CUDA_VERSION >= 10010 &&
-      CUDA_VERSION <= 11000 &&
+  if (input.opaque() != output->opaque() &&
       std::is_same<InputT, std::complex<float>>::value &&
       std::is_same<OutputT, float>::value && input.size() > 0) {
     auto *allocator = cuda_fft_plan->GetScratchAllocator();
@@ -492,6 +492,7 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
       // execution just because the allocation for the incorrect case fails.
     }
   }
+#endif
 
   cuda::ScopedActivateExecutorContext sac(parent_);
   auto ret =

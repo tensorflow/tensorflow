@@ -143,6 +143,14 @@ std::map<std::string, uint32_t> GetMapFromTensorMap(
   return result;
 }
 
+inline bool ShouldCreateLazyDelegateProviders(int num_fp32_tensors) {
+#ifdef TFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS
+  return true;
+#else
+  return num_fp32_tensors > 0;
+#endif
+}
+
 }  // namespace
 
 const char* kEmptyTensorName = "";
@@ -741,10 +749,12 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
 
   interpreter->reset(new Interpreter(error_reporter_));
-  (*interpreter)->SetNumThreads(num_threads_);
   if (subgraphs->size() > 1) {
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
+
+  // Set num threads after all the subgraphs are added.
+  (*interpreter)->SetNumThreads(num_threads_);
 
   if (preserve_all_tensors_) {
     (*interpreter)->PreserveAllTensorsExperimental();
@@ -768,7 +778,6 @@ TfLiteStatus InterpreterBuilder::operator()(
     if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {
       return cleanup_and_error();
     }
-    // Set num threads
     // Parse inputs/outputs
     modified_subgraph->SetInputs(
         FlatBufferIntArrayToVector(subgraph->inputs()));
@@ -805,9 +814,9 @@ TfLiteStatus InterpreterBuilder::operator()(
     return cleanup_and_error();
   }
 
-  if (num_fp32_tensors_ > 0) {
+  if (ShouldCreateLazyDelegateProviders(num_fp32_tensors_)) {
     (*interpreter)->lazy_delegate_providers_ =
-        op_resolver_.GetDelegates(num_threads_);
+        op_resolver_.GetDelegateCreators();
   }
 
   TfLiteStatus status = ApplyDelegates(interpreter->get());

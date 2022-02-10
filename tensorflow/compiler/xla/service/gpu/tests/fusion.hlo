@@ -63,9 +63,9 @@ HloModule TestModule
 // CHECK:         %[[VAL_66:.*]] = udiv i32 %[[VAL_59]], 802816
 // CHECK:         %[[VAL_67:.*]] = icmp ult i32 %[[VAL_35]], 102760448
 // CHECK:         br i1 %[[VAL_67]], label %[[VAL_68:.*]], label %[[VAL_69:.*]]
-// CHECK:       fusion.1.in_bounds-after:                         ; preds = %[[VAL_68]], %[[VAL_70:.*]]
+// CHECK:       fusion_1.in_bounds-after:                         ; preds = %[[VAL_68]], %[[VAL_70:.*]]
 // CHECK:         ret void
-// CHECK:       fusion.1.in_bounds-true:                          ; preds = %[[VAL_70]]
+// CHECK:       fusion_1.in_bounds-true:                          ; preds = %[[VAL_70]]
 // CHECK:         %[[VAL_71:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_14]], i32 0, i32 %[[VAL_37]]
 // CHECK:         %[[VAL_72:.*]] = load float, float* %[[VAL_71]], align 4, !invariant.load !4
 // CHECK:         %[[VAL_73:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_11]], i32 0, i32 %[[VAL_37]]

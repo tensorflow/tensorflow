@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -74,7 +76,7 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
             SmallVectorImpl<int64_t> &contracting_dims,
             SmallVectorImpl<int64_t> &batching_dims) {
           llvm::SmallDenseSet<char> others_set(others.begin(), others.end());
-          for (auto en : llvm::enumerate(tokens)) {
+          for (const auto &en : llvm::enumerate(tokens)) {
             if (!result_tokens.contains(en.value())) {
               contracting_dims.emplace_back(en.index());
             }
@@ -91,12 +93,9 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     collect_contracting_batching_dims(rhs_tokens, lhs_tokens,
                                       rhs_contracting_dims, rhs_batching_dims);
 
-    auto dim_numbers = mhlo::DotDimensionNumbers::get(
-        Make1DElementsAttr(rewriter, lhs_batching_dims),
-        Make1DElementsAttr(rewriter, rhs_batching_dims),
-        Make1DElementsAttr(rewriter, lhs_contracting_dims),
-        Make1DElementsAttr(rewriter, rhs_contracting_dims),
-        rewriter.getContext());
+    auto dim_numbers = mhlo::DotDimensionNumbersAttr::get(
+        rewriter.getContext(), lhs_batching_dims, rhs_batching_dims,
+        lhs_contracting_dims, rhs_contracting_dims);
     rewriter.replaceOpWithNewOp<DotGeneralOp>(
         einsum, einsum.getType(), einsum.lhs(), einsum.rhs(), dim_numbers,
         /*precision_config=*/ArrayAttr{});
@@ -107,20 +106,23 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
 struct LegalizeEinsumToDotGeneralPass
     : public LegalizeEinsumToDotGeneralPassBase<
           LegalizeEinsumToDotGeneralPass> {
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     PopulateEinsumToDotGeneralPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 }  // namespace
 
 void PopulateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
-                                        OwningRewritePatternList *patterns) {
-  patterns->insert<EinsumToDotGeneralPattern>(context);
+                                        RewritePatternSet *patterns) {
+  patterns->add<EinsumToDotGeneralPattern>(context);
 }
 
-std::unique_ptr<FunctionPass> createLegalizeEinsumToDotGeneralPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeEinsumToDotGeneralPass() {
   return std::make_unique<LegalizeEinsumToDotGeneralPass>();
 }
 

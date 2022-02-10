@@ -14,22 +14,22 @@ func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
-  cond_br %arg0, ^bb1, ^bb2
+  cf.cond_br %arg0, ^bb1, ^bb2
 ^bb1:
   "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3
+  cf.br ^bb3
 ^bb2:
   "lmhlo.negate"(%arg2, %0) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg2, %1) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3
+  cf.br ^bb3
 ^bb3:
   return
 }
 //      CHECK:  Value: %0 {{ *}}
-// CHECK-NEXT:  Userange: {(6, 6), (12, 12)}
+// CHECK-NEXT:  Userange: {(7, 7), (13, 13)}
 //      CHECK:  Value: %1 {{ *}}
-// CHECK-NEXT:  Userange: {(8, 8), (14, 14)}
+// CHECK-NEXT:  Userange: {(9, 9), (15, 15)}
 
 // -----
 
@@ -40,7 +40,7 @@ func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
   %3 = memref.alloc() : memref<2xf32>
-  br ^bb1
+  cf.br ^bb1
 ^bb1:
   %4 = scf.if %arg0 -> (memref<2xf32>) {
     "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -49,24 +49,24 @@ func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>
     "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
     scf.yield %2 : memref<2xf32>
   }
-  br ^bb2
+  cf.br ^bb2
 ^bb2:
-  cond_br %arg0, ^bb1, ^bb3
+  cf.cond_br %arg0, ^bb1, ^bb3
 ^bb3:
   "lmhlo.negate"(%arg1, %2) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg1, %3) : (memref<2xf32>, memref<2xf32>) -> ()
   return
 }
 //      CHECK:  Value: %0 {{ *}}
-// CHECK-NEXT:  Userange: {(10, 22)}
+// CHECK-NEXT:  Userange: {(11, 23)}
 //      CHECK:  Value: %1 {{ *}}
-// CHECK-NEXT:  Userange: {(10, 22)}
+// CHECK-NEXT:  Userange: {(11, 23)}
 //      CHECK:  Value: %2 {{ *}}
-// CHECK-NEXT:  Userange: {(10, 24)}
+// CHECK-NEXT:  Userange: {(11, 25)}
 //      CHECK:  Value: %3 {{ *}}
-// CHECK-NEXT:  Userange: {(26, 26)}
+// CHECK-NEXT:  Userange: {(27, 27)}
 //      CHECK:  Value: %4 {{ *}}
-//      CHECK:  Userange: {(18, 18)}
+//      CHECK:  Userange: {(19, 19)}
 
 // -----
 
@@ -74,34 +74,34 @@ func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>
 func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
-  cond_br %arg0, ^bb1, ^bb2
+  cf.cond_br %arg0, ^bb1, ^bb2
 ^bb1:
   "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3(%0 : memref<2xf32>)
+  cf.br ^bb3(%0 : memref<2xf32>)
 ^bb2:
   %1 = memref.alloc() : memref<2xf32>
   "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3(%1 : memref<2xf32>)
+  cf.br ^bb3(%1 : memref<2xf32>)
 ^bb3(%2 : memref<2xf32>):
   %3 = memref.alloc() : memref<2xf32>
   "lmhlo.copy"(%2, %arg2) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.copy"(%3, %arg2) : (memref<2xf32>, memref<2xf32>) -> ()
   %4 = memref.alloc() : memref<2xf32>
   "lmhlo.copy"(%4, %arg2) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb4(%0 : memref<2xf32>)
+  cf.br ^bb4(%0 : memref<2xf32>)
 ^bb4(%5 : memref<2xf32>):
   "lmhlo.copy"(%5, %arg2) : (memref<2xf32>, memref<2xf32>) -> ()
   return
 }
 //      CHECK:  Value: %0 {{ *}}
-// CHECK-NEXT:  Userange: {(4, 6), (14, 26)}
+// CHECK-NEXT:  Userange: {(5, 7), (15, 27)}
 //      CHECK:  Value: %1 {{ *}}
-// CHECK-NEXT:  Userange: {(10, 16)}
+// CHECK-NEXT:  Userange: {(11, 17)}
 //      CHECK:  Value: %3 {{ *}}
-// CHECK-NEXT:  Userange: {(18, 18)}
+// CHECK-NEXT:  Userange: {(19, 19)}
 //      CHECK:  Value: %4 {{ *}}
-// CHECK-NEXT:  Userange: {(22, 22)}
+// CHECK-NEXT:  Userange: {(23, 23)}
 //      CHECK:  Value: <block argument> of type 'memref<2xf32>' at index: 0
-// CHECK-SAME:  Userange: {(14, 16)}
+// CHECK-SAME:  Userange: {(15, 17)}
 //      CHECK:  Value: <block argument> of type 'memref<2xf32>' at index: 0
-// CHECK-SAME:  Userange: {(26, 26)}
+// CHECK-SAME:  Userange: {(27, 27)}

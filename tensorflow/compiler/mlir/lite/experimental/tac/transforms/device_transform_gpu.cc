@@ -43,24 +43,29 @@ namespace tac {
 namespace {
 
 struct DeviceTransformGPUPass
-    : public mlir::PassWrapper<DeviceTransformGPUPass, FunctionPass> {
+    : public mlir::PassWrapper<DeviceTransformGPUPass, OperationPass<FuncOp>> {
+  llvm::StringRef getArgument() const final {
+    return "tfl-device-transform-gpu";
+  }
+  llvm::StringRef getDescription() const final {
+    return "Suitable transformation for gpu only.";
+  }
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void DeviceTransformGPUPass::runOnFunction() {
-  auto func = getFunction();
+void DeviceTransformGPUPass::runOnOperation() {
+  auto func = getOperation();
   auto* ctx = &getContext();
-  OwningRewritePatternList patterns = GetHardwareRewritePatternsGPU(ctx);
+  RewritePatternSet patterns = GetHardwareRewritePatternsGPU(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
-
-OwningRewritePatternList GetHardwareRewritePatternsGPU(MLIRContext* context) {
+RewritePatternSet GetHardwareRewritePatternsGPU(MLIRContext* context) {
   GpuHardware gpu_hardware;
   return gpu_hardware.GetTransformations(context);
 }
@@ -69,8 +74,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDeviceTransformGPUPass() {
   return std::make_unique<DeviceTransformGPUPass>();
 }
 
-static PassRegistration<DeviceTransformGPUPass> pass(
-    "tfl-device-transform-gpu", "Suitable transformation for gpu only.");
+static PassRegistration<DeviceTransformGPUPass> pass;
 
 }  // namespace tac
 }  // namespace TFL

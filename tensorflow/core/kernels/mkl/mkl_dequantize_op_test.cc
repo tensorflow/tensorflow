@@ -64,7 +64,7 @@ Tensor CreateMklInput() {
 
   DataType dtype = DataTypeToEnum<uint8>::v();
   Tensor mkl_tensor(dtype,
-                    {static_cast<int64>(mkl_shape.GetSerializeBufferSize())});
+                    {static_cast<int64_t>(mkl_shape.GetSerializeBufferSize())});
   mkl_shape.SerializeMklDnnShape(
       mkl_tensor.flat<uint8>().data(),
       mkl_tensor.flat<uint8>().size() * sizeof(uint8));

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -135,6 +136,9 @@ class DataServiceDispatcherImpl {
   // journal to restore the dispatcher's state.
   Status Start();
 
+  // Returns the number of active jobs.
+  size_t NumActiveJobs() TF_LOCKS_EXCLUDED(mu_);
+
   // See dispatcher.proto for API documentation.
 
   /// Worker-facing API.
@@ -151,8 +155,10 @@ class DataServiceDispatcherImpl {
                     GetVersionResponse* response);
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
                               GetOrRegisterDatasetResponse* response);
-  Status GetElementSpec(const GetElementSpecRequest* request,
-                        GetElementSpecResponse* response);
+  Status GetDataServiceMetadata(const GetDataServiceMetadataRequest* request,
+                                GetDataServiceMetadataResponse* response);
+  Status GetDataServiceConfig(const GetDataServiceConfigRequest* request,
+                              GetDataServiceConfigResponse* response);
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
   Status ReleaseJobClient(const ReleaseJobClientRequest* request,
@@ -180,10 +186,8 @@ class DataServiceDispatcherImpl {
   // Registers a dataset with the given fingerprint, storing the new dataset's
   // id in `dataset_id`.
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
+                         const DataServiceMetadata& metadata,
                          int64_t& dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Sets the element spec of the dataset for the specified `dataset_id`.
-  Status SetElementSpec(int64_t dataset_id, const std::string& element_spec)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
   // stored in `out_stub`.
@@ -271,6 +275,8 @@ class DataServiceDispatcherImpl {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // A thread which periodically checks for jobs to clean up.
   void JobGcThread();
+  // Releases job clients that haven't heartbeated recently.
+  Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old jobs and marks them as finished.
   Status GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
@@ -284,7 +290,7 @@ class DataServiceDispatcherImpl {
                        std::shared_ptr<const DatasetDef>& dataset_def)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  const experimental::DispatcherConfig& config_;
+  const experimental::DispatcherConfig config_;
   Env* env_;
 
   mutex mu_;
@@ -305,6 +311,9 @@ class DataServiceDispatcherImpl {
   // Map from task id to a TaskRemover which determines when to remove the task.
   absl::flat_hash_map<int64_t, std::shared_ptr<TaskRemover>>
       remove_task_requests_ TF_GUARDED_BY(mu_);
+  // Map from client id to the time of the client's last heartbeat.
+  absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
+      TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

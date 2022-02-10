@@ -80,6 +80,9 @@ and the following optional parameters:
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
     flags.
+*  `release_dynamic_tensors`: `bool` (default=false) \
+    Whether to configure the Interpreter to immediately release the memory of
+    dynamic tensors in the graph once they are not used.
 
 ### Model input parameters
 By default, the tool will use randomized data for model inputs. The following

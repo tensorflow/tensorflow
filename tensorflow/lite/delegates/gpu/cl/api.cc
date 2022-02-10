@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/converter.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/serialization.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -509,8 +508,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       return absl::NotFoundError(
           absl::StrCat("Input id ", index, " is an invalid input index."));
     }
-    RETURN_IF_ERROR(inputs_[index]->CopyFromExternalObject());
-    return queue_->WaitForCompletion();
+    return inputs_[index]->CopyFromExternalObject();
   }
 
   absl::Status CopyToExternalOutput(int index) override {
@@ -518,8 +516,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       return absl::NotFoundError(
           absl::StrCat("Output id ", index, " is an invalid output index"));
     }
-    RETURN_IF_ERROR(outputs_[index]->CopyToExternalObject());
-    return queue_->WaitForCompletion();
+    return outputs_[index]->CopyToExternalObject();
   }
 
   absl::Status Run() override {
@@ -664,7 +661,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
                           const InferenceEnvironmentOptions& env_options,
                           const GraphFloat32& graph) {
     context_ = absl::make_unique<InferenceContext>();
-    InferenceContext::CreateInferenceInfo create_info;
+    CreateGpuModelInfo create_info;
     create_info.precision = GetPrecision(*environment_, options);
     create_info.storage_type =
         GetStorageTypeFromOptions(*environment_, options);
@@ -923,9 +920,9 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
           .IgnoreError();
     }
 
-    RETURN_IF_ERROR(RunGraphTransforms(&model));
+    RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&model));
     InferenceContext context;
-    InferenceContext::CreateInferenceInfo create_info;
+    CreateGpuModelInfo create_info;
     create_info.precision = GetPrecision(environment_, options);
     create_info.storage_type = GetStorageTypeFromOptions(environment_, options);
     if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
@@ -956,7 +953,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
           .IgnoreError();
     }
 
-    RETURN_IF_ERROR(RunGraphTransforms(&model));
+    RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&model));
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
     RETURN_IF_ERROR(
         builder_impl->Initialize(resolved_options, options_, model));

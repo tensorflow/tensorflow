@@ -138,7 +138,6 @@ float GetFloatVectorElement(__m128 v) {
 
 #ifdef __AVX2__
 constexpr int kFloatValuesPerAvx2Vector = 8;
-constexpr int kFloatValuesPerSseVector = 4;
 template <int PerVectorSize>
 inline int RoundDownVectors(int size) {
   return size & ~(PerVectorSize - 1);
@@ -453,10 +452,10 @@ inline void SseSparseMatrix4VectorsMultiplyAccumulate(
           _mm_loadu_si128(reinterpret_cast<const __m128i*>(matrix));
       // dp += vec · row
       // dpN are for different batches
-      dp0_32x4 = _mm_add_epi32(dp0_32x4, DotProdInt8x4x4(row_8x16, vec0_8x16));
-      dp1_32x4 = _mm_add_epi32(dp1_32x4, DotProdInt8x4x4(row_8x16, vec1_8x16));
-      dp2_32x4 = _mm_add_epi32(dp2_32x4, DotProdInt8x4x4(row_8x16, vec2_8x16));
-      dp3_32x4 = _mm_add_epi32(dp3_32x4, DotProdInt8x4x4(row_8x16, vec3_8x16));
+      dp0_32x4 = _mm_add_epi32(dp0_32x4, DotProdInt8x4x4(vec0_8x16, row_8x16));
+      dp1_32x4 = _mm_add_epi32(dp1_32x4, DotProdInt8x4x4(vec1_8x16, row_8x16));
+      dp2_32x4 = _mm_add_epi32(dp2_32x4, DotProdInt8x4x4(vec2_8x16, row_8x16));
+      dp3_32x4 = _mm_add_epi32(dp3_32x4, DotProdInt8x4x4(vec3_8x16, row_8x16));
       matrix += kBlockSize;
     }  // for col
 

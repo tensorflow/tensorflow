@@ -5,8 +5,16 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "interim"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "multi_process_runner"
     mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "strategy_supports_no_merge_call"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "variable_sync_on_read_context"

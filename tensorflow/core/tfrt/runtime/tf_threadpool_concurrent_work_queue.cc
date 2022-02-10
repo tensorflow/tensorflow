@@ -14,11 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/tf_threadpool_concurrent_work_queue.h"
 
-#include <assert.h>
-
 #include <utility>
 
 #include "llvm/ADT/None.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
@@ -32,13 +31,14 @@ namespace tfrt_stub {
 
 using ::tensorflow::thread::ThreadPoolInterface;
 
-tensorflow::Status TfThreadPoolWorkQueue::InitializeRequest(
+StatusOr<std::unique_ptr<WorkQueueInterface>>
+TfThreadPoolWorkQueue::InitializeRequest(
     ::tfrt::RequestContextBuilder* request_context_builder,
     ThreadPoolInterface** intra_op_threadpool) const {
   DCHECK(intra_op_threadpool);
   *intra_op_threadpool = intra_op_threadpool_;
 
-  return tensorflow::Status::OK();
+  return {nullptr};
 }
 
 void TfThreadPoolWorkQueue::AddTask(tfrt::TaskFunction work) {
@@ -47,6 +47,15 @@ void TfThreadPoolWorkQueue::AddTask(tfrt::TaskFunction work) {
     (*copy)();
     delete copy;
   });
+}
+
+void TfThreadPoolWorkQueue::AddTask(const tfrt::ExecutionContext& exec_ctx,
+                                    tfrt::TaskFunction work) {
+  int64_t id = 0;
+  if (auto* request_context = exec_ctx.request_ctx()) {
+    id = request_context->id();
+  }
+  AddTask(tensorflow::tfrt_stub::WrapWork(id, "inter", std::move(work)));
 }
 
 llvm::Optional<tfrt::TaskFunction> TfThreadPoolWorkQueue::AddBlockingTask(
