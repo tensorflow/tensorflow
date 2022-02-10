@@ -307,6 +307,10 @@ cc_library(
         "kernel_mapping_scheme.h",
     ],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
+    local_defines = select({
+        ":is_bef_executable_enabled": ["BEF_EXECUTABLE=1"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
@@ -1723,6 +1727,10 @@ cc_library(
     hdrs = if_cuda_is_configured([
         "nvptx_compiler.h",
     ]),
+    local_defines = select({
+        ":is_bef_executable_enabled": ["BEF_EXECUTABLE=1"],
+        "//conditions:default": [],
+    }),
     deps = if_cuda_is_configured([
         ":cublas_pad_for_gemms",
         ":cudnn_fused_conv_rewriter",
@@ -2533,7 +2541,6 @@ test_suite(
         "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
         "//tensorflow/compiler/xla/tests:scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:select_and_scatter_test_gpu",
-        "//tensorflow/compiler/xla/tests:triangular_solve_test_gpu",
         "//tensorflow/compiler/xla/tests:while_test_gpu",
     ],
 )

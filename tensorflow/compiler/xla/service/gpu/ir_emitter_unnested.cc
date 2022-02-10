@@ -1557,20 +1557,6 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
   TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(
       custom_call.backend_config().str(), &backend_config));
 
-  if (IsBefThunkEnabled()) {
-    std::vector<BufferAllocation::Slice> buffers;
-    for (auto v : operands) {
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice, GetAllocationSlice(v));
-      buffers.push_back(slice);
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Thunk> thunk,
-        CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
-    AddThunkToThunkSequence(std::move(thunk));
-    return Status::OK();
-  }
-
   ThunkSequence thunks;
 
   // Triangular solve is in-place on 'b', so copy 'b' to the output if they
@@ -5527,9 +5513,15 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   }
 
   if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
+#if BEF_EXECUTABLE
+    // BEF-mode GpuExecutable allocates temp memory, and so the custom-call
+    // implementation for TriangularSolve is not needed.
+    return Status::OK();
+#else
     return InternalError(
         "TriangularSolve is implemented as a custom-call; we do not expect to "
         "lower a true HLO TriangularSolve op.");
+#endif
   }
 
   if (mlir::isa<mlir::lmhlo::FusionOp>(op)) {

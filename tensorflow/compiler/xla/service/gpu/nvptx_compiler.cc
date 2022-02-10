@@ -149,8 +149,12 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Find the fastest algorithm for GEMMs.
   post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
 
+  // BEF-mode GpuExecutable allocates temp memory, and so the custom-call
+  // implementation for TriangularSolve is not needed.
+#if !BEF_EXECUTABLE
   // Transform TriangularSolve ops into custom-calls, so we can add temp memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
+#endif
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
