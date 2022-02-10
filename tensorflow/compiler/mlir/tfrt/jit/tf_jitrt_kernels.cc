@@ -290,6 +290,20 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // We lost the race; some other invocation will do the compilation.
   if (!entry.allocated) return entry.ptr;
 
+  // Given that compilation happens asynchronously, passing (or capturing) these
+  // by value prevents use-after-free errors.
+  struct KernelInfo {
+    intptr_t id;
+    std::string entrypoint;
+    std::string name;
+    std::string serialized_operation;
+  } kernel_info;
+  // TODO(ecg): use designed initializers + const when C++20 is adopted.
+  kernel_info.id = kernel.id();
+  kernel_info.entrypoint = kernel.nested_symbols()[0];
+  kernel_info.name = kernel.root_symbol();
+  kernel_info.serialized_operation = kernel.serialized_operation();
+
   // Compilation (specialized executable compilation) events should be rare, so
   // we can afford to do detailed tracing for every compilation. If compilation
   // events happen too often, it is a much larger problem than the excessive
@@ -297,10 +311,10 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
   // Custom runner for compiling specializations that schedules compilation task
   // into the dedicated thread pool and adds tracing.
-  auto runner = [kernel](size_t specialization,
-                         ArrayRef<OperandConstraint> constraints,
-                         ArrayRef<MemrefDesc> operands, TaskFunction compile,
-                         llvm::Any user_data) {
+  auto runner = [kernel_info](size_t specialization,
+                              ArrayRef<OperandConstraint> constraints,
+                              ArrayRef<MemrefDesc> operands,
+                              TaskFunction compile, llvm::Any user_data) {
     assert(operands.size() == constraints.size());
 
     // Get the context of the request that triggered specialization compilation.
@@ -327,23 +341,16 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // Schedule specialization compilation task into the dedicated thread pool.
     CompilationThreadPool& thread_pool = CompilationThreadPool::Get(host);
 
-    thread_pool.Schedule([kernel, specialization, request_id = req_ctx->id(),
+    thread_pool.Schedule([kernel_info, specialization,
+                          request_id = req_ctx->id(),
                           session_name = GetSessionName(req_ctx),
                           compile = std::move(compile),
                           args = std::move(args)]() mutable {
-      // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
-      // theory can be unloaded before the completion of the compilation task.
-      // It can't happen right now, because we require specialized compilation
-      // to finish before returning the response, however for safety tracing
-      // attributes that require the `kernel` attribute should be constructed in
-      // the caller thread.
-      absl::string_view name(kernel.root_symbol().data(),
-                             kernel.root_symbol().size());
       TraceMe trace_me([&] {
         return TraceMeEncode("tf_jitrt.CompileSpecialization",
                              {{"id", request_id},
-                              {"kernel_id", kernel.id()},
-                              {"executable", name},
+                              {"kernel_id", kernel_info.id},
+                              {"executable", kernel_info.name},
                               {"specialization", specialization}});
       });
 
@@ -353,27 +360,25 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
         });
       }
 
-      absl::string_view serialized_operation(
-          kernel.serialized_operation().data(),
-          kernel.serialized_operation().size());
       trace_me.AppendMetadata([&] {
-        return TraceMeEncode({{"src", serialized_operation}});
+        return TraceMeEncode({{"src", kernel_info.serialized_operation}});
       });
 
       auto compile_start_time = absl::Now();
       LOG(INFO) << "Started JitExecutable specialization compilation for "
-                << name << " (" << session_name << ")";
+                << kernel_info.name << " (" << session_name << ")";
       compile();
       auto compile_duration = absl::Now() - compile_start_time;
 
-      LOG(INFO) << "JitExecutable specialization compilation for " << name
-                << " took " << absl::ToInt64Milliseconds(compile_duration)
-                << " ms (" << session_name << ")";
+      LOG(INFO) << "JitExecutable specialization compilation for "
+                << kernel_info.name << " took "
+                << absl::ToInt64Milliseconds(compile_duration) << " ms ("
+                << session_name << ")";
 
       if (compile_duration > absl::Seconds(1))
         LOG(INFO) << "Expensive JitExecutable specialization compilation ("
                   << absl::ToInt64Milliseconds(compile_duration) << " ms):\n"
-                  << kernel.serialized_operation().str();
+                  << kernel_info.serialized_operation;
     });
   };
 
@@ -383,21 +388,16 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // Compile kernel asynchronously in the compilation thread pool.
   CompilationThreadPool& thread_pool = CompilationThreadPool::Get(host);
 
-  thread_pool.Schedule([kernel, runner, workers = *worker_threads,
+  thread_pool.Schedule([kernel_info, runner, workers = *worker_threads,
                         ptr = entry.ptr, request_id = req_ctx->id(),
                         session_name = GetSessionName(req_ctx),
                         tf_jitrt_opts = opts]() {
     TraceMe trace_me([&] {
-      absl::string_view name(kernel.root_symbol().data(),
-                             kernel.root_symbol().size());
-      absl::string_view serialized_operation(
-          kernel.serialized_operation().data(),
-          kernel.serialized_operation().size());
       return TraceMeEncode("tf_jitrt.CompileDefault",
                            {{"id", request_id},
-                            {"kernel_id", kernel.id()},
-                            {"executable", name},
-                            {"src", serialized_operation}});
+                            {"kernel_id", kernel_info.id},
+                            {"executable", kernel_info.name},
+                            {"src", kernel_info.serialized_operation}});
     });
 
     // Options for the default JitRt compilation pipeline (lowering to LLVM).
@@ -442,26 +442,23 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     opts.calling_convention = CompilationOptions::DefaultCallingConvention(
         mlir::bufferization::BufferizeTypeConverter());
 
-    auto entrypoint = kernel.nested_symbols()[0];
-    auto module = kernel.serialized_operation();
-
     // Instantiate new JitExecutable from the MLIR source.
     auto compile_start_time = absl::Now();
     LOG(INFO) << "Started JitExecutable instantiation compilation for "
-              << kernel.root_symbol().str() << " (" << session_name << ")";
-    Expected<JitExecutable> jit_executable =
-        JitExecutable::Instantiate(module, entrypoint, std::move(opts), runner);
+              << kernel_info.name << " (" << session_name << ")";
+    Expected<JitExecutable> jit_executable = JitExecutable::Instantiate(
+        kernel_info.serialized_operation, kernel_info.entrypoint,
+        std::move(opts), runner);
     auto compile_duration = absl::Now() - compile_start_time;
 
-    LOG(INFO) << "JitExecutable instantiation for "
-              << kernel.root_symbol().str() << " took "
-              << absl::ToInt64Milliseconds(compile_duration) << " ms ("
-              << session_name << ")";
+    LOG(INFO) << "JitExecutable instantiation for " << kernel_info.name
+              << " took " << absl::ToInt64Milliseconds(compile_duration)
+              << " ms (" << session_name << ")";
 
     if (compile_duration > absl::Seconds(1))
       LOG(INFO) << "Expensive JitExecutable instantiation ("
                 << absl::ToInt64Milliseconds(compile_duration) << " ms):\n"
-                << kernel.serialized_operation().str();
+                << kernel_info.serialized_operation;
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
