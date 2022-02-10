@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_H_
 
+#include <string>
 #include <utility>
 
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -30,6 +33,11 @@ limitations under the License.
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 namespace tensorflow {
+
+// Record JitRt kernel compilation time for a given session name.
+void RecordCompileTime(const std::string& model_name, const std::string& kernel,
+                       absl::optional<size_t> specialization,
+                       absl::Duration compile_time);
 
 // A set of helper classes to convert results returned from the compiled
 // functions (memrefs or async memrefs) to the Tensorflow Tensors that can be

@@ -133,12 +133,17 @@ cc_library(
 
 tfrt_cc_library(
     name = "tf_jitrt",
+    srcs = ["jit/tf_jitrt.cc"],
     hdrs = ["jit/tf_jitrt.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/runtime_fallback/util:type_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",

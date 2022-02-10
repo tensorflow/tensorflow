@@ -379,6 +379,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
         LOG(INFO) << "Expensive JitExecutable specialization compilation ("
                   << absl::ToInt64Milliseconds(compile_duration) << " ms):\n"
                   << kernel_info.serialized_operation;
+
+      RecordCompileTime(session_name, kernel_info.name, specialization,
+                        compile_duration);
     });
   };
 
@@ -459,6 +462,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
       LOG(INFO) << "Expensive JitExecutable instantiation ("
                 << absl::ToInt64Milliseconds(compile_duration) << " ms):\n"
                 << kernel_info.serialized_operation;
+
+    RecordCompileTime(session_name, kernel_info.name, absl::nullopt,
+                      compile_duration);
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
