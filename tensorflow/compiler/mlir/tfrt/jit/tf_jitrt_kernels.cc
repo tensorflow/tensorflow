@@ -241,9 +241,7 @@ static std::string AsTensorContent(const MemrefDesc& desc) {
 }
 
 // Gets the session name from the fallback request state.
-static const std::string GetSessionName(const ExecutionContext& exec_ctx) {
-  RequestContext* req_ctx = exec_ctx.request_ctx();
-
+static const std::string GetSessionName(RequestContext* req_ctx) {
   auto* fallback = req_ctx->GetDataIfExists<KernelFallbackCompatRequestState>();
   if (!fallback) return "<unknown>";
 
@@ -292,19 +290,6 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   // We lost the race; some other invocation will do the compilation.
   if (!entry.allocated) return entry.ptr;
 
-  // Attributes required for tracing compilation.
-  int64_t request_id = exec_ctx.request_ctx()->id();
-
-  // TODO(ezhulenev): We capture host by value in the `runner` under the
-  // assumption that it will never be destructed (the assumption holds in
-  // practice). If it's not the case we must make compilation thread pool
-  // reference counted.
-  HostContext* host = exec_ctx.host();
-
-  // We capture the session name when we create the JitExecutable, because we
-  // assume that BEF file is always executed within the same session.
-  std::string session_name = GetSessionName(exec_ctx);
-
   // Compilation (specialized executable compilation) events should be rare, so
   // we can afford to do detailed tracing for every compilation. If compilation
   // events happen too often, it is a much larger problem than the excessive
@@ -312,11 +297,15 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
   // Custom runner for compiling specializations that schedules compilation task
   // into the dedicated thread pool and adds tracing.
-  auto runner = [kernel, request_id, host, session_name](
-                    size_t specialization,
-                    ArrayRef<OperandConstraint> constraints,
-                    ArrayRef<MemrefDesc> operands, TaskFunction compile) {
+  auto runner = [kernel](size_t specialization,
+                         ArrayRef<OperandConstraint> constraints,
+                         ArrayRef<MemrefDesc> operands, TaskFunction compile,
+                         llvm::Any user_data) {
     assert(operands.size() == constraints.size());
+
+    // Get the context of the request that triggered specialization compilation.
+    RequestContext* req_ctx = llvm::any_cast<RequestContext*>(user_data);
+    HostContext* host = req_ctx->host();
 
     // Prepare arguments for the compilation tracing in the caller thread,
     // because operands lifetime is shorter than the compilation task.
@@ -338,8 +327,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // Schedule specialization compilation task into the dedicated thread pool.
     CompilationThreadPool& thread_pool = CompilationThreadPool::Get(host);
 
-    thread_pool.Schedule([request_id, kernel, specialization,
-                          compile = std::move(compile), session_name,
+    thread_pool.Schedule([kernel, specialization, request_id = req_ctx->id(),
+                          session_name = GetSessionName(req_ctx),
+                          compile = std::move(compile),
                           args = std::move(args)]() mutable {
       // TODO(ezhulenev): BEF file that owns the CompilationUnitAttribute in
       // theory can be unloaded before the completion of the compilation task.
@@ -387,11 +377,16 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     });
   };
 
+  HostContext* host = exec_ctx.host();
+  RequestContext* req_ctx = exec_ctx.request_ctx();
+
   // Compile kernel asynchronously in the compilation thread pool.
   CompilationThreadPool& thread_pool = CompilationThreadPool::Get(host);
 
-  thread_pool.Schedule([kernel, request_id, runner, workers = *worker_threads,
-                        session_name, ptr = entry.ptr, tf_jitrt_opts = opts]() {
+  thread_pool.Schedule([kernel, runner, workers = *worker_threads,
+                        ptr = entry.ptr, request_id = req_ctx->id(),
+                        session_name = GetSessionName(req_ctx),
+                        tf_jitrt_opts = opts]() {
     TraceMe trace_me([&] {
       absl::string_view name(kernel.root_symbol().data(),
                              kernel.root_symbol().size());
@@ -669,8 +664,11 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   // Get an executable that might be specialized to the operands.
   DebugListener debug_listener;
 
-  Expected<AsyncValuePtr<Executable>> executable =
-      jit_executable.GetExecutable(memrefs, debug ? &debug_listener : nullptr);
+  // Pass request context to the compilation task runner.
+  llvm::Any user_data = exec_ctx.request_ctx();
+
+  Expected<AsyncValuePtr<Executable>> executable = jit_executable.GetExecutable(
+      memrefs, user_data, debug ? &debug_listener : nullptr);
   if (auto err = executable.takeError())
     return ReturnErrors(results, std::move(err), exec_ctx);
 
