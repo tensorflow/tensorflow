@@ -149,9 +149,9 @@ class RowPartition(composite_tensor.CompositeTensor):
       ValueError: If nrows is specified but value_rowids is not None.
     """
     if internal is not _row_partition_factory_key:
-      raise ValueError("RaggedTensor constructor is private; please use one "
+      raise ValueError("RowPartition constructor is private; please use one "
                        "of the factory methods instead (e.g., "
-                       "RaggedTensor.from_row_lengths())")
+                       "RowPartition.from_row_lengths())")
 
     # Validate the arguments.
     if not isinstance(row_splits, ops.Tensor):
@@ -166,23 +166,18 @@ class RowPartition(composite_tensor.CompositeTensor):
     self._row_splits = row_splits
 
     # Store any cached tensors.  These are used to avoid unnecessary
-    # round-trip conversions when a RaggedTensor is constructed from
+    # round-trip conversions when a RowPartition is constructed from
     # lengths or rowids, and we later want those lengths/rowids back.
-    for tensor in [row_lengths, value_rowids, nrows]:
+    for tensor in [row_lengths, value_rowids, nrows, uniform_row_length, nvals]:
       if tensor is not None:
         if not isinstance(tensor, ops.Tensor):
           raise TypeError("Cached value must be a Tensor or None.")
-        elif tensor.dtype not in (dtypes.int32, dtypes.int64):
-          raise TypeError("Cached value must be int32 or int64.")
+        elif tensor.dtype != row_splits.dtype:
+          raise ValueError(f"Inconsistent dtype for encoding tensors: "
+                           f"{tensor} vs {row_splits}")
     self._row_lengths = row_lengths
     self._value_rowids = value_rowids
     self._nrows = nrows
-
-    if uniform_row_length is not None:
-      if not isinstance(uniform_row_length, ops.Tensor):
-        raise TypeError("uniform_row_length must be a Tensor or None.")
-      elif uniform_row_length.dtype not in (dtypes.int32, dtypes.int64):
-        raise TypeError("uniform_row_length must be int32 or int64.")
     self._uniform_row_length = uniform_row_length
     self._nvals = nvals
 
@@ -988,15 +983,11 @@ class RowPartition(composite_tensor.CompositeTensor):
   def with_row_splits_dtype(self, dtype):
     """Returns a copy of this RowPartition with the given `row_splits` dtype.
 
-    For RaggedTensors with multiple ragged dimensions, the `row_splits` for all
-    nested `RaggedTensor` objects are cast to the given dtype.
-
     Args:
       dtype: The dtype for `row_splits`.  One of `tf.int32` or `tf.int64`.
 
     Returns:
-      A copy of this RaggedTensor, with the `row_splits` cast to the given
-      type.
+      A copy of this RowPartition, with the `row_splits` cast to the given type.
     """
     dtype = dtypes.as_dtype(dtype)
     if dtype not in (dtypes.int32, dtypes.int64):
