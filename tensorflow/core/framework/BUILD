@@ -1745,6 +1745,17 @@ tf_proto_library(
     ],
 )
 
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "function_proto_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [
+#         ":function_proto",
+#     ],
+# )
+# copybara:uncomment_end
+
 tf_proto_library(
     name = "summary_proto",
     srcs = ["summary.proto"],

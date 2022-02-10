@@ -67,6 +67,12 @@ EagerContext& GlobalEagerContext() {
   return *global_ctx;
 }
 
+EagerContext& GlobalPythonEagerContext() {
+  EagerContext* ctx = reinterpret_cast<EagerContext*>(GetCEagerContext());
+  DCHECK(ctx) << "The Python eager context must be initialized first.";
+  return *ctx;
+}
+
 StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
   EagerContext& ctx = this->eager_ctx_;
 
@@ -80,11 +86,18 @@ StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
 }
 
 Status Runtime::CreateFunction(const FunctionDef& fdef) {
-  return this->eager_ctx_.FuncLibDef()->AddFunctionDef(fdef);
+  auto* flib = this->eager_ctx_.FuncLibDef();
+  if (flib->Find(fdef.signature().name())) {
+    return flib->ReplaceFunction(fdef.signature().name(), fdef);
+  } else {
+    return flib->AddFunctionDef(fdef);
+  }
 }
 
-Status Runtime::CreateFunction(mlir::tfg::GraphFuncOp fop) {
-  return mlir::tfg::ExportFunction(fop, *this->eager_ctx_.FuncLibDef());
+Status Runtime::CreateFunction(OpaqueTfgGraphFuncOp* fop) {
+  mlir::tfg::GraphFuncOp fop_proper =
+      *reinterpret_cast<mlir::tfg::GraphFuncOp*>(fop);
+  return mlir::tfg::ExportFunction(fop_proper, *this->eager_ctx_.FuncLibDef());
 }
 
 StatusOr<ReturnValues> Runtime::CallFunction(
