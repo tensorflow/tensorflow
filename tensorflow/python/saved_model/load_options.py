@@ -14,6 +14,7 @@
 # ==============================================================================
 """Options for saving SavedModels."""
 
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -27,12 +28,13 @@ class LoadOptions(object):
 
   # Define object attributes in __slots__ for improved memory and performance.
   __slots__ = ("allow_partial_checkpoint", "experimental_io_device",
-               "experimental_skip_checkpoint")
+               "experimental_skip_checkpoint", "experimental_variable_policy")
 
   def __init__(self,
                allow_partial_checkpoint=False,
                experimental_io_device=None,
-               experimental_skip_checkpoint=False):
+               experimental_skip_checkpoint=False,
+               experimental_variable_policy=None):
     """Creates an object that stores options for SavedModel loading.
 
     *When to set `allow_partial_checkpoint=True`?*
@@ -108,3 +110,6 @@ class LoadOptions(object):
     self.experimental_io_device = experimental_io_device
     self.allow_partial_checkpoint = allow_partial_checkpoint
     self.experimental_skip_checkpoint = experimental_skip_checkpoint
+    self.experimental_variable_policy = (
+        save_options.VariablePolicy.from_obj(experimental_variable_policy))
+

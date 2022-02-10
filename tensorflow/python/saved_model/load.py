@@ -25,6 +25,7 @@ from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import function_saved_model_utils
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -659,13 +660,30 @@ class Loader(object):
     with ops.get_default_graph()._variable_creator_scope(  # pylint: disable=protected-access
         uninitialized_variable_creator,
         priority=50):
-      return variables.Variable(
-          shape=proto.shape,
-          dtype=proto.dtype,
-          name=name,
-          trainable=trainable,
-          synchronization=synchronization,
-          aggregation=aggregation), setattr
+      saved_device = proto.device
+      load_with_device = (
+          self._save_options.experimental_variable_policy
+              ._save_variable_devices()
+          and config.get_soft_device_placement()
+          and saved_device != ''
+      )
+      if load_with_device:
+        with ops.device(saved_device):
+          return variables.Variable(
+              shape=proto.shape,
+              dtype=proto.dtype,
+              name=name,
+              trainable=trainable,
+              synchronization=synchronization,
+              aggregation=aggregation), setattr
+      else:
+        return variables.Variable(
+            shape=proto.shape,
+            dtype=proto.dtype,
+            name=name,
+            trainable=trainable,
+            synchronization=synchronization,
+            aggregation=aggregation), setattr
 
   def _recreate_constant(self, proto):
     tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
