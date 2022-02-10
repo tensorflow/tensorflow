@@ -2415,7 +2415,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/ir:shape_inference_utils",
         "//tensorflow/core/platform:types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
