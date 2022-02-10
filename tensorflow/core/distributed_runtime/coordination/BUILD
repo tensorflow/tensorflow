@@ -82,6 +82,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
 )
