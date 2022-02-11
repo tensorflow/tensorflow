@@ -107,8 +107,8 @@
 build --define framework_shared_object=true
 
 # For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
-build --java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
-build --host_java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
+build --java_toolchain=//tensorflow/tools/toolchains/java:tf_java_toolchain
+build --host_java_toolchain=//tensorflow/tools/toolchains/java:tf_java_toolchain
 
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
@@ -555,13 +555,13 @@ build:rbe_linux_py3_ml2014 --config=rbe_linux_py3
 build:rbe_linux_py3_ml2014 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="@tf_toolchains//toolchains/win/tf_win_02082022:toolchain"
-build:rbe_win --extra_toolchains="@tf_toolchains//toolchains/win/tf_win_02082022:cc-toolchain-x64_windows"
-build:rbe_win --host_javabase="@tf_toolchains//toolchains/win:windows_jdk8"
-build:rbe_win --javabase="@tf_toolchains//toolchains/win:windows_jdk8"
-build:rbe_win --extra_execution_platforms="@tf_toolchains//toolchains/win:rbe_windows_ltsc2019"
-build:rbe_win --host_platform="@tf_toolchains//toolchains/win:rbe_windows_ltsc2019"
-build:rbe_win --platforms="@tf_toolchains//toolchains/win:rbe_windows_ltsc2019"
+build:rbe_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_02082022:toolchain"
+build:rbe_win --extra_toolchains="//tensorflow/tools/toolchains/win/tf_win_02082022:cc-toolchain-x64_windows"
+build:rbe_win --host_javabase="//tensorflow/tools/toolchains/win:windows_jdk8"
+build:rbe_win --javabase="//tensorflow/tools/toolchains/win:windows_jdk8"
+build:rbe_win --extra_execution_platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
+build:rbe_win --host_platform="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
+build:rbe_win --platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 build:rbe_win --experimental_strict_action_env=true
 
@@ -581,19 +581,19 @@ build:rbe_win_py37 --python_path=C:\\Python37\\python.exe
 build:rbe_win_py38 --config=rbe
 build:rbe_win_py38 --repo_env=PYTHON_BIN_PATH=C:\\Python38\\python.exe
 build:rbe_win_py38 --repo_env=PYTHON_LIB_PATH=C:\\Python38\\lib\\site-packages
-build:rbe_win_py38 --repo_env=TF_PYTHON_CONFIG_REPO=@tf_toolchains//toolchains/win_1803/py38
+build:rbe_win_py38 --repo_env=TF_PYTHON_CONFIG_REPO=//tensorflow/tools/toolchains/win_1803/py38
 build:rbe_win_py38 --python_path=C:\\Python38\\python.exe
 
 build:rbe_win_py39 --config=rbe
 build:rbe_win_py39 --repo_env=PYTHON_BIN_PATH=C:\\Python39\\python.exe
 build:rbe_win_py39 --repo_env=PYTHON_LIB_PATH=C:\\Python39\\lib\\site-packages
-build:rbe_win_py39 --repo_env=TF_PYTHON_CONFIG_REPO=@tf_toolchains//toolchains/win_1803/py39
+build:rbe_win_py39 --repo_env=TF_PYTHON_CONFIG_REPO=//tensorflow/tools/toolchains/win_1803/py39
 build:rbe_win_py39 --python_path=C:\\Python39\\python.exe
 
 build:rbe_win_py310 --config=rbe
 build:rbe_win_py310 --repo_env=PYTHON_BIN_PATH=C:\\Python310\\python.exe
 build:rbe_win_py310 --repo_env=PYTHON_LIB_PATH=C:\\Python310\\lib\\site-packages
-build:rbe_win_py310 --repo_env=TF_PYTHON_CONFIG_REPO=@tf_toolchains//toolchains/win_1803/py310
+build:rbe_win_py310 --repo_env=TF_PYTHON_CONFIG_REPO=//tensorflow/tools/toolchains/win_1803/py310
 build:rbe_win_py310 --python_path=C:\\Python310\\python.exe
 
 # These you may need to change for your own GCP project.
