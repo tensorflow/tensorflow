@@ -560,7 +560,7 @@ class RaggedShape:
     # 90 = 3 * 5 * 6 = math_ops.reduce_prod(self.inner_shape[:3])
     # 3 = axis - (self.num_row_partitions - 1)
     remainder = axis - (self.num_row_partitions - 1)
-    return math_ops.reduce_prod(self.inner_shape[:remainder])
+    return _reduce_prod_patch(self.inner_shape[:remainder])
 
   def is_uniform(self, axis):
     """Returns true if the indicated dimension is uniform."""
@@ -2289,3 +2289,10 @@ def _alt_inner_shape_from_tensor_shape(shape, dtype, new_inner_rank):
   return constant_op.constant([first_dim] + inner_shape_tail,
                               dtype=dtype)
 
+
+# TODO(b/218932570)
+def _reduce_prod_patch(x):
+  if x.dtype == dtypes.int64:
+    return math_ops.cast(
+        math_ops.reduce_prod(math_ops.cast(x, dtypes.int32)), dtypes.int64)
+  return math_ops.reduce_prod(x)
