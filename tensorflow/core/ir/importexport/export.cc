@@ -656,5 +656,12 @@ Status ConvertOperationToNode(mlir::Operation &op, NodeDef *node,
                               GetValueNameFn get_value_name) {
   return mlir::tfg::ConvertOperationToNodeImpl(op, node, get_value_name);
 }
+Status ConvertOperationToNode(mlir::Operation &op, NodeDef *node) {
+  auto control_ty = mlir::tfg::ControlType::get(op.getContext());
+  return mlir::tfg::ConvertOperationToNodeImpl(
+      op, node, [&](mlir::Value operand, std::string &output_name) {
+        return mlir::tfg::GetValueName(operand, output_name, control_ty);
+      });
+}
 
 }  //  namespace tensorflow
