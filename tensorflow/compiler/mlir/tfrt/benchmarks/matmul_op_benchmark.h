@@ -84,10 +84,8 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   }
 
   // Free memory owned by the returned memrefs.
-  auto result_ctx =
-      std::make_unique<ResultConversionCtx>(std::move(input_ptrs));
-  ReturnValueConverter<ResultConversionCtx> converter(results,
-                                                      std::move(result_ctx));
+  ResultConversionCtx result_ctx(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results, result_ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Execute async tasks in the HostContext work queue.

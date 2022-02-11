@@ -49,6 +49,7 @@ struct MlirBenchmark {
   std::unique_ptr<HostContext> host;
   const Executable* executable;
   tfrt::ExecutionContext exec_ctx;
+  std::unique_ptr<ResultConversionCtx> conversion_ctx;
   ReturnValueConverter<ResultConversionCtx> converter;
 };
 
@@ -82,10 +83,8 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   }
 
   // Free memory owned by the returned memrefs.
-  auto result_ctx =
-      std::make_unique<ResultConversionCtx>(std::move(input_ptrs));
-  ReturnValueConverter<ResultConversionCtx> converter(results,
-                                                      std::move(result_ctx));
+  auto ctx = std::make_unique<ResultConversionCtx>(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results, *ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Get an executable that might be specialized to the operands.
@@ -101,7 +100,8 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
       << "Failed to get executable: " << StrCat(executable->GetError());
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
-  return {std::move(host), &executable->get(), exec_ctx, std::move(converter)};
+  return {std::move(host), &executable->get(), exec_ctx, std::move(ctx),
+          std::move(converter)};
 }
 
 template <typename T, int rank>
