@@ -17,7 +17,7 @@ cc_library(
     deps = [
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
         "//tensorflow/stream_executor/platform",
-        "@com_github_grpc_grpc//:grpc++",
+        "//tensorflow:grpc++",
     ],
     alwayslink = 1,
 )
@@ -26,7 +26,7 @@ cc_library(
     name = "grpc_credentials",
     hdrs = ["grpc_credentials.h"],
     deps = [
-        "@com_github_grpc_grpc//:grpc++",
+        "//tensorflow:grpc++",
     ] + grpc_credentials_dependency(),
 )
 
@@ -47,7 +47,7 @@ tf_kernel_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
         "//tensorflow/stream_executor/platform",
-        "@com_github_grpc_grpc//:grpc++",
+        "//tensorflow:grpc++",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
