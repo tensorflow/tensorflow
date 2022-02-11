@@ -103,6 +103,8 @@ std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs);
 
 // Converts an ArrayAttr to a 1D 64-bit dense elements attribute.
 DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr);
+DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                        MLIRContext* ctx);
 DenseIntElementsAttr GetI64ElementsAttr(llvm::ArrayRef<int64_t> values,
                                         Builder* builder);
 

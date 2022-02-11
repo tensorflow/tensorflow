@@ -122,14 +122,6 @@ static LogicalResult VerifyDimAttr(OpT op) {
   return success();
 }
 
-// Returns 1D 64-bit dense elements attribute with the given values.
-DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
-                                        Builder* builder) {
-  RankedTensorType ty = RankedTensorType::get(
-      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get(ty, values);
-}
-
 // Given the start indices and slice sizes for a dynamic-slice that can be
 // converted to a static slice, returns the limits for the static slice.
 DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
@@ -141,7 +133,7 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
     int64_t slice_size = slice_sizes.getValues<IntegerAttr>()[i].getInt();
     slice_limits.push_back(start_index + slice_size);
   }
-  return GetI64ElementsAttr(slice_limits, builder);
+  return hlo::GetI64ElementsAttr(slice_limits, builder);
 }
 
 /// Replaces the given op with the contents of the given single-block region,
@@ -513,9 +505,9 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
     auto slice_type = RankedTensorType::get(slice_shape, element_type);
     Value result = rewriter.create<SliceOp>(
         gather.getLoc(), slice_type, gather.getOperand(0),
-        GetI64ElementsAttr(slice_start, &rewriter),
-        GetI64ElementsAttr(slice_end, &rewriter),
-        GetI64ElementsAttr(slice_stride, &rewriter));
+        hlo::GetI64ElementsAttr(slice_start, &rewriter),
+        hlo::GetI64ElementsAttr(slice_end, &rewriter),
+        hlo::GetI64ElementsAttr(slice_stride, &rewriter));
 
     auto collapsed_slice_dims = dnums.getCollapsedSliceDims();
     if (!collapsed_slice_dims.empty()) {
@@ -1023,9 +1015,9 @@ struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
 
     auto sliced_shape = rewriter.create<SliceOp>(
         iota.getLoc(), converted_shape,
-        GetI64ElementsAttr(iota_dimension_int, &rewriter),
-        GetI64ElementsAttr(iota_dimension_int + 1, &rewriter),
-        GetI64ElementsAttr(1, &rewriter));
+        hlo::GetI64ElementsAttr(iota_dimension_int, &rewriter),
+        hlo::GetI64ElementsAttr(iota_dimension_int + 1, &rewriter),
+        hlo::GetI64ElementsAttr(1, &rewriter));
 
     auto converted_sliced_shape = rewriter.create<arith::IndexCastOp>(
         iota.getLoc(),
@@ -2521,11 +2513,11 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
     auto loc = dynamic_slice.getLoc();
     int64_t input_rank = input_tensor.getRank();
     auto slice_start_indices =
-        GetI64ElementsAttr(temp_start_indices, &rewriter);
+        hlo::GetI64ElementsAttr(temp_start_indices, &rewriter);
     DenseIntElementsAttr slice_limits = BuildSliceLimits(
         slice_start_indices, dynamic_slice.slice_sizes(), &rewriter);
-    DenseIntElementsAttr slice_strides =
-        GetI64ElementsAttr(SmallVector<int64_t, 4>(input_rank, 1), &rewriter);
+    DenseIntElementsAttr slice_strides = hlo::GetI64ElementsAttr(
+        SmallVector<int64_t, 4>(input_rank, 1), &rewriter);
     auto result = rewriter.create<SliceOp>(loc, input, slice_start_indices,
                                            slice_limits, slice_strides);
     rewriter.replaceOp(dynamic_slice, {result});
@@ -2638,11 +2630,11 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
     }
 
     DenseIntElementsAttr slice_start_indices =
-        GetI64ElementsAttr(temp_start_indices, &rewriter);
+        hlo::GetI64ElementsAttr(temp_start_indices, &rewriter);
     DenseIntElementsAttr slice_limit_indices =
-        GetI64ElementsAttr(temp_limit_indices, &rewriter);
+        hlo::GetI64ElementsAttr(temp_limit_indices, &rewriter);
     DenseIntElementsAttr slice_strides =
-        GetI64ElementsAttr(temp_stride, &rewriter);
+        hlo::GetI64ElementsAttr(temp_stride, &rewriter);
     auto result = rewriter.create<SliceOp>(loc, input, slice_start_indices,
                                            slice_limit_indices, slice_strides);
     rewriter.replaceOp(real_dynamic_slice, {result});
@@ -3257,7 +3249,8 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
         parser.parseKeyword("reducer"))
       return failure();
     OpBuilder builder(parser.getBuilder().getContext());
-    result.addAttribute("dimensions", GetI64ElementsAttr(dimensions, &builder));
+    result.addAttribute("dimensions",
+                        hlo::GetI64ElementsAttr(dimensions, &builder));
 
     // Parse the "reducer" region now.
     SmallVector<OpAsmParser::OperandType, 2> reducerOperands;
@@ -3393,7 +3386,8 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
   // dimension attribute.
   result.addTypes(reduceOpFntype.getResults());
   result.location = innerOp->getLoc();
-  result.addAttribute("dimensions", GetI64ElementsAttr(dimensions, &builder));
+  result.addAttribute("dimensions",
+                      hlo::GetI64ElementsAttr(dimensions, &builder));
 
   return success();
 }
