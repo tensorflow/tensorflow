@@ -91,7 +91,6 @@ case "${TENSORFLOW_TARGET}" in
       -DCMAKE_CXX_FLAGS="${ARMCC_FLAGS}" \
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR=armv6 \
-      -DTFLITE_ENABLE_XNNPACK=OFF \
       "${TENSORFLOW_LITE_DIR}"
     ;;
   aarch64)
@@ -212,4 +211,3 @@ case "${TENSORFLOW_TARGET}" in
 esac
 
 cat "${BUILD_DIR}/debian/changelog"
-
