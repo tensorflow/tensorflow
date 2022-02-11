@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
@@ -242,8 +243,10 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, memref::MemRefDialect, scf::SCFDialect,
                     shape::ShapeDialect, tensor::TensorDialect,
-                    tf_framework::TFFrameworkDialect, lmhlo::LmhloDialect>();
+                    tf_framework::TFFrameworkDialect, lmhlo::LmhloDialect,
+                    arith::ArithmeticDialect>();
     tensor::registerBufferizableOpInterfaceExternalModels(registry);
+    arith::registerBufferizableOpInterfaceExternalModels(registry);
   }
 
  public:
@@ -305,8 +308,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> >
-CreateComputeOpAndFuncBufferizePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass() {
   return std::make_unique<ComputeOpAndFuncBufferizePass>();
 }
 
@@ -314,7 +316,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTiledLoopBufferizePass() {
   return std::make_unique<TiledLoopBufferizePass>();
 }
 
-std::unique_ptr<OperationPass<ModuleOp> > CreateFinalBufferizePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass() {
   return std::make_unique<FinalBufferizePass>();
 }
 
