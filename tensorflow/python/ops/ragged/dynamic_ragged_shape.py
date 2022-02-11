@@ -44,11 +44,11 @@ from tensorflow.python.types import core
 # Allowing inner_shape might mean allowing inner_shape to be initialized by
 # a fully defined TensorShape, or it might mean that you can actually store
 # TensorShape in the inner_shape field. This could conceivably construct
-# a RaggedShape that was dtype agnostic.
+# a DynamicRaggedShape that was dtype agnostic.
 #
 # TODO(martinz): unify the impl of the determination of index type across
-#     RowPartition and RaggedShape.
-class RaggedShape:
+#     RowPartition and DynamicRaggedShape.
+class DynamicRaggedShape:
   """The shape of a ragged or dense tensor.
 
   Ragged shapes are encoded using two fields:
@@ -57,12 +57,12 @@ class RaggedShape:
   * `row_partitions`: A list of `RowPartition` objects, describing how
     that flat shape should be partitioned to add ragged axes.
 
-  If a RaggedShape is the shape of a RaggedTensor rt, then:
+  If a DynamicRaggedShape is the shape of a RaggedTensor rt, then:
   1. row_partitions = rt._nested_row_partitions
      (and thus len(row_partitions) > 0)
   2. inner_shape is the shape of rt.flat_values
 
-  If a RaggedShape is the shape of a dense tensor t, then:
+  If a DynamicRaggedShape is the shape of a dense tensor t, then:
   1. row_partitions = []
   2. inner_shape is the shape of t.
 
@@ -80,10 +80,10 @@ class RaggedShape:
   """
 
   def __init__(self, row_partitions, inner_shape, dtype=None, validate=False):
-    """Core constructor for a RaggedShape.
+    """Core constructor for a DynamicRaggedShape.
 
-    Create a RaggedShape. This can be used to construct a
-    RaggedShape representing a ragged or dense shape. If row_partitions
+    Create a DynamicRaggedShape. This can be used to construct a
+    DynamicRaggedShape representing a ragged or dense shape. If row_partitions
     is an empty list, then this is equivalent to a dense shape.
 
     If row_partitions is specified, then the num_row_partitions will be equal
@@ -133,7 +133,7 @@ class RaggedShape:
       for axis, row_partition in enumerate(self._row_partitions):
         if axis > 0:
           previous_row_partition = self._row_partitions[axis - 1]
-          msg = ("RowPartitions in RaggedShape do not align "
+          msg = ("RowPartitions in DynamicRaggedShape do not align "
                  f"between {axis - 1} and {axis}")
           static_nrows = row_partition.static_nrows
           static_nvals = previous_row_partition.static_nvals
@@ -236,7 +236,7 @@ class RaggedShape:
       dtype: the dtype of the shape (tf.int32 or tf.int64).
 
     Returns:
-      a new RaggedShape
+      a new DynamicRaggedShape
     """
     if not isinstance(lengths, list):
       raise ValueError("lengths should be a list")
@@ -261,7 +261,7 @@ class RaggedShape:
     if not lengths:
       if num_row_partitions > 0:
         raise ValueError("num_row_partitions==0 for a scalar shape")
-      return RaggedShape([], [], dtype=dtype)
+      return DynamicRaggedShape([], [], dtype=dtype)
 
     if not num_row_partitions < len(lengths):
       raise ValueError(
@@ -273,9 +273,9 @@ class RaggedShape:
       (row_partitions, nvals) = _to_row_partitions_and_nvals_from_lengths(
           lengths[:num_row_partitions + 1])
       inner_shape = [nvals] + lengths[num_row_partitions + 1:]
-      return RaggedShape(row_partitions, inner_shape, dtype=dtype)
+      return DynamicRaggedShape(row_partitions, inner_shape, dtype=dtype)
     else:
-      return RaggedShape([], lengths, dtype=dtype)
+      return DynamicRaggedShape([], lengths, dtype=dtype)
 
   @classmethod
   def from_row_partitions(cls, row_partitions, dtype=None):
@@ -286,27 +286,28 @@ class RaggedShape:
       dtype: the dtype to use, or None to use the row_partitions dtype.
 
     Returns:
-      a RaggedShape with inner_rank==1.
+      a DynamicRaggedShape with inner_rank==1.
     """
     if not row_partitions:
       raise ValueError("row_partitions cannot be empty")
     inner_shape = [row_partitions[-1].nvals()]
-    return RaggedShape(row_partitions, inner_shape, dtype=dtype)
+    return DynamicRaggedShape(row_partitions, inner_shape, dtype=dtype)
 
   @classmethod
   def _from_inner_shape(cls, inner_shape, dtype=None):
     """Create a shape from inner_shape, where num_row_partitions == 0."""
-    return RaggedShape([], inner_shape, dtype=dtype)
+    return DynamicRaggedShape([], inner_shape, dtype=dtype)
 
   # pylint: disable=protected-access
   @classmethod
   def from_tensor(cls, t, dtype=None):
     """Constructs a ragged shape for a potentially ragged tensor."""
     if ragged_tensor.is_ragged(t):
-      return RaggedShape(t._nested_row_partitions, _flat_values_shape(t),
-                         dtype=dtype)
+      return DynamicRaggedShape(
+          t._nested_row_partitions, _flat_values_shape(t), dtype=dtype)
     else:
-      return RaggedShape._from_inner_shape(array_ops.shape(t), dtype=dtype)
+      return DynamicRaggedShape._from_inner_shape(
+          array_ops.shape(t), dtype=dtype)
 
   @property
   def row_partitions(self):
@@ -371,7 +372,7 @@ class RaggedShape:
 
   def __repr__(self):
     lengths = _list_with_ellipsis_to_str(self.static_lengths())
-    return ("<RaggedShape "
+    return ("<DynamicRaggedShape "
             "lengths=%s num_row_partitions=%r>" %
             (lengths, self.num_row_partitions))
 
@@ -397,22 +398,23 @@ class RaggedShape:
       stop: the last dimension (exclusive). 0 <= stop <= rank
     """
     if stop <= start:
-      return RaggedShape._from_inner_shape([])
+      return DynamicRaggedShape._from_inner_shape([])
     elif start == 0:
       if stop <= self.num_row_partitions:
         if stop == 1:
-          return RaggedShape._from_inner_shape([self.row_partitions[0].nrows()])
+          return DynamicRaggedShape._from_inner_shape(
+              [self.row_partitions[0].nrows()])
         new_row_partitions = self.row_partitions[:stop - 1]
         new_inner_shape = [new_row_partitions[-1].nvals()]
-        return RaggedShape(new_row_partitions, new_inner_shape)
+        return DynamicRaggedShape(new_row_partitions, new_inner_shape)
       else:
         if self.rank <= stop:
           return self
         if self.num_row_partitions == 0:
-          return RaggedShape._from_inner_shape(self.inner_shape[:stop])
+          return DynamicRaggedShape._from_inner_shape(self.inner_shape[:stop])
         else:
           new_inner_shape = self.inner_shape[:stop - self.num_row_partitions]
-        return RaggedShape(self.row_partitions, new_inner_shape)
+        return DynamicRaggedShape(self.row_partitions, new_inner_shape)
     else:
       if stop < self.rank:
         partial = self._slice_shape(0, stop)
@@ -422,7 +424,7 @@ class RaggedShape:
         if not x.is_uniform():
           raise ValueError("All relevant dimensions must be uniform")
 
-      return RaggedShape._from_inner_shape(
+      return DynamicRaggedShape._from_inner_shape(
           partial._with_num_row_partitions(0).inner_shape[start:])
 
   def _dimension(self, index):
@@ -524,7 +526,7 @@ class RaggedShape:
     Effectively, this is self[:axis+1]._num_elements()
 
     Example:
-    shape = RaggedShape._from_inner_shape([2, 3, 4])
+    shape = DynamicRaggedShape._from_inner_shape([2, 3, 4])
     shape._num_slices_in_dimension(0) = 2
     shape._num_slices_in_dimension(1) = 6
     shape._num_slices_in_dimension(2) = 24
@@ -722,19 +724,21 @@ class RaggedShape:
             row_length, nrows=nrows, dtype=self.dtype)
         more_rp.append(rp)
       alt_inner = self._alt_inner_shape(new_inner_rank)
-      return RaggedShape(
+      return DynamicRaggedShape(
           list(self.row_partitions) + more_rp, alt_inner)
     else:
       assert num_row_partitions < self.num_row_partitions
-      return RaggedShape(self.row_partitions[:num_row_partitions],
-                         self._alt_inner_shape(self.rank - num_row_partitions))
+      return DynamicRaggedShape(
+          self.row_partitions[:num_row_partitions],
+          self._alt_inner_shape(self.rank - num_row_partitions))
 
   def with_dtype(self, dtype):
     """Change the dtype of the shape."""
     if dtype == self.dtype:
       return self
     else:
-      return RaggedShape(self.row_partitions, self.inner_shape, dtype=dtype)
+      return DynamicRaggedShape(
+          self.row_partitions, self.inner_shape, dtype=dtype)
 
   def _as_row_partitions(self):
     """Returns row partitions representing this shape.
@@ -810,8 +814,8 @@ class RaggedShape:
       return flat_values
 
 
-def broadcast_dynamic_shape(shape_x: RaggedShape,
-                            shape_y: RaggedShape) -> RaggedShape:
+def broadcast_dynamic_shape(shape_x: DynamicRaggedShape,
+                            shape_y: DynamicRaggedShape) -> DynamicRaggedShape:
   """Returns the shape formed by broadcasting two shapes to be compatible.
 
   1. If shape_x and shape_y both have row_partitions, then fail if their dtypes
@@ -821,23 +825,23 @@ def broadcast_dynamic_shape(shape_x: RaggedShape,
   3. If one has row_partitions, go with that dtype.
 
   Args:
-    shape_x: A `RaggedShape`
-    shape_y: A `RaggedShape`
+    shape_x: A `DynamicRaggedShape`
+    shape_y: A `DynamicRaggedShape`
 
   Returns:
-    A `RaggedShape`.
+    A `DynamicRaggedShape`.
   Raises:
     ValueError: If `shape_x` and `shape_y` are not broadcast-compatible.
   """
-  if not isinstance(shape_x, RaggedShape):
-    raise TypeError("shape_x must be a RaggedShape")
-  if not isinstance(shape_y, RaggedShape):
-    raise TypeError("shape_y must be a RaggedShape")
+  if not isinstance(shape_x, DynamicRaggedShape):
+    raise TypeError("shape_x must be a DynamicRaggedShape")
+  if not isinstance(shape_y, DynamicRaggedShape):
+    raise TypeError("shape_y must be a DynamicRaggedShape")
 
   return broadcast_dynamic_shape_extended(shape_x, shape_y)[0]
 
 
-def broadcast_to(rt_input, shape: RaggedShape):
+def broadcast_to(rt_input, shape: DynamicRaggedShape):
   """Broadcasts a potentially ragged tensor to a ragged shape.
 
   Tiles `rt_input` as necessary to match the given shape.
@@ -846,14 +850,14 @@ def broadcast_to(rt_input, shape: RaggedShape):
 
   Args:
     rt_input: The potentially ragged tensor to broadcast.
-    shape: A `RaggedShape`
+    shape: A `DynamicRaggedShape`
 
   Returns:
     A potentially ragged tensor whose values are taken from
     `rt_input`, and whose shape matches `shape`.
   """
-  if not isinstance(shape, RaggedShape):
-    raise TypeError("shape must be a RaggedShape")
+  if not isinstance(shape, DynamicRaggedShape):
+    raise TypeError("shape must be a DynamicRaggedShape")
   rt_input = ragged_tensor.convert_to_tensor_or_ragged_tensor(rt_input)
   origin_shape = None
   if ragged_tensor.is_ragged(rt_input):
@@ -862,12 +866,13 @@ def broadcast_to(rt_input, shape: RaggedShape):
         raise ValueError("Cannot coerce row_splits.dtype")
     else:
       shape = shape.with_dtype(rt_input.row_splits.dtype)
-    origin_shape = RaggedShape.from_tensor(rt_input)
+    origin_shape = DynamicRaggedShape.from_tensor(rt_input)
   else:
     if shape.num_row_partitions != 0:
-      origin_shape = RaggedShape.from_tensor(rt_input, dtype=shape.dtype)
+      origin_shape = DynamicRaggedShape.from_tensor(rt_input, dtype=shape.dtype)
     else:
-      origin_shape = RaggedShape.from_tensor(rt_input, dtype=dtypes.int64)
+      origin_shape = DynamicRaggedShape.from_tensor(rt_input,
+                                                    dtype=dtypes.int64)
       shape = shape.with_dtype(dtype=dtypes.int64)
 
   broadcaster = _get_broadcaster(origin_shape, shape)
@@ -875,8 +880,8 @@ def broadcast_to(rt_input, shape: RaggedShape):
 
 
 def broadcast_dynamic_shape_extended(
-    a: RaggedShape,
-    b: RaggedShape):  #  -> Tuple[RaggedShape, _Broadcaster, _Broadcaster]
+    a: DynamicRaggedShape, b: DynamicRaggedShape
+):  #  -> Tuple[DynamicRaggedShape, _Broadcaster, _Broadcaster]
   """Gets the smallest shape to which a and b can broadcast.
 
   In order to create the smallest shape, one must also do most of the
@@ -892,8 +897,8 @@ def broadcast_dynamic_shape_extended(
   return (c, ac, bc)
 
   Args:
-    a: a RaggedShape
-    b: a RaggedShape
+    a: a DynamicRaggedShape
+    b: a DynamicRaggedShape
 
   Returns:
     A triple of a shape and two broadcasters.
@@ -919,7 +924,7 @@ def broadcast_dynamic_shape_extended(
   elif a.rank == 1 and b.rank == 1:
     [a_layer, b_layer,
      target] = _broadcast_dynamic_shape_one_layer(a.inner_shape, b.inner_shape)
-    target_shape = RaggedShape._from_inner_shape(target)  # pylint: disable=protected-access
+    target_shape = DynamicRaggedShape._from_inner_shape(target)  # pylint: disable=protected-access
     return (target_shape, _Broadcaster(a, target_shape, [a_layer]),
             _Broadcaster(b, target_shape, [b_layer]))
 
@@ -955,8 +960,8 @@ def ragged_binary_elementwise_op_impl(op, x, y):
   if ((x_is_ragged and y_is_ragged) or
       (x_is_ragged and x.flat_values.shape.ndims <= y.shape.ndims) or
       (y_is_ragged and y.flat_values.shape.ndims <= x.shape.ndims)):
-    shape_x = RaggedShape.from_tensor(x)
-    shape_y = RaggedShape.from_tensor(y)
+    shape_x = DynamicRaggedShape.from_tensor(x)
+    shape_y = DynamicRaggedShape.from_tensor(y)
     if shape_x.dtype != shape_y.dtype:
       if not x_is_ragged:
         shape_x = shape_x.with_dtype(shape_y.dtype)
@@ -1256,18 +1261,18 @@ class _Broadcaster:
 
     Note: source_shape.rank and target_shape.rank must be known.
     Args:
-      source_shape: the source RaggedShape
-      target_shape: the target RaggedShape
+      source_shape: the source DynamicRaggedShape
+      target_shape: the target DynamicRaggedShape
       layer_broadcasters: List[_LayerBroadcaster] of length source_shape.rank.
       dtype: the preferred dtype of the broadcaster.
 
     Raises:
       TypeError: if the input types don't match.
     """
-    if not isinstance(source_shape, RaggedShape):
-      raise TypeError("source_shape is not a RaggedShape")
-    if not isinstance(target_shape, RaggedShape):
-      raise TypeError("target_shape is not a RaggedShape")
+    if not isinstance(source_shape, DynamicRaggedShape):
+      raise TypeError("source_shape is not a DynamicRaggedShape")
+    if not isinstance(target_shape, DynamicRaggedShape):
+      raise TypeError("target_shape is not a DynamicRaggedShape")
     if not isinstance(layer_broadcasters, list):
       raise TypeError("layer_broadcasters not a list: " +
                       str(layer_broadcasters))
@@ -1981,7 +1986,8 @@ def _broadcast_dynamic_shape_from_rps(
     return ([], [], [])
 
 
-def _get_broadcast_num_row_partitions(a: RaggedShape, b: RaggedShape):
+def _get_broadcast_num_row_partitions(a: DynamicRaggedShape,
+                                      b: DynamicRaggedShape):
   """Returns broadcast_dynamic_shape(a, b).num_row_partitions."""
   # Assumes rank and num_row_partitions are not None.
   if (a.num_row_partitions == 0 and b.num_row_partitions == 0):
@@ -2000,10 +2006,10 @@ def _get_broadcast_num_row_partitions(a: RaggedShape, b: RaggedShape):
 
 # pylint: disable=protected-access
 def _broadcast_dynamic_shape_extended_complete(
-    a: RaggedShape, b: RaggedShape, b_rps: Sequence[RowPartition],
+    a: DynamicRaggedShape, b: DynamicRaggedShape, b_rps: Sequence[RowPartition],
     c_suffix: Sequence[RowPartition], ac: Sequence[_LayerBroadcaster],
     bc_suffix: Sequence[_LayerBroadcaster]
-) -> Tuple[RaggedShape, _Broadcaster, _Broadcaster]:
+) -> Tuple[DynamicRaggedShape, _Broadcaster, _Broadcaster]:
   """Helper for broadcast_dynamic_shape_extended."""
   c_prefix = b_rps[:-len(c_suffix)]
   bc_prefix_length = b.rank - len(bc_suffix)
@@ -2013,14 +2019,14 @@ def _broadcast_dynamic_shape_extended_complete(
   ]
   c_num_row_partitions = _get_broadcast_num_row_partitions(a, b)
 
-  c_raw = RaggedShape.from_row_partitions(c_prefix + tuple(c_suffix))
+  c_raw = DynamicRaggedShape.from_row_partitions(c_prefix + tuple(c_suffix))
   c = c_raw._with_num_row_partitions(c_num_row_partitions)
   return (c, _Broadcaster(a, c, ac), _Broadcaster(b, c, bc_prefix + bc_suffix))
 
 
 def _broadcast_dynamic_shape_extended_helper(
-    a: RaggedShape,
-    b: RaggedShape) -> Tuple[RaggedShape, _Broadcaster, _Broadcaster]:
+    a: DynamicRaggedShape, b: DynamicRaggedShape
+) -> Tuple[DynamicRaggedShape, _Broadcaster, _Broadcaster]:
   """Helper for broadcast_dynamic_shape_extended.
 
   Here, we force:
@@ -2028,8 +2034,8 @@ def _broadcast_dynamic_shape_extended_helper(
     2 <= b.rank
     1 <= a.rank
   Args:
-    a: a RaggedShape
-    b: a RaggedShape
+    a: a DynamicRaggedShape
+    b: a DynamicRaggedShape
 
   Returns:
     A triple of a shape and two broadcasters.
@@ -2286,8 +2292,7 @@ def _alt_inner_shape_from_tensor_shape(shape, dtype, new_inner_rank):
   new_inner_rank_tail_length = new_inner_rank - 1
   inner_shape_tail = shape[-new_inner_rank_tail_length:].as_list()
   first_dim = shape[:-new_inner_rank_tail_length].num_elements()
-  return constant_op.constant([first_dim] + inner_shape_tail,
-                              dtype=dtype)
+  return constant_op.constant([first_dim] + inner_shape_tail, dtype=dtype)
 
 
 # TODO(b/218932570)
