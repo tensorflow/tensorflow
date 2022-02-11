@@ -60,6 +60,12 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+#if __cplusplus >= 201703L
+using ::std::any_cast;
+#else
+using ::llvm::any_cast;
+#endif
+
 using ::llvm::Expected;
 using ::llvm::None;
 using ::llvm::Optional;
@@ -314,11 +320,12 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   auto runner = [kernel_info](size_t specialization,
                               ArrayRef<OperandConstraint> constraints,
                               ArrayRef<MemrefDesc> operands,
-                              TaskFunction compile, llvm::Any user_data) {
+                              TaskFunction compile,
+                              JitExecutable::UserData user_data) {
     assert(operands.size() == constraints.size());
 
     // Get the context of the request that triggered specialization compilation.
-    RequestContext* req_ctx = llvm::any_cast<RequestContext*>(user_data);
+    RequestContext* req_ctx = any_cast<RequestContext*>(user_data);
     HostContext* host = req_ctx->host();
 
     // Prepare arguments for the compilation tracing in the caller thread,
@@ -341,48 +348,48 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     // Schedule specialization compilation task into the dedicated thread pool.
     CompilationThreadPool& thread_pool = CompilationThreadPool::Get(host);
 
-    thread_pool.Schedule([kernel_info, specialization,
-                          request_id = req_ctx->id(),
-                          session_name = GetSessionName(req_ctx),
-                          compile = std::move(compile),
-                          args = std::move(args)]() mutable {
-      TraceMe trace_me([&] {
-        return TraceMeEncode("tf_jitrt.CompileSpecialization",
-                             {{"id", request_id},
-                              {"kernel_id", kernel_info.id},
-                              {"executable", kernel_info.name},
-                              {"specialization", specialization}});
-      });
+    thread_pool.Schedule(
+        [kernel_info, specialization, request_id = req_ctx->id(),
+         session_name = GetSessionName(req_ctx), compile = std::move(compile),
+         args = std::move(args)]() mutable {
+          TraceMe trace_me([&] {
+            return TraceMeEncode("tf_jitrt.CompileSpecialization",
+                                 {{"id", request_id},
+                                  {"kernel_id", kernel_info.id},
+                                  {"executable", kernel_info.name},
+                                  {"specialization", specialization}});
+          });
 
-      for (SpecializationArg& arg : args) {
-        trace_me.AppendMetadata([&] {
-          return TraceMeEncode({{arg.first, arg.second}});
+          for (SpecializationArg& arg : args) {
+            trace_me.AppendMetadata([&] {
+              return TraceMeEncode({{arg.first, arg.second}});
+            });
+          }
+
+          trace_me.AppendMetadata([&] {
+            return TraceMeEncode({{"src", kernel_info.serialized_operation}});
+          });
+
+          auto compile_start_time = absl::Now();
+          LOG(INFO) << "Started JitExecutable specialization compilation for "
+                    << kernel_info.name << " (" << session_name << ")";
+          compile();
+          auto compile_duration = absl::Now() - compile_start_time;
+
+          LOG(INFO) << "JitExecutable specialization compilation for "
+                    << kernel_info.name << " took "
+                    << absl::ToInt64Milliseconds(compile_duration) << " ms ("
+                    << session_name << ")";
+
+          if (compile_duration > absl::Seconds(1))
+            LOG(INFO) << "Expensive JitExecutable specialization compilation ("
+                      << absl::ToInt64Milliseconds(compile_duration)
+                      << " ms):\n"
+                      << kernel_info.serialized_operation;
+
+          RecordCompileTime(session_name, kernel_info.name, specialization,
+                            compile_duration);
         });
-      }
-
-      trace_me.AppendMetadata([&] {
-        return TraceMeEncode({{"src", kernel_info.serialized_operation}});
-      });
-
-      auto compile_start_time = absl::Now();
-      LOG(INFO) << "Started JitExecutable specialization compilation for "
-                << kernel_info.name << " (" << session_name << ")";
-      compile();
-      auto compile_duration = absl::Now() - compile_start_time;
-
-      LOG(INFO) << "JitExecutable specialization compilation for "
-                << kernel_info.name << " took "
-                << absl::ToInt64Milliseconds(compile_duration) << " ms ("
-                << session_name << ")";
-
-      if (compile_duration > absl::Seconds(1))
-        LOG(INFO) << "Expensive JitExecutable specialization compilation ("
-                  << absl::ToInt64Milliseconds(compile_duration) << " ms):\n"
-                  << kernel_info.serialized_operation;
-
-      RecordCompileTime(session_name, kernel_info.name, specialization,
-                        compile_duration);
-    });
   };
 
   HostContext* host = exec_ctx.host();
@@ -668,7 +675,7 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   DebugListener debug_listener;
 
   // Pass request context to the compilation task runner.
-  llvm::Any user_data = exec_ctx.request_ctx();
+  JitExecutable::UserData user_data = exec_ctx.request_ctx();
 
   Expected<AsyncValuePtr<Executable>> executable = jit_executable.GetExecutable(
       memrefs, user_data, debug ? &debug_listener : nullptr);
