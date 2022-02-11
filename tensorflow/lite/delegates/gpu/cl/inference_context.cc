@@ -152,6 +152,83 @@ void GetUsages(const GpuModel& model,
   }
 }
 
+absl::Status GetBufferAsignment(
+    const GpuModel& gpu_model, const CreateGpuModelInfo* create_info,
+    const GpuInfo& gpu_info,
+    std::vector<TensorUsageRecord<size_t>>* buffer_usage_records,
+    std::map<ValueId, int>* graph_ids_to_shared_buffer_tensors,
+    ObjectsAssignment<size_t>* buffer_assignment,
+    OffsetsAssignment* offset_assignment, bool* use_offset_assignment,
+    bool* is_sub_buffers_supported) {
+  std::map<ValueId, int2> buffer_usages;
+  GetUsages(
+      gpu_model,
+      [&gpu_model, &gpu_info, &create_info](ValueId id) {
+        return GetTensorType(gpu_model, create_info, gpu_info, id) ==
+                   TensorType::kRuntime &&
+               IsBufferBased(gpu_info, gpu_model.tensors.at(id).storage_type);
+      },
+      &buffer_usages);
+
+  bool has_buffer_based_images = false;
+  for (auto& usage : buffer_usages) {
+    const auto& t = gpu_model.tensors.at(usage.first);
+    const auto& shape = t.shape;
+    const auto& descriptor = t;
+    const size_t element_size = SizeOf(descriptor.data_type);
+    size_t buffer_size;
+    if (descriptor.storage_type == TensorStorageType::TEXTURE_2D ||
+        descriptor.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+      has_buffer_based_images = true;
+      const size_t bytes_per_pixel =
+          element_size *
+          (descriptor.storage_type == TensorStorageType::TEXTURE_2D ? 4
+                                                                    : shape.c);
+      const size_t width = shape.b * shape.w;
+      const size_t height = shape.h * DivideRoundUp(shape.c, 4);
+      size_t width_pixel_alignment = gpu_info.opencl_info.image_pitch_alignment;
+      if (gpu_info.IsAdreno() && width_pixel_alignment % bytes_per_pixel == 0) {
+        width_pixel_alignment /= bytes_per_pixel;
+      }
+      const size_t width_aligned = AlignByN(width, width_pixel_alignment);
+      buffer_size = width_aligned * bytes_per_pixel * height;
+    } else {
+      if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+        has_buffer_based_images = true;
+      }
+      buffer_size =
+          shape.b * shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
+    }
+    if (graph_ids_to_shared_buffer_tensors) {
+      (*graph_ids_to_shared_buffer_tensors)[usage.first] =
+          buffer_usage_records->size();
+    }
+    buffer_usage_records->push_back({buffer_size,
+                                     static_cast<TaskId>(usage.second.x),
+                                     static_cast<TaskId>(usage.second.y)});
+  }
+
+  RETURN_IF_ERROR(AssignObjectsToTensors(
+      *buffer_usage_records, MemoryStrategy::GREEDY_BEST, buffer_assignment));
+
+  *is_sub_buffers_supported =
+      (!has_buffer_based_images && gpu_info.IsCL11OrHigher()) ||
+      CanUseSubBufferForImage2d(gpu_info);
+  const size_t base_align_bytes =
+      std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
+
+  if (*is_sub_buffers_supported) {
+    RETURN_IF_ERROR(AssignOffsetsToTensors(
+        *buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
+        offset_assignment, base_align_bytes));
+    if (offset_assignment->total_size <= TotalSize(*buffer_assignment) &&
+        offset_assignment->total_size <= gpu_info.GetMaxBufferSize()) {
+      *use_offset_assignment = true;
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
@@ -175,14 +252,22 @@ absl::Status InferenceContext::InitFromGraph(
   GpuModel gpu_model;
   RETURN_IF_ERROR(GraphToGpuModel(graph, create_info,
                                   env->GetDevicePtr()->GetInfo(), &gpu_model));
+  return InitFromGpuModel(create_info, &gpu_model, env, serialized_model);
+}
+
+absl::Status InferenceContext::InitFromGpuModel(
+    const CreateGpuModelInfo& create_info, GpuModel* gpu_model,
+    Environment* env, std::vector<uint8_t>* serialized_model,
+    Buffer* shared_buffer) {
   flatbuffers::FlatBufferBuilder builder;
   flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb;
   if (serialized_model) {
-    gpu_model_fb = tflite::gpu::Encode(gpu_model, &builder);
+    gpu_model_fb = tflite::gpu::Encode(*gpu_model, &builder);
   }
-  RETURN_IF_ERROR(AllocateMemory(gpu_model, env->GetDevicePtr()->GetInfo(),
+  shared_buffers_parent_ptr_ = shared_buffer;
+  RETURN_IF_ERROR(AllocateMemory(*gpu_model, env->GetDevicePtr()->GetInfo(),
                                  &create_info, &env->context()));
-  InitFromGpuModel(&gpu_model);
+  InitFromGpuModel(gpu_model);
 
   CreationContext creation_context;
   creation_context.device = env->GetDevicePtr();
@@ -199,8 +284,8 @@ absl::Status InferenceContext::InitFromGraph(
   std::map<ValueId, Tensor> temp_external_tensors;
   for (const auto& external_tensor : create_info.external_mutable_tensors) {
     RETURN_IF_ERROR(CreateTensor(
-        env->context(), gpu_model.tensors[external_tensor.first].shape,
-        gpu_model.tensors[external_tensor.first],
+        env->context(), gpu_model->tensors[external_tensor.first].shape,
+        gpu_model->tensors[external_tensor.first],
         &temp_external_tensors[external_tensor.first]));
     external_mutable_tensors_[external_tensor.first] =
         &temp_external_tensors[external_tensor.first];
@@ -405,98 +490,61 @@ absl::Status InferenceContext::AllocateVariableTensors(
 absl::Status InferenceContext::AllocateBufferBasedTensors(
     const GpuModel& gpu_model, const GpuInfo& gpu_info,
     const CreateGpuModelInfo* create_info, CLContext* context) {
-  std::map<ValueId, int2> buffer_usages;
-  GetUsages(
-      gpu_model,
-      [&gpu_model, &gpu_info, &create_info](ValueId id) {
-        return GetTensorType(gpu_model, create_info, gpu_info, id) ==
-                   TensorType::kRuntime &&
-               IsBufferBased(gpu_info, gpu_model.tensors.at(id).storage_type);
-      },
-      &buffer_usages);
-
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
-  bool has_buffer_based_images = false;
-  for (auto& usage : buffer_usages) {
-    const auto& t = gpu_model.tensors.at(usage.first);
-    const auto& shape = t.shape;
-    const auto& descriptor = t;
-    const size_t element_size = SizeOf(descriptor.data_type);
-    size_t buffer_size;
-    if (descriptor.storage_type == TensorStorageType::TEXTURE_2D ||
-        descriptor.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
-      has_buffer_based_images = true;
-      const size_t bytes_per_pixel =
-          element_size *
-          (descriptor.storage_type == TensorStorageType::TEXTURE_2D ? 4
-                                                                    : shape.c);
-      const size_t width = shape.b * shape.w;
-      const size_t height = shape.h * DivideRoundUp(shape.c, 4);
-      size_t width_pixel_alignment = gpu_info.opencl_info.image_pitch_alignment;
-      if (gpu_info.IsAdreno() && width_pixel_alignment % bytes_per_pixel == 0) {
-        width_pixel_alignment /= bytes_per_pixel;
-      }
-      const size_t width_aligned = AlignByN(width, width_pixel_alignment);
-      buffer_size = width_aligned * bytes_per_pixel * height;
-    } else {
-      if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
-        has_buffer_based_images = true;
-      }
-      buffer_size =
-          shape.b * shape.w * shape.h * AlignByN(shape.c, 4) * element_size;
-    }
-    graph_ids_to_shared_buffer_tensors_[usage.first] =
-        buffer_usage_records.size();
-    buffer_usage_records.push_back({buffer_size,
-                                    static_cast<TaskId>(usage.second.x),
-                                    static_cast<TaskId>(usage.second.y)});
-  }
-
   ObjectsAssignment<size_t> buffer_assignment;
-  RETURN_IF_ERROR(AssignObjectsToTensors(
-      buffer_usage_records, MemoryStrategy::GREEDY_BEST, &buffer_assignment));
-
-  const bool is_sub_buffers_supported =
-      (!has_buffer_based_images && gpu_info.IsCL11OrHigher()) ||
-      CanUseSubBufferForImage2d(gpu_info);
+  OffsetsAssignment offset_assignment;
+  bool use_offset_assignment;
+  bool is_sub_buffers_supported;
+  RETURN_IF_ERROR(GetBufferAsignment(
+      gpu_model, create_info, gpu_info, &buffer_usage_records,
+      &graph_ids_to_shared_buffer_tensors_, &buffer_assignment,
+      &offset_assignment, &use_offset_assignment, &is_sub_buffers_supported));
   const size_t base_align_bytes =
       std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
 
-  bool use_offset_assignment = false;
-  OffsetsAssignment offset_assignment;
-  if (is_sub_buffers_supported) {
-    RETURN_IF_ERROR(AssignOffsetsToTensors(
-        buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
-        &offset_assignment, base_align_bytes));
-    if (offset_assignment.total_size <= TotalSize(buffer_assignment) &&
-        offset_assignment.total_size <= gpu_info.GetMaxBufferSize()) {
-      use_offset_assignment = true;
-    }
-  }
-
   if (use_offset_assignment) {
-    RETURN_IF_ERROR(CreateReadWriteBuffer(offset_assignment.total_size, context,
-                                          &shared_buffers_parent_));
+    if (!shared_buffers_parent_ptr_) {
+      Buffer shared_buffer;
+      RETURN_IF_ERROR(CreateReadWriteBuffer(offset_assignment.total_size,
+                                            context, &shared_buffer));
+      shared_buffers_parent_ =
+          absl::make_unique<Buffer>(std::move(shared_buffer));
+      shared_buffers_parent_ptr_ = shared_buffers_parent_.get();
+    } else if (shared_buffers_parent_ptr_->GetMemorySizeInBytes() <
+               offset_assignment.total_size) {
+      return absl::FailedPreconditionError(
+          "Externally provided buffer not big enough.");
+    }
     shared_buffers_.resize(offset_assignment.offsets.size());
     for (int i = 0; i < offset_assignment.offsets.size(); ++i) {
       RETURN_IF_ERROR(CreateReadWriteSubBuffer(
-          shared_buffers_parent_, offset_assignment.offsets[i],
+          *shared_buffers_parent_ptr_, offset_assignment.offsets[i],
           buffer_usage_records[i].tensor_size, context, &shared_buffers_[i]));
     }
   } else {
     const size_t total_size = TotalSize(buffer_assignment, base_align_bytes);
     if (is_sub_buffers_supported && total_size <= gpu_info.GetMaxBufferSize()) {
       // use single parent buffer:
-      RETURN_IF_ERROR(
-          CreateReadWriteBuffer(total_size, context, &shared_buffers_parent_));
+      if (!shared_buffers_parent_ptr_) {
+        Buffer shared_buffer;
+        RETURN_IF_ERROR(
+            CreateReadWriteBuffer(total_size, context, &shared_buffer));
+        shared_buffers_parent_ =
+            absl::make_unique<Buffer>(std::move(shared_buffer));
+        shared_buffers_parent_ptr_ = shared_buffers_parent_.get();
+      } else if (shared_buffers_parent_ptr_->GetMemorySizeInBytes() <
+                 total_size) {
+        return absl::FailedPreconditionError(
+            "Externally provided buffer not big enough.");
+      }
 
       shared_buffers_.resize(buffer_assignment.object_sizes.size());
       size_t offset = 0;
       for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
         const size_t aligned_size =
             AlignByN(buffer_assignment.object_sizes[i], base_align_bytes);
-        RETURN_IF_ERROR(CreateReadWriteSubBuffer(shared_buffers_parent_, offset,
-                                                 aligned_size, context,
+        RETURN_IF_ERROR(CreateReadWriteSubBuffer(*shared_buffers_parent_ptr_,
+                                                 offset, aligned_size, context,
                                                  &shared_buffers_[i]));
         offset += aligned_size;
       }
@@ -812,7 +860,9 @@ uint64_t InferenceContext::GetSizeOfMemoryAllocatedForIntermediateTensors()
   for (const auto& t : variable_tensors_) {
     total_memory += t.second.GetMemorySizeInBytes();
   }
-  total_memory += shared_buffers_parent_.GetMemorySizeInBytes();
+  if (shared_buffers_parent_) {
+    total_memory += shared_buffers_parent_->GetMemorySizeInBytes();
+  }
 
   return total_memory;
 }
@@ -926,6 +976,30 @@ absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
       out_refs->push_back(out_fb);
     }
   }
+  return absl::OkStatus();
+}
+
+absl::Status GetTotalBufferSizeForTensors(const GpuModel& gpu_model,
+                                          const CreateGpuModelInfo& create_info,
+                                          const GpuInfo& gpu_info,
+                                          uint64_t* result) {
+  std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
+  ObjectsAssignment<size_t> buffer_assignment;
+  OffsetsAssignment offset_assignment;
+  bool use_offset_assignment;
+  bool is_sub_buffers_supported;
+  RETURN_IF_ERROR(GetBufferAsignment(
+      gpu_model, &create_info, gpu_info, &buffer_usage_records, nullptr,
+      &buffer_assignment, &offset_assignment, &use_offset_assignment,
+      &is_sub_buffers_supported));
+  if (use_offset_assignment) {
+    *result = offset_assignment.total_size;
+    return absl::OkStatus();
+  }
+
+  const size_t base_align_bytes =
+      std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
+  *result = TotalSize(buffer_assignment, base_align_bytes);
   return absl::OkStatus();
 }
 

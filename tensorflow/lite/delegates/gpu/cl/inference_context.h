@@ -69,6 +69,11 @@ class InferenceContext {
                              const GraphFloat32& graph, Environment* env,
                              std::vector<uint8_t>* serialized_model = nullptr);
 
+  absl::Status InitFromGpuModel(
+      const CreateGpuModelInfo& create_info, GpuModel* gpu_model,
+      Environment* env, std::vector<uint8_t>* serialized_model = nullptr,
+      Buffer* shared_buffer = nullptr);
+
   // Applies OpenCL-specific transformations to the graph before the
   // initialization. These transformations are either impossible or useless in
   // other backends.
@@ -175,7 +180,8 @@ class InferenceContext {
   std::map<ValueId, ValueId> variable_ids_and_refs_;
   std::map<ValueId, Tensor> variable_tensors_;
 
-  Buffer shared_buffers_parent_;
+  std::unique_ptr<Buffer> shared_buffers_parent_;
+  Buffer* shared_buffers_parent_ptr_ = nullptr;
   std::vector<Buffer> shared_buffers_;
   std::vector<Tensor>
       shared_buffer_tensors_;  // use references to memory from shared_buffers_
@@ -195,6 +201,11 @@ class InferenceContext {
 absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
                           std::vector<int64_t>* in_refs,
                           std::vector<int64_t>* out_refs);
+
+absl::Status GetTotalBufferSizeForTensors(const GpuModel& gpu_model,
+                                          const CreateGpuModelInfo& create_info,
+                                          const GpuInfo& gpu_info,
+                                          uint64_t* result);
 
 }  // namespace cl
 }  // namespace gpu
