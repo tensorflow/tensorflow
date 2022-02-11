@@ -110,7 +110,7 @@ LogicalResult MoveUpIntoAssumingOpMatchAndRewrite(Operation *op,
   if (op->getNumResults() != 1) return failure();
 
   // Find a preceding `assuming` op.
-  auto the_block = op->getBlock();
+  auto *the_block = op->getBlock();
   Operation *prev = op->getPrevNode();
   while (prev != nullptr && !llvm::isa<shape::AssumingOp>(prev))
     prev = prev->getPrevNode();

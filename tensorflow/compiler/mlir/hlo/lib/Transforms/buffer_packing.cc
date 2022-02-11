@@ -120,7 +120,7 @@ struct AllocationInfo {
     // The previous gap ending, initially set to 0.
     size_t gapEnd = 0;
 
-    for (auto useRangeIter = userangeIntervals->begin();
+    for (const auto *useRangeIter = userangeIntervals->begin();
          useRangeIter < userangeIntervals->end(); ++useRangeIter) {
       // Add a gap if the end is not equal to the start.
       if (gapEnd < useRangeIter->start)
