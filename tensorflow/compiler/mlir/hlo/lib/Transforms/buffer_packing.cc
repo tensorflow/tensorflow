@@ -124,15 +124,14 @@ struct AllocationInfo {
          useRangeIter < userangeIntervals->end(); ++useRangeIter) {
       // Add a gap if the end is not equal to the start.
       if (gapEnd < useRangeIter->start)
-        gaps.push_back(std::make_pair(
-            UseInterval(gapEnd, useRangeIter->start - 1), numSegments));
+        gaps.emplace_back(UseInterval(gapEnd, useRangeIter->start - 1),
+                          numSegments);
       gapEnd = useRangeIter->end + 1;
     }
 
     // Add a dummy gap behind the last use of the buffer.
     if (gapEnd < maxUserangeId) {
-      gaps.push_back(
-          std::make_pair(UseInterval(gapEnd, maxUserangeId), numSegments));
+      gaps.emplace_back(UseInterval(gapEnd, maxUserangeId), numSegments);
     }
 
     return gaps;
