@@ -19,8 +19,10 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -28,6 +30,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/utility.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/transforms/pass_detail.h"
 
@@ -48,8 +51,13 @@ struct DedupeAndHoistConstantPass
 
   void RunOnGraphOrFuncOp(Operation* op);
 
-  // All the functions in the graph.
-  DenseSet<StringAttr> functions;
+  // Propagate all control deps of op to its users.
+  void PropagateEdges(Operation* op);
+
+  // Returns whether identity op is required.
+  bool RequiresIdentity(Operation* op);
+
+  FunctionTable* function_table;
 
   // Identifiers used for operation type & attributes checked.
   StringAttr tfg_const;
@@ -98,6 +106,58 @@ struct EquivalentConst : public llvm::DenseMapInfo<Operation*> {
   }
 };
 
+void DedupeAndHoistConstantPass::PropagateEdges(Operation* op) {
+  SmallVector<Operation*> users(op->getUsers());
+  Value new_const = op->getResult(1);
+  // ConstOp's only have control operands, so any operand of the op is a
+  // control operand.
+  for (Operation* user : users) {
+    SetVector<Value> operands;
+    auto add_ctl_operands = [&](Operation* operation) {
+      // Filter out where there is a control edge already.
+      auto op_operands =
+          llvm::make_filter_range(TFOp(operation).getControlOperands(),
+                                  [&](Value v) { return v == new_const; });
+      operands.insert(op_operands.begin(), op_operands.end());
+    };
+    add_ctl_operands(user);
+    add_ctl_operands(op);
+    // Erase all control operands (effectively deduping control operands).
+    // TODO(jpienaar): This could be optimized by avoiding cases where we don't
+    // need to dedupe etc.
+    TFOp tf_user(user);
+    user->eraseOperands(tf_user.getNonControlOperands().size(),
+                        tf_user.getControlOperands().size());
+    user->insertOperands(user->getNumOperands(), operands.takeVector());
+  }
+}
+
+bool DedupeAndHoistConstantPass::RequiresIdentity(Operation* op) {
+  for (Operation* user : op->getUsers())
+    if (function_table->MaybeCall(user)) return true;
+  return false;
+}
+
+static Operation* BuildIdentity(Operation* input, Operation* value,
+                                Attribute value_id) {
+  OperationState state(input->getLoc(), "tfg.Identity");
+  state.addTypes(input->getResultTypes());
+  state.addOperands({value->getResult(0)});
+
+  SetVector<Value> operands;
+  auto op_operands = TFOp(input).getControlOperands();
+  operands.insert(op_operands.begin(), op_operands.end());
+  state.addOperands(operands.takeVector());
+
+  // All attributes except for value.
+  // TODO(jpienaar): Consider reducing name of the identity op.
+  auto attrs = llvm::to_vector(llvm::make_filter_range(
+      input->getAttrs(),
+      [&](NamedAttribute attr) { return attr.getName() == value_id; }));
+  state.addAttributes(attrs);
+  return OpBuilder(input).createOperation(state);
+}
+
 void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {
   DenseMap<Operation*, std::vector<Operation*>, EquivalentConst> constant_ops;
 
@@ -110,40 +170,24 @@ void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {
     constant_ops[op].push_back(op);
   });
 
-  // Propagate the control deps on the op to users of the op.
-  auto propagate_edges = [](Operation* op) {
-    SmallVector<Operation*> users(op->getUsers());
-    // ConstOp's only have control operands, so any operand of the op is a
-    // control operand.
-    for (Operation* user : users) {
-      SetVector<Value> operands;
-      auto add_ctl_operands = [&](Operation* operation) {
-        auto op_operands = operation->getOperands();
-        operands.insert(op_operands.begin(), op_operands.end());
-      };
-      add_ctl_operands(user);
-      // Record the number of unique control deps here as the original op could
-      // have had duplicates.
-      int existing = operands.getArrayRef().size();
-      add_ctl_operands(op);
-
-      auto remaining = operands.getArrayRef().drop_front(existing);
-      if (!remaining.empty())
-        user->insertOperands(user->getNumOperands(), remaining);
-    }
-  };
-
   // Iterate over all constant ops and perform constant deduping.
   for (const auto& it : constant_ops) {
     if (it.second.size() > 1) {
-      Operation* top = it.second.front();
-      if (top->getNumOperands() > 0) {
-        propagate_edges(top);
-        top->eraseOperands(0, top->getNumOperands());
-      }
-      for (auto jt : llvm::drop_begin(it.second)) {
-        jt->replaceAllUsesWith(top);
-        propagate_edges(jt);
+      Operation* top = OpBuilder(it.second.front()).clone(*it.second.front());
+      top->eraseOperands(0, top->getNumOperands());
+
+      for (auto jt : it.second) {
+        if (!assume_strict_calls_ && RequiresIdentity(jt)) {
+          // Create a new identity node with all the control deps of the node
+          // being replaced that forwards the value of top.
+          Operation* id = BuildIdentity(jt, top, value_id);
+          jt->replaceAllUsesWith(id);
+        } else {
+          // Just propagate control deps from the duplicated op to its users and
+          // then replace uses with top.
+          PropagateEdges(jt);
+          jt->replaceAllUsesWith(top);
+        }
         jt->erase();
       }
     }
@@ -151,25 +195,14 @@ void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {
 }
 
 void DedupeAndHoistConstantPass::runOnOperation() {
-  ModuleOp module = dyn_cast<ModuleOp>(getOperation());
-  if (!module) return;
+  markAnalysesPreserved<FunctionTable>();
 
+  ModuleOp module = getOperation();
   if (!assume_strict_calls_) {
-    // Collect function names (to be used for disambiguating legacy call
-    // behavior).
-    for (auto& op : module.getOps()) {
-      if (auto func = dyn_cast<GraphFuncOp>(op))
-        functions.insert(func.getNameAttr());
-    }
-    if (!functions.empty()) {
-      // This only supports the strict calls case for now, which is satisfied if
-      // there are no functions to call.
-      // TODO(jpienaar): Expand this to check for calls/function references and
-      // in those cases insert identity nodes.
-      LOG(WARNING)
-          << "Skipping deduping conservatively because functions are present";
-      return;
-    }
+    function_table = &getAnalysis<FunctionTable>();
+    assume_strict_calls_ = function_table->empty();
+  } else {
+    assume_strict_calls_ = true;
   }
 
   for (auto& op : module.getOps())

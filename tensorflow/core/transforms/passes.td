@@ -30,7 +30,7 @@ def TopoSort : Pass<"tfg-toposort"> {
   let constructor = "CreateTopoSortPass()";
 }
 
-def DedupeAndHoistConstant: Pass<"tfg-dedupe-hoist-constant"> {
+def DedupeAndHoistConstant: Pass<"tfg-dedupe-hoist-constant", "ModuleOp"> {
   let summary = "Dedupe and hoist constants";
   let description = [{
     Deduplicate small constants by utilizing single constant op per constant

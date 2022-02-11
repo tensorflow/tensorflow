@@ -5,16 +5,13 @@
 tfg.graph #tf_type.version<producer = 1015, min_consumer = 0> {
   %Const, %ctl = Const device("/job:host/task:0/device:CPU:0") name("apple") {dtype = i32, value = dense<[218, 128]> : tensor<2xi32>} : () -> (tensor<2xi32>)
   %Const_1, %ctl_1 = Const [%ctl] device("/job:host/task:0/device:CPU:0") name("banana") {dtype = i32, value = dense<[218, 128]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-  %Const_2, %ctl_2 = Const [%ctl_1] device("/job:host/task:0/device:CPU:1") name("pear") {dtype = i32, value = dense<[218, 128]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-  %res_2, %ctl_3 = foo(%Const_1, %Const_2) device("/job:host/task:0/device:CPU:1") name("call") : (tensor<2xi32>, tensor<2xi32>) -> (tensor<2xi32>)
-// Without strict-calls, no deduping should happen.
-// CHECK-DAG:   apple
-// CHECK-DAG:   pear
-// CHECK-DAG:   banana
-// Without strict-calls, no deduping should happen.
+  %Const_2, %ctl_2 = Const [%ctl_1] device("/job:host/task:0/device:CPU:0") name("pear") {dtype = i32, value = dense<[218, 128]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %res_2, %ctl_3 = foo(%Const_2) device("/job:host/task:0/device:CPU:0") name("call") : (tensor<2xi32>) -> (tensor<2xi32>)
+// CHECK:   %[[VAL_0:.*]], %[[VAL_1:.*]] = Const device("/job:host/task:0/device:CPU:0") name("apple")
+// CHECK:   %[[ID:.*]], %[[CTL:.*]] = Identity(%[[VAL_0]]) [%[[VAL_1]]]
+// CHECK:   foo(%[[ID]]) device
 // STRICT:   %[[VAL_0:.*]], %[[VAL_1:.*]] = Const device("/job:host/task:0/device:CPU:0") name("apple")
-// STRICT:   %[[VAL_2:.*]], %[[VAL_3:.*]] = Const {{\[}}%[[VAL_1]]] device("/job:host/task:0/device:CPU:1") name("pear")
-// STRICT:   foo(%[[VAL_0]], %[[VAL_2]])
+// STRICT:   foo(%[[VAL_0]]) device
 }
 
 tfg.func @foo(%arg0 : tensor<2xi32> {tfg.name = "input1"},
