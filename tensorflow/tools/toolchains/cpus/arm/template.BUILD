@@ -4,6 +4,7 @@ package(default_visibility = ["//visibility:public"])
 # a Bazel toolchain.
 licenses(["notice"])
 
+# Repository initialized in in tensorflow/workspace2.bzl
 load(":cc_config.bzl", "cc_toolchain_config")
 
 cc_toolchain_suite(

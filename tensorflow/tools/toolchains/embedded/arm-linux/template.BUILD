@@ -1,8 +1,8 @@
-load(":cc_config.bzl", "cc_toolchain_config")
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["restricted"])  # GPLv3
+
+load(":cc_config.bzl", "cc_toolchain_config")
 
 cc_toolchain_suite(
     name = "toolchain",

@@ -37,6 +37,7 @@ BUILD_DENYLIST = [
     "tensorflow/python/kernel_tests/signal",
     "tensorflow/examples",
     "tensorflow/tools/android",
+    "tensorflow/tools/toolchains",
     "tensorflow/python/eager/benchmarks",
 ]
 
