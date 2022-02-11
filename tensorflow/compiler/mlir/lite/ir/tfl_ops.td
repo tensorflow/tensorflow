@@ -3373,7 +3373,6 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
 def TFL_ZerosLikeOp: TFL_Op<"zeros_like", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    SameOperandsAndResultType,
     SameOperandsAndResultShape,
     NoSideEffect]> {
   let summary = "ZerosLike operator";
