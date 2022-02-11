@@ -5492,24 +5492,29 @@ llvm::SmallVector<Attribute, 4> evaluateMhloRegion(Region& region,
 }
 
 OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
-  auto base = operands[0].dyn_cast_or_null<DenseElementsAttr>();
   auto index = operands[1].dyn_cast_or_null<DenseIntElementsAttr>();
-  auto update = operands[2].dyn_cast_or_null<DenseElementsAttr>();
-  if (!base || !index || !update) return {};
+  if (!index) return {};
 
-  // Catch a trivial full replacement of base with update.
-  if (index.isSplat() && index.getSplatValue<uint32_t>() == 0 &&
-      update.getType() == base.getType())
-    return update;
+  auto base_type = operand().getType().dyn_cast<RankedTensorType>();
+  auto update_type = updates().getType().dyn_cast<RankedTensorType>();
+  auto index_type = index.getType().cast<RankedTensorType>();
+  if (!base_type || !index_type || !update_type) return {};
+
+  // Catch a trivial full replacement of base with update, this does not require
+  // these to be constant: just that we know the type.
+  if (update_type == base_type && update_type.hasStaticShape() &&
+      base_type.hasStaticShape() && index.isSplat() &&
+      index.getSplatValue<uint32_t>() == 0 &&
+      llvm::hasSingleElement(update_computation().front())) {
+    return updates();
+  }
+  auto base = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto update = operands[2].dyn_cast_or_null<DenseElementsAttr>();
+  if (!base || !update) return {};
 
   // Prevent splat to be expanded if too large.
   if (base.isSplat() && base.getNumElements() > kFoldExpandSplatEltLimit)
     return {};
-
-  auto base_type = base.getType().dyn_cast<RankedTensorType>();
-  auto index_type = index.getType().dyn_cast<RankedTensorType>();
-  auto update_type = update.getType().dyn_cast<RankedTensorType>();
-  if (!base_type || !index_type || !update_type) return {};
 
   // Add the virtual trailing dimension of size 1 if index_vector_dim equals to
   // index_type.rank.

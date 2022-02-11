@@ -50,3 +50,36 @@ func @scatter_full_overwrite() ->  tensor<512x1x6400x6400xf32> {
   // CHECK: return %[[FOLD]]
   return %scatter :  tensor<512x1x6400x6400xf32>
 }
+
+// -----
+
+// Verify that a full overwrite of the "base" with a scatter is correctly folded
+// even if the base and update are not constant values.
+func @scatter_full_overwrite_non_const(
+        %base : tensor<512x1x6400x6400xf32>,
+        %update : tensor<512x1x6400x6400xf32>) ->  tensor<512x1x6400x6400xf32> {
+  %index = mhlo.constant dense<0> : tensor<1xi32>
+  %scatter = "mhlo.scatter"(%base, %index, %update) ({
+    ^bb0(%arg5: tensor<f32>, %arg6: tensor<f32>):
+      "mhlo.return"(%arg6) : (tensor<f32>) -> ()
+  }) {indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [0, 1, 2, 3], scatter_dims_to_operand_dims = [3]>, unique_indices = true} : (tensor<512x1x6400x6400xf32>, tensor<1xi32>, tensor<512x1x6400x6400xf32>) -> tensor<512x1x6400x6400xf32>
+
+  // CHECK: return %arg1
+  return %scatter :  tensor<512x1x6400x6400xf32>
+}
+
+// -----
+
+// Verify that a full overwrite of the "base" with a scatter is not folded when
+// there is a non-identity computation.
+func public @scatter_non_identity(%arg0: tensor<12xbf16>, %arg1: tensor<12xbf16>) -> tensor<12xbf16> {
+  %0 = mhlo.constant dense<0> : tensor<1xi32>
+  %1 = "mhlo.scatter"(%arg0, %0, %arg1) ({
+  ^bb0(%arg2: tensor<bf16>, %arg3: tensor<bf16>):
+    %2 = mhlo.add %arg2, %arg3 : tensor<bf16>
+    "mhlo.return"(%2) : (tensor<bf16>) -> ()
+  }) {indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [0], scatter_dims_to_operand_dims = [0]>, unique_indices = true} : (tensor<12xbf16>, tensor<1xi32>, tensor<12xbf16>) -> tensor<12xbf16>
+  // CHECK: %[[SCATTER:.*]] = "mhlo.scatter
+  // CHECK: return %[[SCATTER]]
+  return %1 : tensor<12xbf16>
+}
