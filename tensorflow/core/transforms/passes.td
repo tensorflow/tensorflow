@@ -40,8 +40,8 @@ def DedupeAndHoistConstant: Pass<"tfg-dedupe-hoist-constant"> {
     is no cost model nor attempt to limit the live range of values.
 
     Currently it only performs this deduplication if there are no possible
-    function calls in the graph. This is to avoid changing strictness of the
-    execution.
+    function calls in the graph or if all calls may be assumed to be strict.
+    This is to avoid changing strictness of the execution.
 
     Note: This pass does not aim to retain the names of nodes dedupe'd.
   }];
@@ -49,7 +49,12 @@ def DedupeAndHoistConstant: Pass<"tfg-dedupe-hoist-constant"> {
   let options = [
     Option<"max_size_", "max-size", "int64_t",
            /*default=*/"10",
-           "The maximum number of elements when considering whether a constant is small">
+           "The maximum number of elements when considering whether a constant "
+           "is small">,
+    Option<"assume_strict_calls_", "assume-strict-calls", "bool",
+           /*default=*/"false",
+           "Assume all function calls are stricts, that is operands are "
+           "evaluated prior to the call">,
   ];
   let constructor = "CreateDedupeAndHoistConstantPass()";
 }

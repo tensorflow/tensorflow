@@ -51,13 +51,6 @@ struct DedupeAndHoistConstantPass
   // All the functions in the graph.
   DenseSet<StringAttr> functions;
 
-  // Whether to consider all calls as strict. In TensorFlow calls can be strict
-  // (all operands to call should have been executed before op is) or non-strict
-  // (execute whatever is possible given known values, so part of a function
-  // could be evaluated). This member indicates that all calls in the module can
-  // be treated as strict.
-  bool strict_calls = false;
-
   // Identifiers used for operation type & attributes checked.
   StringAttr tfg_const;
   StringAttr value_id;
@@ -161,22 +154,22 @@ void DedupeAndHoistConstantPass::runOnOperation() {
   ModuleOp module = dyn_cast<ModuleOp>(getOperation());
   if (!module) return;
 
-  // Collect function names (to be used for disambiguating legacy call
-  // behavior).
-  for (auto& op : module.getOps()) {
-    if (auto func = dyn_cast<GraphFuncOp>(op))
-      functions.insert(func.getNameAttr());
-  }
-  strict_calls = functions.empty();
-
-  // This only supports the strict calls case for now, which is satisfied if
-  // there are no functions to call.
-  // TODO(jpienaar): Expand this to check for calls/function references and in
-  // those cases insert identity nodes.
-  if (!strict_calls) {
-    LOG(WARNING)
-        << "Skipping deduping conservatively because functions are present";
-    return;
+  if (!assume_strict_calls_) {
+    // Collect function names (to be used for disambiguating legacy call
+    // behavior).
+    for (auto& op : module.getOps()) {
+      if (auto func = dyn_cast<GraphFuncOp>(op))
+        functions.insert(func.getNameAttr());
+    }
+    if (!functions.empty()) {
+      // This only supports the strict calls case for now, which is satisfied if
+      // there are no functions to call.
+      // TODO(jpienaar): Expand this to check for calls/function references and
+      // in those cases insert identity nodes.
+      LOG(WARNING)
+          << "Skipping deduping conservatively because functions are present";
+      return;
+    }
   }
 
   for (auto& op : module.getOps())
