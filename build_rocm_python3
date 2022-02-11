@@ -10,7 +10,7 @@
 #
 
 # First positional argument (if any) specifies the ROCM_INSTALL_DIR
-ROCM_INSTALL_DIR=/opt/rocm-4.5.2
+ROCM_INSTALL_DIR=/opt/rocm-5.0.0
 if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
 fi
