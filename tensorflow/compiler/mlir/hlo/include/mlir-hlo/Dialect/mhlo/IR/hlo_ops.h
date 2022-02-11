@@ -36,8 +36,8 @@ limitations under the License.
 // clang-format off
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/infer_shape_equality_op_interface.h"
 // clang-format on
 
