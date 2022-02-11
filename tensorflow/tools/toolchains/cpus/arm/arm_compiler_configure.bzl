@@ -5,7 +5,7 @@ def _tpl(repository_ctx, tpl, substitutions = {}, out = None):
         out = tpl
     repository_ctx.template(
         out,
-        Label("//toolchains/cpus/arm:%s.tpl" % tpl),
+        Label("//tensorflow/tools/toolchains/cpus/arm:%s.tpl" % tpl),
         substitutions,
     )
 

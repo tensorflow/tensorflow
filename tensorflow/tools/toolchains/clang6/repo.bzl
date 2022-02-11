@@ -28,10 +28,10 @@ clang6_configure = repository_rule(
     implementation = _clang6_configure,
     attrs = {
         "_build": attr.label(
-            default = str(Label("//toolchains/clang6:clang.BUILD")),
+            default = str(Label("//tensorflow/tools/toolchains/clang6:clang.BUILD")),
         ),
         "_crosstool": attr.label(
-            default = str(Label("//toolchains/clang6:CROSSTOOL.tpl")),
+            default = str(Label("//tensorflow/tools/toolchains/clang6:CROSSTOOL.tpl")),
         ),
     },
 )
