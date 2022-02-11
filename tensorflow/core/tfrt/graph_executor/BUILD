@@ -8,8 +8,8 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//learning/brain/tfrt/tfrt_session/...",
         "//tensorflow/core/tfrt/saved_model/...",
+        "//tensorflow/core/tfrt/tfrt_session/...",
     ],
 )
 

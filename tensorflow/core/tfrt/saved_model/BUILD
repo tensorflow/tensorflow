@@ -14,6 +14,7 @@ package_group(
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow/core/tfrt/graph_executor/...",
+        "//tensorflow/core/tfrt/tfrt_session/...",
         "//tensorflow_serving/...",
         "//platforms/xla/tests/saved_models/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
