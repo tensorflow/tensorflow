@@ -469,8 +469,9 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
                                                targetType)) {
     return b->create<mlir::arith::UIToFPOp>(loc, result_types, args,
                                             mlir::None);
-  } else if (mlir::arith::SIToFPOp::areCastCompatible(convertedSourceType,
-                                                      targetType)) {
+  }
+  if (mlir::arith::SIToFPOp::areCastCompatible(convertedSourceType,
+                                               targetType)) {
     return b->create<mlir::arith::SIToFPOp>(loc, result_types, args,
                                             mlir::None);
   } else if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
@@ -498,7 +499,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
       }
       return b->create<mlir::arith::CmpIOp>(loc, arith::CmpIPredicate::ne,
                                             args.front(), zero_intval);
-    } else if (sourceType.isa<FloatType>()) {
+    }
+    if (sourceType.isa<FloatType>()) {
       Value zero =
           b->create<arith::ConstantOp>(loc, b->getFloatAttr(sourceType, 0.0));
       if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
@@ -514,7 +516,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::arith::TruncIOp>(loc, result_types, args,
                                               mlir::None);
-    } else if (src.getWidth() < res.getWidth()) {
+    }
+    if (src.getWidth() < res.getWidth()) {
       // Special case boolean values, so they get casted to `1` instead of `-1`.
       if (src.isUnsignedInteger() || src.getWidth() == 1) {
         return b->create<mlir::arith::ExtUIOp>(loc, result_types, args,
@@ -860,7 +863,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::SignOp>(Location loc,
     auto is_nan = b->create<::mlir::arith::CmpFOp>(
         loc, arith::CmpFPredicate::UNO, args[0], args[0]);
     return b->create<::mlir::arith::SelectOp>(loc, is_nan, args[0], copy_sign);
-  } else if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
+  }
+  if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
     // sign(x) = x == 0 ? 0 : ((x s>> 31) | 1)
     Value zero = b->create<::mlir::arith::ConstantIntOp>(
         loc, 0, integer_type.getWidth());
