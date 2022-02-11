@@ -419,7 +419,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Options for the JitRt JitExecutable compilation.
     CompilationOptions opts;
-    opts.specialization = CompilationOptions::Specialization::kEnabled;
+    opts.specialization = GetJitRtFlags().always_specialize
+                              ? CompilationOptions::Specialization::kAlways
+                              : CompilationOptions::Specialization::kEnabled;
 
     // Register dialects and interfaces required for the compilation pipeline.
     opts.register_dialects = [](mlir::DialectRegistry& registry) {
