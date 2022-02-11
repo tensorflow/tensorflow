@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the MHLO dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -108,4 +108,4 @@ TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
 
-#endif  //  TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
