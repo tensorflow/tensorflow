@@ -5497,6 +5497,11 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   auto update = operands[2].dyn_cast_or_null<DenseElementsAttr>();
   if (!base || !index || !update) return {};
 
+  // Catch a trivial full replacement of base with update.
+  if (index.isSplat() && index.getSplatValue<uint32_t>() == 0 &&
+      update.getType() == base.getType())
+    return update;
+
   // Prevent splat to be expanded if too large.
   if (base.isSplat() && base.getNumElements() > kFoldExpandSplatEltLimit)
     return {};
