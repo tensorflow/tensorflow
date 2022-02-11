@@ -70,16 +70,18 @@ def TFGraphDialect : Dialect {
 
   let extraClassDeclaration = [{
     StringAttr getNameAttrIdentifier() const { return name_key_; }
-    static constexpr StringLiteral getNameAttrKey() { return "_mlir_name"; }
+    static constexpr StringLiteral getNameAttrKey() { return {"_mlir_name"}; }
 
     StringAttr getDeviceAttrIdentifier() const { return device_key_; }
-    static constexpr StringLiteral getDeviceAttrKey() { return "_mlir_device"; }
+    static constexpr StringLiteral getDeviceAttrKey() {
+      return {"_mlir_device"};
+    }
 
     StringAttr getAssignedDeviceAttrIdentifier() const {
       return assigned_device_key_;
     }
     static constexpr StringLiteral getAssignedDeviceAttrKey() {
-      return "_mlir_assigned_device";
+      return {"_mlir_assigned_device"};
     }
 
     StringAttr getTfgNameAttrIdentifier() const { return tfg_name_key_; }
@@ -89,7 +91,7 @@ def TFGraphDialect : Dialect {
       return tfg_tpu_replicate_key_;
     }
     static constexpr StringLiteral getTfgTpuReplicateAttrKey() {
-      return "tfg.tpu_replicate";
+      return {"tfg.tpu_replicate"};
     }
 
     // Cached accessor for the control type.

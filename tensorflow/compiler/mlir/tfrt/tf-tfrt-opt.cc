@@ -52,7 +52,6 @@ int main(int argc, char **argv) {
   tensorflow::RegisterTPUDialects(&registry);
 
   tfrt::RegisterTFRTDialects(registry);
-  return failed(mlir::MlirOptMain(argc, argv, "TensorFlow TFRT pass driver\n",
-                                  registry,
-                                  /*preloadDialectsInContext=*/false));
+  return failed(
+      mlir::MlirOptMain(argc, argv, "TensorFlow TFRT pass driver\n", registry));
 }

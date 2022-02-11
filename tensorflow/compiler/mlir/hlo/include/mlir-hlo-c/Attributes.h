@@ -9,8 +9,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_C_ATTRIBUTES_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_C_ATTRIBUTES_H_
+#ifndef MLIR_HLO_C_ATTRIBUTES_H
+#define MLIR_HLO_C_ATTRIBUTES_H
 
 #include <sys/types.h>
 
@@ -172,4 +172,4 @@ mlirMhloConvDimensionNumbersGetOutputSpatialDimensionsElem(MlirAttribute attr,
 }
 #endif
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_C_ATTRIBUTES_H_
+#endif  // MLIR_HLO_C_ATTRIBUTES_H

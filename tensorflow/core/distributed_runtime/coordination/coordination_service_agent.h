@@ -183,7 +183,9 @@ class CoordinationServiceAgent {
   //   - Cancelled: One of the tasks called CancelBarrier().
   //   - Internal: Any participating task is in ERROR state.
   //   - InvalidArgument: Conflicting tasks specified by different agents for
-  //       the same barrier.
+  //       the same barrier, or task making the request is not included in the
+  //       list of participating tasks.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
   virtual Status WaitAtBarrier(const std::string& barrier_id,
                                absl::Duration timeout,
                                const std::vector<CoordinatedTask>& tasks) = 0;

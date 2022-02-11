@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // This file defines enums used in MHLO and LMHLO.
-#ifndef MHLO_IR_HLO_OPS_BASE_ATTRS_H_
-#define MHLO_IR_HLO_OPS_BASE_ATTRS_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ATTRS_H
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ATTRS_H
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/OpImplementation.h"
@@ -36,4 +36,4 @@ ParseResult parseConvolutionDimensions(AsmParser &parser,
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // MHLO_IR_HLO_OPS_BASE_ATTRS_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ATTRS_H

@@ -39,47 +39,7 @@ struct AliasInfo {
   int output_index;
 };
 
-// Returns the consuming `AssignVariableOp` user of `result`, if there is one
-// and if it is unique.
-// TODO(b/184420848) Generalize this to work in more situations, e.g.:
-// - consider more pass-through ops (like `tf_device::ReturnOp`)
-// - consider multiple uses
-absl::optional<TF::AssignVariableOp> FindConsumingAssignVariableOp(
-    OpResult& result) {
-  // We currently don't handle multiple uses.
-  if (!result.hasOneUse()) return absl::nullopt;
-
-  OpOperand& use = *(result.use_begin());
-  Operation* user = use.getOwner();
-  if (!user) return absl::nullopt;
-
-  // Follow the value through `tf_device::ReturnOp` inside of a parallel execute
-  // region.
-  auto parent_op = user->getParentOp();
-  if (llvm::isa<tf_device::ReturnOp>(user) && parent_op &&
-      llvm::isa<tf_device::ParallelExecuteOp>(parent_op)) {
-    Region* parent_region = user->getParentRegion();
-    auto parallel_execute = llvm::cast<tf_device::ParallelExecuteOp>(parent_op);
-
-    // Get the parallel execute result that corresponds to `use`.
-    int operand_num = use.getOperandNumber();
-    auto region_outputs =
-        parallel_execute.GetRegionOutputs(parent_region->getRegionNumber());
-    if (operand_num >= region_outputs.size()) return absl::nullopt;
-    OpResult parallel_execute_result = region_outputs[operand_num];
-
-    // We currently don't handle multiple uses.
-    if (!parallel_execute_result.hasOneUse()) return absl::nullopt;
-
-    user = parallel_execute_result.use_begin()->getOwner();
-    if (!user) return absl::nullopt;
-  }
-  auto assign_op = llvm::dyn_cast_or_null<TF::AssignVariableOp>(user);
-  if (!assign_op) return absl::nullopt;
-  return assign_op;
-}
-
-// Identify tf_device.cluster_func input-output alias pairs.
+// Idenitfy tf_device.cluster_func input-output alias pairs.
 // This is currently conservative, and handles the following simple case:
 // ```
 // %value = tf.ReadVariableOp(%resource_var)
@@ -93,10 +53,11 @@ absl::optional<TF::AssignVariableOp> FindConsumingAssignVariableOp(
 LogicalResult BuildAliasingInfo(
     tf_device::ClusterFuncOp cluster_func,
     llvm::DenseMap<Value, AliasInfo>& resource_alias_info_map) {
-  for (OpResult result : cluster_func.getResults()) {
-    auto assign_op_optional = FindConsumingAssignVariableOp(result);
-    if (!assign_op_optional.has_value()) continue;
-    TF::AssignVariableOp assign_op = assign_op_optional.value();
+  for (auto result : cluster_func.getResults()) {
+    if (!result.hasOneUse()) continue;
+    auto assign_op = llvm::dyn_cast_or_null<TF::AssignVariableOp>(
+        result.use_begin()->getOwner());
+    if (!assign_op) continue;
     AliasInfo& alias_info = resource_alias_info_map[assign_op.resource()];
     // TODO(b/184420848): We may not need to skip aliasing for entire function
     // in case of multiple assigns.

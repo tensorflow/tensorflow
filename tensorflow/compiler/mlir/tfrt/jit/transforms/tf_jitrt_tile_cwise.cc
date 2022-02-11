@@ -37,6 +37,7 @@ using mlir::SmallVector;
 using mlir::success;
 using mlir::Value;
 using mlir::arith::ConstantIndexOp;
+using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingOptions;
@@ -83,9 +84,16 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
 bool isNonTiledCwise(Operation *op) {
   if (op->getParentOfType<TiledLoopOp>()) return false;
   auto linalg_op = mlir::dyn_cast<GenericOp>(op);
-  if (!linalg_op || !linalg_op.hasTensorSemantics()) return false;
-  return llvm::all_of(linalg_op.iterator_types(),
-                      [](auto type) { return mlir::isParallelIterator(type); });
+  if (linalg_op) {
+    if (!linalg_op.hasTensorSemantics()) return false;
+    return llvm::all_of(linalg_op.iterator_types(), [](auto type) {
+      return mlir::isParallelIterator(type);
+    });
+  }
+  if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {
+    return fill_op.hasTensorSemantics();
+  }
+  return false;
 }
 
 struct TileCWisePass : public TileCWiseBase<TileCWisePass> {

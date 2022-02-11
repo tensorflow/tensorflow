@@ -36,4 +36,4 @@ func @vector_1d(%arg0: vector<4xf32>) -> f32 {
     %0 = vector.multi_reduction <mul>, %arg0 [0] : vector<4xf32> to f32
     return %0 : f32
 }
-// CHECK: vector.reduction "mul"
+// CHECK: vector.reduction <mul>

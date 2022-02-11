@@ -325,6 +325,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteString";
     case kTfLiteBool:
       return "kTfLiteBool";
+    case kTfLiteUInt16:
+      return "kTfLiteUInt16";
     case kTfLiteInt16:
       return "kTfLiteInt16";
     case kTfLiteComplex64:

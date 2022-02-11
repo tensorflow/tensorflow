@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TRANSFORMS_H_
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
@@ -47,6 +48,16 @@ namespace gml_st {
 LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                            LoopOp loopOp, int64_t idx,
                                            LoopOp &result);
+
+/// Perform standalone tiling of a single LinalgOp by `tileSizes`.
+/// An empty vector is interpreted as the identity permutation and the
+/// transformation returns early.
+///
+/// Return a struct containing the tiled loops in the specified order
+/// and the cloned op if successful, llvm::None otherwise.
+FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
+    RewriterBase &b, linalg::LinalgOp op,
+    const linalg::LinalgTilingOptions &options);
 
 }  // namespace gml_st
 }  // namespace mlir

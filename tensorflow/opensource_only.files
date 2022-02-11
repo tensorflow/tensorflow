@@ -34,6 +34,7 @@ tensorflow/lite/core/shims/c/c_api_experimental.h:
 tensorflow/lite/core/shims/c/common.h:
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h:
 tensorflow/lite/core/shims/c/experimental/acceleration/configuration/nnapi_plugin.h:
+tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h:
 tensorflow/lite/core/shims/c/shims_test_util.cc:
 tensorflow/lite/core/shims/c/shims_test_util.h:
 tensorflow/lite/core/shims/cc/create_op_resolver.h:

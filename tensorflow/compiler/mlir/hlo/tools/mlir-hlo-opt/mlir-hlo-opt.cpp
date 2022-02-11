@@ -40,7 +40,6 @@ int main(int argc, char **argv) {
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
                   mlir::gml_st::GmlStDialect>();
 
-  return failed(mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n",
-                                  registry,
-                                  /*preloadDialectsInContext=*/false));
+  return failed(
+      mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
 }

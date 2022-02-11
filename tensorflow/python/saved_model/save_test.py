@@ -770,8 +770,8 @@ class DependencyTest(test.TestCase):
 
     class Valid(tracking.AutoTrackable):
 
-      def _deserialization_dependencies(self):
-        return {name: ref for name, ref in self._trackable_children().items()}
+      def _deserialization_dependencies(self, children):
+        return children
 
     root = Valid()
     root.f = variables.Variable(1.0)
@@ -783,7 +783,8 @@ class DependencyTest(test.TestCase):
 
     class Invalid(tracking.AutoTrackable):
 
-      def _deserialization_dependencies(self):
+      def _deserialization_dependencies(self, children):
+        del children  # Unused.
         return {"untracked": untracked}
     invalid_deps = Invalid()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -797,7 +798,8 @@ class DependencyTest(test.TestCase):
       def __init__(self):
         self.cycle_ref = None
 
-      def _deserialization_dependencies(self):
+      def _deserialization_dependencies(self, children):
+        del children  # Unused.
         return {"cycle_ref": self.cycle_ref}
     cycle1 = Invalid()
     cycle2 = Invalid()
@@ -807,39 +809,6 @@ class DependencyTest(test.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 "dependency cycle in the saved Trackable"):
       save.save(cycle1, save_dir)
-
-  def test_none_dependency(self):
-
-    class Valid(tracking.AutoTrackable):
-
-      def __init__(self):
-        self.v = variables.Variable(1.0)
-
-      def _trackable_children(self, *unused_args, **unused_kwargs):
-        return {"v": self.v}
-
-      def _deserialization_dependencies(self):
-        return {"v": None}
-
-    root = Valid()
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    save.save(root, save_dir)
-
-    class Invalid(tracking.AutoTrackable):
-
-      def __init__(self):
-        self.v = variables.Variable(1.0)
-
-      def _trackable_children(self, *unused_args, **unused_kwargs):
-        return {"v": self.v}
-
-      def _deserialization_dependencies(self):
-        return {"not_v": None}
-
-    root = Invalid()
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegex(KeyError, "key: 'not_v'"):
-      save.save(root, save_dir)
 
 
 class VariablePolicyEnumTest(test.TestCase):

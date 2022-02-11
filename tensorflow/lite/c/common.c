@@ -229,6 +229,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "NOTYPE";
     case kTfLiteFloat32:
       return "FLOAT32";
+    case kTfLiteUInt16:
+      return "UINT16";
     case kTfLiteInt16:
       return "INT16";
     case kTfLiteInt32:

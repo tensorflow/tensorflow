@@ -278,14 +278,14 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 
     // Bufferize ops using BufferizableOpInterface. This could be switched to
     // One-Shot Bufferize in the future.
-    std::unique_ptr<bufferization::BufferizationOptions> options =
+    bufferization::BufferizationOptions options =
         bufferization::getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more
     // `populate...BufferizePatterns` functions will disappear with recent
     // changes to bufferization.
-    options->addToDialectFilter<arith::ArithmeticDialect, StandardOpsDialect,
-                                tensor::TensorDialect>();
-    bufferization::AlwaysCopyBufferizationState bufferizationState(*options);
+    options.addToDialectFilter<arith::ArithmeticDialect, StandardOpsDialect,
+                               tensor::TensorDialect>();
+    bufferization::AlwaysCopyBufferizationState bufferizationState(options);
     bufferization::populateBufferizationPattern(bufferizationState, patterns);
 
     linalg::populateLinalgBufferizePatterns(converter, patterns);

@@ -322,7 +322,6 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
     Returns:
       Map of library names to structs of filename and path
     """
-
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
@@ -337,7 +336,8 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
             ("rocsolver", rocm_config.rocm_toolkit_path + "/rocsolver"),
         ]
     ]
-
+    if int(rocm_config.rocm_version_number) >= 40500:
+        libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path + "/hipsolver")))
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def _exec_find_rocm_config(repository_ctx, script_path):
@@ -463,6 +463,7 @@ def _create_dummy_repository(repository_ctx):
             "%{hipsparse_lib}": _lib_name("hipsparse"),
             "%{roctracer_lib}": _lib_name("roctracer64"),
             "%{rocsolver_lib}": _lib_name("rocsolver"),
+            "%{hipsolver_lib}": _lib_name("hipsolver"),
             "%{copy_rules}": "",
             "%{rocm_headers}": "",
         },
@@ -598,6 +599,17 @@ def _create_local_rocm_repository(repository_ctx):
         ),
     ]
 
+    # Add Hipsolver on ROCm4.5+
+    if rocm_version_number >= 40500:
+        copy_rules.append(
+            make_copy_dir_rule(
+                repository_ctx,
+                name = "hipsolver-include",
+                src_dir = rocm_toolkit_path + "/hipsolver/include",
+                out_dir = "rocm/include/hipsolver",
+            ),
+        )
+
     # explicitly copy (into the local_config_rocm repo) the $ROCM_PATH/hiprand/include and
     # $ROCM_PATH/rocrand/include dirs, only once the softlink to them in $ROCM_PATH/include
     # dir has been removed. This removal will happen in a near-future ROCm release.
@@ -669,31 +681,37 @@ def _create_local_rocm_repository(repository_ctx):
             "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
         },
     )
+
+    repository_dict = {
+        "%{hip_lib}": rocm_libs["amdhip64"].file_name,
+        "%{rocblas_lib}": rocm_libs["rocblas"].file_name,
+        "%{hipfft_or_rocfft}": hipfft_or_rocfft,
+        "%{hipfft_or_rocfft_lib}": rocm_libs[hipfft_or_rocfft].file_name,
+        "%{hiprand_lib}": rocm_libs["hiprand"].file_name,
+        "%{miopen_lib}": rocm_libs["MIOpen"].file_name,
+        "%{rccl_lib}": rocm_libs["rccl"].file_name,
+        "%{hipsparse_lib}": rocm_libs["hipsparse"].file_name,
+        "%{roctracer_lib}": rocm_libs["roctracer64"].file_name,
+        "%{rocsolver_lib}": rocm_libs["rocsolver"].file_name,
+        "%{copy_rules}": "\n".join(copy_rules),
+        "%{rocm_headers}": ('":rocm-include",\n' +
+                            '":' + hipfft_or_rocfft + '-include",\n' +
+                            '":rocblas-include",\n' +
+                            '":miopen-include",\n' +
+                            '":rccl-include",\n' +
+                            hiprand_include +
+                            rocrand_include +
+                            '":hipsparse-include",\n' +
+                            '":rocsolver-include"'),
+    }
+    if rocm_version_number >= 40500:
+        repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
+        repository_dict["%{rocm_headers}"] += ',\n":hipsolver-include"'
+
     repository_ctx.template(
         "rocm/BUILD",
         tpl_paths["rocm:BUILD"],
-        {
-            "%{hip_lib}": rocm_libs["amdhip64"].file_name,
-            "%{rocblas_lib}": rocm_libs["rocblas"].file_name,
-            "%{hipfft_or_rocfft}": hipfft_or_rocfft,
-            "%{hipfft_or_rocfft_lib}": rocm_libs[hipfft_or_rocfft].file_name,
-            "%{hiprand_lib}": rocm_libs["hiprand"].file_name,
-            "%{miopen_lib}": rocm_libs["MIOpen"].file_name,
-            "%{rccl_lib}": rocm_libs["rccl"].file_name,
-            "%{hipsparse_lib}": rocm_libs["hipsparse"].file_name,
-            "%{roctracer_lib}": rocm_libs["roctracer64"].file_name,
-            "%{rocsolver_lib}": rocm_libs["rocsolver"].file_name,
-            "%{copy_rules}": "\n".join(copy_rules),
-            "%{rocm_headers}": ('":rocm-include",\n' +
-                                '":' + hipfft_or_rocfft + '-include",\n' +
-                                '":rocblas-include",\n' +
-                                '":miopen-include",\n' +
-                                '":rccl-include",\n' +
-                                hiprand_include +
-                                rocrand_include +
-                                '":hipsparse-include",\n' +
-                                '":rocsolver-include"'),
-        },
+        repository_dict,
     )
 
     # Set up crosstool/

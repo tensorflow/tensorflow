@@ -822,6 +822,13 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       self._args = {}
       self._iterators = {}
 
+    def _normalize_id(self, iterator_id):
+      # In debug mode, iterator ids may be eagerly-generated np.arrays instead
+      # of Tensors. We convert them to scalars to make them hashable.
+      if isinstance(iterator_id, np.ndarray):
+        return iterator_id.item()
+      return iterator_id
+
     def get_next_id(self, *args):
       with self._lock:
         ret = self._next_id
@@ -833,6 +840,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       return np.array(ret, dtype=np.int64)
 
     def get_iterator(self, iterator_id):
+      iterator_id = self._normalize_id(iterator_id)
       try:
         return self._iterators[iterator_id]
       except KeyError:
@@ -841,7 +849,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         return iterator
 
     def iterator_completed(self, iterator_id):
-      del self._iterators[iterator_id]
+      del self._iterators[self._normalize_id(iterator_id)]
 
   @staticmethod
   @deprecation.deprecated_args(None, "Use output_signature instead",
@@ -1070,6 +1078,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         flat_values = script_ops.numpy_function(generator_py_func,
                                                 [iterator_id_t],
                                                 flattened_types)
+
+        # In debug mode the numpy_function will return a scalar if
+        # generator_py_func produces only a single value.
+        if not isinstance(flat_values, (list, tuple)):
+          flat_values = [flat_values]
 
         # The `py_func()` op drops the inferred shapes, so we add them back in
         # here.

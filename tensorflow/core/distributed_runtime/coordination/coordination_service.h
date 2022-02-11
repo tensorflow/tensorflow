@@ -150,7 +150,8 @@ class CoordinationServiceInterface {
   // barrier id is special in that it determines the barrier deadline based on
   // timeout duration.
   // However, if subsequent calls by different agents specify a different set of
-  // `tasks` for the same `barrier_id`, the barrier will fail instantly.
+  // `participating_tasks` for the same `barrier_id`, the barrier will fail
+  // instantly.
   //
   // If no tasks are specified (default), the barrier will block for all the
   // connected tasks.
@@ -162,16 +163,23 @@ class CoordinationServiceInterface {
   //   - Cancelled: One of the tasks called CancelBarrier().
   //   - Internal: Any participating task is in ERROR state.
   //   - InvalidArgument: Conflicting tasks specified by different agents for
-  //       the same barrier.
-  virtual void BarrierAsync(const std::string& barrier_id,
-                            absl::Duration timeout,
-                            const std::vector<CoordinatedTask>& tasks,
-                            StatusCallback done) = 0;
+  //       the same barrier, or task making the request is not included in the
+  //       list of participating tasks.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
+  virtual void BarrierAsync(
+      const std::string& barrier_id, absl::Duration timeout,
+      const CoordinatedTask& task,
+      const std::vector<CoordinatedTask>& participating_tasks,
+      StatusCallback done) = 0;
 
   // Aborts the barrier if it is ongoing.
   // Current and future WaitAtBarrier() calls with the same id will return a
   // CANCELLED error status.
-  virtual Status CancelBarrier(const std::string& barrier_id) = 0;
+  // Possible service errors:
+  //   - FailedPrecondition: Barrier has already been passed.
+  //   - NotFound: No barrier with the specified id is found.
+  virtual Status CancelBarrier(const std::string& barrier_id,
+                               const CoordinatedTask& task) = 0;
 
  private:
   friend class CoordinationServiceRpcHandler;

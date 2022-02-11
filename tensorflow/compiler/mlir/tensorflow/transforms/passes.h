@@ -347,6 +347,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateReplicateInvariantOpHoistingPass();
 // `tf_device.replicate` island.
 std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass();
 
+// Creates a pass that sets the device ordinal attribute of the required op
+// using the replica id attribute.
+std::unique_ptr<OperationPass<FuncOp>> CreateReplicaIDToDeviceOrdinalPass();
+
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.
 std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass();

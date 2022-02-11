@@ -403,11 +403,7 @@ class HloModule {
 
   void set_session_id(uint64_t session_id) { session_id_ = session_id; }
 
-  void add_profile_info(HloModuleProto::ProfileType profile_type,
-                        double relative_speedup) {
-    HloModuleProto::ProfileInfo profile_info;
-    profile_info.set_profile_type(profile_type);
-    profile_info.set_relative_speedup(relative_speedup);
+  void add_profile_info(const HloModuleProto::ProfileInfo& profile_info) {
     profile_info_list_.push_back(profile_info);
   }
 

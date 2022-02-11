@@ -3011,3 +3011,53 @@ func @not_convert_sort_to_topk(%arg0: tensor<3x6xf32>) -> (tensor<3x6xf32>, tens
   }) {dimension = 1 : i64, is_stable = true} : (tensor<3x6xf32>, tensor<3x6xi32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
   return %1#0, %1#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
+
+// CHECK-LABEL:   func @convert_remainder_for_int32(
+// CHECK-SAME:                                      %[[VAL_0:.*]]: tensor<10x8xi32>,
+// CHECK-SAME:                                      %[[VAL_1:.*]]: tensor<10x8xi32>) -> tensor<10x8xi32> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Mod"(%[[VAL_0]], %[[VAL_1]]) : (tensor<10x8xi32>, tensor<10x8xi32>) -> tensor<10x8xi32>
+// CHECK:           return %[[VAL_2]] : tensor<10x8xi32>
+// CHECK:         }
+func @convert_remainder_for_int32(%arg0: tensor<10x8xi32>, %arg1: tensor<10x8xi32>) -> tensor<10x8xi32> {
+  %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xi32>
+  return %0 : tensor<10x8xi32>
+}
+
+// CHECK-LABEL:   func @convert_remainder_for_int64(
+// CHECK-SAME:                                      %[[VAL_0:.*]]: tensor<10x8xi64>,
+// CHECK-SAME:                                      %[[VAL_1:.*]]: tensor<10x8xi64>) -> tensor<10x8xi64> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Mod"(%[[VAL_0]], %[[VAL_1]]) : (tensor<10x8xi64>, tensor<10x8xi64>) -> tensor<10x8xi64>
+// CHECK:           return %[[VAL_2]] : tensor<10x8xi64>
+// CHECK:         }
+func @convert_remainder_for_int64(%arg0: tensor<10x8xi64>, %arg1: tensor<10x8xi64>) -> tensor<10x8xi64> {
+  %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xi64>
+  return %0 : tensor<10x8xi64>
+}
+
+// CHECK-LABEL:   func @not_convert_remainder_for_int16(
+// CHECK-NOT:       "tf.Mod"
+func @not_convert_remainder_for_int16(%arg0: tensor<10x8xi16>, %arg1: tensor<10x8xi16>) -> tensor<10x8xi16> {
+  %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xi16>
+  return %0 : tensor<10x8xi16>
+}
+
+// CHECK-LABEL:   func @not_convert_remainder_for_uint16(
+// CHECK-NOT:       "tf.Mod"
+func @not_convert_remainder_for_uint16(%arg0: tensor<10x8xui16>, %arg1: tensor<10x8xui16>) -> tensor<10x8xui16> {
+  %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xui16>
+  return %0 : tensor<10x8xui16>
+}
+
+// CHECK-LABEL:   func @not_convert_remainder_for_uint32(
+// CHECK-NOT:       "tf.Mod"
+func @not_convert_remainder_for_uint32(%arg0: tensor<10x8xui32>, %arg1: tensor<10x8xui32>) -> tensor<10x8xui32> {
+  %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xui32>
+  return %0 : tensor<10x8xui32>
+}
+
+// CHECK-LABEL:   func @not_convert_remainder_for_uint64(
+// CHECK-NOT:       "tf.Mod"
+func @not_convert_remainder_for_uint64(%arg0: tensor<10x8xui64>, %arg1: tensor<10x8xui64>) -> tensor<10x8xui64> {
+  %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xui64>
+  return %0 : tensor<10x8xui64>
+}

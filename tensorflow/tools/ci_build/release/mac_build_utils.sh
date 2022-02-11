@@ -19,6 +19,8 @@
 set -e
 set -x
 
+source tensorflow/tools/ci_build/release/common.sh
+
 function die() {
   echo "$@" 1>&2 ; exit 1;
 }
@@ -51,7 +53,6 @@ function bazel_build_wheel {
   install_macos_pip_deps
 
   # Update .tf_configure.bazelrc with venv python path for bazel
-  # shellcheck disable=SC2155
   export PYTHON_BIN_PATH="$(which python)"
   yes "" | ./configure
 
@@ -90,6 +91,8 @@ function bazel_build_wheel {
   # Deactivate Virtual Env
   deactivate || source deactivate
   rm -rf ${VENV_DIR}
+  # Reset Python bin path
+  export PYTHON_BIN_PATH="$(which python)"
 }
 
 function bazel_test_wheel {
@@ -103,7 +106,6 @@ function bazel_test_wheel {
   rm -rf "${VENV_DIR}"
 
   python -m venv ${VENV_DIR} && source ${VENV_DIR}/bin/activate
-  # shellcheck disable=SC2155
   export PYTHON_BIN_PATH="$(which python)"
 
   # Create Temp Dir to run the test
@@ -155,6 +157,8 @@ function bazel_test_wheel {
   # Deactivate Virtual Env
   deactivate || source deactivate
   rm -rf ${VENV_DIR}
+  # Reset Python bin path
+  export PYTHON_BIN_PATH="$(which python)"
 }
 
 function upload_nightly_wheel {

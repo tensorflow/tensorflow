@@ -88,6 +88,13 @@ namespace {
 // Utilities for the canonicalize patterns
 //===----------------------------------------------------------------------===//
 
+// This is an arbitrary limit into how many elements can a splat attribute
+// covers before we prevent folding from happening. Without such limit we can
+// expand a single element splat to a multi-GB large tensor.
+// The limit is arbitrary set low to allow expanding small computations, like
+// shape manipulations for example.
+constexpr int64_t kFoldExpandSplatEltLimit = 16;
+
 // Clamps value to the range [lower, upper].  Requires lower <= upper.
 template <typename T>
 static T Clamp(const T& value, const T& lower, const T& upper) {
@@ -197,6 +204,37 @@ Value MaybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
   if (type == value.getType()) return value;
   assert(type.isIndex() || value.getType().isIndex());
   return b.create<arith::IndexCastOp>(loc, type, value);
+}
+
+//===----------------------------------------------------------------------===//
+// Utilities for verifiers
+//===----------------------------------------------------------------------===//
+
+// Return true if type1 and type2 are tensors and have the same
+// element-type, else return false. With float element-types, ignore comparing
+// floating-point precision if ignoreFpPrecision is True.
+static bool tensorsHaveSameElType(Type type1, Type type2,
+                                  bool ignoreFpPrecision) {
+  auto tensorTy1 = type1.dyn_cast<TensorType>();
+  auto tensorTy2 = type2.dyn_cast<TensorType>();
+
+  if (!tensorTy1 || !tensorTy2) return false;
+
+  if (ignoreFpPrecision && tensorTy1.getElementType().isa<FloatType>() &&
+      tensorTy2.getElementType().isa<FloatType>())
+    return true;
+
+  return tensorTy1.getElementType() == tensorTy2.getElementType();
+}
+
+// Return true if type1 and type2 are shape-compatible and have same element
+// type. If 'ignoreFpPrecision' is True, then allow floats with different
+// precisions while checking element-types.
+static bool compatibleShapeAndElementType(Type type1, Type type2,
+                                          bool ignoreFpPrecision = false) {
+  if (failed(verifyCompatibleShape(type1, type2))) return false;
+  return tensorsHaveSameElType(type1.cast<ShapedType>(),
+                               type2.cast<ShapedType>(), ignoreFpPrecision);
 }
 
 }  // namespace
@@ -1332,6 +1370,89 @@ LogicalResult AllGatherOp::verify() {
            << resultType.getDimSize(allGatherDimIndex)
            << ", expected to be a multiple of operand gather dimension size "
            << operandType.getDimSize(allGatherDimIndex);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BatchNormTrainingOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchNormTrainingOp::verify() {
+  // The following properties are already enforced by the ODS:
+  //  1. 'operand' and 'output' are ranked tensors.
+  //  2. 'scale', 'offset', 'batch_mean', 'batch_var' are 1D tensors.
+  //  3. Types of 'operand' and 'output' matches.
+  //  4. Same element-types for 'operand', 'batch_mean', & 'batch_var'.
+  //  5. Same shapes for 'scale', 'offset', 'batch_mean', & 'batch_var'.
+
+  auto operand_type = operand().getType().cast<RankedTensorType>();
+  if (static_cast<int64_t>(feature_index()) >= operand_type.getRank())
+    return emitOpError() << "expects feature_index to be smaller "
+                            "than the rank of operand type; got feature_index "
+                         << feature_index() << ", and rank "
+                         << operand_type.getRank() << ".";
+
+  if (static_cast<int64_t>(feature_index()) < 0)
+    return emitOpError() << "expects feature_index to be a "
+                         << "non-negative number, got "
+                         << static_cast<int64_t>(feature_index()) << ".";
+
+  // Note:A valid value of feature-index implies 'operand_type.getRank() >=1'.
+
+  const int64_t feature_count = operand_type.getShape()[feature_index()];
+  const int64_t scale_shape =
+      scale().getType().cast<RankedTensorType>().getShape()[0];
+  // Check number of elements in input 'scale' equals feature_count.
+  // Together with (5) implies that 'scale', 'offset', 'batch_mean', &
+  // 'batch_var' all have the same shape.
+  if (scale_shape != feature_count)
+    return emitOpError() << "expects the size of scale factor to be "
+                            "same as the feature count,"
+                            " but the size of scale factor is "
+                         << scale_shape << " and the feature count is "
+                         << feature_count << ".";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BatchNormInferenceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchNormInferenceOp::verify() {
+  // The following properties are already enforced by the ODS:
+  //  1. 'operand' and 'result' are ranked tensors.
+  //  2. 'scale', 'offset', 'mean', 'variance' are 1D tensors.
+  //  3. Types of 'operand' and 'result' matches.
+  //  4. Same shapes for 'scale', 'offset', 'mean', & 'variance'.
+
+  auto operand_type = operand().getType().cast<RankedTensorType>();
+  if (static_cast<int64_t>(feature_index()) >= operand_type.getRank())
+    return emitOpError() << "expects feature_index to be smaller "
+                            "than the rank of operand type; got feature_index "
+                         << feature_index() << ", and rank "
+                         << operand_type.getRank() << ".";
+
+  if (static_cast<int64_t>(feature_index()) < 0)
+    return emitOpError() << "expects feature_index to be a "
+                         << "non-negative number, got "
+                         << static_cast<int64_t>(feature_index()) << ".";
+
+  // Note:A valid value of feature-index implies 'operand_type.getRank() >=1'.
+
+  const int64_t feature_count = operand_type.getShape()[feature_index()];
+  const int64_t scale_size =
+      scale().getType().cast<RankedTensorType>().getShape()[0];
+  // Check number of elements in input 'scale' equals feature_count.
+  // Together with (4) implies that 'scale', 'offset', 'mean', &
+  // 'variance' all have the same shape.
+  if (scale_size != feature_count)
+    return emitOpError() << "expects the size of scale factor to be "
+                            "same as the feature count,"
+                            " but the size of scale factor is "
+                         << scale_size << " and the feature count is "
+                         << feature_count << ".";
 
   return success();
 }
@@ -3036,15 +3157,15 @@ static bool isEligibleForCompactPrint(ReduceOp op) {
   return llvm::equal(innerOp.getResults(), retOp.getOperands());
 }
 
-void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
+void ReduceOp::print(OpAsmPrinter& p) {
   {
     // Print the pairs of operands under the form:
     //   (%arg0 init: %arg3), (%arg1 init: %arg4), (%arg2 init: %arg5)
     StringRef comma = "";
-    int numOperandPairs = op.getNumOperands() / 2;
+    int numOperandPairs = getNumOperands() / 2;
     for (int opId : llvm::seq<int>(0, numOperandPairs)) {
-      p << comma << "(" << op.getOperand(opId)
-        << " init: " << op.getOperand(opId + numOperandPairs) << ")";
+      p << comma << "(" << getOperand(opId)
+        << " init: " << getOperand(opId + numOperandPairs) << ")";
       comma = ", ";
     }
   }
@@ -3054,30 +3175,30 @@ void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
   // Note: We are not printing the function type of reduction operation. We
   // have some simplifying assumptions (refer to IsEligibleForCompactPrint::E3)
   // to derive the type from that of reduce-op.
-  if (isEligibleForCompactPrint(op)) {
-    Operation& innerOp = op.body().front().front();
+  if (isEligibleForCompactPrint(*this)) {
+    Operation& innerOp = body().front().front();
     p << " applies ";
     printEscapedString(innerOp.getName().getStringRef(), p.getStream());
 
     p << " across dimensions = [";
-    llvm::interleaveComma(op.dimensions().getValues<int64_t>(), p);
+    llvm::interleaveComma(dimensions().getValues<int64_t>(), p);
     p << "]";
     p << " : ";
-    p.printFunctionalType(op);
+    p.printFunctionalType(*this);
   } else {
     p << " across dimensions = [";
-    llvm::interleaveComma(op.dimensions().getValues<int64_t>(), p);
+    llvm::interleaveComma(dimensions().getValues<int64_t>(), p);
     p << "]";
-    p.printOptionalAttrDict(op->getAttrs(), {"dimensions"});
+    p.printOptionalAttrDict(getOperation()->getAttrs(), {"dimensions"});
     p << " : ";
-    p.printFunctionalType(op);
+    p.printFunctionalType(*this);
     p.printNewline();
     p << " reducer";
     {
       // Print the pairs of block operands under the form:
       //   (%arg0_elt, %arg0_acc) (%arg1_elt, %arg1_acc):
-      Block& reducer = op.body().front();
-      int numOperandPairs = op.getNumOperands() / 2;
+      Block& reducer = body().front();
+      int numOperandPairs = getNumOperands() / 2;
       for (int opId : llvm::seq<int>(0, numOperandPairs)) {
         p << "(";
         p.printRegionArgument(reducer.getArgument(opId));
@@ -3087,11 +3208,11 @@ void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
       }
     }
     p << ' ';
-    p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
+    p.printRegion(body(), /*printEntryBlockArgs=*/false);
   }
 }
 
-ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
+ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   Location currLocation = parser.getEncodedSourceLoc(loc);
 
@@ -3275,33 +3396,6 @@ ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
   result.addAttribute("dimensions", GetI64ElementsAttr(dimensions, &builder));
 
   return success();
-}
-
-// Return true if type1 and type2 are tensors and have the same
-// element-type, else return false. With float element-types, ignore comparing
-// floating-point precision if ignoreFpPrecision is True.
-static bool tensorsHaveSameElType(Type type1, Type type2,
-                                  bool ignoreFpPrecision) {
-  auto tensorTy1 = type1.dyn_cast<TensorType>();
-  auto tensorTy2 = type2.dyn_cast<TensorType>();
-
-  if (!tensorTy1 || !tensorTy2) return false;
-
-  if (ignoreFpPrecision && tensorTy1.getElementType().isa<FloatType>() &&
-      tensorTy2.getElementType().isa<FloatType>())
-    return true;
-
-  return tensorTy1.getElementType() == tensorTy2.getElementType();
-}
-
-// Return true if type1 and type2 are shape-compatible and have same element
-// type. If 'ignoreFpPrecision' is True, then allow floats with different
-// precisions while checking element-types.
-static bool compatibleShapeAndElementType(Type type1, Type type2,
-                                          bool ignoreFpPrecision = false) {
-  if (failed(verifyCompatibleShape(type1, type2))) return false;
-  return tensorsHaveSameElType(type1.cast<ShapedType>(),
-                               type2.cast<ShapedType>(), ignoreFpPrecision);
 }
 
 static LogicalResult verifyReducerShape(
@@ -5398,15 +5492,29 @@ llvm::SmallVector<Attribute, 4> evaluateMhloRegion(Region& region,
 }
 
 OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
-  auto base = operands[0].dyn_cast_or_null<DenseElementsAttr>();
   auto index = operands[1].dyn_cast_or_null<DenseIntElementsAttr>();
-  auto update = operands[2].dyn_cast_or_null<DenseElementsAttr>();
-  if (!base || !index || !update) return {};
+  if (!index) return {};
 
-  auto base_type = base.getType().dyn_cast<RankedTensorType>();
-  auto index_type = index.getType().dyn_cast<RankedTensorType>();
-  auto update_type = update.getType().dyn_cast<RankedTensorType>();
+  auto base_type = operand().getType().dyn_cast<RankedTensorType>();
+  auto update_type = updates().getType().dyn_cast<RankedTensorType>();
+  auto index_type = index.getType().cast<RankedTensorType>();
   if (!base_type || !index_type || !update_type) return {};
+
+  // Catch a trivial full replacement of base with update, this does not require
+  // these to be constant: just that we know the type.
+  if (update_type == base_type && update_type.hasStaticShape() &&
+      base_type.hasStaticShape() && index.isSplat() &&
+      index.getSplatValue<uint32_t>() == 0 &&
+      llvm::hasSingleElement(update_computation().front())) {
+    return updates();
+  }
+  auto base = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto update = operands[2].dyn_cast_or_null<DenseElementsAttr>();
+  if (!base || !update) return {};
+
+  // Prevent splat to be expanded if too large.
+  if (base.isSplat() && base.getNumElements() > kFoldExpandSplatEltLimit)
+    return {};
 
   // Add the virtual trailing dimension of size 1 if index_vector_dim equals to
   // index_type.rank.
@@ -5578,29 +5686,28 @@ LogicalResult WhileOp::verify() {
 ///         `do` region
 /// assignment-list ::= assignment | assignment `,` assignment-list
 /// assignment ::= ssa-value `=` ssa-value
-void printWhileOp(WhileOp op, OpAsmPrinter& p) {
+void WhileOp::print(OpAsmPrinter& p) {
   p << '(';
-  llvm::interleaveComma(
-      llvm::zip(op.getBody()->getArguments(), op->getOperands()), p,
-      [&](auto zip) {
-        p.printOperand(std::get<0>(zip));
-        p << " = ";
-        p.printOperand(std::get<1>(zip));
-      });
+  llvm::interleaveComma(llvm::zip(getBody()->getArguments(), getOperands()), p,
+                        [&](auto zip) {
+                          p.printOperand(std::get<0>(zip));
+                          p << " = ";
+                          p.printOperand(std::get<1>(zip));
+                        });
   p << ")";
-  if (op->getNumOperands()) {
+  if (getNumOperands()) {
     p << " : ";
-    llvm::interleaveComma(op->getOperandTypes(), p);
+    llvm::interleaveComma(getOperandTypes(), p);
   }
-  p.printOptionalAttrDictWithKeyword(op->getAttrs());
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
   p.printNewline();
   p << " cond ";
-  p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
+  p.printRegion(getRegion(0), /*printEntryBlockArgs=*/false);
   p << " do ";
-  p.printRegion(op->getRegion(1), /*printEntryBlockArgs=*/false);
+  p.printRegion(getRegion(1), /*printEntryBlockArgs=*/false);
 }
 
-ParseResult parseWhileOp(OpAsmParser& parser, OperationState& result) {
+ParseResult WhileOp::parse(OpAsmParser& parser, OperationState& result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   // Parse the operands of the while: these are of the form:
   //   %iter_arg = %init_val

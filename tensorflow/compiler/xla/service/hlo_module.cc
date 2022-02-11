@@ -312,6 +312,8 @@ HloModuleProto HloModule::ToProto() const {
         *proto.mutable_profile_info()->Add();
     profile_info_proto.set_profile_type(profile_info.profile_type());
     profile_info_proto.set_relative_speedup(profile_info.relative_speedup());
+    profile_info_proto.set_profile_source(profile_info.profile_source());
+    profile_info_proto.set_compilation_event(profile_info.compilation_event());
   }
   return proto;
 }
@@ -440,7 +442,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
   }
 
-  for (auto prefetch : proto.cross_program_prefetches()) {
+  for (const auto& prefetch : proto.cross_program_prefetches()) {
     module->AddCrossProgramPrefetch(
         prefetch.parameter(),
         ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
@@ -452,6 +454,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
                         HloSharding::FromProto(proto.spmd_output_sharding()));
     module->set_spmd_output_sharding(hlo_sharding);
+  }
+  for (const auto& profile_info : proto.profile_info()) {
+    module->add_profile_info(profile_info);
   }
   return std::move(module);
 }

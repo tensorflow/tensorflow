@@ -101,9 +101,11 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                         StatusOrValueCallback done) override;
   Status DeleteKeyValue(const std::string& key) override;
   void BarrierAsync(const std::string& barrier_id, absl::Duration timeout,
-                    const std::vector<CoordinatedTask>& tasks,
+                    const CoordinatedTask& task,
+                    const std::vector<CoordinatedTask>& participating_tasks,
                     StatusCallback done) override;
-  Status CancelBarrier(const std::string& barrier_id) override;
+  Status CancelBarrier(const std::string& barrier_id,
+                       const CoordinatedTask& task) override;
 
  private:
   const CoordinationServiceDeviceInfo& ListClusterDevices() override
@@ -588,13 +590,15 @@ Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
 
 void CoordinationServiceStandaloneImpl::BarrierAsync(
     const std::string& barrier_id, absl::Duration timeout,
-    const std::vector<CoordinatedTask>& tasks, StatusCallback done) {
+    const CoordinatedTask& task,
+    const std::vector<CoordinatedTask>& participating_tasks,
+    StatusCallback done) {
   return done(MakeCoordinationError(errors::Unimplemented(
       "CoordinationServiceImpl::BarrierAsync is not implemented.")));
 }
 
 Status CoordinationServiceStandaloneImpl::CancelBarrier(
-    const std::string& barrier_id) {
+    const std::string& barrier_id, const CoordinatedTask& task) {
   return MakeCoordinationError(errors::Unimplemented(
       "CoordinationServiceImpl::CancelBarrier is not implemented."));
 }

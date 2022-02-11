@@ -185,7 +185,8 @@ class SavedModelTest(test.TestCase, parameterized.TestCase):
       def __init__(self, v=None):
         self.v = v if v is not None else variables.Variable(1.)
 
-      def _deserialization_dependencies(self):
+      def _deserialization_dependencies(self, children):
+        del children  # Unused.
         return {"v": self.v}
 
       @classmethod
