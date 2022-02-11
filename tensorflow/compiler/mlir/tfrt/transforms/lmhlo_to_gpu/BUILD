@@ -129,11 +129,12 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:__pkg__",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
+        ":lmhlo_to_gpu",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
         "@tf_runtime//backends/gpu:gpu_opdefs",
         "@tf_runtime//backends/gpu:gpu_passes",
     ],

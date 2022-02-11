@@ -88,6 +88,8 @@ struct TFGraphOpAsmInterface
   }
   void getAsmBlockArgumentNames(Operation *op, Region &region,
                                 OpAsmSetValueNameFn setNameFn) const {}
+  void getAsmBlockNames(Operation *op,
+                        mlir::OpAsmSetBlockNameFn setNameFn) const {}
 };
 
 // Dialect construction: there is one instance per context and it registers its
