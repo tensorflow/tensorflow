@@ -1569,6 +1569,7 @@ cc_library(
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
         ":gpu_spmd_partitioner",
+        ":gpu_hlo_cost_analysis",
         ":horizontal_input_fusion",
         ":horizontal_loop_fusion",
         ":instruction_fusion",
@@ -2083,6 +2084,27 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "gpu_hlo_cost_analysis",
+    srcs = ["gpu_hlo_cost_analysis.cc"],
+    hdrs = ["gpu_hlo_cost_analysis.h"],
+    deps = [
+        ":backend_configs_cc",
+        ":cublas_cudnn",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_hlo_cost_analysis_test",
+    srcs = ["gpu_hlo_cost_analysis_test.cc"],
+    deps = [
+        ":gpu_hlo_cost_analysis",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
