@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 
+#include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
@@ -91,6 +91,7 @@ void AddLinalgTransformations(OpPassManager& pm,
   if (options.fuse_fill) {
     pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
   }
+  pm.addNestedPass<FuncOp>(CreateTileFillPass(options.vector_size));
   pm.addNestedPass<FuncOp>(CreateVectorizeTiledOpsPass());
 }
 
