@@ -122,6 +122,15 @@ BM(Tfrt(Transpose_small_1x2x0, Transpose3D({1, 2, 0}), "compute",
         Inputs({32, 32, 16})));
 BM(Eigen(Transpose_small_1x2x0, Shuffle<3>({1, 2, 0}), Inputs({32, 32, 16})));
 
+// Small 3D Transpose: [1, 0, 2]
+BM(Jitrt(Transpose_small_1x0x2, Transpose3D({1, 0, 2}), "compute",
+         Inputs({32, 32, 16})));
+BM(JitrtV(Transpose_small_1x0x2, Transpose3D({1, 0, 2}), "compute",
+          Inputs({32, 32, 16})));
+BM(Tfrt(Transpose_small_1x0x2, Transpose3D({1, 0, 2}), "compute",
+        Inputs({32, 32, 16})));
+BM(Eigen(Transpose_small_1x0x2, Shuffle<3>({1, 0, 2}), Inputs({32, 32, 16})));
+
 // 2D Transpose: [1, 0]
 BM(Jitrt(Transpose_1x0, Transpose2D(), "compute", Inputs({4096, 4096})));
 BM(JitrtV(Transpose_1x0, Transpose2D(), "compute", Inputs({4096, 4096})));
@@ -163,5 +172,14 @@ BM(JitrtV(Transpose_1x2x0, Transpose3D({1, 2, 0}), "compute",
 BM(Tfrt(Transpose_1x2x0, Transpose3D({1, 2, 0}), "compute",
         Inputs({256, 256, 256})));
 BM(Eigen(Transpose_1x2x0, Shuffle<3>({1, 2, 0}), Inputs({256, 256, 256})));
+
+// 3D Transpose: [1, 0, 2]
+BM(Jitrt(Transpose_1x0x2, Transpose3D({1, 0, 2}), "compute",
+         Inputs({256, 256, 256})));
+BM(JitrtV(Transpose_1x0x2, Transpose3D({1, 0, 2}), "compute",
+          Inputs({256, 256, 256})));
+BM(Tfrt(Transpose_1x0x2, Transpose3D({1, 0, 2}), "compute",
+        Inputs({256, 256, 256})));
+BM(Eigen(Transpose_1x0x2, Shuffle<3>({1, 0, 2}), Inputs({256, 256, 256})));
 
 }  // namespace tensorflow
