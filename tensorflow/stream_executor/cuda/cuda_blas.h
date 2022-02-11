@@ -132,12 +132,6 @@ class CUDABlas : public blas::BlasSupport {
                                    const T &beta, DeviceMemory<T> *y, int incy,
                                    blas::ProfileResult *output_profile_result);
 
-  template <typename T>
-  port::StatusOr<blas::PlanAndAlgorithms*> GetBlasLtPlanAndAlgorithms(
-      int64_t batch_size, blas::MatrixDescriptor lhs_matrix,
-      blas::MatrixDescriptor rhs_matirx, blas::MatrixDescriptor output_matrix,
-      Stream* stream);
-
   // Helper function for implementing DoBlasLtMatmul.
   bool DoBlasLtMatmulInternal(Stream *stream, bool err_on_failure,
                               const blas::IBlasLtMatmulPlan *plan,

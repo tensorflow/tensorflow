@@ -37,7 +37,7 @@ BlasScratchAllocator::BlasScratchAllocator(
     : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
 int64_t BlasScratchAllocator::GetMemoryLimitInBytes() {
-  static const int64_t max_scratch_size = se::GetBlasWorkspaceLimit(
+  static const int64_t max_scratch_size = se::GetWorkspaceLimit(
       "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
   return max_scratch_size;
 }
@@ -95,7 +95,7 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
 }
 
 bool BlasPlansAutotuneCache::Find(const se::BatchMatmulParameters &params,
-                                  se::blas::AlgorithmConfig *config) {
+                                  se::blas::AlgorithmConfig *config) const {
   absl::MutexLock lock(&mu_);
   auto iter = blas_plans_algorithms_map_.find(params);
   if (iter == blas_plans_algorithms_map_.end()) {
@@ -263,15 +263,17 @@ static Status DoGemmLt(
   if (!algorithm_being_profiled) {
     se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
 
-    // When autotuner is disabled, AutoTuneBatchMatmul singleton is empty.
-    if (!blas_plans_autotune_cache.Find(matmul_parameters, &algorithm_config)) {
+    // When autotuner is disabled, BlasPlansAutotuneCache singleton is empty.
+    if (!BlasPlansAutotuneCacheSingleton::GetInstance()->Find(
+            matmul_parameters, &algorithm_config)) {
       algorithm_config.set_algorithm(0);
       VLOG(4) << "Autotuner disabled: Inserting algorithm id "
               << algorithm_config.algorithm() << " for " << trans_x << " "
               << trans_y << " " << m << " " << n << " " << k << " "
               << batch_size << " " << broadcast << " " << broadcast << " "
               << dtype << " " << device_id;
-      blas_plans_autotune_cache.Insert(matmul_parameters, algorithm_config);
+      BlasPlansAutotuneCacheSingleton::GetInstance()->Insert(matmul_parameters,
+                                                             algorithm_config);
     }
     se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
     algorithm_ptr = algorithms[algorithm_idx].get();

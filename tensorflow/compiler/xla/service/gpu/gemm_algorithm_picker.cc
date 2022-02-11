@@ -128,7 +128,8 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
   // to the index within the algorithms vector, not the algorithm
   // itself.
   se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
-  if (!blas_plans_autotune_cache.Find(matmul_parameters, &algorithm_config)) {
+  if (!BlasPlansAutotuneCacheSingleton::GetInstance()->Find(
+          matmul_parameters, &algorithm_config)) {
     VLOG(4) << "Autotuning BlasLtMatmul over " << algorithms.size()
             << " algorithms.";
     se::blas::ProfileResult best_result;
@@ -191,7 +192,8 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
             << " for " << trans_x << " " << trans_y << " " << m << " " << n
             << " " << k << " " << batch_size << " " << broadcast << " "
             << broadcast << " " << dtype << " " << device_id;
-    blas_plans_autotune_cache.Insert(matmul_parameters, algorithm_config);
+    BlasPlansAutotuneCacheSingleton::GetInstance()->Insert(matmul_parameters,
+                                                           algorithm_config);
   }
   return Status::OK();
 }
@@ -371,18 +373,16 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase reference_result_buffer,
                       get_initialized_buffer(instr));
 
-  if (stream->parent()->SupportsBlasPlans()) {
-    GpuGemmConfig config = GetGpuGemmConfig(instr);
-    const Shape& output_shape = config.output_shape;
-    PrimitiveType element_type = output_shape.element_type();
-
-    if (config.use_cublaslt && BlasPlansCompatibleType(element_type)) {
-      TF_RETURN_IF_ERROR(
-          DoBlasPlansAutotune(stream, instr, allocator, input_output_allocator,
-                              gemm_config, element_type, cublas_autotune_level,
-                              lhs_buffer, rhs_buffer, output_buffer));
-      return {se::blas::kNoAlgorithm};
-    };
+  GpuGemmConfig config = GetGpuGemmConfig(instr);
+  const Shape& output_shape = config.output_shape;
+  PrimitiveType element_type = output_shape.element_type();
+  if (stream->parent()->SupportsBlasPlans() && config.use_cublaslt &&
+      BlasPlansCompatibleType(element_type)) {
+    TF_RETURN_IF_ERROR(
+        DoBlasPlansAutotune(stream, instr, allocator, input_output_allocator,
+                            gemm_config, element_type, cublas_autotune_level,
+                            lhs_buffer, rhs_buffer, output_buffer));
+    return {se::blas::kNoAlgorithm};
   } else {
     GemmCacheKey key =
         std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),

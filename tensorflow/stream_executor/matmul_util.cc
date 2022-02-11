@@ -32,11 +32,53 @@ int64_t GetWorkspaceLimit(const string& envvar_in_mb,
   return default_value_in_bytes;
 }
 
+static inline port::StatusOr<blas::DataType> GetBlasDataType(
+    tensorflow::DataType dtype) {
+  switch (dtype) {
+    case tensorflow::DT_HALF:
+      return blas::ToDataType<Eigen::half>::value;
+    case tensorflow::DT_FLOAT:
+      return blas::ToDataType<float>::value;
+    case tensorflow::DT_DOUBLE:
+      return blas::ToDataType<double>::value;
+    case tensorflow::DT_COMPLEX64:
+      return blas::ToDataType<tensorflow::complex64>::value;
+    case tensorflow::DT_COMPLEX128:
+      return blas::ToDataType<tensorflow::complex128>::value;
+    default:
+      return port::InternalError("Unsupported dtype for Blas Plans.");
+  }
+}
+
+static inline port::StatusOr<blas::ComputationType> GetBlasComputationType(
+    const tensorflow::DataType& dtype, bool allow_tf32) {
+  using blas::ComputationType;
+  static bool use_f32_for_f16_computation =
+      tensorflow::MatmulDoFP32ComputationFP16Input();
+  ComputationType f32_type =
+      allow_tf32 ? ComputationType::kTF32AsF32 : ComputationType::kF32;
+  switch (dtype) {
+    case tensorflow::DT_HALF:
+    case tensorflow::DT_BFLOAT16:
+      return use_f32_for_f16_computation ? f32_type : ComputationType::kF16;
+    case tensorflow::DT_FLOAT:
+      return f32_type;
+    case tensorflow::DT_DOUBLE:
+      return ComputationType::kF64;
+    case tensorflow::DT_COMPLEX64:
+      return f32_type;
+    case tensorflow::DT_COMPLEX128:
+      return ComputationType::kComplexF64;
+    default:
+      return port::InternalError("Unsupported dtype for Blas Plans.");
+  }
+}
+
 port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
     tensorflow::DataType dtype, blas::MatrixDescriptor lhs_matrix,
     blas::MatrixDescriptor rhs_matrix, blas::MatrixDescriptor output_matrix) {
-  static const int64_t max_scratch_size = GetBlasWorkspaceLimit(
+  static const int64_t max_scratch_size = GetWorkspaceLimit(
       "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
   static const int64_t max_autotune_algorithm_count =
       tensorflow::MatmulMaxAutotuneAlgorithmCount();

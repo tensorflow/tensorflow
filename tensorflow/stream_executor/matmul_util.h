@@ -13,6 +13,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_MATMUL_UTIL_H_
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -34,11 +35,6 @@ DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
 // default value.
 int64_t GetWorkspaceLimit(const string& envvar_in_mb,
                           int64_t default_value_in_bytes);
-
-static inline int64_t GetBlasWorkspaceLimit(const string& envvar_in_mb,
-                                            int64_t default_value_in_bytes) {
-  return GetWorkspaceLimit(envvar_in_mb, default_value_in_bytes);
-}
 
 // Encapsulates information which defines a unique
 // batched matmul operation.
@@ -63,22 +59,8 @@ class BatchMatmulParameters {
         dtype_cd_(dtype_cd),
         device_id_(device_id) {
     allow_tf32_ = tensorflow::tensor_float_32_execution_enabled();
-
-    hash_code_ = trans_a_;
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, trans_b_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, adj_a_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, adj_b_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, m_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, n_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, k_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, batch_count_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, broadcast_a_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, broadcast_b_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, dtype_ab_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, dtype_cd_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, allow_tf32_);
-    hash_code_ = tensorflow::Hash64Combine(hash_code_, device_id_);
   }
+
   bool operator==(const BatchMatmulParameters& other) const {
     return this->get_data_as_tuple() == other.get_data_as_tuple();
   }
@@ -86,7 +68,6 @@ class BatchMatmulParameters {
   bool operator!=(const BatchMatmulParameters& other) const {
     return !(*this == other);
   }
-  uint64 hash() const { return hash_code_; }
 
   string ToString() const {
     // clang-format off
@@ -96,6 +77,14 @@ class BatchMatmulParameters {
         broadcast_a_, ", ", broadcast_b_, ", ",
         dtype_ab_, ", ", dtype_cd_, ", ", allow_tf32_, ", ", device_id_);
     // clang-format on
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const BatchMatmulParameters& bmp) {
+    return H::combine(std::move(h), bmp.trans_a_, bmp.trans_b_, bmp.adj_a_,
+                      bmp.adj_b_, bmp.m_, bmp.n_, bmp.k_, bmp.batch_count_,
+                      bmp.broadcast_a_, bmp.broadcast_b_, bmp.dtype_ab_,
+                      bmp.dtype_cd_, bmp.allow_tf32_, bmp.device_id_);
   }
 
  private:
@@ -124,100 +113,39 @@ class BatchMatmulParameters {
   tensorflow::DataType dtype_cd_;
   bool allow_tf32_;
   int device_id_;
-  uint64 hash_code_;
 };
 
-static inline port::StatusOr<blas::ComputationType> GetBlasComputationType(
-    const tensorflow::DataType& dtype, bool allow_tf32) {
-  using blas::ComputationType;
-  static bool use_f32_for_f16_computation =
-      tensorflow::MatmulDoFP32ComputationFP16Input();
-  ComputationType f32_type =
-      allow_tf32 ? ComputationType::kTF32AsF32 : ComputationType::kF32;
-  switch (dtype) {
-    case tensorflow::DT_HALF:
-    case tensorflow::DT_BFLOAT16:
-      return use_f32_for_f16_computation ? f32_type : ComputationType::kF16;
-    case tensorflow::DT_FLOAT:
-      return f32_type;
-    case tensorflow::DT_DOUBLE:
-      return ComputationType::kF64;
-    case tensorflow::DT_COMPLEX64:
-      return f32_type;
-    case tensorflow::DT_COMPLEX128:
-      return ComputationType::kComplexF64;
-    default:
-      return port::InternalError("Unsupported dtype for Blas Plans.");
-  }
-}
-
-static inline port::StatusOr<blas::DataType> GetBlasDataType(tensorflow::DataType dtype){
-  switch (dtype) {
-    case tensorflow::DT_HALF:
-      return blas::ToDataType<Eigen::half>::value;
-    case tensorflow::DT_FLOAT:
-      return blas::ToDataType<float>::value;
-    case tensorflow::DT_DOUBLE:
-      return blas::ToDataType<double>::value;
-    case tensorflow::DT_COMPLEX64:
-      return blas::ToDataType<tensorflow::complex64>::value;
-    case tensorflow::DT_COMPLEX128:
-      return blas::ToDataType<tensorflow::complex128>::value;
-    default:
-      return port::InternalError("Unsupported dtype for Blas Plans.");
-  }
-}
 
 // Thread-safe map from matmul parameters to their corresponding plan and
 // algorithms.
-template <typename Parameters>
 class BlasLtMatmulPlanMap {
  public:
-  const blas::PlanAndAlgorithms* Find(const Parameters& params) {
-    tensorflow::mutex_lock lock(mu_);
+  const blas::PlanAndAlgorithms* Find(
+      const BatchMatmulParameters& params) const {
+    absl::MutexLock lock(&mu_);
     auto iter = params_plan_map_.find(params);
     if (iter == params_plan_map_.end()) {
       return nullptr;
     }
     return &iter->second;
   }
-  const blas::PlanAndAlgorithms* Insert(const Parameters& params,
+  const blas::PlanAndAlgorithms* Insert(const BatchMatmulParameters& params,
                                         blas::PlanAndAlgorithms value) {
-    tensorflow::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     return &params_plan_map_.emplace(params, std::move(value)).first->second;
   }
 
  private:
-  struct Hasher {
-    std::size_t operator()(const Parameters& parameter) const {
-      return parameter.hash();
-    }
-  };
-
-  tensorflow::mutex mu_;
-  std::unordered_map<Parameters, blas::PlanAndAlgorithms, Hasher>
-      params_plan_map_ GUARDED_BY(mu_);
+  mutable absl::Mutex mu_;
+  absl::flat_hash_map<BatchMatmulParameters, blas::PlanAndAlgorithms>
+      params_plan_map_ ABSL_GUARDED_BY(mu_);
 };
 
-template <typename Parameters>
-struct BlasLtPlanMapSingleton {
-  typedef BlasLtMatmulPlanMap<Parameters> PlanMapType;
-  static PlanMapType* GetInstance() {
-    static PlanMapType* instance = new PlanMapType();
+struct BatchMatmulPlanMapSingleton {
+  static BlasLtMatmulPlanMap* GetInstance() {
+    static BlasLtMatmulPlanMap* instance = new BlasLtMatmulPlanMap();
     return instance;
   }
-};
-
-typedef BlasLtPlanMapSingleton<BatchMatmulParameters>
-    BatchMatmulPlanMapSingleton;
-
-template <typename Scalar>
-struct CoefficientType {
-  typedef Scalar type;
-};
-template <>
-struct CoefficientType<Eigen::half> {
-  typedef float type;
 };
 
 port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(

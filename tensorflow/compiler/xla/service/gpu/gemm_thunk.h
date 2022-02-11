@@ -116,8 +116,16 @@ MatrixDescs PopulateInputOutputMatrices(const GpuGemmConfig& gemm_config,
                                         se::DeviceMemoryBase output_buffer);
 
 inline bool BlasPlansCompatibleType(PrimitiveType type) {
-  absl::flat_hash_set<PrimitiveType> compatible_types = {F16, F32, F64, C64, C128};
-  return compatible_types.contains(type);
+  switch (type) {
+    case F16:
+    case F32:
+    case F64:
+    case C64:
+    case C128:
+      return true;
+    default:
+      return false;
+  }
 }
 
 // A class for storing and retrieving algorithms in cublasLT autotuning
@@ -125,25 +133,23 @@ class BlasPlansAutotuneCache {
  public:
   BlasPlansAutotuneCache() {}
   bool Find(const se::BatchMatmulParameters& params,
-            se::blas::AlgorithmConfig* config);
+            se::blas::AlgorithmConfig* config) const;
   void Insert(const se::BatchMatmulParameters& params,
               const se::blas::AlgorithmConfig& config);
 
  private:
-  struct Hasher {
-    std::size_t operator()(const se::BatchMatmulParameters& parameter) const {
-      return parameter.hash();
-    }
-  };
-
   mutable absl::Mutex mu_;
-  absl::flat_hash_map<se::BatchMatmulParameters, se::blas::AlgorithmConfig,
-                      Hasher>
+  absl::flat_hash_map<se::BatchMatmulParameters, se::blas::AlgorithmConfig>
       blas_plans_algorithms_map_ ABSL_GUARDED_BY(mu_);
   TF_DISALLOW_COPY_AND_ASSIGN(BlasPlansAutotuneCache);
 };
 
-static BlasPlansAutotuneCache blas_plans_autotune_cache;
+struct BlasPlansAutotuneCacheSingleton {
+  static BlasPlansAutotuneCache* GetInstance() {
+    static BlasPlansAutotuneCache* instance = new BlasPlansAutotuneCache();
+    return instance;
+  }
+};
 
 }  // namespace gpu
 }  // namespace xla
