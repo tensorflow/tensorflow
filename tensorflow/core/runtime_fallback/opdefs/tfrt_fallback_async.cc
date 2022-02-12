@@ -76,23 +76,23 @@ static Type GetChainType(Builder *builder) {
   return builder->getType<compiler::ChainType>();
 }
 
-static LogicalResult verify(CreateOp op) {
-  return fallback_common::VerifyFallbackExecuteOp(op);
+LogicalResult CreateOp::verify() {
+  return fallback_common::VerifyFallbackExecuteOp(*this);
 }
-static LogicalResult verify(ExecuteOp op) {
-  return fallback_common::VerifyFallbackExecuteOp(op);
+LogicalResult ExecuteOp::verify() {
+  return fallback_common::VerifyFallbackExecuteOp(*this);
 }
-static LogicalResult verify(ExecuteOpSeq op) {
-  return fallback_common::VerifyFallbackExecuteOp(op);
+LogicalResult ExecuteOpSeq::verify() {
+  return fallback_common::VerifyFallbackExecuteOp(*this);
 }
-static LogicalResult verify(ExecuteOpWithAllocator op) {
-  return fallback_common::VerifyExecuteOpCommon(op);
+LogicalResult ExecuteOpWithAllocator::verify() {
+  return fallback_common::VerifyExecuteOpCommon(*this);
 }
-static LogicalResult verify(ExecuteOpSeqWithAllocator op) {
-  return fallback_common::VerifyExecuteOpCommon(op);
+LogicalResult ExecuteOpSeqWithAllocator::verify() {
+  return fallback_common::VerifyExecuteOpCommon(*this);
 }
-static LogicalResult verify(BatchFunctionOp op) {
-  return fallback_common::VerifyExecuteOpCommon(op);
+LogicalResult BatchFunctionOp::verify() {
+  return fallback_common::VerifyExecuteOpCommon(*this);
 }
 
 static ParseResult parseCreateOp(OpAsmParser &parser, OperationState &result) {
