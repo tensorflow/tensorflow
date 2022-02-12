@@ -569,7 +569,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
   def testValues(self):
     dtypes = [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int64,
-        dtypes_lib.int32
+        dtypes_lib.int32, dtypes_lib.complex64,  dtypes_lib.complex128
     ]
 
     index_dtypes = [dtypes_lib.int32, dtypes_lib.int64]
