@@ -1351,7 +1351,7 @@ REGISTER_OP("SparseSegmentSum")
     .Input("indices: Tidx")
     .Input("segment_ids: Tsegmentids")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: numbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionShapeFn);

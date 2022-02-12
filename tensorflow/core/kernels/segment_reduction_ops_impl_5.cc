@@ -43,6 +43,8 @@ namespace tensorflow {
       SparseSegmentReductionSumWithNumSegmentsOp<CPUDevice, type, index_type, \
                                                  segment_ids_type>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE);
+REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(complex64);
+REGISTER_CPU_SPARSE_KERNELS_FOR_EACH_INDEX_TYPE(complex128);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
 #define REGISTER_CPU_SPARSE_KERNELS(type, index_type, segment_ids_type)        \
