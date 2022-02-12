@@ -2640,12 +2640,9 @@ cc_library(
 
 cc_library(
     name = "precompiled_kernels",
-    srcs = if_cuda_is_configured(["precompiled_kernels.cc"]),
-    hdrs = if_cuda_is_configured(["precompiled_kernels.h"]),
-    deps = if_cuda_is_configured([
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
+    srcs = ["precompiled_kernels.cc"],
+    hdrs = ["precompiled_kernels.h"],
+    deps = [
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -2654,7 +2651,10 @@ cc_library(
         "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
-    ]),
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 cc_library(
