@@ -337,14 +337,14 @@ def _gen_kernel_library(
                 op = op,
                 output_type = output_type,
                 platform = platform,
-                type = type,
+                type = type
             )
             _gen_kernel_bin_rule(
                 name = "{op}_{platform}_{type}_{output_type}_kernel_generator".format(
                     op = op,
                     platform = platform,
                     type = type,
-                    output_type = output_type,
+                    output_type = output_type
                 ),
                 cpu_codegen = enable_cpu,
                 data_type = type,
@@ -360,7 +360,7 @@ def _gen_kernel_library(
                 ),
                 tile_size = typed_tile_size,
                 unroll_factors = typed_unroll_factors,
-                jit_i64_indexed_for_large_tensors = jit_i64_indexed_for_large_tensors,
+                jit_i64_indexed_for_large_tensors = jit_i64_indexed_for_large_tensors
             )
 
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
