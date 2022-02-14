@@ -80,10 +80,34 @@ void EmitDynamicRangeOp(const RecordKeeper &record_keeper,
   os.indent(0) << "}\n";
 }
 
+void EmitSparseOp(const RecordKeeper &record_keeper,
+                  std::vector<Record *> &defs, raw_ostream *ostream) {
+  raw_ostream &os = *ostream;
+  llvm::sort(defs, LessRecord());
+
+  os.indent(0) << "const std::set<std::string> &ExportSparsitySpec() {\n";
+  os.indent(2) << "static const std::set<std::string> * result =\n";
+  os.indent(4) << "new std::set<std::string>({\n";
+
+  // Retrieve all the ops that have SparseOp trait.
+  for (const auto *def : defs) {
+    Operator op(def);
+    if (!op.getTrait("SparseOpInterface::Trait")) {
+      continue;
+    }
+    os.indent(6) << "\"" << op.getCppClassName() << "\",\n";
+  }
+
+  os.indent(4) << "});";
+  os.indent(2) << "return *result;\n";
+  os.indent(0) << "}\n";
+}
+
 static bool TFLiteOpCoverageSpecWritersMain(raw_ostream &os,
                                             RecordKeeper &records) {
   std::vector<Record *> op_defs = records.getAllDerivedDefinitions("TFL_Op");
   EmitDynamicRangeOp(records, op_defs, &os);
+  EmitSparseOp(records, op_defs, &os);
   return false;
 }
 
