@@ -631,7 +631,6 @@ static void ExecuteImpl(Executable& executable,
 
   // Tensorflow -> JitRt only supports returning Memrefs as Tensors.
   TensorflowReturnValueConverter converter(results, ctx);
-  converter.AddConversion(ReturnAsyncStridedMemref<ConvertTensor>);
   converter.AddConversion(ReturnStridedMemref<ConvertTensor>);
 
   // Get the worker threads from the execution context.
