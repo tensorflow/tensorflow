@@ -87,6 +87,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_reduce_scatter_creator.h"
@@ -1192,9 +1193,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
   if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
-    HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
-    cost_analysis.set_bytes_per_second(
+    HloCostAnalysis::Options options{ShapeSizeBytesFunction()};
+    options.set_bytes_per_second(
         stream_exec->GetDeviceDescription().memory_bandwidth());
+    GpuHloCostAnalysis cost_analysis(options);
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     VLOG(1) << "HLO memory read+written: "
             << tensorflow::strings::HumanReadableNumBytes(
@@ -1356,9 +1358,10 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
     if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
-      HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
-      cost_analysis.set_bytes_per_second(
+      HloCostAnalysis::Options options{ShapeSizeBytesFunction()};
+      options.set_bytes_per_second(
           stream_exec->GetDeviceDescription().memory_bandwidth());
+      GpuHloCostAnalysis cost_analysis(options);
       TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
       VLOG(1) << "HLO memory read+written: "
               << tensorflow::strings::HumanReadableNumBytes(

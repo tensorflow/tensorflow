@@ -324,7 +324,7 @@ def CreateOp: FallbackAsync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
     TFRT_ChainType:$out_ch
   );
 
-  let verifier = [{ return tfrt::fallback_async::verify(*this); }];
+  let hasVerifier = 1;
   let printer = [{ return tfrt::fallback_async::print(p, *this); }];
   let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
 }
@@ -382,7 +382,7 @@ def ExecuteOp : FallbackAsync_Op<"executeop",
       "::llvm::ArrayRef<std::pair<::llvm::StringRef, ::mlir::Attribute>>":$op_func_attrs,
       "int64_t":$op_key, "::llvm::StringRef":$op_name, "int64_t":$_tfrt_cost)>];
 
-  let verifier = [{ return tfrt::fallback_async::verify(*this); }];
+  let hasVerifier = 1;
   let printer = [{ return tfrt::fallback_async::print(p, *this); }];
   let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
 }
@@ -436,7 +436,7 @@ def ExecuteOpSeq : FallbackAsync_Op<"executeop.seq",
     Variadic<TFTensorType>:$results
   );
 
-  let verifier = [{ return tfrt::fallback_async::verify(*this); }];
+  let hasVerifier = 1;
   let printer = [{ return tfrt::fallback_async::print(p, *this); }];
   let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
 }
@@ -476,7 +476,7 @@ def BatchFunctionOp : FallbackAsync_Op<"batch_function", [CoreRT_TypedAttributeT
     Variadic<CoreRT_TensorHandleType>:$results
   );
 
-  let verifier = [{ return tfrt::fallback_async::verify(*this); }];
+  let hasVerifier = 1;
   let printer = [{ return tfrt::fallback_async::print(p, *this); }];
   let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
 }
@@ -503,7 +503,7 @@ def ExecuteOpWithAllocator : FallbackAsync_Op<"executeop.allocator",
     Variadic<TFTensorType>:$results
   );
 
-  let verifier = [{ return tfrt::fallback_async::verify(*this); }];
+  let hasVerifier = 1;
   let printer = [{ return tfrt::fallback_async::print(p, *this); }];
   let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
 }
@@ -538,7 +538,7 @@ def ExecuteOpSeqWithAllocator : FallbackAsync_Op<"executeop.seq.allocator",
     Variadic<TFTensorType>:$results
   );
 
-  let verifier = [{ return tfrt::fallback_async::verify(*this); }];
+  let hasVerifier = 1;
   let printer = [{ return tfrt::fallback_async::print(p, *this); }];
   let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
 }

@@ -18,6 +18,7 @@ package_group(
         "//tensorflow/core/tfrt/experimental/data/...",
         "//tensorflow/core/tfrt/saved_model/...",
         "//tensorflow/core/tfrt/graph_executor/...",
+        "//tensorflow/core/tfrt/tfrt_session/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/mlir/tfrt_compiler/...",
@@ -133,12 +134,17 @@ cc_library(
 
 tfrt_cc_library(
     name = "tf_jitrt",
+    srcs = ["jit/tf_jitrt.cc"],
     hdrs = ["jit/tf_jitrt.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/runtime_fallback/util:type_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",

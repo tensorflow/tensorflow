@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_LIB_TRANSFORMS_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_LIB_TRANSFORMS_PASSES_H_
+#ifndef MLIR_HLO_TRANSFORMS_PASSES_H
+#define MLIR_HLO_TRANSFORMS_PASSES_H
 
 #include <memory>
 
@@ -52,4 +52,4 @@ std::unique_ptr<OperationPass<FuncOp>> createMemoryCountPass();
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_LIB_TRANSFORMS_PASSES_H_
+#endif  // MLIR_HLO_TRANSFORMS_PASSES_H

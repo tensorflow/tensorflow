@@ -462,3 +462,9 @@ tensorflow::CopyPythonAPITensorLists
 
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash
+
+[//tensorflow/core/function:runtime_client_cc] # runtime_client
+tensorflow::core::function::GlobalEagerContext
+tensorflow::core::function::GlobalPythonEagerContext
+tensorflow::core::function::Runtime::CreateFunction
+tensorflow::core::function::Runtime::GetFunctionProto

@@ -88,6 +88,8 @@ struct TFGraphOpAsmInterface
   }
   void getAsmBlockArgumentNames(Operation *op, Region &region,
                                 OpAsmSetValueNameFn setNameFn) const {}
+  void getAsmBlockNames(Operation *op,
+                        mlir::OpAsmSetBlockNameFn setNameFn) const {}
 };
 
 // Dialect construction: there is one instance per context and it registers its
@@ -1310,6 +1312,23 @@ BlockArgument ForRegionOp::getDataValue(Region &region, unsigned idx) {
 }
 BlockArgument ForRegionOp::getControlToken(Region &region, unsigned idx) {
   return GetLoopRegionControlTokens(region)[idx];
+}
+
+FunctionTable::FunctionTable(ModuleOp module) {
+  // Collect function names (to be used for disambiguating legacy call
+  // behavior).
+  for (auto &op : module.getOps()) {
+    if (auto func = dyn_cast<GraphFuncOp>(op)) functions.insert(func.getName());
+  }
+}
+
+bool FunctionTable::MaybeCall(Operation *op) {
+  if (functions.count(op->getName().stripDialect())) return true;
+  for (NamedAttribute named_attr : op->getAttrs()) {
+    // Treat any operation that references a FuncAttr as a call.
+    if (named_attr.getValue().isa<FuncAttr>()) return true;
+  }
+  return false;
 }
 
 }  // namespace tfg

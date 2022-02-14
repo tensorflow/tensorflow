@@ -826,7 +826,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   //           source_array[static_index.dim0][static_index.dim1];
   //     }
   //   }
-  llvm_ir::LoopEmitter::BodyEmitter body_generator =
+  llvm_ir::BodyEmitter body_generator =
       [&](const llvm_ir::IrArray::Index& array_index) -> Status {
     llvm::Value* linearIndex =
         array_index.Linearize(input_shape.dimensions(), &b_);
@@ -943,7 +943,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   //           source_array[dyn_index.dim0][dyn_index.dim1];
   //     }
   //   }
-  llvm_ir::LoopEmitter::BodyEmitter body_generator =
+  llvm_ir::BodyEmitter body_generator =
       [&](const llvm_ir::IrArray::Index& array_index) -> Status {
     llvm::Value* linearIndex =
         array_index.Linearize(input_shape.dimensions(), &b_);
@@ -1751,18 +1751,10 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
   llvm::Type* index_type =
       GetIndexTypeForKernel(fusion, launch_dimensions.launch_bound(), &b_);
 
-  if (fusion.getOutputBuffers().size() > 1) {
-    // For multioutput fusion, we need to emit each operand and the root.
-    TF_RETURN_IF_ERROR(
-        ParallelLoopEmitter(element_generator, output_element_arrays,
-                            launch_dimensions, &b_, launch_config)
-            .EmitLoop(GetIrNameFromLoc(fusion->getLoc()), index_type));
-  } else {
-    TF_RETURN_IF_ERROR(
-        ParallelLoopEmitter(element_generator, output_element_arrays[0],
-                            launch_dimensions, &b_, launch_config)
-            .EmitLoop(GetIrNameFromLoc(fusion->getLoc()), index_type));
-  }
+  TF_RETURN_IF_ERROR(
+      ParallelLoopEmitter(element_generator, output_element_arrays,
+                          launch_dimensions, &b_, launch_config)
+          .EmitLoop(GetIrNameFromLoc(fusion->getLoc()), index_type));
 
   b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
   return Status::OK();
@@ -1845,7 +1837,7 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
                           operand_fused_emitter.GetGenerator(root->operand(0)));
 
       TF_RETURN_IF_ERROR(
-          ParallelLoopEmitter(generator, ir_arrays.back(), launch_dimensions,
+          ParallelLoopEmitter(generator, {ir_arrays.back()}, launch_dimensions,
                               &b_, {unroll_factor})
               .EmitLoop(IrName(GetIrNameFromLoc(fusion_op.getLoc())),
                         GetIndexTypeForKernel(
@@ -3381,7 +3373,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
                          [=](const IrArray::Index& index) {
                            return init_array.EmitReadArrayElement(index, &b_);
                          },
-                         dest_array, launch_dimensions, &b_)
+                         {dest_array}, launch_dimensions, &b_)
                          .EmitLoop(GetIrNameFromLoc(op->getLoc())));
 
   return std::move(kernel_thunk);
@@ -3444,7 +3436,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
   TF_ASSIGN_OR_RETURN(auto generator,
                       fused_emitter.GetGenerator(instr->operand(1)));
   TF_RETURN_IF_ERROR(
-      ParallelLoopEmitter(generator, dest_array, launch_dimensions, &b_)
+      ParallelLoopEmitter(generator, {dest_array}, launch_dimensions, &b_)
           .EmitLoop(GetIrNameFromLoc(fusion.getLoc())));
   return {std::move(kernel_thunk)};
 }

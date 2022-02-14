@@ -5451,7 +5451,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     }
     // Map inputs to NN API tensor indices.
     for (int input_pos = 0; input_pos < node->inputs->size; ++input_pos) {
-      if (context->tensors[node->inputs->data[input_pos]].type ==
+      if (node->inputs->data[input_pos] != kTfLiteOptionalTensor &&
+          context->tensors[node->inputs->data[input_pos]].type ==
               kTfLiteFloat16 &&
           IsConstantTensor(&context->tensors[node->inputs->data[input_pos]])) {
         input_tensor_flags |= NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION;

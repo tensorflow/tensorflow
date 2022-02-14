@@ -163,7 +163,9 @@ class CoordinationServiceInterface {
   //   - Cancelled: One of the tasks called CancelBarrier().
   //   - Internal: Any participating task is in ERROR state.
   //   - InvalidArgument: Conflicting tasks specified by different agents for
-  //       the same barrier.
+  //       the same barrier, or task making the request is not included in the
+  //       list of participating tasks.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
   virtual void BarrierAsync(
       const std::string& barrier_id, absl::Duration timeout,
       const CoordinatedTask& task,
@@ -173,6 +175,9 @@ class CoordinationServiceInterface {
   // Aborts the barrier if it is ongoing.
   // Current and future WaitAtBarrier() calls with the same id will return a
   // CANCELLED error status.
+  // Possible service errors:
+  //   - FailedPrecondition: Barrier has already been passed.
+  //   - NotFound: No barrier with the specified id is found.
   virtual Status CancelBarrier(const std::string& barrier_id,
                                const CoordinatedTask& task) = 0;
 

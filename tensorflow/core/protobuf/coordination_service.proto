@@ -240,11 +240,15 @@ service CoordinationService {
   //   - Cancelled: One of the tasks called CancelBarrier().
   //   - Internal: Any participating task is in ERROR state.
   //   - InvalidArgument: Conflicting tasks specified by different agents for
-  //       the same barrier.
+  //       the same barrier, or task making the request is not included in the
+  //       list of participating tasks.
   rpc Barrier(BarrierRequest) returns (BarrierResponse);
 
   // Aborts the barrier if it is ongoing.
   // Current and future WaitAtBarrier() calls with the same id will return a
   // CANCELLED error status.
+  // Possible service errors:
+  //   - FailedPrecondition: Barrier has already been passed.
+  //   - NotFound: No barrier with the specified id is found.
   rpc CancelBarrier(CancelBarrierRequest) returns (CancelBarrierResponse);
 }

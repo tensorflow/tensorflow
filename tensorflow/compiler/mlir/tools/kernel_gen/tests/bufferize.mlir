@@ -77,39 +77,31 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
   return %assuming_result : tensor<?xf32>
 }
 
-// CHECK-LABEL: @const
+// -----
+
+// CHECK: memref.global "private" constant @[[BUFFER:.*]] : memref<3xf32> = dense<[4.000000e+00, 5.000000e+00, 6.000000e+00]>
+// CHECK: @const
 // CHECK-SAME: -> memref<3xf32>
 func @const() -> tensor<3xf32> {
-  // CHECK: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK-DAG: %[[C4:.*]] = arith.constant 4.000000e+00 : f32
-  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
-  // CHECK-DAG: %[[C5:.*]] = arith.constant 5.000000e+00 : f32
-  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-  // CHECK: store %[[C5]], %[[MEM]][%[[C1]]] : memref<3xf32>
-  // CHECK-DAG: %[[C6:.*]] = arith.constant 6.000000e+00 : f32
-  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
-  // CHECK: store %[[C6]], %[[MEM]][%[[C2]]] : memref<3xf32>
-  // CHECK-NEXT: return %[[MEM]] : memref<3xf32>
+  // CHECK:  %[[RESULT:.*]] = memref.get_global @[[BUFFER]] : memref<3xf32>
+  // CHECK:  return %[[RESULT]] : memref<3xf32>
   %result = arith.constant dense<[4.0, 5.0, 6.0]> : tensor<3xf32>
   return %result : tensor<3xf32>
 }
 
-// CHECK-LABEL: @const_splat
+// -----
+
+// CHECK: memref.global "private" constant @[[BUFFER:.*]] : memref<3xf32> = dense<4.000000e+00>
+// CHECK: @const_splat
 // CHECK-SAME: -> memref<3xf32>
 func @const_splat() -> tensor<3xf32> {
-  // CHECK: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
-  // CHECK-DAG: %[[C4:.*]] = arith.constant 4.000000e+00 : f32
-  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK: store %[[C4]], %[[MEM]][%[[C0]]] : memref<3xf32>
-  // CHECK: %[[C1:.*]] = arith.constant 1 : index
-  // CHECK: store %[[C4]], %[[MEM]][%[[C1]]] : memref<3xf32>
-  // CHECK: %[[C2:.*]] = arith.constant 2 : index
-  // CHECK: store %[[C4]], %[[MEM]][%[[C2]]] : memref<3xf32>
-  // CHECK-NEXT: return %[[MEM]] : memref<3xf32>
+  // CHECK:  %[[RESULT:.*]] = memref.get_global @[[BUFFER]] : memref<3xf32>
+  // CHECK:  return %[[RESULT]] : memref<3xf32>
   %result = arith.constant dense<4.0> : tensor<3xf32>
   return %result : tensor<3xf32>
 }
+
+// -----
 
 // CHECK-LABEL: @minimum_broadcast_shapes
 // CHECK-SAME: (%[[LHS:.*]]: memref<?xindex>, %[[RHS:.*]]: memref<?xindex>)
@@ -275,4 +267,19 @@ func @dynamic_broadcast_return(%t : tensor<?x?xf32>, %shape : tensor<2xi32>) -> 
   // CHECK: memref.copy
   %bcast = "mhlo.dynamic_broadcast_in_dim"(%t, %shape) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   return %bcast : tensor<?x?xf32>
+}
+
+
+// CHECK-LABEL: @arith_select
+// CHECK-SAME: %[[C:.*]]: memref<i1>,
+// CHECK-SAME: %[[LHS:.*]]: memref<1xf32>,
+// CHECK-SAME: %[[RHS:.*]]: memref<1xf32>
+func @arith_select(%c : tensor<i1>, %lhs: tensor<1xf32>, %rhs: tensor<1xf32>)
+                  -> tensor<1xf32> {
+  // CHECK: %[[COND:.*]] = memref.load %[[C]][]
+  // CHECK: %[[RESULT:.*]] = arith.select %[[COND]], %[[LHS]], %[[RHS]]
+  // CHECK-SAME:             : memref<1xf32>
+  %cond = tensor.extract %c[] : tensor<i1>
+  %result = arith.select %cond, %lhs, %rhs : tensor<1xf32>
+  return %result : tensor<1xf32>
 }

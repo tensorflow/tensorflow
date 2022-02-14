@@ -212,10 +212,15 @@ DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
 }
 
 DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
-                                        Builder* builder) {
+                                        MLIRContext* ctx) {
   RankedTensorType ty = RankedTensorType::get(
-      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
+      {static_cast<int64_t>(values.size())}, IntegerType::get(ctx, 64));
   return DenseIntElementsAttr::get(ty, values);
+}
+
+DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                        Builder* builder) {
+  return GetI64ElementsAttr(values, builder->getContext());
 }
 
 }  // namespace hlo

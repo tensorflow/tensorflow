@@ -1421,8 +1421,8 @@ void PrepareTFPass::runOnOperation() {
     TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }
   phase_2_patterns
-      .insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
-              ConvertTFStridedSlice, ConvertRfftToRfft2d, RemoveIdentity>(ctx);
+      .add<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFStridedSlice,
+           ConvertRfftToRfft2d, RemoveIdentity>(ctx);
   phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
 

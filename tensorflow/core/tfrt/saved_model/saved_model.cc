@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"
 // TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
-#include "tensorflow/core/tfrt/utils/bridge_graph_analysis.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
@@ -263,37 +262,6 @@ tensorflow::Status RunInitializers(
   return tensorflow::Status::OK();
 }
 
-// The created `SessionOptions` contains the Grappler configs.
-static tensorflow::SessionOptions CreateSessionOptions(
-    const SavedModel::Options& options) {
-  tensorflow::SessionOptions session_options;
-  auto& config = session_options.config;
-
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_disable_meta_optimizer(
-          !options.graph_execution_options.compile_options.enable_grappler);
-
-  // The following configs are constant.
-
-  // Avoid grappler logic that lowers to v1 control flow.
-  config.mutable_experimental()->set_use_tfrt(true);
-  config.mutable_graph_options()
-      ->mutable_optimizer_options()
-      ->set_do_function_inlining(false);
-  // Do not skip grappler optimization even for small graphs.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_min_graph_nodes(-1);
-  // Disable function inlining because it may cause restore graphs to be removed
-  // as we optimize all graphs together.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_function_optimization(tensorflow::RewriterConfig::OFF);
-
-  return session_options;
-}
-
 std::vector<std::string> FindNamesForValidSignatures(
     const tensorflow::MetaGraphDef& meta_graph_def) {
   std::vector<std::string> valid_signature_names;
@@ -486,21 +454,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   tfrt::metrics::AddTFRTVersionMetric();
 
-  if (options.graph_execution_options.compile_options.tpu_target ==
-      tensorflow::TfrtTpuInfraTarget::kBridgeFallback) {
-    auto s = tfrt::CheckTpuMlirBridgeCompatibility(meta_graph_def);
-    if (!s.ok()) {
-      LOG(INFO)
-          << "TFRT detected Bridge unsupported feature, using TF fallback";
-      options.graph_execution_options.compile_options.tpu_target =
-          tensorflow::TfrtTpuInfraTarget::kTfFallback;
-    } else {
-      options.graph_execution_options.compile_options.tpu_target =
-          tensorflow::TfrtTpuInfraTarget::kTpurt;
-    }
-  }
-  LOG(INFO) << "TFRT Savedmodel use TPU target "
-            << options.graph_execution_options.compile_options.tpu_target;
+  UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
+                                       meta_graph_def.graph_def());
 
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
@@ -508,7 +463,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
     // Step 1: Import saved model from a proto to an MLIR module.
     auto import_start_time = absl::Now();
-    auto session_options = CreateSessionOptions(options);
+    auto session_options =
+        CreateDefaultSessionOptions(options.graph_execution_options);
     // Set optimize_for_static_graph to true since we won't extend the graph
     // later. If optimize_for_static_graph is set to false, FallbackState will
     // keep an extra unused copy of the graph, which unnecessarily consumes

@@ -1365,6 +1365,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -2355,7 +2356,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -2404,23 +2405,10 @@ cc_library(
     srcs = ["utils/shape_inference_utils.cc"],
     hdrs = ["utils/shape_inference_utils.h"],
     deps = [
-        ":convert_tensor",
-        ":convert_type",
         ":export_tf_dialect_op",
-        ":export_utils",
-        ":tensorflow",
-        ":tensorflow_attributes",
         ":tensorflow_types",
-        "//tensorflow/compiler/mlir:array_container_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/ir:shape_inference_utils",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:DerivedAttributeOpInterface",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:Support",
     ],
 )
 

@@ -333,7 +333,8 @@ std::vector<py::array> TfJitRtExecutor::Execute(
   opts.async_task_runner = &async_task_runner;
 
   // Convert returned memrefs to python arrays.
-  PyBindingReturnValueConverter converter(results);
+  PyBindingConversionContext results_ctx;
+  PyBindingReturnValueConverter converter(results, results_ctx);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
   if (auto err = (*executable)->Execute(memrefs, converter, opts))
     throw std::runtime_error(StrCat("Unsupported argument: ", err));

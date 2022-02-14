@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
@@ -53,6 +53,40 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "graph_transform_wrapper",
+    srcs = ["graph_transform_wrapper.cc"],
+    hdrs = ["graph_transform_wrapper.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/ir/importexport:export",
+        "//tensorflow/core/ir/importexport:import",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_transform_wrapper_test",
+    srcs = ["graph_transform_wrapper_test.cc"],
+    deps = [
+        ":graph_transform_wrapper",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:graph_constructor",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/platform:status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 # Custom `mlir-opt` replacement that links our dialect and passes
 tf_native_cc_binary(
     name = "tfg-transforms-opt",
@@ -63,7 +97,7 @@ tf_native_cc_binary(
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 

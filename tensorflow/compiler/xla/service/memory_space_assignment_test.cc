@@ -56,10 +56,11 @@ class MemorySpaceAssignmentTest : public HloTestBase,
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
       HloModule* module,
       absl::optional<Options> memory_space_assignment_options = absl::nullopt) {
-    HloCostAnalysis hlo_cost_analysis(ShapeSize);
-    hlo_cost_analysis.set_flops_per_second(kFlopsPerSecond);
-    hlo_cost_analysis.set_bytes_per_second(kBytesPerSecond);
-    hlo_cost_analysis.set_transcendentals_per_second(kTranscendentalsPerSecond);
+    HloCostAnalysis::Options cost_options{ShapeSize};
+    cost_options.set_flops_per_second(kFlopsPerSecond);
+    cost_options.set_bytes_per_second(kBytesPerSecond);
+    cost_options.set_transcendentals_per_second(kTranscendentalsPerSecond);
+    HloCostAnalysis hlo_cost_analysis(cost_options);
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }

@@ -128,6 +128,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "shape_inference_utils",
+    srcs = ["utils/shape_inference_utils.cc"],
+    hdrs = ["utils/shape_inference_utils.h"],
+    deps = [
+        ":Dialect",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir/importexport:convert_tensor",
+        "//tensorflow/core/ir/importexport:convert_types",
+        "//tensorflow/core/ir/importexport:export",
+        "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 tf_cc_test(
     name = "utility_test",
     size = "small",
@@ -152,6 +174,23 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+    ],
+)
+
+tf_cc_test(
+    name = "shape_inference_utils_test",
+    size = "small",
+    srcs = ["utils/shape_inference_utils_test.cc"],
+    deps = [
+        ":Dialect",
+        ":shape_inference_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
     ],
 )
 

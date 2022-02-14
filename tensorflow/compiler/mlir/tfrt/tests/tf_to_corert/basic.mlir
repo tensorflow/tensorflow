@@ -45,7 +45,8 @@ func @func_basic(
   // CHECK-NOT: tf.ReadVariableOp
   %1 = "tf.ReadVariableOp"(%arg1) {_output_shapes = ["tfshape$dim { size: 1 } dim { size: 3 }"], device = "/device:CPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
 
-  // CHECK-NEXT: [[ch:%.*]], [[result:%.*]] = tfrt_fallback_async.get_resource [[in_chain]] {device = "/device:CPU:0", indices = [0]} : (!tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
+  // CHECK-NEXT: [[ready_ch:%.*]] = tfrt.new.chain
+  // CHECK-NEXT: [[ch:%.*]], [[result:%.*]] = tfrt_fallback_async.get_resource [[ready_ch]] {device = "/device:CPU:0", indices = [0]} : (!tfrt.chain) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
   // CHECK-NEXT: [[r0_th:%.*]] = corert.executeop([[cpu_device]]) "tf.MatMul"([[arg0_th]], [[arg1_th]])
   %2 = "tf.MatMul"(%arg0, %1) {T = f32, _output_shapes = ["tfshape$dim { size: 3 } dim { size: 3 }"], device = "/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
   // CHECK-NEXT: [[result_th:%.*]] = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle [[result]] {device = "/device:CPU:0"}

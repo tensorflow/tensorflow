@@ -982,6 +982,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -2060,6 +2061,7 @@ cc_library(
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:SCFUtils",
     ],
 )

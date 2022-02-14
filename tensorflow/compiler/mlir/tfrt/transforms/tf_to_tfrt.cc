@@ -432,13 +432,12 @@ class FallbackGetResourceOp
     llvm::SmallVector<mlir::Type, 4> result_types(
         op.getNumResults(), rewriter.getType<tfrt::fallback::TFTensorType>());
 
-    auto new_op = rewriter.create<tfrt::fallback_async::GetResourceOp>(
-        op.getLoc(), corert_converter_.chain_type(), result_types,
-        corert_converter_.GetLocalSideEffectChain(op, &rewriter),
-        device.getValue(), op.indices());
+    auto ready_chain = rewriter.create<tfrt::compiler::NewChainOp>(
+        op.getLoc(), rewriter.getType<tfrt::compiler::ChainType>());
 
-    // Register the converted op so that it can be retrieved by successors.
-    corert_converter_.RegisterLocalSideEffectChain(op, new_op.out_ch());
+    auto new_op = rewriter.create<tfrt::fallback_async::GetResourceOp>(
+        op.getLoc(), corert_converter_.chain_type(), result_types, ready_chain,
+        device.getValue(), op.indices());
 
     rewriter.replaceOp(op, new_op.results());
 

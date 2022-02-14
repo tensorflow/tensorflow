@@ -70,6 +70,7 @@
 #     rbe_cpu_linux:                  RBE options to build with only CPU support.
 #     rbe_cpu_linux_ml2014:           RBE options to build with only CPU support (manylinux2014 compatible).
 #     rbe_linux_cuda_nvcc_py*:        RBE options to build with GPU support using nvcc.
+#     rbe_linux_cuda_nvcc_py39_ml2014 RBE options to build with GPU support using nvcc (manylinux2014 compatible).
 #
 #     rbe_linux_py3:        Linux Python 3 RBE config
 #     rbe_linux_py3_ml2014: Linux Python 3 RBE config (manylinux2014 compatible)
@@ -493,6 +494,19 @@ build:rbe_linux_cuda_nvcc_py37 --config=rbe_linux_cuda11.2_nvcc_py3.7
 build:rbe_linux_cuda_nvcc_py38 --config=rbe_linux_cuda11.2_nvcc_py3.8
 build:rbe_linux_cuda_nvcc_py39 --config=rbe_linux_cuda11.2_nvcc_py3.9
 build:rbe_linux_cuda_nvcc_py310 --config=rbe_linux_cuda11.2_nvcc_py3.10
+
+# RBE gpu config for manylinux2014
+build:rbe_linux_cuda_nvcc_py39_ml2014 --config=rbe_linux_cuda_base
+build:rbe_linux_cuda_nvcc_py39_ml2014 --host_crosstool_top="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --crosstool_top="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --extra_toolchains="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --extra_execution_platforms="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --host_platform="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --platforms="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_tensorrt"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_nccl"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 # Deprecated configs that people might still use.
 build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_nvcc_py39

@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
@@ -111,6 +112,52 @@ class TestCoordinationClientCache : public CoordinationClientCache {
 
  private:
   std::unordered_map<std::string, CoordinationClient*> clients_;
+};
+
+class CoordinationBarrierTest : public ::testing::Test {
+ protected:
+  CoordinationBarrierTest() {
+    // Set up fake cluster with 3 workers.
+    const int num_tasks = 3;
+    const ServerDef& server_def = GetMultiClientServerDef("worker", num_tasks);
+    auto client_cache = std::make_unique<TestCoordinationClientCache>();
+    for (int i = 0; i < num_tasks; ++i) {
+      CoordinatedTask task;
+      task.set_job_name("worker");
+      task.set_task_id(i);
+
+      auto client = std::make_unique<TestCoordinationClient>();
+      client_cache->AddWorker(absl::StrCat("/job:worker/replica:0/task:", i),
+                              client.get());
+
+      tasks_.push_back(task);
+      clients_.push_back(std::move(client));
+    }
+
+    coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
+        kCoordinationServiceType, Env::Default(), server_def,
+        std::move(client_cache));
+    // Register the workers.
+    for (int i = 0; i < num_tasks; ++i) {
+      absl::Notification register0;
+      coord_service_->RegisterWorker(tasks_[i], /*incarnation=*/0,
+                                     [&register0](Status s) {
+                                       TF_ASSERT_OK(s);
+                                       register0.Notify();
+                                     });
+      register0.WaitForNotification();
+    }
+  }
+
+  CoordinationServiceInterface* GetCoordinationService() {
+    return coord_service_.get();
+  }
+  CoordinatedTask GetTask(int i) { return tasks_[i]; }
+
+ private:
+  std::unique_ptr<CoordinationServiceInterface> coord_service_;
+  std::vector<CoordinatedTask> tasks_;
+  std::vector<std::unique_ptr<TestCoordinationClient>> clients_;
 };
 
 // Construct fake device protos.
@@ -551,4 +598,316 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
   EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
                                    EqualsProto(expected_cluster_devices)));
 }
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_Barrier) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  Status barrier_status_2;
+  absl::Notification n_0;
+  absl::Notification n_1;
+  absl::Notification n_2;
+
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(0),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_0, &n_0](Status s) {
+                                           barrier_status_0 = s;
+                                           n_0.Notify();
+                                         });
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(1),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_1, &n_1](Status s) {
+                                           barrier_status_1 = s;
+                                           n_1.Notify();
+                                         });
+  // Make sure barrier has not been exited prematurely.
+  EXPECT_FALSE(n_0.HasBeenNotified());
+  EXPECT_FALSE(n_1.HasBeenNotified());
+  EXPECT_FALSE(n_2.HasBeenNotified());
+
+  // Last task calls the barrier.
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(2),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_2, &n_2](Status s) {
+                                           barrier_status_2 = s;
+                                           n_2.Notify();
+                                         });
+
+  EXPECT_TRUE(n_0.HasBeenNotified());
+  EXPECT_TRUE(n_1.HasBeenNotified());
+  EXPECT_TRUE(n_2.HasBeenNotified());
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_BarrierWithSubsetOfTasks) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  absl::Notification n_0;
+  absl::Notification n_1;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_0, &n_0](Status s) {
+        barrier_status_0 = s;
+        n_0.Notify();
+      });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_1, &n_1](Status s) {
+        barrier_status_1 = s;
+        n_1.Notify();
+      });
+
+  // All listed tasks passed the barrier.
+  EXPECT_TRUE(n_0.HasBeenNotified());
+  EXPECT_TRUE(n_1.HasBeenNotified());
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_BarrierWithMismatchedTasks) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_0](Status s) { barrier_status_0 = s; });
+  // task_1's barrier call specified a conflicting set of tasks (task_2 instead
+  // of task_0).
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{GetTask(1), GetTask(2)},
+      [&barrier_status_1](Status s) { barrier_status_1 = s; });
+
+  EXPECT_TRUE(errors::IsInvalidArgument(barrier_status_0));
+  EXPECT_TRUE(errors::IsInvalidArgument(barrier_status_1));
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_BarrierByNonParticipatingTask) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  absl::Notification n_0;
+  absl::Notification n_1;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_0](Status s) { barrier_status_0 = s; });
+  // Task 2 unexpectedly calls a barrier that it is not participating in.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(2),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_1](Status s) { barrier_status_1 = s; });
+
+  // Barrier should fail for all tasks with the unexpected call.
+  EXPECT_TRUE(errors::IsInvalidArgument(barrier_status_0));
+  EXPECT_TRUE(errors::IsInvalidArgument(barrier_status_1));
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_BarrierTimeout) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(1);
+  Status barrier_status_0;
+  absl::Notification n_0;
+
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(0),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_0, &n_0](Status s) {
+                                           barrier_status_0 = s;
+                                           n_0.Notify();
+                                         });
+
+  // Block until user-specified timeout.
+  n_0.WaitForNotification();
+  EXPECT_TRUE(errors::IsDeadlineExceeded(barrier_status_0));
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_BarrierReturnsPreviousError) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(1);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  absl::Notification n_0;
+
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(0),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_0, &n_0](Status s) {
+                                           barrier_status_0 = s;
+                                           n_0.Notify();
+                                         });
+  // Block until user-specified timeout.
+  n_0.WaitForNotification();
+  // Same response should be returned immediately.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1](Status s) { barrier_status_1 = s; });
+
+  EXPECT_TRUE(errors::IsDeadlineExceeded(barrier_status_0));
+  EXPECT_TRUE(errors::IsDeadlineExceeded(barrier_status_1));
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_BarrierCancelled) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status](Status s) { barrier_status = s; });
+  Status cancelled_status =
+      GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0));
+
+  EXPECT_TRUE(errors::IsCancelled(barrier_status));
+  TF_EXPECT_OK(cancelled_status);
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_CancelNonExistentBarrier) {
+  std::string wrong_barrier_id = "wrong_barrier_id";
+
+  // Cancel barrier should fail if non-existent id is specified.
+  Status cancelled_status =
+      GetCoordinationService()->CancelBarrier(wrong_barrier_id, GetTask(0));
+
+  EXPECT_TRUE(errors::IsNotFound(cancelled_status));
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_CancelAfterBarrierHasPassed) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  Status barrier_status_2;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0](Status s) { barrier_status_0 = s; });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1](Status s) { barrier_status_1 = s; });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(2),
+      /*participating_tasks=*/{},
+      [&barrier_status_2](Status s) { barrier_status_2 = s; });
+  // Cancel barrier should fail if barrier has already been passed.
+  Status cancelled_status =
+      GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0));
+
+  EXPECT_TRUE(errors::IsFailedPrecondition(cancelled_status));
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_PassedBarrierReturnsImmediately) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  Status barrier_status_2;
+  Status barrier_status_repeat;
+  absl::Notification n0;
+  absl::Notification n1;
+  absl::Notification n2;
+  absl::Notification n_repeat;
+
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(0),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_0, &n0](Status s) {
+                                           barrier_status_0 = s;
+                                           n0.Notify();
+                                         });
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(1),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_1, &n1](Status s) {
+                                           barrier_status_1 = s;
+                                           n1.Notify();
+                                         });
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(2),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_2, &n2](Status s) {
+                                           barrier_status_2 = s;
+                                           n2.Notify();
+                                         });
+  // Repeated call should return the same result.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_repeat, &n_repeat](Status s) {
+        barrier_status_repeat = s;
+        n_repeat.Notify();
+      });
+
+  EXPECT_TRUE(n0.HasBeenNotified());
+  EXPECT_TRUE(n1.HasBeenNotified());
+  EXPECT_TRUE(n2.HasBeenNotified());
+  EXPECT_TRUE(n_repeat.HasBeenNotified());
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
+  TF_EXPECT_OK(barrier_status_repeat);
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_BarrierFailsIfTaskIsAlreadyInError) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  // Set task 0 to error state.
+  TF_ASSERT_OK(GetCoordinationService()->ReportTaskError(
+      GetTask(0), errors::Internal("test_error")));
+  Status barrier_status;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status](Status s) { barrier_status = s; });
+
+  EXPECT_TRUE(errors::IsInternal(barrier_status));
+}
+
+// TODO(hanyangtay): Enable test after barrier implementation.
+TEST_F(CoordinationBarrierTest, DISABLED_BarrierFailsUponTaskError) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  absl::Notification n0;
+  Status barrier_status;
+
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(0),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status, &n0](Status s) {
+                                           barrier_status = s;
+                                           n0.Notify();
+                                         });
+  TF_ASSERT_OK(GetCoordinationService()->ReportTaskError(
+      GetTask(0), errors::Internal("test_error")));
+  n0.WaitForNotification();
+
+  EXPECT_TRUE(errors::IsInternal(barrier_status));
+}
+
 }  // namespace tensorflow

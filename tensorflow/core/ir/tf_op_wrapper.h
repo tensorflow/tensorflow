@@ -63,7 +63,8 @@ class TFOp {
         break;
     }
     unsigned split_idx = operands.size() - num_ctl;
-    return {operands.slice(0, split_idx), operands.slice(split_idx, num_ctl)};
+    return std::make_tuple(operands.slice(0, split_idx),
+                           operands.slice(split_idx, num_ctl));
   }
 
   // Returns the regular operands, the control operands will be excluded.
