@@ -26,11 +26,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/ir/importexport/export.h"
+#include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/transforms/pass_registration.h"
-#include "tensorflow/tools/tfg_graph_transforms/export.h"
-#include "tensorflow/tools/tfg_graph_transforms/import.h"
+#include "tensorflow/tools/tfg_graph_transforms/utils.h"
 
 namespace {
 
@@ -122,27 +124,59 @@ tensorflow::Status RunOptimizationPasses(
 tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportModel(
     DataFormat data_format, const std::string& input_file,
     mlir::MLIRContext* mlir_context) {
+  tensorflow::GraphDebugInfo debug_info;
+
   switch (data_format) {
-    case DataFormat::SavedModel:
-      return mlir::tfg::graph_transforms::ImportSavedModel(mlir_context,
-                                                           input_file);
-    case DataFormat::GraphDef:
-      return mlir::tfg::graph_transforms::ImportGraphDef(mlir_context,
-                                                         input_file);
+    case DataFormat::SavedModel: {
+      tensorflow::SavedModel saved_model;
+      TF_RETURN_IF_ERROR(
+          mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
+              input_file, saved_model));
+      return mlir::tfg::ImportSavedModelToMlir(mlir_context, debug_info,
+                                               saved_model);
+    }
+    case DataFormat::GraphDef: {
+      tensorflow::GraphDef graph_def;
+      TF_RETURN_IF_ERROR(
+          mlir::tfg::graph_transforms::ReadModelProto<tensorflow::GraphDef>(
+              input_file, graph_def));
+      return mlir::tfg::ImportGraphDefToMlir(mlir_context, debug_info,
+                                             graph_def);
+    }
   }
 }
 
-tensorflow::Status ExportTFGModule(mlir::ModuleOp moduleOp,
+tensorflow::Status ExportTFGModule(mlir::ModuleOp module_op,
                                    DataFormat data_format,
                                    const std::string& input_file,
                                    const std::string& output_file) {
   switch (data_format) {
-    case DataFormat::SavedModel:
-      return mlir::tfg::graph_transforms::ExportTFGToSavedModel(
-          moduleOp, input_file, output_file);
-    case DataFormat::GraphDef:
-      return mlir::tfg::graph_transforms::ExportTFGToGraphDef(moduleOp,
-                                                              output_file);
+    case DataFormat::SavedModel: {
+      tensorflow::SavedModel original_saved_model;
+      TF_RETURN_IF_ERROR(
+          mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
+              input_file, original_saved_model));
+      tensorflow::SavedModel final_saved_model;
+
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          tensorflow::ExportMlirToSavedModel(module_op, original_saved_model,
+                                             &final_saved_model),
+          "while converting TFG to SavedModel");
+
+      VLOG(1) << "Serializing resulting SavedModel to " << output_file;
+      return mlir::tfg::graph_transforms::SerializeProto<
+          tensorflow::SavedModel>(final_saved_model, output_file);
+    }
+    case DataFormat::GraphDef: {
+      tensorflow::GraphDef new_graphdef;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          tensorflow::ExportMlirToGraphdef(module_op, &new_graphdef),
+          "while converting TFG to GraphDef");
+
+      VLOG(1) << "Serializing resulting GraphDef to " << output_file;
+      return mlir::tfg::graph_transforms::SerializeProto<tensorflow::GraphDef>(
+          new_graphdef, output_file);
+    }
   }
 }
 
@@ -167,15 +201,13 @@ int main(int argc, char** argv) {
   mlir::MLIRContext context(registry);
 
   // Import model to the TFG MLIR module.
-  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref_status =
-      ImportModel(data_format, input_file, &context);
+  auto module_ref_status = ImportModel(data_format, input_file, &context);
 
   if (!module_ref_status.ok()) {
     LOG(QFATAL) << "Model import failed: "
                 << module_ref_status.status().ToString();
   }
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
-      std::move(module_ref_status.ValueOrDie());
+  auto module_ref = std::move(module_ref_status.ValueOrDie());
 
   // Parse the optimization pipeline configuration and run requested graph
   // optimizations.

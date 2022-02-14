@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,61 +16,47 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/AsmState.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/init_mlir.h"
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/ir/importexport/export.h"
+#include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
-#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
-#include "tensorflow/tools/tfg_graph_transforms/export.h"
-#include "tensorflow/tools/tfg_graph_transforms/import.h"
-#include "tensorflow/tools/tfg_graph_transforms/utils.h"
 
 namespace {
 
+tensorflow::Status ReadModelProto(const std::string& input_file,
+                                  tensorflow::SavedModel* out) {
+  return tensorflow::ReadBinaryProto(tensorflow::Env::Default(), input_file,
+                                     out);
+}
+
 void RunRoundTrip(const std::string& input_file) {
   mlir::DialectRegistry registry;
-  mlir::RegisterAllTensorFlowDialects(registry);
   mlir::MLIRContext context(registry);
 
+  tensorflow::SavedModel original_model;
+  auto read_result = ReadModelProto(input_file, &original_model);
+  ASSERT_TRUE(read_result.ok());
+
+  tensorflow::GraphDebugInfo debug_info;
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref_status =
-      mlir::tfg::graph_transforms::ImportSavedModel(&context, input_file);
+      mlir::tfg::ImportSavedModelToMlir(&context, debug_info, original_model);
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       std::move(module_ref_status.ValueOrDie());
 
-  // Generate the Temp file and use it for the export.
-  std::string output_file;
-  ASSERT_TRUE(tensorflow::Env::Default()->LocalTempFilename(&output_file));
-  auto status = mlir::tfg::graph_transforms::ExportTFGToSavedModel(
-      *module_ref, input_file, output_file);
+  tensorflow::SavedModel final_model;
+  auto status = tensorflow::ExportMlirToSavedModel(*module_ref, original_model,
+                                                   &final_model);
   if (!status.ok()) {
     LOG(ERROR) << "Export failed: " << status.ToString();
   }
-  ASSERT_TRUE(status.ok());
-
-  tensorflow::SavedModel original_model, final_model;
-
-  status = mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
-      input_file, original_model);
-  ASSERT_TRUE(status.ok());
-
-  status = mlir::tfg::graph_transforms::ReadModelProto<tensorflow::SavedModel>(
-      output_file, final_model);
-  ASSERT_TRUE(status.ok());
+  ASSERT_TRUE(status.ok()) << status.ToString();
 
   tensorflow::MetaGraphDef* original_metagraph =
       original_model.mutable_meta_graphs(0);
@@ -97,14 +83,14 @@ void RunRoundTrip(const std::string& input_file) {
   }
 }
 
-constexpr char kTestData[] = "tools/tfg_graph_transforms/tests";
+constexpr char kTestData[] = "core/ir/importexport/tests/saved_model";
 
 TEST(SavedModelRoundTripTest, V1ModelIsIdentity) {
   const std::string input_file =
       tensorflow::io::JoinPath(tensorflow::testing::TensorFlowSrcRoot(),
                                kTestData, "savedmodel_v1/saved_model.pb");
 
-  RunRoundTrip(input_file);
+  ASSERT_NO_FATAL_FAILURE(RunRoundTrip(input_file));
 }
 
 TEST(SavedModelRoundTripTest, V2ModelIsIdentity) {
@@ -112,7 +98,7 @@ TEST(SavedModelRoundTripTest, V2ModelIsIdentity) {
       tensorflow::io::JoinPath(tensorflow::testing::TensorFlowSrcRoot(),
                                kTestData, "savedmodel_v2/saved_model.pb");
 
-  RunRoundTrip(input_file);
+  ASSERT_NO_FATAL_FAILURE(RunRoundTrip(input_file));
 }
 
 }  // namespace
