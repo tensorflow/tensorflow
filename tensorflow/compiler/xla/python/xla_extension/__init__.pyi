@@ -28,6 +28,7 @@ from . import outfeed_receiver
 from . import pmap_lib
 from . import profiler
 from . import pytree
+from . import transfer_guard_lib
 
 _LiteralSlice = Any
 _Status = Any
