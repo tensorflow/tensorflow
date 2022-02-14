@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-legalize-tf --cse | FileCheck %s
+// RUN: tf-opt %s -tfl-legalize-tf --cse | FileCheck %s --dump-input=fail
 
 func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
@@ -1508,6 +1508,13 @@ func @sparse_to_dense_with_2d_sparse_indices(%arg0: tensor<3x2xi32>, %arg1: tens
   return %0 : tensor<?x?x?xf32>
   // CHECK-LABEL: sparse_to_dense_with_2d_sparse_indices
   // CHECK: "tfl.sparse_to_dense"(%arg0, %arg1, %arg2, %arg3) : (tensor<3x2xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
+}
+
+func @sparse_to_dense_with_2d_sparse_indices_and_second_dim_greater_than_4(%arg0: tensor<3x5xi32>, %arg1: tensor<3xi32>, %arg2: tensor<2xf32>, %arg3: tensor<f32>) -> tensor<?x?x?xf32> {
+  %0 = "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) {validate_indices = true}: (tensor<3x5xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+  // CHECK-LABEL: sparse_to_dense_with_2d_sparse_indices_and_second_dim_greater_than_4
+  // CHECK: "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) {validate_indices = true} : (tensor<3x5xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
 }
 
 func @where(%arg0: tensor<3x5xi1>) -> tensor<?x2xi64> {

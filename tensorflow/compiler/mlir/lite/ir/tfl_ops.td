@@ -3621,7 +3621,12 @@ def TFL_SparseToDenseOp : TFL_Op<"sparse_to_dense", [
       TFL_TCresVTEtIsSameAsOp<0, 3>>,
     TFL_OperandHasRankAtMost<0, 2>,
     TFL_OperandHasRankAtMost<1, 1>,
-    TFL_OperandHasRankAtMost<2, 1>]> {
+    TFL_OperandHasRankAtMost<2, 1>,
+    PredOpTrait<"the first operand should have a rank <= 2, when its rank is 2 and has static shape, the second dim should be <= 4",
+      Or<[TFL_OperandIsUnrankedPred<0>,
+          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() <= 1">,
+          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() == 2 && !$_op.getOperand(0).getType().cast<ShapedType>().hasStaticShape()">,
+          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() == 2 && $_op.getOperand(0).getType().cast<ShapedType>().getShape()[1] <= 4">]>>]> {
   let summary = "Converts a sparse representation into a dense tensor.";
 
   let description = [{
