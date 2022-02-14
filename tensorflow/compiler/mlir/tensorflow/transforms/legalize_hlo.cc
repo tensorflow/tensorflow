@@ -80,6 +80,20 @@ void ReplaceReturnOp(Region &region, PatternRewriter &rewriter) {
   }
 }
 
+// If `value` is a splat constant, returns a success and set `splat_value`
+// to the splate constant value.
+// `SplatValueType` can be `APInt` or `APFloat`.
+template <typename SplatValueType>
+LogicalResult GetConstantSplatValue(Value value, SplatValueType &splat_value) {
+  DenseElementsAttr attr;
+  if (!matchPattern(value, m_Constant(&attr)) || !attr.isSplat()) {
+    return failure();
+  }
+
+  splat_value = attr.getSplatValue<SplatValueType>();
+  return success();
+}
+
 class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -1582,15 +1596,14 @@ class ConvertReduceOpToTfSum
   LogicalResult MatchInitValue(Value init_value) const override {
     auto type = init_value.getType().cast<ShapedType>().getElementType();
     if (type.isa<FloatType>()) {
-      DenseFPElementsAttr init_attr;
-      if (!matchPattern(init_value, m_Constant(&init_attr)) ||
-          !init_attr.isSplat() || !init_attr.getSplatValue<APFloat>().isZero())
+      APFloat const_value(.0);
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isZero())
         return failure();
-    } else if (type.isa<IntegerType>()) {
-      DenseIntElementsAttr int_init_attr;
-      if (!matchPattern(init_value, m_Constant(&int_init_attr)) ||
-          !int_init_attr.isSplat() ||
-          !int_init_attr.getSplatValue<APInt>().isZero())
+    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+      APInt const_value;
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isZero())
         return failure();
     } else {
       return failure();
@@ -1606,12 +1619,20 @@ class ConvertReduceOpToTfMax
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
-    DenseFPElementsAttr init_attr;
-    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
-        !init_attr.isSplat() ||
-        !init_attr.getSplatValue<APFloat>().isInfinity() ||
-        !init_attr.getSplatValue<APFloat>().isNegative())
+    auto type = init_value.getType().cast<ShapedType>().getElementType();
+    if (type.isa<FloatType>()) {
+      APFloat const_value(.0);
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isInfinity() || !const_value.isNegative())
+        return failure();
+    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+      APInt const_value;
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isMinSignedValue())
+        return failure();
+    } else {
       return failure();
+    }
     return success();
   }
 };
@@ -1622,12 +1643,21 @@ class ConvertReduceOpToTfMin
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
-    DenseFPElementsAttr init_attr;
-    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
-        !init_attr.isSplat() ||
-        !init_attr.getSplatValue<APFloat>().isInfinity() ||
-        init_attr.getSplatValue<APFloat>().isNegative())
+    auto type = init_value.getType().cast<ShapedType>().getElementType();
+
+    if (type.isa<FloatType>()) {
+      APFloat const_value(.0);
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isInfinity() || const_value.isNegative())
+        return failure();
+    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+      APInt const_value;
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isMaxSignedValue())
+        return failure();
+    } else {
       return failure();
+    }
     return success();
   }
 };
