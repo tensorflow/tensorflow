@@ -938,7 +938,8 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
 
   // Save a few small fields from item before we move it.
   bool optimize_function_library =
-      item.optimization_options().optimize_function_library;
+      item.optimization_options().optimize_function_library &&
+      !cfg_.disable_function_library_optimization();
   const auto producer = item.graph.versions().producer();
 
   // 1. Optimize main graph

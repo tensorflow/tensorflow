@@ -220,4 +220,9 @@ message RewriterConfig {
   // VerifierConfig specifying the verifiers to be run at the end, after all
   // optimizers have run.
   VerifierConfig post_optimization_verifier_config = 301;
+
+  // If true, optimizers won't be run on the function library. If false, the
+  // setting optimize_function_library in GrapplerItem::OptimizationOptions
+  // will determine whether optimizers are run on the function library.
+  bool disable_function_library_optimization = 400;
 }
