@@ -313,10 +313,10 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
 
   constexpr int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
   auto compute_output_dims =
-      [use_implicit_batch](const TRT_TensorOrWeights& input,
-                           int broadcast_num_dims,
-                           std::array<int32_t, max_nb_dims>* output_dims_array,
-                           nvinfer1::Dims* output_dims) -> Status {
+      [use_implicit_batch, max_nb_dims](
+          const TRT_TensorOrWeights& input, int broadcast_num_dims,
+          std::array<int32_t, max_nb_dims>* output_dims_array,
+          nvinfer1::Dims* output_dims) -> Status {
     const nvinfer1::Dims input_dims = input.GetTrtDims();
     absl::c_fill(*output_dims_array, 1);
     absl::c_copy(

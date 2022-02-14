@@ -91,6 +91,12 @@ Status GetTrtBindingIndex(int network_input_index, int profile_index,
 namespace {
 
 void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
+#if defined(PLATFORM_WINDOWS)
+  LOG_WARNING_WITH_PREFIX
+      << "Windows support is provided experimentally. No guarantee is made "
+         "regarding functionality or engineering support. Use at your own "
+         "risk.";
+#endif
   LOG(INFO) << "Linked TensorRT version: "
             << absl::StrJoin(GetLinkedTensorRTVersion(), ".");
   LOG(INFO) << "Loaded TensorRT version: "
