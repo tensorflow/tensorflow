@@ -79,6 +79,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
+#include "tensorflow/compiler/xla/service/gpu/bef_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -851,6 +852,27 @@ static Status GetMlirAllocationInfo(mlir::FuncOp func,
                                     Shape* output_shape,
                                     EntryFunctionAttributes* entry_func_attrs);
 
+namespace {
+// Removes all globals from the given module that are both uninitialized and
+// have no uses within that module.
+void RemoveUnusedAndUninitializedGlobals(
+    llvm::Module* llvm_module,
+    const std::vector<GpuExecutable::ConstantInfo>& constants) {
+  for (const auto& info : constants) {
+    // Empty content means the constant is initialized in the LLVM IR, so we
+    // must not remove it.
+    if (!info.content.empty()) {
+      llvm::GlobalVariable* global =
+          llvm_module->getGlobalVariable(info.symbol_name);
+      CHECK(global != nullptr);
+      if (global->use_empty()) {
+        global->eraseFromParent();
+      }
+    }
+  }
+}
+}  // namespace
+
 struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
@@ -862,12 +884,14 @@ struct CompileModuleResults {
   Shape output_shape;
   std::string module_name;
 };
+
 // The order of `thunk_sequence` corresponds to
 // `hlo_schedule->ThunkLaunchOrder()`.
 static Status CompileModuleToLlvmIrImpl(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
-    const std::string& platform_name, GpuDeviceInfo gpu_device_info,
+    const std::string& platform_name, const se::Platform::Id platform_id,
+    GpuDeviceInfo gpu_device_info,
     se::CudaComputeCapability cuda_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     int pointer_size, CompileModuleResults* results) {
@@ -943,6 +967,17 @@ static Status CompileModuleToLlvmIrImpl(
     XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
 
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
+
+    // TODO(b/218527186): Implement this feature for BEF as well.
+    // TODO(b/218907125): Implement this feature for ROCm as well.
+    bool supports_runtime_managed_constants =
+        !(IsBefThunkEnabled() || platform_id == se::rocm::kROCmPlatformId);
+    if (supports_runtime_managed_constants) {
+      // Remove these globals from the generated code to indicate that XLA is
+      // responsible for allocating and initializing them.
+      RemoveUnusedAndUninitializedGlobals(ir_emitter_context.llvm_module(),
+                                          ir_emitter_context.constants());
+    }
 
     results->constants = std::move(ir_emitter_context.constants());
     uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
@@ -1209,7 +1244,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   CompileModuleResults compile_module_results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       module.get(), &llvm_context, target_triple_, data_layout_,
-      stream_exec->platform()->Name(), gpu_device_info,
+      stream_exec->platform()->Name(), stream_exec->platform()->id(),
+      gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
       GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
@@ -1374,7 +1410,8 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     CompileModuleResults compile_module_results;
     TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
         module.get(), &llvm_context, target_triple_, data_layout_,
-        stream_exec->platform()->Name(), gpu_device_info,
+        stream_exec->platform()->Name(), stream_exec->platform()->id(),
+        gpu_device_info,
         stream_exec->GetDeviceDescription().cuda_compute_capability(),
         GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
@@ -1408,13 +1445,14 @@ HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
-    const std::string& platform_name, GpuDeviceInfo gpu_device_info,
+    const std::string& platform_name, const se::Platform::Id platform_id,
+    GpuDeviceInfo gpu_device_info,
     se::CudaComputeCapability cuda_compute_capability, int pointer_size) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
-      gpu_device_info, cuda_compute_capability, DummyCanShareBufferFunction,
-      pointer_size, &results));
+      platform_id, gpu_device_info, cuda_compute_capability,
+      DummyCanShareBufferFunction, pointer_size, &results));
   return std::move(results.llvm_module);
 }
 
@@ -1517,6 +1555,18 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   TF_ASSIGN_OR_RETURN(auto ir_emitter, IrEmitterUnnested::Create(
                                            module_config, ir_emitter_context));
   TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
+
+  // TODO(b/218527186): Implement this feature for BEF as well.
+  // TODO(b/218907125): Implement this feature for ROCm as well.
+  bool supports_runtime_managed_constants =
+      !(IsBefThunkEnabled() ||
+        compiler->PlatformId() == se::rocm::kROCmPlatformId);
+  if (supports_runtime_managed_constants) {
+    // Remove these globals from the generated code to indicate that XLA is
+    // responsible for allocating and initializing them.
+    RemoveUnusedAndUninitializedGlobals(ir_emitter_context->llvm_module(),
+                                        ir_emitter_context->constants());
+  }
 
   auto thunk_schedule =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());

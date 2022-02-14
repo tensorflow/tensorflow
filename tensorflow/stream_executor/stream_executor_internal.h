@@ -187,6 +187,10 @@ class StreamExecutorInterface {
                                   ModuleHandle* module_handle) {
     return port::UnimplementedError("Not Implemented");
   }
+  virtual port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+  CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
+    return port::UnimplementedError("Not Implemented");
+  }
   virtual port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                               const BlockDim& block_dims, const KernelBase& k,
                               const KernelArgsArrayBase& args) {

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 
+#include <utility>
+
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
@@ -29,6 +31,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/SHA256.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/cuda/cuda_event.h"
@@ -377,6 +381,59 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   const char* gpu_binary = reinterpret_cast<const char*>(module_handle.id());
   absl::MutexLock lock{&in_memory_modules_mu_};
   return UnloadGpuBinary(gpu_binary);
+}
+
+port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+GpuExecutor::CreateOrShareConstant(Stream* stream,
+                                   const std::vector<uint8_t>& content) {
+  absl::MutexLock lock{&shared_constants_mu_};
+  // We assume all constants are uniquely identified by this hash. In the
+  // (highly unlikely) event of a hash collision, the program will likely crash
+  // (because the cached constant that will be returned by mistake is unlikely
+  // to have the correct size).
+  SHA256Digest digest = llvm::SHA256::hash(content);
+  // Must insert nullptr first to get an iterator to the insertion point.
+  auto insert_result =
+      shared_constants_.insert({digest, std::weak_ptr<DeviceMemoryBase>()});
+  auto it = insert_result.first;
+  bool was_already_in_cache = !insert_result.second;
+  std::shared_ptr<DeviceMemoryBase> shared_constant;
+
+  if (was_already_in_cache) {
+    shared_constant = it->second.lock();
+  }
+
+  if (shared_constant == nullptr) {
+    // Either the constant wasn't found in the cache, or it was but its
+    // weak_ptr had expired.
+    DeviceMemoryBase* new_constant =
+        new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
+    if (new_constant->opaque() == nullptr) {
+      return port::InternalError(absl::StrFormat(
+          "Failed to allocate %d bytes for new constant", content.size()));
+    }
+
+    port::Status status =
+        stream->ThenMemcpy(new_constant, content.data(), content.size())
+            .BlockHostUntilDone();
+    if (!status.ok()) {
+      Deallocate(new_constant);
+      status.Update(port::InternalError(absl::StrFormat(
+          "Memcpy to device address %p failed", new_constant->opaque())));
+      return status;
+    }
+
+    // Capturing 'this' in the custom deleter means this executor must
+    // outlive all shared uses of this constant.
+    shared_constant = std::shared_ptr<DeviceMemoryBase>(
+        new_constant, [this](DeviceMemoryBase* p) {
+          Deallocate(p);
+          delete p;
+        });
+    it->second = std::weak_ptr<DeviceMemoryBase>(shared_constant);
+  }
+
+  return shared_constant;
 }
 
 port::Status GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,

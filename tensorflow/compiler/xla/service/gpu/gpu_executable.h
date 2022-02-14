@@ -272,6 +272,9 @@ class GpuExecutable : public Executable {
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
+  // Retains shared ownership of on-device constants that are managed by XLA and
+  // potentially shared with other executables.
+  std::vector<std::shared_ptr<se::DeviceMemoryBase>> shared_constants_;
 
   // Data for BEF_EXECUTABLE mode only, owned.
   BefExecutable* bef_executable_ = nullptr;

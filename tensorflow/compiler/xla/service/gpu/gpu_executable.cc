@@ -410,28 +410,49 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   module_spec.AddCudaPtxInMemory(text().c_str());
 
   absl::flat_hash_map<int64_t, se::DeviceMemoryBase> globals;
-  if (executor->platform_kind() == se::PlatformKind::kCuda &&
-      module_spec.cuda_ptx_in_memory() == nullptr) {
-    // No custom PTX means no globals. And the CUDA driver can't load an empty
-    // PTX anyway.
-    return &module_globals_.emplace(executor, std::move(globals)).first->second;
+  se::ModuleHandle module_handle;
+  // The CUDA driver isn't able to load empty PTX. It's okay if we skip loading
+  // in this case; if the module isn't loaded, all symbol lookups will fail,
+  // just as they should for an empty module.
+  if (!(executor->platform_kind() == se::PlatformKind::kCuda &&
+        module_spec.cuda_ptx_in_memory() == nullptr)) {
+    TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
   }
 
-  se::ModuleHandle module_handle;
-  TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
+  for (const ConstantInfo& info : constants_) {
+    StatusOr<stream_executor::DeviceMemoryBase> global_status;
+    if (static_cast<bool>(module_handle)) {
+      global_status =
+          executor->GetUntypedSymbol(info.symbol_name, module_handle);
+    }
 
-  for (const auto& info : constants_) {
-    TF_ASSIGN_OR_RETURN(auto global, executor->GetUntypedSymbol(
-                                         info.symbol_name, module_handle));
-    VLOG(3) << "Resolved global " << info.symbol_name << " to "
-            << global.opaque();
+    se::DeviceMemoryBase global;
+    if (static_cast<bool>(module_handle) && global_status.ok()) {
+      // The constant was defined in the PTX and has been allocated by the CUDA
+      // driver.
+      global = *global_status;
+      VLOG(3) << "Resolved global " << info.symbol_name << " to "
+              << global.opaque();
 
-    // Some globals that are declared in the PTX will have initializers and
-    // some won't. The globals without initializers must be initialized by XLA
-    // here. The initialization value is stored in 'content'; for constants
-    // that don't need to be initialized here, 'content' will be empty.
-    if (!info.content.empty()) {
-      stream->ThenMemcpy(&global, info.content.data(), info.content.size());
+      if (!info.content.empty()) {
+        // This means the constant did not have an initializer in the PTX and
+        // therefore must be initialized by XLA here.
+        stream->ThenMemcpy(&global, info.content.data(), info.content.size());
+      }
+    } else {
+      // The constant was not defined in the PTX and therefore must be both
+      // allocated and initialized by XLA here.
+      CHECK(!info.content.empty());
+
+      TF_ASSIGN_OR_RETURN(
+          auto shared, executor->CreateOrShareConstant(stream, info.content));
+      global = *shared;
+      VLOG(3) << "Allocated (or shared) global " << info.symbol_name << " at "
+              << global.opaque();
+      // XLA will continue to own this global at least until this executable is
+      // destroyed (longer if another, longer-lived executable shares the same
+      // constant).
+      shared_constants_.push_back(std::move(shared));
     }
 
     if (info.allocation_index != -1) {
