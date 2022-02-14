@@ -3044,7 +3044,10 @@ LogicalResult ConvertTFLGatherOp::matchAndRewrite(
   auto tfl_gather_op = cast<TFL::GatherOp>(op);
 
   int32_t axis = tfl_gather_op.axisAttr().getInt();
-  int32_t batch_dims = 0;  // Not a parameter in tfl.Gather; default to 0.
+  int32_t batch_dims = 0;
+  if (auto batch_attr = tfl_gather_op.batch_dimsAttr()) {
+    batch_dims = static_cast<int32_t>(batch_attr.getInt());
+  }
 
   llvm::Optional<Value> result = convertGatherOp(
       rewriter, op, tfl_gather_op.getResult(), tfl_gather_op.params(),

@@ -1585,6 +1585,19 @@ func @test_gather(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 }
 
 // -----
+// CHECK-LABEL: test_gather_batch
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 4, 16]}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.gather"(%[[VAR1]], %[[VAR0]])
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [1, 3, 4, 4]}
+// CHECK: return %[[VAR3]]
+func @test_gather_batch(%arg0: tensor<1x4x4x4xi32>) -> tensor<1x3x4x4xi32> {
+  %0 = "tfl.pseudo_const"() {value = dense<[[0, 3, 1]]> : tensor<1x3xi32>} : () -> tensor<1x3xi32>
+  %1 = "tfl.gather"(%arg0, %0) {axis = 1 : i32, batch_dims = 1 : i32} : (tensor<1x4x4x4xi32>, tensor<1x3xi32>) -> tensor<1x3x4x4xi32>
+  return %1 : tensor<1x3x4x4xi32>
+}
+
+// -----
 // CHECK-LABEL: test_gather_nd
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 273, 3]}
