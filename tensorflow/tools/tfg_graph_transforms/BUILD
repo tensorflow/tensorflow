@@ -31,6 +31,7 @@ TFG_GRAPH_TRANSFORM_DEPS = [
     "@llvm-project//llvm:Support",
     "@llvm-project//mlir:IR",
     "@llvm-project//mlir:Pass",
+    "@llvm-project//mlir:Transforms",
     "//tensorflow/compiler/mlir:init_mlir",
     "//tensorflow/compiler/mlir/tensorflow",
     "//tensorflow/compiler/mlir/tensorflow:error_util",

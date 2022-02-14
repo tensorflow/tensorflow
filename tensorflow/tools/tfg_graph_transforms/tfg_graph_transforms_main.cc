@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -188,6 +189,8 @@ int main(int argc, char** argv) {
   mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
   mlir::tfg::registerTFGraphPasses();
+  mlir::registerSymbolPrivatizePass();
+  mlir::registerSymbolDCEPass();
 
   mlir::PassPipelineCLParser pass_pipeline("", "TFG passes to run");
   llvm::cl::ParseCommandLineOptions(argc, argv, "TFG optimization tool\n");
