@@ -26,6 +26,22 @@ cc_library(
     ],
 )
 
+TFG_GRAPH_TRANSFORM_DEPS = [
+    ":utils",
+    "@llvm-project//llvm:Support",
+    "@llvm-project//mlir:IR",
+    "@llvm-project//mlir:Pass",
+    "//tensorflow/compiler/mlir:init_mlir",
+    "//tensorflow/compiler/mlir/tensorflow",
+    "//tensorflow/compiler/mlir/tensorflow:error_util",
+    "//tensorflow/core:lib",
+    "//tensorflow/core/ir:Dialect",
+    "//tensorflow/core/ir/importexport:export",
+    "//tensorflow/core/ir/importexport:import",
+    "//tensorflow/core/protobuf:for_core_protos_cc",
+    "//tensorflow/core/transforms:PassRegistration",
+]
+
 # Description:
 #   A tool that provides a mechanism to run TFG graph optimizations operating on the
 #   GraphDef from the supplied SavedModel as an input.
@@ -34,21 +50,7 @@ tf_cc_binary(
     srcs = [
         "tfg_graph_transforms_main.cc",
     ],
-    deps = [
-        ":utils",
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/ir/importexport:export",
-        "//tensorflow/core/ir/importexport:import",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
-        "//tensorflow/core/transforms:PassRegistration",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-    ],
+    deps = TFG_GRAPH_TRANSFORM_DEPS,
 )
 
 # Description:
@@ -60,19 +62,5 @@ cc_library(
         "tfg_graph_transforms_main.cc",
     ],
     visibility = ["//visibility:public"],
-    deps = [
-        ":utils",
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/ir/importexport:export",
-        "//tensorflow/core/ir/importexport:import",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
-        "//tensorflow/core/transforms:PassRegistration",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-    ],
+    deps = TFG_GRAPH_TRANSFORM_DEPS,
 )
