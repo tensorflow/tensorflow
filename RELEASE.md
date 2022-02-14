@@ -122,6 +122,10 @@ This release contains contributions from many people at Google, as well as:
 
 *   `tf.data`:
 
+    *   Fixed a bug where setting `options.deterministic = False` would only
+        modify one transformation to run non-deterministically,
+        leaving other transformations deterministic. The option will now
+        apply the same across all transformations.
     *   The optimization `parallel_batch` now becomes default if not disabled by
         users, which will parallelize copying of batch elements.
     *   Added the ability for `TensorSliceDataset` to identify and handle inputs
