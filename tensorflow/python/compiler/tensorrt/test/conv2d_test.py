@@ -31,7 +31,8 @@ def conv2d_layer(inputs,
                  strides=(1, 1),
                  padding="valid",
                  data_format="channels_last",
-                 dilation_rate=(1, 1)):
+                 dilation_rate=(1, 1),
+                 epilogue=None):
   dtype = inputs.dtype
   c_axis = -1 if data_format == "channels_last" else 1
   nchan = inputs.shape[c_axis]
@@ -46,13 +47,19 @@ def conv2d_layer(inputs,
     strides = [1, 1] + list(strides)
     dilations = [1, 1] + list(dilation_rate)
     data_format = "NCHW"
-  return gen_nn_ops.conv2d(
+  conv_op = gen_nn_ops.conv2d(
       inputs,
       weights,
       strides=strides,
       padding=padding,
       dilations=dilations,
       data_format=data_format)
+    
+  if epilogue == "relu":
+    return gen_nn_ops.relu(conv_op)
+  
+  return conv_op
+  
 
 
 def div_round_up(n, d):
@@ -193,6 +200,33 @@ class Conv2DTranposeTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return ["TRTEngineOp_0"]
+
+
+class Conv2DReluAddTest(trt_test.TfTrtIntegrationTestBase):
+  """Test ResNet-type residual block."""
+  def GraphFn(self, inp):
+    np.random.seed(1234)
+    num_filters = 3
+    output = inp
+    output = conv2d_layer(
+        output,
+        num_filters, 
+        kernel_size=(1, 1),
+        padding="same",
+        strides=(1, 1),
+        data_format="channels_first",
+        epilogue="relu")
+    output = output + inp
+    return array_ops.identity(output, name="output_0")
+    
+  def GetParams(self):
+    return self.BuildParams(self.GraphFn, 
+                            dtypes.float32, 
+                            [[1, 3, 28, 28]],
+                            [[1, 3, 28, 28]])
+  
+  def ExpectedEnginesToBuild(self, run_params):
+    return ["TRTEngineOp_0"]  
 
 
 if __name__ == "__main__":
