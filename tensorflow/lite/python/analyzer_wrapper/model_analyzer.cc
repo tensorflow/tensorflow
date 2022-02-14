@@ -194,8 +194,8 @@ void dump_model_signature_defs(std::stringstream& out_stream,
     return;
   }
   out_stream << kSectionSplitter;
-  out_stream << "Your TFLite model has ‘" << signatures->Length()
-             << "’ signature_def(s).\n\n";
+  out_stream << "Your TFLite model has '" << signatures->Length()
+             << "' signature_def(s).\n\n";
   for (int i = 0; i < signatures->Length(); ++i) {
     auto* signature_def = signatures->Get(i);
     out_stream << "Signature#" << i << " key: '"
