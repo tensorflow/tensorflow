@@ -153,11 +153,7 @@ port::StatusOr<void*> GetRocsolverDsoHandle() {
 port::StatusOr<void*> GetHipsolverDsoHandle() {
   return GetDsoHandle("hipsolver", "");
 }
-<<<<<<< HEAD
-#endif 
-=======
 #endif
->>>>>>> upstream/master
 
 port::StatusOr<void*> GetRoctracerDsoHandle() {
   return GetDsoHandle("roctracer64", "");

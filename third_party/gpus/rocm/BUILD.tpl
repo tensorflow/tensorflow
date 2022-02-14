@@ -165,14 +165,6 @@ cc_library(
     srcs = ["rocm/lib/%{hipsolver_lib}"],
     data = ["rocm/lib/%{hipsolver_lib}"],
 )
-<<<<<<< HEAD
-cc_library(
-    name = "hipblas",
-    srcs = ["rocm/lib/%{hipblas_lib}"],
-    data = ["rocm/lib/%{hipblas_lib}"],
-)
-=======
->>>>>>> upstream/master
 
 filegroup(
     name = "rocm_root",
