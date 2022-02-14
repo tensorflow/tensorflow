@@ -34,6 +34,11 @@ typedef struct TfLiteExternalDelegateOptions {
                          const char* key, const char* value);
 } TfLiteExternalDelegateOptions;
 
+// Insert key/value to the options.
+TfLiteStatus TfLiteExternalDelegateOptionsInsert(
+    TfLiteExternalDelegateOptions* options, const char* key,
+    const char* value);
+
 // Populates TfLiteExternalDelegateOptions with the given shared library path.
 TfLiteExternalDelegateOptions TfLiteExternalDelegateOptionsDefault(
     const char* lib_path);
@@ -45,11 +50,6 @@ TfLiteDelegate* TfLiteExternalDelegateCreate(
 
 // Destroys a delegate created with `TfLiteExternalDelegateCreate` call.
 void TfLiteExternalDelegateDelete(TfLiteDelegate* delegate);
-
-// Insert key/value to the options.
-TfLiteStatus TfLiteExternalDelegateOptionsInsert(
-    TfLiteExternalDelegateOptions* options, const char* key,
-    const char* value);
 
 #ifdef __cplusplus
 }
