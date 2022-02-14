@@ -112,19 +112,17 @@ def _get_feeds_for_indexed_slices(feed, feed_val):
 _REGISTERED_EXPANSIONS = [
     # SparseTensors are fetched as SparseTensorValues. They can be fed
     # SparseTensorValues or normal tuples.
-    (sparse_tensor.SparseTensor, lambda fetch: ([
-        fetch.indices, fetch.values, fetch.dense_shape
-    ], lambda fetched_vals: sparse_tensor.SparseTensorValue(*fetched_vals)),
-     lambda feed, feed_val: list(
-         zip([feed.indices, feed.values, feed.dense_shape], feed_val)),
+    (sparse_tensor.SparseTensor, lambda fetch:
+     ([fetch.indices, fetch.values, fetch.dense_shape], lambda fetched_vals:
+      sparse_tensor.SparseTensorValue(*fetched_vals)), lambda feed, feed_val:
+     list(zip([feed.indices, feed.values, feed.dense_shape], feed_val)),
      lambda feed: [feed.indices, feed.values, feed.dense_shape]),
     # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
     # IndexedSlicesValues or normal tuples.
-    (indexed_slices.IndexedSlices,
-     lambda fetch: ([fetch.values, fetch.indices] if fetch.dense_shape is None
-                    else [fetch.values, fetch.indices, fetch.dense_shape
-                         ], _get_indexed_slices_value_from_fetches),
-     _get_feeds_for_indexed_slices,
+    (indexed_slices.IndexedSlices, lambda fetch:
+     ([fetch.values, fetch.indices] if fetch.dense_shape is None else [
+         fetch.values, fetch.indices, fetch.dense_shape
+     ], _get_indexed_slices_value_from_fetches), _get_feeds_for_indexed_slices,
      lambda feed: [feed.values, feed.indices] if feed.dense_shape is None else
      [feed.values, feed.indices, feed.dense_shape]),
     # The default catches all other types and performs no expansions.
@@ -1600,6 +1598,11 @@ class Session(BaseSession):
         [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
           protocol buffer with configuration options for the session.
     """
+    if context.is_tfrt_session_enabled():
+      if config is None:
+        config = config_pb2.ConfigProto()
+      config.experimental.use_tfrt = True
+      logging.info('TFRT enabled.')
     super(Session, self).__init__(target, graph, config=config)
     # NOTE(mrry): Create these on first `__enter__` to avoid a reference cycle.
     self._default_graph_context_manager = None

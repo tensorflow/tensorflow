@@ -2,6 +2,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_google",
     "if_not_windows",
     "if_oss",
     "if_xla_available",
@@ -1373,6 +1374,13 @@ py_library(
     name = "is_tfrt_test_true",
     srcs = ["is_tfrt_test_true.py"],
     srcs_version = "PY3",
+)
+
+py_library(
+    name = "is_tfrt_session_test_true",
+    srcs = ["is_tfrt_session_test_true.py"],
+    srcs_version = "PY3",
+    deps = if_google(["//tensorflow/core/tfrt/tfrt_session:tfrt_session_py"]),
 )
 
 py_library(

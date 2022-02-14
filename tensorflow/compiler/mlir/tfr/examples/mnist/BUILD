@@ -36,6 +36,7 @@ tf_py_test(
         "no_windows",  # TODO(b/170752141)
         "nomac",  # TODO(b/170752141)
     ],
+    tfrt_session_enabled_internal = True,
     deps = [
         ":mnist_ops",
         ":mnist_ops_py",

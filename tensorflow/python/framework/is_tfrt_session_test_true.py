@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for TFRT migration."""
+"""Including this as a dependency will result in Tensorflow tests using TFRT.
+
+This function is defined by default in eager/context.py to False. The context
+then attempts to import this module. If this file is made available through the
+BUILD rule, then this function is overridden and will instead cause
+Tensorflow eager execution to run with TFRT session.
+"""
 
 
-def enabled():
-  """Returns true if TFRT should be enabled."""
-  return False
-
-
-def session_enabled():
-  """Returns true if TFRT session should be enabled."""
-  return False
+def is_tfrt_session_enabled():
+  """Returns true to state TFRT session should be enabled for Tensorflow tests."""
+  return True

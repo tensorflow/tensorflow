@@ -75,6 +75,7 @@ _python_eager_context_create_counter = monitoring.Counter(
 
 # Re-exporting through context.
 is_tfrt_enabled = tfrt_utils.enabled
+is_tfrt_session_enabled = tfrt_utils.session_enabled
 
 # This flag and the associated environment var are transient and will eventually
 # be removed, once this experiment is enabled by default.
@@ -113,6 +114,9 @@ def run_eager_op_as_function_enabled():
 
 # Expose it as internally public APIs for Keras use cases in b/171080602.
 tf_export("__internal__.is_tfrt_enabled", v1=[])(is_tfrt_enabled)
+tf_export(
+    "__internal__.is_tfrt_session_enabled", v1=[])(
+        is_tfrt_session_enabled)
 
 
 class _EagerTensorCache(object):
