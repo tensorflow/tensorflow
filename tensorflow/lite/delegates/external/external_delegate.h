@@ -46,6 +46,11 @@ TfLiteDelegate* TfLiteExternalDelegateCreate(
 // Destroys a delegate created with `TfLiteExternalDelegateCreate` call.
 void TfLiteExternalDelegateDelete(TfLiteDelegate* delegate);
 
+// Insert key/value to the options.
+TfLiteStatus TfLiteExternalDelegateOptionsInsert(
+    TfLiteExternalDelegateOptions* options, const char* key,
+    const char* value);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
