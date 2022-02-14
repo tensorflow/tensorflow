@@ -1,7 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
-load("//tensorflow:tensorflow.bzl", "if_xla_available", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -535,7 +535,6 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":types",
-        "@pybind11",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:platform_port",
@@ -546,9 +545,8 @@ cc_library(
         "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core/profiler/rpc/client:profiler_client",
         "//tensorflow/python/profiler/internal:traceme_wrapper",
-    ] + if_xla_available([
-        "//tensorflow/core/profiler/internal/cpu:metadata_collector",
-    ]),
+        "@pybind11",
+    ],
 )
 
 cc_library(
