@@ -69,6 +69,8 @@ using mhlo::DotDimensionNumbersAttr;
 
 // Replaces `region`'s terminator to TF::Yield.
 void ReplaceReturnOp(Region &region, PatternRewriter &rewriter) {
+  OpBuilder::InsertionGuard guard(rewriter);
+
   for (auto &block : region.getBlocks()) {
     Operation *terminator = block.getTerminator();
     auto return_op = llvm::dyn_cast_or_null<mhlo::ReturnOp>(terminator);
@@ -2642,13 +2644,12 @@ class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
     // Creates a TF::WhileRegionOp to replace the mhlo::WhileOp. HLO WhileOp
     // currently doesn't support stateless and shape invariant, so these
     // parameters are set to the default values.
-    rewriter.setInsertionPoint(while_op);
     auto new_while = rewriter.create<TF::WhileRegionOp>(
         while_op.getLoc(), while_op->getResultTypes(), while_op->getOperands(),
         /*parallel_iterations=*/10,
         /*is_stateless=*/false, /*shape_invariant=*/false);
-    new_while.cond().takeBody(while_op.getRegion(0));
-    new_while.body().takeBody(while_op.getRegion(1));
+    new_while.cond().takeBody(while_op.cond());
+    new_while.body().takeBody(while_op.body());
     ReplaceReturnOp(new_while.cond(), rewriter);
     ReplaceReturnOp(new_while.body(), rewriter);
     rewriter.replaceOp(while_op, new_while.getResults());
@@ -2664,13 +2665,12 @@ class ConvertIfOp : public OpConversionPattern<mhlo::IfOp> {
       mhlo::IfOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     // HLO IfOp currently doesn't support stateless
-    rewriter.setInsertionPoint(op);
     auto new_op = rewriter.create<TF::IfRegionOp>(
         op.getLoc(), op->getResultTypes(), op.pred(),
         /*is_stateless=*/false, /*_then_func_name=*/nullptr,
         /*_else_func_name=*/nullptr);
-    new_op.then_branch().takeBody(op.getRegion(0));
-    new_op.else_branch().takeBody(op.getRegion(1));
+    new_op.then_branch().takeBody(op.true_branch());
+    new_op.else_branch().takeBody(op.false_branch());
     ReplaceReturnOp(new_op.then_branch(), rewriter);
     ReplaceReturnOp(new_op.else_branch(), rewriter);
     rewriter.replaceOp(op, new_op.getResults());
@@ -2878,15 +2878,14 @@ void LegalizeHloToTf::runOnOperation() {
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet *patterns,
                                      MLIRContext *context) {
   patterns->insert<
-      ConvertIfOp, ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp,
-      ConvertConvOp, ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
-      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
-      ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
-      ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-      ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+      ConvertAvgPoolOp, ConvertConvOp, ConvertNonTrivialConvOp,
+      ConvertDynamicSliceOp, ConvertDynamicUpdateSliceOp, ConvertGatherOp,
+      ConvertIfOp, ConvertMaxPoolOp, ConvertScatterAddOp, ConvertScatterMaxOp,
+      ConvertScatterMinOp, ConvertScatterSubOp, ConvertScatterUpdateOp,
+      ConvertSliceOp, ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
       ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
-      ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(
-      context);
+      ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
+      ConvertIotaOpToTfRange, ConvertWhileOp>(context);
   populateWithGenerated(*patterns);
 }
 
