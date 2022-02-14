@@ -862,10 +862,23 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
   auto average_etype = input_type.getElementType();
   auto average_type = output_type.clone(average_etype);
 
-  Value result = CreateOpAndInfer<tosa::AvgPool2dOp>(
-      rewriter, op->getLoc(), average_type, tfl_avgpool_op.input(), kernel_size,
-      stride, pad);
+  Value result;
+  if (average_etype.isa<quant::UniformQuantizedType>()) {
+    // TensorFlow Lite doesn't use the zero point when calculating
+    // quantized average pool, while TOSA does. Force the TOSA
+    // zero_points to zero to ensure that the calculations match
 
+    auto zero = rewriter.getI32IntegerAttr(0);
+    auto quant_attr = tosa::UnaryOpQuantizationAttr::get(
+        /*input_zp=*/zero, /*output_zp=*/zero, rewriter.getContext());
+    result = CreateOpAndInfer<tosa::AvgPool2dOp>(
+        rewriter, op->getLoc(), average_type, tfl_avgpool_op.input(),
+        kernel_size, stride, pad, quant_attr);
+  } else {
+    result = CreateOpAndInfer<tosa::AvgPool2dOp>(
+        rewriter, op->getLoc(), average_type, tfl_avgpool_op.input(),
+        kernel_size, stride, pad);
+  }
   if (average_type != output_type) {
     result = CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(), output_type,
                                             result);
