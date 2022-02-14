@@ -191,9 +191,13 @@ TEST(BasicInterpreter, CheckAllocate) {
     TfLiteType type;
     size_t size;
   } cases[] = {
-      {kTfLiteFloat32, sizeof(float)},         {kTfLiteInt32, sizeof(int32_t)},
-      {kTfLiteUInt32, sizeof(uint32_t)},       {kTfLiteUInt8, sizeof(uint8_t)},
-      {kTfLiteInt64, sizeof(int64_t)},         {kTfLiteInt16, sizeof(int16_t)},
+      {kTfLiteFloat32, sizeof(float)},
+      {kTfLiteInt32, sizeof(int32_t)},
+      {kTfLiteUInt32, sizeof(uint32_t)},
+      {kTfLiteUInt8, sizeof(uint8_t)},
+      {kTfLiteInt64, sizeof(int64_t)},
+      {kTfLiteInt16, sizeof(int16_t)},
+      {kTfLiteUInt16, sizeof(uint16_t)},
       {kTfLiteFloat16, sizeof(TfLiteFloat16)},
   };
 

@@ -291,7 +291,7 @@ void populateTiledLoopBufferizePattern(
     MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
     BufferizeExtractSliceOp,
     BufferizeFillOp,
     BufferizeInitTensorOp,

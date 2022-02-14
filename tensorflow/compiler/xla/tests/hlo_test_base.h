@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TESTS_HLO_TEST_BASE_H_
 #define TENSORFLOW_COMPILER_XLA_TESTS_HLO_TEST_BASE_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -111,10 +112,10 @@ class HloTestBase : public ManifestCheckingTest {
   // automatically finds another supported backend as the test backend. If the
   // interpreter is the only supported backend, it will be both the test backend
   // and the reference backend.
-  HloTestBase(bool verifier_layout_sensitive = false,
-              bool allow_mixed_precision_in_hlo_verifier = true,
-              std::function<bool(const HloInstruction*)>
-                  instruction_can_change_layout_func = {});
+  explicit HloTestBase(bool verifier_layout_sensitive = false,
+                       bool allow_mixed_precision_in_hlo_verifier = true,
+                       std::function<bool(const HloInstruction*)>
+                           instruction_can_change_layout_func = {});
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in

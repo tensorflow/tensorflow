@@ -57,6 +57,11 @@ bool IsCublasGemm(const HloInstruction& hlo);
 // A call to cuBLAS general matrix multiplication API.
 extern const char* const kGemmCallTarget;
 
+// A call to cuBLAS for a triangular solve.
+//
+// Like cudnn convolutions, this op returns a tuple (result, scratch_memory).
+extern const char* const kTriangularSolveCallTarget;
+
 // A call to cuDNN for convolution (forward, backward filter, or backward input)
 // is represented as a CustomCall HLO with a call target equal to one of these
 // strings.

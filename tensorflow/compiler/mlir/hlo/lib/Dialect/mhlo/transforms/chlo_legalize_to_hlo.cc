@@ -1477,7 +1477,7 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
 
   // Other patterns.
   // clang-format off
-  patterns->insert<ConvertCoshOp,
+  patterns->add<ConvertCoshOp,
                    ConvertDigammaOp,
                    ConvertErfOp,
                    ConvertErfcOp,

@@ -26,9 +26,9 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_ragged_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
+from tensorflow.python.ops.ragged import dynamic_ragged_shape
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
-from tensorflow.python.ops.ragged import ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged import segment_id_ops
@@ -978,7 +978,7 @@ def split(value: ragged_tensor.Ragged,
         num_or_size_splits,
         message=('`num_or_size_splits` must be an `int` or 1-D list or '
                  '`Tensor` of integers.'))
-    value_shape = ragged_shape.RaggedShape.from_tensor(value)
+    value_shape = dynamic_ragged_shape.DynamicRaggedShape.from_tensor(value)
     axis = array_ops.get_positive_axis(axis, value_shape.rank)
     try:
       dim_size = value_shape[axis]
@@ -1043,9 +1043,10 @@ def split(value: ragged_tensor.Ragged,
 
 
 def ragged_reshape(
-    x: ragged_tensor.RaggedOrDense, shape: ragged_shape.RaggedShape
+    x: ragged_tensor.RaggedOrDense,
+    shape: dynamic_ragged_shape.DynamicRaggedShape
 ) -> ragged_tensor.RaggedOrDense:
-  """Reshapes a tensor or ragged tensor to a RaggedShape."""
+  """Reshapes a tensor or ragged tensor to a DynamicRaggedShape."""
   if isinstance(x, ragged_tensor.RaggedTensor):
     x = x.flat_values
   flat_values = array_ops.reshape(x, shape.inner_shape)
@@ -1054,7 +1055,8 @@ def ragged_reshape(
 
 
 def broadcast_to(
-    rt_input: ragged_tensor.RaggedOrDense, shape: ragged_shape.RaggedShape
+    rt_input: ragged_tensor.RaggedOrDense,
+    shape: dynamic_ragged_shape.DynamicRaggedShape
 ) -> ragged_tensor.RaggedOrDense:
   """Broadcasts a potentially ragged tensor to a ragged shape.
 
@@ -1064,26 +1066,28 @@ def broadcast_to(
 
   Args:
     rt_input: The potentially ragged tensor to broadcast.
-    shape: A `RaggedShape`
+    shape: A `DynamicRaggedShape`
 
   Returns:
     A potentially ragged tensor whose values are taken from
     `rt_input`, and whose shape matches `shape`.
   """
-  return ragged_shape.broadcast_to(rt_input, shape)
+  return dynamic_ragged_shape.broadcast_to(rt_input, shape)
 
 
 # TODO(martinz): decide if default should be the underlying row_splits_dtype.
-# tf.shape <- not allowed yet (RaggedShape isnt' public)
-def get_ragged_shape(x: ragged_tensor.RaggedTensor,
-                     out_type=dtypes.int32) -> ragged_shape.RaggedShape:
-  """Returns a RaggedShape for a ragged tensor."""
-  return ragged_shape.RaggedShape.from_tensor(x, dtype=out_type)
+# tf.shape <- not allowed yet (DynamicRaggedShape isnt' public)
+def get_dynamic_ragged_shape(
+    x: ragged_tensor.RaggedTensor,
+    out_type=dtypes.int32) -> dynamic_ragged_shape.DynamicRaggedShape:
+  """Returns a DynamicRaggedShape for a ragged tensor."""
+  return dynamic_ragged_shape.DynamicRaggedShape.from_tensor(x, dtype=out_type)
 
 
 def broadcast_dynamic_shape(
-    shape_x: ragged_shape.RaggedShape,
-    shape_y: ragged_shape.RaggedShape) -> ragged_shape.RaggedShape:
+    shape_x: dynamic_ragged_shape.DynamicRaggedShape,
+    shape_y: dynamic_ragged_shape.DynamicRaggedShape
+) -> dynamic_ragged_shape.DynamicRaggedShape:
   """Returns the shape formed by broadcasting two shapes to be compatible.
 
   1. If shape_x and shape_y both have row_partitions, then fail if their dtypes
@@ -1093,18 +1097,18 @@ def broadcast_dynamic_shape(
   3. If one has row_partitions, go with that dtype.
 
   Args:
-    shape_x: A `RaggedShape`
-    shape_y: A `RaggedShape`
+    shape_x: A `DynamicRaggedShape`
+    shape_y: A `DynamicRaggedShape`
 
   Returns:
-    A `RaggedShape`.
+    A `DynamicRaggedShape`.
   Raises:
     ValueError: If `shape_x` and `shape_y` are not broadcast-compatible.
   """
-  return ragged_shape.broadcast_dynamic_shape(shape_x, shape_y)
+  return dynamic_ragged_shape.broadcast_dynamic_shape(shape_x, shape_y)
 
 
-def ones(shape: ragged_shape.RaggedShape,
+def ones(shape: dynamic_ragged_shape.DynamicRaggedShape,
          dtype=dtypes.float32,
          name=None) -> ragged_tensor.RaggedOrDense:
   """Returns ones shaped like x."""
@@ -1113,7 +1117,7 @@ def ones(shape: ragged_shape.RaggedShape,
       flat_values, shape.row_partitions)
 
 
-def zeros(shape: ragged_shape.RaggedShape,
+def zeros(shape: dynamic_ragged_shape.DynamicRaggedShape,
           dtype=dtypes.float32,
           name=None) -> ragged_tensor.RaggedOrDense:
   """Returns ones shaped like x."""

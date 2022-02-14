@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace xla {
 namespace gpu {
@@ -39,8 +40,10 @@ class TriangularSolveThunk : public Thunk {
  public:
   TriangularSolveThunk(ThunkInfo thunk_info,
                        const TriangularSolveOptions& options,
+                       se::GpuAsmOpts asm_opts,
                        const BufferAllocation::Slice& a_buffer,
                        const BufferAllocation::Slice& b_buffer,
+                       const BufferAllocation::Slice& temp_buffer,
                        PrimitiveType type, int64_t batch_size, int64_t m,
                        int64_t n, int64_t a_batch_stride,
                        int64_t b_batch_stride);
@@ -51,6 +54,7 @@ class TriangularSolveThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  se::GpuAsmOpts asm_opts_;
   const se::blas::UpperLower uplo_;
   const se::blas::Side side_;
   const se::blas::Diagonal unit_diagonal_;
@@ -58,6 +62,7 @@ class TriangularSolveThunk : public Thunk {
 
   const BufferAllocation::Slice a_buffer_;
   const BufferAllocation::Slice b_buffer_;
+  const BufferAllocation::Slice temp_buffer_;
 
   const PrimitiveType type_;
   const int64_t batch_size_;

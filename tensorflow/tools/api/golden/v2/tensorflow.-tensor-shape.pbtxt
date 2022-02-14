@@ -2,7 +2,7 @@ path: "tensorflow.TensorShape"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShape\'>"
   is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
-  is_instance: "<class \'abc.ABC\'>"
+  is_instance: "<type \'object\'>"
   member {
     name: "dims"
     mtype: "<type \'property\'>"

@@ -67,6 +67,19 @@ namespace {
 
 using mhlo::DotDimensionNumbersAttr;
 
+// Replaces `region`'s terminator to TF::Yield.
+void ReplaceReturnOp(Region &region, PatternRewriter &rewriter) {
+  for (auto &block : region.getBlocks()) {
+    Operation *terminator = block.getTerminator();
+    auto return_op = llvm::dyn_cast_or_null<mhlo::ReturnOp>(terminator);
+    if (return_op == nullptr) continue;
+
+    rewriter.setInsertionPoint(return_op);
+    rewriter.replaceOpWithNewOp<TF::YieldOp>(return_op,
+                                             return_op->getOperands());
+  }
+}
+
 class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -1026,7 +1039,7 @@ class ConvertDynamicUpdateSliceOp
 // $iota = "mhlo.iota"(){iota_dimension = $dimensions[0]},
 //
 // where $dimensions must have size 1 and iota can have rank>=1.
-// It usually used for mathcing rank 1 iota since the iotaOp will be folded to
+// It usually used for matching rank 1 iota since the iotaOp will be folded to
 // IotaOp + BroadCastInDimOp except for the case when result shape is rank 1.
 bool MatchSingleIota(DenseIntElementsAttr dimensions, Value iota) {
   auto iota_op = dyn_cast_or_null<mhlo::IotaOp>(iota.getDefiningOp());
@@ -1051,6 +1064,44 @@ bool MatchIotaBroadCastInDim(DenseIntElementsAttr dimensions, Value iota) {
   if (!isa_and_nonnull<mhlo::IotaOp>(iota_broadcast.operand().getDefiningOp()))
     return false;
   return true;
+}
+
+// Matches %iota generated from the following code (rank 3 example):
+//
+// %iota_r1 = "mhlo.iota"(){iota_dimension = 0 : i32} : () -> tensor<44xi32>
+// %iota = "mhlo.reshape"(%iota_r1): (tensor<44xi32>) -> tensor<1x1x44xi32>
+//
+// Where $dimensions is of size 1 and $dimensions[0] = 2.
+//
+// In general matches an Iota with multiple leading dimensions of size 1 added
+// through a reshape so that $dimensions[0] is the trailing dimension of the
+// reshaped tensor ($dimensions is of size 1).
+bool MatchReshapedIota(DenseIntElementsAttr dimensions, Value iota) {
+  auto reshape_op = dyn_cast_or_null<mhlo::ReshapeOp>(iota.getDefiningOp());
+  if (!reshape_op) return false;
+  auto operand_type =
+      reshape_op.operand().getType().dyn_cast<RankedTensorType>();
+  if (!operand_type || !operand_type.hasStaticShape()) return false;
+  auto reshape_type = reshape_op.getType().cast<RankedTensorType>();
+
+  // Allow multiple leading dims of size 1 to be added.
+  int64_t extra_reshape_dims = reshape_type.getRank() - operand_type.getRank();
+  if (extra_reshape_dims < 0) return false;
+  for (int64_t i = 0; i < extra_reshape_dims; ++i) {
+    if (reshape_type.getDimSize(i) != 1) return false;
+  }
+  // Remaining dims must match
+  for (int64_t i = 0; i < operand_type.getRank(); ++i) {
+    if (operand_type.getDimSize(i) !=
+        reshape_type.getDimSize(i + extra_reshape_dims))
+      return false;
+  }
+
+  auto iota_op =
+      dyn_cast_or_null<mhlo::IotaOp>(reshape_op.operand().getDefiningOp());
+  if (!iota_op || dimensions.getNumElements() != 1) return false;
+  auto dim = *dimensions.value_begin<APInt>();
+  return dim == iota_op.iota_dimension() + extra_reshape_dims;
 }
 
 // It matches %iota generated from the following mlir codes:
@@ -1121,15 +1172,17 @@ bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
   return false;
 }
 
-// The following 4 different forms of mhlo::iota will be matched:
+// The following 5 different forms of mhlo::iota will be matched:
 // 1. IotaOp.
 // 2. IotaOp + BroadCastInDim.
-// 3. Constant (folded Iota) + BroadCastInDim.
-// 4. Constant (folded result).
+// 3. IotaOp + Reshape.
+// 4. Constant (folded Iota) + BroadCastInDim.
+// 5. Constant (folded result).
 // Moreover, the dimensions has to match the iota_dimension.
 bool MatchIota(DenseIntElementsAttr dimensions, Value iota) {
   return MatchSingleIota(dimensions, iota) ||
          MatchIotaBroadCastInDim(dimensions, iota) ||
+         MatchReshapedIota(dimensions, iota) ||
          MatchConstIotaBroadCastInDim(dimensions, iota) ||
          MatchIotaConst(dimensions, iota);
 }
@@ -1382,7 +1435,7 @@ Value ConvertDotGeneralOp(PatternRewriter &rewriter, Operation *old_op) {
                     dot_general_op.getLoc());
 }
 
-// Checks if the specified region is a binary reduction function what takes 2
+// Checks if the specified region is a binary reduction function that takes 2
 // inputs, passes it to an instance of the specifiied reduction op and then
 // returns the result.
 template <typename ReductionOp>
@@ -1404,7 +1457,7 @@ LogicalResult MatchBinaryReduceFunction(mlir::Region &function) {
   return success();
 }
 
-// Check if the specified region is a binary reduction function what takes 2
+// Check if the specified region is a binary reduction function that takes 2
 // inputs and returns the second input. Functions like this are used by update
 // scatter like ops.
 template <>
@@ -1634,8 +1687,8 @@ class ConvertReduceOpToTfArgMinMax
       return failure();
     if (iota_init.getValues<APInt>()[0] != 0) return failure();
 
-    // Verify that the second argument is an Iota op along the same dimenion as
-    // the reduction.
+    // Verify that the second argument is an Iota op along the same dimension
+    // as the reduction.
     Value iota = reduce_op.inputs().back();
     if (!MatchIota(reduce_op.dimensions(), iota)) return failure();
 
@@ -2559,8 +2612,8 @@ class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
     // Creates a TF::WhileRegionOp to replace the mhlo::WhileOp. HLO WhileOp
     // currently doesn't support stateless and shape invariant, so these
     // parameters are set to the default values.
-    OpBuilder builder(while_op);
-    auto new_while = builder.create<TF::WhileRegionOp>(
+    rewriter.setInsertionPoint(while_op);
+    auto new_while = rewriter.create<TF::WhileRegionOp>(
         while_op.getLoc(), while_op->getResultTypes(), while_op->getOperands(),
         /*parallel_iterations=*/10,
         /*is_stateless=*/false, /*shape_invariant=*/false);
@@ -2571,20 +2624,27 @@ class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
     rewriter.replaceOp(while_op, new_while.getResults());
     return success();
   }
+};
 
- private:
-  // Replaces mhlo::ReturnOp to TF::Yield.
-  static void ReplaceReturnOp(Region &region,
-                              ConversionPatternRewriter &rewriter) {
-    for (auto &block : region.getBlocks()) {
-      Operation *terminator = block.getTerminator();
-      auto return_op = llvm::dyn_cast_or_null<mhlo::ReturnOp>(terminator);
-      if (return_op == nullptr) continue;
+class ConvertIfOp : public OpConversionPattern<mhlo::IfOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
 
-      OpBuilder builder(return_op);
-      builder.create<TF::YieldOp>(return_op.getLoc(), return_op->getOperands());
-      rewriter.eraseOp(return_op);
-    }
+  LogicalResult matchAndRewrite(
+      mhlo::IfOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const final {
+    // HLO IfOp currently doesn't support stateless
+    rewriter.setInsertionPoint(op);
+    auto new_op = rewriter.create<TF::IfRegionOp>(
+        op.getLoc(), op->getResultTypes(), op.pred(),
+        /*is_stateless=*/false, /*_then_func_name=*/nullptr,
+        /*_else_func_name=*/nullptr);
+    new_op.then_branch().takeBody(op.getRegion(0));
+    new_op.else_branch().takeBody(op.getRegion(1));
+    ReplaceReturnOp(new_op.then_branch(), rewriter);
+    ReplaceReturnOp(new_op.else_branch(), rewriter);
+    rewriter.replaceOp(op, new_op.getResults());
+    return success();
   }
 };
 
@@ -2787,16 +2847,16 @@ void LegalizeHloToTf::runOnOperation() {
 
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet *patterns,
                                      MLIRContext *context) {
-  patterns
-      ->insert<ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp,
-               ConvertConvOp, ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
-               ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
-               ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
-               ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-               ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-               ConvertReduceOpToTfAll, ConvertReduceOpToTfAny,
-               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns->insert<
+      ConvertIfOp, ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp,
+      ConvertConvOp, ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
+      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
+      ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
+      ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
+      ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+      ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
+      ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(
+      context);
   populateWithGenerated(*patterns);
 }
 

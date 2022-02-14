@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
+#ifndef MLIR_HLO_UTILS_HLO_UTILS_H
+#define MLIR_HLO_UTILS_HLO_UTILS_H
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -103,10 +103,12 @@ std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs);
 
 // Converts an ArrayAttr to a 1D 64-bit dense elements attribute.
 DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr);
+DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                        MLIRContext* ctx);
 DenseIntElementsAttr GetI64ElementsAttr(llvm::ArrayRef<int64_t> values,
                                         Builder* builder);
 
 }  // namespace hlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
+#endif  // MLIR_HLO_UTILS_HLO_UTILS_H

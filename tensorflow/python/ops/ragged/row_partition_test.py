@@ -36,7 +36,7 @@ from tensorflow.python.platform import googletest
 @test_util.run_all_in_graph_and_eager_modes
 class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   #=============================================================================
-  # RaggedTensor class docstring examples
+  # RowPartition class docstring examples
   #=============================================================================
 
   def testClassDocStringExamples(self):
@@ -62,21 +62,21 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     del inner_rt, outer_rt
 
   #=============================================================================
-  # RaggedTensor Constructor (private)
+  # RowPartition Constructor (private)
   #=============================================================================
 
-  def testRaggedTensorConstruction(self):
+  def testRowPartitionConstruction(self):
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
     rp = RowPartition(
         row_splits=row_splits,
         internal=row_partition._row_partition_factory_key)
     self.assertAllEqual(rp.row_splits(), [0, 2, 2, 5, 6, 7])
 
-  def testRaggedTensorConstructionErrors(self):
+  def testRowPartitionConstructionErrors(self):
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
 
     with self.assertRaisesRegex(ValueError,
-                                'RaggedTensor constructor is private'):
+                                'RowPartition constructor is private'):
       RowPartition(row_splits=row_splits)
 
     with self.assertRaisesRegex(TypeError,
@@ -97,8 +97,14 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           row_lengths=[2, 3, 4],
           internal=row_partition._row_partition_factory_key)
 
+    with self.assertRaisesRegex(ValueError, 'Inconsistent dtype'):
+      RowPartition(
+          row_splits=constant_op.constant([0, 3], dtypes.int64),
+          nrows=constant_op.constant(1, dtypes.int32),
+          internal=row_partition._row_partition_factory_key)
+
   #=============================================================================
-  # RaggedTensor Factory Ops
+  # RowPartition Factory Ops
   #=============================================================================
 
   def testFromValueRowIdsWithDerivedNRows(self):

@@ -16,6 +16,7 @@ limitations under the License.
 // This transformation pass transforms functional control flow operations in the
 // TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
 
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -105,7 +106,7 @@ static llvm::SmallVector<Value, 4> PrepareValsForJump(
 static void JumpToBlock(Location loc, const std::function<Value(int)>& get_arg,
                         Block* block, OpBuilder* builder) {
   auto operands = PrepareValsForJump(loc, get_arg, block, builder);
-  builder->create<BranchOp>(loc, block, operands);
+  builder->create<cf::BranchOp>(loc, block, operands);
 }
 
 // Replaces all uses of the operation results in this block with block
@@ -174,9 +175,9 @@ static LogicalResult LowerIfOp(IfOp op) {
   // Now that we have the then and else blocks, replace the terminator of the
   // orig_block with a conditional branch.
   builder.setInsertionPointToEnd(orig_block);
-  builder.create<CondBranchOp>(loc, cond_i1, then_block,
-                               llvm::ArrayRef<Value>(), else_block,
-                               llvm::ArrayRef<Value>());
+  builder.create<cf::CondBranchOp>(loc, cond_i1, then_block,
+                                   llvm::ArrayRef<Value>(), else_block,
+                                   llvm::ArrayRef<Value>());
 
   // Finally, delete the op in question.
   op_inst->erase();
@@ -251,8 +252,8 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   Value condition = LowerCondition(loc, cond_call_op->getResult(0), &builder);
   auto br_operands =
       PrepareValsForJump(loc, get_cond_arg, body_block, &builder);
-  builder.create<CondBranchOp>(loc, condition, body_block, br_operands,
-                               orig_block_tail, br_operands);
+  builder.create<cf::CondBranchOp>(loc, condition, body_block, br_operands,
+                                   orig_block_tail, br_operands);
 
   // Call body function in the body block and then unconditionally branch back
   // to the condition block.

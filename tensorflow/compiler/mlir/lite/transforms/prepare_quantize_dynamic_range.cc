@@ -443,7 +443,7 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
   removeAllStatsOp(func);
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
+  patterns.add<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   ConvertMlirQuantOpsToTFLQuantOps(func);

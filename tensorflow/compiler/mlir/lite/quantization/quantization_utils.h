@@ -66,9 +66,13 @@ constexpr char kVolatileOpAttrName[] = "volatile";
 constexpr char kDebugModeOpFloatAttrName[] = "debug_float";
 constexpr char kDebugModeOpQuantAttrName[] = "debug_quant";
 
-constexpr double kNearZeroTolerance = 1.0e-6;
+// Used to annotate custom ops if they are quantizable.
+constexpr char kQuantTraitAttrName[] = "_tfl_quant_trait";
+enum QuantizationTrait { FullyQuantizable = 0, NotQuantizable = 1 };
+constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
+                                                  "not_quantizable"};
 
-enum QuantizationTrait { FullyQuantizable, NotQuantizable };
+constexpr double kNearZeroTolerance = 1.0e-6;
 
 using QuantParams = quant::QuantizedType;
 using QuantSpec = mlir::TFL::QuantizationSpecs;
@@ -405,7 +409,7 @@ class QuantizationPattern : public RewritePattern {
                   custom_map)) {
             // Dynamic range quantization is applied by having Q as an input.
             // Only int8 weight is supported for now.
-            inputs.push_back(dq_op.input());
+            inputs.push_back(dq_op.getOperand());
           } else {
             // Otherwise, it's the case where the operand is activations or the
             // quantizing_op is non-supported/weight-only.
@@ -413,7 +417,7 @@ class QuantizationPattern : public RewritePattern {
           }
         } else {
           if (auto dq_op = dyn_cast_or_null<DQ>(operand.getDefiningOp())) {
-            inputs.push_back(dq_op.input());
+            inputs.push_back(dq_op.getOperand());
           } else if (!ele_type.isF32()) {
             // If the operand is an integer tensor, then it doesn't require the
             // DQ op in the pattern.
@@ -445,7 +449,8 @@ class QuantizationPattern : public RewritePattern {
         // If the user is the Quantize op, it must be the only user.
         if (result.hasOneUse() && llvm::isa<Q>(*result.user_begin())) {
           auto user = llvm::cast<Q>(*result.user_begin());
-          outputs_replaced.insert({user.output(), enumerated_result.index()});
+          outputs_replaced.insert(
+              {user.getResult(), enumerated_result.index()});
           output_types.push_back(user.getType());
         } else if (!result_ele_type.isF32()) {
           // If the result is an integer tensor, then it doesn't require the
@@ -494,7 +499,7 @@ class QuantizationPattern : public RewritePattern {
           auto def = quantized_op->getOperand(i).getDefiningOp();
           if (auto q = llvm::dyn_cast_or_null<Q>(def)) {
             DenseFPElementsAttr attr;
-            if (!matchPattern(q.input(), m_Constant(&attr))) {
+            if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
               continue;
             }
             auto cst = rewriter.create<arith::ConstantOp>(

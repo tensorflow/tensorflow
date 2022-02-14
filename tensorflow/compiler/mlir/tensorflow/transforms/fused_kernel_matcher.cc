@@ -247,7 +247,7 @@ class FuseMatMulBiasAdd
 void FusedKernelMatcherPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
-  patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
+  patterns.add<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

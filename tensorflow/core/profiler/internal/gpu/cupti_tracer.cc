@@ -850,7 +850,7 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
  private:
   void TrackContext(CUpti_CallbackId cbid, CUcontext ctx) {
     if (!option_.sync_devices_before_stop) return;
-    if (ctx == NULL) return;
+    if (ctx == nullptr) return;
     absl::MutexLock lock(&mutex_);
     if (cbid == CUPTI_DRIVER_TRACE_CBID_cuCtxDestroy_v2 ||
         cbid == CUPTI_DRIVER_TRACE_CBID_cuCtxDestroy) {

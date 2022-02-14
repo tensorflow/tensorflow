@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
@@ -76,40 +77,81 @@ size_t TotalSize(const ObjectsAssignment<size_t>& assignment,
   }
   return total_size;
 }
+
+flatbuffers::Offset<data::MetalProgram> EncodeProgram(
+    const std::string& code, const std::map<std::string, std::string>& defines,
+    flatbuffers::FlatBufferBuilder* builder) {
+  std::vector<flatbuffers::Offset<flatbuffers::String>> names_fb;
+  std::vector<flatbuffers::Offset<flatbuffers::String>> expressions_fb;
+  for (auto& define : defines) {
+    names_fb.push_back(builder->CreateString(define.first));
+    expressions_fb.push_back(builder->CreateString(define.second));
+  }
+  auto names_fb_vec = builder->CreateVector(names_fb);
+  auto expressions_fb_vec = builder->CreateVector(expressions_fb);
+  auto code_fb = builder->CreateString(code);
+  data::MetalProgramBuilder program_builder(*builder);
+  program_builder.add_define_names(names_fb_vec);
+  program_builder.add_define_expressions(expressions_fb_vec);
+  program_builder.add_code(code_fb);
+  return program_builder.Finish();
+}
+
+void DecodeProgram(const data::MetalProgram* metal_program, std::string* code,
+                   std::map<std::string, std::string>* defines) {
+  *code = std::string(metal_program->code()->c_str(),
+                      metal_program->code()->size());
+  for (int i = 0; i < metal_program->define_names()->size(); ++i) {
+    std::string key((*metal_program->define_names())[i]->c_str(),
+                    (*metal_program->define_names())[i]->size());
+    std::string value((*metal_program->define_expressions())[i]->c_str(),
+                      (*metal_program->define_expressions())[i]->size());
+    (*defines)[key] = value;
+  }
+}
 }  // namespace
 
 absl::Status InferenceContext::InitFromGraphWithTransforms(
     const CreateGpuModelInfo& create_info, GraphFloat32* graph,
-    id<MTLDevice> device_id) {
+    id<MTLDevice> device_id, std::vector<uint8_t>* serialized_model) {
   RETURN_IF_ERROR(RunGraphTransformsForGpuModel(graph));
-  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, device_id));
+  RETURN_IF_ERROR(
+      InitFromGraph(create_info, *graph, device_id, serialized_model));
   return absl::OkStatus();
+}
+
+void InferenceContext::CopyFromGpuModel(GpuModel* gpu_model) {
+  for (const auto& input : gpu_model->input_ids_and_refs) {
+    input_ids_.push_back(input.first);
+  }
+  for (const auto& output : gpu_model->output_ids_and_refs) {
+    output_ids_.push_back(output.first);
+  }
+  nodes_.resize(gpu_model->nodes.size());
+  for (int i = 0; i < gpu_model->nodes.size(); ++i) {
+    nodes_[i].task.Init(std::move(gpu_model->nodes[i].gpu_operation));
+    nodes_[i].inputs = gpu_model->nodes[i].inputs;
+    nodes_[i].outputs = gpu_model->nodes[i].outputs;
+    nodes_[i].name = gpu_model->nodes[i].name;
+  }
+  const_tensors_descs_ = std::move(gpu_model->const_tensors);
+  tensors_descs_ = std::move(gpu_model->tensors);
 }
 
 absl::Status InferenceContext::InitFromGraph(
     const CreateGpuModelInfo& create_info, const GraphFloat32& graph,
-    id<MTLDevice> device_id) {
+    id<MTLDevice> device_id, std::vector<uint8_t>* serialized_model) {
   device_ = device_id;
   MetalDevice metal_device(device_id);
   GpuModel gpu_model;
   RETURN_IF_ERROR(
       GraphToGpuModel(graph, create_info, metal_device.GetInfo(), &gpu_model));
-
-  for (const auto& input : gpu_model.input_ids_and_refs) {
-    input_ids_.push_back(input.first);
+  flatbuffers::FlatBufferBuilder builder;
+  flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb;
+  if (serialized_model) {
+    gpu_model_fb = tflite::gpu::Encode(gpu_model, &builder);
   }
-  for (const auto& output : gpu_model.output_ids_and_refs) {
-    output_ids_.push_back(output.first);
-  }
-  nodes_.resize(gpu_model.nodes.size());
-  for (int i = 0; i < gpu_model.nodes.size(); ++i) {
-    nodes_[i].task.Init(std::move(gpu_model.nodes[i].gpu_operation));
-    nodes_[i].inputs = gpu_model.nodes[i].inputs;
-    nodes_[i].outputs = gpu_model.nodes[i].outputs;
-    nodes_[i].name = gpu_model.nodes[i].name;
-  }
-  const_tensors_descs_ = std::move(gpu_model.const_tensors);
-  tensors_descs_ = std::move(gpu_model.tensors);
+  CopyFromGpuModel(&gpu_model);
 
   for (const auto& external_tensor : create_info.external_immutable_tensors) {
     auto* metal_spatial_tensor =
@@ -139,6 +181,14 @@ absl::Status InferenceContext::InitFromGraph(
     external_tensor.second = nullptr;
   }
 
+  if (serialized_model) {
+    auto encoded_fb = Encode(&metal_device, gpu_model_fb, &builder);
+    data::FinishInferenceContextBuffer(builder, encoded_fb);
+    serialized_model->resize(builder.GetSize());
+    std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
+                builder.GetSize());
+  }
+
   bool add_icb_support = false && external_mutable_tensors_.empty();
   if (add_icb_support) {
     if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
@@ -160,6 +210,102 @@ absl::Status InferenceContext::InitFromGraph(
         node.task.EncodeToICB(icb_command);
       }
     }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::RestoreDeserialized(
+    const absl::Span<const uint8_t> serialized_model, id<MTLDevice> device_id,
+    CreateGpuModelInfo* create_info) {
+  flatbuffers::Verifier verifier(serialized_model.data(),
+                                 serialized_model.size());
+  if (!data::VerifyInferenceContextBuffer(verifier)) {
+    return absl::DataLossError("Deserialization failed.");
+  }
+  auto decoded_fb = data::GetInferenceContext(serialized_model.data());
+  device_ = device_id;
+  MetalDevice metal_device(device_id);
+  RETURN_IF_ERROR(Decode(&metal_device, decoded_fb));
+
+  std::map<ValueId, MetalSpatialTensor> temp_external_tensors;
+  if (create_info) {
+    for (const auto& external_tensor :
+         create_info->external_immutable_tensors) {
+      auto* cl_spatial_tensor =
+          dynamic_cast<MetalSpatialTensor*>(external_tensor.second);
+      if (!cl_spatial_tensor) {
+        return absl::InvalidArgumentError("Expected MetalSpatialTensor.");
+      }
+      external_immutable_tensors_[external_tensor.first] = cl_spatial_tensor;
+    }
+    for (const auto& external_tensor : create_info->external_mutable_tensors) {
+      RETURN_IF_ERROR(
+          CreateTensor(device_id, tensors_descs_[external_tensor.first].shape,
+                       tensors_descs_[external_tensor.first],
+                       &temp_external_tensors[external_tensor.first]));
+      external_mutable_tensors_[external_tensor.first] =
+          &temp_external_tensors[external_tensor.first];
+    }
+  }
+  PrepareExternal();
+
+  RETURN_IF_ERROR(AllocateTensors(&metal_device));
+  BindTensorsToOperations();
+
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.task.RestoreDeserialized(&metal_device));
+  }
+  RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
+  for (auto& external_tensor : external_mutable_tensors_) {
+    external_tensor.second = nullptr;
+  }
+  return absl::OkStatus();
+}
+
+flatbuffers::Offset<data::InferenceContext> InferenceContext::Encode(
+    MetalDevice* device,
+    flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
+    flatbuffers::FlatBufferBuilder* builder) {
+  std::vector<flatbuffers::Offset<tflite::gpu::data::Int3>> work_groups_fb;
+  for (int i = 0; i < nodes_.size(); ++i) {
+    auto work_group_fb =
+        tflite::gpu::Encode(nodes_[i].task.GetWorkGroupSize(), builder);
+    work_groups_fb.push_back(work_group_fb);
+  }
+  auto work_groups_fb_vec = builder->CreateVector(work_groups_fb);
+
+  std::vector<flatbuffers::Offset<data::MetalProgram>> programs_fb;
+  for (int i = 0; i < nodes_.size(); ++i) {
+    auto program_fb = EncodeProgram(nodes_[i].task.GetCode(),
+                                    nodes_[i].task.GetDefines(), builder);
+    programs_fb.push_back(program_fb);
+  }
+  auto programs_fb_vec = builder->CreateVector(programs_fb);
+
+  data::InferenceContextBuilder inf_builder(*builder);
+  inf_builder.add_gpu_model(gpu_model_fb);
+  inf_builder.add_tuned_work_group_sizes_per_node(work_groups_fb_vec);
+  inf_builder.add_metal_programs(programs_fb_vec);
+  return inf_builder.Finish();
+}
+
+absl::Status InferenceContext::Decode(
+    MetalDevice* device, const data::InferenceContext* fb_inference) {
+  GpuModel gpu_model;
+  RETURN_IF_ERROR(tflite::gpu::Decode(fb_inference->gpu_model(), &gpu_model));
+  CopyFromGpuModel(&gpu_model);
+
+  for (int i = 0; i < nodes_.size(); ++i) {
+    std::string code;
+    std::map<std::string, std::string> defines;
+    DecodeProgram((*fb_inference->metal_programs())[i], &code, &defines);
+    RETURN_IF_ERROR(nodes_[i].task.Init(device, code, defines));
+
+    int3 wg_size;
+    wg_size.x = (*fb_inference->tuned_work_group_sizes_per_node())[i]->x();
+    wg_size.y = (*fb_inference->tuned_work_group_sizes_per_node())[i]->y();
+    wg_size.z = (*fb_inference->tuned_work_group_sizes_per_node())[i]->z();
+    nodes_[i].task.SetWorkGroupSize(wg_size);
   }
   return absl::OkStatus();
 }

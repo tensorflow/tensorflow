@@ -212,22 +212,22 @@ namespace mhlo {
 
 void populateShapeComputationPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns) {
-  patterns->insert<MhloElementwiseConverter<mhlo::AbsOp>,
-                   MhloElementwiseConverter<mhlo::AddOp>,
-                   MhloElementwiseConverter<mhlo::AndOp>,
-                   MhloElementwiseConverter<mhlo::CeilOp>,
-                   MhloElementwiseConverter<mhlo::ConvertOp>,
-                   MhloElementwiseConverter<mhlo::DivOp>,
-                   MhloElementwiseConverter<mhlo::FloorOp>,
-                   MhloElementwiseConverter<mhlo::MaxOp>,
-                   MhloElementwiseConverter<mhlo::MinOp>,
-                   MhloElementwiseConverter<mhlo::MulOp>,
-                   MhloElementwiseConverter<mhlo::NegOp>,
-                   MhloElementwiseConverter<mhlo::RoundOp>,
-                   MhloElementwiseConverter<mhlo::RsqrtOp>,
-                   MhloElementwiseConverter<mhlo::SqrtOp>,
-                   MhloElementwiseConverter<mhlo::SubOp>, ConcatenateConverter,
-                   GetDimSizeConverter, ReshapeConverter>(context);
+  patterns->add<MhloElementwiseConverter<mhlo::AbsOp>,
+                MhloElementwiseConverter<mhlo::AddOp>,
+                MhloElementwiseConverter<mhlo::AndOp>,
+                MhloElementwiseConverter<mhlo::CeilOp>,
+                MhloElementwiseConverter<mhlo::ConvertOp>,
+                MhloElementwiseConverter<mhlo::DivOp>,
+                MhloElementwiseConverter<mhlo::FloorOp>,
+                MhloElementwiseConverter<mhlo::MaxOp>,
+                MhloElementwiseConverter<mhlo::MinOp>,
+                MhloElementwiseConverter<mhlo::MulOp>,
+                MhloElementwiseConverter<mhlo::NegOp>,
+                MhloElementwiseConverter<mhlo::RoundOp>,
+                MhloElementwiseConverter<mhlo::RsqrtOp>,
+                MhloElementwiseConverter<mhlo::SqrtOp>,
+                MhloElementwiseConverter<mhlo::SubOp>, ConcatenateConverter,
+                GetDimSizeConverter, ReshapeConverter>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeShapeComputationsPass() {

@@ -315,10 +315,10 @@ void QuantizePass::runOnOperation() {
   TFL::populateWithGenerated(patterns);
 
   if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits) {
-    patterns.insert<TFLDynamicRangeQuantization>(ctx, quant_params);
+    patterns.add<TFLDynamicRangeQuantization>(ctx, quant_params);
   } else {
-    patterns.insert<TFLFullQuantization, TFLFullQuantizationReverse>(
-        ctx, quant_params);
+    patterns.add<TFLFullQuantization, TFLFullQuantizationReverse>(ctx,
+                                                                  quant_params);
   }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 

@@ -85,7 +85,7 @@ TEST_F(XlaBuilderTest, Infeed) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(infeed),
-      R"("mhlo.tuple"(%1#0, %1#1) : (tensor<4x8xf32>, !mhlo.token) -> tuple<tensor<4x8xf32>)");
+      R"("mhlo.infeed"(%0) {infeed_config = ""} : (!mhlo.token) -> tuple<tensor<4x8xf32>, !mhlo.token>)");
 }
 
 TEST_F(XlaBuilderTest, Outfeed) {

@@ -46,21 +46,19 @@ namespace mhlo {
 namespace {
 
 // All transformations in this file take mhlo blocks which end with
-// mhlo::ReturnOp and lower to SCF ops which end with scf::YieldOp. Clone an
+// mhlo::ReturnOp and lower to SCF ops which end with scf::YieldOp. Inline an
 // entire block with the only change being return -> yield.
-void cloneMhloToSCFBlock(Block& block, OpBuilder& b, Location loc) {
-  BlockAndValueMapping bvm;
-  for (auto& i : block) {
-    if (isa<mhlo::ReturnOp>(i)) {
-      SmallVector<Value> operands;
-      for (auto operand : i.getOperands()) {
-        operands.push_back(bvm.lookup(operand));
-      }
-      b.create<scf::YieldOp>(loc, operands);
-    } else {
-      b.clone(i, bvm);
-    }
-  }
+void inlineMhloRegionIntoSCFRegion(PatternRewriter& rewriter, Region& mhlo,
+                                   Region& scf) {
+  // Remove an existing block, then move the region over.
+  if (!scf.empty()) rewriter.eraseBlock(&scf.back());
+  rewriter.inlineRegionBefore(mhlo, scf, scf.end());
+  // Fix up the terminator.
+  PatternRewriter::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointToEnd(&scf.back());
+  auto* terminator = scf.back().getTerminator();
+  rewriter.replaceOpWithNewOp<scf::YieldOp>(terminator,
+                                            terminator->getOperands());
 }
 
 // mhlo ops need inputs to be tensors, but scalar values can be a scalar tensor
@@ -88,10 +86,10 @@ struct WhileOpPattern : public OpConversionPattern<mhlo::WhileOp> {
     auto new_while_op = rewriter.create<scf::WhileOp>(loc, op.getResultTypes(),
                                                       adaptor.getOperands());
 
-    // Clone while condition. The block is the same, except the boolean result
+    // Inline while condition. The block is the same, except the boolean result
     // needs to be extracted and used with an scf.condition.
-    rewriter.cloneRegionBefore(op.cond(), new_while_op.getBefore(),
-                               new_while_op.getBefore().end());
+    rewriter.inlineRegionBefore(op.cond(), new_while_op.getBefore(),
+                                new_while_op.getBefore().end());
     auto condition_return =
         cast<mhlo::ReturnOp>(new_while_op.getBefore().front().getTerminator());
     rewriter.setInsertionPointToEnd(&new_while_op.getBefore().front());
@@ -99,14 +97,8 @@ struct WhileOpPattern : public OpConversionPattern<mhlo::WhileOp> {
     rewriter.replaceOpWithNewOp<scf::ConditionOp>(
         condition_return, i1, new_while_op.getBeforeArguments());
 
-    // Clone while body, and only replace the mhlo.return with an scf.yield.
-    rewriter.cloneRegionBefore(op.body(), new_while_op.getAfter(),
-                               new_while_op.getAfter().end());
-    rewriter.setInsertionPointToEnd(&new_while_op.getAfter().front());
-    auto old_return =
-        cast<mhlo::ReturnOp>(new_while_op.getAfter().front().getTerminator());
-    rewriter.replaceOpWithNewOp<scf::YieldOp>(old_return,
-                                              old_return.getOperands());
+    // Inline while body, and only replace the mhlo.return with an scf.yield.
+    inlineMhloRegionIntoSCFRegion(rewriter, op.body(), new_while_op.getAfter());
 
     rewriter.replaceOp(op, new_while_op.getResults());
     return success();
@@ -120,14 +112,15 @@ struct IfOpPattern : public OpConversionPattern<mhlo::IfOp> {
   LogicalResult matchAndRewrite(
       mhlo::IfOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    rewriter.replaceOpWithNewOp<scf::IfOp>(
-        op, op.getResultTypes(), extractTensorValue(rewriter, adaptor.pred()),
-        [&](OpBuilder& b, Location l) {
-          cloneMhloToSCFBlock(op.true_branch().front(), b, l);
-        },
-        [&](OpBuilder& b, Location l) {
-          cloneMhloToSCFBlock(op.false_branch().front(), b, l);
-        });
+    auto scf_if =
+        rewriter.create<scf::IfOp>(op.getLoc(), op.getResultTypes(),
+                                   extractTensorValue(rewriter, adaptor.pred()),
+                                   /*withElseRegion=*/true);
+    inlineMhloRegionIntoSCFRegion(rewriter, op.true_branch(),
+                                  scf_if.getThenRegion());
+    inlineMhloRegionIntoSCFRegion(rewriter, op.false_branch(),
+                                  scf_if.getElseRegion());
+    rewriter.replaceOp(op, scf_if.getResults());
     return success();
   }
 };
@@ -138,7 +131,7 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
 
   // Recursively create if/else ops to handle each possible value in a case op.
   scf::IfOp createNestedCases(int current_idx, CaseOp op, OpAdaptor adaptor,
-                              OpBuilder outer_builder) const {
+                              PatternRewriter& outer_builder) const {
     Location loc = op.getLoc();
     Value idx_value = adaptor.index();
     auto final_idx = op.branches().size() - 2;
@@ -152,24 +145,26 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
         loc, idx_value.getType(), const_attr);
     auto eq_comparison = outer_builder.getStringAttr("EQ");
 
-    return outer_builder.create<scf::IfOp>(
+    auto scf_if = outer_builder.create<scf::IfOp>(
         loc, op.getResultTypes(),
         extractTensorValue(outer_builder,
                            outer_builder.create<mhlo::CompareOp>(
                                loc, idx_value, current_idx_val, eq_comparison)),
-        [&](OpBuilder& b, Location l) {
-          cloneMhloToSCFBlock(op.branches()[current_idx].front(), b, l);
-        },
-        [&](OpBuilder& b, Location l) {
-          int next_idx = current_idx + 1;
-          // Don't recurse for the final default block.
-          if (current_idx == final_idx) {
-            cloneMhloToSCFBlock(op.branches()[next_idx].back(), b, l);
-          } else {
-            auto inner_if = createNestedCases(next_idx, op, adaptor, b);
-            b.create<scf::YieldOp>(l, inner_if.getResults());
-          }
-        });
+        /*withElseRegion=*/true);
+    inlineMhloRegionIntoSCFRegion(outer_builder, op.branches()[current_idx],
+                                  scf_if.getThenRegion());
+    int next_idx = current_idx + 1;
+    // Don't recurse for the final default block.
+    if (current_idx == final_idx) {
+      inlineMhloRegionIntoSCFRegion(outer_builder, op.branches()[next_idx],
+                                    scf_if.getElseRegion());
+    } else {
+      PatternRewriter::InsertionGuard guard(outer_builder);
+      outer_builder.setInsertionPointToEnd(&scf_if.getElseRegion().back());
+      auto inner_if = createNestedCases(next_idx, op, adaptor, outer_builder);
+      outer_builder.create<scf::YieldOp>(op.getLoc(), inner_if.getResults());
+    }
+    return scf_if;
   }
 
   LogicalResult matchAndRewrite(
@@ -177,18 +172,13 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
       ConversionPatternRewriter& rewriter) const override {
     // Inline the op if there is only a default block.
     if (op.branches().size() == 1) {
-      BlockAndValueMapping bvm;
-      for (auto& i : op.branches().front().front()) {
-        if (isa<mhlo::ReturnOp>(i)) {
-          SmallVector<Value> operands;
-          for (auto operand : i.getOperands()) {
-            operands.push_back(bvm.lookup(operand));
-          }
-          rewriter.replaceOp(op, operands);
-        } else {
-          rewriter.clone(i, bvm);
-        }
-      }
+      Block& block = op.branches().front().front();
+      auto results = block.getTerminator()->getOperands();
+      // Remove the mhlo.return terminator, then inline the block.
+      rewriter.eraseOp(block.getTerminator());
+      rewriter.mergeBlockBefore(/*source=*/&block, /*dest=*/op.getOperation(),
+                                /*argValues=*/{});
+      rewriter.replaceOp(op, results);
       return success();
     }
 

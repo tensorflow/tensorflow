@@ -193,7 +193,7 @@ struct LinalgTrivialBufferForwardingPass
     mlir::MLIRContext* ctx = function.getContext();
 
     mlir::RewritePatternSet patterns(ctx);
-    patterns.insert<LinalgTrivialBufferForwardingPattern>(ctx);
+    patterns.add<LinalgTrivialBufferForwardingPattern>(ctx);
 
     (void)mlir::applyPatternsAndFoldGreedily(function, std::move(patterns));
   }

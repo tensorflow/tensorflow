@@ -321,7 +321,7 @@ struct FuseFillIntoTiledReductionPass
     auto context = func.getContext();
 
     mlir::RewritePatternSet patterns(context);
-    patterns.insert<FuseFillIntoTiledReductionPattern>(context);
+    patterns.add<FuseFillIntoTiledReductionPattern>(context);
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };

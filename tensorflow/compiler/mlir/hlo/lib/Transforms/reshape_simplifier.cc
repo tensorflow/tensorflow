@@ -338,7 +338,7 @@ void ReshapeSimplifierPass::runOnOperation() {
   mlir::RewritePatternSet patterns(ctx);
 
   // clang-format off
-  patterns.insert<
+  patterns.add<
       ReshapeToExpandShape,
       RemoveComputeReshapeShape,
       RemoveRedundantCstrReshapable,

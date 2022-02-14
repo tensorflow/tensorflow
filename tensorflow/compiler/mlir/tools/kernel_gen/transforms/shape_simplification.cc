@@ -239,9 +239,8 @@ struct ShapeSimplification
         op.getCanonicalizationPatterns(patterns, context);
     }
 
-    patterns.insert<BroadcastRemoveSubsumedOperandsPattern,
-                    ExtractFromBroadcastedTensorCanonicalizationPattern>(
-        context);
+    patterns.add<BroadcastRemoveSubsumedOperandsPattern,
+                 ExtractFromBroadcastedTensorCanonicalizationPattern>(context);
 
     auto func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))

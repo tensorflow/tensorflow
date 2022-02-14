@@ -136,7 +136,7 @@ struct VectorizeTiledOpsPass
     mlir::linalg::populatePadOpVectorizationPatterns(patterns);
     mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(
         patterns);
-    patterns.insert<TransferReadOfOneDimExpandShape>(funcOp.getContext());
+    patterns.add<TransferReadOfOneDimExpandShape>(funcOp.getContext());
     (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
   }
 };

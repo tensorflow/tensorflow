@@ -37,10 +37,11 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
   Status error = errors::Internal("Test Error");
-  constexpr absl::string_view job_name = "test_worker";
-  int32_t task_id = 7;
+  CoordinatedTask source_task;
+  source_task.set_job_name("test_worker");
+  source_task.set_task_id(7);
 
-  Status coordination_error = MakeCoordinationError(error, job_name, task_id);
+  Status coordination_error = MakeCoordinationError(error, source_task);
 
   EXPECT_EQ(coordination_error.code(), error.code());
   EXPECT_EQ(coordination_error.error_message(), error.error_message());
@@ -48,17 +49,18 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
   // Explicit string conversion for open source builds.
   payload.ParseFromString(std::string(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
-  EXPECT_EQ(payload.job(), job_name);
-  EXPECT_EQ(payload.task(), task_id);
+  EXPECT_EQ(payload.source_task().job_name(), source_task.job_name());
+  EXPECT_EQ(payload.source_task().task_id(), source_task.task_id());
   EXPECT_EQ(payload.is_reported_error(), false);
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
   Status error = errors::Internal("Test Error");
-  constexpr absl::string_view job_name = "test_worker";
-  int32_t task_id = 7;
+  CoordinatedTask source_task;
+  source_task.set_job_name("test_worker");
+  source_task.set_task_id(7);
 
-  Status coordination_error = MakeCoordinationError(error, job_name, task_id,
+  Status coordination_error = MakeCoordinationError(error, source_task,
                                                     /*is_reported_error=*/true);
 
   EXPECT_EQ(coordination_error.code(), error.code());
@@ -67,16 +69,17 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
   // Explicit string conversion for open source builds.
   payload.ParseFromString(std::string(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
-  EXPECT_EQ(payload.job(), job_name);
-  EXPECT_EQ(payload.task(), task_id);
+  EXPECT_EQ(payload.source_task().job_name(), source_task.job_name());
+  EXPECT_EQ(payload.source_task().task_id(), source_task.task_id());
   EXPECT_EQ(payload.is_reported_error(), true);
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
   Status error = errors::Internal("Test Error");
   CoordinationServiceError payload;
-  payload.set_job("test_worker");
-  payload.set_task(7);
+  CoordinatedTask* source_task = payload.mutable_source_task();
+  source_task->set_job_name("test_worker");
+  source_task->set_task_id(7);
   payload.set_is_reported_error(true);
 
   Status coordination_error = MakeCoordinationError(error, payload);
@@ -87,8 +90,10 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
   // Explicit string conversion for open source builds.
   actual_payload.ParseFromString(std::string(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
-  EXPECT_EQ(actual_payload.job(), payload.job());
-  EXPECT_EQ(actual_payload.task(), payload.task());
+  EXPECT_EQ(actual_payload.source_task().job_name(),
+            payload.source_task().job_name());
+  EXPECT_EQ(actual_payload.source_task().task_id(),
+            payload.source_task().task_id());
   EXPECT_EQ(actual_payload.is_reported_error(), payload.is_reported_error());
 }
 

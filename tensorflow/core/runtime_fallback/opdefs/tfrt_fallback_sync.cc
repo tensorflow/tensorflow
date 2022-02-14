@@ -53,8 +53,8 @@ static Type GetTensorType(Builder *builder) {
   return tfrt::t::TensorType::get(builder->getContext());
 }
 
-static LogicalResult verify(ExecuteOp op) {
-  return fallback_common::VerifyExecuteOpCommon(op);
+LogicalResult ExecuteOp::verify() {
+  return fallback_common::VerifyExecuteOpCommon(*this);
 }
 
 static ParseResult parseExecuteOp(OpAsmParser &parser, OperationState &result) {

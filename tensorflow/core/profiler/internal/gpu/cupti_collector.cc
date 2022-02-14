@@ -114,7 +114,7 @@ class PerDeviceCollector {
 
     status = cudaOccMaxPotentialOccupancyBlockSize(
         &stats.min_grid_size, &stats.suggested_block_size, &device_properties_,
-        &params.attributes, &state, NULL, params.dynamic_smem_size);
+        &params.attributes, &state, nullptr, params.dynamic_smem_size);
     if (status != CUDA_OCC_SUCCESS) {
       return {};
     }

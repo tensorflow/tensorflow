@@ -321,8 +321,8 @@ struct GroupReductionDimensionsPass
 void populateGroupReductionDimensionsPatterns(MLIRContext* context,
                                               RewritePatternSet* patterns,
                                               bool prefer_columns_reductions) {
-  patterns->insert<GroupReductionDimensionsPattern>(context,
-                                                    prefer_columns_reductions);
+  patterns->add<GroupReductionDimensionsPattern>(context,
+                                                 prefer_columns_reductions);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createGroupReductionDimensionsPass(

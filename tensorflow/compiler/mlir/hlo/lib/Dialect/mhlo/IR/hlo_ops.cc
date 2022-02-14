@@ -88,6 +88,13 @@ namespace {
 // Utilities for the canonicalize patterns
 //===----------------------------------------------------------------------===//
 
+// This is an arbitrary limit into how many elements can a splat attribute
+// covers before we prevent folding from happening. Without such limit we can
+// expand a single element splat to a multi-GB large tensor.
+// The limit is arbitrary set low to allow expanding small computations, like
+// shape manipulations for example.
+constexpr int64_t kFoldExpandSplatEltLimit = 16;
+
 // Clamps value to the range [lower, upper].  Requires lower <= upper.
 template <typename T>
 static T Clamp(const T& value, const T& lower, const T& upper) {
@@ -115,14 +122,6 @@ static LogicalResult VerifyDimAttr(OpT op) {
   return success();
 }
 
-// Returns 1D 64-bit dense elements attribute with the given values.
-DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
-                                        Builder* builder) {
-  RankedTensorType ty = RankedTensorType::get(
-      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get(ty, values);
-}
-
 // Given the start indices and slice sizes for a dynamic-slice that can be
 // converted to a static slice, returns the limits for the static slice.
 DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
@@ -134,7 +133,7 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
     int64_t slice_size = slice_sizes.getValues<IntegerAttr>()[i].getInt();
     slice_limits.push_back(start_index + slice_size);
   }
-  return GetI64ElementsAttr(slice_limits, builder);
+  return hlo::GetI64ElementsAttr(slice_limits, builder);
 }
 
 /// Replaces the given op with the contents of the given single-block region,
@@ -196,7 +195,38 @@ static LogicalResult rngInferReturnTypeComponents(
 Value MaybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
   if (type == value.getType()) return value;
   assert(type.isIndex() || value.getType().isIndex());
-  return b.create<arith::IndexCastOp>(loc, value, type);
+  return b.create<arith::IndexCastOp>(loc, type, value);
+}
+
+//===----------------------------------------------------------------------===//
+// Utilities for verifiers
+//===----------------------------------------------------------------------===//
+
+// Return true if type1 and type2 are tensors and have the same
+// element-type, else return false. With float element-types, ignore comparing
+// floating-point precision if ignoreFpPrecision is True.
+static bool tensorsHaveSameElType(Type type1, Type type2,
+                                  bool ignoreFpPrecision) {
+  auto tensorTy1 = type1.dyn_cast<TensorType>();
+  auto tensorTy2 = type2.dyn_cast<TensorType>();
+
+  if (!tensorTy1 || !tensorTy2) return false;
+
+  if (ignoreFpPrecision && tensorTy1.getElementType().isa<FloatType>() &&
+      tensorTy2.getElementType().isa<FloatType>())
+    return true;
+
+  return tensorTy1.getElementType() == tensorTy2.getElementType();
+}
+
+// Return true if type1 and type2 are shape-compatible and have same element
+// type. If 'ignoreFpPrecision' is True, then allow floats with different
+// precisions while checking element-types.
+static bool compatibleShapeAndElementType(Type type1, Type type2,
+                                          bool ignoreFpPrecision = false) {
+  if (failed(verifyCompatibleShape(type1, type2))) return false;
+  return tensorsHaveSameElType(type1.cast<ShapedType>(),
+                               type2.cast<ShapedType>(), ignoreFpPrecision);
 }
 
 }  // namespace
@@ -475,9 +505,9 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
     auto slice_type = RankedTensorType::get(slice_shape, element_type);
     Value result = rewriter.create<SliceOp>(
         gather.getLoc(), slice_type, gather.getOperand(0),
-        GetI64ElementsAttr(slice_start, &rewriter),
-        GetI64ElementsAttr(slice_end, &rewriter),
-        GetI64ElementsAttr(slice_stride, &rewriter));
+        hlo::GetI64ElementsAttr(slice_start, &rewriter),
+        hlo::GetI64ElementsAttr(slice_end, &rewriter),
+        hlo::GetI64ElementsAttr(slice_stride, &rewriter));
 
     auto collapsed_slice_dims = dnums.getCollapsedSliceDims();
     if (!collapsed_slice_dims.empty()) {
@@ -500,7 +530,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
 
 void GatherOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
-  results.insert<GatherSlice>(context);
+  results.add<GatherSlice>(context);
 }
 
 namespace {
@@ -926,7 +956,7 @@ struct IotaBroadcast : public OpRewritePattern<IotaOp> {
 
 void IotaOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* context) {
-  results.insert<IotaBroadcast>(context);
+  results.add<IotaBroadcast>(context);
 }
 
 OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
@@ -985,9 +1015,9 @@ struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
 
     auto sliced_shape = rewriter.create<SliceOp>(
         iota.getLoc(), converted_shape,
-        GetI64ElementsAttr(iota_dimension_int, &rewriter),
-        GetI64ElementsAttr(iota_dimension_int + 1, &rewriter),
-        GetI64ElementsAttr(1, &rewriter));
+        hlo::GetI64ElementsAttr(iota_dimension_int, &rewriter),
+        hlo::GetI64ElementsAttr(iota_dimension_int + 1, &rewriter),
+        hlo::GetI64ElementsAttr(1, &rewriter));
 
     auto converted_sliced_shape = rewriter.create<arith::IndexCastOp>(
         iota.getLoc(),
@@ -1016,8 +1046,8 @@ struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
 
 void DynamicIotaOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.insert<DynamicIotaIsStatic>(context);
-  results.insert<DynamicIotaBroadcast>(context);
+  results.add<DynamicIotaIsStatic>(context);
+  results.add<DynamicIotaBroadcast>(context);
 }
 
 static Value castToIndexTensor(OpBuilder& builder, Location loc,
@@ -1026,7 +1056,7 @@ static Value castToIndexTensor(OpBuilder& builder, Location loc,
       builder.getContext(),
       shape_op.getType().cast<ShapedType>().getDimSize(0));
   if (shape_op.getType() == result_ty) return shape_op;  // Nothing to do.
-  return builder.create<arith::IndexCastOp>(loc, shape_op, result_ty);
+  return builder.create<arith::IndexCastOp>(loc, result_ty, shape_op);
 }
 
 LogicalResult DynamicIotaOp::reifyReturnTypeShapes(
@@ -1158,7 +1188,7 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
 void ConvertOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
-  results.insert<EliminateIdentityConvert>(context);
+  results.add<EliminateIdentityConvert>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1286,7 +1316,7 @@ struct UnpackRepackSameTuple : public OpRewritePattern<TupleOp> {
 
 void TupleOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
-  results.insert<UnpackRepackSameTuple>(context);
+  results.add<UnpackRepackSameTuple>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1332,6 +1362,89 @@ LogicalResult AllGatherOp::verify() {
            << resultType.getDimSize(allGatherDimIndex)
            << ", expected to be a multiple of operand gather dimension size "
            << operandType.getDimSize(allGatherDimIndex);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BatchNormTrainingOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchNormTrainingOp::verify() {
+  // The following properties are already enforced by the ODS:
+  //  1. 'operand' and 'output' are ranked tensors.
+  //  2. 'scale', 'offset', 'batch_mean', 'batch_var' are 1D tensors.
+  //  3. Types of 'operand' and 'output' matches.
+  //  4. Same element-types for 'operand', 'batch_mean', & 'batch_var'.
+  //  5. Same shapes for 'scale', 'offset', 'batch_mean', & 'batch_var'.
+
+  auto operand_type = operand().getType().cast<RankedTensorType>();
+  if (static_cast<int64_t>(feature_index()) >= operand_type.getRank())
+    return emitOpError() << "expects feature_index to be smaller "
+                            "than the rank of operand type; got feature_index "
+                         << feature_index() << ", and rank "
+                         << operand_type.getRank() << ".";
+
+  if (static_cast<int64_t>(feature_index()) < 0)
+    return emitOpError() << "expects feature_index to be a "
+                         << "non-negative number, got "
+                         << static_cast<int64_t>(feature_index()) << ".";
+
+  // Note:A valid value of feature-index implies 'operand_type.getRank() >=1'.
+
+  const int64_t feature_count = operand_type.getShape()[feature_index()];
+  const int64_t scale_shape =
+      scale().getType().cast<RankedTensorType>().getShape()[0];
+  // Check number of elements in input 'scale' equals feature_count.
+  // Together with (5) implies that 'scale', 'offset', 'batch_mean', &
+  // 'batch_var' all have the same shape.
+  if (scale_shape != feature_count)
+    return emitOpError() << "expects the size of scale factor to be "
+                            "same as the feature count,"
+                            " but the size of scale factor is "
+                         << scale_shape << " and the feature count is "
+                         << feature_count << ".";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BatchNormInferenceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchNormInferenceOp::verify() {
+  // The following properties are already enforced by the ODS:
+  //  1. 'operand' and 'result' are ranked tensors.
+  //  2. 'scale', 'offset', 'mean', 'variance' are 1D tensors.
+  //  3. Types of 'operand' and 'result' matches.
+  //  4. Same shapes for 'scale', 'offset', 'mean', & 'variance'.
+
+  auto operand_type = operand().getType().cast<RankedTensorType>();
+  if (static_cast<int64_t>(feature_index()) >= operand_type.getRank())
+    return emitOpError() << "expects feature_index to be smaller "
+                            "than the rank of operand type; got feature_index "
+                         << feature_index() << ", and rank "
+                         << operand_type.getRank() << ".";
+
+  if (static_cast<int64_t>(feature_index()) < 0)
+    return emitOpError() << "expects feature_index to be a "
+                         << "non-negative number, got "
+                         << static_cast<int64_t>(feature_index()) << ".";
+
+  // Note:A valid value of feature-index implies 'operand_type.getRank() >=1'.
+
+  const int64_t feature_count = operand_type.getShape()[feature_index()];
+  const int64_t scale_size =
+      scale().getType().cast<RankedTensorType>().getShape()[0];
+  // Check number of elements in input 'scale' equals feature_count.
+  // Together with (4) implies that 'scale', 'offset', 'mean', &
+  // 'variance' all have the same shape.
+  if (scale_size != feature_count)
+    return emitOpError() << "expects the size of scale factor to be "
+                            "same as the feature count,"
+                            " but the size of scale factor is "
+                         << scale_size << " and the feature count is "
+                         << feature_count << ".";
 
   return success();
 }
@@ -1627,7 +1740,7 @@ class BroadcastInDimSimplifier : public OpRewritePattern<BroadcastInDimOp> {
 
 void BroadcastInDimOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                    MLIRContext* context) {
-  results.insert<BroadcastInDimSimplifier>(context);
+  results.add<BroadcastInDimSimplifier>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1756,10 +1869,10 @@ class ChainedDynamicBroadcastInDimCanonicalization
 
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     RewritePatternSet& results, MLIRContext* context) {
-  results.insert<ChainedDynamicBroadcastInDimCanonicalization,
-                 DynamicBroadcastInDimOpNotActuallyDynamic,
-                 DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
-                 DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
+  results.add<ChainedDynamicBroadcastInDimCanonicalization,
+              DynamicBroadcastInDimOpNotActuallyDynamic,
+              DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
+              DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
 }
 
@@ -2070,7 +2183,7 @@ LogicalResult ConcatenateOp::inferReturnTypes(
 
 void ConcatenateOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.insert<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
+  results.add<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
 }
 
 template <typename T>
@@ -2349,7 +2462,7 @@ class DynamicReshapeOpSameShapeOpResult
 void DynamicReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                    MLIRContext* context) {
   // clang-format off
-  results.insert<
+  results.add<
       DynamicReshapeOpNotActuallyDynamic,
       DynamicReshapeOpSameShapeOpResult,
       RemoveRedundantDynamicBroadcast,
@@ -2400,11 +2513,11 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
     auto loc = dynamic_slice.getLoc();
     int64_t input_rank = input_tensor.getRank();
     auto slice_start_indices =
-        GetI64ElementsAttr(temp_start_indices, &rewriter);
+        hlo::GetI64ElementsAttr(temp_start_indices, &rewriter);
     DenseIntElementsAttr slice_limits = BuildSliceLimits(
         slice_start_indices, dynamic_slice.slice_sizes(), &rewriter);
-    DenseIntElementsAttr slice_strides =
-        GetI64ElementsAttr(SmallVector<int64_t, 4>(input_rank, 1), &rewriter);
+    DenseIntElementsAttr slice_strides = hlo::GetI64ElementsAttr(
+        SmallVector<int64_t, 4>(input_rank, 1), &rewriter);
     auto result = rewriter.create<SliceOp>(loc, input, slice_start_indices,
                                            slice_limits, slice_strides);
     rewriter.replaceOp(dynamic_slice, {result});
@@ -2416,7 +2529,7 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
 
 void DynamicSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                  MLIRContext* context) {
-  results.insert<DynamicSliceToSlice>(context);
+  results.add<DynamicSliceToSlice>(context);
 }
 
 // Verifies that the number of slice sizes and the number of start indices match
@@ -2517,11 +2630,11 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
     }
 
     DenseIntElementsAttr slice_start_indices =
-        GetI64ElementsAttr(temp_start_indices, &rewriter);
+        hlo::GetI64ElementsAttr(temp_start_indices, &rewriter);
     DenseIntElementsAttr slice_limit_indices =
-        GetI64ElementsAttr(temp_limit_indices, &rewriter);
+        hlo::GetI64ElementsAttr(temp_limit_indices, &rewriter);
     DenseIntElementsAttr slice_strides =
-        GetI64ElementsAttr(temp_stride, &rewriter);
+        hlo::GetI64ElementsAttr(temp_stride, &rewriter);
     auto result = rewriter.create<SliceOp>(loc, input, slice_start_indices,
                                            slice_limit_indices, slice_strides);
     rewriter.replaceOp(real_dynamic_slice, {result});
@@ -2532,7 +2645,7 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
 
 void RealDynamicSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                      MLIRContext* context) {
-  results.insert<RealDynamicSliceIsStatic, RealDSliceToSlice>(context);
+  results.add<RealDynamicSliceIsStatic, RealDSliceToSlice>(context);
 }
 
 LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
@@ -2590,51 +2703,29 @@ LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
 // Checks that the result type is of the form `zero_or_more_type(s),
 // mhlo::token`
 LogicalResult InfeedOp::verify() {
-  auto result_types = getResultTypes();
-  if (result_types.empty())
-    return emitOpError()
-           << "result is expected to be at least of size 1, but got "
-           << result_types.size();
-
-  if (!result_types[result_types.size() - 1].isa<TokenType>())
-    return emitOpError() << "last element of result types is expected to "
-                            "be of token type, but got "
-                         << result_types[result_types.size() - 1];
-
-  // Verify layout attribute
-  constexpr char kLayoutAttr[] = "layout";
-  if (!getOperation()->hasAttr(kLayoutAttr)) return success();
-
-  mlir::ArrayAttr layout =
-      getOperation()->getAttrOfType<mlir::ArrayAttr>(kLayoutAttr);
-  if (!layout)
-    return emitOpError() << "layout-attribute expected to be of array-type.";
-
-  if (layout.size() != result_types.size() - 1) {
-    return emitOpError() << "layout-attribute size must be "
-                         << result_types.size() - 1
-                         << " (which is the number of "
-                            "op-results - 1 (for token result)), but got "
-                         << layout.size();
-  }
-
-  for (auto child_layout : layout) {
-    mlir::ArrayAttr child_layout_arr = child_layout.dyn_cast<mlir::ArrayAttr>();
-    if (!child_layout_arr) {
-      return emitOpError() << "layout-attribute expected to have "
-                              "elements of type array, but got "
-                           << child_layout;
-    }
-
-    for (int64_t i = 0; i < child_layout_arr.size(); i++) {
-      mlir::IntegerAttr attr =
-          child_layout_arr[i].dyn_cast<mlir::IntegerAttr>();
-      if (!attr) {
-        return emitOpError() << "layout-attribute's leaf elements are "
-                                "expected to be of type integer, but got "
-                             << child_layout_arr[i];
-      }
-    }
+  auto result_ty = getResult(0).getType().dyn_cast<TupleType>();
+  if (result_ty) {
+    // TODO(@sdasgup): The current branch need to be removed once the
+    // allowance of tuple-return-type for infeed is revoked.
+    auto subtypes = result_ty.getTypes();
+    if (subtypes.size() != 2)
+      return emitOpError()
+             << "result is expected to be a tuple of size 2, but got "
+             << subtypes.size();
+    if (!subtypes[1].isa<TokenType>())
+      return emitOpError() << "second element of result tuple is expected to "
+                              "be of token type, but got "
+                           << subtypes[1];
+  } else {
+    auto result_types = getResultTypes();
+    if (result_types.empty())
+      return emitOpError()
+             << "result is expected to be at least of size 1, but got "
+             << result_types.size();
+    if (!result_types[result_types.size() - 1].isa<TokenType>())
+      return emitOpError() << "last element of result types is expected to "
+                              "be of token type, but got "
+                           << result_types[result_types.size() - 1];
   }
 
   return success();
@@ -3058,15 +3149,15 @@ static bool isEligibleForCompactPrint(ReduceOp op) {
   return llvm::equal(innerOp.getResults(), retOp.getOperands());
 }
 
-void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
+void ReduceOp::print(OpAsmPrinter& p) {
   {
     // Print the pairs of operands under the form:
     //   (%arg0 init: %arg3), (%arg1 init: %arg4), (%arg2 init: %arg5)
     StringRef comma = "";
-    int numOperandPairs = op.getNumOperands() / 2;
+    int numOperandPairs = getNumOperands() / 2;
     for (int opId : llvm::seq<int>(0, numOperandPairs)) {
-      p << comma << "(" << op.getOperand(opId)
-        << " init: " << op.getOperand(opId + numOperandPairs) << ")";
+      p << comma << "(" << getOperand(opId)
+        << " init: " << getOperand(opId + numOperandPairs) << ")";
       comma = ", ";
     }
   }
@@ -3076,30 +3167,30 @@ void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
   // Note: We are not printing the function type of reduction operation. We
   // have some simplifying assumptions (refer to IsEligibleForCompactPrint::E3)
   // to derive the type from that of reduce-op.
-  if (isEligibleForCompactPrint(op)) {
-    Operation& innerOp = op.body().front().front();
+  if (isEligibleForCompactPrint(*this)) {
+    Operation& innerOp = body().front().front();
     p << " applies ";
     printEscapedString(innerOp.getName().getStringRef(), p.getStream());
 
     p << " across dimensions = [";
-    llvm::interleaveComma(op.dimensions().getValues<int64_t>(), p);
+    llvm::interleaveComma(dimensions().getValues<int64_t>(), p);
     p << "]";
     p << " : ";
-    p.printFunctionalType(op);
+    p.printFunctionalType(*this);
   } else {
     p << " across dimensions = [";
-    llvm::interleaveComma(op.dimensions().getValues<int64_t>(), p);
+    llvm::interleaveComma(dimensions().getValues<int64_t>(), p);
     p << "]";
-    p.printOptionalAttrDict(op->getAttrs(), {"dimensions"});
+    p.printOptionalAttrDict(getOperation()->getAttrs(), {"dimensions"});
     p << " : ";
-    p.printFunctionalType(op);
+    p.printFunctionalType(*this);
     p.printNewline();
     p << " reducer";
     {
       // Print the pairs of block operands under the form:
       //   (%arg0_elt, %arg0_acc) (%arg1_elt, %arg1_acc):
-      Block& reducer = op.body().front();
-      int numOperandPairs = op.getNumOperands() / 2;
+      Block& reducer = body().front();
+      int numOperandPairs = getNumOperands() / 2;
       for (int opId : llvm::seq<int>(0, numOperandPairs)) {
         p << "(";
         p.printRegionArgument(reducer.getArgument(opId));
@@ -3109,11 +3200,11 @@ void printReduceOp(ReduceOp op, OpAsmPrinter& p) {
       }
     }
     p << ' ';
-    p.printRegion(op.body(), /*printEntryBlockArgs=*/false);
+    p.printRegion(body(), /*printEntryBlockArgs=*/false);
   }
 }
 
-ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
+ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   Location currLocation = parser.getEncodedSourceLoc(loc);
 
@@ -3158,7 +3249,8 @@ ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
         parser.parseKeyword("reducer"))
       return failure();
     OpBuilder builder(parser.getBuilder().getContext());
-    result.addAttribute("dimensions", GetI64ElementsAttr(dimensions, &builder));
+    result.addAttribute("dimensions",
+                        hlo::GetI64ElementsAttr(dimensions, &builder));
 
     // Parse the "reducer" region now.
     SmallVector<OpAsmParser::OperandType, 2> reducerOperands;
@@ -3294,36 +3386,10 @@ ParseResult parseReduceOp(OpAsmParser& parser, OperationState& result) {
   // dimension attribute.
   result.addTypes(reduceOpFntype.getResults());
   result.location = innerOp->getLoc();
-  result.addAttribute("dimensions", GetI64ElementsAttr(dimensions, &builder));
+  result.addAttribute("dimensions",
+                      hlo::GetI64ElementsAttr(dimensions, &builder));
 
   return success();
-}
-
-// Return true if type1 and type2 are tensors and have the same
-// element-type, else return false. With float element-types, ignore comparing
-// floating-point precision if ignoreFpPrecision is True.
-static bool tensorsHaveSameElType(Type type1, Type type2,
-                                  bool ignoreFpPrecision) {
-  auto tensorTy1 = type1.dyn_cast<TensorType>();
-  auto tensorTy2 = type2.dyn_cast<TensorType>();
-
-  if (!tensorTy1 || !tensorTy2) return false;
-
-  if (ignoreFpPrecision && tensorTy1.getElementType().isa<FloatType>() &&
-      tensorTy2.getElementType().isa<FloatType>())
-    return true;
-
-  return tensorTy1.getElementType() == tensorTy2.getElementType();
-}
-
-// Return true if type1 and type2 are shape-compatible and have same element
-// type. If 'ignoreFpPrecision' is True, then allow floats with different
-// precisions while checking element-types.
-static bool compatibleShapeAndElementType(Type type1, Type type2,
-                                          bool ignoreFpPrecision = false) {
-  if (failed(verifyCompatibleShape(type1, type2))) return false;
-  return tensorsHaveSameElType(type1.cast<ShapedType>(),
-                               type2.cast<ShapedType>(), ignoreFpPrecision);
 }
 
 static LogicalResult verifyReducerShape(
@@ -3661,7 +3727,7 @@ struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
 
 void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
-  results.insert<LowerBoolSplatConstantsIntoRegion>(context);
+  results.add<LowerBoolSplatConstantsIntoRegion>(context);
 }
 
 LogicalResult ReduceOp::reifyReturnTypeShapes(
@@ -4020,7 +4086,7 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
 
 void DynamicPadOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                MLIRContext* context) {
-  results.insert<DPadToPad>(context);
+  results.add<DPadToPad>(context);
 }
 
 LogicalResult DynamicPadOp::verify() {
@@ -4176,8 +4242,8 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
 void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
-  results.insert<IdentityBroadcastReshape, IdentityBroadcastInDimReshape,
-                 EliminateRedundantReshape, EliminateIdentityReshape>(context);
+  results.add<IdentityBroadcastReshape, IdentityBroadcastInDimReshape,
+              EliminateRedundantReshape, EliminateIdentityReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4843,7 +4909,7 @@ struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
 
 void SliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
-  results.insert<SimplifyConcatSlice>(context);
+  results.add<SimplifyConcatSlice>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4976,8 +5042,8 @@ static LogicalResult SortOpInferDefaultDimension(SortOp op,
 
 void SortOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                          MLIRContext* /*context*/) {
-  results.insert(SortDropEmptyUseArgs);
-  results.insert(SortOpInferDefaultDimension);
+  results.add(SortDropEmptyUseArgs);
+  results.add(SortOpInferDefaultDimension);
 }
 
 //===----------------------------------------------------------------------===//
@@ -5043,8 +5109,8 @@ static LogicalResult EliminateBroadcastInDimTranspose(
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                               MLIRContext* /*context*/) {
-  results.insert(EliminateRedundantTranspse);
-  results.insert(EliminateBroadcastInDimTranspose);
+  results.add(EliminateRedundantTranspse);
+  results.add(EliminateBroadcastInDimTranspose);
 }
 
 LogicalResult TransposeOp::reifyReturnTypeShapes(
@@ -5221,7 +5287,7 @@ void TupleOp::build(OpBuilder& builder, OperationState& result,
 
 void UnaryEinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.insert<UnaryEinsumToEinsum>(context);
+  results.add<UnaryEinsumToEinsum>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -5420,15 +5486,29 @@ llvm::SmallVector<Attribute, 4> evaluateMhloRegion(Region& region,
 }
 
 OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
-  auto base = operands[0].dyn_cast_or_null<DenseElementsAttr>();
   auto index = operands[1].dyn_cast_or_null<DenseIntElementsAttr>();
-  auto update = operands[2].dyn_cast_or_null<DenseElementsAttr>();
-  if (!base || !index || !update) return {};
+  if (!index) return {};
 
-  auto base_type = base.getType().dyn_cast<RankedTensorType>();
-  auto index_type = index.getType().dyn_cast<RankedTensorType>();
-  auto update_type = update.getType().dyn_cast<RankedTensorType>();
+  auto base_type = operand().getType().dyn_cast<RankedTensorType>();
+  auto update_type = updates().getType().dyn_cast<RankedTensorType>();
+  auto index_type = index.getType().cast<RankedTensorType>();
   if (!base_type || !index_type || !update_type) return {};
+
+  // Catch a trivial full replacement of base with update, this does not require
+  // these to be constant: just that we know the type.
+  if (update_type == base_type && update_type.hasStaticShape() &&
+      base_type.hasStaticShape() && index.isSplat() &&
+      index.getSplatValue<uint32_t>() == 0 &&
+      llvm::hasSingleElement(update_computation().front())) {
+    return updates();
+  }
+  auto base = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto update = operands[2].dyn_cast_or_null<DenseElementsAttr>();
+  if (!base || !update) return {};
+
+  // Prevent splat to be expanded if too large.
+  if (base.isSplat() && base.getNumElements() > kFoldExpandSplatEltLimit)
+    return {};
 
   // Add the virtual trailing dimension of size 1 if index_vector_dim equals to
   // index_type.rank.
@@ -5600,29 +5680,28 @@ LogicalResult WhileOp::verify() {
 ///         `do` region
 /// assignment-list ::= assignment | assignment `,` assignment-list
 /// assignment ::= ssa-value `=` ssa-value
-void printWhileOp(WhileOp op, OpAsmPrinter& p) {
+void WhileOp::print(OpAsmPrinter& p) {
   p << '(';
-  llvm::interleaveComma(
-      llvm::zip(op.getBody()->getArguments(), op->getOperands()), p,
-      [&](auto zip) {
-        p.printOperand(std::get<0>(zip));
-        p << " = ";
-        p.printOperand(std::get<1>(zip));
-      });
+  llvm::interleaveComma(llvm::zip(getBody()->getArguments(), getOperands()), p,
+                        [&](auto zip) {
+                          p.printOperand(std::get<0>(zip));
+                          p << " = ";
+                          p.printOperand(std::get<1>(zip));
+                        });
   p << ")";
-  if (op->getNumOperands()) {
+  if (getNumOperands()) {
     p << " : ";
-    llvm::interleaveComma(op->getOperandTypes(), p);
+    llvm::interleaveComma(getOperandTypes(), p);
   }
-  p.printOptionalAttrDictWithKeyword(op->getAttrs());
+  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
   p.printNewline();
   p << " cond ";
-  p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
+  p.printRegion(getRegion(0), /*printEntryBlockArgs=*/false);
   p << " do ";
-  p.printRegion(op->getRegion(1), /*printEntryBlockArgs=*/false);
+  p.printRegion(getRegion(1), /*printEntryBlockArgs=*/false);
 }
 
-ParseResult parseWhileOp(OpAsmParser& parser, OperationState& result) {
+ParseResult WhileOp::parse(OpAsmParser& parser, OperationState& result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   // Parse the operands of the while: these are of the form:
   //   %iter_arg = %init_val

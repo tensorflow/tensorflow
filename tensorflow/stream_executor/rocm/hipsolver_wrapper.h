@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 // This file wraps hipsolver API calls with dso loader so that we don't need to
+<<<<<<< HEAD
 // have explicit linking to libhipsolver. All TF hipsolver API usage should route
 // through this wrapper.
+=======
+// have explicit linking to libhipsolver. All TF hipsolver API usage should
+// route through this wrapper.
+>>>>>>> upstream/master
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_
@@ -130,5 +135,9 @@ FOREACH_HIPSOLVER_API(HIPSOLVER_API_WRAPPER)
 }  // namespace wrap
 }  // namespace tensorflow
 
+<<<<<<< HEAD
 #endif // TF_ROCM_VERSION
+=======
+#endif  // TF_ROCM_VERSION
+>>>>>>> upstream/master
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ROCM_HIPSOLVER_WRAPPER_H_

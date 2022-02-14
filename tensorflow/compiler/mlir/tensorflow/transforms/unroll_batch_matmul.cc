@@ -292,7 +292,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass() {
 
 void mlir::TF::PopulateUnrollTfBatchMatMul(MLIRContext* context,
                                            RewritePatternSet& patterns) {
-  patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>,
-                  ConvertTFBatchMatMulOp<TF::BatchMatMulV3Op>>(context);
+  patterns.add<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
+               ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>,
+               ConvertTFBatchMatMulOp<TF::BatchMatMulV3Op>>(context);
 }

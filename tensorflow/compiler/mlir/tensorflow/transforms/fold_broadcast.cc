@@ -190,7 +190,7 @@ void BroadcastFoldPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
 
-  patterns.insert<ConvertResultsBroadcastableShapeOp>(func.getContext());
+  patterns.add<ConvertResultsBroadcastableShapeOp>(func.getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

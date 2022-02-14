@@ -63,7 +63,8 @@ class TFOp {
         break;
     }
     unsigned split_idx = operands.size() - num_ctl;
-    return {operands.slice(0, split_idx), operands.slice(split_idx, num_ctl)};
+    return std::make_tuple(operands.slice(0, split_idx),
+                           operands.slice(split_idx, num_ctl));
   }
 
   // Returns the regular operands, the control operands will be excluded.
@@ -101,6 +102,11 @@ class TFOp {
   // Set a new assigned device for this operation.
   void setAssignedDevice(const Twine &assigned_device);
   void setAssignedDevice(StringAttr assigned_device);
+
+  // Returns the assigned TPU cluster name.
+  StringAttr tpuReplicate();
+  // Set the assigned TPU cluster name.
+  void setTpuReplicate(StringAttr tpu_replicate);
 
   // Returns the device, preferring the assigned device if set, and the
   // requested device otherwise.

@@ -496,7 +496,7 @@ void RaiseToTFOpsPass::runOnOperation() {
                         : func->getParentOfType<ModuleOp>());
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs_);
+  patterns.add<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs_);
 
   populateCanonicalizationPatterns(func, patterns);
 

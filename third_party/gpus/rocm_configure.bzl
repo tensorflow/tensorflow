@@ -324,7 +324,11 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
 
     Returns:
       Map of library names to structs of filename and path
+<<<<<<< HEAD
     """    
+=======
+    """
+>>>>>>> upstream/master
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
@@ -340,8 +344,12 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
         ]
     ]
     if int(rocm_config.rocm_version_number) >= 40500:
+<<<<<<< HEAD
         libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, 'hipsolver', rocm_config.rocm_toolkit_path + "/hipsolver")))
         libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, 'hipblas', rocm_config.rocm_toolkit_path + "/hipblas")))
+=======
+        libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path + "/hipsolver")))
+>>>>>>> upstream/master
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def _exec_find_rocm_config(repository_ctx, script_path):
@@ -604,6 +612,10 @@ def _create_local_rocm_repository(repository_ctx):
             out_dir = "rocm/include/rocsolver",
         ),
     ]
+<<<<<<< HEAD
+=======
+
+>>>>>>> upstream/master
     # Add Hipsolver on ROCm4.5+
     if rocm_version_number >= 40500:
         copy_rules.append(
@@ -614,6 +626,7 @@ def _create_local_rocm_repository(repository_ctx):
                 out_dir = "rocm/include/hipsolver",
             ),
         )
+<<<<<<< HEAD
         copy_rules.append(
             make_copy_dir_rule(
                 repository_ctx,
@@ -622,6 +635,9 @@ def _create_local_rocm_repository(repository_ctx):
                 out_dir = "rocm/include/hipblas",
             ),
         )
+=======
+
+>>>>>>> upstream/master
     # explicitly copy (into the local_config_rocm repo) the $ROCM_PATH/hiprand/include and
     # $ROCM_PATH/rocrand/include dirs, only once the softlink to them in $ROCM_PATH/include
     # dir has been removed. This removal will happen in a near-future ROCm release.
@@ -717,6 +733,7 @@ def _create_local_rocm_repository(repository_ctx):
                             rocrand_include +
                             '":hipsparse-include",\n' +
                             '":rocsolver-include"'),
+<<<<<<< HEAD
         }
     if rocm_version_number >= 40500:
         repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
@@ -727,6 +744,17 @@ def _create_local_rocm_repository(repository_ctx):
     repository_ctx.template(
         "rocm/BUILD",
         tpl_paths["rocm:BUILD"], repository_dict,
+=======
+    }
+    if rocm_version_number >= 40500:
+        repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
+        repository_dict["%{rocm_headers}"] += ',\n":hipsolver-include"'
+
+    repository_ctx.template(
+        "rocm/BUILD",
+        tpl_paths["rocm:BUILD"],
+        repository_dict,
+>>>>>>> upstream/master
     )
 
     # Set up crosstool/

@@ -423,7 +423,7 @@ void populateExtraBufferizePatterns(
     MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       BufferizeAndConvertMinimumBroadcastShapesOp,
       BufferizeConstantOp,
       BufferizeJITExecuteOp

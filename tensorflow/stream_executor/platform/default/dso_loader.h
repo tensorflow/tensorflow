@@ -55,7 +55,11 @@ port::StatusOr<void*> GetRoctracerDsoHandle();
 port::StatusOr<void*> GetRocsolverDsoHandle();
 #if TF_ROCM_VERSION >= 40500
 port::StatusOr<void*> GetHipsolverDsoHandle();
+<<<<<<< HEAD
 #endif 
+=======
+#endif
+>>>>>>> upstream/master
 port::StatusOr<void*> GetHipsparseDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();
 

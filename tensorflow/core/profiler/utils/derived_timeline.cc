@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
@@ -371,8 +371,8 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         XEventBuilder device_event =
             launch_line.AddEvent(*device_plane.GetOrCreateEventMetadata(
                 absl::StrCat("Launch Stats for ", group_metadata->name)));
-        device_event.SetTimestampNs(
-            host_plane_start + PicosToNanos(group_info.timespan.begin_ps()));
+        device_event.SetTimestampNs(host_plane_start +
+                                    PicoToNano(group_info.timespan.begin_ps()));
         device_event.SetDurationPs(group_info.timespan.duration_ps());
         device_event.AddStatValue(*device_plane.GetOrCreateStatMetadata(
                                       GetStatTypeStr(StatType::kGroupId)),
@@ -382,11 +382,11 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
             group_info.num_launches);
         device_event.AddStatValue(
             *device_plane.GetOrCreateStatMetadata("max_launch_time_us"),
-            PicosToMicros(group_info.max_launch_time_ps));
+            PicoToMicro(group_info.max_launch_time_ps));
         device_event.AddStatValue(
             *device_plane.GetOrCreateStatMetadata("avg_launch_time_us"),
-            PicosToMicros(group_info.total_launch_time_ps /
-                          group_info.num_launches));
+            PicoToMicro(group_info.total_launch_time_ps /
+                        group_info.num_launches));
       }
     }
   }

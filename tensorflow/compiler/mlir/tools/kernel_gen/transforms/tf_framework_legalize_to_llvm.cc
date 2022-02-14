@@ -615,7 +615,7 @@ class IsValidMemRefOpConverter
 void PopulateTFFrameworkToLLVMConversionPatterns(LLVMTypeConverter *converter,
                                                  RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       IsValidMemRefOpConverter,
       JITCompileFromStrOpConverter,
       JITExecuteOpConverter,

@@ -505,18 +505,18 @@ void LegalizeTFGToTFE::runOnOperation() {
   target.addLegalOp<ReturnOp>();
 
   RewritePatternSet patterns(&context);
-  patterns.insert<ConvertGraphOp>(&context);
-  patterns.insert<ConvertGraphFuncOp>(&context);
-  patterns.insert<ConvertReturnOp>(&context);
-  patterns.insert<ConvertGeneralOp>(&context, func_symbols);
+  patterns.add<ConvertGraphOp>(&context);
+  patterns.add<ConvertGraphFuncOp>(&context);
+  patterns.add<ConvertReturnOp>(&context);
+  patterns.add<ConvertGeneralOp>(&context, func_symbols);
   // Control flow V1 operation conversion patterns.
-  patterns.insert<ConvertControlTriggerOp>(&context);
-  patterns.insert<ConvertEnterOp>(&context);
-  patterns.insert<ConvertExitOp>(&context);
-  patterns.insert<ConvertLoopCondOp>(&context);
-  patterns.insert<ConvertMergeOp>(&context);
-  patterns.insert<ConvertSwitchOp>(&context);
-  patterns.insert<ConvertSwitchNOp>(&context);
+  patterns.add<ConvertControlTriggerOp>(&context);
+  patterns.add<ConvertEnterOp>(&context);
+  patterns.add<ConvertExitOp>(&context);
+  patterns.add<ConvertLoopCondOp>(&context);
+  patterns.add<ConvertMergeOp>(&context);
+  patterns.add<ConvertSwitchOp>(&context);
+  patterns.add<ConvertSwitchNOp>(&context);
   FrozenRewritePatternSet finalPatterns(std::move(patterns));
 
   // Turn the graph region into SSACFG region by applying an order to the

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 
+#include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
@@ -90,6 +91,7 @@ void AddLinalgTransformations(OpPassManager& pm,
   if (options.fuse_fill) {
     pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
   }
+  pm.addNestedPass<FuncOp>(CreateTileFillPass(options.vector_size));
   pm.addNestedPass<FuncOp>(CreateVectorizeTiledOpsPass());
 }
 
@@ -111,6 +113,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Transform TF operation to HLO.
+  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFPass());
 
   if (options.legalize_i1_tensors) {
@@ -148,6 +151,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(mlir::createReshapeSimplifierPass());
 
   // Transform HLO operations to Linalg and Standard.
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addNestedPass<FuncOp>(
       mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
@@ -171,6 +175,9 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   // Add linalg passes to perform fusion, tiling, peeling and vectorization.
   AddLinalgTransformations(pm, options);
+
+  // Inline everything, bufferization doesn't model ownership across calls.
+  pm.addPass(mlir::createInlinerPass());
 
   // Bufferize Linalg on tensors program.
   // Always run canonicalizer (which does dead code removal) before bufferizing
@@ -208,6 +215,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   if (options.vectorize) {
     pm.addNestedPass<FuncOp>(mlir::createConvertLinalgTiledLoopsToSCFPass());
   }
+  pm.addPass(mlir::createBufferizationToMemRefPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 

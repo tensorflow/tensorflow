@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -30,7 +30,7 @@ struct ParallelLoopsToSequentialPass
     : public ParallelLoopsToSequentialBase<ParallelLoopsToSequentialPass> {
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    mlir::populateLoopToStdConversionPatterns(patterns);
+    mlir::populateSCFToControlFlowConversionPatterns(patterns);
 
     mlir::ConversionTarget target(getContext());
     target.addIllegalOp<mlir::scf::ParallelOp>();

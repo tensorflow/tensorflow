@@ -38,6 +38,9 @@ class MetalArguments : public ArgumentsBinder {
   absl::Status Init(bool use_arguments_buffer, MetalDevice* device,
                     Arguments* args, std::string* code);
 
+  absl::Status Init(bool use_arguments_buffer, MetalDevice* device,
+                    Arguments* args);
+
   // Move only
   MetalArguments(MetalArguments&& args) = default;
   MetalArguments& operator=(MetalArguments&& args) = default;

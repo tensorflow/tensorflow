@@ -196,7 +196,8 @@ class DataServiceDispatcherImpl {
       TF_LOCKS_EXCLUDED(mu_);
   // Creates a job and stores it in `job`. This method updates the
   // dispatcher state with the new job, but does not assign tasks to workers.
-  Status CreateJob(const GetOrCreateJobRequest& request,
+  Status CreateJob(const DispatcherState::JobKey& job_key,
+                   const GetOrCreateJobRequest& request,
                    std::shared_ptr<const DispatcherState::Job>& job)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates tasks for the specified worker, one task for every unfinished job.
@@ -264,7 +265,7 @@ class DataServiceDispatcherImpl {
   // Checks that the dispatcher has started, returning UNAVAILABLE if it hasn't.
   Status CheckStarted() TF_LOCKS_EXCLUDED(mu_);
   // Records that a split was produced by a call to `GetSplit`.
-  Status RecordSplitProduced(int64_t job_id, int64_t repetition,
+  Status RecordSplitProduced(int64_t job_id, int64_t iteration,
                              int64_t split_provider_index, bool finished)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.

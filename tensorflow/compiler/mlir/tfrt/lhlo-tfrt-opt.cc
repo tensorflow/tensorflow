@@ -38,7 +38,6 @@ int main(int argc, char **argv) {
   tfrt::RegisterTFRTDialects(registry);
   tensorflow::registerConvertLmhloToGpuBinaryPass();
   tensorflow::registerLmhloToTfrtGpuPass();
-  return failed(mlir::MlirOptMain(argc, argv, "MHLO TFRT pass driver\n",
-                                  registry,
-                                  /*preloadDialectsInContext=*/false));
+  return failed(
+      mlir::MlirOptMain(argc, argv, "MHLO TFRT pass driver\n", registry));
 }

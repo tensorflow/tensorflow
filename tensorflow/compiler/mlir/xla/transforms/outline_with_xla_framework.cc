@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -159,7 +159,7 @@ class OutlineWithXLAFrameworkPass
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
-    patterns.insert<OutlineXLAFunc>(ctx);
+    patterns.add<OutlineXLAFunc>(ctx);
     //  Set target.
 
     if (failed(applyPatternsAndFoldGreedily(m, std::move(patterns)))) {

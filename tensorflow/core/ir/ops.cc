@@ -88,6 +88,8 @@ struct TFGraphOpAsmInterface
   }
   void getAsmBlockArgumentNames(Operation *op, Region &region,
                                 OpAsmSetValueNameFn setNameFn) const {}
+  void getAsmBlockNames(Operation *op,
+                        mlir::OpAsmSetBlockNameFn setNameFn) const {}
 };
 
 // Dialect construction: there is one instance per context and it registers its
@@ -111,6 +113,8 @@ void TFGraphDialect::initialize() {
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
   tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
   control_ty_ = ControlType::get(getContext());
+  tfg_tpu_replicate_key_ =
+      StringAttr::get(getContext(), getTfgTpuReplicateAttrKey());
 }
 
 // Provides a hook for op interface.
@@ -907,26 +911,6 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
 }
 
 //===----------------------------------------------------------------------===//
-// CastOp
-
-LogicalResult CastOp::fold(ArrayRef<Attribute> operands,
-                           SmallVectorImpl<OpFoldResult> &results) {
-  // If the op has control operands, we can't fold.
-  if (!ctls().empty()) return failure();
-  // GetResultOp gets the value from uninstantiated op and it can't be folded.
-  if (x().getDefiningOp<GetResultOp>()) return failure();
-
-  ShapedType x_shape = x().getType().dyn_cast<ShapedType>();
-  ShapedType y_shape = y().getType().dyn_cast<ShapedType>();
-  if (!x_shape || x_shape != y_shape || !x_shape.hasStaticShape())
-    return failure();
-
-  results.push_back(x());
-  results.push_back(LookupControlDependency(x()));
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // If-Like Ops
 
 template <typename IfLikeOp>
@@ -1328,6 +1312,23 @@ BlockArgument ForRegionOp::getDataValue(Region &region, unsigned idx) {
 }
 BlockArgument ForRegionOp::getControlToken(Region &region, unsigned idx) {
   return GetLoopRegionControlTokens(region)[idx];
+}
+
+FunctionTable::FunctionTable(ModuleOp module) {
+  // Collect function names (to be used for disambiguating legacy call
+  // behavior).
+  for (auto &op : module.getOps()) {
+    if (auto func = dyn_cast<GraphFuncOp>(op)) functions.insert(func.getName());
+  }
+}
+
+bool FunctionTable::MaybeCall(Operation *op) {
+  if (functions.count(op->getName().stripDialect())) return true;
+  for (NamedAttribute named_attr : op->getAttrs()) {
+    // Treat any operation that references a FuncAttr as a call.
+    if (named_attr.getValue().isa<FuncAttr>()) return true;
+  }
+  return false;
 }
 
 }  // namespace tfg

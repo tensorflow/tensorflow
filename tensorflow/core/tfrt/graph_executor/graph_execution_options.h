@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTION_OPTIONS_H_
 #define TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTION_OPTIONS_H_
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 
 namespace tensorflow {
@@ -60,6 +60,16 @@ struct GraphExecutionRunOptions {
   // in the tensorflow::tfrt_stub::Runtime will be used.
   tensorflow::tfrt_stub::WorkQueueInterface* work_queue = nullptr;
 };
+
+// Creates the default `SessionOptions` from a `GraphExecutionOptions`.
+// The created `SessionOptions` contains the Grappler configs.
+tensorflow::SessionOptions CreateDefaultSessionOptions(
+    const GraphExecutionOptions& options);
+
+// Updates TPU target to fallback if bridge uncompatible, otherwise TPU runtime.
+void UpdateTpuTargetByBridgeCompatibility(
+    tensorflow::tfrt_stub::GraphExecutionOptions& options,
+    const tensorflow::GraphDef& graph_def);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

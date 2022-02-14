@@ -3602,6 +3602,78 @@ Stream &Stream::ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
               n, alpha, a, lda, b, ldb);
 }
 
+Stream &Stream::ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
+                                    blas::Transpose transa, blas::Diagonal diag,
+                                    uint64_t m, uint64 n, float alpha,
+                                    const DeviceMemory<float *> &as, int lda,
+                                    DeviceMemory<float *> *bs, int ldb,
+                                    int batch_count) {
+  VLOG_CALL(PARAM(side), PARAM(uplo), PARAM(transa), PARAM(diag), PARAM(m),
+            PARAM(n), PARAM(alpha), PARAM(as), PARAM(lda), PARAM(bs),
+            PARAM(ldb), PARAM(batch_count));
+
+  ThenBlasImpl<blas::Side, blas::UpperLower, blas::Transpose, blas::Diagonal,
+               uint64_t, uint64_t, float, const DeviceMemory<float *> &, int,
+               DeviceMemory<float *> *, int, int>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasTrsmBatched, side, uplo, transa,
+              diag, m, n, alpha, as, lda, bs, ldb, batch_count);
+}
+
+Stream &Stream::ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
+                                    blas::Transpose transa, blas::Diagonal diag,
+                                    uint64_t m, uint64 n, double alpha,
+                                    const DeviceMemory<double *> &as, int lda,
+                                    DeviceMemory<double *> *bs, int ldb,
+                                    int batch_count) {
+  VLOG_CALL(PARAM(side), PARAM(uplo), PARAM(transa), PARAM(diag), PARAM(m),
+            PARAM(n), PARAM(alpha), PARAM(as), PARAM(lda), PARAM(bs),
+            PARAM(ldb), PARAM(batch_count));
+
+  ThenBlasImpl<blas::Side, blas::UpperLower, blas::Transpose, blas::Diagonal,
+               uint64_t, uint64_t, double, const DeviceMemory<double *> &, int,
+               DeviceMemory<double *> *, int, int>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasTrsmBatched, side, uplo, transa,
+              diag, m, n, alpha, as, lda, bs, ldb, batch_count);
+}
+
+Stream &Stream::ThenBlasTrsmBatched(
+    blas::Side side, blas::UpperLower uplo, blas::Transpose transa,
+    blas::Diagonal diag, uint64_t m, uint64 n, std::complex<float> alpha,
+    const DeviceMemory<std::complex<float> *> &as, int lda,
+    DeviceMemory<std::complex<float> *> *bs, int ldb, int batch_count) {
+  VLOG_CALL(PARAM(side), PARAM(uplo), PARAM(transa), PARAM(diag), PARAM(m),
+            PARAM(n), PARAM(alpha), PARAM(as), PARAM(lda), PARAM(bs),
+            PARAM(ldb), PARAM(batch_count));
+
+  ThenBlasImpl<blas::Side, blas::UpperLower, blas::Transpose, blas::Diagonal,
+               uint64_t, uint64_t, std::complex<float>,
+               const DeviceMemory<std::complex<float> *> &, int,
+               DeviceMemory<std::complex<float> *> *, int, int>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasTrsmBatched, side, uplo, transa,
+              diag, m, n, alpha, as, lda, bs, ldb, batch_count);
+}
+
+Stream &Stream::ThenBlasTrsmBatched(
+    blas::Side side, blas::UpperLower uplo, blas::Transpose transa,
+    blas::Diagonal diag, uint64_t m, uint64 n, std::complex<double> alpha,
+    const DeviceMemory<std::complex<double> *> &as, int lda,
+    DeviceMemory<std::complex<double> *> *bs, int ldb, int batch_count) {
+  VLOG_CALL(PARAM(side), PARAM(uplo), PARAM(transa), PARAM(diag), PARAM(m),
+            PARAM(n), PARAM(alpha), PARAM(as), PARAM(lda), PARAM(bs),
+            PARAM(ldb), PARAM(batch_count));
+
+  ThenBlasImpl<blas::Side, blas::UpperLower, blas::Transpose, blas::Diagonal,
+               uint64_t, uint64_t, std::complex<double>,
+               const DeviceMemory<std::complex<double> *> &, int,
+               DeviceMemory<std::complex<double> *> *, int, int>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasTrsmBatched, side, uplo, transa,
+              diag, m, n, alpha, as, lda, bs, ldb, batch_count);
+}
+
 Stream &Stream::ThenBlasGemmBatched(
     blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
     uint64_t k, float alpha,
