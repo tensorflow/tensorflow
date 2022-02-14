@@ -2869,6 +2869,28 @@ func @while_with_reduce(%arg0: tensor<1x256xf32>, %arg1: tensor<1xf32>) -> (tens
   return %0#0, %0#1, %0#2, %0#4: tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>
 }
 
+// -----
+
+// CHECK-LABEL:  func @if
+// CHECK-DAG:      %[[CST_0:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK-DAG:      %[[CST_1:.*]] = arith.constant dense<1000> : tensor<i32>
+// CHECK:          %[[RES:.*]]  = "tf.IfRegion"(%arg0) ({
+// CHECK:            "tf.Yield"(%[[CST_0]]) : (tensor<i32>) -> ()
+// CHECK:          }, {
+// CHECK:            "tf.Yield"(%[[CST_1]]) : (tensor<i32>) -> ()
+// CHECK:          }) {is_stateless = false} : (tensor<i1>) -> tensor<i32>
+// CHECK:          return %[[RES]]
+func @if(%arg0: tensor<i1>) -> (tensor<i32>) {
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %cst_1 = arith.constant dense<1000> : tensor<i32>
+  %1 = "mhlo.if"(%arg0) ({
+    "mhlo.return"(%cst_0) : (tensor<i32>) -> ()
+  }, {
+    "mhlo.return"(%cst_1) : (tensor<i32>) -> ()
+  }) : (tensor<i1>) -> tensor<i32>
+  return %1: tensor<i32>
+}
+
 // CHECK-LABEL:   func @convert_dynamic_update_slice(
 // CHECK-SAME:                                       %[[VAL_0:[a-z0-9]*]]: tensor<28x1x100xf32>,
 // CHECK-SAME:                                       %[[VAL_1:[a-z0-9]*]]: tensor<1x1x100xf32>,

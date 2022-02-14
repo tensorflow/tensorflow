@@ -67,6 +67,19 @@ namespace {
 
 using mhlo::DotDimensionNumbersAttr;
 
+// Replaces `region`'s terminator to TF::Yield.
+void ReplaceReturnOp(Region &region, PatternRewriter &rewriter) {
+  for (auto &block : region.getBlocks()) {
+    Operation *terminator = block.getTerminator();
+    auto return_op = llvm::dyn_cast_or_null<mhlo::ReturnOp>(terminator);
+    if (return_op == nullptr) continue;
+
+    rewriter.setInsertionPoint(return_op);
+    rewriter.replaceOpWithNewOp<TF::YieldOp>(return_op,
+                                             return_op->getOperands());
+  }
+}
+
 class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -2599,8 +2612,8 @@ class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
     // Creates a TF::WhileRegionOp to replace the mhlo::WhileOp. HLO WhileOp
     // currently doesn't support stateless and shape invariant, so these
     // parameters are set to the default values.
-    OpBuilder builder(while_op);
-    auto new_while = builder.create<TF::WhileRegionOp>(
+    rewriter.setInsertionPoint(while_op);
+    auto new_while = rewriter.create<TF::WhileRegionOp>(
         while_op.getLoc(), while_op->getResultTypes(), while_op->getOperands(),
         /*parallel_iterations=*/10,
         /*is_stateless=*/false, /*shape_invariant=*/false);
@@ -2611,20 +2624,27 @@ class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
     rewriter.replaceOp(while_op, new_while.getResults());
     return success();
   }
+};
 
- private:
-  // Replaces mhlo::ReturnOp to TF::Yield.
-  static void ReplaceReturnOp(Region &region,
-                              ConversionPatternRewriter &rewriter) {
-    for (auto &block : region.getBlocks()) {
-      Operation *terminator = block.getTerminator();
-      auto return_op = llvm::dyn_cast_or_null<mhlo::ReturnOp>(terminator);
-      if (return_op == nullptr) continue;
+class ConvertIfOp : public OpConversionPattern<mhlo::IfOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
 
-      OpBuilder builder(return_op);
-      builder.create<TF::YieldOp>(return_op.getLoc(), return_op->getOperands());
-      rewriter.eraseOp(return_op);
-    }
+  LogicalResult matchAndRewrite(
+      mhlo::IfOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const final {
+    // HLO IfOp currently doesn't support stateless
+    rewriter.setInsertionPoint(op);
+    auto new_op = rewriter.create<TF::IfRegionOp>(
+        op.getLoc(), op->getResultTypes(), op.pred(),
+        /*is_stateless=*/false, /*_then_func_name=*/nullptr,
+        /*_else_func_name=*/nullptr);
+    new_op.then_branch().takeBody(op.getRegion(0));
+    new_op.else_branch().takeBody(op.getRegion(1));
+    ReplaceReturnOp(new_op.then_branch(), rewriter);
+    ReplaceReturnOp(new_op.else_branch(), rewriter);
+    rewriter.replaceOp(op, new_op.getResults());
+    return success();
   }
 };
 
@@ -2827,16 +2847,16 @@ void LegalizeHloToTf::runOnOperation() {
 
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet *patterns,
                                      MLIRContext *context) {
-  patterns
-      ->insert<ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp,
-               ConvertConvOp, ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
-               ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
-               ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
-               ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-               ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
-               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-               ConvertReduceOpToTfAll, ConvertReduceOpToTfAny,
-               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns->insert<
+      ConvertIfOp, ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp,
+      ConvertConvOp, ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
+      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
+      ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
+      ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
+      ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+      ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
+      ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(
+      context);
   populateWithGenerated(*patterns);
 }
 
