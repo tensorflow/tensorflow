@@ -950,8 +950,7 @@ void TiledSmallGemmEmitter::EmitTiledGemm(
 }
 
 llvm::Type* GetPointerToElementType(llvm::Type* pointer_type) {
-  llvm::Type* type =
-      llvm::cast<llvm::PointerType>(pointer_type)->getElementType();
+  llvm::Type* type = pointer_type->getPointerElementType();
   while (auto* array_type = llvm::dyn_cast<llvm::ArrayType>(type)) {
     type = array_type->getElementType();
   }

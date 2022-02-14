@@ -3808,9 +3808,8 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     }
 
     for (int oidx = 0; oidx < partial_result_addresses.size(); ++oidx) {
-      llvm::Type* element_type = llvm::cast<llvm::PointerType>(
-                                     partial_result_addresses[oidx]->getType())
-                                     ->getElementType();
+      llvm::Type* element_type =
+          partial_result_addresses[oidx]->getType()->getPointerElementType();
       int bit_width = llvm_ir::GetSizeInBits(element_type);
       llvm::Value* result_from_other_lane = llvm_ir::EmitAllocaAtFunctionEntry(
           element_type, "result_from_other_lane", &b_);
@@ -4019,7 +4018,7 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
           {constant(partial_result_idx), thread_id_info.lane_id});
 
       llvm::Type* element_type =
-          state.partial_result_address->getType()->getElementType();
+          state.partial_result_address->getType()->getPointerElementType();
 
       /* Insure initial value address is in generic, not scratch. */
       llvm::Value* initial_value_addr =
