@@ -221,9 +221,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   // after the legalize below, for now it needs to be below the above passes
   // that work on TF dialect and before inliner so that the function calls in
   // body and cond are inlined for optimization.
-  if (pass_config.legalize_tf_while) {
-    pass_manager->addPass(mlir::TFL::CreateLegalizeTFWhilePass());
-  }
+  pass_manager->addPass(mlir::TFL::CreateLegalizeTFWhilePass());
 
   // Add function inlining pass. Both TF and TFLite dialects are opted into
   // function inliner interface.
