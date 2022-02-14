@@ -64,6 +64,14 @@ using absl::StrAppend;
 using absl::StrCat;
 using absl::StrJoin;
 
+HloInstruction* HloInstruction::AddInstruction(
+    std::unique_ptr<HloInstruction> derived_instruction) {
+  HloInstruction* derived =
+      parent()->AddInstruction(std::move(derived_instruction));
+  SetupDerivedInstruction(derived);
+  return derived;
+}
+
 /* static */
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const HloInstructionProto& proto,
