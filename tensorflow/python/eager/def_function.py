@@ -1221,6 +1221,17 @@ class Function(core.GenericFunction, trackable.Trackable):
       concrete_functions.append(self.get_concrete_function(*args, **kwargs))
     return concrete_functions
 
+  def _trackable_children(self, save_type="checkpoint", **kwargs):
+    """For implementing `Trackable`."""
+    if save_type == "checkpoint":
+      return {}
+    return {f"trace_{n}": fn for n, fn in
+            enumerate(self._list_all_concrete_functions_for_serialization())}
+
+  def _deserialization_dependencies(self, children):
+    """Returns concrete functions which must be loaded before this object."""
+    return children
+
   def _get_concrete_function_garbage_collected(self, *args, **kwargs):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
 
