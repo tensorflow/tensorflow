@@ -65,9 +65,7 @@ def TFGraph_GraphOp : TFGraph_Op<"graph",
     }
   }];
 
-  // Make the assembly pretty!
-  let printer = [{ PrintGraphOp(p, *this); }];
-  let parser = [{ return ParseGraphOp(parser, result); }];
+  let assemblyFormat = "qualified($version) attr-dict-with-keyword $nodes";
   let hasVerifier = 1;
 }
 
@@ -168,8 +166,7 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
     bool isDeclaration() { return isExternal(); }
   }];
 
-  let parser = [{ return ParseGraphFunc(parser, result); }];
-  let printer = [{ return PrintGraphFunc(*this, p); }];
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
 }
@@ -196,8 +193,7 @@ def TFGraph_ReturnOp : TFGraph_Op<"return",
     OpBuilder<(ins "ValueRange":$operands, "ValueRange":$control_operands)>];
 
   let hasVerifier = 1;
-  let parser = [{ return ParseReturnOp(parser, result); }];
-  let printer = [{ Print(*this, p); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 
