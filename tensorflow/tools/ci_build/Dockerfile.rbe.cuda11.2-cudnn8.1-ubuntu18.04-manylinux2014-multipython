@@ -3,8 +3,8 @@
 # Builds a devtoolset-7 enviroment with manylinux2010 compatible glibc (2.12) and
 # libstdc++ (4.4) in /dt7. 
 #
-# Builds a devtoolset-8 enviroment with manylinux2014 compatible glibc (2.17) and
-# libstdc++ (4.8) in /dt8.
+# Builds a devtoolset-9 enviroment with manylinux2014 compatible glibc (2.17) and
+# libstdc++ (4.8) in /dt9.
 #
 # To push a new version, run:
 # $ docker build -f Dockerfile.rbe.cuda11.2-cudnn8.1-ubuntu18.04-manylinux2014-multipython \
@@ -34,13 +34,13 @@ ADD devtoolset/rpm-patch.sh rpm-patch.sh
 
 # Set up a sysroot for glibc 2.12 / libstdc++ 4.4 / devtoolset-7 in /dt7.
 RUN /build_devtoolset.sh devtoolset-7 /dt7
-# Set up a sysroot for glibc 2.17 / libstdc++ 4.8 / devtoolset-8 in /dt8.
-RUN /build_devtoolset.sh devtoolset-8 /dt8
+# Set up a sysroot for glibc 2.17 / libstdc++ 4.8 / devtoolset-9 in /dt9.
+RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 # TODO(klimek): Split up into two different docker images.
 FROM nvidia/cuda:11.2.1-cudnn8-devel-ubuntu18.04
 COPY --from=devtoolset /dt7 /dt7
-COPY --from=devtoolset /dt8 /dt8
+COPY --from=devtoolset /dt9 /dt9
 
 # Install TensorRT.
 RUN echo \

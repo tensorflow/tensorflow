@@ -229,13 +229,13 @@ def initialize_rbe_configs():
         python_versions = ["3.7", "3.8", "3.9", "3.10"],
         tensorrt_install_path = "/usr",
         tensorrt_version = "7.2",
-        sysroot = "/dt8",
+        sysroot = "/dt9",
         python_install_path = "/usr/local",
     )
 
     tensorflow_rbe_config(
-        name = "ubuntu18.04-gcc8_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2",
-        compiler = "/dt8/usr/bin/gcc",
+        name = "ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2",
+        compiler = "/dt9/usr/bin/gcc",
         compiler_prefix = "/usr/bin",
         cuda_version = "11.2",
         cudnn_version = "8.1",
