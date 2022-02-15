@@ -2546,7 +2546,7 @@ class CompositeTensorTest(PForTestCase, parameterized.TestCase):
         parallel_iterations=parallel_iterations)
     # Naively batching the component shapes would give `[4, 3]` and `[4, 5, 3]`
     # which have no consistent broadcast shape.
-    self.assertTrue(particles.mass.shape, [4, 1, 3])
+    self.assertEqual(particles.mass.shape, [4, 1, 3])
     self.assertAllEqual(particles.velocity.shape, [4, 5, 3])
 
   def test_vectorized_map_gathers_composite_tensors(self):
