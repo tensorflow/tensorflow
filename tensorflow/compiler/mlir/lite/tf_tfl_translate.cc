@@ -233,9 +233,9 @@ int main(int argc, char **argv) {
   if (!module.ok()) return kTrFailure;
 
   // Set the quantization specifications from the command line flags.
-  mlir::TFL::QuantizationSpecs quant_specs;
-  if (mlir::TFL::ParseInputNodeQuantSpecs(input_arrays, min_values, max_values,
-                                          inference_type, &quant_specs)) {
+  mlir::quant::QuantizationSpecs quant_specs;
+  if (mlir::quant::ParseInputNodeQuantSpecs(
+          input_arrays, min_values, max_values, inference_type, &quant_specs)) {
     llvm::errs() << "Failed to get input quant spec.";
     return kTrFailure;
   }

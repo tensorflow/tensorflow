@@ -75,13 +75,13 @@ constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
 constexpr double kNearZeroTolerance = 1.0e-6;
 
 using QuantParams = quant::QuantizedType;
-using QuantSpec = mlir::TFL::QuantizationSpecs;
+using QuantSpec = mlir::quant::QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
     std::function<QuantParams(const std::vector<QuantParams>&, bool)>;
 using StringSet = absl::flat_hash_set<std::string>;
-using CustomMap = TFL::CustomOpMap;
+using CustomMap = quant::CustomOpMap;
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {

@@ -52,7 +52,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   using ::tflite::optimize::ReducedPrecisionSupport;
   mlir::MLIRContext context;
   GraphImportConfig specs;
-  mlir::TFL::QuantizationSpecs quant_specs;
+  mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<string> node_names;

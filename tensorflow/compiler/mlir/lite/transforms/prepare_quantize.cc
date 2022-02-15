@@ -113,7 +113,7 @@ class PrepareQuantizePass
   }
 
   // Constructor used by manually creating the pass.
-  explicit PrepareQuantizePass(const QuantizationSpecs& quant_specs)
+  explicit PrepareQuantizePass(const quant::QuantizationSpecs& quant_specs)
       : quant_specs_(quant_specs) {}
 
   StringRef getArgument() const final {
@@ -170,7 +170,7 @@ class PrepareQuantizePass
   // to use the quantization parameters from the fixed output range property.
   bool ContainsQuantizeOps(FuncOp func);
 
-  QuantizationSpecs quant_specs_;
+  quant::QuantizationSpecs quant_specs_;
 };
 
 bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
@@ -424,7 +424,7 @@ void PrepareQuantizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
-    const QuantizationSpecs& quant_specs) {
+    const quant::QuantizationSpecs& quant_specs) {
   return std::make_unique<PrepareQuantizePass>(quant_specs);
 }
 

@@ -105,7 +105,7 @@ TfLiteStatus QuantizeWeights(
 
   // Apply quantization passes.
   PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
-  TFL::QuantizationSpecs quant_specs;
+  quant::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.weight_quantization = true;
   quant_specs.weight_only_quantization = weight_only_quantization;

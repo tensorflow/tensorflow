@@ -30,7 +30,7 @@ namespace TFL {
 
 // A config that controls which passes get run as part TFLite converter.
 struct PassConfig {
-  explicit PassConfig(QuantizationSpecs specs)
+  explicit PassConfig(quant::QuantizationSpecs specs)
       : emit_builtin_tflite_ops(true),
         lower_tensor_list_ops(false),
         trim_functions_allowlist({}),
@@ -54,7 +54,7 @@ struct PassConfig {
   // The allowlist of functions that would be preserved after trimming.
   llvm::ArrayRef<std::string> trim_functions_allowlist;
   // All information about quantization.
-  QuantizationSpecs quant_specs;
+  quant::QuantizationSpecs quant_specs;
   // If `form_clusters` is true , clusters are formed by grouping consecutive
   // ops of the same device, under a `tf_device.launch` op.
   bool form_clusters;

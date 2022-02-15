@@ -48,7 +48,7 @@ namespace {
 const char kTFLiteDataLayout[] = "NHWC";
 }  // namespace
 
-void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
+void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreatePrepareQuantizePass(quant_specs));
@@ -71,7 +71,7 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 }
 
 void AddDynamicRangeQuantizationPasses(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const mlir::quant::QuantizationSpecs& quant_specs,
     mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreatePrepareDynamicRangeQuantizePass(quant_specs));

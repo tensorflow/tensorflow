@@ -149,7 +149,7 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
 // on the translated_result using quant_specs and saving the final output in
 // result.
 Status ApplyDynamicRangeQuantizationFromOldQuantizer(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const mlir::quant::QuantizationSpecs& quant_specs,
     std::string translated_result, std::string* result) {
   flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
   const uint8_t* buffer =
@@ -271,7 +271,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
-  const mlir::TFL::QuantizationSpecs& quant_specs = pass_config.quant_specs;
+  const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   tflite::FlatbufferExportOptions options;
   std::string translated_result;
