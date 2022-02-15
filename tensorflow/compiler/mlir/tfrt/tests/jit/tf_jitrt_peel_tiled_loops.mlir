@@ -22,7 +22,7 @@ func @tanh_1d(%arg0: memref<102401xf32>) -> memref<102401xf32> {
         : memref<?xf32, #map1>, vector<8xf32>
     %5 = math.tanh %4 : vector<8xf32>
     vector.transfer_write %5, %3[%c0] : vector<8xf32>, memref<?xf32, #map1>
-    linalg.copy(%3, %3) : memref<?xf32, #map1>, memref<?xf32, #map1>
+    memref.copy %3, %3 : memref<?xf32, #map1> to memref<?xf32, #map1>
     linalg.yield
   }
   return %0 : memref<102401xf32>

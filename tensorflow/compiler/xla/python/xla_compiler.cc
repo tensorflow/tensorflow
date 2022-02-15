@@ -470,7 +470,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   m.def(
       "hlo_module_cost_analysis",
       [](PyClient* client,
-         const HloModule& module) -> StatusOr<std::map<std::string, float>> {
+         const HloModule& module) -> StatusOr<HloCostAnalysis::Properties> {
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
@@ -689,6 +689,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)
       .value("MAXIMAL", OpSharding::MAXIMAL)
+      .value("MANUAL", OpSharding::MANUAL)
       .value("TUPLE", OpSharding::TUPLE)
       .value("OTHER", OpSharding::OTHER);
 
@@ -712,6 +713,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                       &xla::OpSharding::mutable_tile_assignment_devices);
   DefRepeatedProperty(op_sharding, "tuple_shardings",
                       &xla::OpSharding::mutable_tuple_shardings);
+  DefRepeatedProperty(op_sharding, "last_tile_dims",
+                      &xla::OpSharding::mutable_last_tile_dims);
 
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)

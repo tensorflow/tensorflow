@@ -56,7 +56,7 @@ struct DecodeContext {
   int channels;
   bool need_to_synthesize_16;
   bool error_condition;
-  DecodeContext() : png_ptr(NULL), info_ptr(NULL) {}
+  DecodeContext() : png_ptr(nullptr), info_ptr(nullptr) {}
 };
 
 bool DecodeHeader(StringPiece png_string, int* width, int* height,

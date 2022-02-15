@@ -91,8 +91,10 @@ class CheckpointCallbackManager : public ResourceBase {
  private:
   mutable mutex mu_;
 
-  absl::flat_hash_map<std::string, SaveCallback> save_callbacks_;
-  absl::flat_hash_map<std::string, RestoreCallback> restore_callbacks_;
+  absl::flat_hash_map<std::string, SaveCallback> save_callbacks_
+      TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, RestoreCallback> restore_callbacks_
+      TF_GUARDED_BY(mu_);
 
   // Checkpoint save and restore could happen before save / restore callbacks
   // are registered. The last checkpoint information is kept in these variables

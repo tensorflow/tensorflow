@@ -402,11 +402,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
       int64_t deadline_micros = kint64max;
-      absl::optional<JobKey> key;
+      absl::optional<JobKeyDef> key;
       if (!dataset()->job_name_.empty()) {
         key.emplace();
-        key.value().set_job_name(std::string(dataset()->job_name_));
-        key.value().set_job_name_index(iterator_index_);
+        key.value().set_name(std::string(dataset()->job_name_));
+        key.value().set_iteration(iterator_index_);
       }
       TF_RETURN_IF_ERROR(grpc_util::Retry(
           [&]() {

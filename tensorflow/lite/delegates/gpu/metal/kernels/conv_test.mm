@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal.h"
+#include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 
 #import <XCTest/XCTest.h>
-#include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
 #include <memory>
 #include <string>
@@ -28,10 +28,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_buffer_1x1_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_metal_simd.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_powervr_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 @interface ConvTest : XCTestCase
 @end
@@ -351,6 +354,151 @@ absl::Status ConvolutionGroupedTest(TestExecutionEnvironment* env) {
   return absl::OkStatus();
 }
 
+absl::Status ConvolutionSimdMatrixMultiplyTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 32, 32, 1024);
+  const BHWC dst_shape(1, 32, 32, 1024);
+  src_tensor.data.resize(src_tensor.shape.DimensionsProduct());
+  for (int i = 0; i < src_tensor.data.size(); ++i) {
+    src_tensor.data[i] = sin(0.01f * i);
+  }
+
+  Convolution2DAttributes attr;
+  attr.padding.prepended = HW(0, 0);
+  attr.padding.appended = HW(0, 0);
+  attr.strides = HW(1, 1);
+  attr.dilations = HW(1, 1);
+  attr.weights.shape = OHWI(dst_shape.c, 1, 1, src_tensor.shape.c);
+  attr.weights.data.resize(attr.weights.shape.DimensionsProduct());
+  for (int i = 0; i < attr.weights.data.size(); ++i) {
+    attr.weights.data[i] = sin(0.1f * i);
+  }
+  attr.bias.shape = Linear(dst_shape.c);
+  attr.bias.data.resize(attr.bias.shape.DimensionsProduct());
+  for (int i = 0; i < attr.bias.data.size(); ++i) {
+    attr.bias.data[i] = sin(0.1f * i);
+  }
+
+  TensorFloat32 dst_tensor_ref;
+  {
+    OperationDef op_def;
+    op_def.precision = CalculationsPrecision::F32;
+    auto data_type = DeduceDataTypeFromPrecision(op_def.precision);
+    op_def.src_tensors.push_back({data_type, TensorStorageType::BUFFER, Layout::HWC});
+    op_def.dst_tensors.push_back({data_type, TensorStorageType::BUFFER, Layout::HWC});
+    ConvolutionMetal operation = CreateConvolutionMetal(op_def, dst_shape, attr, env->GetGpuInfo());
+    RETURN_IF_ERROR(env->ExecuteGPUOperation(
+        src_tensor, absl::make_unique<ConvolutionMetal>(std::move(operation)), dst_shape,
+        &dst_tensor_ref));
+  }
+  for (auto storage : env->GetSupportedStorages()) {
+    for (auto precision : env->GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 4e-5f : 0.4f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      if (!IsConvolutionMetalSimdSupported(env->GetGpuInfo(), op_def, attr)) {
+        continue;
+      }
+      TensorFloat32 dst_tensor_simd;
+      ConvolutionMetalSimd operation_simd =
+          CreateConvolutionMetalSimd(op_def, dst_shape, attr, env->GetGpuInfo());
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, absl::make_unique<ConvolutionMetalSimd>(std::move(operation_simd)), dst_shape,
+          &dst_tensor_simd));
+      RETURN_IF_ERROR(PointWiseNear(dst_tensor_ref.data, dst_tensor_simd.data, eps))
+          << "Failed using precision " << ToString(precision);
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ConvolutionSimdMatrixMultiplyPerfTest() {
+  const BHWC src_shape(1, 32, 32, 1024);
+  const BHWC dst_shape(1, 32, 32, 1024);
+  Convolution2DAttributes attr;
+  attr.padding.prepended = HW(0, 0);
+  attr.padding.appended = HW(0, 0);
+  attr.strides = HW(1, 1);
+  attr.dilations = HW(1, 1);
+  attr.weights.shape = OHWI(dst_shape.c, 1, 1, src_shape.c);
+  attr.weights.data.resize(attr.weights.shape.DimensionsProduct());
+  for (int i = 0; i < attr.weights.data.size(); ++i) {
+    attr.weights.data[i] = sin(0.1f * i);
+  }
+  attr.bias.shape = Linear(dst_shape.c);
+  attr.bias.data.resize(attr.bias.shape.DimensionsProduct());
+  for (int i = 0; i < attr.bias.data.size(); ++i) {
+    attr.bias.data[i] = sin(0.1f * i);
+  }
+
+  MetalDevice device;
+  OperationDef op_def;
+  op_def.precision = CalculationsPrecision::F32;
+  auto data_type = DeduceDataTypeFromPrecision(op_def.precision);
+  op_def.src_tensors.push_back({data_type, TensorStorageType::BUFFER, Layout::HWC});
+  op_def.dst_tensors.push_back({data_type, TensorStorageType::BUFFER, Layout::HWC});
+  ConvolutionMetalSimd operation_simd =
+      CreateConvolutionMetalSimd(op_def, dst_shape, attr, device.GetInfo());
+  auto op_ptr = absl::make_unique<ConvolutionMetalSimd>(std::move(operation_simd));
+
+  MetalSpatialTensor src_gpu, dst_gpu;
+  RETURN_IF_ERROR(CreateTensor(device.device(), src_shape, op_def.src_tensors[0], &src_gpu));
+  RETURN_IF_ERROR(CreateTensor(device.device(), dst_shape, op_def.dst_tensors[0], &dst_gpu));
+
+  RETURN_IF_ERROR(op_ptr->AssembleCode(device.GetInfo()));
+
+  ComputeTask gpu_task;
+  gpu_task.Init(std::move(op_ptr));
+  RETURN_IF_ERROR(gpu_task.Compile(&device));
+  gpu_task.SetSrcTensor(&src_gpu, 0);
+  gpu_task.SetDstTensor(&dst_gpu, 0);
+  RETURN_IF_ERROR(gpu_task.UpdateParams());
+
+  const double ops_count = 2.0 * dst_shape.w * dst_shape.h * dst_shape.c * attr.weights.shape.i;
+  const double gops_count = ops_count * 1e-9;
+  id<MTLCommandQueue> command_queue = [device.device() newCommandQueue];
+  const int iterations = 10;
+  const int iteration_size = 100;
+  double alu_fp32_gflops_per_cu = 162.0;
+  if (device.GetInfo().apple_info.gpu_type == AppleGpu::kA15) {
+    alu_fp32_gflops_per_cu *= 2.0;
+  }
+  double alu_fp16_gflops_per_cu = 162.0 * 2.0;
+  double alu_gflops_per_gpu;
+  if (op_def.precision == CalculationsPrecision::F32) {
+    alu_gflops_per_gpu =
+        alu_fp32_gflops_per_cu * device.GetInfo().apple_info.GetComputeUnitsCount();
+  } else {
+    alu_gflops_per_gpu =
+        alu_fp16_gflops_per_cu * device.GetInfo().apple_info.GetComputeUnitsCount();
+  }
+  for (int i = 0; i < iterations; ++i) {
+    @autoreleasepool {
+      id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+      for (int j = 0; j < iteration_size; ++j) {
+        id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+        gpu_task.Encode(encoder);
+        [encoder endEncoding];
+      }
+      const auto start = std::chrono::high_resolution_clock::now();
+      [command_buffer commit];
+      [command_buffer waitUntilCompleted];
+      const auto end = std::chrono::high_resolution_clock::now();
+      const std::chrono::duration<double> diff = end - start;
+      const double execution_time_ms = diff.count() / static_cast<double>(iteration_size) * 1000.0;
+      const double fps = 1000.0 / execution_time_ms;
+      const double pers = gops_count * fps / alu_gflops_per_gpu * 100.0;
+      std::cout << execution_time_ms << " ms, " << gops_count * fps << " GFLOPS(" << pers << "%)"
+                << std::endl;
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite
@@ -432,6 +580,16 @@ absl::Status ConvolutionGroupedTest(TestExecutionEnvironment* env) {
 
 - (void)testConvBuffer1x1 {
   const auto status = ConvBuffer1x1Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvSimdMatrixMultiply {
+  const auto status = tflite::gpu::metal::ConvolutionSimdMatrixMultiplyTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvSimdMatrixMultiplyPerf {
+  const auto status = tflite::gpu::metal::ConvolutionSimdMatrixMultiplyPerfTest();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

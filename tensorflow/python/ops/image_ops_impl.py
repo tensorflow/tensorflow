@@ -17,6 +17,7 @@
 import functools
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -2695,6 +2696,7 @@ def adjust_hue(image, delta, name=None):
   Raises:
     InvalidArgumentError: image must have at least 3 dimensions.
     InvalidArgumentError: The size of the last dimension must be 3.
+    ValueError: if `delta` is not in the interval of `[-1, 1]`.
 
   Usage Example:
 
@@ -2712,6 +2714,9 @@ def adjust_hue(image, delta, name=None):
         [17, 16, 18]]], dtype=int32)>
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
+    if context.executing_eagerly():
+      if delta < -1 or delta > 1:
+        raise ValueError('delta must be in the interval [-1, 1]')
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype

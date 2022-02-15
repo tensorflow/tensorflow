@@ -38,7 +38,7 @@ constexpr char kReplicateSharding[] = "";
 struct TPUResourceReadsWritesPartitioningPass
     : public TF::TPUResourceReadsWritesPartitioningPassBase<
           TPUResourceReadsWritesPartitioningPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 bool AllResourceTypesHaveSubtypes(TypeRange resources) {
@@ -139,9 +139,9 @@ void PartitionResourceReadsWrites(tf_device::ClusterFuncOp cluster_func) {
   }
 }
 
-void TPUResourceReadsWritesPartitioningPass::runOnFunction() {
+void TPUResourceReadsWritesPartitioningPass::runOnOperation() {
   llvm::SmallVector<tf_device::ClusterFuncOp, 4> cluster_funcs;
-  getFunction()->walk([&cluster_funcs](tf_device::ClusterFuncOp cluster_func) {
+  getOperation()->walk([&cluster_funcs](tf_device::ClusterFuncOp cluster_func) {
     cluster_funcs.push_back(cluster_func);
   });
   for (tf_device::ClusterFuncOp cluster_func : cluster_funcs)

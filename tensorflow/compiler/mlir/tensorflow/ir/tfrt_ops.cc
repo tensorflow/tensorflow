@@ -49,7 +49,8 @@ _TfrtGetResourceOp::GetResourceHandleValueAndIdList(
   return resource_vec;
 }
 
-static LogicalResult Verify(_TfrtGetResourceOp get_resource_op) {
+LogicalResult _TfrtGetResourceOp::verify() {
+  _TfrtGetResourceOp get_resource_op = *this;
   // The sizes of indices, shared_name and container must be equal.
   int32_t indices_size =
       get_resource_op->getAttrOfType<mlir::ArrayAttr>("indices").size();

@@ -110,6 +110,20 @@ def workspace():
     bazel_toolchains_repositories()
 
     # Apple rules for Bazel. https://github.com/bazelbuild/rules_apple.
+    # TODO(mihaimaruseac): We add this to fix Kokoro builds.
+    # The rules below call into `rules_proto` but the hash has changed and
+    # Bazel refuses to continue. So, we add our own mirror.
+    http_archive(
+        name = "rules_proto",
+        sha256 = "20b240eba17a36be4b0b22635aca63053913d5c1ee36e16be36499d167a2f533",
+        strip_prefix = "rules_proto-11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
+            "https://github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
+        ],
+    )
+
+    # Now, finally use the rules
     apple_rules_dependencies()
     swift_rules_dependencies()
     apple_support_dependencies()

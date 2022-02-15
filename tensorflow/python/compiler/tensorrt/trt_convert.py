@@ -52,9 +52,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
-if platform.system() == "Windows":
-  raise RuntimeError("Windows platform is not supported")
-
 # Lazily load the op, since it's not available in cpu-only builds. Importing
 # this at top will cause tests that imports TF-TRT fail when they're built
 # and run without CUDA/GPU.
@@ -214,6 +211,11 @@ def _check_trt_version_compatibility():
         "TF-TRT to operate.")
 
     raise RuntimeError("Tensorflow has not been built with TensorRT support.")
+
+  if platform.system() == "Windows":
+    logging.warn(
+        "Windows support is provided experimentally. No guarantee is made "
+        "regarding functionality or engineering support. Use at your own risk.")
 
   linked_version = _pywrap_py_utils.get_linked_tensorrt_version()
   loaded_version = _pywrap_py_utils.get_loaded_tensorrt_version()
@@ -907,7 +909,8 @@ def _get_engine_dtypes_from_node(node, key):
 class TrtGraphConverterV2(object):
   """An offline converter for TF-TRT transformation for TF 2.0 SavedModels.
 
-  Currently this is not available on Windows platform.
+  Windows support is provided experimentally. No guarantee is made regarding
+  functionality or engineering support. Use at your own risk.
 
   There are several ways to run the conversion:
 

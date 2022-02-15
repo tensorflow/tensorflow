@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include <limits>
 
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"

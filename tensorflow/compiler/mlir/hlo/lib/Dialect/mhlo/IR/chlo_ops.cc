@@ -28,11 +28,6 @@ limitations under the License.
 namespace mlir {
 namespace chlo {
 
-template <typename T>
-static LogicalResult Verify(T op) {
-  return success();
-}
-
 Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val) {
   auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
   return getConstantLike(
@@ -330,28 +325,27 @@ BROADCAST_BINARY_OP_DEFS(BroadcastZetaOp);
 #undef BROADCAST_INFER_SHAPE_TYPE_OP_DEFS
 #undef BROADCAST_BINARY_OP_DEFS
 
-static LogicalResult Verify(ConstantLikeOp op) {
-  if (op.value().getType() != op.getType().cast<ShapedType>().getElementType())
-    return op.emitOpError() << "value's type doesn't match element return type";
+LogicalResult ConstantLikeOp::verify() {
+  if (value().getType() != getType().cast<ShapedType>().getElementType())
+    return emitOpError() << "value's type doesn't match element return type";
   return success();
 }
 
 //===----------------------------------------------------------------------===//
 // MinimumBroadcastShapesOp
 //===----------------------------------------------------------------------===//
-static LogicalResult Verify(MinimumBroadcastShapesOp op) {
+LogicalResult MinimumBroadcastShapesOp::verify() {
   // Check that the number of operands matches the number of outputs.
-  unsigned result_shapes_count = op.results().size();
-  unsigned operand_shapes_count = op.shapes().size();
+  unsigned result_shapes_count = results().size();
+  unsigned operand_shapes_count = shapes().size();
   if (operand_shapes_count != result_shapes_count) {
-    return op.emitOpError()
-           << "number of operand shapes (" << operand_shapes_count
-           << ") does not match number of result shapes ("
-           << result_shapes_count << ")";
+    return emitOpError() << "number of operand shapes (" << operand_shapes_count
+                         << ") does not match number of result shapes ("
+                         << result_shapes_count << ")";
   }
   if (operand_shapes_count < 2) {
-    return op.emitOpError() << "number of operand shapes ("
-                            << operand_shapes_count << ") should be >= 2";
+    return emitOpError() << "number of operand shapes (" << operand_shapes_count
+                         << ") should be >= 2";
   }
   return success();
 }
@@ -436,22 +430,21 @@ void RankSpecializationClusterOp::getSuccessorRegions(
   regions.push_back(RegionSuccessor(&body()));
 }
 
-static LogicalResult Verify(RankSpecializationClusterOp op) {
-  if (failed(RegionBranchOpInterface::verifyTypes(op))) return failure();
-  if (op.body().getArgumentTypes() != op.getOperandTypes())
-    return op.emitOpError() << "block argument types must match operand types";
+LogicalResult RankSpecializationClusterOp::verify() {
+  if (failed(RegionBranchOpInterface::verifyTypes(*this))) return failure();
+  if (body().getArgumentTypes() != getOperandTypes())
+    return emitOpError() << "block argument types must match operand types";
 
   // All operands of nested ops must be defined in the body or declared by the
   // cluster.
-  Block* body = op.getBody();
+  Block* body = getBody();
   for (Operation& nested : body->without_terminator()) {
     if (!llvm::all_of(nested.getOpOperands(), [&](OpOperand& operand) {
           Operation* def = operand.get().getDefiningOp();
           if (def != nullptr && def->getBlock() == body) return true;
           return llvm::is_contained(body->getArguments(), operand.get());
         })) {
-      return op.emitOpError()
-             << "nested ops must not depend on implicit operands";
+      return emitOpError() << "nested ops must not depend on implicit operands";
     }
   }
 

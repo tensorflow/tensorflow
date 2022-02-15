@@ -1273,6 +1273,24 @@ xla_test(
 )
 
 xla_test(
+    name = "convolution_test_cudnn_frontend_disabled",
+    timeout = "long",
+    srcs = ["convolution_test.cc"],
+    backend_args = {"gpu": ["--xla_gpu_enable_cudnn_frontend=false"]},
+    backends = ["gpu"],
+    shard_count = 50,
+    tags = [
+        "no_rocm",
+        "nozapfhahn",
+        "optonly",
+    ],
+    deps = CONVOLUTION_TEST_DEPS + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
     name = "convolution_variants_test",
     timeout = "long",
     srcs = ["convolution_variants_test.cc"],

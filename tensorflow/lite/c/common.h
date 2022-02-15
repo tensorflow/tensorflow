@@ -316,6 +316,7 @@ typedef union TfLitePtrUnion {
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
+  uint16_t* ui16;
   TfLiteComplex64* c64;
   TfLiteComplex128* c128;
   int8_t* int8;

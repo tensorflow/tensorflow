@@ -77,8 +77,8 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "@llvm-project//mlir:ControlFlowOps",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
@@ -137,6 +137,8 @@ cc_library(
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ArithmeticTransforms",
         "@llvm-project//mlir:ArithmeticToLLVM",
+        "@llvm-project//mlir:ControlFlowOps",
+        "@llvm-project//mlir:ControlFlowToLLVM",
         "@llvm-project//mlir:MathToLibm",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:MathToLLVM",

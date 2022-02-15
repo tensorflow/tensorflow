@@ -12,6 +12,12 @@ message DatasetDef {
   GraphDef graph = 1;
 }
 
+// Next tag: 3
+message JobKeyDef {
+  string name = 1;
+  int64 iteration = 2;
+}
+
 // Next tag: 13
 message TaskDef {
   reserved 6;

@@ -78,6 +78,8 @@ bool IsEqual(const FullTypeDef& lhs, const FullTypeDef& rhs);
 bool IsSubtype(const FullTypeDef& lhs, const FullTypeDef& rhs,
                bool covariant = true);
 
+uint64_t Hash(const FullTypeDef& arg);
+
 }  // namespace full_type
 
 }  // namespace tensorflow

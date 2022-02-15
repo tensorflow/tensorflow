@@ -1636,6 +1636,32 @@ class Stream {
                        const DeviceMemory<std::complex<double>> &a, int lda,
                        DeviceMemory<std::complex<double>> *b, int ldb);
 
+  // See BlasSupport::DoBlasTrsmBatched.
+  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
+                              blas::Transpose transa, blas::Diagonal diag,
+                              uint64_t m, uint64 n, float alpha,
+                              const DeviceMemory<float *> &as, int lda,
+                              DeviceMemory<float *> *bs, int ldb,
+                              int batch_count);
+  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
+                              blas::Transpose transa, blas::Diagonal diag,
+                              uint64_t m, uint64 n, double alpha,
+                              const DeviceMemory<double *> &as, int lda,
+                              DeviceMemory<double *> *bs, int ldb,
+                              int batch_count);
+  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
+                              blas::Transpose transa, blas::Diagonal diag,
+                              uint64_t m, uint64 n, std::complex<float> alpha,
+                              const DeviceMemory<std::complex<float> *> &as,
+                              int lda, DeviceMemory<std::complex<float> *> *bs,
+                              int ldb, int batch_count);
+  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
+                              blas::Transpose transa, blas::Diagonal diag,
+                              uint64_t m, uint64 n, std::complex<double> alpha,
+                              const DeviceMemory<std::complex<double> *> &as,
+                              int lda, DeviceMemory<std::complex<double> *> *bs,
+                              int ldb, int batch_count);
+
   // See BlasSupport::DoBlatLtMatmul.
   // Note that we prevent alpha and beta from being used to deduce CType so that
   // they can be constructed implicitly from values of type CType. Without this,

@@ -478,7 +478,9 @@ def TFL_ComparisonBinaryBuilder :
 // TFL op base class.
 //===----------------------------------------------------------------------===//
 
-class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
+// LINT.IfChange
+
+class TFL_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFL_Dialect, mnemonic, !listconcat(traits,
       [DeclareOpInterfaceMethods<TFL_RuntimeVerification>])> {
   // FlatBuffer generation specific information.
@@ -501,7 +503,7 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 }
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index,
-                 list<OpTrait> additional_traits = []> :
+                 list<Trait> additional_traits = []> :
     TFL_Op<mnemonic,[NoSideEffect,
                      AccumulatorUniformScale<2, 0, 1>,
                      AffineQuantizedOpInterface,
@@ -584,9 +586,9 @@ def TFL_AddOp : TFL_Op<"add", [
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 1;
 }
@@ -698,7 +700,7 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
 
   let hasOptions = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -846,7 +848,7 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let hasFolder = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // SameScalesOpInterface:
@@ -1073,7 +1075,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     TFL_VariadicTensorOf<[F32, QI8, QUI8, QI16, QUI16]>:$output
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasOptions = 1;
 
@@ -1180,7 +1182,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
 
   let hasOptions = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
@@ -1235,7 +1237,7 @@ def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
     TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$output
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasOptions = 1;
 }
@@ -1261,9 +1263,9 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 0;
 }
@@ -1324,9 +1326,9 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 0;
 }
@@ -1540,9 +1542,9 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
       }]>
   ];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_DivOp : TFL_Op<"div", [
@@ -1568,9 +1570,9 @@ def TFL_DivOp : TFL_Op<"div", [
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 1;
 
@@ -1807,9 +1809,9 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_FloorModOp : TFL_Op<"floor_mod", [
@@ -1854,9 +1856,9 @@ def TFL_GreaterOp : TFL_Op<"greater", [
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_HardSwishOp: TFL_Op<"hard_swish", [
@@ -1958,9 +1960,9 @@ def TFL_LessOp : TFL_Op<"less", [
 
   let builders = [TFL_ComparisonBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_LogicalAndOp : TFL_Op<"logical_and", [NoSideEffect]> {
@@ -1976,9 +1978,9 @@ def TFL_LogicalAndOp : TFL_Op<"logical_and", [NoSideEffect]> {
 
   let results = (outs TFL_BoolTensor:$output);
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_LogicalNotOp : TFL_Op<"logical_not", [
@@ -2008,9 +2010,9 @@ def TFL_LogicalOrOp : TFL_Op<"logical_or", [NoSideEffect]> {
 
   let results = (outs TFL_BoolTensor:$output);
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_LogisticOp: TFL_Op<"logistic", [
@@ -2293,7 +2295,7 @@ equivalent to setting:
     TFL_TensorOf<[F32, I32, I64, I8, UI8, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$output
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 }
@@ -2448,9 +2450,9 @@ def TFL_MulOp : TFL_Op<"mul", [
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 1;
 }
@@ -2519,7 +2521,7 @@ def TFL_PackOp : TFL_Op<"pack", [
     TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8, QI16, TFL_Quint8]>:$output
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 
@@ -2675,9 +2677,9 @@ def TFL_PowOp : TFL_Op<"pow", [
 
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
@@ -2706,7 +2708,7 @@ def TFL_PReluOp : TFL_Op<"prelu", [
 
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -2836,7 +2838,7 @@ def TFL_ReshapeOp: TFL_Op<"reshape", [
   let hasCanonicalizer = 0b1;
   let hasFolder = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TFL_ReverseSequenceOp : TFL_Op<"reverse_sequence", [
@@ -3166,9 +3168,9 @@ def TFL_SubOp : TFL_Op<"sub", [
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 
   let hasOptions = 1;
 }
@@ -3194,9 +3196,9 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
+  let parser = [{ return parseOneResultSameOperandTypeOp(parser, result); }];
 
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let printer = [{ return printOneResultOp(getOperation(), p); }];
 }
 
 def TFL_TanhOp: TFL_Op<"tanh", [
@@ -3326,7 +3328,7 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
     TFL_TensorOf<[I32, F32, I8, UI8, QI8, QUI8, TFL_Quint8, I1, I64, QI16]>:$output
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasFolder = 1;
 
@@ -3387,7 +3389,6 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
 def TFL_ZerosLikeOp: TFL_Op<"zeros_like", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    SameOperandsAndResultType,
     SameOperandsAndResultShape,
     NoSideEffect]> {
   let summary = "ZerosLike operator";
@@ -3538,7 +3539,7 @@ def TFL_SplitOp : TFL_Op<"split", [
     TFL_VariadicTensorOf<[F32, I16, I32, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasOptions = 1;
 }
@@ -3566,7 +3567,7 @@ def TFL_SplitVOp : TFL_Op<"split_v", [
     TFL_VariadicTensorOf<[F32, I16, I32, I64, I8, UI8, QI8, QUI8, QI16]>:$outputs
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasOptions = 1;
 }
@@ -3636,7 +3637,12 @@ def TFL_SparseToDenseOp : TFL_Op<"sparse_to_dense", [
       TFL_TCresVTEtIsSameAsOp<0, 3>>,
     TFL_OperandHasRankAtMost<0, 2>,
     TFL_OperandHasRankAtMost<1, 1>,
-    TFL_OperandHasRankAtMost<2, 1>]> {
+    TFL_OperandHasRankAtMost<2, 1>,
+    PredOpTrait<"the first operand should have a rank <= 2, when its rank is 2 and has static shape, the second dim should be <= 4",
+      Or<[TFL_OperandIsUnrankedPred<0>,
+          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() <= 1">,
+          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() == 2 && !$_op.getOperand(0).getType().cast<ShapedType>().hasStaticShape()">,
+          CPred<"$_op.getOperand(0).getType().cast<ShapedType>().getRank() == 2 && $_op.getOperand(0).getType().cast<ShapedType>().getShape()[1] <= 4">]>>]> {
   let summary = "Converts a sparse representation into a dense tensor.";
 
   let description = [{
@@ -3708,7 +3714,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   );
 
   // TFLite kernel only supports up to 5D input including added axis.
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasOptions = 1;
 
@@ -4201,7 +4207,7 @@ Ba et al. 'Layer Normalization'
 
   let hasCanonicalizer = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // StatefulOpInterface:
@@ -4329,7 +4335,7 @@ def TFL_UnidirectionalSequenceLSTMOp :
 
   let hasOptions = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // StatefulOpInterface:
@@ -4530,7 +4536,7 @@ def TFL_BidirectionalSequenceLSTMOp :
 
   let hasOptions = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // StatefulOpInterface:
@@ -4600,7 +4606,7 @@ def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
 
   let customOption = "SequenceRNNOptions";
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // StatefulOpInterface:
@@ -4711,7 +4717,7 @@ def TFL_SVDFOp :
 
   let hasOptions = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // StatefulOpInterface:
@@ -4763,7 +4769,6 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
     DeclareOpInterfaceMethods<RegionBranchOpInterface>,
     SingleBlockImplicitTerminator<"YieldOp">,
     RecursiveSideEffects,
-    QuantizableResult,
     NoRegionArguments,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = [{if-then-else operation}];
@@ -4838,7 +4843,6 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
     DeclareOpInterfaceMethods<LoopLikeOpInterface>,
     SingleBlockImplicitTerminator<"YieldOp">,
-    QuantizableResult,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = [{While loop}];
 
@@ -4866,7 +4870,7 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 }
@@ -4907,7 +4911,7 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [
   );
   let results = (outs Variadic<AnyTensor>:$output);
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
@@ -5413,7 +5417,28 @@ or unnormalized log-probabilities provided for all classes.
   let customOption = "RandomOptions";
 }
 
+def TFL_NoValueOp : Op<TFL_Dialect, "no_value", [ConstantLike, NoSideEffect]> {
+  let summary = "constant representing no value.";
+
+  let description = [{
+No value constant op.
+  }];
+
+  let arguments = (ins UnitAttr:$value);
+
+  let results = (outs NoneType:$none_val);
+
+  let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true if a constant operation can be built with the given value
+    /// and result type.
+    static bool isBuildableWith(Attribute value, Type type);
+  }];
+}
+
 
 #endif // TFL_OPS
 
+// LINT.ThenChange()
 // LINT.ThenChange(//tensorflow/lite/tools/versioning/op_version.cc)

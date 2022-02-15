@@ -128,7 +128,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                            const toco::TocoFlags& toco_flags,
                                            string* result) {
   mlir::MLIRContext context;
-  mlir::TFL::QuantizationSpecs quant_specs;
+  mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<string> node_names;

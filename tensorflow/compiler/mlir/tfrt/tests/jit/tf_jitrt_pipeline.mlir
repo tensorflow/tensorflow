@@ -188,7 +188,7 @@ func @tf_binary_with_bcast(%arg0: tensor<?x1xf32>,
   // CHECK-NOT: shape.
   // CHECK: %[[LHS:.*]] = memref.reinterpret_cast
   // CHECK: %[[RHS:.*]] = memref.reinterpret_cast
-  // CHECK: linalg.generic {{.*}} ins(%[[RHS]], %[[LHS]] :
+  // CHECK: linalg.generic {{.*}} ins(%[[LHS]], %[[RHS]] :
   // CHECK:   mulf
   %0 = "tf.Mul"(%arg0, %arg1)
        : (tensor<?x1xf32>, tensor<?x4xf32>) -> tensor<?x4xf32>
@@ -355,7 +355,7 @@ func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
   // CHECK:      %[[ALLOC:.*]] = memref.alloc() : memref<1xi32>
   // CHECK:      %[[SUBVIEW:.*]] = memref.subview %arg0[0] [1] [1]
   // CHECK-SAME:                 : memref<3xi32> to memref<1xi32>
-  // CHECK:      linalg.copy(%[[SUBVIEW]], %[[ALLOC]])
+  // CHECK:      memref.copy %[[SUBVIEW]], %[[ALLOC]]
   // CHECK:      %[[RET:.*]] = memref.collapse_shape %[[ALLOC]]
   // CHECK:      return %[[RET]]
   %0 = "tf.StridedSlice"(%arg0, %cst_1, %cst_0, %cst_0)

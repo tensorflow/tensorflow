@@ -429,10 +429,12 @@ class ImporterBase {
       const std::unordered_map<string, Node*>& node_name_map,
       std::unordered_set<const Node*>* nodes);
 
-  llvm::StringSet<>& GetUnmodelledOpTypes() {
+  static bool AddUnmodelledOpName(llvm::StringRef op_name) {
+    static auto* mutex = new tensorflow::mutex();
     // All the TF ops encountered that aren't modelled in dialect.
-    static auto* unmodelled_op_types = new llvm::StringSet<>();
-    return *unmodelled_op_types;
+    static auto* unmodelled_op_names = new llvm::StringSet<>();
+    tensorflow::mutex_lock lock(*mutex);
+    return unmodelled_op_names->insert(op_name).second;
   }
 
   // The input graph with backedges removed. The removed backedges are stored
@@ -1971,7 +1973,7 @@ mlir::Operation* ImporterBase::CreateOperation(
       // Skip unmodelled ops that are handled differently.
       (node_type_name != "_Arg" && node_type_name != "_Retval") &&
       // Skip if warning already reported.
-      (GetUnmodelledOpTypes().insert(name.getStringRef()).second)) {
+      AddUnmodelledOpName(name.getStringRef())) {
     if (node.op_def().is_stateful()) {
       LOG(INFO) << "[potentially conservative] Op type `" << node.type_string()
                 << "` is stateful but effects not modelled";

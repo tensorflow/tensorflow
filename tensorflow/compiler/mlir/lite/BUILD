@@ -739,6 +739,18 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "tflite_op_coverage_spec_inc",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [([], "utils/tflite_op_coverage_spec.inc")],
+    tblgen = "//tensorflow/compiler/mlir/lite/quantization:tflite_op_coverage_spec_getters_gen",
+    td_file = "ir/tfl_ops.td",
+    visibility = ["//learning/brain/mobile/model_optimization/g3doc/autogen:__pkg__"],
+    deps = [
+        ":tensorflow_lite_ops_td_files",
+    ],
+)
+
 tf_native_cc_binary(
     name = "converter-gen",
     srcs = [

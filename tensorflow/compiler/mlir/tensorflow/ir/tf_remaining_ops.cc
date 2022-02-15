@@ -82,7 +82,8 @@ namespace {
 // This verifies that `_XlaHostComputeMlirOp` has a well-formed
 // `host_mlir_module` attribute.
 // For other attributes, there is no additional verification beyond the default.
-static LogicalResult Verify(_XlaHostComputeMlirOp op) {
+LogicalResult _XlaHostComputeMlirOp::verify() {
+  _XlaHostComputeMlirOp op = *this;
   // Extract the module and function.
   StringRef host_module = op.host_mlir_module();
 

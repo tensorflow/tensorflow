@@ -1,7 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings")
-load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -1196,6 +1197,25 @@ tflite_cc_shared_object(
         ":tflite_version_script.lds",
         "//tensorflow/lite/kernels:builtin_ops_all_linked",
     ],
+)
+
+bzl_library(
+    name = "build_def_bzl",
+    srcs = ["build_def.bzl"],
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    deps = [
+        ":special_rules_bzl",
+        "//tensorflow:tensorflow_bzl",
+        "//tensorflow/lite/java:aar_with_jni_bzl",
+        "@bazel_skylib//rules:build_test",
+    ],
+)
+
+bzl_library(
+    name = "special_rules_bzl",
+    srcs = ["special_rules.bzl"],
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    deps = SPECIAL_RULES_DEPS,
 )
 
 tflite_portable_test_suite()

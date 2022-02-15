@@ -28,6 +28,7 @@ from . import outfeed_receiver
 from . import pmap_lib
 from . import profiler
 from . import pytree
+from . import transfer_guard_lib
 
 _LiteralSlice = Any
 _Status = Any
@@ -238,6 +239,7 @@ class OpSharding_Type(enum.IntEnum):
   MAXIMAL: int
   TUPLE: int
   OTHER: int
+  MANUAL: int
 
 class OpSharding:
   Type: typing.Type[OpSharding_Type]
@@ -447,7 +449,7 @@ class Traceback:
   frames: Sequence[Frame]
   def __str__(self) -> str: ...
   def as_python_traceback(self) -> Any: ...
-  def raw_frames(self) -> Sequence[Tuple[types.CodeType, int]]: ...
+  def raw_frames(self) -> Tuple[List[types.CodeType], List[int]]: ...
 
   @staticmethod
   def code_addr2line(code: types.CodeType, lasti: int) -> int: ...

@@ -159,11 +159,14 @@ def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
         num_accelerators={"GPU": required_gpus},
         rpc_layer=tf_config.rpc_layer or "grpc",
     )
-    # Disable health check. We don't have a reliable to shutdown the strategy
-    # (and thus the health check) at the end of a test. Turning on health check
-    # causes some flakiness since we re-create part of the server when creating
-    # a strategy, and our tests are capable of handling failures.
+    # Disable health check and coordination service. We don't have a reliable
+    # way to shutdown the strategy (and thus the strategy health check or
+    # coordination service heartbeat) at the end of a test. Turning on the
+    # strategy health check or coordination service heartbeat causes some
+    # flakiness since we re-create part of the server when creating a strategy,
+    # and our tests are capable of handling failures.
     CollectiveAllReduceExtended._enable_check_health = False  # pylint: disable=protected-access
+    context.context().configure_coordination_service(service_type="")
     # Always create the strategy in eager mode so that it starts the server and
     # configures the eager context. The eager context can no longer be
     # configured after initialization.

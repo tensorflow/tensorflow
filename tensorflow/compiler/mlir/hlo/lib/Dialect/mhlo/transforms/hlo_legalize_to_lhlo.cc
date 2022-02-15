@@ -73,7 +73,7 @@ Value InsertDynamicAlloc(Location loc, Value result, Value shape_operand,
         rewriter->create<tensor::ExtractOp>(loc, shape_operand, index);
     if (!alloc_operand.getType().isIndex()) {
       alloc_operand = rewriter->create<arith::IndexCastOp>(
-          loc, alloc_operand, rewriter->getIndexType());
+          loc, rewriter->getIndexType(), alloc_operand);
     }
     dynamic_operands.push_back(alloc_operand);
   }
@@ -475,7 +475,7 @@ void populateDynamicHLOToLHLOConversionPattern(
     MLIRContext* context, bufferization::BufferizeTypeConverter* converter,
     RewritePatternSet* patterns) {
   // clang-format off
-  patterns->insert<HloToLhloOpConverter<mhlo::DynamicBroadcastInDimOp>,
+  patterns->add<HloToLhloOpConverter<mhlo::DynamicBroadcastInDimOp>,
                    HloToLhloOpConverter<mhlo::DynamicGatherOp>,
                    HloToLhloOpConverter<mhlo::DynamicIotaOp>,
                    HloToLhloOpConverter<mhlo::DynamicPadOp>,
@@ -491,7 +491,7 @@ void populateHLOToLHLOConversionPattern(
   populateDynamicHLOToLHLOConversionPattern(context, converter, patterns);
 
   // clang-format off
-  patterns->insert<
+  patterns->add<
       HloToLhloCustomCallOpConverter,
       HloToLhloDotGeneralOpConverter,
       HloToLhloOpConverter<mhlo::AbsOp>,

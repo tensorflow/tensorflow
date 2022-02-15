@@ -27,7 +27,7 @@ include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.td"
 
-class LHLOGPU_Op<string mnemonic, list<OpTrait> traits = []> :
+class LHLOGPU_Op<string mnemonic, list<Trait> traits = []> :
   Op<LHLO_GPU_Dialect, mnemonic,
     !listconcat([MemoryEffects<[MemRead, MemWrite]>], traits)>;
 
@@ -184,7 +184,7 @@ def LHLOGPU_AllReduceStartOp :
   );
   let results = (outs HLO_Token:$token);
   let regions = (region SizedRegion<1>:$computation);
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def LHLOGPU_AllReduceDoneOp:

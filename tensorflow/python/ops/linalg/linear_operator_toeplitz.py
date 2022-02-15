@@ -163,8 +163,6 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
           parameters=parameters,
           name=name)
 
-      self._set_graph_parents([self._row, self._col])
-
   def _check_row_col(self, row, col):
     """Static check of row and column."""
     for name, tensor in [["row", row], ["col", col]]:

@@ -44,13 +44,14 @@ namespace {
 // This transformation pass modifies the input and output types of the function
 // to what are specified. The task was not just adding cast operations, but,
 // instead, using tfl.quantize and tfl.dequantize ops to scale the tensors.
-struct ModifyIONodesPass : public PassWrapper<ModifyIONodesPass, FunctionPass> {
+struct ModifyIONodesPass
+    : public PassWrapper<ModifyIONodesPass, OperationPass<FuncOp>> {
  public:
   explicit ModifyIONodesPass() {}
   explicit ModifyIONodesPass(mlir::Type input_type, mlir::Type output_type)
       : input_type(input_type), output_type(output_type) {}
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -207,8 +208,8 @@ LogicalResult ModifyIONodesPass::ModifyOutputNodes(
   return success();
 }
 
-void ModifyIONodesPass::runOnFunction() {
-  auto func = getFunction();
+void ModifyIONodesPass::runOnOperation() {
+  auto func = getOperation();
   auto attrs = func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
 
   // Handle the entry functions only.

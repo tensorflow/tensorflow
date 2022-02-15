@@ -37,6 +37,8 @@ class MemzeroThunk : public Thunk {
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  const BufferAllocation::Slice& destination() const { return dest_; }
+
  private:
   const BufferAllocation::Slice dest_;
 };
@@ -52,6 +54,9 @@ class Memset32BitValueThunk : public Thunk {
         dest_(dest) {}
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  const BufferAllocation::Slice& destination() const { return dest_; }
+  uint32_t value() const { return value_; }
 
  private:
   const uint32_t value_;

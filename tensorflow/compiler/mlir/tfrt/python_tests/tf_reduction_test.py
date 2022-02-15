@@ -58,6 +58,23 @@ class TfReductionTest(test.TestCase):
     [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_allclose(res, np.max(arg0, axis=0), atol=0.01)
 
+  def test_1d_max_static_no_dims_to_reduce(self):
+    mlir_function = """
+        func @test(%input: tensor<10xf32>) -> tensor<10xf32> {
+          %dim_to_reduce =  "tf.Const"() {value = dense<[]> : tensor<0xi32>}
+             : () -> tensor<0xi32>
+          %0 = "tf.Max"(%input, %dim_to_reduce) {keep_dims = false}
+              : (tensor<10xf32>, tensor<0xi32>) -> tensor<10xf32>
+          return %0 : tensor<10xf32>
+      }"""
+
+    compiled = jitrt.compile(mlir_function, 'test', vectorize=True)
+
+    arg0 = np.random.uniform(1.0, 1.0, size=(10)).astype(np.float32)
+
+    [res] = jitrt.execute(compiled, [arg0])
+    np.testing.assert_allclose(res, arg0, atol=0.01)
+
   def test_2d_row_max(self):
     mlir_function = """
         func @test(%input: tensor<?x?xf32>) -> tensor<?xf32> {
@@ -231,6 +248,23 @@ class TfReductionTest(test.TestCase):
 
     [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_allclose(res, np.sum(arg0, axis=0), atol=1)
+
+  def test_2d_row_argmax(self):
+    mlir_function = """
+        func @test(%input: tensor<?x?xf32>) -> tensor<?xi64> {
+          %dim_to_reduce = "tf.Const"() {value = dense<1> : tensor<i32>}
+             : () -> tensor<i32>
+          %0 = "tf.ArgMax"(%input, %dim_to_reduce)
+              : (tensor<?x?xf32>, tensor<i32>) -> tensor<?xi64>
+          return %0 : tensor<?xi64>
+      }"""
+
+    compiled = jitrt.compile(mlir_function, 'test', vectorize=True)
+
+    arg0 = np.random.uniform(0.0, 10.0, size=(8, 10)).astype(np.float32)
+
+    [res] = jitrt.execute(compiled, [arg0])
+    np.testing.assert_equal(res, np.argmax(arg0, axis=1))
 
 if __name__ == '__main__':
   test.main()

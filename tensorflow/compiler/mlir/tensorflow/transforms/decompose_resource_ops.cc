@@ -196,7 +196,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
 
 void PopulateDecomposeResourceOpsPatterns(MLIRContext *context,
                                           RewritePatternSet *patterns) {
-  patterns->insert<DecomposeRngReadAndSkipOp>(context);
+  patterns->add<DecomposeRngReadAndSkipOp>(context);
   populateWithGenerated(*patterns);
 }
 

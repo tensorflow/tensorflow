@@ -48,7 +48,7 @@ namespace {
 const char kTFLiteDataLayout[] = "NHWC";
 }  // namespace
 
-void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
+void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreatePrepareQuantizePass(quant_specs));
@@ -71,7 +71,7 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 }
 
 void AddDynamicRangeQuantizationPasses(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const mlir::quant::QuantizationSpecs& quant_specs,
     mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreatePrepareDynamicRangeQuantizePass(quant_specs));
@@ -122,7 +122,6 @@ void AddConvertHloToTfPass(std::string entry_function_name,
 // to inject more information in the middle of the conversion before resuming
 // it.
 void AddPreVariableFreezingTFToTFLConversionPasses(
-    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager) {
   if (pass_config.enable_hlo_to_tf_conversion) {
@@ -222,9 +221,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   // after the legalize below, for now it needs to be below the above passes
   // that work on TF dialect and before inliner so that the function calls in
   // body and cond are inlined for optimization.
-  if (pass_config.legalize_tf_while) {
-    pass_manager->addPass(mlir::TFL::CreateLegalizeTFWhilePass());
-  }
+  pass_manager->addPass(mlir::TFL::CreateLegalizeTFWhilePass());
 
   // Add function inlining pass. Both TF and TFLite dialects are opted into
   // function inliner interface.
@@ -363,8 +360,7 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
                                 const toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager) {
-  AddPreVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
-                                                pass_config, pass_manager);
+  AddPreVariableFreezingTFToTFLConversionPasses(pass_config, pass_manager);
   AddPostVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
                                                  pass_config, pass_manager);
 }

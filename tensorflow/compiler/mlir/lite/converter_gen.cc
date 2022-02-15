@@ -562,9 +562,9 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
           "     // in the pass manager can be multi-threaded.\n"
           "        return success(current_thread_id == llvm::get_threadid());\n"
           "   });\n";
-    os << "  return top.verify();\n";
+    os << "  return top.verifyInvariants();\n";
     os << "    } else {\n";
-    os << "  return top.verify();\n}\n";
+    os << "  return top.verifyInvariants();\n}\n";
     os << "}\n";
   }
 

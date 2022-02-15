@@ -57,8 +57,7 @@ foreach fromToBinPair = [[HLO_AddOp, HLOClient_BroadcastAddOp, TF_AddV2Op],
                          [HLO_MulOp, HLOClient_BroadcastMulOp, TF_MulOp],
                          [HLO_PowOp, HLOClient_BroadcastPowOp, TF_PowOp],
                          [HLO_SubOp, HLOClient_BroadcastSubOp, TF_SubOp],
-                         [HLO_Atan2Op, HLOClient_BroadcastAtan2Op, TF_Atan2Op],
-                         [HLO_RemOp, HLOClient_BroadcastRemOp, TF_ModOp]] in {
+                         [HLO_Atan2Op, HLOClient_BroadcastAtan2Op, TF_Atan2Op]] in {
   def : Pat<(fromToBinPair[0] $l, $r), (fromToBinPair[2] $l, $r)>;
   def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
             (fromToBinPair[2] $l, $r),
@@ -100,6 +99,11 @@ def : Pat<(HLO_FloorOp (HLOClient_BroadcastDivOp $l, $r,
           [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 
 def : Pat<(HLO_ComplexOp $r, $i), (TF_ComplexOp $r, $i)>;
+
+def : Pat<(HLO_RemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r), (TF_ModOp $l, $r)>;
+def : Pat<(HLOClient_BroadcastRemOp TF_FpOrI32OrI64Tensor:$l, TF_FpOrI32OrI64Tensor:$r, $broadcast_dimensions),
+          (TF_ModOp $l, $r),
+          [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
 
 //===----------------------------------------------------------------------===//
 // Unary op patterns.

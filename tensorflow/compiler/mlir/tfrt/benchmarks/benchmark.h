@@ -19,6 +19,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <memory>
+#include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "llvm/ADT/StringMap.h"
@@ -75,8 +76,12 @@ Eigen::Tensor<T, rank, Eigen::RowMajor> GenRandomTensor(
 // Run benchmark by compiling MLIR function using TFRT JitRt API.
 // -------------------------------------------------------------------------- //
 
-// Do not record any information about operands for the results conversion.
-struct ResultConversionCtx {};
+// Record data ptrs of inputs to free the returned memrefs only if necessary.
+struct ResultConversionCtx {
+  explicit ResultConversionCtx(llvm::SmallVector<void*>&& ptrs)
+      : input_ptrs(std::move(ptrs)) {}
+  llvm::SmallVector<void*> input_ptrs;
+};
 
 // Result converter that simply frees the memrefs returned from the compiled
 // functions. We are not interested in the computed results, and constructing

@@ -18,6 +18,7 @@ py_library(
     srcs_version = "PY3",
     tags = ["nofixdeps"],
     deps = [
+        ":dynamic_ragged_shape",
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
         ":ragged_batch_gather_with_default_op",
@@ -35,7 +36,6 @@ py_library(
         ":ragged_math_ops",
         ":ragged_operators",
         ":ragged_ops",
-        ":ragged_shape",
         ":ragged_string_ops",
         ":ragged_tensor",
         ":ragged_tensor_shape",
@@ -52,9 +52,9 @@ py_library(
     srcs = ["ragged_array_ops.py"],
     srcs_version = "PY3",
     deps = [
+        ":dynamic_ragged_shape",
         ":ragged_functional_ops",
         ":ragged_math_ops",
-        ":ragged_shape",
         ":ragged_tensor",
         ":ragged_util",
         ":segment_id_ops",
@@ -250,6 +250,7 @@ py_library(
     srcs = ["ragged_ops.py"],
     srcs_version = "PY3",
     deps = [
+        ":dynamic_ragged_shape",
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
         ":ragged_batch_gather_with_default_op",
@@ -387,8 +388,8 @@ py_library(
 )
 
 py_library(
-    name = "ragged_shape",
-    srcs = ["ragged_shape.py"],
+    name = "dynamic_ragged_shape",
+    srcs = ["dynamic_ragged_shape.py"],
     srcs_version = "PY3",
     deps = [
         ":ragged_tensor",
@@ -505,12 +506,12 @@ py_library(
     srcs = ["ragged_dispatch.py"],
     srcs_version = "PY3",
     deps = [
+        ":dynamic_ragged_shape",  # fixdeps: keep
         ":ragged_array_ops",  # fixdeps: keep
         ":ragged_batch_gather_ops",  # fixdeps: keep
         ":ragged_concat_ops",  # fixdeps: keep
         ":ragged_gather_ops",  # fixdeps: keep
         ":ragged_math_ops",  # fixdeps: keep
-        ":ragged_shape",  # fixdeps: keep
         ":ragged_squeeze_op",  # fixdeps: keep
         ":ragged_tensor",
         ":ragged_tensor_shape",
@@ -1225,16 +1226,16 @@ py_test(
 )
 
 py_test(
-    name = "ragged_shape_test",
+    name = "dynamic_ragged_shape_test",
     size = "medium",
-    srcs = ["ragged_shape_test.py"],
+    srcs = ["dynamic_ragged_shape_test.py"],
     python_version = "PY3",
     shard_count = 8,
     srcs_version = "PY3",
     deps = [
+        ":dynamic_ragged_shape",
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",
-        ":ragged_shape",
         ":ragged_tensor",
         ":row_partition",
         "//tensorflow/python:array_ops",

@@ -84,6 +84,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 #define DEBUG_TYPE "graphdef-to-mlir"
 
@@ -591,7 +592,7 @@ Status GraphImporter::ConvertNode(const Node& node) {
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
                         ConvertAttributeValue(tf_attr, builder_, dialect_));
-    result.addAttribute(name, attr);
+    result.addAttribute(PromoteToTFGAttribute(name), attr);
   }
   Attribute assigned_device =
       result.attributes.get(dialect_->getAssignedDeviceAttrIdentifier());
@@ -762,7 +763,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   {
     llvm::SmallVector<Attribute> arg_attrs;
     arg_types.reserve(fbody->arg_types.size() * 2);
-    for (auto enumerated_arg : llvm::enumerate(fbody->arg_nodes)) {
+    for (auto& enumerated_arg : llvm::enumerate(fbody->arg_nodes)) {
       int arg_id = enumerated_arg.index();
       Node* arg = enumerated_arg.value();
       // Find node in the graph using the node id instead of using `arg`
@@ -824,11 +825,11 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                              builder.getArrayAttr(arg_attrs)));
   }
 
-  llvm::SmallVector<Value> ret_operands;
-  llvm::SmallVector<Type> ret_types;
-  NamedAttrList return_attrs;
+  SmallVector<Value> ret_operands;
+  SmallVector<Type> ret_types;
+  SmallVector<Attribute> control_ret_attrs;
   {
-    llvm::SmallVector<Attribute> res_attrs;
+    SmallVector<Attribute> res_attrs;
     ret_types.reserve(fbody->ret_types.size() * 2);
     for (Node* ret : fbody->ret_nodes) {
       // Find node in the graph using the node id instead of using `arg`
@@ -875,10 +876,8 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
     DenseMap<StringRef, Node*> control_ret_nodes;
     for (Node* node : fbody->control_ret_nodes)
       control_ret_nodes.insert({node->name(), node});
-    for (const auto& enumerated_ret :
-         llvm::enumerate(signature.control_output())) {
-      int ret_id = enumerated_ret.index();
-      const std::string& sig_name = enumerated_ret.value();
+
+    for (const std::string& sig_name : signature.control_output()) {
       auto it = fdef.control_ret().find(sig_name);
       if (it == fdef.control_ret().end())
         return InvalidArgument(
@@ -892,12 +891,11 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
             "'");
       // Find node in the graph using the node id instead of using `arg`
       // directly because the graph has been cloned.
-      Operation* control_ret_op = importer.GetOperationForNode(ret->id());
-      ret_operands.push_back(
-          control_ret_op->getResult(control_ret_op->getNumResults() - 1));
-      return_attrs.append(
-          absl::StrCat("tfg.control_ret_name_", res_attrs.size() + ret_id),
-          builder.getStringAttr(fdef.signature().control_output(ret_id)));
+      TFOp control_ret_op = importer.GetOperationForNode(ret->id());
+      ret_operands.push_back(control_ret_op.controlRet());
+      control_ret_attrs.push_back(builder.getDictionaryAttr(
+          NamedAttribute(tfgDialect->getTfgNameAttrIdentifier(),
+                         builder.getStringAttr(sig_name))));
     }
   }
 
@@ -907,8 +905,8 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
       "type", TypeAttr::get(builder.getFunctionType(arg_types, ret_types)));
 
   builder = OpBuilder::atBlockEnd(func_op.getBody());
-  builder.create<ReturnOp>(module.getLoc(), ret_operands)
-      ->setAttrs(return_attrs);
+  builder.create<ReturnOp>(module.getLoc(), ret_operands,
+                           builder.getArrayAttr(control_ret_attrs));
 
   return func_op;
 }
@@ -996,6 +994,24 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphDefToMlir(
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(options, graphdef, &graph));
   return ImportGraphAndFunctionsToMlir(context, graph, debug_info,
                                        graph.flib_def());
+}
+
+tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelToMlir(
+    mlir::MLIRContext* context, const tensorflow::GraphDebugInfo& debug_info,
+    const tensorflow::SavedModel& saved_model) {
+  if (saved_model.meta_graphs_size() == 0) {
+    return tensorflow::errors::InvalidArgument(
+        "Input saved model has no meta graphs");
+  }
+
+  if (saved_model.meta_graphs_size() > 1) {
+    return tensorflow::errors::InvalidArgument(
+        "Input saved model has more than one meta graph, currently not "
+        "supported");
+  }
+
+  const auto& graphdef = saved_model.meta_graphs(0).graph_def();
+  return ImportGraphDefToMlir(context, debug_info, graphdef);
 }
 
 }  // namespace tfg

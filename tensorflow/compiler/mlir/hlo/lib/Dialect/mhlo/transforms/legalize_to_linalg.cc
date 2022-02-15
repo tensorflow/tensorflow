@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/AffineExpr.h"
@@ -892,31 +891,6 @@ class HloDynamicBroadcastInDimConverter
   }
 };
 
-// Extract dimension from the tensor, converts to an i32, and pack in a tensor.
-class GetDimSizeConverter
-    : public OpConversionPattern<mhlo::GetDimensionSizeOp> {
- public:
-  using OpConversionPattern<mhlo::GetDimensionSizeOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      mhlo::GetDimensionSizeOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    Location loc = op.getLoc();
-    auto result_ty = op.getType();
-    auto element_ty = getElementTypeOrSelf(result_ty);
-    auto dim_attr = rewriter.getIndexAttr(op.dimension());
-    auto dim_const = rewriter.create<arith::ConstantOp>(loc, dim_attr);
-
-    Value dim_op = rewriter.create<tensor::DimOp>(loc, rewriter.getIndexType(),
-                                                  op.operand(), dim_const);
-
-    // Cast to the correct element type and convert to a tensor.
-    Value cast = rewriter.create<arith::IndexCastOp>(loc, element_ty, dim_op);
-    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, result_ty, cast);
-    return success();
-  }
-};
-
 template <typename OpTy>
 class TransposeConverter
     : public DataMovementOpConverter<TransposeConverter<OpTy>, OpTy> {
@@ -1147,12 +1121,13 @@ class IotaConverter : public OpConversionPattern<OpTy> {
           Value index_op = nested_builder.create<linalg::IndexOp>(
               nested_loc, iota_op.iota_dimension());
           Value cast_op = nested_builder.create<arith::IndexCastOp>(
-              nested_loc, index_op,
+              nested_loc,
               nested_builder.getIntegerType(
-                  result_element_type.getIntOrFloatBitWidth()));
+                  result_element_type.getIntOrFloatBitWidth()),
+              index_op);
           if (result_element_type.template isa<FloatType>()) {
             cast_op = nested_builder.create<arith::SIToFPOp>(
-                nested_loc, cast_op, result_element_type);
+                nested_loc, result_element_type, cast_op);
           }
           nested_builder.create<linalg::YieldOp>(nested_loc, cast_op);
         },
@@ -1844,9 +1819,9 @@ static Value applyPad(Location loc, Value input, ArrayRef<int64_t> pad,
 
   Value padValue = rewriter.create<arith::ConstantOp>(loc, padAttr);
 
-  return tensor::createPadScalarOp(
-      RankedTensorType::get(paddedShape, inputETy), input, padValue, lowIndices,
-      highIndices, /*nofold=*/false, loc, rewriter);
+  return tensor::createPadScalarOp(RankedTensorType::get(paddedShape, inputETy),
+                                   input, padValue, lowIndices, highIndices,
+                                   /*nofold=*/false, loc, rewriter);
 }
 
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
@@ -2547,7 +2522,7 @@ struct TorchIndexSelectOpConversion
     rewriter.setInsertionPointToEnd(block);
 
     Value casted_value = rewriter.create<arith::IndexCastOp>(
-        loc, block->getArgument(0), rewriter.getIndexType());
+        loc, rewriter.getIndexType(), block->getArgument(0));
 
     SmallVector<Value, 4> indices;
     for (int i = 0; i < axis; ++i) {
@@ -2823,8 +2798,8 @@ struct ScatterUpdateConversion : public OpConversionPattern<mhlo::ScatterOp> {
               loc, b.getI1Type(), arith::CmpIPredicate::eq, cmp_idx, idx);
           // Use the output arg, so some update values won't be init value
           // again.
-          Value res = b.create<SelectOp>(loc, args[2].getType(), pred, args[2],
-                                         args[3]);
+          Value res = b.create<arith::SelectOp>(loc, args[2].getType(), pred,
+                                                args[2], args[3]);
           b.create<linalg::YieldOp>(loc, res);
         },
         PruneAttributeList(op));
@@ -2847,8 +2822,8 @@ struct HloLegalizeToLinalgPass
     ConversionTarget target(ctx);
     target.addLegalDialect<arith::ArithmeticDialect, complex::ComplexDialect,
                            linalg::LinalgDialect, math::MathDialect,
-                           StandardOpsDialect, tensor::TensorDialect,
-                           scf::SCFDialect, shape::ShapeDialect>();
+                           tensor::TensorDialect, scf::SCFDialect,
+                           shape::ShapeDialect>();
 
     target.addLegalOp<UnrealizedConversionCastOp>();
 
@@ -2869,7 +2844,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           TypeConverter& type_converter,
                                           RewritePatternSet* patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       BroadcastConverter<mhlo::BroadcastOp>, ConcatenateConverter,
       ConstConverterTensor, HloDynamicBroadcastInDimConverter,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp>,
@@ -2925,7 +2900,6 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       SliceConverter,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
-      GetDimSizeConverter,
       TransposeConverter<mhlo::TransposeOp>,
       DotOpConversion<DotOperationType::kMatrixMatrix, linalg::MatmulOp>,
       DotOpConversion<DotOperationType::kMatrixVector, linalg::MatvecOp>,
@@ -2943,16 +2917,15 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       TorchIndexSelectOpConversion,
       PadOpConversion>(type_converter, context);
   // clang-format on
-  patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,
-                   ReduceRegionXLAOpConversion<mhlo::AndOp>,
-                   ReduceRegionXLAOpConversion<mhlo::CompareOp>,
-                   ReduceRegionXLAOpConversion<mhlo::MaxOp>,
-                   ReduceRegionXLAOpConversion<mhlo::MinOp>,
-                   ReduceRegionXLAOpConversion<mhlo::MulOp>,
-                   ReduceRegionXLAOpConversion<mhlo::OrOp>,
-                   ReduceRegionXLAOpConversion<mhlo::SelectOp>,
-                   ReduceRegionReturnOpConversion>(context,
-                                                   PatternBenefit(1000));
+  patterns->add<ReduceRegionXLAOpConversion<mhlo::AddOp>,
+                ReduceRegionXLAOpConversion<mhlo::AndOp>,
+                ReduceRegionXLAOpConversion<mhlo::CompareOp>,
+                ReduceRegionXLAOpConversion<mhlo::MaxOp>,
+                ReduceRegionXLAOpConversion<mhlo::MinOp>,
+                ReduceRegionXLAOpConversion<mhlo::MulOp>,
+                ReduceRegionXLAOpConversion<mhlo::OrOp>,
+                ReduceRegionXLAOpConversion<mhlo::SelectOp>,
+                ReduceRegionReturnOpConversion>(context, PatternBenefit(1000));
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {

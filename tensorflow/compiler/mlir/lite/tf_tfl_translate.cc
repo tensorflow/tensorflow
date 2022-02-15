@@ -233,9 +233,9 @@ int main(int argc, char **argv) {
   if (!module.ok()) return kTrFailure;
 
   // Set the quantization specifications from the command line flags.
-  mlir::TFL::QuantizationSpecs quant_specs;
-  if (mlir::TFL::ParseInputNodeQuantSpecs(input_arrays, min_values, max_values,
-                                          inference_type, &quant_specs)) {
+  mlir::quant::QuantizationSpecs quant_specs;
+  if (mlir::quant::ParseInputNodeQuantSpecs(
+          input_arrays, min_values, max_values, inference_type, &quant_specs)) {
     llvm::errs() << "Failed to get input quant spec.";
     return kTrFailure;
   }
@@ -268,7 +268,6 @@ int main(int argc, char **argv) {
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
-  pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
   pass_config.unfold_batch_matmul = unfold_batchmatmul;
   pass_config.unfold_large_splat_constant = unfold_large_splat_constant;
   pass_config.guarantee_all_funcs_one_use = guarantee_all_funcs_one_use;
