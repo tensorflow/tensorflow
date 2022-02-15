@@ -234,8 +234,12 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
     } else {
       TensorStorageType storage_type = create_info.storage_type;
       Layout layout = shape.b == 1 ? Layout::HWC : Layout::BHWC;
+      const bool can_use_single_texture =
+          storage_type == TensorStorageType::TEXTURE_2D ||
+          storage_type == TensorStorageType::TEXTURE_3D ||
+          storage_type == TensorStorageType::TEXTURE_ARRAY;
       if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
-        if (shape.c < 4 &&
+        if (shape.c < 4 && can_use_single_texture &&
             CanCreateTensorWithShape(
                 gpu_info, shape,
                 TensorDescriptor{data_type,
