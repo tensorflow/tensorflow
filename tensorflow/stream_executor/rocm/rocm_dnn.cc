@@ -1699,6 +1699,8 @@ miopenDataType_t ToMIOpenDataType(
     dnn::DataType data_type,
     dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
   switch (data_type) {
+    case dnn::DataType::kBF16:
+      return miopenBFloat16;
     case dnn::DataType::kFloat:
       return miopenFloat;
     case dnn::DataType::kHalf:

@@ -170,6 +170,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 #if BEF_EXECUTABLE
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
@@ -219,6 +223,7 @@ class GpuBfloat16Support : public BFloat16Support {
   }
 
   bool IsConvBF16Supported() const {
+#if GOOGLE_CUDA
     if (se::dnn::DnnSupport* dnn = stream_exec_->AsDnn()) {
       se::port::StatusOr<se::dnn::VersionInfo> cudnn_version =
           dnn->GetVersion();
@@ -230,6 +235,11 @@ class GpuBfloat16Support : public BFloat16Support {
                  .cuda_compute_capability()
                  .IsAtLeast(se::CudaComputeCapability::AMPERE);
     }
+#elif TENSORFLOW_USE_ROCM && TF_ROCM_VERSION>=50000
+    auto amd_gcn = stream_exec_->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
+    return ((amd_gcn.find("gfx908") != std::string::npos) ||
+	    (amd_gcn.find("gfx90a") != std::string::npos));
+#endif
     return false;
   }
 
