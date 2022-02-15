@@ -392,15 +392,12 @@ std::vector<int> ConvolutionTransposed3x3::GetSpatialWeightsRemap() const {
 
 void ConvolutionTransposed3x3::UploadWeights(
     const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights) {
+  const auto weights_desc = GetWeightsDescription();
   const int flt_count =
-      GetTotalElementsCountForLayout(GetWeightsDescription(), weights.shape);
-
-  DataType weights_type = definition_.precision == CalculationsPrecision::F32
-                              ? DataType::FLOAT32
-                              : DataType::FLOAT16;
+      GetTotalElementsCountForLayout(weights_desc, weights.shape);
 
   BufferDescriptor desc;
-  desc.element_type = weights_type;
+  desc.element_type = weights_desc.type;
   desc.element_size = 4;
   desc.memory_type =
       weights_upload_type_ ==
@@ -410,8 +407,7 @@ void ConvolutionTransposed3x3::UploadWeights(
   desc.size = flt_count * SizeOf(desc.element_type);
   desc.data.resize(desc.size);
 
-  RearrangeWeights(weights, GetWeightsDescription(), weights_type,
-                   absl::MakeSpan(desc.data));
+  RearrangeWeights(weights, weights_desc, absl::MakeSpan(desc.data));
 
   args_.AddObject("weights",
                   absl::make_unique<BufferDescriptor>(std::move(desc)));

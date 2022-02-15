@@ -213,7 +213,7 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
     for (int i = 0; i < 4; ++i) {
       gpu_subgraph->new_tensors.push_back(
           {BHWC(1, tex_size.y, tex_size.x, 4),
-           TensorDescriptor(op_def.GetDataType(), TensorStorageType::TEXTURE_2D,
+           TensorDescriptor(weights_desc.type, TensorStorageType::TEXTURE_2D,
                             Layout::HWC)});
     }
   } else {
@@ -222,7 +222,7 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
     gpu_subgraph->new_tensors.push_back(
         {BHWC(1, 1, 1,
               GetTotalElementsCountForLayout(weights_desc, weights_shape)),
-         TensorDescriptor(op_def.GetDataType(), TensorStorageType::BUFFER,
+         TensorDescriptor(weights_desc.type, TensorStorageType::BUFFER,
                           Layout::HWC)});
   }
   OperationDef conv_def = conv_op.operation->GetDefinition();
