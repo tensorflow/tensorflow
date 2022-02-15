@@ -2804,5 +2804,88 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
         sess.run([rt2])
 
 
+class DynamicRaggedShapeSpecTest(parameterized.TestCase):
+
+  def test_from_tensor_shape(self):
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+        shape=tensor_shape.TensorShape([5, 3, None, 4, 2, 5]),
+        num_row_partitions=3,
+        dtype=dtypes.int32)
+    self.assertLen(spec._row_partitions, 3)
+    self.assertEqual(3, spec._static_inner_shape.rank)
+    self.assertEqual(spec._row_partitions[0].nvals, 15)
+    self.assertIsNone(spec._row_partitions[1].nvals)
+    self.assertIsNone(spec._row_partitions[2].nvals)
+    self.assertEqual(spec._row_partitions[0].nrows, 5)
+    self.assertEqual(spec._row_partitions[1].nrows, 15)
+    self.assertIsNone(spec._row_partitions[2].nvals)
+    self.assertEqual(spec._row_partitions[0].uniform_row_length, 3)
+    self.assertIsNone(spec._row_partitions[1].uniform_row_length)
+    self.assertEqual(spec._row_partitions[2].uniform_row_length, 4)
+
+  def test_create_scalar(self):
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.create_scalar(
+        dtype=dtypes.int32)
+    self.assertEqual(spec.rank, 0)
+    self.assertEqual(spec.dtype, dtypes.int32)
+
+  def test_create_vector(self):
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.create_vector(
+        7, dtypes.int32)
+    self.assertEqual(spec.rank, 1)
+    self.assertEqual(spec._dimension(0), 7)
+    self.assertEqual(spec.dtype, dtypes.int32)
+
+  def test_ranks(self):
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+        shape=tensor_shape.TensorShape([5, None, 7, 4, 2, 5]),
+        num_row_partitions=2,
+        dtype=dtypes.int32)
+
+    self.assertEqual(spec.inner_rank, 4)
+    self.assertEqual(spec.num_row_partitions, 2)
+    self.assertEqual(spec.rank, 6)
+
+  def test_dimension(self):
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+        shape=tensor_shape.TensorShape([5, None, 7, 4, 2, 5]),
+        num_row_partitions=2,
+        dtype=dtypes.int32)
+
+    self.assertEqual(spec._dimension(0), 5)
+    self.assertIsNone(spec._dimension(1))
+    self.assertEqual(spec._dimension(2), 7)
+    self.assertEqual(spec._dimension(3), 4)
+    self.assertEqual(spec._dimension(4), 2)
+    self.assertEqual(spec._dimension(5), 5)
+
+  def test_num_slices_in_dimension(self):
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+        shape=tensor_shape.TensorShape([5, 3, 7, 4, None, 5]),
+        num_row_partitions=2,
+        dtype=dtypes.int32)
+
+    self.assertEqual(spec._num_slices_in_dimension(0), 5)
+    self.assertEqual(spec._num_slices_in_dimension(1), 5 * 3)
+    self.assertEqual(spec._num_slices_in_dimension(2), 5 * 3 * 7)
+    self.assertEqual(spec._num_slices_in_dimension(3), 5 * 3 * 7 * 4)
+    self.assertIsNone(spec._num_slices_in_dimension(4))
+    self.assertIsNone(spec._num_slices_in_dimension(5))
+
+  def test_truncate(self):
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+        shape=tensor_shape.TensorShape([5, 3, 7, 4, None, 5]),
+        num_row_partitions=2,
+        dtype=dtypes.int32)
+
+    for new_rank in range(7):
+      truncation = spec.truncate(new_rank)
+      self.assertEqual(truncation.rank, new_rank)
+      for i in range(new_rank):
+        self.assertEqual(
+            truncation._dimension(i), spec._dimension(i),
+            'Mismatch on new_rank ' + str(new_rank) + ' on dimension ' + str(i))
+
+
 if __name__ == '__main__':
   googletest.main()
