@@ -2880,6 +2880,46 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     self.assertAllClose(expected_value, actual_value)
 
   @test_util.run_v2_only
+  def testCondWithFullIntegerQuantization(self):
+    weights = tf.Variable([[0.1, 0.2], [0.3, 0.4]], dtype=tf.float32)
+
+    def true_fn(x):
+      return tf.matmul(x, weights)
+
+    def false_fn(x):
+      return tf.add(x, weights)
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[1, 2], dtype=tf.float32),
+        tf.TensorSpec(shape=(), dtype=tf.bool)
+    ])
+    def model(x, b):
+      return tf.cond(
+          b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [
+            np.random.uniform(-1, 1, size=(1, 2)).astype(np.float32),
+            tf.constant(True)
+        ]
+      for _ in range(5):
+        yield [
+            np.random.uniform(-1, 1, size=(1, 2)).astype(np.float32),
+            tf.constant(False)
+        ]
+
+    concrete_func = model.get_concrete_function()
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.representative_dataset = calibration_gen
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+  @test_util.run_v2_only
   def testConverterErrorOnControlFlowV1Ops(self):
     filename = resource_loader.get_path_to_datafile(
         'testdata/control_flow_v1_saved_model')

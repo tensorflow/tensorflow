@@ -4753,7 +4753,6 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
     DeclareOpInterfaceMethods<RegionBranchOpInterface>,
     SingleBlockImplicitTerminator<"YieldOp">,
     RecursiveSideEffects,
-    QuantizableResult,
     NoRegionArguments,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = [{if-then-else operation}];
@@ -4828,7 +4827,6 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
     DeclareOpInterfaceMethods<LoopLikeOpInterface>,
     SingleBlockImplicitTerminator<"YieldOp">,
-    QuantizableResult,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = [{While loop}];
 
