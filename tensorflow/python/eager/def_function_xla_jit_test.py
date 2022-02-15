@@ -112,8 +112,8 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       # Check that the must-compile attribute gets correctly propagated to the
       # created derivatives.
-      self.assertEqual(backward.function_def.attr['_XlaMustCompile'])
-      self.assertEqual(forward.definition.attr['_XlaMustCompile'])
+      self.assertTrue(backward.function_def.attr['_XlaMustCompile'])
+      self.assertTrue(forward.definition.attr['_XlaMustCompile'])
 
   # Calling function with jit_compile=True from
   # jit_compile=False should compile the inner func.
