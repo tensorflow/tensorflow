@@ -2309,8 +2309,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       ]
     _, r = control_flow_ops.while_loop(c, b, [i, x])
     self.assertEqual(r.row_splits.shape.as_list(), [3])
-    self.assertTrue(r.values.row_splits.shape.as_list() in ([6], [None]))
-    self.assertTrue(r.values.values.shape.as_list() in ([49], [None]))
+    self.assertIn(r.values.row_splits.shape.as_list(), ([6], [None]))
+    self.assertIn(r.values.values.shape.as_list(), ([49], [None]))
 
   def testWhileShapeInvariantTensorSpec(self):
     i = constant_op.constant(0)
@@ -4738,19 +4738,14 @@ class ControlFlowContextCheckTest(test.TestCase):
   def testInvalidContext(self):
     # Accessing a while loop tensor outside of control flow is illegal.
     while_tensor = self._getWhileTensor()
-    with self.assertRaisesRegex(
-        ValueError,
-        "Cannot use 'while/Const_1' as input to 'Add' because 'while/Const_1' "
-        "is in a while loop. See info log for more details."):
+    with self.assertRaisesRegex(ValueError, "in a while loop"):
       math_ops.add(1, while_tensor)
 
   @test_util.run_v1_only("b/120545219")
   def testInvalidContextInCond(self):
     # Accessing a while loop tensor in cond is illegal.
     while_tensor = self._getWhileTensor()
-    with self.assertRaisesRegex(
-        ValueError, "Cannot use 'while/Const_1' as input to 'cond/Add' because "
-        "'while/Const_1' is in a while loop. See info log for more details."):
+    with self.assertRaisesRegex(ValueError, "in a while loop"):
       # TODO(skyewm): this passes if we return while_tensor directly instead
       # of using it as input to another op.
       control_flow_ops.cond(
@@ -4761,18 +4756,11 @@ class ControlFlowContextCheckTest(test.TestCase):
   def testInvalidContextInWhile(self):
     # Accessing a while loop tensor in a different while loop is illegal.
     while_tensor = self._getWhileTensor()
-    with self.assertRaisesRegex(
-        ValueError,
-        "Cannot use 'while/Const_1' as input to 'while_1/Add' because they are "
-        "in different while loops. See info log for more details."):
+    with self.assertRaisesRegex(ValueError, "different while loops"):
       control_flow_ops.while_loop(lambda i: i < 10,
                                   lambda x: math_ops.add(1, while_tensor), [0])
 
-    with self.assertRaisesRegex(
-        ValueError,
-        "Cannot use 'while/Const_1' as input to 'while_2/NextIteration' "
-        "because they are in different while loops. See info log for more "
-        "details."):
+    with self.assertRaisesRegex(ValueError, "different while loops"):
       control_flow_ops.while_loop(lambda i: i < 10, lambda i: while_tensor, [0])
 
   def testValidCondContext(self):
@@ -4825,10 +4813,7 @@ class ControlFlowContextCheckTest(test.TestCase):
       return control_flow_ops.while_loop(lambda i: i < 3,
                                          lambda i: i + while_tensor, [0])
 
-    with self.assertRaisesRegex(
-        ValueError,
-        "Cannot use 'cond/while/Const_1' as input to 'cond/while_1/add' because"
-        " they are in different while loops. See info log for more details."):
+    with self.assertRaisesRegex(ValueError, "different while loops"):
       control_flow_ops.cond(
           math_ops.less(1, 2), true_fn, lambda: constant_op.constant(0))
 
