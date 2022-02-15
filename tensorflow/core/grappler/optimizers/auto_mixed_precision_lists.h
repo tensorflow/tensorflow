@@ -132,6 +132,7 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "LSTMBlockCell",
         "LSTMBlockCellGrad",
         "MatMul",
+        "FusedSparseConvGpuV2",
     };
 #if TENSORFLOW_USE_ROCM
     if (true) {
