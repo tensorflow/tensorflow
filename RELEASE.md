@@ -54,6 +54,17 @@
 
 # Bug Fixes and Other Changes
 
+*   `tf.data`:
+
+    *   Fixed bug in `tf.data.experimental.parse_example_dataset` when
+        `tf.io.RaggedFeatures` would specify `value_key` but no `partitions`.
+        Before the fix, setting `value_key` but no `partitions` would result in
+        the feature key being replaced by the value key, e.g.
+        `{'value_key': <RaggedTensor>}` instead of `{'key': <RaggedTensor>}`.
+        Now the correct feature key will be used. This aligns the behavior of
+        `tf.data.experimental.parse_example_dataset` to match the behavior of
+        `tf.io.parse_example`.
+
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *   <NOTES SHOULD BE GROUPED PER AREA>
