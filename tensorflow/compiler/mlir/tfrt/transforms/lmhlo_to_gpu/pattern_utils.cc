@@ -65,7 +65,7 @@ cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type,
       }
       break;
     case se::dnn::DataLayout::kBatchDepthYX32:
-      if (type.isSignlessInteger(/*width=*/32)) {
+      if (type.isSignlessInteger(/*width=*/8)) {
         return CUDNN_DATA_INT8x32;
       }
       break;
