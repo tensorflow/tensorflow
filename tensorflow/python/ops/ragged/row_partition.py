@@ -875,15 +875,15 @@ class RowPartition(composite_tensor.CompositeTensor):
       or `None` (otherwise).
     """
     if self._row_splits is not None:
-      nrows = tensor_shape.dimension_at_index(self._row_splits.shape, 0) - 1
-      if nrows.value is not None:
-        return nrows
+      nrows_plus_one = tensor_shape.dimension_value(self._row_splits.shape[0])
+      if nrows_plus_one is not None:
+        return nrows_plus_one - 1
     if self._row_lengths is not None:
-      nrows = tensor_shape.dimension_at_index(self._row_lengths.shape, 0)
-      if nrows.value is not None:
+      nrows = tensor_shape.dimension_value(self._row_lengths.shape[0])
+      if nrows is not None:
         return nrows
     if self._nrows is not None:
-      return tensor_shape.Dimension(tensor_util.constant_value(self._nrows))
+      return tensor_util.constant_value(self._nrows)
     return None
 
   @property
