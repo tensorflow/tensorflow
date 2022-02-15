@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -321,11 +322,11 @@ static llvm::Error CustomCall(
     tfrt::StringAttribute symbol) {
   // Lookup custom call target from registry.
   auto platform = stream->platform();
-  auto* target = CustomCallTargetRegistry::Global()->Lookup(
-      symbol.str(), tfrt::StrCat(platform));
+  auto key = absl::AsciiStrToUpper(tfrt::StrCat(platform));  // 'ROCm' -> 'ROCM'
+  auto* target = CustomCallTargetRegistry::Global()->Lookup(symbol.str(), key);
   if (!target) {
     return tfrt::MakeStringError("Custom call target '", symbol.str(),
-                                 "' not registered for platform ", platform);
+                                 "' not registered for platform ", key);
   }
 
   auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context()->get());
