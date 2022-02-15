@@ -201,8 +201,6 @@ void DedupeAndHoistConstantPass::runOnOperation() {
   if (!assume_strict_calls_) {
     function_table = &getAnalysis<FunctionTable>();
     assume_strict_calls_ = function_table->empty();
-  } else {
-    assume_strict_calls_ = true;
   }
 
   for (auto& op : module.getOps())
