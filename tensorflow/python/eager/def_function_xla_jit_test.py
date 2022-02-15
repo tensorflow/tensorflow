@@ -112,8 +112,8 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       # Check that the must-compile attribute gets correctly propagated to the
       # created derivatives.
-      self.assertTrue(backward.function_def.attr['_XlaMustCompile'])
-      self.assertTrue(forward.definition.attr['_XlaMustCompile'])
+      self.assertEqual(backward.function_def.attr['_XlaMustCompile'])
+      self.assertEqual(forward.definition.attr['_XlaMustCompile'])
 
   # Calling function with jit_compile=True from
   # jit_compile=False should compile the inner func.
@@ -1179,7 +1179,7 @@ class DefFunctionTest(xla_test.XLATestCase):
               stage='hlo')
 
       # Test that reduction occurs only once.
-      self.assertTrue(hlo.count('reduce'), 1)
+      self.assertEqual(hlo.count('reduce'), 1)
 
 
 if __name__ == '__main__':
