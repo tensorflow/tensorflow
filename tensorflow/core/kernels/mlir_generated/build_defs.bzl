@@ -256,8 +256,8 @@ def _gen_kernel_library(
         extra_args = [],
         test_tags = [],
         test_size = "medium",
-        jit_i64_indexed_for_large_tensors_types = None,
-        output_jit_i64_indexed_for_large_tensors_types = None
+        jit_i64_indexed_for_large_tensors_types = [],
+        output_jit_i64_indexed_for_large_tensors_types = []
         ):
     """ Generate a library with GPU or CPU kernels for a specific tensorflow op.
 
@@ -299,13 +299,9 @@ def _gen_kernel_library(
 
     enable_cpu = bool(platform == "cpu")
     if not output_types:
-        output_types = []
-    if not jit_types:
-        jit_types = []
+        output_types = types
     if not output_jit_types:
         output_jit_types = jit_types
-    if not jit_i64_indexed_for_large_tensors_types:
-        jit_i64_indexed_for_large_tensors_types = []
     if not output_jit_i64_indexed_for_large_tensors_types:
         output_jit_i64_indexed_for_large_tensors_types = jit_i64_indexed_for_large_tensors_types
     # Fully JIT-compiled kernels
@@ -322,9 +318,7 @@ def _gen_kernel_library(
     # AOT kernels
     false_jits = [False for i in types]
     aot_kernels = zip(types, output_types, false_jits, false_jits)
-    all_kernels = aot_kernels
-    all_kernels += all_jit_kernels
-    all_kernels += all_paratial_jit_kernels
+    all_kernels = aot_kernels + all_jit_kernels + all_paratial_jit_kernels
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
         for (type, output_type, jit, jit_i64_indexed_for_large_tensors) in all_kernels:
             # Disable unrolling for integer types while LLVM does not vectorize these.
