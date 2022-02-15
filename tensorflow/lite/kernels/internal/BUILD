@@ -867,7 +867,6 @@ cc_library(
     hdrs = [
         "portable_tensor_utils.h",
         "tensor_utils.h",
-        "tensor_utils_common.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
