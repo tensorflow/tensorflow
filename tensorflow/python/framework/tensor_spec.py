@@ -45,8 +45,10 @@ class DenseSpec(type_spec.TypeSpec):
         not convertible to a `tf.DType`.
     """
     self._shape = tensor_shape.TensorShape(shape)
-    # TODO(b/216204766): Remove once uses are deleted.
-    self._shape_tuple = None
+    try:
+      self._shape_tuple = tuple(self.shape.as_list())
+    except ValueError:
+      self._shape_tuple = None
     self._dtype = dtypes.as_dtype(dtype)
     self._name = name
 
@@ -75,12 +77,12 @@ class DenseSpec(type_spec.TypeSpec):
         type(self).__name__, self.shape, repr(self.dtype), repr(self.name))
 
   def __hash__(self):
-    return hash((self._shape, self.dtype))
+    return hash((self._shape_tuple, self.dtype))
 
   def __eq__(self, other):
     # pylint: disable=protected-access
     return (type(self) is type(other) and
-            self._shape == other._shape
+            self._shape_tuple == other._shape_tuple
             and self._dtype == other._dtype
             and self._name == other._name)
 
@@ -341,7 +343,7 @@ class BoundedTensorSpec(TensorSpec):
             np.allclose(self.maximum, other.maximum))
 
   def __hash__(self):
-    return hash((self._shape, self.dtype))
+    return hash((self._shape_tuple, self.dtype))
 
   def __reduce__(self):
     return BoundedTensorSpec, (self._shape, self._dtype, self._minimum,
