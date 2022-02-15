@@ -89,16 +89,16 @@ _gen_mlir_op_rule = rule(
     implementation = _gen_mlir_op_impl,
 )
 
-def _gen_mlir_op(op, type, platform, output_type):
+def _gen_mlir_op(op, name, type, platform, output_type):
     _gen_mlir_op_rule(
-        name = "generate_{op}_{platform}_{type}_{output_type}_mlir".format(
-            op = op,
+        name = "generate_{name}_{platform}_{type}_{output_type}_mlir".format(
+            name = name,
             platform = platform,
             type = type,
             output_type = output_type,
         ),
-        out = "{op}_{platform}_{type}_{output_type}.mlir".format(
-            op = op,
+        out = "{name}_{platform}_{type}_{output_type}.mlir".format(
+            name = name,
             platform = platform,
             type = type,
             output_type = output_type,
@@ -329,13 +329,14 @@ def _gen_kernel_library(
             typed_tile_size = _get_shape(tile_size, type, tile_size_override)
             _gen_mlir_op(
                 op = op,
+                name = name,
                 output_type = output_type,
                 platform = platform,
                 type = type
             )
             _gen_kernel_bin_rule(
-                name = "{op}_{platform}_{type}_{output_type}_kernel_generator".format(
-                    op = op,
+                name = "{name}_{platform}_{type}_{output_type}_kernel_generator".format(
+                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type
@@ -346,8 +347,8 @@ def _gen_kernel_library(
                 gpu_archs = gpu_archs,
                 jit = jit,
                 max_supported_rank = max_supported_rank,
-                mlir_op = "{op}_{platform}_{type}_{output_type}.mlir".format(
-                    op = op,
+                mlir_op = "{name}_{platform}_{type}_{output_type}.mlir".format(
+                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
@@ -361,8 +362,8 @@ def _gen_kernel_library(
             gpu_arch_option = "sm_70,compute_75" if cuda_gpu_architectures() else ",".join(rocm_gpu_architectures())
             test_args = [
                 "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
-                "$(location {op}_{platform}_{type}_{output_type}.mlir)".format(
-                    op = op,
+                "$(location {name}_{platform}_{type}_{output_type}.mlir)".format(
+                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
@@ -375,8 +376,8 @@ def _gen_kernel_library(
             if typed_unroll_factors:
                 test_args.append("--unroll_factors=%s" % typed_unroll_factors)
             native.sh_test(
-                name = "{op}_{platform}_{type}_{output_type}_gen_test".format(
-                    op = op,
+                name = "{name}_{platform}_{type}_{output_type}_gen_test".format(
+                    name = name,
                     platform = platform,
                     type = type,
                     output_type = output_type,
@@ -386,8 +387,8 @@ def _gen_kernel_library(
                 args = test_args,
                 size = test_size,
                 data = [
-                    ":{op}_{platform}_{type}_{output_type}.mlir".format(
-                        op = op,
+                    ":{name}_{platform}_{type}_{output_type}.mlir".format(
+                        name = name,
                         platform = platform,
                         type = type,
                         output_type = output_type,
@@ -397,8 +398,8 @@ def _gen_kernel_library(
             )
 
     kernel_deps = [
-        ":{op}_{platform}_{type}_{output_type}_kernel_generator".format(
-            op = op,
+        ":{name}_{platform}_{type}_{output_type}_kernel_generator".format(
+            name = name,
             platform = platform,
             type = type,
             output_type = output_type,
