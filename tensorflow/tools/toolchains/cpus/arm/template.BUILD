@@ -1,11 +1,11 @@
+# Repository initialized in in tensorflow/workspace2.bzl
+load(":cc_config.bzl", "cc_toolchain_config")
+
 package(default_visibility = ["//visibility:public"])
 
 # The following line is only here to make this project import into IDEs that embed
 # a Bazel toolchain.
 licenses(["notice"])
-
-# Repository initialized in in tensorflow/workspace2.bzl
-load(":cc_config.bzl", "cc_toolchain_config")
 
 cc_toolchain_suite(
     name = "toolchain",

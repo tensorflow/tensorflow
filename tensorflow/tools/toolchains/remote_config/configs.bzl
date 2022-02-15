@@ -1,6 +1,6 @@
 """Configurations of RBE builds used with remote config."""
 
-load("//tensorflow/tools/toolchains/remote_config:rbe_config.bzl", "tensorflow_local_config", "tensorflow_rbe_config", "tensorflow_rbe_win_config", "sigbuild_tf_configs")
+load("//tensorflow/tools/toolchains/remote_config:rbe_config.bzl", "sigbuild_tf_configs", "tensorflow_local_config", "tensorflow_rbe_config", "tensorflow_rbe_win_config")
 
 def initialize_rbe_configs():
     tensorflow_local_config(
@@ -291,7 +291,7 @@ def initialize_rbe_configs():
             "TF_NEED_CUDA": "1",
             "TF_NEED_TENSORRT": "1",
             "TF_SYSROOT": "/dt7",
-            "TF_TENSORRT_VERSION": "7.2"
+            "TF_TENSORRT_VERSION": "7.2",
         },
     )
 
@@ -328,6 +328,6 @@ def initialize_rbe_configs():
             "TF_NEED_CUDA": "1",
             "TF_NEED_TENSORRT": "1",
             "TF_SYSROOT": "/dt8",
-            "TF_TENSORRT_VERSION": "7.2"
+            "TF_TENSORRT_VERSION": "7.2",
         },
     )

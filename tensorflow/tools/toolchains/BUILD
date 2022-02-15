@@ -1,12 +1,12 @@
+load("//tensorflow/tools/toolchains/remote_config:containers.bzl", "container_digests")
+
 licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
 
-load("//tensorflow/tools/toolchains/remote_config:containers.bzl", "container_digests")
-
 # Remote build platforms.
 # Each of the platform rules here provide a platform definition that is bound to a docker image.
-# The result of the skylark configuration is checked into
+# The result of the starlark configuration is checked into
 # //third_party/toolchains/preconfig.
 
 # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cpu.
