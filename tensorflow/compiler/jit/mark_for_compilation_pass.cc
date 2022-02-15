@@ -2010,6 +2010,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "MaxPoolV2",
       "Multinomial",
       "NextAfter",
+      "NonMaxSuppressionV3",
       "NonMaxSuppressionV4",
       "ParallelDynamicStitch",
       "ParameterizedTruncatedNormal",
