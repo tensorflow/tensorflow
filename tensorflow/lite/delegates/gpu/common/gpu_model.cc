@@ -184,6 +184,7 @@ class TensorReserver {
   void Add(ValueId id, const TensorDescriptor& dummy) {
     reservations_[id] = dummy;
   }
+  ValueId GetNewId() { return next_++; }
   void SetNext(ValueId id) { next_ = id; }
   TensorDescriptor Get(ValueId id) { return reservations_[id]; }
 
@@ -338,10 +339,20 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
     absl::flat_hash_map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
-      TensorDescriptor td = t.second;
-      td.shape = BHWDC(t.first.b, t.first.h, t.first.w, 1, t.first.c);
-      auto global_id = tensor_reserver->Add(td);
-      mapping_to_global_ids[j] = global_id;
+      if (!t.second.data.empty()) {  // constant tensor
+        auto global_id = tensor_reserver->GetNewId();
+        gpu_model->const_tensors[global_id] =
+            std::move(gpu_subgraph.new_tensors[j].second);
+        const auto& shape = gpu_subgraph.new_tensors[j].first;
+        gpu_model->const_tensors[global_id].shape =
+            BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
+        mapping_to_global_ids[j] = global_id;
+      } else {
+        TensorDescriptor td = t.second;
+        td.shape = BHWDC(t.first.b, t.first.h, t.first.w, 1, t.first.c);
+        auto global_id = tensor_reserver->Add(td);
+        mapping_to_global_ids[j] = global_id;
+      }
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
       GpuNode gpu_node;
