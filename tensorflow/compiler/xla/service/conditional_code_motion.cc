@@ -389,24 +389,36 @@ absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
     for (int others = 1; others < branch_count; ++others) {
       HloInstruction* others_root =
           conditional->branch_computation(others)->root_instruction();
+      const HloInstruction* other_convert = others_root->operand(operand_num);
+      if (other_convert->opcode() != HloOpcode::kConvert ||
+          convert_invalid(other_convert)) {
+        replica = false;
+        break;
+      }
+      // Do not move converts if their operands have different shapes in
+      // different branches.
       bool eq_shape =
           is_layout_sensitive
-              ? ShapeUtil::Equal(others_root->operand(operand_num)->shape(),
-                                 special_convert_candidate->shape())
-              : ShapeUtil::Compatible(
-                    others_root->operand(operand_num)->shape(),
-                    special_convert_candidate->shape());
+              ? ShapeUtil::Equal(other_convert->shape(),
+                                 special_convert_candidate->shape()) &&
+                    ShapeUtil::Equal(
+                        other_convert->operand(0)->shape(),
+                        special_convert_candidate->operand(0)->shape())
+              : ShapeUtil::Compatible(other_convert->shape(),
+                                      special_convert_candidate->shape()) &&
+                    ShapeUtil::Compatible(
+                        other_convert->operand(0)->shape(),
+                        special_convert_candidate->operand(0)->shape());
+      if (!eq_shape) {
+        replica = false;
+        break;
+      }
       auto repeated =
           absl::c_count_if(others_root->operands(),
                            [&](const HloInstruction* operand) -> bool {
                              return (special_convert_candidate == operand);
                            }) > 1;
-      if ((others_root->operand(operand_num)->opcode() ==
-           HloOpcode::kConvert) &&
-          eq_shape && !convert_invalid(others_root->operand(operand_num)) &&
-          !repeated) {
-        // Nothing to be done.
-      } else {
+      if (repeated) {
         replica = false;
         break;
       }
