@@ -953,6 +953,7 @@ std::vector<string> EagerContext::ListFunctionNames() {
 }
 
 Status EagerContext::RemoveFunction(const string& func) {
+  // TODO(mdan): The context owns these functions. Why check refcount then?
   bool is_last_ref = false;
   {
     mutex_lock l(cache_mu_);

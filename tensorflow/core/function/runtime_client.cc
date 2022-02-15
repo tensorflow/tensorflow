@@ -86,12 +86,12 @@ StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
 }
 
 Status Runtime::CreateFunction(const FunctionDef& fdef) {
-  auto* flib = this->eager_ctx_.FuncLibDef();
-  if (flib->Find(fdef.signature().name())) {
-    return flib->ReplaceFunction(fdef.signature().name(), fdef);
-  } else {
-    return flib->AddFunctionDef(fdef);
+  const auto& fname = fdef.signature().name();
+  if (this->eager_ctx_.FindFunctionByName(fname)) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(this->eager_ctx_.RemoveFunction(fname),
+                                    "removing function ", fname);
   }
+  return this->eager_ctx_.AddFunctionDef(fdef);
 }
 
 Status Runtime::CreateFunction(OpaqueTfgGraphFuncOp* fop) {
