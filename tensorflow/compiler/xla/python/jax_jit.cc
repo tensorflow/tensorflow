@@ -362,12 +362,10 @@ class CompiledFunctionCache {
   // might be evicted before we finish tracing/compiling.
   typedef xla::LRUCache<CallSignature, std::shared_ptr<CacheEntry>> Cache;
 
-  // The lifetime of the returned cache lasts at least as long as the lifetime
-  // of `function`, so if the caller holds a strong reference to `function`, the
-  // `Cache` remains valid.
   // We include as part of the cache key `donate_argnums` (and any other fields
   // that aren't subsumed by the CallSignature we compute for each call).
-  Cache* Lookup(py::handle function, absl::Span<const int> donate_argnums);
+  std::shared_ptr<Cache> Lookup(py::handle function,
+                                absl::Span<const int> donate_argnums);
 
   int Size() const { return lru_list_.Size(); }
   int Capacity() const { return lru_list_.Capacity(); }
@@ -395,8 +393,8 @@ class CompiledFunctionCache {
   }
 
   struct Value {
-    explicit Value(Cache::LRUList* lru_list) : cache(lru_list) {}
-    Cache cache;
+    explicit Value(std::shared_ptr<Cache> cache) : cache(std::move(cache)) {}
+    std::shared_ptr<Cache> cache;
 
     // A weak reference to the key function. We use the weak reference to
     // register a callback that is triggered when the key function is destroyed.
@@ -413,23 +411,32 @@ class CompiledFunctionCache {
 CompiledFunctionCache::CompiledFunctionCache(int capacity)
     : lru_list_(capacity) {}
 
-CompiledFunctionCache::Cache* CompiledFunctionCache::Lookup(
+std::shared_ptr<CompiledFunctionCache::Cache> CompiledFunctionCache::Lookup(
     py::handle function, absl::Span<const int> donate_argnums) {
   Key key;
   key.function = function;
   key.donate_argnums =
       std::vector<int>(donate_argnums.begin(), donate_argnums.end());
   auto insert = functions_.emplace(key, nullptr);
-  std::unique_ptr<Value>& entry = insert.first->second;
+  std::shared_ptr<Cache> cache = std::make_shared<Cache>(&lru_list_);
   if (insert.second) {
-    entry = std::make_unique<Value>(&lru_list_);
-    entry->weakref = py::weakref(
-        function,
-        py::cpp_function([this, key{std::move(key)}](py::handle weakref) {
-          functions_.erase(key);
-        }));
+    py::cpp_function callback([this, key{std::move(key)}](py::handle weakref) {
+      functions_.erase(key);
+    });
+    PyObject* weakref = PyWeakref_NewRef(function.ptr(), callback.ptr());
+    if (weakref) {
+      std::unique_ptr<Value>& entry = insert.first->second;
+      entry = std::make_unique<Value>(cache);
+      entry->weakref = py::reinterpret_steal<py::weakref>(weakref);
+    } else {
+      PyErr_Clear();
+      // `function` is not weak-referenceable. Don't bother adding it to the
+      // shared cache in that case; the `jit` object will hold the only shared
+      // reference to the cache entry.
+      functions_.erase(insert.first);
+    }
   }
-  return &entry->cache;
+  return cache;
 }
 
 // A `CompiledFunction` is associated to a `jax.jit(f)` and takes care of the
@@ -543,7 +550,7 @@ class CompiledFunction {
   std::shared_ptr<CompiledFunctionCache> cache_;
 
   // The part of cache_ specific to this CompiledFunction.
-  CompiledFunctionCache::Cache* executables_;
+  std::shared_ptr<CompiledFunctionCache::Cache> executables_;
 
   // The logic if the following:
   // - if `device` or `backend` are not specified to `jax.jit`, we will use
