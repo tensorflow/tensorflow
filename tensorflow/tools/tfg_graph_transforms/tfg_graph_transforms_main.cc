@@ -96,13 +96,7 @@ void RegisterDialects(mlir::DialectRegistry& registry) {
 tensorflow::Status RunOptimizationPasses(
     const mlir::PassPipelineCLParser& passPipeline, mlir::ModuleOp module,
     mlir::MLIRContext* context) {
-  auto graph_op = llvm::dyn_cast<mlir::tfg::GraphOp>(module.getBody()->front());
-  if (!graph_op) {
-    return tensorflow::errors::InvalidArgument(
-        "TFG MLIR module missing graph op");
-  }
-
-  mlir::PassManager pm(context, mlir::tfg::GraphOp::getOperationName());
+  mlir::PassManager pm(context);
   auto error_handler = [&](const llvm::Twine& msg) {
     emitError(mlir::UnknownLoc::get(pm.getContext())) << msg;
     return mlir::failure();
@@ -113,7 +107,7 @@ tensorflow::Status RunOptimizationPasses(
   }
 
   mlir::StatusScopedDiagnosticHandler diagnostics_handler(context);
-  if (failed(pm.run(graph_op))) {
+  if (failed(pm.run(module))) {
     return diagnostics_handler.Combine(
         tensorflow::errors::InvalidArgument("MLIR Pass Manager failure: "));
   }
