@@ -41,8 +41,7 @@ struct CholeskyRewritePattern
     Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
     auto handle = rewriter.create<tfrt::gpu::SolverCreateOp>(loc, context);
 
-    cublasFillMode_t fill_mode =
-        op.is_lower() ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
+    auto fill_mode = op.is_lower() ? kBlasFillModeLower : kBlasFillModeUpper;
 
     mlir::Type element_type =
         op.input().getType().cast<mlir::MemRefType>().getElementType();
