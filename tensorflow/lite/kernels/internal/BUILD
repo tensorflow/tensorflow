@@ -271,7 +271,6 @@ cc_library(
 
 cc_library(
     name = "optimized_base",
-    srcs = [],
     hdrs = [
         "optimized/batch_matmul.h",
         "optimized/depthwiseconv_3x3_filter_common.h",
@@ -287,9 +286,11 @@ cc_library(
         "optimized/integer_ops/depthwise_conv_hybrid.h",
         "optimized/integer_ops/depthwise_conv_hybrid_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
+        "optimized/integer_ops/leaky_relu.h",
         "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
+        "optimized/integer_ops/sub.h",
         "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
         "optimized/resize_bilinear.h",
@@ -298,6 +299,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        ":avx2_quantization_utils",
         ":common",
         ":compatibility",
         ":cppmath",
@@ -809,6 +811,18 @@ cc_library(
 )
 
 cc_library(
+    name = "avx2_quantization_utils",
+    hdrs = [
+        "optimized/avx2_quantization_utils.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":compatibility",
+    ],
+)
+
+cc_library(
     name = "kernel_utils",
     srcs = ["kernel_utils.cc"],
     hdrs = ["kernel_utils.h"],
@@ -1177,6 +1191,28 @@ cc_test(
         ":reference_base",
         ":types",
         "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "avx2_quantization_utils_test",
+    srcs = ["optimized/avx2_quantization_utils_test.cc"],
+    copts = select(
+        {
+            ":haswell": [
+                "-mavx2",
+            ],
+            ":k8": [
+                "-mavx2",
+            ],
+            "//conditions:default": [
+            ],
+        },
+    ),
+    deps = [
+        ":avx2_quantization_utils",
+        ":common",
         "@com_google_googletest//:gtest_main",
     ],
 )

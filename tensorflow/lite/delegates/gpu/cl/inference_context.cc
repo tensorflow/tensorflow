@@ -44,9 +44,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
@@ -302,7 +299,7 @@ void InferenceContext::InitRecordableQueue(Environment* env) {
 absl::Status InferenceContext::InitFromGraphWithTransforms(
     const CreateGpuModelInfo& create_info, GraphFloat32* graph,
     Environment* env, std::vector<uint8_t>* serialized_model) {
-  RETURN_IF_ERROR(RunGraphTransforms(graph));
+  RETURN_IF_ERROR(RunGraphTransformsForGpuModel(graph));
   RETURN_IF_ERROR(InitFromGraph(create_info, *graph, env, serialized_model));
   return absl::OkStatus();
 }
@@ -814,24 +811,6 @@ void InferenceContext::ReleaseCPURepresentation() {
     node.cl_operation.GetGpuOperation().args_.ReleaseCPURepresentation();
   }
   const_tensors_descs_.clear();
-}
-
-absl::Status RunGraphTransforms(GraphFloat32* graph) {
-  auto merge_padding_transform = NewMergePaddingWithAdd();
-  auto add_bias_transform = NewAddBias();
-  auto pooling_to_reduce_op = NewGlobalPoolingToReduceOp();
-  ModelTransformer transformer(graph);
-  if (!transformer.Apply("add_bias", add_bias_transform.get())) {
-    return absl::InternalError("Invalid add_bias transform");
-  }
-  if (!transformer.Apply("merge_padding", merge_padding_transform.get())) {
-    return absl::InternalError("Invalid merge_padding transform");
-  }
-  if (!transformer.Apply("global pooling to mean",
-                         pooling_to_reduce_op.get())) {
-    return absl::InternalError("Invalid global pooling to mean transform");
-  }
-  return absl::OkStatus();
 }
 
 }  // namespace cl

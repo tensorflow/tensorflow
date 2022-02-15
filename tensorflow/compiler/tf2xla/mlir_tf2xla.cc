@@ -144,7 +144,7 @@ Status ConvertGraphDefToXlaViaMlir(
 
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
-      mlir::OwningModuleRef module,
+      mlir::OwningOpRef<mlir::ModuleOp> module,
       ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));
 
   // Construct a CPU device and add the device to the operations.

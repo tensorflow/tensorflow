@@ -77,7 +77,7 @@ class RewriteXlaHostComputeMlir
     SymbolTable manager(op->getParentOfType<ModuleOp>());
     StringRef host_module = op.host_mlir_module();
     if (!host_module.empty()) {
-      mlir::OwningModuleRef module_for_func;
+      mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
 
       FuncOp func = op.GetHostFunc(&module_for_func);
 
@@ -143,14 +143,14 @@ void UpdateArgAttributes(mlir::FuncOp func) {
             updated_arg, llvm::SmallPtrSet<Operation*, 1>({updated_arg}));
       }
 
-      func.removeArgAttr(i, builder.getIdentifier(kShardingAttr));
+      func.removeArgAttr(i, builder.getStringAttr(kShardingAttr));
     }
   }
 }
 
 LogicalResult RewriteCommunicationOps(ModuleOp module) {
   MLIRContext* ctx = module.getContext();
-  mlir::OwningRewritePatternList patterns(ctx);
+  mlir::RewritePatternSet patterns(ctx);
   patterns.insert<RewriteXlaHostComputeMlir>(ctx);
   if (failed(mlir::applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
     return module.emitError("failed to apply tf export preparation patterns");

@@ -37,4 +37,59 @@ func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor
   return %s, %u, %v : tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>
 }
 
+//===----------------------------------------------------------------------===//
+// Random op legalizations.
+//===----------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: func @random_uniform_simple
+func @random_uniform_simple(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
+  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: %[[CONV:.*]] = "mhlo.convert"(%arg0) : (tensor<3xi32>) -> tensor<3xi64>
+  // CHECK: %[[F32:.*]] = "mhlo.rng_uniform"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*}} -> tensor<12x?x64xf32>
+  %0 = "tf.RandomUniform"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
+  // CHECK: return %[[F32]]
+  return %0 : tensor<12x?x64xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @random_uniform_with_seeds
+func @random_uniform_with_seeds(%arg0: tensor<4xi32>) -> tensor<32x12x12x64xf32> {
+  // CHECK:  %0 = mhlo.constant dense<[32, 12, 12, 64]> : tensor<4xi32>
+  // CHECK-NEXT :  %1 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-NEXT :  %2 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-NEXT :  %3 = "mhlo.convert"(%0) : (tensor<4xi32>) -> tensor<4xi64>
+  // CHECK-NEXT :  %4 = "mhlo.rng_uniform"(%1, %2, %3) : (tensor<f32>, tensor<f32>, tensor<4xi64>) -> tensor<32x12x12x64xf32>
+  %cst = "tf.Const"() {value = dense<[32, 12, 12, 64]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %0 = "tf.RandomUniform"(%cst) {seed = 87654321 : i64, seed2 = 0 : i64} : (tensor<4xi32>) -> tensor<32x12x12x64xf32>
+  // CHECK: return %4 : tensor<32x12x12x64xf32>
+  return %0 : tensor<32x12x12x64xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// StridedSlice op legalizations.
+//===----------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: simple_strided_slice
+func @simple_strided_slice(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
+  %begin = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[3, 7]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: mhlo.slice
+  // CHECK-DAG-SAME: start_indices = dense<[0, 1]>
+  // CHECK-DAG-SAME: limit_indices = dense<[3, 7]>
+  // CHECK-DAG-SAME: strides = dense<[1, 3]>
+  // CHECK-SAME: -> tensor<3x2xf32>
+
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
+  return %output : tensor<3x2xf32>
+}
+
 }

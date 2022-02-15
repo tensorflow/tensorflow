@@ -58,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -546,13 +545,17 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
   TF_CHECK_OK(ReplaceInstruction(instruction, bitcast));
 }
 
-bool AlgebraicSimplifierVisitor::ReplaceInstructionIfSameShape(
+// Replace the old instruction with the new one if they are compatible, i.e.,
+// 1. they have same shape
+// 2. the replacement will not cause loss of sharding
+bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
     HloInstruction* old_instruction, HloInstruction* new_instruction) {
   if (!SameShape(old_instruction, new_instruction)) {
     return false;
   }
-  TF_CHECK_OK(ReplaceInstruction(old_instruction, new_instruction));
-  return true;
+  return ReplaceInstruction(old_instruction, new_instruction,
+                            /*preserve_sharding=*/true)
+      .ValueOrDie();
 }
 
 Status AlgebraicSimplifierVisitor::HandleAbs(HloInstruction* abs) {
@@ -571,12 +574,12 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
 
   // A + 0 => A
   VLOG(10) << "trying transform [A + 0 => A]: " << add->ToString();
-  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(add, lhs)) {
+  if (IsAll(rhs, 0) && ReplaceInstructionIfCompatible(add, lhs)) {
     return Status::OK();
   }
   // 0 + A => A
   VLOG(10) << "trying transform [0 + A => A]: " << add->ToString();
-  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(add, rhs)) {
+  if (IsAll(lhs, 0) && ReplaceInstructionIfCompatible(add, rhs)) {
     return Status::OK();
   }
 
@@ -893,13 +896,13 @@ Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
     // A && True => A
     VLOG(10) << "trying transform [A && True => A]: "
              << logical_and->ToString();
-    if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
+    if (IsAll(rhs, 1) && ReplaceInstructionIfCompatible(logical_and, lhs)) {
       return Status::OK();
     }
     // True && A => A
     VLOG(10) << "trying transform [True && A => A]: "
              << logical_and->ToString();
-    if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
+    if (IsAll(lhs, 1) && ReplaceInstructionIfCompatible(logical_and, rhs)) {
       return Status::OK();
     }
   }
@@ -907,14 +910,14 @@ Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
   // A && False => False or A & 0 => 0
   VLOG(10) << "trying transform [A && False => False]: "
            << logical_and->ToString();
-  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
+  if (IsAll(rhs, 0) && ReplaceInstructionIfCompatible(logical_and, rhs)) {
     return Status::OK();
   }
 
   // False && A => False or A & 0 => 0
   VLOG(10) << "trying transform [False && A => False]: "
            << logical_and->ToString();
-  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
+  if (IsAll(lhs, 0) && ReplaceInstructionIfCompatible(logical_and, lhs)) {
     return Status::OK();
   }
 
@@ -937,7 +940,7 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
   }
   // All bitcasts can be eliminated (assuming layout constraints are
   // satisfied).
-  ReplaceInstructionIfSameShape(bitcast, bitcast->mutable_operand(0));
+  ReplaceInstructionIfCompatible(bitcast, bitcast->mutable_operand(0));
   return Status::OK();
 }
 
@@ -949,7 +952,7 @@ Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
     return Status::OK();
   }
   // Eliminate bitcast converts between same shape.
-  ReplaceInstructionIfSameShape(bitcast, bitcast->mutable_operand(0));
+  ReplaceInstructionIfCompatible(bitcast, bitcast->mutable_operand(0));
   return Status::OK();
 }
 
@@ -961,7 +964,7 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
         copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy, op));
   }
   // All copies can be eliminated (assuming layout constraints are satisfied).
-  if (ReplaceInstructionIfSameShape(copy, copy->mutable_operand(0))) {
+  if (ReplaceInstructionIfCompatible(copy, copy->mutable_operand(0))) {
     return Status::OK();
   }
 
@@ -988,7 +991,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
   absl::Span<HloInstruction* const> operands(concatenate->operands());
   if (operands.size() == 1) {
     // Unary concatenates are useless.
-    ReplaceInstructionIfSameShape(concatenate, operands[0]);
+    ReplaceInstructionIfCompatible(concatenate, operands[0]);
     return Status::OK();
   }
   // Filter out and remove empty operands.
@@ -1011,7 +1014,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
     }
     VLOG(10) << "trying to replace " << concatenate->ToString() << " with "
              << replacement->ToString();
-    ReplaceInstructionIfSameShape(concatenate, replacement);
+    ReplaceInstructionIfCompatible(concatenate, replacement);
     return Status::OK();
   }
 
@@ -1107,7 +1110,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
   if (new_operands.size() < operands.size()) {
     auto replacement = computation_->AddInstruction(
         concatenate->CloneWithNewOperands(concatenate->shape(), new_operands));
-    ReplaceInstructionIfSameShape(concatenate, replacement);
+    ReplaceInstructionIfCompatible(concatenate, replacement);
     return Status::OK();
   }
 
@@ -1262,7 +1265,7 @@ Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
   CHECK(Match(sub, m::Subtract(m::Op(&lhs), m::Op(&rhs))));
   // A - 0 => A
   VLOG(10) << "trying transform [A - 0 => A]: " << sub->ToString();
-  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(sub, lhs)) {
+  if (IsAll(rhs, 0) && ReplaceInstructionIfCompatible(sub, lhs)) {
     return Status::OK();
   }
 
@@ -1339,7 +1342,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
 
       auto* quotient = computation->AddInstruction(HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, abs_dividend,
-          MakeScalarLike(abs_dividend, tensorflow::Log2Floor64(b_value))));
+          MakeScalarLike(abs_dividend, Log2Floor<uint64_t>(b_value))));
 
       auto* neqated_quotient =
           computation->AddInstruction(HloInstruction::CreateUnary(
@@ -1354,7 +1357,7 @@ std::unique_ptr<HloInstruction> TryDivideToShift(
     if (absl::has_single_bit(b_value)) {
       return HloInstruction::CreateBinary(
           divide->shape(), HloOpcode::kShiftRightLogical, a,
-          MakeScalarLike(a, tensorflow::Log2Floor64(b_value)));
+          MakeScalarLike(a, Log2Floor(b_value)));
     }
   }
 
@@ -1367,7 +1370,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   CHECK(Match(divide, m::Divide(m::Op(&a), m::Op(&b))));
   // A/1 => A
   VLOG(10) << "trying transform [A/1 => A]: " << divide->ToString();
-  if (IsAll(b, 1) && ReplaceInstructionIfSameShape(divide, a)) {
+  if (IsAll(b, 1) && ReplaceInstructionIfCompatible(divide, a)) {
     return Status::OK();
   }
 
@@ -2572,7 +2575,7 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
                 m::Clamp(&clamp, m::Op(&clamp_lower_bound), m::Op(&to_clamp),
                          m::Op(&clamp_upper_bound))))) {
     if (max_operand == clamp_lower_bound &&
-        ReplaceInstructionIfSameShape(maximum, clamp)) {
+        ReplaceInstructionIfCompatible(maximum, clamp)) {
       return Status::OK();
     }
   }
@@ -2629,7 +2632,7 @@ Status AlgebraicSimplifierVisitor::HandleClamp(HloInstruction* clamp) {
   // clamp(a, clamp(a, x, b), b) -> clamp(a, x, b)
   if (Match(to_clamp, m::Clamp(m::Op().Is(clamp_lower_bound), m::Op(),
                                m::Op().Is(clamp_upper_bound))) &&
-      ReplaceInstructionIfSameShape(clamp, to_clamp)) {
+      ReplaceInstructionIfCompatible(clamp, to_clamp)) {
     return Status::OK();
   }
 
@@ -2661,25 +2664,25 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
   CHECK(Match(multiply, m::Multiply(m::Op(&lhs), m::Op(&rhs))));
   // LHS*1 => LHS
   VLOG(10) << "trying transform [LHS*1 => LHS]: " << multiply->ToString();
-  if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(multiply, lhs)) {
+  if (IsAll(rhs, 1) && ReplaceInstructionIfCompatible(multiply, lhs)) {
     return Status::OK();
   }
   // 1*RHS => RHS
   VLOG(10) << "trying transform [1*RHS => RHS]: " << multiply->ToString();
-  if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(multiply, rhs)) {
+  if (IsAll(lhs, 1) && ReplaceInstructionIfCompatible(multiply, rhs)) {
     return Status::OK();
   }
 
   // 0*RHS => 0. Only applies for integral types for correct NaN-handling.
   if (IsAll(lhs, 0) &&
       primitive_util::IsIntegralType(multiply->shape().element_type()) &&
-      ReplaceInstructionIfSameShape(multiply, lhs)) {
+      ReplaceInstructionIfCompatible(multiply, lhs)) {
     return Status::OK();
   }
   // LHS*0 => 0
   if (IsAll(rhs, 0) &&
       primitive_util::IsIntegralType(multiply->shape().element_type()) &&
-      ReplaceInstructionIfSameShape(multiply, rhs)) {
+      ReplaceInstructionIfCompatible(multiply, rhs)) {
     return Status::OK();
   }
 
@@ -2851,7 +2854,7 @@ Status AlgebraicSimplifierVisitor::HandleNegate(HloInstruction* negate) {
   // negate(negate(x)) => x
   HloInstruction* x;
   if (Match(negate, m::Negate(m::Negate(m::Op(&x)))) &&
-      ReplaceInstructionIfSameShape(negate, x)) {
+      ReplaceInstructionIfCompatible(negate, x)) {
     return Status::OK();
   }
   return Status::OK();
@@ -2861,7 +2864,7 @@ Status AlgebraicSimplifierVisitor::HandleNot(HloInstruction* logical_not) {
   // not(not(x)) => x
   HloInstruction* x;
   if (Match(logical_not, m::Not(m::Not(m::Op(&x)))) &&
-      ReplaceInstructionIfSameShape(logical_not, x)) {
+      ReplaceInstructionIfCompatible(logical_not, x)) {
     return Status::OK();
   }
   return Status::OK();
@@ -2877,26 +2880,26 @@ Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
     // A || True => True
     VLOG(10) << "trying transform [A || True => True]: "
              << logical_or->ToString();
-    if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
+    if (IsAll(rhs, 1) && ReplaceInstructionIfCompatible(logical_or, rhs)) {
       return Status::OK();
     }
     // True || A => True
     VLOG(10) << "trying transform [True || A => True]: "
              << logical_or->ToString();
-    if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
+    if (IsAll(lhs, 1) && ReplaceInstructionIfCompatible(logical_or, lhs)) {
       return Status::OK();
     }
   }
 
   // A || False => A and A | 0 => A
   VLOG(10) << "trying transform [A || False => A]: " << logical_or->ToString();
-  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
+  if (IsAll(rhs, 0) && ReplaceInstructionIfCompatible(logical_or, lhs)) {
     return Status::OK();
   }
 
   // False || A => A and 0 | A => A
   VLOG(10) << "trying transform [False || A => A]: " << logical_or->ToString();
-  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
+  if (IsAll(lhs, 0) && ReplaceInstructionIfCompatible(logical_or, rhs)) {
     return Status::OK();
   }
 
@@ -2908,7 +2911,7 @@ Status AlgebraicSimplifierVisitor::HandleLog(HloInstruction* log) {
   VLOG(10) << "trying transform [ln(exp(A)) => A]: " << log->ToString();
   HloInstruction *a, *b;
   if (Match(log, m::Log(m::Exp(m::Op(&a)))) &&
-      ReplaceInstructionIfSameShape(log, a)) {
+      ReplaceInstructionIfCompatible(log, a)) {
     return Status::OK();
   }
 
@@ -2960,7 +2963,7 @@ Status AlgebraicSimplifierVisitor::HandleGetTupleElement(
     VLOG(10) << "trying transform "
              << "[get_tuple_element(make_tuple({...,A_i,...}), i)] => A_i: "
              << get_tuple_element->ToString();
-    if (ReplaceInstructionIfSameShape(
+    if (ReplaceInstructionIfCompatible(
             get_tuple_element,
             operand->mutable_operand(get_tuple_element->tuple_index()))) {
       return Status::OK();
@@ -3348,7 +3351,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
   }
 
   if (all_zero) {
-    if (ReplaceInstructionIfSameShape(pad, pad->mutable_operand(0))) {
+    if (ReplaceInstructionIfCompatible(pad, pad->mutable_operand(0))) {
       return Status::OK();
     }
   }
@@ -3511,7 +3514,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
   }
 
   VLOG(10) << "trying transform [pow(A, 1) => A]: " << power->ToString();
-  if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(power, lhs)) {
+  if (IsAll(rhs, 1) && ReplaceInstructionIfCompatible(power, lhs)) {
     return Status::OK();
   }
 
@@ -4051,7 +4054,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
       operand_num++;
     }
 
-    bool replaced = ReplaceInstructionIfSameShape(
+    bool replaced = ReplaceInstructionIfCompatible(
         slice, concat->mutable_operand(operand_num));
     if (replaced) {
       VLOG(10) << "Folding scalar slice of concat into concat operand";
@@ -4172,7 +4175,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReverse(
 
 Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   // Delete no-op slices, i.e. where shape = operand shape.
-  if (ReplaceInstructionIfSameShape(slice, slice->mutable_operand(0))) {
+  if (ReplaceInstructionIfCompatible(slice, slice->mutable_operand(0))) {
     return Status::OK();
   }
 
@@ -4220,7 +4223,8 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
       *(broadcast->mutable_shape()) = slice->shape();
       return ReplaceInstruction(slice, broadcast);
     }
-    if (slice_undoes_pad && ReplaceInstructionIfSameShape(slice, pad_operand)) {
+    if (slice_undoes_pad &&
+        ReplaceInstructionIfCompatible(slice, pad_operand)) {
       return Status::OK();
     }
     if (slice_inside_pad) {
@@ -4508,8 +4512,10 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
         // multiply with the multiplier.
         HloInstruction* result = clamped;
         if (index_type != element_type) {
-          result = computation_->AddInstruction(HloInstruction::CreateConvert(
-              ShapeUtil::MakeScalarShape(element_type), clamped));
+          Shape result_shp = result->shape();
+          result_shp.set_element_type(element_type);
+          result = computation_->AddInstruction(
+              HloInstruction::CreateConvert(result_shp, clamped));
         }
 
         if (multiplier) {
@@ -4519,8 +4525,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
 
         return ReplaceWithNewInstruction(
             dynamic_slice,
-            HloInstruction::CreateReshape(
-                ShapeUtil::MakeShape(element_type, {1}), result));
+            HloInstruction::CreateReshape(dynamic_slice->shape(), result));
       }
     }
   }
@@ -4719,16 +4724,14 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                                      HloInstruction::CreateTuple({new_reduce}));
   }
 
-  if (options_.is_layout_sensitive()) {
-    return Status::OK();
-  }
-
   // If the reduction results in the same number of elements, then the only
   // possible side effect would be a reshape. Since the init_value is an
   // identity of the reduction function, we can therefore replace the reduce
   // with a simple reshape, ignoring the reduction function completely.
   if (ShapeUtil::ElementsIn(reduce_result_shape) ==
-      ShapeUtil::ElementsIn(arg->shape())) {
+          ShapeUtil::ElementsIn(arg->shape()) &&
+      (!options_.is_layout_sensitive() ||
+       options_.ReshapeIsBitcast(arg->shape(), reduce_result_shape))) {
     if (multi_output_reduce) {
       std::vector<HloInstruction*> reshaped_args;
       int64_t inputs = reduce->input_count();
@@ -4743,6 +4746,10 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       return ReplaceWithNewInstruction(
           reduce, HloInstruction::CreateReshape(reduce_result_shape, arg));
     }
+  }
+
+  if (options_.is_layout_sensitive()) {
+    return Status::OK();
   }
 
   // TODO(b/131122694): Most of those optimizations below can be done for
@@ -5336,7 +5343,7 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
 
 Status AlgebraicSimplifierVisitor::HandleScatter(HloInstruction* scatter) {
   if (ShapeUtil::IsZeroElementArray(scatter->operand(2)->shape()) &&
-      ReplaceInstructionIfSameShape(scatter, scatter->mutable_operand(0))) {
+      ReplaceInstructionIfCompatible(scatter, scatter->mutable_operand(0))) {
     return Status::OK();
   }
   if (ShapeUtil::IsZeroElementArray(scatter->operand(1)->shape()) &&
@@ -6088,7 +6095,7 @@ Status AlgebraicSimplifierVisitor::HandleMap(HloInstruction* map) {
   auto* map_computation = map->to_apply();
   auto* map_root = map_computation->root_instruction();
   if (map_root->opcode() == HloOpcode::kParameter) {
-    ReplaceInstructionIfSameShape(
+    ReplaceInstructionIfCompatible(
         map, map->mutable_operand(map_root->parameter_number()));
     return Status::OK();
   }

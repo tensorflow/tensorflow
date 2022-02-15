@@ -35,17 +35,6 @@ namespace Eigen {
  * The order of the width and height dimensions can be swapped if needed.
  *
  */
-#if !defined(EIGEN_HAS_INDEX_LIST)
-template <typename Input>
-EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
-    const Eigen::DSizes<typename internal::traits<Input>::Index,
-                        internal::traits<Input>::NumDimensions>,
-    const TensorReductionOp<
-        internal::MaxReducer<typename internal::remove_const<
-            typename internal::traits<Input>::Scalar>::type>,
-        const Eigen::array<int, 2>,
-        const TensorImagePatchOp<Dynamic, Dynamic, const Input> > >
-#else
 template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
     const Eigen::DSizes<typename internal::traits<Input>::Index,
@@ -59,7 +48,6 @@ EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
             const Eigen::IndexList<Eigen::type2index<2>,
                                    Eigen::type2index<3> > >::type,
         const TensorImagePatchOp<Dynamic, Dynamic, const Input> > >
-#endif
 SpatialMaxPooling(const Input& input, DenseIndex patchRows,
                   DenseIndex patchCols, DenseIndex strideRows,
                   DenseIndex strideCols, const PaddingType padding_type,
@@ -106,17 +94,6 @@ SpatialMaxPooling(const Input& input, DenseIndex patchRows,
   }
   post_reduce_dims[3] = in.dimension(3);
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-  // nvcc doesn't support cxx11
-  Eigen::array<int, 2> reduction_dims;
-  if (isColMajor) {
-    reduction_dims[0] = 1;
-    reduction_dims[1] = 2;
-  } else {
-    reduction_dims[0] = 2;
-    reduction_dims[1] = 3;
-  }
-#else
   // Take advantage of cxx11 to give the compiler information it can use to
   // optimize the code.
   typename internal::conditional<
@@ -124,7 +101,6 @@ SpatialMaxPooling(const Input& input, DenseIndex patchRows,
       const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2> >,
       const Eigen::IndexList<Eigen::type2index<2>,
                              Eigen::type2index<3> > >::type reduction_dims;
-#endif
 
   return input
       .extract_image_patches(
@@ -154,17 +130,6 @@ SpatialMaxPooling(const Input& input, DenseIndex patchRows,
  * needed.
  *
  */
-#if !defined(EIGEN_HAS_INDEX_LIST)
-template <typename Input>
-EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
-    const Eigen::DSizes<DenseIndex, internal::traits<Input>::NumDimensions>,
-    const TensorReductionOp<
-        internal::MaxReducer<float>, const Eigen::array<int, 1>,
-        const TensorReshapingOp<
-            const Eigen::DSizes<DenseIndex, 3>,
-            const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
-                                      const Input> > > >
-#else
 template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
     const Eigen::DSizes<DenseIndex, internal::traits<Input>::NumDimensions>,
@@ -175,7 +140,6 @@ EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
             const Eigen::DSizes<DenseIndex, 3>,
             const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
                                       const Input> > > >
-#endif
 CuboidMaxPooling(const Input& input, DenseIndex patchPlanes,
                  DenseIndex patchRows, DenseIndex patchCols,
                  DenseIndex stridePlanes, DenseIndex strideRows,
@@ -236,15 +200,9 @@ CuboidMaxPooling(const Input& input, DenseIndex patchPlanes,
     pre_reduce_dims[2] = post_reduce_dims[4];
   }
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-  // nvcc doesn't support cxx11
-  Eigen::array<int, 1> reduction_dims;
-  reduction_dims[0] = 1;
-#else
   // Take advantage of cxx11 to give the compiler information it can use to
   // optimize the code.
   Eigen::IndexList<Eigen::type2index<1> > reduction_dims;
-#endif
   return input
       .extract_volume_patches(patchPlanes, patchRows, patchCols, stridePlanes,
                               strideRows, strideCols, padding_type,
@@ -403,17 +361,6 @@ struct reducer_traits<AvgPoolMeanReducer<float>, GpuDevice> {
 
 }  // namespace internal
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-template <typename Input>
-EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
-    const Eigen::DSizes<typename internal::traits<Input>::Index,
-                        internal::traits<Input>::NumDimensions>,
-    const TensorReductionOp<
-        internal::AvgPoolMeanReducer<typename internal::remove_const<
-            typename internal::traits<Input>::Scalar>::type>,
-        const Eigen::array<int, 2>,
-        const TensorImagePatchOp<Dynamic, Dynamic, const Input> > >
-#else
 template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
     const Eigen::DSizes<typename internal::traits<Input>::Index,
@@ -427,7 +374,6 @@ EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
             const Eigen::IndexList<Eigen::type2index<2>,
                                    Eigen::type2index<3> > >::type,
         const TensorImagePatchOp<Dynamic, Dynamic, const Input> > >
-#endif
 SpatialAvgPooling(const Input& input, DenseIndex patchRows,
                   DenseIndex patchCols, DenseIndex strideRows,
                   DenseIndex strideCols, const PaddingType padding_type,
@@ -478,17 +424,6 @@ SpatialAvgPooling(const Input& input, DenseIndex patchRows,
       typename internal::traits<Input>::Scalar>::type CoeffReturnType;
   internal::AvgPoolMeanReducer<CoeffReturnType> mean_with_nan;
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-  // nvcc doesn't support cxx11
-  Eigen::array<int, 2> reduction_dims;
-  if (isColMajor) {
-    reduction_dims[0] = 1;
-    reduction_dims[1] = 2;
-  } else {
-    reduction_dims[0] = 2;
-    reduction_dims[1] = 3;
-  }
-#else
   // Take advantage of cxx11 to give the compiler information it can use to
   // optimize the code.
   typename internal::conditional<
@@ -496,7 +431,6 @@ SpatialAvgPooling(const Input& input, DenseIndex patchRows,
       const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2> >,
       const Eigen::IndexList<Eigen::type2index<2>,
                              Eigen::type2index<3> > >::type reduction_dims;
-#endif
   return input
       .extract_image_patches(patchRows, patchCols, strideRows, strideCols,
                              in_strideRows, in_strideCols, padding_type,
@@ -521,17 +455,6 @@ SpatialAvgPooling(const Input& input, DenseIndex patchRows,
  * needed.
  *
  */
-#if !defined(EIGEN_HAS_INDEX_LIST)
-template <typename Input>
-EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
-    const Eigen::DSizes<DenseIndex, internal::traits<Input>::NumDimensions>,
-    const TensorReductionOp<
-        internal::AvgPoolMeanReducer<float>, const Eigen::array<int, 1>,
-        const TensorReshapingOp<
-            const Eigen::DSizes<DenseIndex, 3>,
-            const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
-                                      const Input> > > >
-#else
 template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
     const Eigen::DSizes<DenseIndex, internal::traits<Input>::NumDimensions>,
@@ -542,7 +465,6 @@ EIGEN_ALWAYS_INLINE static const TensorReshapingOp<
             const Eigen::DSizes<DenseIndex, 3>,
             const TensorVolumePatchOp<Dynamic, Dynamic, Dynamic,
                                       const Input> > > >
-#endif
 CuboidAvgPooling(const Input& input, DenseIndex patchPlanes,
                  DenseIndex patchRows, DenseIndex patchCols,
                  DenseIndex stridePlanes, DenseIndex strideRows,
@@ -606,15 +528,9 @@ CuboidAvgPooling(const Input& input, DenseIndex patchPlanes,
       typename internal::traits<Input>::Scalar>::type CoeffReturnType;
   internal::AvgPoolMeanReducer<CoeffReturnType> mean_with_nan;
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-  // nvcc doesn't support cxx11
-  Eigen::array<int, 1> reduction_dims;
-  reduction_dims[0] = 1;
-#else
   // Take advantage of cxx11 to give the compiler information it can use to
   // optimize the code.
   Eigen::IndexList<Eigen::type2index<1> > reduction_dims;
-#endif
   return input
       .extract_volume_patches(patchPlanes, patchRows, patchCols, stridePlanes,
                               strideRows, strideCols, padding_type,

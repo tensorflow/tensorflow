@@ -270,7 +270,7 @@ BUILD_BOTH_CPU_PACKAGES=${TF_BUILD_BOTH_CPU_PACKAGES:-$DEFAULT_BUILD_BOTH_CPU_PA
 AUDITWHEEL_TARGET_PLAT=${TF_AUDITWHEEL_TARGET_PLAT:-$DEFAULT_AUDITWHEEL_TARGET_PLAT}
 
 # Override breaking change in setuptools v60 (https://github.com/pypa/setuptools/pull/2896)
-SETUPTOOLS_USE_DISTUTILS=stdlib
+export SETUPTOOLS_USE_DISTUTILS=stdlib
 
 # Local variables
 PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/${PIP_TEST_ROOT}/whl"
@@ -324,6 +324,10 @@ fi
 if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
+
+# TODO(mihaimaruseac): Find a better place for this
+# It seems that now TB is needed to build TF API, so install it.
+${PYTHON_BIN_PATH} -m pip install tb-nightly
 
 # Bazel build the file.
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
@@ -479,7 +483,7 @@ install_tensorflow_pip() {
 
   # setuptools v60.0.0 introduced a breaking change on how distutils is linked
   # https://github.com/pypa/setuptools/blob/main/CHANGES.rst#v6000
-  ${PIP_BIN_PATH} install --upgrade "setuptools<60" || \
+  ${PIP_BIN_PATH} install --upgrade "setuptools" || \
     die "Error: setuptools install, upgrade FAILED"
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from

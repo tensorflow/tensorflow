@@ -9,7 +9,7 @@ module  {
     // eliminated, ony the second operand is really a loop-carried value.
     // CHECK: %[[WHILE:.*]] = mhlo.while
     // CHECK-SAME: (%[[ITER_ARG:.*]] = %arg2)
-    %0:3 = "mhlo.while"(%arg0, %arg2, %arg3) ( {
+    %0:3 = "mhlo.while"(%arg0, %arg2, %arg3) ({
     ^bb0(%arg4: tensor<i32>, %arg5: tensor<i32>, %arg6: tensor<i32>):
       // CHECK: mhlo.compare
       // CHECK-SAME: %[[ITER_ARG]], %arg3
@@ -39,7 +39,7 @@ module  {
     // from one iteration to the next as-is, that is: we assume that loops
     // always terminate.
     // CHECK-NOT: mhlo.while
-    %0 = "mhlo.while"(%arg0) ( {
+    %0 = "mhlo.while"(%arg0) ({
     ^bb0(%arg1: tensor<i32>):
       %1 = "mhlo.compare"(%arg0, %arg0) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "mhlo.return"(%1) : (tensor<i1>) -> ()

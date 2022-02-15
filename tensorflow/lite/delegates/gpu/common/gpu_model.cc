@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 
 namespace tflite {
 namespace gpu {
@@ -94,6 +97,76 @@ absl::Status Decode(const data::GpuNode* fb_node, GpuNode* node) {
   }
   node->name = std::string(fb_node->name()->c_str(), fb_node->name()->size());
 
+  return absl::OkStatus();
+}
+
+bool IsAssociativeLinkableOp(const Node& node,
+                             const std::vector<Value*>& inputs,
+                             const std::vector<Value*>& outputs) {
+  if (inputs.size() == 1) {
+    return false;
+  }
+  const OperationType op_type = OperationTypeFromString(node.operation.type);
+  if (op_type != OperationType::ADD && op_type != OperationType::MUL) {
+    return false;
+  }
+
+  const auto dst_shape = outputs[0]->tensor.shape;
+  for (int i = 0; i < inputs.size(); ++i) {
+    const auto src_shape = inputs[i]->tensor.shape;
+    if (dst_shape.b != src_shape.b && src_shape.b == 1) {
+      return false;
+    }
+    if (dst_shape.h != src_shape.h && src_shape.h == 1) {
+      return false;
+    }
+    if (dst_shape.w != src_shape.w && src_shape.w == 1) {
+      return false;
+    }
+    if (dst_shape.c != src_shape.c && src_shape.c == 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
+                                            const TensorDescriptor& tensor_desc,
+                                            const BHWC& shape,
+                                            DataType data_type) {
+  if (tensor_desc.data_type != data_type) {
+    return absl::InvalidArgumentError(
+        "Global precision and precision of predefined/external tensors must be "
+        "synchronized.");
+  }
+  const bool tensor_supported_layout = tensor_desc.layout == Layout::HWDC ||
+                                       tensor_desc.layout == Layout::BHWDC ||
+                                       tensor_desc.layout == Layout::HWC ||
+                                       tensor_desc.layout == Layout::BHWC;
+  if (!tensor_supported_layout) {
+    return absl::InvalidArgumentError(
+        "Currently no support of this layouts for spatial tensors.");
+  }
+  const bool has_depth =
+      tensor_desc.layout == Layout::HWDC || tensor_desc.layout == Layout::BHWDC;
+  if (has_depth) {
+    return absl::InvalidArgumentError(
+        "Currently no support of Depth dimension in predefined/external "
+        "tensors.");
+  }
+  const bool has_batch =
+      tensor_desc.layout == Layout::BHWC || tensor_desc.layout == Layout::BHWDC;
+  if (has_batch && shape.b == 1) {
+    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
+  }
+  if (!has_batch && shape.b != 1) {
+    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
+  }
+  if (!CanCreateTensorWithShape(gpu_info, shape, tensor_desc).ok()) {
+    return absl::UnavailableError(
+        "Current device can not allocate tensor with this shape for "
+        "predefined/external descriptor.");
+  }
   return absl::OkStatus();
 }
 
@@ -174,6 +247,10 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
       RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
                                             data_type, layout, &storage_type));
       tensor_desc = TensorDescriptor{data_type, storage_type, layout};
+      if (gpu_info.IsApiMetal() &&
+          storage_type == TensorStorageType::TEXTURE_2D) {
+        tensor_desc.use_buffer_for_write_only_2d_texture = true;
+      }
     }
     tensor_desc.shape = BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
     tensor_reserver->Add(t->id, tensor_desc);
@@ -292,6 +369,53 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
   return absl::OkStatus();
 }
 
+absl::Status MergeNodes(GpuModel* gpu_model) {
+  absl::flat_hash_set<ValueId> ready_tensors;
+  for (const auto& input : gpu_model->input_ids_and_refs) {
+    ready_tensors.insert(input.first);
+  }
+  auto& nodes = gpu_model->nodes;
+  for (int i = 0; i < nodes.size(); ++i) {
+    auto& node = nodes[i];
+    for (const auto& out_id : node.outputs) {
+      ready_tensors.insert(out_id);
+    }
+    if (node.outputs.size() != 1) {
+      continue;
+    }
+    std::vector<int> next_nodes;
+    int link_index = 0;
+    for (int j = i + 1; j < nodes.size(); ++j) {
+      for (int k = 0; k < nodes[j].inputs.size(); ++k) {
+        if (nodes[j].inputs[k] == node.outputs[0]) {
+          next_nodes.push_back(j);
+          link_index = k;
+        }
+      }
+    }
+    if (next_nodes.size() != 1 || link_index != 0) {
+      continue;
+    }
+    auto& linkable_node = nodes[next_nodes[0]];
+    if (!linkable_node.gpu_operation->IsLinkable() ||
+        linkable_node.outputs.size() != 1 ||
+        !IsReady(ready_tensors, linkable_node)) {
+      continue;
+    }
+    const auto& original_dst_def =
+        node.gpu_operation->GetDefinition().dst_tensors[0];
+    const auto& link_dst_def =
+        linkable_node.gpu_operation->GetDefinition().dst_tensors[0];
+    if (original_dst_def != link_dst_def) {
+      continue;
+    }
+    RETURN_IF_ERROR(MergeGpuNodes(&linkable_node, &node));
+    nodes.erase(nodes.begin() + next_nodes[0]);
+    i -= 1;
+  }
+  return absl::OkStatus();
+}
+
 void CopyExternals(const GraphFloat32& graph, GpuModel* gpu_model) {
   const auto inputs = graph.inputs();
   for (const auto& value : inputs) {
@@ -306,6 +430,26 @@ void CopyExternals(const GraphFloat32& graph, GpuModel* gpu_model) {
   const auto outputs = graph.outputs();
   for (const auto& value : outputs) {
     gpu_model->output_ids_and_refs.push_back({value->id, value->tensor.ref});
+  }
+}
+
+// Removing tensors that was fused in complex operations
+void RemoveUnusedTensors(GpuModel* gpu_model) {
+  absl::flat_hash_set<ValueId> used_tensors;
+  for (const auto& node : gpu_model->nodes) {
+    for (const auto& id : node.inputs) {
+      used_tensors.insert(id);
+    }
+    for (const auto& id : node.outputs) {
+      used_tensors.insert(id);
+    }
+  }
+  for (auto it = gpu_model->tensors.begin(); it != gpu_model->tensors.end();) {
+    if (used_tensors.find(it->first) == used_tensors.end()) {
+      gpu_model->tensors.erase(it++);
+    } else {
+      ++it;
+    }
   }
 }
 
@@ -358,123 +502,6 @@ absl::Status ResolvePolymorphicArgs(GpuModel* gpu_model) {
 
 }  // namespace
 
-bool IsAssociativeLinkableOp(const Node& node,
-                             const std::vector<Value*>& inputs,
-                             const std::vector<Value*>& outputs) {
-  if (inputs.size() == 1) {
-    return false;
-  }
-  const OperationType op_type = OperationTypeFromString(node.operation.type);
-  if (op_type != OperationType::ADD && op_type != OperationType::MUL) {
-    return false;
-  }
-
-  const auto dst_shape = outputs[0]->tensor.shape;
-  for (int i = 0; i < inputs.size(); ++i) {
-    const auto src_shape = inputs[i]->tensor.shape;
-    if (dst_shape.b != src_shape.b && src_shape.b == 1) {
-      return false;
-    }
-    if (dst_shape.h != src_shape.h && src_shape.h == 1) {
-      return false;
-    }
-    if (dst_shape.w != src_shape.w && src_shape.w == 1) {
-      return false;
-    }
-    if (dst_shape.c != src_shape.c && src_shape.c == 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
-absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
-                                            const TensorDescriptor& tensor_desc,
-                                            const BHWC& shape,
-                                            DataType data_type) {
-  if (tensor_desc.data_type != data_type) {
-    return absl::InvalidArgumentError(
-        "Global precision and precision of predefined/external tensors must be "
-        "synchronized.");
-  }
-  const bool tensor_supported_layout = tensor_desc.layout == Layout::HWDC ||
-                                       tensor_desc.layout == Layout::BHWDC ||
-                                       tensor_desc.layout == Layout::HWC ||
-                                       tensor_desc.layout == Layout::BHWC;
-  if (!tensor_supported_layout) {
-    return absl::InvalidArgumentError(
-        "Currently no support of this layouts for spatial tensors.");
-  }
-  const bool has_depth =
-      tensor_desc.layout == Layout::HWDC || tensor_desc.layout == Layout::BHWDC;
-  if (has_depth) {
-    return absl::InvalidArgumentError(
-        "Currently no support of Depth dimension in predefined/external "
-        "tensors.");
-  }
-  const bool has_batch =
-      tensor_desc.layout == Layout::BHWC || tensor_desc.layout == Layout::BHWDC;
-  if (has_batch && shape.b == 1) {
-    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
-  }
-  if (!has_batch && shape.b != 1) {
-    return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
-  }
-  if (!CanCreateTensorWithShape(gpu_info, shape, tensor_desc).ok()) {
-    return absl::UnavailableError(
-        "Current device can not allocate tensor with this shape for "
-        "predefined/external descriptor.");
-  }
-  return absl::OkStatus();
-}
-
-absl::Status MergeNodes(GpuModel* gpu_model) {
-  absl::flat_hash_set<ValueId> ready_tensors;
-  for (const auto& input : gpu_model->input_ids_and_refs) {
-    ready_tensors.insert(input.first);
-  }
-  auto& nodes = gpu_model->nodes;
-  for (int i = 0; i < nodes.size(); ++i) {
-    auto& node = nodes[i];
-    for (const auto& out_id : node.outputs) {
-      ready_tensors.insert(out_id);
-    }
-    if (node.outputs.size() != 1) {
-      continue;
-    }
-    std::vector<int> next_nodes;
-    int link_index = 0;
-    for (int j = i + 1; j < nodes.size(); ++j) {
-      for (int k = 0; k < nodes[j].inputs.size(); ++k) {
-        if (nodes[j].inputs[k] == node.outputs[0]) {
-          next_nodes.push_back(j);
-          link_index = k;
-        }
-      }
-    }
-    if (next_nodes.size() != 1 || link_index != 0) {
-      continue;
-    }
-    auto& linkable_node = nodes[next_nodes[0]];
-    if (!linkable_node.gpu_operation->IsLinkable() ||
-        linkable_node.outputs.size() != 1 ||
-        !IsReady(ready_tensors, linkable_node)) {
-      continue;
-    }
-    const auto& original_dst_def =
-        node.gpu_operation->GetDefinition().dst_tensors[0];
-    const auto& link_dst_def =
-        linkable_node.gpu_operation->GetDefinition().dst_tensors[0];
-    if (original_dst_def != link_dst_def) {
-      continue;
-    }
-    RETURN_IF_ERROR(MergeGpuNodes(&linkable_node, &node));
-    nodes.erase(nodes.begin() + next_nodes[0]);
-    i -= 1;
-  }
-  return absl::OkStatus();
-}
-
 absl::Status GraphToGpuModel(const GraphFloat32& graph,
                              const CreateGpuModelInfo& create_info,
                              const GpuInfo& gpu_info, GpuModel* gpu_model) {
@@ -486,13 +513,13 @@ absl::Status GraphToGpuModel(const GraphFloat32& graph,
                                     &tensor_reserver, gpu_model));
   RETURN_IF_ERROR(MergeNodes(gpu_model));
   gpu_model->tensors = std::move(tensor_reserver.reservations_);
+  RemoveUnusedTensors(gpu_model);
 
   for (auto& node : gpu_model->nodes) {
     RETURN_IF_ERROR(node.gpu_operation->AssembleCode(gpu_info));
   }
 
   return ResolvePolymorphicArgs(gpu_model);
-  return absl::OkStatus();
 }
 
 flatbuffers::Offset<data::GpuModel> Encode(
@@ -589,6 +616,24 @@ absl::Status Decode(const data::GpuModel* fb_gpu_model, GpuModel* gpu_model) {
   for (auto variable_id : *fb_gpu_model->variable_ids_and_refs()) {
     gpu_model->variable_ids_and_refs.push_back(
         {variable_id->first(), variable_id->second()});
+  }
+  return absl::OkStatus();
+}
+
+absl::Status RunGraphTransformsForGpuModel(GraphFloat32* graph) {
+  auto merge_padding_transform = NewMergePaddingWithAdd();
+  auto add_bias_transform = NewAddBias();
+  auto pooling_to_reduce_op = NewGlobalPoolingToReduceOp();
+  ModelTransformer transformer(graph);
+  if (!transformer.Apply("add_bias", add_bias_transform.get())) {
+    return absl::InternalError("Invalid add_bias transform");
+  }
+  if (!transformer.Apply("merge_padding", merge_padding_transform.get())) {
+    return absl::InternalError("Invalid merge_padding transform");
+  }
+  if (!transformer.Apply("global pooling to mean",
+                         pooling_to_reduce_op.get())) {
+    return absl::InternalError("Invalid global pooling to mean transform");
   }
   return absl::OkStatus();
 }

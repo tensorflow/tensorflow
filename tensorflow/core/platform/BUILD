@@ -282,6 +282,7 @@ tf_cc_test(
 cc_library(
     name = "dynamic_annotations",
     hdrs = ["dynamic_annotations.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
     ] + tf_platform_deps("dynamic_annotations"),

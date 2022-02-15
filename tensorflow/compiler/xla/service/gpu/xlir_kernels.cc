@@ -14,41 +14,25 @@
 
 // This file implements the XLIR kernels.
 
+#include <iterator>
+#include <utility>
+#include <vector>
+
 #include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/gpu/kernels/kernels_detail.h"  // from @tf_runtime
+#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 
-#if BEF_THUNKS
-#include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
-
-// Common place for all collective thunks to source nccl/rccl headers.
-// Also, all the RunNcclCollective() functions for various thunks should
-// use XLA_ENABLE_XCCL to guard use NCCL/RCCL usage (and not use GOOGLE_XCCL).
-#if GOOGLE_XCCL
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#define XLA_ENABLE_XCCL 1
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#endif  // GOOGLE_XCCL
-
 #if XLA_ENABLE_XCCL
-#if GOOGLE_CUDA
-#include "third_party/nccl/nccl.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/rccl/rccl.h"
-#else
-#error "Neither CUDA nor ROCm enabled but NCCL/RCCL enabled"
-#endif
-
-// Also include these files required by all collective thunks.
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 #include "tfrt/gpu/wrapper/ccl_wrapper.h"  // from @tf_runtime
-
 #endif  // XLA_ENABLE_XCCL
-#endif  // BEF_THUNKS
 
 namespace xla {
 namespace gpu {
@@ -98,33 +82,146 @@ static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
   return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
 }
 
+#endif  // BEF_THUNKS
+
+static llvm::Expected<DeviceAssignment::LogicalID> GetLogicalId(
+    const tfrt::ExecutionContext& exec_ctx) {
+  auto* xla_gpu_params =
+      exec_ctx.request_ctx()->GetDataIfExists<XlaGpuParams>();
+  if (!xla_gpu_params) {
+    return tfrt::MakeStringError("Failed to get XlaGpuParams");
+  }
+
+  StatusOr<DeviceAssignment::LogicalID> current_logical_id_or =
+      xla_gpu_params->device_assn->LogicalIdForDevice(
+          xla_gpu_params->global_device_id);
+  if (!current_logical_id_or.ok()) {
+    return tfrt::MakeStringError(
+        current_logical_id_or.status().error_message());
+  }
+  return current_logical_id_or.ValueOrDie();
+}
+
+static llvm::Error ReplicaId(const tfrt::gpu::GpuStream& stream,
+                             const tfrt::gpu::GpuBuffer& output,
+                             const tfrt::ExecutionContext& exec_ctx) {
+  auto current_logical_id = GetLogicalId(exec_ctx);
+  if (!current_logical_id) return current_logical_id.takeError();
+
+  auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context()->get());
+  if (!current) return current.takeError();
+
+  return tfrt::gpu::wrapper::MemsetD32Async(*current, output.pointer(),
+                                            current_logical_id->replica_id, 1,
+                                            stream.get());
+}
+
+static llvm::Error PartitionId(const tfrt::gpu::GpuStream& stream,
+                               const tfrt::gpu::GpuBuffer& output,
+                               const tfrt::ExecutionContext& exec_ctx) {
+  auto current_logical_id = GetLogicalId(exec_ctx);
+  if (!current_logical_id) return current_logical_id.takeError();
+
+  auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context()->get());
+  if (!current) return current.takeError();
+
+  return tfrt::gpu::wrapper::MemsetD32Async(*current, output.pointer(),
+                                            current_logical_id->computation_id,
+                                            1, stream.get());
+}
+
 #if XLA_ENABLE_XCCL
 static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
     tfrt::Argument<tfrt::gpu::GpuContext> context,
+    tfrt::Attribute<int64_t> group_mode_attr,
+    tfrt::Attribute<int64_t> op_id_attr,
+    tfrt::RemainingAttributes replica_groups_attrs,
     const tfrt::ExecutionContext& exec_ctx) {
-  auto* xccl_ctx = exec_ctx.request_ctx()->GetDataIfExists<XcclContext>();
-  if (!xccl_ctx) {
-    return tfrt::MakeErrorAsyncValueRef("Failed to get XcclContext");
+  auto* xla_gpu_params =
+      exec_ctx.request_ctx()->GetDataIfExists<XlaGpuParams>();
+  if (!xla_gpu_params) {
+    return tfrt::MakeErrorAsyncValueRef("Failed to get XlaGpuParams");
   }
 
-  auto current = tfrt::gpu::wrapper::CtxSetCurrent(context->get());
-  if (!current) {
-    return tfrt::MakeErrorAsyncValueRef(llvm::toString(current.takeError()));
+  std::vector<ReplicaGroup> replica_groups;
+  replica_groups.reserve(replica_groups_attrs.size());
+  for (int i = 0; i < replica_groups_attrs.size(); ++i) {
+    ReplicaGroup replica_group;
+    for (auto replica_id :
+         replica_groups_attrs.GetArrayAttribute<int64_t>(i).data()) {
+      replica_group.add_replica_ids(replica_id);
+    }
+    replica_groups.push_back(replica_group);
   }
 
-  int device_ordinal;
-  if (auto error = cudaGetDevice(&device_ordinal)) {
-    return tfrt::MakeErrorAsyncValueRef("Failed cudaGetDevice.");
+  StatusOr<std::vector<GlobalDeviceId>> participants_or =
+      GetParticipatingDevices(
+          xla_gpu_params->global_device_id, *xla_gpu_params->device_assn,
+          replica_groups, static_cast<CollectiveOpGroupMode>(*group_mode_attr));
+  if (!participants_or.ok()) {
+    return tfrt::MakeErrorAsyncValueRef(
+        participants_or.status().error_message());
+  }
+  std::vector<GlobalDeviceId> participants =
+      std::move(participants_or.ValueOrDie());
+
+  if (IsGlobalNcclConfig() &&
+      (participants.size() != xla_gpu_params->device_assn->replica_count())) {
+    return tfrt::MakeErrorAsyncValueRef(
+        "Partial replica groups are not allowed when using NCCL_COMM_ID "
+        "environment configuration.");
   }
 
-  ncclComm_t comm = *xccl_ctx->comm;
-  auto ccl_comm = tfrt::gpu::wrapper::CclComm(comm, current->platform());
+  auto it = absl::c_find(participants, xla_gpu_params->global_device_id);
+  if (it == participants.end()) {
+    return tfrt::MakeErrorAsyncValueRef(
+        "Device ID not found among participants.");
+  }
+  int rank = it - participants.begin();
 
-  xccl_ctx->ccl_handle =
-      tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuCclHandle>(
-          context.ValueRef(),
-          tfrt::gpu::wrapper::OwningCclComm({comm, current->platform()}));
-  return xccl_ctx->ccl_handle.CopyRef();
+  OpId op_id(*op_id_attr);
+  size_t num_local_participants = GetNumLocalParticipants(
+      participants, /*local_devices=*/xla_gpu_params->gpu_global_device_ids);
+
+  bool is_local = participants.size() == num_local_participants;
+  StatusOr<const NcclUniqueIdCallback*> unique_id_callback_or =
+      GetNcclUniqueIdCallback(xla_gpu_params->nccl_unique_id_callback,
+                              is_local);
+  if (!unique_id_callback_or.ok()) {
+    return tfrt::MakeErrorAsyncValueRef(
+        unique_id_callback_or.status().error_message());
+  }
+  const NcclUniqueIdCallback* unique_id_callback =
+      unique_id_callback_or.ValueOrDie();
+
+  // AcquireNcclComm() blocks to wait for all participants and therefore needs
+  // to run inside a blocking task.
+  return tfrt::RunBlockingWork(
+      exec_ctx.host(),
+      [=, participants = std::move(participants),
+       context = context.ValueRef()]() mutable
+      -> llvm::Expected<tfrt::gpu::GpuCclHandle> {
+        auto current = tfrt::gpu::wrapper::CtxSetCurrent(context->get());
+        if (!current) return current.takeError();
+
+        StatusOr<NcclComm::Lock> comm_or = AcquireNcclComm(
+            xla_gpu_params->run_id, op_id, std::move(participants),
+            num_local_participants, *unique_id_callback, rank);
+        if (!comm_or.ok())
+          return tfrt::MakeStringError(comm_or.status().error_message());
+
+        auto* comm_ptr = comm_or->get();
+        auto comm_deleter =
+            [comm = std::move(comm_or.ValueOrDie())](
+                tfrt::gpu::wrapper::CclComm /*ccl_comm*/) mutable {
+              comm.reset();
+            };
+
+        return tfrt::gpu::GpuCclHandle(
+            std::move(context),
+            tfrt::gpu::wrapper::OwningCclComm({*comm_ptr, current->platform()}),
+            std::move(comm_deleter));
+      });
 }
 
 static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
@@ -132,18 +229,48 @@ static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
     tfrt::Argument<tfrt::gpu::GpuBuffer> input,
     tfrt::Argument<tfrt::gpu::GpuBuffer> output,
     // Needs to be sorted alphabetically by attribute name!
-    tfrt::Attribute<int32_t> data_type,
-    const tfrt::ExecutionContext& exec_ctx) {
-  auto* xccl_ctx = exec_ctx.request_ctx()->GetDataIfExists<XcclContext>();
-  if (!xccl_ctx) {
-    return tfrt::MakeErrorAsyncValueRef("Failed to get XcclContext");
+    tfrt::Attribute<int32_t> data_type_attr,
+    tfrt::Attribute<int64_t> group_mode_attr, tfrt::ArrayAttr source_peers_attr,
+    tfrt::ArrayAttr target_peers_attr, const tfrt::ExecutionContext& exec_ctx) {
+  // NCCL 2.8.x has an issue with point-to-point communication primitives if
+  // different ranks process different amounts of data. This can happen in the
+  // case of a collective permute as certain nodes may not do any send or
+  // receives, or do only send or only receive. Sending and receiving to self
+  // as well (identity pair) causes this imbalance. NCCL 2.8.x requires the
+  // use of NCCL_LAUNCH_MODE=PARALLEL to avoid these issues. See
+  // https://docs.nvidia.com/deeplearning/nccl/release-notes/rel_2-8-4.html#rel_2-8-4
+  if (!IsNcclLaunchModeParallel()) {
+    LOG(WARNING) << "NCCL based collective permute may not work correctly if "
+                    "NCCL_LAUNCH_MODE is not set to PARALLEL";
   }
-  const absl::optional<int64_t>& source_peer =
-      xccl_ctx->collective_permute_source_target.source_peer;
-  const absl::optional<int64_t>& target_peer =
-      xccl_ctx->collective_permute_source_target.target_peer;
 
-  auto type = static_cast<ncclDataType_t>(*data_type);
+  auto current_logical_id = GetLogicalId(exec_ctx);
+  if (!current_logical_id)
+    return tfrt::MakeErrorAsyncValueRef(
+        llvm::toString(current_logical_id.takeError()));
+
+  const int64_t current_id =
+      static_cast<CollectiveOpGroupMode>(*group_mode_attr) ==
+              CollectiveOpGroupMode::kCrossReplica
+          ? current_logical_id->replica_id
+          : current_logical_id->computation_id;
+
+  NcclCollectivePermuteConfig config;
+  for (int i = 0; i < source_peers_attr.GetNumElements(); ++i) {
+    int64_t source = source_peers_attr.GetValue<int64_t>()[i];
+    int64_t target = target_peers_attr.GetValue<int64_t>()[i];
+
+    config.id_to_source_target.insert({target, {}}).first->second.source =
+        source;
+    config.id_to_source_target.insert({source, {}}).first->second.target =
+        target;
+  }
+  NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
+      config.GetSourceTarget(current_id);
+  const absl::optional<int64_t>& source_peer = source_target.source;
+  const absl::optional<int64_t>& target_peer = source_target.target;
+
+  auto type = static_cast<ncclDataType_t>(*data_type_attr);
   auto width = tfrt::gpu::wrapper::GetCclDataTypeSizeBytes(type);
   if (!width)
     return tfrt::MakeErrorAsyncValueRef(llvm::toString(width.takeError()));
@@ -185,7 +312,6 @@ static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
   return tfrt::MakeAvailableAsyncValueRef<tfrt::Chain>();
 }
 #endif  // XLA_ENABLE_XCCL
-#endif  // BEF_THUNKS
 
 static llvm::Error CustomCall(
     const tfrt::gpu::GpuStream& stream,
@@ -242,12 +368,16 @@ static void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
                         TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
 #if BEF_THUNKS
   kernel_reg->AddKernel("xlir.module.load", TFRT_KERNEL(ModuleLoad));
+#endif  // BEF_THUNKS
+  kernel_reg->AddKernel("xlir.replica_id",
+                        TFRT_KERNEL_WITH_CHAIN_RESULT(ReplicaId));
+  kernel_reg->AddKernel("xlir.partition_id",
+                        TFRT_KERNEL_WITH_CHAIN_RESULT(PartitionId));
 #if XLA_ENABLE_XCCL
   kernel_reg->AddKernel("xlir.ccl.create", TFRT_KERNEL(CclCreate));
   kernel_reg->AddKernel("xlir.ccl.collective_permute",
                         TFRT_KERNEL(CclCollectivePermute));
 #endif  // XLA_ENABLE_XCCL
-#endif  // BEF_THUNKS
 }
 
 TFRT_STATIC_KERNEL_REGISTRATION(RegisterXlirKernels);

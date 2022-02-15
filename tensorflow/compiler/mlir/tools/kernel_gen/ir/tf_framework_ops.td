@@ -62,7 +62,7 @@ def TFFramework_JITCallableType : DialectType<TFFramework_Dialect, CPred<
 }
 
 // Base class for TF Framework dialect ops.
-class TFFramework_Op<string mnemonic, list<OpTrait> traits = []> :
+class TFFramework_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFFramework_Dialect, mnemonic, traits> {
   let verifier = "return Verify<$cppClass>(*this);";
 }
@@ -286,6 +286,7 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
     I64ArrayAttr:$unrollFactors,
     I64Attr:$maxSupportedRank,
     BoolAttr:$enableFtz,
+    BoolAttr:$index64Bit,
     BoolAttr:$cpuCodegen
   );
   let results = (outs TFFramework_JITCallableType:$result);

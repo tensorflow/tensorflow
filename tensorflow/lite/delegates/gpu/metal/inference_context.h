@@ -173,9 +173,6 @@ class InferenceContext {
   id<MTLDevice> device_ = nullptr;
 };
 
-// Runs specific transforms for the graph.
-absl::Status RunGraphTransforms(GraphFloat32* graph);
-
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

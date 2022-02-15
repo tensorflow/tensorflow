@@ -57,7 +57,7 @@ void FreezeAssetsPass::runOnOperation() {
   SymbolTable symbol_table(module);
 
   for (auto func : module.getOps<FuncOp>()) {
-    SmallVector<unsigned, 4> args_to_erase;
+    llvm::BitVector args_to_erase(func.getNumArguments());
     OpBuilder builder(func.getBody());
 
     for (int i = 0, e = func.getNumArguments(); i < e; ++i) {
@@ -79,7 +79,7 @@ void FreezeAssetsPass::runOnOperation() {
         }
       }
       if (arg_is_deletable) {
-        args_to_erase.push_back(i);
+        args_to_erase.set(i);
       }
 
       // Replace the arg with a tf.Const op in the function body.

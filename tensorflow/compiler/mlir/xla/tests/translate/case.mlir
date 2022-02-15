@@ -5,7 +5,7 @@ func @main() -> tensor<f32> {
   %cst_0 = arith.constant dense<5.600000e+01> : tensor<f32>
   %cst_1 = arith.constant dense<1.200000e+01> : tensor<f32>
   %cst_2 = arith.constant dense<1.300000e+01> : tensor<f32>
-  %0 = "mhlo.case"(%cst) ( {
+  %0 = "mhlo.case"(%cst) ({
     %1 = "mhlo.negate"(%cst_0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   },  {
@@ -49,7 +49,7 @@ func @main() -> (tensor<f32>, tensor<f32>) {
   %cst_0 = arith.constant dense<5.600000e+01> : tensor<f32>
   %cst_1 = arith.constant dense<1.200000e+01> : tensor<f32>
   %cst_2 = arith.constant dense<1.300000e+01> : tensor<f32>
-  %0:2 = "mhlo.case"(%cst) ( {
+  %0:2 = "mhlo.case"(%cst) ({
     %1 = "mhlo.negate"(%cst_0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1, %1) : (tensor<f32>, tensor<f32>) -> ()
   },  {
@@ -100,7 +100,7 @@ func @main() -> (tensor<f32>, tensor<f32>) {
   %cst_0 = arith.constant dense<5.600000e+01> : tensor<f32>
   %cst_1 = arith.constant dense<1.200000e+01> : tensor<f32>
   %cst_2 = arith.constant dense<1.300000e+01> : tensor<f32>
-  %0:2 = "mhlo.case"(%cst) ( {
+  %0:2 = "mhlo.case"(%cst) ({
     %1 = "mhlo.negate"(%cst_0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1, %1) : (tensor<f32>, tensor<f32>) -> ()
   },  {

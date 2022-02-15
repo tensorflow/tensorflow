@@ -82,13 +82,14 @@ auto* checkpoint_training_time_saved = monitoring::Counter<1>::New(
     "first write operation.",
     "api_label");
 
-// Counter that records filesize of written checkpoint. Contains two cells:
+// Counter that records filesize (MB) of written checkpoint. Contains two cells:
 // (api_label, filesize). Cardinality should not be an issue as the filesize
 // should be equal among all checkpoints written per job.
 auto* checkpoint_size = monitoring::Counter<2>::New(
     "/tensorflow/core/checkpoint/write/checkpoint_size",
-    "Size of checkpoint (.index and sharded data files).", "api_label",
-    "filesize");
+    "Size of checkpoint (.index and sharded data files), rounded to the "
+    "nearest 100 MB.",
+    "api_label", "filesize");
 
 }  // namespace
 
@@ -121,7 +122,7 @@ monitoring::CounterCell& TrainingTimeSaved(absl::string_view api_label) {
 }
 
 monitoring::CounterCell& CheckpointSize(absl::string_view api_label,
-                                        uint64 filesize) {
+                                        int64_t filesize) {
   return *checkpoint_size->GetCell(std::string(api_label),
                                    std::to_string(filesize));
 }

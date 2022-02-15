@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -49,6 +50,14 @@ static llvm::cl::opt<bool> enable_float16_quantization(
                    "quantization is applied."),
     llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<std::string> enable_custom_op_quantization(
+    "tfl-enable-custom-op-quantization",
+    llvm::cl::desc(
+        "Specifies which pairs of a custom op and indicies are "
+        "quantizable where the indicies are separated with a space."),
+    llvm::cl::ZeroOrMore);
+
 //===----------------------------------------------------------------------===//
 // The prepare-dynamic-range-quantize Pass.
 //
@@ -74,8 +83,7 @@ class PrepareDynamicRangeQuantizePass
   }
 
  public:
-  // Constructor used by the PassRegistration and enforce int8 quantization.
-  // This is only used by test.
+  // Constructor used by the PassRegistration. This is only used by test.
   explicit PrepareDynamicRangeQuantizePass() {
     quant_specs_.inference_type = enable_float16_quantization
                                       ? tensorflow::DT_HALF
@@ -85,6 +93,9 @@ class PrepareDynamicRangeQuantizePass
     quant_specs_.disable_per_channel =
         !enable_dynamic_range_per_channel_quantization;
     quant_specs_.minimum_elements_for_weights = min_elements_for_weights;
+    ParseCustomOpSpecs(enable_custom_op_quantization,
+                       CustomOpUpdateOptions::kINputIndices,
+                       quant_specs_.custom_map);
   }
 
   // Constructor used by manually creating the pass.
@@ -97,6 +108,12 @@ class PrepareDynamicRangeQuantizePass
   StringRef getDescription() const final {
     return "Prepare TFL dialect for dynamic range quantization";
   }
+
+  // The function might contain stats ops which are redundant for processing
+  // dynamic range quantization. And stats ops may cause conflict while
+  // processing the function for dynamic range quantization. Therefore, this
+  // method preprocess the function to remove all stats ops.
+  void removeAllStatsOp(FuncOp func);
 
   void runOnFunction() override;
 
@@ -146,14 +163,30 @@ class PrepareDynamicRangeQuantizableOp
   }
 
  private:
-  // Check if any specific operand is supported for int8 quantization.
+  // Check if the operand_index is included in the quantizable_indices.
+  bool isQuantizableIndex(const int operand_index,
+                          const std::vector<int>& quantizable_indices) const {
+    return std::find(std::begin(quantizable_indices),
+                     std::end(quantizable_indices),
+                     operand_index) != std::end(quantizable_indices);
+  }
+
+  // Check if any specific operand and its index pair is supported for int8
+  // quantization. For dynamic range quantizable ops, it refers to the op
+  // specification for checking the support. For custom ops, it checks the
+  // provided map.
   bool hasInt8QuantizableOperandAt(Operation* op, int operand_index) const {
-    if (auto quantizable_op = dyn_cast<DynamicRangeQuantizedOpInterface>(op)) {
+    if (auto custom_op = llvm::dyn_cast_or_null<CustomOp>(op)) {
+      std::string op_name = custom_op.custom_code().str();
+      auto custom_map_iter = quant_specs_.custom_map.find(op_name);
+      if (custom_map_iter != quant_specs_.custom_map.end())
+        return isQuantizableIndex(
+            operand_index, custom_map_iter->second.quantizable_input_indices);
+    } else if (auto quantizable_op =
+                   llvm::dyn_cast<DynamicRangeQuantizedOpInterface>(op)) {
       const auto& quantizable_indices =
           quantizable_op.GetQuantizableOperandIndices();
-      return std::find(std::begin(quantizable_indices),
-                       std::end(quantizable_indices),
-                       operand_index) != std::end(quantizable_indices);
+      return isQuantizableIndex(operand_index, quantizable_indices);
     }
     return false;
   }
@@ -197,6 +230,8 @@ class PrepareDynamicRangeQuantizableOp
   // quantization for int8 dynamic range quantization.
   bool quantizeOpAsInt8(PatternRewriter& rewriter, arith::ConstantOp op,
                         std::pair<Operation*, int> quant_op) const {
+    bool is_narrow_range = true;
+    bool is_legacy_float = quant_specs_.legacy_float_scale;
     bool is_signed = quant_specs_.IsSignedInferenceType();
     int bit_width = quant_specs_.GetQuantizationTypeWidth();
 
@@ -205,14 +240,18 @@ class PrepareDynamicRangeQuantizableOp
 
     auto affine_user = dyn_cast<AffineQuantizedOpInterface>(quantize_op);
 
-    bool op_with_narrow_range =
-        affine_user &&
-        affine_user.GetAffineOperandIndex() == quantize_operand_num &&
-        affine_user.RequiredNarrowRangeAffineOperand();
+    bool op_with_per_axis_support = false;
 
-    bool op_with_per_axis_support =
-        op_with_narrow_range && affine_user.GetQuantizationDimIndex() != -1 &&
-        !quant_specs_.disable_per_channel;
+    if (!llvm::dyn_cast_or_null<CustomOp>(quantize_op)) {
+      bool op_with_narrow_range =
+          affine_user &&
+          affine_user.GetAffineOperandIndex() == quantize_operand_num &&
+          affine_user.RequiredNarrowRangeAffineOperand();
+
+      op_with_per_axis_support = op_with_narrow_range &&
+                                 affine_user.GetQuantizationDimIndex() != -1 &&
+                                 !quant_specs_.disable_per_channel;
+    }
 
     QuantizedType quant_type = nullptr;
     DenseFPElementsAttr attr;
@@ -232,14 +271,13 @@ class PrepareDynamicRangeQuantizableOp
       quant_type = quant::GetUniformQuantizedPerAxisTypeForWeight(
                        attr, affine_user.GetQuantizationDimIndex(),
                        /*symmetric=*/true, bit_width, is_signed,
-                       /*narrow_range=*/true, quant_specs_.legacy_float_scale)
+                       is_narrow_range, is_legacy_float)
                        .template dyn_cast<quant::QuantizedType>();
     } else {
-      quant_type =
-          quant::GetUniformQuantizedTypeForWeight(
-              attr, op_with_narrow_range && is_signed, bit_width, is_signed,
-              op_with_narrow_range, quant_specs_.legacy_float_scale)
-              .template dyn_cast<quant::QuantizedType>();
+      quant_type = quant::GetUniformQuantizedTypeForWeight(
+                       attr, is_narrow_range && is_signed, bit_width, is_signed,
+                       is_narrow_range, is_legacy_float)
+                       .template dyn_cast<quant::QuantizedType>();
     }
     return insertQDQ(rewriter, op, quant_type, quant_op);
   }
@@ -255,6 +293,17 @@ class PrepareDynamicRangeQuantizableOp
 
     Type expressed_type = op.getResult().getType();
     Type cast_type = quant_type.castFromExpressedType(expressed_type);
+
+    // Insert DQ-op if it does not exist yet. Otherwise, just rewire without
+    // creating a new DQ-op.
+    for (auto connected_op : op->getUsers()) {
+      auto q_op = llvm::dyn_cast_or_null<Q>(connected_op);
+      if (q_op && q_op.getType() == cast_type) {
+        auto dq_op = llvm::cast<DQ>(q_op.getResult().use_begin()->getOwner());
+        quantize_op->setOperand(quantize_operand_num, dq_op);
+        return false;
+      }
+    }
     rewriter.setInsertionPointAfter(op);
     auto q = rewriter.create<Q>(op->getLoc(), cast_type, op.getResult());
     auto dq = rewriter.create<DQ>(op->getLoc(), expressed_type, q);
@@ -377,13 +426,22 @@ class PrepareDynamicRangeQuantizableOp
   QuantizationSpecs quant_specs_;
 };
 
+// Remove all the stats ops which are redundant for dynamic range quantizaiton.
+void PrepareDynamicRangeQuantizePass::removeAllStatsOp(FuncOp func) {
+  func.walk([&](quant::StatisticsOp stats_op) {
+    stats_op.replaceAllUsesWith(stats_op.arg());
+    stats_op.erase();
+  });
+}
+
 void PrepareDynamicRangeQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
 
   ConvertTFLQuantOpsToMlirQuantOps(func);
+  removeAllStatsOp(func);
 
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   patterns.insert<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 

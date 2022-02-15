@@ -97,14 +97,15 @@ static llvm::Error MakeError(xla::Status status) {
 
 // Clones `op` into a function within a module with `arguments`.
 // The `get_global_ops` are the def ops of `arguments`, or null otherwise.
-static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
-    Operation* op, mlir::ValueRange arguments,
-    mlir::MutableArrayRef<GetGlobalOp> get_global_ops) {
+static std::tuple<mlir::OwningOpRef<mlir::ModuleOp>, mlir::FuncOp>
+CloneToModule(Operation* op, mlir::ValueRange arguments,
+              mlir::MutableArrayRef<GetGlobalOp> get_global_ops) {
   auto loc = op->getLoc();
   auto* context = op->getContext();
   mlir::OpBuilder builder(context);
 
-  mlir::OwningModuleRef module_op = builder.create<mlir::ModuleOp>(loc);
+  mlir::OwningOpRef<mlir::ModuleOp> module_op =
+      builder.create<mlir::ModuleOp>(loc);
   builder.setInsertionPointToEnd(module_op->getBody());
   // Clone and annotate the memref.global ops that the memref.get_global ops
   // refer to. The lmhlo.alloc index refers to one of the function arguments.
@@ -138,7 +139,7 @@ static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
     mapping.map(get_global_op, builder.clone(*get_global_op)->getResult(0));
   }
   auto* clone = builder.clone(*op, mapping);
-  auto name_loc = mlir::NameLoc::get(builder.getIdentifier(func_name));
+  auto name_loc = mlir::NameLoc::get(builder.getStringAttr(func_name));
   clone->setLoc(mlir::FusedLoc::get(context, {loc, name_loc}));
   builder.create<mlir::lmhlo::TerminatorOp>(loc);
 

@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
@@ -108,12 +107,21 @@ class GpuExecutable : public Executable {
   // TODO(hanbinyoon): Once BEF replaces Thunks, hide this method as an
   // implementation detail of GpuExecutable.
   // Analyze the entry function to construct buffer allocation and other output
-  // information.
+  // information. Optionally use buffer_param_offset to indicate the position of
+  // buffer parameters in the entry function - in tfrt_gpu dialect, buffer
+  // arguments start from the third parameter (after tfrt::Chain and GpuStream).
   static Status SetUpMlirAllocation(
       mlir::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
       std::vector<BufferAllocation>* allocations,
       absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
-      Shape* output_shape);
+      Shape* output_shape, int buffer_param_offset = 0);
+
+  // Returns an Executable that is loaded from a BEF. This BEF must have entry
+  // point information recorded by use of the tfrt::gpu::setEntryPoint()
+  // function.
+  static StatusOr<std::unique_ptr<Executable>> LoadFromBef(
+      std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
+      xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version);
 
   static StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
@@ -165,6 +173,15 @@ class GpuExecutable : public Executable {
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(Params params);
 
+  // Constructor to use when loading a GpuExecutable from a BEF. Omits setting
+  // class members that aren't used in BEF execution mode.
+  GpuExecutable(std::shared_ptr<HloModule> hlo_module, GpuVersion gpu_version,
+                xla::EntryFunctionAttributes entry_func_attrs,
+                absl::string_view module_name, Shape xla_output_shape,
+                std::vector<BufferAllocation> allocations,
+                absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
+                BefExecutable* bef_executable);
+
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for
   // clients, such as Tensorflow, that use a single stream of execution for
@@ -191,8 +208,7 @@ class GpuExecutable : public Executable {
   StatusOr<BufferAllocations> GenerateBufferAllocations(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      se::DeviceMemoryAllocator* const memory_allocator,
-      se::StreamExecutor* executor);
+      se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal);
 
   StatusOr<se::DeviceMemoryBase> BufferForAllocation(
       VariantArguments arguments,
@@ -240,11 +256,11 @@ class GpuExecutable : public Executable {
 
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.
-  tensorflow::mutex module_handle_mutex_;
+  absl::Mutex module_handle_mutex_;
   std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
-      module_handles_ TF_GUARDED_BY(module_handle_mutex_);
+      module_handles_ ABSL_GUARDED_BY(module_handle_mutex_);
   std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
-      module_globals_ TF_GUARDED_BY(module_handle_mutex_);
+      module_globals_ ABSL_GUARDED_BY(module_handle_mutex_);
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;

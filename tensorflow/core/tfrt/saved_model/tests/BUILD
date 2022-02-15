@@ -12,6 +12,7 @@ package_group(
     name = "internal",
     packages = [
         "//learning/brain/tfrt/tfrt_session/...",
+        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
     ],
 )
@@ -258,6 +259,29 @@ pytype_strict_binary(
 )
 
 pytype_strict_binary(
+    name = "gen_variable_on_tpu",
+    srcs = ["gen_variable_on_tpu.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/module",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+    ],
+)
+
+pytype_strict_binary(
     name = "gen_control_flow_v1",
     srcs = ["gen_control_flow_v1.py"],
     python_version = "PY3",
@@ -389,6 +413,11 @@ gen_saved_model(
 gen_saved_model(
     model_name = "toy_v2",
     script = "gen_saved_model_v2",
+)
+
+gen_saved_model(
+    model_name = "variable_on_tpu",
+    script = "gen_variable_on_tpu",
 )
 
 gen_saved_model(
@@ -530,6 +559,9 @@ tf_cc_test(
         "toy_v2/saved_model.pb",
         "toy_v2/variables/variables.data-00000-of-00001",
         "toy_v2/variables/variables.index",
+        "variable_on_tpu/saved_model.pb",
+        "variable_on_tpu/variables/variables.data-00000-of-00001",
+        "variable_on_tpu/variables/variables.index",
         "while_v1/saved_model.pb",
     ],
     tags = ["no_oss"],

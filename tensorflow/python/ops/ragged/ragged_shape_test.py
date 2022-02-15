@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,13 +26,16 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -41,12 +44,6 @@ from tensorflow.python.ops.ragged.ragged_shape import RaggedShape
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.platform import googletest
-
-
-def _reshape(x, shape: RaggedShape):
-  flat_values = array_ops.reshape(x, shape.inner_shape)
-  return RaggedTensor._from_nested_row_partitions(flat_values,
-                                                  shape.row_partitions)
 
 
 def _to_row_partitions_from_lengths(
@@ -122,7 +119,7 @@ def _to_prime_tensor_from_lengths(
   """Create a tensor of primes with the shape specified."""
   shape = RaggedShape.from_lengths(lengths)
   num_elements = _num_elements_of_lengths(lengths)
-  return _reshape(_lowest_primes(num_elements), shape)
+  return ragged_array_ops.ragged_reshape(_lowest_primes(num_elements), shape)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1020,6 +1017,33 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(static_valid_rowids0, [0, 2, 4])
     self.assertAllEqual(static_valid_rowids1, [0, 1, 2])
 
+  def testZeros(self):
+    shape_x = RaggedShape.from_lengths([3, (1, 3, 2), 4])
+    foo = ragged_array_ops.zeros(shape_x)
+    self.assertShapeEq(shape_x, RaggedShape.from_tensor(foo))
+    self.assertAllEqual(array_ops.zeros([6, 4]), foo.flat_values)
+
+  def testOnes(self):
+    shape_x = RaggedShape.from_lengths([3, (1, 3, 2), 4])
+    foo = ragged_array_ops.ones(shape_x)
+    self.assertShapeEq(shape_x, RaggedShape.from_tensor(foo))
+    self.assertAllEqual(array_ops.ones([6, 4]), foo.flat_values)
+
+  def testReshapeTensor(self):
+    foo = array_ops.zeros([3, 2, 4])
+    shape_b = RaggedShape.from_lengths([3, (3, 2, 1), 4])
+    result = ragged_array_ops.ragged_reshape(foo, shape_b)
+    self.assertShapeEq(shape_b, RaggedShape.from_tensor(result))
+    self.assertAllEqual(array_ops.zeros([6, 4]), result.flat_values)
+
+  def test_reshape_ragged_tensor(self):
+    shape_x = RaggedShape.from_lengths([3, (1, 3, 2), 4])
+    foo = ragged_array_ops.zeros(shape_x)
+    shape_b = RaggedShape.from_lengths([3, (3, 2, 1), 4])
+    result = ragged_array_ops.ragged_reshape(foo, shape_b)
+    self.assertShapeEq(shape_b, RaggedShape.from_tensor(result))
+    self.assertAllEqual(array_ops.zeros([6, 4]), result.flat_values)
+
   @parameterized.parameters([
       dict(
           lengths_a=[3, (1, 4, 2)],
@@ -1148,7 +1172,7 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertShapeEq(actual, shape_e)
     self.assertShapeEq(actual_rev, shape_e)
 
-    rt_a = _reshape(
+    rt_a = ragged_array_ops.ragged_reshape(
         _lowest_primes(_num_elements_of_lengths(lengths_a)), shape_a)
     bc_a_actual = bc_a.broadcast(rt_a)
     bc_a_actual_rev = bc_a_rev.broadcast(rt_a)
@@ -1156,7 +1180,7 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(bc_a_expected, bc_a_actual)
     self.assertAllEqual(bc_a_expected, bc_a_actual_rev)
 
-    rt_b = _reshape(
+    rt_b = ragged_array_ops.ragged_reshape(
         _lowest_primes(_num_elements_of_lengths(lengths_b)), shape_b)
     bc_b_expected = ragged_shape.broadcast_to(rt_b, shape_e)
     bc_b_actual = bc_b.broadcast(rt_b)
@@ -1445,6 +1469,10 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     result1 = ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
     self.assertShapeEq(shape_e, result1)
 
+    # Again, just a wrapper.
+    result2 = ragged_array_ops.broadcast_dynamic_shape(shape_a, shape_b)
+    self.assertShapeEq(shape_e, result2)
+
   def testBroadcastDynamicShapeFirstLayer(self):
     a_0 = constant_op.constant(1, dtypes.int64)
     b_0 = constant_op.constant(3, dtypes.int64)
@@ -1524,6 +1552,11 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         getattr(expected, 'num_row_partitions', 0))
     self.assertAllEqual(result, expected)
 
+    # broadcast_to just calls ragged_shape.broadcast_to, so
+    # this should be sufficient.
+    result2 = ragged_array_ops.broadcast_to(x, shape)
+    self.assertAllEqual(result2, expected)
+
   @parameterized.parameters([
       dict(
           doc='x.shape=[3, (D1)]; y.shape=[3, 1]; bcast.shape=[3, (D1)]',
@@ -1579,6 +1612,190 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
     y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
     result = x + y
+    result_rrank = getattr(result, 'num_row_partitions', 0)
+    self.assertEqual(expected_rrank, result_rrank)
+    if hasattr(expected, 'tolist'):
+      expected = expected.tolist()
+    self.assertAllEqual(result, expected)
+
+  @parameterized.parameters([
+      dict(lengths_a=[3, (1, 4, 2)], new_impl=True, op_max=10),  # Actual ops: 5
+      dict(lengths_a=[3, (1, 4, 2)], new_impl=False, op_max=300),
+  ])
+  def testAddSelf(self, lengths_a, new_impl, op_max, num_row_partitions_a=None):
+    if context.executing_eagerly():
+      return
+    shape_a0 = RaggedShape.from_lengths(
+        lengths_a, num_row_partitions=num_row_partitions_a)
+    rt_a = ragged_array_ops.ragged_reshape(
+        _lowest_primes(_num_elements_of_lengths(lengths_a)), shape_a0)
+    rt_b = rt_a
+    g = rt_a.flat_values.graph if ragged_tensor.is_ragged(rt_a) else rt_a.graph
+    nodes_at_a = len(g.as_graph_def().node)
+    if new_impl:
+      ragged_shape.ragged_binary_elementwise_op_impl(gen_math_ops.add_v2, rt_a,
+                                                     rt_b)
+      nodes_at_b = len(g.as_graph_def().node)
+      node_delta = nodes_at_b - nodes_at_a
+      self.assertLessEqual(node_delta, op_max)
+    else:
+      if isinstance(rt_a, RaggedTensor):
+        rt_a = rt_a.with_row_splits_dtype(dtypes.int32)
+      rt_b = rt_a
+      nodes_at_b = len(g.as_graph_def().node)
+      rt_a + rt_b  # pylint: disable=pointless-statement
+      nodes_at_d = len(g.as_graph_def().node)
+      node_delta = nodes_at_d - nodes_at_b
+      self.assertLessEqual(node_delta, op_max)
+
+  def testAndSelfBool(self):
+    if context.executing_eagerly():
+      return
+    values = constant_op.constant([True, False, True, True, True])
+    rt_a = RaggedTensor.from_row_splits(values, [0, 3, 3, 5])
+    result = ragged_shape.ragged_binary_elementwise_op_impl(
+        gen_math_ops.logical_and, rt_a, rt_a)
+
+    expected_values = values
+    expected = RaggedTensor.from_row_splits(expected_values, [0, 3, 3, 5])
+
+    self.assertAllEqual(result, expected)
+
+  def testEquals(self):
+    if context.executing_eagerly():
+      return
+
+    rt_a = ragged_factory_ops.constant([[3, 1, 3], [3]])
+    b = constant_op.constant(3)
+    rt_expected = ragged_factory_ops.constant([[True, False, True], [True]])
+
+    result = ragged_shape.ragged_binary_elementwise_op_impl(
+        math_ops.equal, rt_a, b)
+    self.assertAllEqual(result, rt_expected)
+
+  def testEquals2(self):
+    splits = constant_op.constant([0, 1])
+    a = RaggedTensor.from_row_splits([[1, 2]], splits)
+    b = RaggedTensor.from_row_splits([[3, 4, 5]], splits)
+    self.assertIs(a == b, False)
+
+  def testEquals3(self):
+    a = RaggedTensor.from_row_splits([[1, 2]], [0, 1])
+    b = RaggedTensor.from_row_splits([[3, 4, 5]], [0, 1])
+    self.assertIs(a == b, False)
+
+  @parameterized.parameters([
+      dict(
+          lengths_a=[3, (1, 4, 2)], lengths_b=[], new_impl=True,
+          max_num_ops=5),  # Actual ops: 1
+      dict(
+          lengths_a=[3, (1, 4, 2), 3, 2],
+          lengths_b=[3, 2],
+          new_impl=True,
+          max_num_ops=5),  # Actual ops: 1
+      dict(
+          lengths_a=[3, (1, 4, 2)], lengths_b=[], new_impl=False,
+          max_num_ops=5),  # Actual ops: 1
+      dict(
+          lengths_a=[3, (1, 4, 2), 3, 2],
+          lengths_b=[3, 2],
+          new_impl=False,
+          max_num_ops=5),  # Actual ops: 1
+  ])
+  def testAdd(self,
+              lengths_a,
+              lengths_b,
+              new_impl,
+              max_num_ops,
+              num_row_partitions_a=None,
+              num_row_partitions_b=None):
+    if context.executing_eagerly():
+      return
+
+    shape_a0 = RaggedShape.from_lengths(
+        lengths_a, num_row_partitions=num_row_partitions_a)
+    shape_b0 = RaggedShape.from_lengths(
+        lengths_b, num_row_partitions=num_row_partitions_b)
+    rt_a = ragged_array_ops.ragged_reshape(
+        _lowest_primes(_num_elements_of_lengths(lengths_a)), shape_a0)
+    rt_b = ragged_array_ops.ragged_reshape(
+        _lowest_primes(_num_elements_of_lengths(lengths_b)), shape_b0)
+    g = rt_a.flat_values.graph if ragged_tensor.is_ragged(rt_a) else rt_a.graph
+
+    nodes_at_a = len(g.as_graph_def().node)
+    if new_impl:
+      ragged_shape.ragged_binary_elementwise_op_impl(gen_math_ops.add_v2, rt_a,
+                                                     rt_b)
+      nodes_at_b = len(g.as_graph_def().node)
+      num_nodes = nodes_at_b - nodes_at_a
+      self.assertLessEqual(num_nodes, max_num_ops)
+    else:
+      if isinstance(rt_a, RaggedTensor):
+        rt_a = rt_a.with_row_splits_dtype(dtypes.int32)
+      if isinstance(rt_b, RaggedTensor):
+        rt_b = rt_b.with_row_splits_dtype(dtypes.int32)
+      nodes_at_b = len(g.as_graph_def().node)
+      rt_a + rt_b  # pylint: disable=pointless-statement
+      nodes_at_d = len(g.as_graph_def().node)
+      num_nodes = nodes_at_d - nodes_at_b
+      self.assertLessEqual(num_nodes, max_num_ops)
+
+  @parameterized.parameters([
+      dict(
+          doc='x.shape=[3, (D1)]; y.shape=[3, 1]; bcast.shape=[3, (D1)]',
+          x=ragged_factory_ops.constant_value([[1, 2, 3], [], [4, 5]],
+                                              dtype=np.int32),
+          y=[[10], [20], [30]],
+          expected=ragged_factory_ops.constant_value([[11, 12, 13], [],
+                                                      [34, 35]])),
+      dict(
+          doc='x.shape=[3, (D1)]; y.shape=[]; bcast.shape=[3, (D1)]',
+          x=ragged_factory_ops.constant_value([[1, 2, 3], [], [4, 5]],
+                                              dtype=np.int32),
+          y=10,
+          expected=ragged_factory_ops.constant_value([[11, 12, 13], [],
+                                                      [14, 15]])),
+      dict(
+          doc='x.shape=[1, (D1)]; y.shape=[3, 1]; bcast.shape=[3, (D1)]',
+          x=ragged_factory_ops.constant_value([[1, 2, 3]], dtype=np.int32),
+          y=[[10], [20], [30]],
+          expected=ragged_factory_ops.constant_value(
+              [[11, 12, 13], [21, 22, 23], [31, 32, 33]], dtype=np.int32)),
+      dict(
+          doc=('x.shape=[2, (D1), 1]; y.shape=[1, (D2)]; '
+               'bcast.shape=[2, (D1), (D2)]'),
+          x=ragged_factory_ops.constant_value([[[1], [2], [3]], [[4]]],
+                                              ragged_rank=1),
+          y=ragged_factory_ops.constant_value([[10, 20, 30]]),
+          expected=ragged_factory_ops.constant_value([[[11, 21,
+                                                        31], [12, 22, 32],
+                                                       [13, 23, 33]],
+                                                      [[14, 24, 34]]])),
+      dict(
+          doc=('x.shape=[2, (D1), 1]; y.shape=[1, 1, 4]; '
+               'bcast.shape=[2, (D1), 4]'),
+          x=ragged_factory_ops.constant_value([[[10], [20]], [[30]]],
+                                              ragged_rank=1),
+          y=[[[1, 2, 3, 4]]],
+          expected=ragged_factory_ops.constant_value(
+              [[[11, 12, 13, 14], [21, 22, 23, 24]], [[31, 32, 33, 34]]],
+              ragged_rank=1)),
+      dict(
+          doc=('x.shape=[2, (D1), 2, 1]; y.shape=[2, (D2)]; '
+               'bcast.shape=[2, (D1), (2), (D2)'),
+          x=ragged_factory_ops.constant_value(
+              [[[[1], [2]], [[3], [4]]], [[[5], [6]]]], ragged_rank=1),
+          y=ragged_factory_ops.constant_value([[10, 20], [30]]),
+          expected=ragged_factory_ops.constant_value([[[[11, 21], [32]],
+                                                       [[13, 23], [34]]],
+                                                      [[[15, 25], [36]]]])),
+  ])
+  def testRaggedDispatchImplWithBroadcasting(self, x, y, expected, doc):
+    expected_rrank = getattr(expected, 'num_row_partitions', 0)
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
+    y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
+    result = ragged_shape.ragged_binary_elementwise_op_impl(gen_math_ops.add_v2,
+                                                            x, y)
     result_rrank = getattr(result, 'num_row_partitions', 0)
     self.assertEqual(expected_rrank, result_rrank)
     if hasattr(expected, 'tolist'):
@@ -1641,6 +1858,23 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(
         '<RaggedShape lengths=[2, (1, 2), 3] num_row_partitions=1>', actual)
 
+  def assertDimsEqual(self, x: tensor_shape.TensorShape,
+                      y: tensor_shape.TensorShape):
+    if x.rank is None:
+      self.assertIsNone(
+          y.rank,
+          'x has an unknown rank, but y does not: x={}, y={}'.format(x, y))
+      return
+    self.assertIsNotNone(
+        y.rank,
+        'y has an unknown rank, but x does not: x={}, y={}'.format(x, y))
+    self.assertAllEqual(x.as_list(), y.as_list())
+
+  def testToTensorShapeRankKnown(self):
+    a = RaggedShape.from_lengths([2, (1, 2), 3])
+    actual = a._to_tensor_shape()
+    self.assertDimsEqual(tensor_shape.TensorShape([2, None, 3]), actual)
+
   def testReprRankUnknown(self):
 
     @def_function.function(
@@ -1650,6 +1884,17 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       actual = str(a)
       self.assertEqual(
           '<RaggedShape lengths=[2, (3, 3), ...] num_row_partitions=1>', actual)
+
+    foo([6, 3])
+
+  def testToTensorShapeRankUnknown(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+    def foo(inner_shape):
+      a = RaggedShape([RowPartition.from_row_lengths([3, 3])], inner_shape)
+      actual = a._to_tensor_shape()
+      self.assertDimsEqual(
+          tensor_shape.TensorShape(None), actual)
 
     foo([6, 3])
 
@@ -1977,6 +2222,18 @@ class RaggedShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ValueError, 'Input RaggedTensors have mismatched row_splits dtypes'):
       math_ops.add(x, y)
 
+  def testAddRowPartitionsInvalidV1(self):
+    if not context.executing_eagerly():
+      return
+
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        'Last row partition does not match flat_values.'):
+      rt = ragged_factory_ops.constant([[3], [4, 5], [6]])
+      rt_shape = RaggedShape.from_tensor(rt)
+      new_flat_values = constant_op.constant(['a', 'b', 'c', 'd', 'e'])
+      rt_shape._add_row_partitions(new_flat_values, validate=True)
+
 
 class RaggedShapeErrorTest(parameterized.TestCase):
 
@@ -2122,7 +2379,8 @@ class RaggedShapeErrorTest(parameterized.TestCase):
       foo([3, 7, 5])
 
   def testBroadcastDynamicShapeExtendedRankNone(self):
-    with self.assertRaisesRegex(ValueError, 'Rank of both shapes'):
+    with self.assertRaisesRegex(ValueError,
+                                'Unable to broadcast: unknown rank'):
 
       @def_function.function(
           input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
@@ -2197,6 +2455,18 @@ class RaggedShapeErrorTest(parameterized.TestCase):
     values = math_ops.add(values, array_ops.ones_like(values))
     local_zeros = array_ops.zeros_like(values)
     values = array_ops.where(mask, local_zeros, values)
+
+  def testAddRowPartitionsInvalid(self):
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, ValueError),
+        'Last row partition does not match flat_values.'):
+      sess = session.Session()
+      with sess.as_default():
+        rt = ragged_factory_ops.constant([[3], [4, 5], [6]])
+        rt_shape = RaggedShape.from_tensor(rt)
+        new_flat_values = constant_op.constant(['a', 'b', 'c'])
+        rt2 = rt_shape._add_row_partitions(new_flat_values, validate=True)
+        sess.run([rt2])
 
 
 if __name__ == '__main__':

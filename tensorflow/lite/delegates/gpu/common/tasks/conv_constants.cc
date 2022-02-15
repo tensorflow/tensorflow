@@ -256,6 +256,10 @@ bool IsConvConstantsSupported(const GpuInfo& gpu_info,
     }
   }
 
+  if (attr.groups != 1) {
+    return false;
+  }
+
   const bool use_dot_conv =
       IsDotConvBetter(attr.weights.shape.i, attr.weights.shape.o);
   const auto& w_shape = attr.weights.shape;

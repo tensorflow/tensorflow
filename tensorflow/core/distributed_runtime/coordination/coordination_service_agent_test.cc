@@ -41,10 +41,10 @@ using ::testing::WithArgs;
 class TestCoordinationClient : public CoordinationClient {
  public:
   TestCoordinationClient() = default;
-
-  MOCK_METHOD(void, GetKeyValueAsync,
-              (const GetKeyValueRequest*, GetKeyValueResponse*,
-               StatusCallback));
+  // MOCK_METHOD does not work on Windows build, using deprecated MOCK_METHOD3
+  // instead.
+  MOCK_METHOD3(GetKeyValueAsync, void(const GetKeyValueRequest*,
+                                      GetKeyValueResponse*, StatusCallback));
 
   void RegisterWorkerAsync(CallOptions* opts,
                            const RegisterWorkerRequest* request,

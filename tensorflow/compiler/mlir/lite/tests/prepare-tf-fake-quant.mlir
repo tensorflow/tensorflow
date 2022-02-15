@@ -51,7 +51,7 @@ func @WrappedFakeQuantFolded() -> tensor<8xf32> {
   %max = arith.constant dense<255.0> : tensor<f32>
   %mini = "tf.Identity"(%min) : (tensor<f32>) -> tensor<f32>
   %maxi = "tf.Identity"(%max) : (tensor<f32>) -> tensor<f32>
-  %rst = "tfl.custom_tf"(%in, %mini, %maxi) ( {
+  %rst = "tfl.custom_tf"(%in, %mini, %maxi) ({
   ^bb0(%arg1: tensor<8xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>):
     %2 = "tf.FakeQuantWithMinMaxVars"(%arg1, %arg2, %arg3) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
     "tfl.yield"(%2) : (tensor<8xf32>) -> ()

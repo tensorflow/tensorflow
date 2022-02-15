@@ -478,7 +478,7 @@ def TFL_ComparisonBinaryBuilder :
 // TFL op base class.
 //===----------------------------------------------------------------------===//
 
-class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
+class TFL_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFL_Dialect, mnemonic, !listconcat(traits,
       [DeclareOpInterfaceMethods<TFL_RuntimeVerification>])> {
   // FlatBuffer generation specific information.
@@ -501,7 +501,7 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 }
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index,
-                 list<OpTrait> additional_traits = []> :
+                 list<Trait> additional_traits = []> :
     TFL_Op<mnemonic,[NoSideEffect,
                      AccumulatorUniformScale<2, 0, 1>,
                      AffineQuantizedOpInterface,
@@ -3793,6 +3793,27 @@ value of `input` in the unique output `output`. In other words:
     }], [{
       TypeAttr::get(getResult(1).getType().cast<TensorType>().getElementType())
     }]>;
+
+  let hasOptions = 1;
+}
+
+def TFL_GeluOp: TFL_Op<"gelu", [
+    NoSideEffect,
+    SameOperandsAndResultShape,
+    QuantizableResult,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = "GELU activation function.";
+  let description = [{
+    Computes GELU activation function element-wise.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, QI8, QUI8]>:$input,
+    DefaultValuedAttr<BoolAttr, "false">:$approximate
+  );
+
+  let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
 
   let hasOptions = 1;
 }

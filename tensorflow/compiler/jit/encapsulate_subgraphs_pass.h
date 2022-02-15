@@ -103,12 +103,6 @@ extern const char* const kXlaNumResourceArgsAttr;
 // Name of the attribute defining whether the cluster has reference variables.
 extern const char* const kXlaHasReferenceVarsAttr;
 
-// Sorts each node's control inputs by their names. This guarantees that for two
-// structurally equivalent GraphDefs, we get the same traversal ordering on
-// node's control input fields.
-// TODO(hpucha): Move the utilities to a more appropriate place.
-void SortControlInputs(GraphDef* gdef);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_ENCAPSULATE_SUBGRAPHS_PASS_H_

@@ -33,8 +33,8 @@ namespace cpu {
 namespace {
 
 // Lower an MLIR module to an LLVM module.
-std::unique_ptr<llvm::Module> MakeLLVMModule(mlir::OwningModuleRef module,
-                                             llvm::LLVMContext *context) {
+std::unique_ptr<llvm::Module> MakeLLVMModule(
+    mlir::OwningOpRef<mlir::ModuleOp> module, llvm::LLVMContext *context) {
   // When set, the LLVM backend will be allowed to reassociate floating-point
   // reductions, which enables much more efficient "horizontal" SIMD
   // implementations.
@@ -111,7 +111,7 @@ Status EmitMlirFuncAndCall(
   auto function = mlir::FuncOp::create(
       loc, func_name, mlir::FunctionType::get(context, operand_types, {}));
   function.addEntryBlock();
-  mlir::OwningModuleRef mlir_module = mlir::ModuleOp::create(loc);
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(loc);
   mlir_module->push_back(function);
   mlir::OpBuilder op_builder(&function.getBody());
   emitter(&op_builder, function);

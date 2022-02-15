@@ -43,7 +43,6 @@ using ::tfrt::ArrayRef;
 using ::tfrt::AsyncValue;
 using ::tfrt::HostContext;
 using ::tfrt::RCReference;
-using ::tfrt::SmallVector;
 
 // Op attributes.
 constexpr char kEnableAdaptiveSchedulerAttr[] = "_enable_adaptive_scheduler";
@@ -536,14 +535,14 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     const BatchTask& last_task, absl::Span<const Tensor> inputs,
     std::vector<Tensor>* combined_outputs,
     std::function<void(const Status&)> done) const {
-  SmallVector<AsyncValue*, 8> arguments;
+  llvm::SmallVector<AsyncValue*, 8> arguments;
   arguments.reserve(inputs.size() + 1);
   // The first argument is a Chain.
   arguments.push_back(tfrt::GetReadyChain().release());
   for (auto& input : inputs) {
     arguments.push_back(TFTensorToFallbackTensor(input).release());
   }
-  SmallVector<RCReference<AsyncValue>, 4> results;
+  llvm::SmallVector<RCReference<AsyncValue>, 4> results;
   results.resize(bef_func_->result_types().size());
   assert(results.size() > 1);
   assert(bef_func_->result_types().front().GetName() == "!tfrt.chain");
@@ -585,7 +584,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
 
   // The first result is a Chain.
   combined_outputs->reserve(results.size() - 1);
-  SmallVector<const tfrt::DecodedDiagnostic*, 3> errors;
+  llvm::SmallVector<const tfrt::DecodedDiagnostic*, 3> errors;
   for (int i = 1, e = results.size(); i != e; ++i) {
     combined_outputs->emplace_back();
     auto& result = results[i];

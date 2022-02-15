@@ -38,7 +38,14 @@ class ServerDef;
 //
 // See CoordinationServiceInterface for more details on coordination service.
 //
-// Experimental feature. Not yet implemented in open source.
+// Possible service errors:
+//    - errors::Internal: Coordination service is not enabled.
+//    - errors::Aborted: Incarnation mismatch during heartbeat (either remote
+//                       task or coordination service has restarted).
+//    - errors::Unavailable: Heartbeat timeout from remote task (failed,
+//                           crashed or got preempted).
+//    - errors::InvalidArgument: Unexpected heartbeat from remote task (not
+//                               registered or wrong config).
 class CoordinationServiceAgent {
  public:
   using StatusOrValueCallback =
@@ -65,10 +72,17 @@ class CoordinationServiceAgent {
   //   - connect to service address specified in the config of `server_def`
   //   - register itself as a worker to the service
   //   - start a thread to periodically send heartbeat message with the service
+  // Possible service errors:
+  //   - FailedPrecondition: Agent is not in DISCONNECTED state.
+  //   - InvalidArgument: Unexpected worker registration
+  //   - Aborted: Duplicate worker registration
   virtual Status Connect() = 0;
 
   // Wait for all tasks to be up and registered. The call blocks until all tasks
   // in the cluster are up, or some error occurs.
+  // Possible service errors:
+  //   - FailedPrecondition: Agent is not in RUNNING state.
+  //   - InvalidArgument: Unexpected worker request
   virtual Status WaitForAllTasks(
       const CoordinationServiceDeviceInfo& local_devices) = 0;
 
@@ -94,19 +108,26 @@ class CoordinationServiceAgent {
                                             const int task_id) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
+  // Possible service errors:
+  //   - FailedPrecondition: Uninitialized/disconnected/already in error state.
+  //   - InvalidArgument: Unexpected worker request
   virtual Status ReportError(const Status& error) = 0;
 
   // Disconnect from the service, and clean up the internal error status.
   virtual Status Reset() = 0;
 
   // Get config key-value from the service.
+  // Agent does not need to be connected to utilize the distributed key-value
+  // store.
+  //   - errors::DeadlineExceeded: timed out waiting for key.
   virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
   virtual StatusOr<std::string> GetKeyValue(const std::string& key,
                                             absl::Duration timeout) = 0;
   virtual void GetKeyValueAsync(const std::string& key,
                                 StatusOrValueCallback done) = 0;
 
-  // Insert config key-value to the service. Return error if key is already set.
+  // Insert config key-value to the service.
+  //   - errors::AlreadyExists: key is already set.
   virtual Status InsertKeyValue(const std::string& key,
                                 const std::string& value) = 0;
 

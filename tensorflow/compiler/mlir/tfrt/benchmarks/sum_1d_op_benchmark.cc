@@ -20,40 +20,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-std::string Sum1D(bool dynamic, int32_t size) {
-  return GetReductionIR("tf.Sum", {size}, {dynamic}, {0}, "f32");
-}
-
-auto EigenSum1D() {
-  return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice> device) {
-    std::array<int64_t, 1> dims_to_reduce{0};
-    Tensor output(DT_FLOAT, {});
-
-    auto in = inputs[0].tensor<float, 1>();
-    auto out = output.tensor<float, 0>();
-    out.setZero();
-
-    if (device.hasValue()) {
-      out.device(*device) = in.sum(dims_to_reduce);
-    } else {
-      out = in.sum(dims_to_reduce);
-    }
-  };
-}
-
-llvm::SmallVector<InputTensorSpec> Inputs(ssize_t dim) {
-  return {InputTensorSpec(DT_FLOAT, {dim})};
-}
-
-#define BM(FN) BM_##FN->Arg(0);
-
-#define BM_SUITE(NAME, DYNAMIC, SIZE)                           \
-  BM(CpurtV(NAME, Sum1D(DYNAMIC, SIZE), "main", Inputs(SIZE))); \
-  BM(Eigen(NAME, EigenSum1D(), Inputs(SIZE)));                  \
-  BM(Tfrt(NAME, Sum1D(DYNAMIC, SIZE), "main", Inputs(SIZE)))
-
-#define BM_DYNAMIC(SIZE) BM_SUITE(SumDynamic_##SIZE, kDynamicDim, SIZE)
+#define BM_DYNAMIC(SIZE)                                                    \
+  BM_SUITE_SUM_F32(SumDynamic_##SIZE, 1, INTS(SIZE), BOOLS(kDynamicDim), 1, \
+                   INTS(0))
 BM_DYNAMIC(3);
 BM_DYNAMIC(8);
 BM_DYNAMIC(80);
@@ -63,7 +32,9 @@ BM_DYNAMIC(8131);
 BM_DYNAMIC(1000000);
 BM_DYNAMIC(1010131);
 
-#define BM_STATIC(SIZE) BM_SUITE(SumStatic_##SIZE, kStaticDim, SIZE)
+#define BM_STATIC(SIZE)                                                   \
+  BM_SUITE_SUM_F32(SumStatic_##SIZE, 1, INTS(SIZE), BOOLS(kStaticDim), 1, \
+                   INTS(0))
 BM_STATIC(3);
 BM_STATIC(8);
 BM_STATIC(80);

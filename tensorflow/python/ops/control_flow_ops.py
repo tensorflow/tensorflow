@@ -21,8 +21,6 @@ import abc
 import collections
 import functools
 
-import six
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import control_flow_pb2
 from tensorflow.python.eager import context
@@ -635,8 +633,7 @@ def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
   return v
 
 
-@six.add_metaclass(abc.ABCMeta)
-class ControlFlowContext(object):
+class ControlFlowContext(metaclass=abc.ABCMeta):
   """The base class for control flow context.
 
   The usage pattern is a sequence of (Enter, Exit) followed by a final
@@ -786,17 +783,17 @@ class ControlFlowContext(object):
     # A control input of `op` is internal if it is in the same while
     # loop context as the enclosing while loop context of self.
     if while_ctxt is None:
-      internal_control_inputs = op.control_inputs
+      internal_control_inputs, external_control_inputs = op.control_inputs, []
     else:
-      internal_control_inputs = []
+      internal_control_inputs, external_control_inputs = [], []
       for x in op.control_inputs:
         ctxt = util.GetOutputContext(x)
         if ctxt is not None and ctxt.GetWhileContext() == while_ctxt:
           internal_control_inputs.append(x)
-    external_control_inputs = []
+        else:
+          external_control_inputs.append(x)
     if len(internal_control_inputs) != len(op.control_inputs):
-      external_control_inputs = list(
-          set(op.control_inputs) - set(internal_control_inputs))
+      # TODO(mdan): perhaps there should be a replace_control_inputs()
       op._remove_all_control_inputs()
       op._add_control_inputs(internal_control_inputs)
     return internal_control_inputs, external_control_inputs

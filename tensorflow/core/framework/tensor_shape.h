@@ -171,7 +171,8 @@ class TensorShapeBase : public TensorShapeRep {
   /// Construct an empty TensorShape, or an unknown rank PartialTensorShape
   TensorShapeBase();
 
-  // TODO(mihaimaruseac): Mark this explicit in a subsequent change
+  // Cannot be made explicit because we rely on conversion between proto and
+  // `TensorShapeBase` throughtout the codebase (needs bigger cleanup)
   TensorShapeBase(const TensorShapeProto& proto);
 
   // These factory methods should be used instead of the constructors that take

@@ -2254,7 +2254,7 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
 
 void LegalizeTF::runOnFunction() {
   auto* ctx = &getContext();
-  OwningRewritePatternList patterns(ctx);
+  RewritePatternSet patterns(ctx);
   auto func = getFunction();
   populateLegalizeTFPatterns(ctx, patterns);
 

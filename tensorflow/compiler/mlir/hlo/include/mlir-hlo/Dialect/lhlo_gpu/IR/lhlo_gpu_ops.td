@@ -27,7 +27,7 @@ include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.td"
 
-class LHLOGPU_Op<string mnemonic, list<OpTrait> traits = []> :
+class LHLOGPU_Op<string mnemonic, list<Trait> traits = []> :
   Op<LHLO_GPU_Dialect, mnemonic,
     !listconcat([MemoryEffects<[MemRead, MemWrite]>], traits)>;
 
@@ -36,73 +36,6 @@ def UntypedBuffer : MemRefRankOf<[I8], [1]>;
 
 // Cholesky info output buffer type.
 def I32Buffer : MemRefOf<[I32]>;
-
-//===----------------------------------------------------------------------===//
-// LMHLO ops representing batch norm library functions.
-//===----------------------------------------------------------------------===//
-
-// Note: these are semantically different from similar LHLO as the GPU library
-// calls generate or consume standard deviation, whereas LHLO ops generate or
-// consume variance (= std-dev ^ 2).
-
-def LHLOGPU_BatchNormGradOp : LHLOGPU_Op<"batch_norm_grad"> {
-  let summary = "Batch Normalization Gradient";
-  let description = [{
-    Calculates gradients of batch norm.
-
-    See https://www.tensorflow.org/xla/operation_semantics#batchnormgrad
-  }];
-  let arguments = (ins
-    Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$mean,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$stddev,
-    Arg<LHLO_FpBuffer, "", [MemRead]>:$grad_output,
-    Arg<LHLO_FpBuffer, "", [MemWrite]>:$grad_operand,  // gradient of $operand.
-    Arg<LHLO_FpBuffer,      "", [MemWrite]>:$grad_scale,
-    Arg<LHLO_FpBuffer,      "", [MemWrite]>:$grad_offset,
-    F32Attr:$epsilon,
-    I64Attr:$feature_index
-  );
-}
-
-def LHLOGPU_BatchNormInferenceOp : LHLOGPU_Op<"batch_norm_inference"> {
-  let summary = "Batch Normalization for Inference";
-  let description = [{
-    Normalizes an array across batch and spatial dimensions.
-
-    See https://www.tensorflow.org/xla/operation_semantics#batchnorminference
-  }];
-  let arguments = (ins
-    Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$offset,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$mean,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$stddev,
-    Arg<LHLO_FpBuffer, "", [MemWrite]>:$output,
-    F32Attr:$epsilon,
-    I64Attr:$feature_index);
-}
-
-def LHLOGPU_BatchNormTrainingOp : LHLOGPU_Op<"batch_norm_training"> {
-  let summary = "Batch Normalization for Training";
-  let description = [{
-    Normalizes an array across batch and spatial dimensions.
-
-    See https://www.tensorflow.org/xla/operation_semantics#batchnormtraining
-  }];
-
-  let arguments = (ins
-    Arg<LHLO_FpBuffer, "", [MemRead]>:$operand,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$scale,
-    Arg<LHLO_FpBuffer,      "", [MemRead]>:$offset,
-    Arg<LHLO_FpBuffer, "", [MemWrite]>:$output,
-    Arg<LHLO_FpBuffer,      "", [MemWrite]>:$batch_mean,
-    Arg<LHLO_FpBuffer,      "", [MemWrite]>:$batch_stddev,
-    F32Attr:$epsilon,
-    I64Attr:$feature_index
-  );
-}
 
 //===----------------------------------------------------------------------===//
 // LMHLO ops representing convolution library functions.

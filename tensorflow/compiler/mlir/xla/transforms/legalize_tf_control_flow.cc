@@ -102,12 +102,14 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
   auto entry_block = builder.createBlock(dest_region);
   CallOp result;
   if (!tuple_arg) {
-    auto args = entry_block->addArguments(func.getType().getInputs());
+    auto inputs = func.getType().getInputs();
+    auto args = entry_block->addArguments(
+        inputs, SmallVector<Location>(inputs.size(), loc));
     ArrayRef<Value> callop_args(args.begin(), args.end());
     result = builder.create<CallOp>(loc, func, callop_args);
   } else {
     auto tuple_arg = entry_block->addArgument(
-        builder.getTupleType(func.getType().getInputs()));
+        builder.getTupleType(func.getType().getInputs()), loc);
     llvm::SmallVector<Value, 4> detupled_args;
     detupled_args.reserve(func.getNumArguments());
 
@@ -204,7 +206,7 @@ void LowerWhile(TF::WhileOp op) {
 // type `tuple_type`. Single block arguments are removed and remapped to
 // get_tuple_element(tuple_arg, index).
 void ReplaceBlockArgs(Block* block, Type tuple_type, OpBuilder* builder) {
-  auto tuple_arg = block->addArgument(tuple_type);
+  auto tuple_arg = block->addArgument(tuple_type, block->getParent()->getLoc());
   Detuple(tuple_arg, block->getArguments().drop_back(1), builder);
   for (int i = block->getNumArguments() - 2; i >= 0; --i)
     block->eraseArgument(i);
@@ -274,7 +276,7 @@ Value TupleImplicitInputs(Region& region, Location loc, OpBuilder* builder) {
   // instead all inputs used by their branch regions are implicitly captured
   // from above.
   assert(block.getNumArguments() == 0);
-  block.addArgument(tuple_input.getType());
+  block.addArgument(tuple_input.getType(), loc);
   builder->setInsertionPointToStart(&block);
   ReplaceImplicitInputsWithTupleElements(&block, /*offset=*/0,
                                          implicit_inputs_ref, builder);
@@ -382,7 +384,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
 
   // Add args corresponding to 'implicit_inputs'.
   for (const auto& implicit_input : implicit_inputs)
-    cond_block.addArgument(implicit_input.getType());
+    cond_block.addArgument(implicit_input.getType(), loc);
   ReplaceImplicitInputs(&cond_block, inputs_size,
                         implicit_inputs.getArrayRef());
   // Cond always returns a single result of bool type.
@@ -397,7 +399,7 @@ void LowerWhileRegion(TF::WhileRegionOp op) {
   builder.setInsertionPointToStart(&body_block);
   // Add args corresponding to 'implicit_inputs'.
   for (const auto& implicit_input : implicit_inputs)
-    body_block.addArgument(implicit_input.getType());
+    body_block.addArgument(implicit_input.getType(), loc);
   auto implicit_input_elements = ReplaceImplicitInputs(
       &body_block, inputs_size, implicit_inputs.getArrayRef());
   ReplaceTerminator(&body_block, implicit_input_elements, &builder, false);

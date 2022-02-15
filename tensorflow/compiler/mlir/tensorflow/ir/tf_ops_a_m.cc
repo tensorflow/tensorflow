@@ -89,7 +89,7 @@ namespace {
 // AddOp
 //===----------------------------------------------------------------------===//
 
-void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void AddOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
   results.insert<AddToAddV2>(context);
 }
@@ -144,7 +144,7 @@ OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
 // AddV2Op
 //===----------------------------------------------------------------------===//
 
-void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void AddV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
   results.insert<AddV2OfNegLeft, AddV2OfNegRight>(context);
 }
@@ -195,7 +195,7 @@ struct AssertWithTrue : public OpRewritePattern<AssertOp> {
 };
 }  // namespace
 
-void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void AssertOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   results.insert<AssertWithTrue>(context);
 }
@@ -300,13 +300,13 @@ static LogicalResult Verify(OpT op) {
   return success();
 }
 
-void BatchMatMulOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void BatchMatMulOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                MLIRContext *context) {
   results.insert<BatchMatMulToV2>(context);
 }
 
-void BatchMatMulV2Op::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void BatchMatMulV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                  MLIRContext *context) {
   results.insert<BatchMatMulV2ToMatMul>(context);
 }
 
@@ -453,8 +453,8 @@ static LogicalResult Verify(BatchToSpaceOp op) {
   return success();
 }
 
-void BatchToSpaceOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void BatchToSpaceOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                 MLIRContext *context) {
   results.insert<BatchToSpaceToBatchToSpaceND>(context);
 }
 
@@ -576,7 +576,7 @@ static LogicalResult Verify(BiasAddGradOp op) {
 // BiasAddV1Op
 //===----------------------------------------------------------------------===//
 
-void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void BiasAddV1Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
   results.insert<BiasAddV1ToBiasAdd>(context);
 }
@@ -585,7 +585,7 @@ void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // arith::BitcastOp
 //===----------------------------------------------------------------------===//
 
-void BitcastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void BitcastOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
   results.insert<BitcastSameType, BitcastNested>(context);
 }
@@ -791,7 +791,7 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
   return success();
 }
 
-void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void CaseOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
   results.insert<FoldConstantCaseOp, DropAttributes<CaseOp>>(context);
 }
@@ -966,8 +966,8 @@ class CaseOrIfRegionEliminatePassThrough
 };
 }  // namespace
 
-void CaseRegionOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void CaseRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                               MLIRContext *context) {
   results.insert<CaseOrIfRegionEliminatePassThrough<TF::CaseRegionOp>>(context);
 }
 
@@ -1005,7 +1005,7 @@ static LogicalResult Verify(OpT op) {
                                   /*mask_one_dim=*/true, op.getOperation());
 }
 
-void ConcatOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void ConcatOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   results.insert<ConvertToConcatV2>(context);
 }
@@ -1335,7 +1335,7 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(
 
 }  // namespace
 
-void ConcatV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void ConcatV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.insert<HoistCwiseBinaryOutOfConcat, HoistCwiseUnaryOutOfConcat>(
       context);
@@ -2116,7 +2116,7 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
 };
 }  // namespace
 
-void DivNoNanOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void DivNoNanOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.insert<DivNoNanOrMulNoNanConstantY<TF::DivNoNanOp, TF::DivOp>>(
       context);
@@ -2126,7 +2126,7 @@ void DivNoNanOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // DivOp
 //===----------------------------------------------------------------------===//
 
-void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void DivOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
   results.insert<DivWithSqrtDivisor>(context);
 }
@@ -2305,28 +2305,29 @@ static LogicalResult Verify(EmptyTensorListOp op) {
 // For EnqueueTPUEmbedding ops the device ordinal corresponds to the resource
 // instance.
 
-int64_t EnqueueTPUEmbeddingArbitraryTensorBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string
+EnqueueTPUEmbeddingArbitraryTensorBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
-int64_t EnqueueTPUEmbeddingBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string EnqueueTPUEmbeddingBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
-int64_t EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string EnqueueTPUEmbeddingIntegerBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
-int64_t EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string EnqueueTPUEmbeddingRaggedTensorBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
-int64_t EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string EnqueueTPUEmbeddingSparseBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
-int64_t EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceId() {
-  return device_ordinal();
+std::string EnqueueTPUEmbeddingSparseTensorBatchOp::GetResourceInstanceStr() {
+  return std::to_string(device_ordinal());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2412,12 +2413,12 @@ static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter &rewriter) {
 }
 }  // namespace
 
-void EqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void EqualOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
   results.insert(flipComatibleShapeError<EqualOp>);
 }
 
-void NotEqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void NotEqualOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.insert(flipComatibleShapeError<NotEqualOp>);
 }
@@ -2776,7 +2777,7 @@ static LogicalResult Verify(GatherV2Op op) {
   return success();
 }
 
-void GatherOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void GatherOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   results.insert<GatherToV2>(context);
 }
@@ -2844,7 +2845,7 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
 }
 }  // anonymous namespace
 
-void IfOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void IfOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                        MLIRContext *context) {
   results.insert<FoldConstantIfOp, DropAttributes<IfOp>>(context);
 }
@@ -2920,7 +2921,7 @@ LogicalResult FoldConstantIfRegionOp::matchAndRewrite(
 }
 }  // anonymous namespace
 
-void IfRegionOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void IfRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.insert<FoldConstantIfRegionOp,
                  CaseOrIfRegionEliminatePassThrough<TF::IfRegionOp>>(context);
@@ -2969,7 +2970,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 // LogOp
 //===----------------------------------------------------------------------===//
 
-void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void LogOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                         MLIRContext *context) {
   results.insert<LogOfSoftmax, LogToLog1p>(context);
 }
@@ -2978,8 +2979,8 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // LogicalNotOp
 //===----------------------------------------------------------------------===//
 
-void LogicalNotOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void LogicalNotOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                               MLIRContext *context) {
   results.insert<LogicalNotOfEqual, LogicalNotOfNotEqual, LogicalNotOfGreater,
                  LogicalNotOfGreaterEqual, LogicalNotOfLess,
                  LogicalNotOfLessEqual>(context);
@@ -3012,8 +3013,8 @@ static LogicalResult Verify(MatrixBandPartOp op) {
 // MatrixDiag Ops
 //===----------------------------------------------------------------------===//
 
-void MatrixDiagOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void MatrixDiagOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                               MLIRContext *context) {
   results.insert<MatrixDiagToV3>(context);
 }
 
@@ -3021,8 +3022,8 @@ void MatrixDiagOp::getCanonicalizationPatterns(
 // MatrixSetDiagOp
 //===----------------------------------------------------------------------===//
 
-void MatrixSetDiagOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void MatrixSetDiagOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                  MLIRContext *context) {
   results.insert<MatrixSetDiagToV3>(context);
 }
 
@@ -3030,8 +3031,8 @@ void MatrixSetDiagOp::getCanonicalizationPatterns(
 // MatrixSetDiagV2Op
 //===----------------------------------------------------------------------===//
 
-void MatrixSetDiagV2Op::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
+void MatrixSetDiagV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                    MLIRContext *context) {
   results.insert<MatrixSetDiagV2ToV3>(context);
 }
 
@@ -3135,7 +3136,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 // MulNoNanOp
 //===----------------------------------------------------------------------===//
 
-void MulNoNanOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void MulNoNanOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
   results.insert<DivNoNanOrMulNoNanConstantY<TF::MulNoNanOp, TF::MulOp>>(
       context);
@@ -3152,11 +3153,124 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 // HashTableOp
 //===----------------------------------------------------------------------===//
-void HashTableOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+void HashTableOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
   results.insert<HashTableAndInitializeTableToV2>(context);
   results.insert<HashTableAndLookupTableSizeToV2>(context);
   results.insert<HashTableAndLookupTableFindToV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BitcastOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(BitcastOp op) {
+  auto input_type = op.input().getType().cast<ShapedType>();
+  auto output_type = op.output().getType().cast<ShapedType>();
+  auto input_element_type = input_type.getElementType();
+  auto output_element_type = output_type.getElementType();
+
+  // We only handle float and int element type in the verifier currently
+  // TODO(hanxiongwang): we can plan to handle more element type checks besides
+  // int and float in the verifier
+  if (input_type.hasStaticShape() && output_type.hasStaticShape() &&
+      input_element_type.isIntOrFloat() && output_element_type.isIntOrFloat()) {
+    const auto input_element_type_bitwidth =
+        input_element_type.getIntOrFloatBitWidth();
+    const auto output_element_type_bitwidth =
+        output_element_type.getIntOrFloatBitWidth();
+
+    auto is_output_shape_valid_with_small_input_element_type_bitwidth = [&]() {
+      if (output_element_type_bitwidth % input_element_type_bitwidth != 0) {
+        op.emitOpError() << "output element bitwidth is not multiple "
+                         << "of input element bitwidth";
+        return failure();
+      }
+      if (input_type.getShape().size() != output_type.getShape().size() + 1) {
+        op.emitOpError() << "rank of input tensor is "
+                         << input_type.getShape().size()
+                         << ". rank of output tensor is expected to be "
+                         << input_type.getShape().size() - 1 << ", instead of "
+                         << output_type.getShape().size() << ".";
+        return failure();
+      }
+      const auto rightmost_dim_size_divisor =
+          output_element_type_bitwidth / input_element_type_bitwidth;
+      if (input_type.getShape().empty() ||
+          input_type.getShape().back() != rightmost_dim_size_divisor) {
+        op.emitOpError()
+            << "input rightmost dimension size is not equal to the divisor. "
+            << "the last dimension of input is expected to be "
+            << rightmost_dim_size_divisor;
+        return failure();
+      }
+      for (auto idx = 0; idx < output_type.getShape().size(); idx++) {
+        if (input_type.getShape()[idx] != output_type.getShape()[idx]) {
+          op.emitOpError()
+              << "the " << idx << "th dim of output tensor is "
+              << output_type.getShape()[idx]
+              << ". It is not equal to the one in input tensor, which is "
+              << input_type.getShape()[idx];
+          return failure();
+        }
+      }
+      return success();
+    };
+
+    auto is_output_shape_valid_with_small_output_element_type_bitwidth = [&]() {
+      if (input_element_type_bitwidth % output_element_type_bitwidth != 0) {
+        op.emitOpError() << "input element bitwidth is not multiple "
+                         << "of output element bitwidth";
+        return failure();
+      }
+      if (input_type.getShape().size() + 1 != output_type.getShape().size()) {
+        op.emitOpError() << "rank of input tensor is "
+                         << input_type.getShape().size()
+                         << ". rank of output tensor is expected to be "
+                         << input_type.getShape().size() + 1 << ", instead of "
+                         << output_type.getShape().size() << ".";
+        return failure();
+      }
+      const auto rightmost_dim_size_divisor =
+          input_element_type_bitwidth / output_element_type_bitwidth;
+      if (output_type.getShape().back() != rightmost_dim_size_divisor) {
+        op.emitOpError()
+            << "output rightmost dimension size is not equal to the divisor. "
+            << "the last dimension of output is expected to be "
+            << rightmost_dim_size_divisor;
+        return failure();
+      }
+      for (auto idx = 0; idx < input_type.getShape().size(); idx++) {
+        if (input_type.getShape()[idx] != output_type.getShape()[idx]) {
+          op.emitOpError()
+              << "the " << idx << "th dim of output tensor is "
+              << output_type.getShape()[idx]
+              << ". It is not equal to the one in input tensor, which is "
+              << input_type.getShape()[idx];
+          return failure();
+        }
+      }
+      return success();
+    };
+
+    auto is_output_shape_valid_with_equal_bitwidth = [&]() {
+      if (input_type.getShape().equals(output_type.getShape())) {
+        return success();
+      }
+      op.emitOpError()
+          << "output tensor shape shall be equal to input tensor shape";
+      return failure();
+    };
+
+    if (input_element_type_bitwidth < output_element_type_bitwidth) {
+      return is_output_shape_valid_with_small_input_element_type_bitwidth();
+    } else if (input_element_type_bitwidth > output_element_type_bitwidth) {
+      return is_output_shape_valid_with_small_output_element_type_bitwidth();
+    } else {
+      return is_output_shape_valid_with_equal_bitwidth();
+    }
+  }
+  return success();
 }
 
 }  // namespace TF

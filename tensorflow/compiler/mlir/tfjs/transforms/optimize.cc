@@ -48,7 +48,7 @@ struct Optimize : public tfjs::OptimizePassBase<Optimize> {
 #include "tensorflow/compiler/mlir/tfjs/transforms/generated_optimize.inc"
 
 void Optimize::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   auto func = getFunction();
 
   populateWithGenerated(patterns);

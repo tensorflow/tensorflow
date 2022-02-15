@@ -223,25 +223,23 @@ class TRTNetworkBuilder {
   // Adds a Constant layer whose output is a TensorRT shape tensor. The shape
   // tensor's size and values correspond to dim's nbDims and d[], respectively.
   StatusOr<nvinfer1::IConstantLayer*> ConstantShape(
-      const nvinfer1::Dims& shape_data) noexcept {
-    TRT_ENSURE(shape_data.nbDims > 0);
+      const DimsAdapter& shape_data) noexcept {
+    TRT_ENSURE(shape_data.NumDims() > 0);
     nvinfer1::Dims shape_dims;
     shape_dims.nbDims = 1;
-    shape_dims.d[0] = shape_data.nbDims;
+    shape_dims.d[0] = shape_data.NumDims();
     StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(nvinfer1::DataType::kINT32, shape_dims);
     TRT_ENSURE_OK(const_weights);
-    int32* values = const_weights->GetPointer<int32>();
-    for (int i = 0; i < shape_data.nbDims; i++) {
-      values[i] = static_cast<int32>(shape_data.d[i]);
-    }
-    nvinfer1::IConstantLayer* const_layer = network_->addConstant(
-        const_weights->Shape(), const_weights->GetTrtWeights());
+    absl::c_copy(shape_data, const_weights->GetPointer<int32>());
+    StatusOr<nvinfer1::Dims> trt_dims = const_weights->Shape().AsTrtDims();
+    TRT_ENSURE_OK(trt_dims);
+    nvinfer1::IConstantLayer* const_layer =
+        network_->addConstant(*trt_dims, const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     nvinfer1::ITensor* output = const_layer->getOutput(0);
     TRT_ENSURE(output);
     TRT_ENSURE(output->getType() == nvinfer1::DataType::kINT32);
-    TRT_ENSURE(const_layer);
     return const_layer;
   }
 
@@ -259,8 +257,10 @@ class TRTNetworkBuilder {
     for (int i = 0; i < data.size(); i++) {
       values[i] = static_cast<int32>(data[i]);
     }
-    nvinfer1::IConstantLayer* const_layer = network_->addConstant(
-        const_weights->Shape(), const_weights->GetTrtWeights());
+    StatusOr<nvinfer1::Dims> trt_dims = const_weights->Shape().AsTrtDims();
+    TRT_ENSURE_OK(trt_dims);
+    nvinfer1::IConstantLayer* const_layer =
+        network_->addConstant(*trt_dims, const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     nvinfer1::ITensor* output = const_layer->getOutput(0);
     TRT_ENSURE(output);
@@ -297,12 +297,14 @@ class TRTNetworkBuilder {
 
   // Adds a Constant layer from a TRT_ShapedWeights object.
   StatusOr<nvinfer1::IConstantLayer*> WeightsToConstant(
-      const nvinfer1::Weights& weights, const nvinfer1::Dims& dims) noexcept {
-    int volume =
-        std::accumulate(dims.d, dims.d + dims.nbDims, 1, std::multiplies<>());
-    TRT_ENSURE(volume == weights.count);
+      const nvinfer1::Weights& weights, const DimsAdapter& dims) noexcept {
+    StatusOr<int64_t> vol = dims.Volume();
+    TRT_ENSURE_OK(vol);
+    TRT_ENSURE(*vol == weights.count);
+    StatusOr<nvinfer1::Dims> trt_dims = dims.AsTrtDims();
+    TRT_ENSURE_OK(trt_dims);
     nvinfer1::IConstantLayer* const_layer =
-        network_->addConstant(dims, weights);
+        network_->addConstant(*trt_dims, weights);
     TRT_ENSURE(const_layer);
     return const_layer;
   };

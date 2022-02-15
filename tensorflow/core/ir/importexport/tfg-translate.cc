@@ -33,13 +33,13 @@ TranslateToMLIRRegistration graphdef_to_mlir(
           {proto_txt.data(), proto_txt.size()}, &graphdef);
       if (!status.ok()) {
         LOG(ERROR) << status.error_message();
-        return OwningModuleRef{};
+        return OwningOpRef<mlir::ModuleOp>{};
       }
       auto errorOrModule =
           tfg::ImportGraphDefToMlir(context, debug_info, graphdef);
       if (!errorOrModule.ok()) {
         LOG(ERROR) << errorOrModule.status();
-        return OwningModuleRef{};
+        return OwningOpRef<mlir::ModuleOp>{};
       }
       return std::move(errorOrModule.ValueOrDie());
     });

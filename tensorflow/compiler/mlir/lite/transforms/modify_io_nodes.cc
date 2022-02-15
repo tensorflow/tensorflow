@@ -118,6 +118,7 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
     Value arg = block.getArgument(0);
     Type arg_type = arg.getType();
     Value new_arg = arg;
+    Location loc = func.getLoc();
     if (arg.hasOneUse() && llvm::isa<QuantizeOp>(*arg.user_begin())) {
       auto quantize_op = llvm::cast<QuantizeOp>(*arg.user_begin());
       auto quantize_output = quantize_op.output();
@@ -126,13 +127,13 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
                               .getStorageType();
       if (current_type == input_type) {  // int8 == int8
         arg_type = quantize_output.getType();
-        new_arg = block.addArgument(arg_type);
+        new_arg = block.addArgument(arg_type, loc);
         quantize_output.replaceAllUsesWith(new_arg);
       } else if (input_type.isUnsignedInteger(
                      current_type.getIntOrFloatBitWidth())) {  // int8 != uint8
         arg_type = quant::ConvertSignedQuantizedToUnsigned(
-            quantize_output.getType(), quantize_op.getLoc());
-        new_arg = block.addArgument(arg_type);
+            quantize_output.getType(), loc);
+        new_arg = block.addArgument(arg_type, loc);
         quantize_op.setOperand(new_arg);
       } else {
         input_type.print(llvm::errs() << "Requested input type ");
@@ -148,7 +149,7 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
       // `arg` has multiple uses or the user isn't a quantiz op (so we couldn't
       // rewrite it to a different type. Make a copy of the `arg` and replace
       // its use.
-      new_arg = block.addArgument(arg_type);
+      new_arg = block.addArgument(arg_type, loc);
       arg.replaceAllUsesWith(new_arg);
     }
     block.eraseArgument(0);

@@ -4,7 +4,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = ["//tensorflow/tools/tfg_graph_transforms:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -82,6 +82,31 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:lib",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/transforms:PassRegistration",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+# Description:
+#    The tool wrapped into a library, so that it could be used
+#    when custom defined ops and passes need to be added.
+cc_library(
+    name = "tfg_graph_transforms_main",
+    srcs = [
+        "tfg_graph_transforms_main.cc",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":export",
+        ":import",
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/transforms:PassRegistration",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

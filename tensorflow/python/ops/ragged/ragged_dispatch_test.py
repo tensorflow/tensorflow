@@ -26,6 +26,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import image_ops_impl
@@ -721,7 +722,9 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               'num_segments':
                   2
           },
-          expected=[7.0, 2.0]),
+          expected=[7.0, 2.0],
+          rtol=1e-12,
+      ),
       dict(
           op=math_ops.reduce_sum,
           kwargs={
@@ -901,8 +904,16 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                   np.exp(5) / (np.exp(4) + np.exp(5)),
               ],
           ]),
-          rtol=1e-6,
-      ),
+          rtol=1e-6),
+      dict(
+          op=array_ops.bitcast,
+          kwargs={
+              'input': ragged_factory_ops.constant_value([[1, 2], [-1]],
+                                                         dtype=dtypes.int64),
+              'type': dtypes.uint64
+          },
+          expected=ragged_factory_ops.constant_value([[1, 2], [-1]],
+                                                     dtype=dtypes.uint64))
   ])
   def testRaggedDispatch(self,
                          op,
@@ -970,22 +981,23 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def test_ragged_op_list(self):
     # Ops that should be listed as supported in both v1 and v2.
     supported_ops = [
-        'bitwise.bitwise_and', 'bitwise.bitwise_or', 'bitwise.bitwise_xor',
-        'bitwise.invert', 'bitwise.left_shift', 'bitwise.right_shift',
-        'clip_by_value', 'concat', 'debugging.check_numerics', 'cast',
-        'dtypes.complex', 'dtypes.saturate_cast', 'expand_dims', 'gather_nd',
-        'gather', 'io.decode_base64', 'io.decode_compressed',
-        'io.encode_base64', 'math.abs', 'math.acos', 'math.acosh', 'math.add_n',
-        'math.add', 'math.angle', 'math.asin', 'math.asinh', 'math.atan2',
-        'math.atan', 'math.atanh', 'math.bessel_i0', 'math.bessel_i0e',
-        'math.bessel_i1', 'math.bessel_i1e', 'math.ceil', 'math.conj',
-        'math.cos', 'math.cosh', 'math.digamma', 'math.divide_no_nan',
-        'math.divide', 'math.equal', 'math.erf', 'math.erfc', 'math.erfcinv',
-        'math.erfinv', 'math.exp', 'math.expm1', 'math.floor', 'math.floordiv',
-        'math.floormod', 'math.greater_equal', 'math.greater', 'math.imag',
-        'math.is_finite', 'math.is_inf', 'math.is_nan', 'math.less_equal',
-        'math.less', 'math.lgamma', 'math.log1p', 'math.log_sigmoid',
-        'math.log', 'math.logical_and', 'math.logical_not', 'math.logical_or',
+        'bitcast', 'bitwise.bitwise_and', 'bitwise.bitwise_or',
+        'bitwise.bitwise_xor', 'bitwise.invert', 'bitwise.left_shift',
+        'bitwise.right_shift', 'clip_by_value', 'concat',
+        'debugging.check_numerics', 'cast', 'dtypes.complex',
+        'dtypes.saturate_cast', 'expand_dims', 'gather_nd', 'gather',
+        'io.decode_base64', 'io.decode_compressed', 'io.encode_base64',
+        'math.abs', 'math.acos', 'math.acosh', 'math.add_n', 'math.add',
+        'math.angle', 'math.asin', 'math.asinh', 'math.atan2', 'math.atan',
+        'math.atanh', 'math.bessel_i0', 'math.bessel_i0e', 'math.bessel_i1',
+        'math.bessel_i1e', 'math.ceil', 'math.conj', 'math.cos', 'math.cosh',
+        'math.digamma', 'math.divide_no_nan', 'math.divide', 'math.equal',
+        'math.erf', 'math.erfc', 'math.erfcinv', 'math.erfinv', 'math.exp',
+        'math.expm1', 'math.floor', 'math.floordiv', 'math.floormod',
+        'math.greater_equal', 'math.greater', 'math.imag', 'math.is_finite',
+        'math.is_inf', 'math.is_nan', 'math.less_equal', 'math.less',
+        'math.lgamma', 'math.log1p', 'math.log_sigmoid', 'math.log',
+        'math.logical_and', 'math.logical_not', 'math.logical_or',
         'math.logical_xor', 'math.maximum', 'math.minimum',
         'math.multiply_no_nan', 'math.multiply', 'math.negative',
         'math.nextafter', 'math.not_equal', 'math.pow', 'math.real',
@@ -1033,6 +1045,13 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(math_ops.add(x, v), [[11, 12], [13, 14, 15]])
+
+  def testAssertType(self):
+    x = ragged_factory_ops.constant([[1., 2.], [3.]])
+    with ops.control_dependencies(
+        [check_ops.assert_type(x, dtypes.float32)]):
+      y = array_ops.identity(x)
+    self.assertAllEqual(x, y)
 
 
 if __name__ == '__main__':

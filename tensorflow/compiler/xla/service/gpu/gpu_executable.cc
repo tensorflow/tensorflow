@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
@@ -49,14 +52,17 @@ limitations under the License.
 
 #if BEF_EXECUTABLE
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
 #include "tfrt/gpu/gpu_types.h"  // from @tf_runtime
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
+#include "tfrt/bef_converter/bef_to_mlir.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -107,9 +113,10 @@ struct GpuExecutable::BefExecutable {
  private:
   explicit BefExecutable(OwnedBefBuffer buffer)
       : bef_buffer(std::move(buffer)),
-        host_ctx(tfrt::gpu::GetDiagHandler(&mlir_ctx),
-                 tfrt::CreateMallocAllocator(),
-                 tfrt::CreateSingleThreadedWorkQueue()) {
+        host_ctx(
+            tfrt::gpu::GetDiagHandler(&mlir_ctx), tfrt::CreateMallocAllocator(),
+            tfrt::CreateMultiThreadedWorkQueue(/*num_threads=*/1,
+                                               /*num_blocking_threads=*/16)) {
     tfrt::RegisterStaticKernels(host_ctx.GetMutableRegistry());
   }
 
@@ -128,12 +135,14 @@ struct GpuExecutable::BefExecutable {
     }
     tfrt::ExecutionContext exec_ctx(*req_ctx);
 
-    auto entry_point = tfrt::gpu::GetEntryPoint(*bef_file, exec_ctx);
-    if (!entry_point) {
-      return tensorflow::errors::Internal(toString(entry_point.takeError()));
+    auto expected_entry_point = tfrt::gpu::GetEntryPoint(*bef_file, exec_ctx);
+    if (!expected_entry_point) {
+      return tensorflow::errors::Internal(
+          toString(expected_entry_point.takeError()));
     }
+    entry_point = *expected_entry_point;
 
-    const auto& func_name = entry_point->function_name;
+    const auto& func_name = entry_point.function_name;
     function = bef_file->GetFunction(func_name);
     if (!function) {
       return InternalError("Failed to get '%s' function", func_name);
@@ -153,9 +162,10 @@ struct GpuExecutable::BefExecutable {
   mlir::MLIRContext mlir_ctx;
   tfrt::HostContext host_ctx;
   tfrt::RCReference<tfrt::BEFFile> bef_file;
+  tfrt::gpu::EntryPoint entry_point;
   // Signature: (chain, stream, inputs..., outputs...) -> (chain).
   const tfrt::Function* function;
-  tensorflow::mutex mutex;
+  absl::Mutex mutex;
   tfrt::gpu::GpuContextCache gpu_ctx_cache TF_GUARDED_BY(mutex);
 };
 #endif
@@ -202,6 +212,26 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       debug_buffer_assignment_);
 }
 
+GpuExecutable::GpuExecutable(
+    std::shared_ptr<HloModule> hlo_module, GpuVersion gpu_version,
+    xla::EntryFunctionAttributes entry_func_attrs,
+    absl::string_view module_name, Shape xla_output_shape,
+    std::vector<BufferAllocation> allocations,
+    absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
+    BefExecutable* bef_executable)
+    : Executable(std::move(hlo_module)),
+      gpu_version_(gpu_version),
+      entry_func_attrs_(entry_func_attrs),
+      module_name_(module_name),
+      output_shape_(xla_output_shape),
+      allocations_(std::move(allocations)),
+      output_info_(std::move(output_info)),
+      bef_executable_(bef_executable) {
+  XlaDebugInfoManager::Get()->RegisterModule(
+      ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
+      debug_buffer_assignment_);
+}
+
 GpuExecutable::~GpuExecutable() {
   XlaDebugInfoManager::Get()->UnregisterModule(
       ModuleUniqueName(module_name_, shared_module().get()), shared_module(),
@@ -214,7 +244,7 @@ GpuExecutable::~GpuExecutable() {
     //
     // We need for the host->device memcpies to finish they are concurrently
     // reading memory (xla::Literal's) owned by the HLO module.
-    tensorflow::mutex_lock lock(module_handle_mutex_);
+    absl::MutexLock lock(&module_handle_mutex_);
     for (const auto& pair : module_globals_) {
       CHECK(pair.first->SynchronizeAllActivity());
     }
@@ -314,20 +344,9 @@ Status ExecuteThunks(const std::string& module_name,
     TF_RET_CHECK(async_comms_stream.ok() || !NeedsAsyncCommsStream(*thunk))
         << "`run_options` must have a stream borrower for async thunks.";
 
-    const GpuExecutableRunOptions* gpu_options =
-        run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
-        &buffer_allocations,
-        stream,
-        async_comms_stream.ok() ? async_comms_stream->get() : nullptr,
-        run_options->run_options().run_id(),
-        run_options->run_options().device_assignment(),
-        gpu_options && gpu_options->gpu_global_device_ids()
-            ? &*gpu_options->gpu_global_device_ids()
-            : nullptr,
-        gpu_options && gpu_options->nccl_unique_id_callback()
-            ? &gpu_options->nccl_unique_id_callback()
-            : nullptr};
+        *run_options, buffer_allocations, stream,
+        async_comms_stream.ok() ? async_comms_stream->get() : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     if (thunk_schedule.Depended(thunk.get())) {
       auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
@@ -378,7 +397,7 @@ StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>
 GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   se::StreamExecutor* executor = stream->parent();
 
-  tensorflow::mutex_lock lock(module_handle_mutex_);
+  absl::MutexLock lock(&module_handle_mutex_);
   auto it = module_globals_.find(executor);
   if (it != module_globals_.end()) {
     return &it->second;
@@ -498,8 +517,7 @@ static Status CheckAlignment(const BufferAllocation& allocation,
 StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-    se::DeviceMemoryAllocator* const memory_allocator,
-    se::StreamExecutor* executor) {
+    se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal) {
   tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return std::string("Build buffer allocations"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
@@ -512,11 +530,11 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     TF_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase buffer,
         BufferForAllocation(arguments, globals, allocation, memory_allocator,
-                            executor->device_ordinal(), i));
+                            device_ordinal, i));
     buffers.push_back(buffer);
     TF_RETURN_IF_ERROR(CheckAlignment(allocation, buffer, i));
   }
-  return {{buffers, executor->device_ordinal(), memory_allocator}};
+  return {{buffers, device_ordinal, memory_allocator}};
 }
 
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
@@ -552,6 +570,24 @@ static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
       std::move(*buffer));
 }
 
+// TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc.
+static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
+    const Thunk::ExecuteParams& params,
+    tfrt::RequestContextBuilder request_context_builder) {
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
+  request_context_builder.context_data().emplace<XlaGpuParams>(XlaGpuParams{
+      params.run_id, params.device_assn, params.gpu_global_device_ids,
+      params.nccl_unique_id_callback, global_device_id});
+
+  auto expected_req_ctx = std::move(request_context_builder).build();
+  if (!expected_req_ctx) {
+    auto error = expected_req_ctx.takeError();
+    return tensorflow::errors::Internal(llvm::toString(std::move(error)));
+  }
+  return std::make_unique<tfrt::ExecutionContext>(std::move(*expected_req_ctx));
+}
+
 static Status ExecuteBef(const std::string& module_name,
                          GpuExecutable::BefExecutable* bef_executable,
                          const ServiceExecutableRunOptions* run_options,
@@ -572,29 +608,29 @@ static Status ExecuteBef(const std::string& module_name,
 
   se::gpu::GpuStream* stream = se::gpu::AsGpuStream(run_options->stream());
   auto gpu_context = [&] {
-    tensorflow::mutex_lock lock(bef_executable->mutex);
+    absl::MutexLock lock(&bef_executable->mutex);
     return bef_executable->gpu_ctx_cache.GetOrCreate(
-        stream->parent()->gpu_context()->context());
+        se::gpu::GpuDriver::GetContextHandle(stream->parent()->gpu_context()));
   }();
   auto gpu_stream =
       tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream->gpu_stream());
 
   // Create execution context.
-  auto req_ctx =
-      tfrt::RequestContextBuilder(&bef_executable->host_ctx, gpu_context.second)
-          .build();
-  if (!req_ctx) {
-    return tensorflow::errors::Internal(toString(req_ctx.takeError()));
-  }
-  tfrt::ExecutionContext exec_ctx(*req_ctx);
+  Thunk::ExecuteParams params(*run_options, buffer_allocations,
+                              run_options->stream(), nullptr);
+  tfrt::RequestContextBuilder request_context_builder(&bef_executable->host_ctx,
+                                                      gpu_context.second);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<tfrt::ExecutionContext> exec_ctx,
+      CreateExecutionContext(params, std::move(request_context_builder)));
 
   // Create owning handles for arguments and add pointer to them to 'args'.
   const tfrt::Function* function = bef_executable->function;
-  tfrt::SmallVector<tfrt::AsyncValue*, 8> args;
+  llvm::SmallVector<tfrt::AsyncValue*, 8> args;
   args.reserve(function->num_arguments());
   tfrt::AsyncValueRef<tfrt::Chain> chain = tfrt::GetReadyChain();
   args.push_back(chain.GetAsyncValue());
-  args.push_back(gpu_stream.get());
+  args.push_back(gpu_stream.get().value());
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 8> buffers;
   for (size_t i = 0; i < num_allocations; i++) {
     auto input = buffer_allocations.GetDeviceAddress(i);
@@ -617,10 +653,10 @@ static Status ExecuteBef(const std::string& module_name,
                                            diag_os);
 
   // Execute the function.
-  function->Execute(exec_ctx, args, {result});
+  function->Execute(*exec_ctx, args, {result});
 
   // Wait for async execution to complete.
-  tfrt::Await(exec_ctx, llvm::makeArrayRef(result));
+  tfrt::Await(*exec_ctx, llvm::makeArrayRef(result));
 
   // Report error if any, from handler and result.
   if (diag_os.tell()) return tensorflow::errors::Internal(diag_os.str());
@@ -648,7 +684,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
   // computations to use the same GPU simultaneously.
-  auto gpu_lock = LockGpuShared(executor);
+  absl::ReaderMutexLock gpu_lock(&GetGpuMutex(executor));
 
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
@@ -663,9 +699,10 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   ExecutionOutput result(/*on_device_shape=*/output_shape_, memory_allocator,
                          device_ordinal);
 
-  TF_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
-                      GenerateBufferAllocations(arguments, globals,
-                                                memory_allocator, executor));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocations buffer_allocations,
+      GenerateBufferAllocations(arguments, globals, memory_allocator,
+                                device_ordinal));
   VLOG(2) << buffer_allocations.ToString();
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
@@ -839,12 +876,17 @@ Status GpuExecutable::SetUpMlirAllocation(
     mlir::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
     std::vector<BufferAllocation>* allocations,
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
-    Shape* output_shape) {
+    Shape* output_shape, int buffer_param_offset) {
   for (int i = 0; i < buffer_sizes.size(); i++) {
     allocations->emplace_back(i, buffer_sizes[i], 0);
   }
 
   for (int i = 0; i < func.getNumArguments(); i++) {
+    if (i < buffer_param_offset) {
+      continue;
+    }
+    const int buffer_index = i - buffer_param_offset;
+
     if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
       xla::ShapeIndex shape_index;
       if (auto shape_index_attr =
@@ -854,17 +896,18 @@ Status GpuExecutable::SetUpMlirAllocation(
           shape_index.push_back(element.getSExtValue());
         }
       }
-      allocations->at(i).set_entry_computation_parameter(
-          param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
-          static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
+      allocations->at(buffer_index)
+          .set_entry_computation_parameter(
+              param_attr.cast<mlir::IntegerAttr>().getInt(), shape_index,
+              static_cast<bool>(func.getArgAttr(i, "lmhlo.output_index")));
     }
     // TODO(timshen): this information is redundant. This is here only for
     // smooth migration to LMHLO. Remove it.
     if (func.getArgAttr(i, "lmhlo.constant_name")) {
-      allocations->at(i).set_constant(true);
+      allocations->at(buffer_index).set_constant(true);
     }
     if (auto output_index_attr = func.getArgAttr(i, "lmhlo.output_index")) {
-      allocations->at(i).set_maybe_live_out(true);
+      allocations->at(buffer_index).set_maybe_live_out(true);
 
       // Reconstruct a shape index from output_index.
       ShapeIndex shape_index;
@@ -873,7 +916,7 @@ Status GpuExecutable::SetUpMlirAllocation(
         shape_index.push_back(element.getSExtValue());
       }
       auto& o = (*output_info)[shape_index];
-      o.allocation_index = i;
+      o.allocation_index = buffer_index;
       if (auto param_attr = func.getArgAttr(i, "lmhlo.params")) {
         HloInputOutputAliasConfig::AliasKind kind =
             HloInputOutputAliasConfig::kMayAlias;
@@ -906,6 +949,98 @@ Status GpuExecutable::SetUpMlirAllocation(
                      .str()));
 
   return Status::OK();
+}
+
+#if BEF_EXECUTABLE
+static void ApplyEntryFunctionAttributes(
+    mlir::MLIRContext& context, mlir::FuncOp& func,
+    xla::EntryFunctionAttributes entry_func_attrs, int buffer_param_offset) {
+  mlir::OpBuilder builder(&context);
+  llvm::SmallVector<mlir::DictionaryAttr, 8> args_attrs;
+  for (int i = 0; i < func.getNumArguments(); i++) {
+    mlir::NamedAttrList arg_attr_list;
+    if (i < buffer_param_offset) {
+      args_attrs.push_back(arg_attr_list.getDictionary(&context));
+      continue;
+    }
+    const auto& buffer = entry_func_attrs.buffers(i - buffer_param_offset);
+
+    if (buffer.lmhlo_params_present()) {
+      arg_attr_list.set("lmhlo.params",
+                        builder.getIndexAttr(buffer.lmhlo_params()));
+    }
+    if (buffer.has_lmhlo_param_shape_index()) {
+      arg_attr_list.set("lmhlo.param_shape_index",
+                        builder.getI64TensorAttr(llvm::makeArrayRef(
+                            buffer.lmhlo_param_shape_index().indices().begin(),
+                            buffer.lmhlo_param_shape_index().indices().end())));
+    }
+    if (!buffer.lmhlo_constant_name().empty()) {
+      arg_attr_list.set("lmhlo.constant_name",
+                        builder.getStringAttr(buffer.lmhlo_constant_name()));
+    }
+    if (buffer.lmhlo_must_alias()) {
+      arg_attr_list.set("lmhlo.must_alias", builder.getUnitAttr());
+    }
+    if (buffer.has_lmhlo_output_index()) {
+      arg_attr_list.set("lmhlo.output_index",
+                        builder.getI64TensorAttr(llvm::makeArrayRef(
+                            buffer.lmhlo_output_index().indices().begin(),
+                            buffer.lmhlo_output_index().indices().end())));
+    }
+    args_attrs.push_back(arg_attr_list.getDictionary(&context));
+  }
+  func.setAllArgAttrs(args_attrs);
+  func->setAttr("result_xla_shape",
+                builder.getStringAttr(entry_func_attrs.result_xla_shape()));
+}
+#endif  // BEF_EXECUTABLE
+
+StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
+    std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
+    xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version) {
+#if BEF_EXECUTABLE
+  OwnedBefBuffer bef_buffer = [bef]() {
+    auto ptr = static_cast<uint8_t*>(
+        tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
+    std::copy(bef.begin(), bef.end(), ptr);
+    return OwnedBefBuffer(ptr, {bef.size()});
+  }();
+
+  mlir::MLIRContext context;
+  context.allowUnregisteredDialects();
+  mlir::Location location = mlir::UnknownLoc::get(&context);
+  llvm::ArrayRef<uint8_t> bef_array(bef_buffer.get(),
+                                    bef_buffer.get_deleter().size);
+  auto module = tfrt::ConvertBEFToMLIR(location, bef_array, &context);
+  TF_ASSIGN_OR_RETURN(BefExecutable * bef_executable,
+                      BefExecutable::Create(std::move(bef_buffer)));
+  auto func = mlir::cast<mlir::FuncOp>(
+      module->lookupSymbol(bef_executable->entry_point.function_name));
+  // In tfrt_gpu dialect, buffer arguments start from the third parameter (after
+  // tfrt::Chain and GpuStream).
+  int buffer_param_offset = 2;
+  ApplyEntryFunctionAttributes(context, func, entry_func_attrs,
+                               buffer_param_offset);
+
+  std::vector<BufferAllocation> allocations;
+  absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
+  Shape result_xla_shape;
+  TF_RETURN_IF_ERROR(SetUpMlirAllocation(
+      func, bef_executable->entry_point.buffer_sizes, &allocations,
+      &output_info, &result_xla_shape, buffer_param_offset));
+
+  std::unique_ptr<Executable> executable;
+  std::string module_name = mlir::GetNameFromLoc(module->getLoc());
+  // Calling private constructor.
+  executable = absl::WrapUnique(
+      new GpuExecutable(std::move(hlo_module), gpu_version, entry_func_attrs,
+                        module_name, result_xla_shape, std::move(allocations),
+                        std::move(output_info), bef_executable));
+  return executable;
+#else   // BEF_EXECUTABLE
+  return FailedPrecondition("LoadFromBef only supported with BEF_EXECUTABLE");
+#endif  // BEF_EXECUTABLE
 }
 
 StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

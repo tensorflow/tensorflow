@@ -273,6 +273,9 @@ void BroadcastQuantSubSlow(const ArithmeticParams& params,
                            const T* input2_data,
                            const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("BroadcastQuantSubSlow/T");
+  TFLITE_DCHECK_LE(input1_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(input2_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), N);
   NdArrayDesc<N> desc1;
   NdArrayDesc<N> desc2;
   NdArrayDesc<N> output_desc;

@@ -224,6 +224,7 @@ tf_kernel_library(
 cc_library(
     name = "resampler_ops",
     srcs = ["resampler_ops.cc"],
+    hdrs = ["resampler_ops.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
@@ -238,6 +239,21 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+# See note on resampler_ops target for why this is also a seprate op.
+cc_library(
+    name = "resampler_addon_ops",
+    srcs = ["resampler_addon_ops.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":resampler_ops",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
     ],
     alwayslink = 1,
 )

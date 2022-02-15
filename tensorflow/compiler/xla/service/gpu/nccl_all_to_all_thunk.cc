@@ -31,6 +31,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
+#if XLA_ENABLE_XCCL
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
@@ -69,8 +73,8 @@ Status NcclAllToAllThunk::RunNcclCollective(const ExecuteParams& params,
   int device_ordinal = params.stream->parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;
 
-  cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
-      params.stream->implementation()->GpuStreamMemberHack());
+  se::gpu::GpuStreamHandle gpu_stream =
+      se::gpu::AsGpuStreamValue(params.stream);
 
   int num_participants;
   XLA_CUDA_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
@@ -105,10 +109,10 @@ Status NcclAllToAllThunk::RunNcclCollective(const ExecuteParams& params,
       for (int rank = 0; rank < num_participants; ++rank) {
         XLA_CUDA_RETURN_IF_ERROR(ncclSend(send_buffer + rank * chunk_bytes,
                                           chunk_elements, dtype, rank, comm,
-                                          *cu_stream));
+                                          gpu_stream));
         XLA_CUDA_RETURN_IF_ERROR(ncclRecv(recv_buffer + rank * chunk_bytes,
                                           chunk_elements, dtype, rank, comm,
-                                          *cu_stream));
+                                          gpu_stream));
       }
     }
   } else {
@@ -131,9 +135,9 @@ Status NcclAllToAllThunk::RunNcclCollective(const ExecuteParams& params,
       int element_count = buffer.element_count * dtype_and_multiplier.second;
 
       XLA_CUDA_RETURN_IF_ERROR(ncclSend(send_buffer, element_count, dtype,
-                                        /*rank=*/i, comm, *cu_stream));
+                                        /*rank=*/i, comm, gpu_stream));
       XLA_CUDA_RETURN_IF_ERROR(ncclRecv(recv_buffer, element_count, dtype,
-                                        /*rank=*/i, comm, *cu_stream));
+                                        /*rank=*/i, comm, gpu_stream));
     }
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());

@@ -3,7 +3,7 @@
 func @reduce(%arg: memref<100x10x5xf32>,
              %init: memref<f32>,
              %result: memref<100x5xf32>) {
-  "lmhlo.reduce"(%arg, %init, %result) ( {
+  "lmhlo.reduce"(%arg, %init, %result) ({
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
       "lmhlo.add"(%lhs, %rhs, %res)
         : (memref<f32>, memref<f32>, memref<f32>) -> ()
@@ -49,7 +49,7 @@ func @reduce(%arg: memref<100x10x5xf32>,
 func @reduce_no_outer_loop(%arg: memref<100xf32>,
                            %init: memref<f32>,
                            %result: memref<1xf32>) {
-  "lmhlo.reduce"(%arg, %init, %result) ( {
+  "lmhlo.reduce"(%arg, %init, %result) ({
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
       "lmhlo.add"(%lhs, %rhs, %res)
         : (memref<f32>, memref<f32>, memref<f32>) -> ()
@@ -88,7 +88,7 @@ func @reduce_no_outer_loop(%arg: memref<100xf32>,
 func @dynamic_reduce(%arg: memref<?x?x?xf32>,
                      %init: memref<f32>,
                      %result: memref<?x?xf32>) {
-  "lmhlo.reduce"(%arg, %init, %result) ( {
+  "lmhlo.reduce"(%arg, %init, %result) ({
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
       "lmhlo.add"(%lhs, %rhs, %res)
         : (memref<f32>, memref<f32>, memref<f32>) -> ()
@@ -135,7 +135,7 @@ func @dynamic_reduce(%arg: memref<?x?x?xf32>,
 func @reduce_window(%arg: memref<112x112xf32>,
              %init: memref<f32>,
              %result: memref<56x56xf32>) {
-  "lmhlo.reduce_window"(%arg, %init, %result) ( {
+  "lmhlo.reduce_window"(%arg, %init, %result) ({
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
       "lmhlo.maximum"(%lhs, %rhs, %res)
         : (memref<f32>, memref<f32>, memref<f32>) -> ()

@@ -907,7 +907,7 @@ class Optimizer(
   def _create_non_slot_variable(self, initial_value, name, colocate_with):
     """Add an extra variable, not associated with a slot."""
     # Recommendation: Use OptimizerV2 if your optimizer uses non-slot variables.
-    eager = context.executing_eagerly()
+    eager = ops.executing_eagerly_outside_functions()
     graph = None if eager else colocate_with.graph
 
     key = (name, graph)

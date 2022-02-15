@@ -68,9 +68,9 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   return Status::OK();
 }
 
-StatusOr<mlir::OwningModuleRef> ParseMlirModuleString(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     absl::string_view mlir_module_str, mlir::MLIRContext& context) {
-  mlir::OwningModuleRef module;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
   context.loadDialect<mlir::StandardOpsDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   context.loadDialect<mlir::chlo::HloClientDialect>();
@@ -93,7 +93,7 @@ Status ParseMlirModuleStringAndConvertToXlaComputation(
     absl::string_view mlir_module_str, XlaComputation& xla_computation,
     bool use_tuple_args, bool return_tuple) {
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       xla::ParseMlirModuleString(mlir_module_str, context));
   return xla::MlirToXlaComputation(*module, xla_computation, use_tuple_args,
                                    return_tuple);

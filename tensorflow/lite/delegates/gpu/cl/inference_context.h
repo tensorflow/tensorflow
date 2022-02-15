@@ -203,9 +203,6 @@ class InferenceContext {
   GpuInfo gpu_info_;
 };
 
-// Runs OpenCL specific transforms for the graph.
-absl::Status RunGraphTransforms(GraphFloat32* graph);
-
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

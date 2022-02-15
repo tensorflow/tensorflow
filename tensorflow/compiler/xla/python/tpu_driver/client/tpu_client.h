@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -279,9 +280,9 @@ class PyTpuBuffer {
   // `child_buffers_` stores the child buffers; else, `device_buffer_` stores
   // the data content and `child_buffers_` is empty.
   mutable absl::Mutex mu_;
-  std::shared_ptr<TpuSharedBuffer> device_buffer_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<TpuSharedBuffer> device_buffer_ ABSL_GUARDED_BY(mu_);
   std::vector<std::shared_ptr<TpuSharedBuffer>> child_buffers_
-      TF_GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
   // the host, it persists Delete() is called or the PyTpuBuffer is destroyed.
@@ -294,7 +295,7 @@ class PyTpuBuffer {
     Status status;
     std::shared_ptr<Literal> value;
   };
-  std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<HostValue> host_value_ ABSL_GUARDED_BY(mu_);
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -303,6 +304,12 @@ class PyTpuExecutable {
  public:
   static StatusOr<std::unique_ptr<PyTpuExecutable>> Compile(
       const XlaComputation& computation,
+      absl::optional<std::vector<Shape>> argument_layouts,
+      const ExecutableBuildOptions* build_options,
+      std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
+
+  static StatusOr<std::unique_ptr<PyTpuExecutable>> CompileMlir(
+      mlir::ModuleOp module,
       absl::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
       std::shared_ptr<PyTpuClient> client, bool tuple_arguments);

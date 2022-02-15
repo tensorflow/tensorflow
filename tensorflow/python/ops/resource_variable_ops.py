@@ -250,7 +250,7 @@ def _handle_graph(handle):
       yield
 
 
-class EagerResourceDeleter(object):
+class EagerResourceDeleter:
   """An object which cleans up a resource handle.
 
   An alternative to defining a __del__ method on an object. The intended use is
@@ -478,7 +478,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       # ops.value_text when the handle is resolved, so we need to keep that
       # under the try...except if we want to suppress them.
       try:
-        value_text = ops.value_text(self.read_value(), is_repr=True)
+        with ops.device(self.device):
+          value_text = ops.value_text(self.read_value(), is_repr=True)
       except:  # pylint: disable=bare-except
         value_text = "numpy=<unavailable>"
 
@@ -932,7 +933,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
              f"The variable shape {self._shape}, and the "
              f"assigned value shape {value_tensor.shape} are incompatible."))
       kwargs = {}
-      if forward_compat.forward_compatible(2022, 1, 15):
+      if forward_compat.forward_compatible(2022, 2, 23):
         # If the shape is fully defined, we do a runtime check with the shape of
         # value.
         validate_shape = self._shape.is_fully_defined()

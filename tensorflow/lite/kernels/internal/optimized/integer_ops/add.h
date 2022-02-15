@@ -21,6 +21,7 @@ limitations under the License.
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/optimized/avx2_quantization_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -174,7 +175,67 @@ inline void AddElementwiseInt16(int size, const ArithmeticParams& params,
   TFLITE_DCHECK_LT(params.input1_offset, 32768);
   TFLITE_DCHECK_LT(params.input2_offset, 32768);
 
-#ifdef USE_NEON
+#ifdef __AVX2__
+  const int32_t input1_left_shift = params.left_shift + params.input1_shift;
+  const int32_t input2_left_shift = params.left_shift + params.input2_shift;
+  const __m256i input1_offset = _mm256_set1_epi32(params.input1_offset);
+  const __m256i input2_offset = _mm256_set1_epi32(params.input2_offset);
+  const __m256i output_offset = _mm256_set1_epi32(params.output_offset);
+  const __m256i clamp_max_v =
+      _mm256_set1_epi32(params.quantized_activation_max);
+  const __m256i clamp_min_v =
+      _mm256_set1_epi32(params.quantized_activation_min);
+
+  for (; i <= size - 16; i += 16) {
+    const __m256i input1_val_original =
+        _mm256_loadu_si256(reinterpret_cast<__m256i const*>(input1_data + i));
+    const __m256i input2_val_original =
+        _mm256_loadu_si256(reinterpret_cast<__m256i const*>(input2_data + i));
+
+    __m256i s11 =
+        _mm256_cvtepi16_epi32(_mm256_castsi256_si128(input1_val_original));
+    __m256i s12 =
+        _mm256_cvtepi16_epi32(_mm256_extracti128_si256(input1_val_original, 1));
+    __m256i s21 =
+        _mm256_cvtepi16_epi32(_mm256_castsi256_si128(input2_val_original));
+    __m256i s22 =
+        _mm256_cvtepi16_epi32(_mm256_extracti128_si256(input2_val_original, 1));
+
+    s11 = _mm256_add_epi32(s11, input1_offset);
+    s12 = _mm256_add_epi32(s12, input1_offset);
+    s21 = _mm256_add_epi32(s21, input2_offset);
+    s22 = _mm256_add_epi32(s22, input2_offset);
+
+    s11 = avx2_utils::MultiplyByQuantizedMultiplier(
+        s11, params.input1_multiplier, input1_left_shift);
+    s12 = avx2_utils::MultiplyByQuantizedMultiplier(
+        s12, params.input1_multiplier, input1_left_shift);
+    s21 = avx2_utils::MultiplyByQuantizedMultiplier(
+        s21, params.input2_multiplier, input2_left_shift);
+    s22 = avx2_utils::MultiplyByQuantizedMultiplier(
+        s22, params.input2_multiplier, input2_left_shift);
+
+    __m256i s1 = _mm256_add_epi32(s11, s21);
+    __m256i s2 = _mm256_add_epi32(s12, s22);
+
+    s1 = avx2_utils::MultiplyByQuantizedMultiplier(s1, params.output_multiplier,
+                                                   params.output_shift);
+    s2 = avx2_utils::MultiplyByQuantizedMultiplier(s2, params.output_multiplier,
+                                                   params.output_shift);
+
+    s1 = _mm256_add_epi32(s1, output_offset);
+    s2 = _mm256_add_epi32(s2, output_offset);
+
+    s1 = _mm256_min_epi32(s1, clamp_max_v);
+    s1 = _mm256_max_epi32(s1, clamp_min_v);
+    s2 = _mm256_min_epi32(s2, clamp_max_v);
+    s2 = _mm256_max_epi32(s2, clamp_min_v);
+
+    avx2_utils::CastInt32ToInt16AndStore(output_data + i, s1);
+    avx2_utils::CastInt32ToInt16AndStore(output_data + i + 8, s2);
+  }
+
+#elif defined(USE_NEON)
   const int32x4_t output_activation_min_vector =
       vdupq_n_s32(params.quantized_activation_min);
   const int32x4_t output_activation_max_vector =

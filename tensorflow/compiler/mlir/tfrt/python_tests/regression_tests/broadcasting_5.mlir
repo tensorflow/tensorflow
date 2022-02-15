@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?xf32>) -> tensor<?xf32> {
+builtin.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<5xf32> }) -> tensor<?xf32> {
   %0 = "tf.Asinh"(%V__0) : (tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.Elu"(%0) : (tensor<?xf32>) -> tensor<?xf32>
   %2 = "tf.Square"(%1) : (tensor<?xf32>) -> tensor<?xf32>

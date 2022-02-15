@@ -697,10 +697,8 @@ def : Pat<(TF_SignOp $x), (HLO_SignOp $x)>;
 
 def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
   "getElementTypeOrSelf($0.getType()).isIntOrFloat() && "
-  "getElementTypeOrSelf($1.getType()).isIntOrFloat() && "
-  "getElementTypeOrSelf($0.getType()).getIntOrFloatBitWidth() == "
-  "getElementTypeOrSelf($1.getType()).getIntOrFloatBitWidth()">,
-  "element types must be integers or floats of same width">;
+  "getElementTypeOrSelf($1.getType()).isIntOrFloat()">,
+  "element types must be integers or floats">;
 
 // TODO(mgester): Due to restrictions of xla::BitcastConvertType we currently
 // only lower if both input and output types are int or float and have same width

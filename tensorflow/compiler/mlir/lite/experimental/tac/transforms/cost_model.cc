@@ -62,7 +62,7 @@ int64_t GetTransferredTensorBytes(CallOp from_graph, CallOp to_graph) {
       if (IsQUI8Type(input_type) || IsQI8Type(input_type)) {
         total_size_transferred += input_type.getNumElements() * 8;
       } else {
-        total_size_transferred += input_type.getSizeInBits();
+        total_size_transferred += input_type.cast<ShapedType>().getSizeInBits();
       }
     }
   }

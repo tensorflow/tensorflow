@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -132,7 +133,10 @@ BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
       session_(nullptr) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
-  CHECK(active_.empty());
+  {
+    mutex_lock l(calls_mu_);
+    calls_.clear();
+  }
   local_->Unref();
 }
 
@@ -394,17 +398,27 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
   }
 
   local_->StartAbort(derived_status);
+
+  bool status_ok = false;
   {
-    // Aborts all active RecvTensor calls.
     mutex_lock l(mu_);
-    if (status_.ok()) {
+    status_ok = status_.ok();
+    if (status_ok) {
       status_ = derived_status;
-      for (auto& entry : active_) {
-        entry.first->StartAbort(derived_status);
-        entry.second();
-      }
-      active_.clear();
     }
+  }
+
+  if (status_ok) {
+    // Aborts all active RecvTensor calls.
+    mutex_lock l(calls_mu_);
+    for (auto& cm_and_token_and_calls : calls_) {
+      for (auto& call : cm_and_token_and_calls.second.second) {
+        call->StartAbort(derived_status);
+      }
+      auto* cm = cm_and_token_and_calls.first;
+      calls_[cm].second.clear();
+    }
+    calls_.clear();
   }
 }
 
@@ -412,7 +426,6 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
                                         const Rendezvous::Args& args) {
   CancellationManager* cm = args.cancellation_manager;
   bool already_cancelled = false;
-  InactiveCallback callback = [] {};
   {
     tf_shared_lock l(mu_);
     if (!status_.ok()) {
@@ -420,32 +433,51 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
       return;
     }
   }
+
+  CancellationToken token = CancellationManager::kInvalidToken;
   if (cm != nullptr) {
-    auto token = cm->get_cancellation_token();
-    already_cancelled = !cm->RegisterCallback(token, [this, call] {
-      {
-        tf_shared_lock l(mu_);
-        if (active_.find(call) == active_.end()) return;
+    mutex_lock l(calls_mu_);
+    auto it = calls_.find(cm);
+    if (it == calls_.end()) {
+      token = cm->get_cancellation_token();
+      already_cancelled = !cm->RegisterCallback(token, [this, cm]() {
+        mutex_lock l(calls_mu_);
+        // Abort all the RecvTensor calls associated with thie cancellation
+        // manager.
+        for (const auto& call : calls_[cm].second) {
+          call->StartAbort(
+              errors::Cancelled("RecvFromRemoteAsync is cancelled."));
+        }
+      });
+
+      if (!already_cancelled) {
+        calls_.emplace(
+            cm,
+            std::make_pair(token, absl::flat_hash_set<BaseRecvTensorCall*>{}));
       }
-      call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
-    });
-    callback = [cm, token] { cm->TryDeregisterCallback(token); };
+    }
   }
+
   if (already_cancelled) {
     call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
   } else {
-    mutex_lock l(mu_);
-    CHECK(active_.emplace(call, callback).second);  // Crash OK.
+    mutex_lock l(calls_mu_);
+    bool emplaced = calls_[cm].second.emplace(call).second;
+    CHECK(emplaced);  // Crash OK.
   }
 }
 
-void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call) {
-  mutex_lock l(mu_);
-  auto it = active_.find(call);
-  if (it != active_.end()) {
-    // Deregister the cancellation callback, if one was registered.
-    it->second();
-    active_.erase(it);
+void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
+                                          const Rendezvous::Args& args) {
+  auto cm = args.cancellation_manager;
+  mutex_lock l(calls_mu_);
+  CancellationToken token = calls_[cm].first;
+  calls_[cm].second.erase(call);
+  if (calls_[cm].second.empty()) {
+    calls_.erase(cm);
+    if (cm != nullptr) {
+      cm->TryDeregisterCallback(token);
+    }
   }
 }
 

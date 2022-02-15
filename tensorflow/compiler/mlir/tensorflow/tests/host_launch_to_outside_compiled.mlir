@@ -5,9 +5,9 @@
 // expected-error@+1 {{not a valid device}}
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["bad_device"]} {
   func @bad_device_error() -> () {
-    "tf_device.cluster"() ( {
+    "tf_device.cluster"() ({
       "tf.A"() : () -> ()
-      "tf_device.launch"() ( {
+      "tf_device.launch"() ({
         "tf.B"() : () -> ()
 	tf_device.return
       }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
@@ -26,9 +26,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // CHECK-LABEL: func @model_parallelism
   func @model_parallelism() -> () {
     // CHECK:      "tf_device.launch"
-    "tf_device.cluster"() ( {
+    "tf_device.cluster"() ({
       "tf.A"() : () -> ()
-      "tf_device.launch"() ( {
+      "tf_device.launch"() ({
         "tf.B"() : () -> ()
 	tf_device.return
       }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
@@ -54,9 +54,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      device = "/job:worker/replica:0/task:0/device:TPU:0"
     // CHECK:      "tf.C"
     // CHECK-NEXT: tf_device.return
-    "tf_device.cluster"() ( {
+    "tf_device.cluster"() ({
       "tf.A"() : () -> ()
-      "tf_device.launch"() ( {
+      "tf_device.launch"() ({
         "tf.B"() : () -> ()
 	tf_device.return
       }) {device = "/job:worker/replica:0/task:0/device:TPU:0"} : () -> ()
@@ -74,9 +74,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME:    _xla_outside_compilation
     // CHECK:      "tf.C"
     // CHECK-NEXT: tf_device.return
-    "tf_device.cluster"() ( {
+    "tf_device.cluster"() ({
       "tf.A"() : () -> ()
-      "tf_device.launch"() ( {
+      "tf_device.launch"() ({
         "tf.B"() : () -> ()
 	tf_device.return
       }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
@@ -94,9 +94,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME:    _xla_outside_compilation
     // CHECK:      "tf.C"(%[[B_OUTPUT]])
     // CHECK-NEXT: tf_device.return
-    "tf_device.cluster"() ( {
+    "tf_device.cluster"() ({
       %1 = "tf.A"() : () -> (tensor<?xi32>)
-      %2 = "tf_device.launch"() ( {
+      %2 = "tf_device.launch"() ({
         %3 = "tf.B"(%1) : (tensor<?xi32>) -> (tensor<?xi32>)
 	tf_device.return %3 : tensor<?xi32>
       }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> (tensor<?xi32>)
@@ -116,9 +116,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME:    _xla_outside_compilation
     // CHECK:      "tf.C"(%[[D_OUTPUT]])
     // CHECK-NEXT: tf_device.return
-    "tf_device.cluster"() ( {
+    "tf_device.cluster"() ({
       %1 = "tf.A"() : () -> (tensor<?xi32>)
-      %2 = "tf_device.launch"() ( {
+      %2 = "tf_device.launch"() ({
         %3 = "tf.B"(%1) : (tensor<?xi32>) -> (tensor<?xi32>)
         %4 = "tf.D"(%3) : (tensor<?xi32>) -> (tensor<?xi32>)
 	tf_device.return %4 : tensor<?xi32>
@@ -129,4 +129,58 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
 
+  // Tests a host launch that's called from a tf_device.cluster.
+
+  func @called_hostlaunch() -> () {
+    "tf_device.cluster"() ({
+      "tf.PartitionedCall"() {f = @called_hostlaunch_callee} : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
+    return
+  }
+  // CHECK-LABEL: func @called_hostlaunch_callee
+  func @called_hostlaunch_callee() -> () {
+    // CHECK:      "tf.A"
+    // CHECK-NOT:  "tf_device.launch"
+    // CHECK-NEXT: "tf.B"
+    // CHECK-SAME:    _xla_outside_compilation
+    // CHECK:      "tf.C"
+    "tf.A"() : () -> ()
+    "tf_device.launch"() ({
+      "tf.B"() : () -> ()
+      tf_device.return
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+    "tf.C"() : () -> ()
+    return
+  }
+
+  // Test that the same outside compiled function cannot be called from two
+  // different TPU clusters.
+
+  func @called_hostlaunch_bad() -> () {
+    "tf_device.cluster"() ({
+      "tf.PartitionedCall"() {f = @called_hostlaunch_bad_callee} : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
+    "tf_device.cluster"() ({
+      "tf.PartitionedCall"() {f = @called_hostlaunch_bad_callee} : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
+    return
+  }
+  // expected-error@+1 {{The same function is reachable from multiple TPU Clusters.}}
+  func @called_hostlaunch_bad_callee() -> () {
+    // CHECK:      "tf.A"
+    // CHECK-NOT:  "tf_device.launch"
+    // CHECK-NEXT: "tf.B"
+    // CHECK-SAME:    _xla_outside_compilation
+    // CHECK:      "tf.C"
+    "tf.A"() : () -> ()
+    "tf_device.launch"() ({
+      "tf.B"() : () -> ()
+      tf_device.return
+    }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+    "tf.C"() : () -> ()
+    return
+  }
 }

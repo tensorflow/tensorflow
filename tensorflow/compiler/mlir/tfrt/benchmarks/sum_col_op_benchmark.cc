@@ -20,46 +20,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-std::string SumColumn(bool dynamic_row, bool dynamic_col, int32_t rows,
-                      int32_t cols) {
-  return GetReductionIR("tf.Sum", {rows, cols}, {dynamic_row, dynamic_col}, {0},
-                        "f32");
-}
-
-auto EigenSumColumn() {
-  return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice> device) {
-    Tensor output(DT_FLOAT, {inputs[0].dim_size(1)});
-
-    auto in = inputs[0].tensor<float, 2>();
-    auto out = output.tensor<float, 1>();
-    out.setZero();
-
-    std::array<int64_t, 1> dims_to_reduce{0};
-    if (device.hasValue()) {
-      out.device(*device) = in.sum(dims_to_reduce);
-    } else {
-      out = in.sum(dims_to_reduce);
-    }
-  };
-}
-
-llvm::SmallVector<InputTensorSpec> Inputs(ssize_t rows, ssize_t cols) {
-  return {InputTensorSpec(DT_FLOAT, {rows, cols})};
-}
-
-#define BM(FN) BM_##FN->Arg(0);
-
-#define BM_SUITE(NAME, DYNAMIC_ROW, DYNAMIC_COL, ROWS, COLS)               \
-  BM(CpurtV(NAME, SumColumn(DYNAMIC_ROW, DYNAMIC_COL, ROWS, COLS), "main", \
-            Inputs(ROWS, COLS)));                                          \
-  BM(Eigen(NAME, EigenSumColumn(), Inputs(ROWS, COLS)));                   \
-  BM(Tfrt(NAME, SumColumn(DYNAMIC_ROW, DYNAMIC_COL, ROWS, COLS), "main",   \
-          Inputs(ROWS, COLS)))
-
-#define BM_DYNAMIC_ALL(ROWS, COLS)                                           \
-  BM_SUITE(SumColDynamicAll_##ROWS##_##COLS, kDynamicDim, kDynamicDim, ROWS, \
-           COLS)
+#define BM_DYNAMIC_ALL(ROWS, COLS)                                        \
+  BM_SUITE_SUM_F32(SumColDynamicAll_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
+                   BOOLS(kDynamicDim, kDynamicDim), 1, INTS(0))
 BM_DYNAMIC_ALL(2, 80);
 BM_DYNAMIC_ALL(8, 6);
 BM_DYNAMIC_ALL(80, 1);
@@ -68,8 +31,9 @@ BM_DYNAMIC_ALL(81, 61);
 BM_DYNAMIC_ALL(800, 600);
 BM_DYNAMIC_ALL(802, 602);
 
-#define BM_STATIC_ROW(ROWS, COLS) \
-  BM_SUITE(SumColStaticRow##ROWS##_##COLS, kStaticDim, kDynamicDim, ROWS, COLS)
+#define BM_STATIC_ROW(ROWS, COLS)                                       \
+  BM_SUITE_SUM_F32(SumColStaticRow##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
+                   BOOLS(kStaticDim, kDynamicDim), 1, INTS(0))
 BM_STATIC_ROW(2, 80);
 BM_STATIC_ROW(8, 6);
 BM_STATIC_ROW(80, 1);
@@ -78,8 +42,9 @@ BM_STATIC_ROW(81, 61);
 BM_STATIC_ROW(800, 600);
 BM_STATIC_ROW(802, 602);
 
-#define BM_STATIC_COL(ROWS, COLS) \
-  BM_SUITE(SumColStaticCol_##ROWS##_##COLS, kDynamicDim, kStaticDim, ROWS, COLS)
+#define BM_STATIC_COL(ROWS, COLS)                                        \
+  BM_SUITE_SUM_F32(SumColStaticCol_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
+                   BOOLS(kDynamicDim, kStaticDim), 1, INTS(0))
 BM_STATIC_COL(2, 80);
 BM_STATIC_COL(8, 6);
 BM_STATIC_COL(80, 1);
@@ -88,8 +53,9 @@ BM_STATIC_COL(81, 61);
 BM_STATIC_COL(800, 600);
 BM_STATIC_COL(802, 602);
 
-#define BM_STATIC_ALL(ROWS, COLS) \
-  BM_SUITE(SumColStaticAll_##ROWS##_##COLS, kStaticDim, kStaticDim, ROWS, COLS)
+#define BM_STATIC_ALL(ROWS, COLS)                                        \
+  BM_SUITE_SUM_F32(SumColStaticAll_##ROWS##_##COLS, 2, INTS(ROWS, COLS), \
+                   BOOLS(kStaticDim, kStaticDim), 1, INTS(0))
 BM_STATIC_ALL(2, 80);
 BM_STATIC_ALL(8, 6);
 BM_STATIC_ALL(80, 1);

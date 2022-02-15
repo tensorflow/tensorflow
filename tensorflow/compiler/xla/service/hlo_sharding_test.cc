@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <set>
 #include <string>
 #include <tuple>
@@ -191,7 +192,7 @@ TEST_F(HloShardingTest, NestedTuple) {
 
 TEST_F(HloShardingTest, Hash) {
   auto hash_compare_equal = [](const HloSharding& a, const HloSharding& b) {
-    if (a.Hash() != b.Hash()) {
+    if (absl::HashOf(a) != absl::HashOf(b)) {
       return false;
     }
     return a == b;

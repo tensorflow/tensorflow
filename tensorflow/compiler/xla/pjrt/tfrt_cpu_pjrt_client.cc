@@ -1306,7 +1306,7 @@ static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> MemoryForAllocation(
   // by the JITed code, msan has no way of knowing their memory was
   // initialized. Mark them initialized so that msan doesn't flag loads from
   // these buffers.
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(out->data(), buffer_size);
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(out->data(), buffer_size);
   return out;
 }
 

@@ -22,18 +22,11 @@ namespace tfrt_global {
 
 class GlobalHostContext {
  public:
-  static void Set(::tfrt::HostContext* host_ctx, bool use_tpurt_kernels = true);
+  static void Set(::tfrt::HostContext* host_ctx);
   static ::tfrt::HostContext* Get();
-  static bool UseTpurtKernels();
 
  private:
   static ::tfrt::HostContext* host_ctx_;
-
-  // NOTE: If use_tpurt_kernels_==true, we can neither use TpuDeviceContext to
-  // transfer tpu tensor nor allocate tpu tensor via TpuDevice. This is because
-  // tpurt does not understand DenseTpuTensor wrapped by AsyncValueTensor.
-  // TODO(b/188940204): Clean up this technical debt.
-  static bool use_tpurt_kernels_;
 };
 
 }  // namespace tfrt_global

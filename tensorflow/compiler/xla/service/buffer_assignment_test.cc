@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 namespace {
@@ -122,7 +121,10 @@ class BufferAssignmentTest : public HloTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersReuseForAdd(
       HloModule* module, int64_t alignment = 1) {
-    absl::flat_hash_set<HloOpcode> must_not_live_out = {HloOpcode::kAdd};
+    auto must_not_live_out = [](const HloInstruction* instruction,
+                                const ShapeIndex&) {
+      return instruction->opcode() == HloOpcode::kAdd;
+    };
 
     return BufferAssigner::Run(
                module, absl::make_unique<DependencyHloOrdering>(module),
@@ -167,7 +169,7 @@ class BufferAssignmentTest : public HloTestBase {
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
-               /*must_not_live_out=*/{},
+               /*must_not_live_out=*/absl::nullopt,
                /*can_share_buffer=*/nullptr, std::move(preset_assignments))
         .ConsumeValueOrDie();
   }

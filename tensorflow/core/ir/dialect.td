@@ -69,13 +69,13 @@ def TFGraphDialect : Dialect {
   }];
 
   let extraClassDeclaration = [{
-    Identifier getNameAttrIdentifier() const { return name_key_; }
+    StringAttr getNameAttrIdentifier() const { return name_key_; }
     static constexpr StringRef getNameAttrKey() { return "_mlir_name"; }
 
-    Identifier getDeviceAttrIdentifier() const { return device_key_; }
+    StringAttr getDeviceAttrIdentifier() const { return device_key_; }
     static constexpr StringRef getDeviceAttrKey() { return "_mlir_device"; }
 
-    Identifier getAssignedDeviceAttrIdentifier() const {
+    StringAttr getAssignedDeviceAttrIdentifier() const {
       return assigned_device_key_;
     }
     static constexpr StringRef getAssignedDeviceAttrKey() {
@@ -98,15 +98,21 @@ def TFGraphDialect : Dialect {
     llvm::unique_function<void(Operation *, OpAsmPrinter &)>
     getOperationPrinter(Operation *op) const override;
 
+    // Provides a hook for op interface.
+    void *getRegisteredInterfaceForOp(mlir::TypeID interface,
+                                      mlir::OperationName opName) override;
+
   private:
+    TFGraphOpAsmInterface *fallbackOpAsmInterface_ = nullptr;
     // Cached identifier for efficiency purpose.
-    Identifier name_key_;
-    Identifier device_key_;
-    Identifier assigned_device_key_;
+    StringAttr name_key_;
+    StringAttr device_key_;
+    StringAttr assigned_device_key_;
     ControlType control_ty_;
   }];
 
   let cppNamespace = "::mlir::tfg";
+  let hasNonDefaultDestructor = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -116,7 +122,7 @@ def TFGraphDialect : Dialect {
 include "tensorflow/core/ir/types/types.td"
 
 // Base class for the operations in this dialect.
-class TFGraph_Op<string mnemonic, list<OpTrait> traits = []> :
+class TFGraph_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFGraphDialect, mnemonic, traits>;
 
 #endif // TFG_DIALECT

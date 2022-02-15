@@ -746,28 +746,14 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([False, True, False, True], f(True))
       self.assertAllEqual([False, True, False, False], f(False))
 
-  def testHasDefaultWriterWhenRecording_checkWriter(self):
+  def testHasDefaultWriter_checkWriter(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
       with self.subTest(name='has_writer'):
         with summary_ops.create_file_writer_v2(logdir).as_default():
-          self.assertTrue(summary_ops.has_default_writer_when_recording())
+          self.assertTrue(summary_ops.has_default_writer())
       with self.subTest(name='no_writer'):
-        self.assertFalse(summary_ops.has_default_writer_when_recording())
-
-  def testHasDefaultWriterWhenRecording_checkDistrStrategy(self):
-    try:
-      logdir = self.get_temp_dir()
-      with context.eager_mode():
-        with summary_ops.create_file_writer_v2(logdir).as_default():
-          with self.subTest(name='is_recording_distr_strategy'):
-            self.assertTrue(summary_ops.has_default_writer_when_recording())
-          with self.subTest(name='not_recording_distr_strategy'):
-            summary_ops._summary_state.is_recording_distribution_strategy = False
-            self.assertFalse(summary_ops.has_default_writer_when_recording())
-    finally:
-      # Reset to default value for other tests.
-      summary_ops._summary_state.is_recording_distribution_strategy = True
+        self.assertFalse(summary_ops.has_default_writer())
 
 
 class SummaryWriterTest(test_util.TensorFlowTestCase):

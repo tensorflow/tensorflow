@@ -63,7 +63,7 @@ class XlaBuilderTest : public ::testing::Test {
 
   std::string name_;
   mlir::MLIRContext context_;
-  mlir::OwningModuleRef module_;
+  mlir::OwningOpRef<mlir::ModuleOp> module_;
   mlir::OpBuilder builder_;
   MlirHloBuilder xla_builder_;
 };

@@ -30,7 +30,7 @@ func @no_devices() {
   tf_executor.graph {
     %0 = tf_executor.island {
       tf_device.replicate {n = 2 : i32} {
-        "tf_device.launch"() ( {
+        "tf_device.launch"() ({
           "tf.opA"() : () -> ()
           tf_device.return
         }) {device = "CORE_0"} : () -> ()
@@ -55,7 +55,7 @@ func @no_override_device() {
   tf_executor.graph {
     %0 = tf_executor.island {
       tf_device.replicate {n = 2 : i32, devices = {CORE_0 = ["/CPU:0", "/GPU:1"]}} {
-        "tf_device.launch"() ( {
+        "tf_device.launch"() ({
           "tf.opA"() : () -> ()
           tf_device.return
         }) {device = "/TPU:2"} : () -> ()
@@ -80,7 +80,7 @@ func @remap_device() {
   tf_executor.graph {
     %0 = tf_executor.island {
       tf_device.replicate {n = 2 : i32, devices = {CORE_0 = ["/CPU:0", "/GPU:1"]}} {
-        "tf_device.launch"() ( {
+        "tf_device.launch"() ({
           "tf.opA"() : () -> ()
           tf_device.return
         }) {device = "CORE_0"} : () -> ()

@@ -42,8 +42,8 @@ namespace {
 class SinkConstantsToControlFlowPass
     : public SinkConstantsToControlFlowPassBase<
           SinkConstantsToControlFlowPass> {
-  void runOnFunction() override {
-    getFunction().walk([](Operation* op) {
+  void runOnOperation() override {
+    getOperation().walk([](Operation* op) {
       for (Region& region : op->getRegions()) SinkToRegion(&region);
     });
   }

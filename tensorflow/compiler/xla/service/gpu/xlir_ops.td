@@ -43,7 +43,7 @@ def XLIR_Dialect : Dialect {
 }
 
 // Base class for XLIR dialect ops.
-class XLIR_Op<string mnemonic, list<OpTrait> traits = []> :
+class XLIR_Op<string mnemonic, list<Trait> traits = []> :
     Op<XLIR_Dialect, mnemonic, traits> {
   let summary = !strconcat("xlir.", mnemonic, " operation");
   let assemblyFormat = "operands attr-dict";
@@ -61,13 +61,42 @@ def XLIR_ModuleLoadOp : XLIR_Op<"module.load"> {
   let results = (outs GPU_ModuleType);
 }
 
+def XLIR_ReplicaIdOp : XLIR_Op<"replica_id"> {
+  let description = [{
+    xlir.replica_id copies the 4-byte replica ID to the output buffer.
+  }];
+  let arguments = (ins GPU_StreamType:$stream, GPU_BufferType:$output,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream`,` $output`,` $chain attr-dict
+  }];
+}
+
+def XLIR_PartitionIdOp : XLIR_Op<"partition_id"> {
+  let description = [{
+    xlir.partition_id copies the 4-byte partition ID to the output buffer.
+  }];
+  let arguments = (ins GPU_StreamType:$stream, GPU_BufferType:$output,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream`,` $output`,` $chain attr-dict
+  }];
+}
+
 def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
   let description = [{
     xlir.ccl.create returns a ccl.handle, which can be populated with individual
     collective ops (e.g., using tfrt_gpu.ccl.all_reduce) to be executed as a
     single fused operation.
+    group_mode is the int64_t-cast CollectiveOpGroupMode (as described in
+    tensorflow/compiler/xla/service/collective_ops_utils.h). op_id is the
+    hlo.unique_id value if in cross-replica mode, or the op's channel ID if in
+    cross-module mode.
   }];
-  let arguments = (ins GPU_ContextType);
+  let arguments = (ins GPU_ContextType:$context, I64Attr:$group_mode,
+                   I64Attr:$op_id);
   let results = (outs GPU_CclHandleType);
 }
 
@@ -75,15 +104,18 @@ def XLIR_CclCollectivePermuteOp : XLIR_Op<"ccl.collective_permute"> {
   let description = [{
     xlir.ccl.collective_permute inserts into the ccl.handle operations to send
     data at the input buffer and receive data into the output buffer depending
-    on the source and target peers supplied in the ExecutionContext
-    (XcclContext).
+    on the paired list of source and target peers supplied as attributes.
+    group_mode is the int64_t-cast CollectiveOpGroupMode (as described in
+    tensorflow/compiler/xla/service/collective_ops_utils.h).
   }];
   let arguments = (ins GPU_CclHandleType:$handle, GPU_BufferType:$input,
                    GPU_BufferType:$output, GPU_CclDataTypeAttr:$data_type,
-                   TFRT_ChainType:$chain);
+                   I64Attr:$group_mode, I64ArrayAttr:$source_peers,
+                   I64ArrayAttr:$target_peers, TFRT_ChainType:$chain);
   let results = (outs TFRT_ChainType);
   let assemblyFormat = [{
-    $handle`,` $input`,` $output`,` custom<Enum>($data_type)`,` $chain attr-dict
+    $handle`,` $input`,` $output`,` custom<Enum>($data_type)`,` $group_mode`,`
+    $source_peers`,` $target_peers`,` $chain attr-dict
   }];
 }
 

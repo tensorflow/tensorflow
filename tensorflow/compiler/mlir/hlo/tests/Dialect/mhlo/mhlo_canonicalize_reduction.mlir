@@ -5,7 +5,7 @@
 // CHECK-NOT: reshape
 func @test_rank2_column_reduction(%arg0: tensor<?x?xf32>) -> tensor<?xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  %2 = "mhlo.reduce"(%arg0, %0) ( {
+  %2 = "mhlo.reduce"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
@@ -20,7 +20,7 @@ func @test_rank2_column_reduction(%arg0: tensor<?x?xf32>) -> tensor<?xf32> {
 // CHECK-NOT: reshape
 func @test_rank2_row_reduction(%arg0: tensor<?x?xf32>) -> tensor<?xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  %2 = "mhlo.reduce"(%arg0, %0) ( {
+  %2 = "mhlo.reduce"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
@@ -41,7 +41,7 @@ func @test_rank2_row_reduction(%arg0: tensor<?x?xf32>) -> tensor<?xf32> {
 // CHECK-SAME:  (tensor<?xf32>, tensor<1xi32>) -> tensor<?xf32>
 func @test_rank3_column_reduction(%arg0: tensor<?x?x?xf32>) -> tensor<?xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  %2 = "mhlo.reduce"(%arg0, %0) ( {
+  %2 = "mhlo.reduce"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
@@ -62,7 +62,7 @@ func @test_rank3_column_reduction(%arg0: tensor<?x?x?xf32>) -> tensor<?xf32> {
 // CHECK-SAME:  (tensor<?xf32>, tensor<1xi32>) -> tensor<?xf32>
 func @test_rank3_row_reduction(%arg0: tensor<?x?x?xf32>) -> tensor<?xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  %2 = "mhlo.reduce"(%arg0, %0) ( {
+  %2 = "mhlo.reduce"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
@@ -83,7 +83,7 @@ func @test_rank3_row_reduction(%arg0: tensor<?x?x?xf32>) -> tensor<?xf32> {
 // CHECK-SAME: (tensor<?xf32>) -> tensor<f32>
 func @test_reduce_to_scalar(%arg0: tensor<?x?x?xf32>) -> tensor<f32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  %2 = "mhlo.reduce"(%arg0, %0) ( {
+  %2 = "mhlo.reduce"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
@@ -98,7 +98,7 @@ func @test_reduce_to_scalar(%arg0: tensor<?x?x?xf32>) -> tensor<f32> {
 // CHECK-NOT: reshape
 func @test_mid_reduction(%arg0: tensor<?x?x?xf32>) -> tensor<?x?xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  %2 = "mhlo.reduce"(%arg0, %0) ( {
+  %2 = "mhlo.reduce"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()

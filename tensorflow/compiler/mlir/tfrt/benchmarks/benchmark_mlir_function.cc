@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "llvm/Support/SourceMgr.h"
@@ -50,10 +51,10 @@ using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::ResourceContext;
 
-using ::tfrt::cpu::jit::Executable;
-using ::tfrt::cpu::jit::JitExecutable;
-using ::tfrt::cpu::jit::MemrefDesc;
-using ::tfrt::cpu::jit::ReturnValueConverter;
+using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::JitExecutable;
+using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::ReturnValueConverter;
 
 using ::tensorflow::Env;
 using ::tensorflow::thread::ThreadPool;
@@ -88,10 +89,10 @@ static llvm::SmallVector<Tensor> GetInputTensors(
 }
 
 // -------------------------------------------------------------------------- //
-// Run function benchmark via the TF CPURT compilation.
+// Run function benchmark via the TF JitRt compilation.
 // -------------------------------------------------------------------------- //
 
-void RunCpurtBenchmark(::testing::benchmark::State& state,
+void RunJitRtBenchmark(::testing::benchmark::State& state,
                        llvm::StringRef mlir_input,
                        llvm::StringRef function_name,
                        llvm::ArrayRef<InputTensorSpec> input_specs,
@@ -104,11 +105,11 @@ void RunCpurtBenchmark(::testing::benchmark::State& state,
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
-  TfCpuRtPipelineOptions tf_cpurt_opts;
-  tf_cpurt_opts.vectorize = vectorize;
+  TfJitRtPipelineOptions tf_jitrt_opts;
+  tf_jitrt_opts.vectorize = vectorize;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
-                          /*lower_from_tensorflow=*/true, tf_cpurt_opts);
+                          /*lower_from_tensorflow=*/true, tf_jitrt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =
@@ -218,7 +219,8 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
       llvm::MemoryBuffer::getMemBuffer(mlir_input, "benchmark"), llvm::SMLoc());
 
   // Parse a kernel source code into the MLIR Module.
-  mlir::OwningModuleRef module(mlir::parseSourceFile(source_mgr, &context));
+  mlir::OwningOpRef<mlir::ModuleOp> module(
+      mlir::parseSourceFile(source_mgr, &context));
   CHECK(module) << "failed to parse mlir module";
 
   // Collect all diagnostics emitted while lowering parsed kernel module.
@@ -228,16 +230,17 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
                                            os);
 
   // Convert TF to TFRT fallback dialect.
-  TfrtPipelineOptions core_rt_opts;
-  core_rt_opts.hoist_invariant_ops = true;
-  core_rt_opts.enable_native_ops = false;
-  core_rt_opts.cost_threshold = 1024;
-  core_rt_opts.upper_cost_threshold = 100000;
-  core_rt_opts.merge_inter_dependent_streams = true;
-  core_rt_opts.func_use_fallback_tensor = true;
+  TfrtPipelineOptions pipeline_opts;
+  pipeline_opts.default_device = kDefaultHostDeviceName;
+  pipeline_opts.hoist_invariant_ops = true;
+  pipeline_opts.enable_native_ops = false;
+  pipeline_opts.cost_threshold = 1024;
+  pipeline_opts.upper_cost_threshold = 100000;
+  pipeline_opts.merge_inter_dependent_streams = true;
+  pipeline_opts.func_use_fallback_tensor = true;
 
   mlir::PassManager pm(module->getContext());
-  pm.addPass(CreateTfToTfrtConversionPass(core_rt_opts));
+  pm.addPass(CreateTfToTfrtConversionPass(pipeline_opts));
 
   CHECK(mlir::succeeded(pm.run(*module)))
       << "Failed to lower module to TFRT: " << os.str();
@@ -315,9 +318,11 @@ void RunTfrtBenchmark(::testing::benchmark::State& state,
     // Wait for the function execution to finish, as well as the side-effects.
     host->Await(results);
 
-    // First result is always a chain, check if it has error.
-    if (auto* error = results[0]->GetErrorIfPresent())
-      LOG(FATAL) << "Failed to execute a function";
+    // Check that all results are available.
+    for (unsigned i = 1; i < results.size(); ++i) {
+      if (auto* error = results[i]->GetErrorIfPresent())
+        LOG(FATAL) << "Failed to execute a function: " << StrCat(*error);
+    }
   }
 
   // Deallocate arguments.

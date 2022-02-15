@@ -42,7 +42,7 @@ class LegalizeTFTFL : public TosaLegalizeTFTFLPassBase<LegalizeTFTFL> {
 
 void LegalizeTFTFL::runOnFunction() {
   MLIRContext* ctx = &getContext();
-  OwningRewritePatternList patterns(ctx);
+  RewritePatternSet patterns(ctx);
   populateLegalizeTFPatterns(ctx, patterns);
   populateLegalizeTFLPatterns(ctx, patterns);
 

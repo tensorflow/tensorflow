@@ -140,7 +140,8 @@ def main():
   missing_dependencies = []
   # File extensions and endings to ignore
   ignore_extensions = [
-      "_test", "_test.py", "_test_gpu", "_test_gpu.py", "_test_lib"
+      "_test", "_test.py", "_test_cpu", "_test_cpu.py", "_test_gpu",
+      "_test_gpu.py", "_test_lib"
   ]
 
   ignored_files_count = 0

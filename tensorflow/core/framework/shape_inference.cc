@@ -796,7 +796,7 @@ Status InferenceContext::InternalMakeShapeFromTensor(
     // `tf.range`/`tf.ones`, etc. where the shape is not really materialized,
     // only used during the inference. Hence, just prevent doing a `reserve`
     // with a very large argument.
-    const int64_t max_dimensions = 1 << 20;
+    const int64_t max_dimensions = 1 << 25;
     if (num_dims >= max_dimensions) {
       return errors::Internal(
           "Cannot create a tensor with ", num_dims,
