@@ -69,7 +69,7 @@ def TestFactory(xla_backend,
     float_dtypes = [np.float32]
     complex_dtypes = [np.complex64]
     standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
-  dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_]
+  dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
     """Base class for running an XLA Computation through the local client."""

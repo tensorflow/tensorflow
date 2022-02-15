@@ -913,7 +913,8 @@ FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
   if (FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&
       !IsAlwaysDuplicable(*producer)) {
-    return "expensive producer would be duplicated";
+    return may_duplicate_ ? "expensive producer would be duplicated"
+                          : "fusion pass cannot duplicate";
   }
 
   if (NoFusionPossible fusible = !ShouldFuseInPlaceOp(producer, consumer)) {

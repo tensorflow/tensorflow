@@ -421,7 +421,10 @@ def _cc_shared_library_impl(ctx):
 
     # ---------- END ----------
 
-    runfiles_shared = [linking_outputs.library_to_link.resolved_symlink_dynamic_library] + output_files
+    resolved_symlink_dynamic_library = []
+    if linking_outputs.library_to_link.resolved_symlink_dynamic_library != None:
+        resolved_symlink_dynamic_library = [linking_outputs.library_to_link.resolved_symlink_dynamic_library]
+    runfiles_shared = resolved_symlink_dynamic_library + output_files
     if linking_outputs.library_to_link.dynamic_library != None:
         runfiles_shared.append(linking_outputs.library_to_link.dynamic_library)
     runfiles = ctx.runfiles(
@@ -440,7 +443,7 @@ def _cc_shared_library_impl(ctx):
     return [
         DefaultInfo(
             files = depset(
-                [linking_outputs.library_to_link.resolved_symlink_dynamic_library] + debug_files + output_files,
+                resolved_symlink_dynamic_library + debug_files + output_files,
             ),
             runfiles = runfiles,
         ),

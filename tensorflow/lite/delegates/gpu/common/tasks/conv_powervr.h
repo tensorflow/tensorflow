@@ -87,6 +87,7 @@ class ConvPowerVR : public GPUOperation {
                       // that use workgroups(subgroups) for
                       // uploading(LOCAL_MEM_BY_THREADS for example).
     bool different_weights_for_height;
+    bool groups_support = false;  // convolution groups
     int src_depth_loop_size;
     WeightsUploadType weights_upload_type;
     bool x_kernel_is_1 = false;

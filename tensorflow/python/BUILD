@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
@@ -28,8 +28,17 @@ load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_profiler_deps")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_lib_deps",
+    "tf_proto_library",
+)
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+    "tf_additional_plugin_deps",
+    "tf_additional_profiler_deps",
+)
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 
 # TODO(mdan): Break into per-directory files.
@@ -56,6 +65,7 @@ visibility = [
     "//third_party/py/starcraft2:__subpackages__",
     "//third_party/py/tensorflow_gnn:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
+    "//third_party/py/tensorflow_privacy:__subpackages__",
 ]
 
 package(
@@ -986,8 +996,11 @@ py_library(
     visibility = visibility,
     deps = [
         ":array_ops_gen",
+        ":control_flow_util",
         ":math_ops_gen",
+        "//tensorflow/python/compat",
         "//tensorflow/python/framework:common_shapes",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -1018,7 +1031,6 @@ py_library(
         ":boosted_trees_ops_gen",
         ":ops",
         ":training",
-        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
         "//tensorflow/python/framework",
     ],
 )
@@ -1265,6 +1277,7 @@ py_library(
     name = "control_flow_util_v2",
     srcs = ["ops/control_flow_util_v2.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//waymo/ml:__subpackages__"],
     deps = [
         ":control_flow_util",
         ":control_flow_v2_func_graphs",
@@ -1848,7 +1861,7 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/saved_model:registration",
+        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/util",
     ],
 )
@@ -2835,9 +2848,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "image_grad_deterministic_test",
+    name = "image_grad_d9m_test",
     size = "large",
-    srcs = ["ops/image_grad_deterministic_test.py"],
+    srcs = ["ops/image_grad_d9m_test.py"],
     python_version = "PY3",
     shard_count = 5,
     deps = [
@@ -3011,9 +3024,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "nn_fused_batchnorm_deterministic_test",
+    name = "nn_fused_batchnorm_d9m_test",
     size = "medium",
-    srcs = ["ops/nn_fused_batchnorm_deterministic_test.py"],
+    srcs = ["ops/nn_fused_batchnorm_d9m_test.py"],
     python_version = "PY3",
     shard_count = 4,
     tags = [
@@ -3265,12 +3278,15 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/experimental/ops",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:server_lib",
+        "//tensorflow/core/function:runtime_client_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:cluster",
@@ -3307,6 +3323,8 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/util:determinism",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/platform:enable_tf2_utils",
+    ]) + if_windows([
+        "//tensorflow/c:kernels_experimental",
     ]),
 )
 
@@ -3342,6 +3360,8 @@ filegroup(
         "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
         "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:session_state",  # tf_session
+        "//tensorflow/core/config:flag_defs",  # flags_api
+        "//tensorflow/core/config:flags",  # flags_api
         "//tensorflow/core/data/service:dispatcher_client",  # dispatcher_client
         "//tensorflow/core/data/service:grpc_util",  # grpc_util
         "//tensorflow/core/data/service:server_lib",  # server_lib
@@ -3353,6 +3373,7 @@ filegroup(
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
         "//tensorflow/core/framework:attr_value_proto_cc_impl",  # tf_text
         "//tensorflow/core/framework:op_def_proto_cc_impl",  # tf_text
+        "//tensorflow/core/function:runtime_client_cc",  # runtime_client_pybind
         "//tensorflow/core/grappler:devices",  # tf_cluster
         "//tensorflow/core/grappler:grappler_item",  # tf_item
         "//tensorflow/core/grappler:grappler_item_builder",  # tf_item

@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
@@ -128,6 +127,11 @@ XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
 HloInstructionProto* XlaBuilderFriend::GetInstruction(XlaOp op) {
   return &op.builder()
               ->instructions_[op.builder()->handle_to_index_[op.handle_]];
+}
+
+HloInstructionProto* XlaBuilderFriend::GetInstructionByHandle(
+    XlaBuilder* builder, int64_t handle) {
+  return &builder->instructions_[builder->handle_to_index_[handle]];
 }
 
 }  // namespace internal
@@ -351,7 +355,7 @@ void XlaBuilder::IsConstantVisitor(const int64_t op_handle, int depth,
         // Set bound is considered constant -- the bound is used as the value.
         break;
       }
-      TF_FALLTHROUGH_INTENDED;
+      ABSL_FALLTHROUGH_INTENDED;
     case HloOpcode::kWhile:
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
@@ -1363,17 +1367,15 @@ Status XlaBuilder::VerifyConvolution(
   int num_spatial_dims = num_dims - 2;
 
   const auto check_spatial_dimensions =
-      [&](const char* const field_name,
-          const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>&
-              numbers) {
+      [&](absl::string_view field_name, absl::Span<const int64_t> numbers) {
         if (numbers.size() != num_spatial_dims) {
           return InvalidArgument("Expected %d elements for %s, but got %d.",
                                  num_spatial_dims, field_name, numbers.size());
         }
         for (int i = 0; i < numbers.size(); ++i) {
-          if (numbers.Get(i) < 0 || numbers.Get(i) >= num_dims) {
+          if (numbers[i] < 0 || numbers[i] >= num_dims) {
             return InvalidArgument("Convolution %s[%d] is out of bounds: %d",
-                                   field_name, i, numbers.Get(i));
+                                   field_name, i, numbers[i]);
           }
         }
         return Status::OK();

@@ -25,22 +25,6 @@ package(
 )
 
 cc_library(
-    name = "eager_context",
-    srcs = [
-        "eager_context.cc",
-    ],
-    hdrs = [
-        "eager_context.h",
-    ],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-    deps = [
-        "//tensorflow/c/eager:c_api",
-    ],
-)
-
-cc_library(
     name = "pywrap_tfe_lib",
     srcs = [
         "pywrap_gradient_exclusions.cc",
@@ -60,7 +44,6 @@ cc_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":eager_context",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c/eager:c_api",
@@ -135,7 +118,6 @@ cuda_py_test(
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
-        "eager_context.h",
         "pywrap_tensor.h",
         "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
@@ -641,12 +623,14 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        "//tensorflow/core/function/polymorphism:type_dispatch",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
     ],
 )

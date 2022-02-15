@@ -23,24 +23,8 @@ bool IsCublasGemm(const HloInstruction& hlo) {
          hlo.custom_call_target() == kGemmCallTarget;
 }
 
-const char* const kCudnnBatchNormForwardInferenceCallTarget =
-    "__cudnn$batchNormalizationForwardInference";
-const char* const kCudnnBatchNormForwardTrainingCallTarget =
-    "__cudnn$batchNormalizationForwardTraining";
-const char* const kCudnnBatchNormBackwardCallTarget =
-    "__cudnn$batchNormalizationBackward";
-
-bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo) {
-  if (hlo.opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  const auto& target = hlo.custom_call_target();
-  return target == kCudnnBatchNormForwardInferenceCallTarget ||
-         target == kCudnnBatchNormForwardTrainingCallTarget ||
-         target == kCudnnBatchNormBackwardCallTarget;
-}
-
 const char* const kGemmCallTarget = "__cublas$gemm";
+const char* const kTriangularSolveCallTarget = "__cublas$triangularSolve";
 const char* const kCudnnConvForwardCallTarget = "__cudnn$convForward";
 const char* const kCudnnConvBackwardInputCallTarget =
     "__cudnn$convBackwardInput";

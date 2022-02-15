@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 LABEL maintainer="Katsuya Hyodo <rmsdh122@yahoo.co.jp>"
 

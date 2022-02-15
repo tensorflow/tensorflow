@@ -79,11 +79,11 @@ void SetupMaterializeBroadcastsLegality(MLIRContext * /*context*/,
 }
 
 void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
-                                           OwningRewritePatternList *patterns) {
+                                           RewritePatternSet *patterns) {
   // ClampOp. This op has a special case where it accepts either same-shaped
   // inputs or scalars (a restricted form of broadcasting). This makes the
   // broadcast explicit.
-  patterns->insert<ClampWithBroadcastConvert>(context);
+  patterns->add<ClampWithBroadcastConvert>(context);
 }
 
 }  // namespace mhlo

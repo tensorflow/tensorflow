@@ -35,7 +35,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -759,9 +759,10 @@ struct ConvertTensorListResize
                             Type result_type, FuncOp branch_func,
                             ConversionPatternRewriter *rewriter) const {
     auto guard = OpBuilder::InsertionGuard(*rewriter);
-    Block *block =
-        rewriter->createBlock(&branch_func.getBody(), branch_func.begin(),
-                              branch_func.getType().getInputs());
+    auto inputs = branch_func.getType().getInputs();
+    Block *block = rewriter->createBlock(
+        &branch_func.getBody(), branch_func.begin(), inputs,
+        SmallVector<Location>(inputs.size(), branch_func.getLoc()));
 
     auto input_shape = block->getArgument(1);
     auto size_diff = block->getArgument(2);
@@ -799,9 +800,10 @@ struct ConvertTensorListResize
     // size, the else branch is executed.
     // Slice the first 'size' rows from the input tensorlist.
     auto guard = OpBuilder::InsertionGuard(*rewriter);
-    Block *block =
-        rewriter->createBlock(&branch_func.getBody(), branch_func.begin(),
-                              branch_func.getType().getInputs());
+    auto inputs = branch_func.getType().getInputs();
+    Block *block = rewriter->createBlock(
+        &branch_func.getBody(), branch_func.begin(), inputs,
+        SmallVector<Location>(inputs.size(), branch_func.getLoc()));
 
     Value scalar_zero = CreateI32SplatConst(loc, rewriter, {}, 0);
     Value vector_one = CreateI32SplatConst(loc, rewriter, {1}, 1);
@@ -1468,16 +1470,16 @@ void LowerStaticTensorListPass::runOnOperation() {
   target.addLegalOp<TFL::UnidirectionalSequenceRNNOp>();
   target.addLegalOp<TFL::BidirectionalSequenceLSTMOp>();
 
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   populateWithGenerated(patterns);
-  patterns.insert<ConvertConst, ConvertIdentity, ConvertTensorListGetItem,
-                  ConvertTensorListLength, ConvertTensorListPushBack,
-                  ConvertTensorListSetItem, ConvertTensorListStack,
-                  ConvertTensorListResize, ConvertWhile, ConvertWhileRegion,
-                  ConvertIf, ConvertReturn, ConvertYield>(context);
-  patterns.insert<ConvertEmptyTensorList, ConvertTensorListConcatV2,
-                  ConvertTensorListReserve>(
-      context, allow_tensorlist_pass_through, default_to_single_batch);
+  patterns.add<ConvertConst, ConvertIdentity, ConvertTensorListGetItem,
+               ConvertTensorListLength, ConvertTensorListPushBack,
+               ConvertTensorListSetItem, ConvertTensorListStack,
+               ConvertTensorListResize, ConvertWhile, ConvertWhileRegion,
+               ConvertIf, ConvertReturn, ConvertYield>(context);
+  patterns.add<ConvertEmptyTensorList, ConvertTensorListConcatV2,
+               ConvertTensorListReserve>(context, allow_tensorlist_pass_through,
+                                         default_to_single_batch);
   ModuleOp module = getOperation();
   if (!allow_tensorlist_pass_through) {
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {

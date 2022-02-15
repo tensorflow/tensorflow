@@ -68,13 +68,21 @@ struct GeneratorOp : public ::mlir::SideEffects::Resource::Base<GeneratorOp> {
   StringRef getName() final { return "<Default Generator>"; }
 };
 
-struct SendRecv : public ::mlir::SideEffects::Resource::Base<SendRecv> {
-  StringRef getName() final { return "<SendRecv>"; }
+struct Send : public ::mlir::SideEffects::Resource::Base<Send> {
+  StringRef getName() final { return "<Send>"; }
 };
 
-struct TPUCompileExecute
-    : public ::mlir::SideEffects::Resource::Base<TPUCompileExecute> {
-  StringRef getName() final { return "<TPUCompileExecute>"; }
+struct Recv : public ::mlir::SideEffects::Resource::Base<Recv> {
+  StringRef getName() final { return "<Recv>"; }
+};
+
+struct RandomGenerator
+    : public ::mlir::SideEffects::Resource::Base<RandomGenerator> {
+  StringRef getName() final { return "<RandomGenerator>"; }
+};
+
+struct TPUExecute : public ::mlir::SideEffects::Resource::Base<TPUExecute> {
+  StringRef getName() final { return "<TPUExecute>"; }
 };
 
 struct MustExecute : public ::mlir::SideEffects::Resource::Base<MustExecute> {

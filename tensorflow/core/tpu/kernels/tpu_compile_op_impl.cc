@@ -29,6 +29,7 @@ Status TpuCompileOpKernelImpl::Compile(
     const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const XLA_TpuMeshState* mesh_state,
     const std::vector<TensorShape>& arg_shapes,
+    const TpuCompilationCacheKey* key,
     TpuProgramGroupInterface* tpu_program_group) {
   TF_ASSIGN_OR_RETURN(
       TpuCompilationRequestProto compilation_request,

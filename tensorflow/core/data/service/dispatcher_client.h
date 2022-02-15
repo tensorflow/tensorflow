@@ -59,9 +59,9 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // definition in `dataset_def`.
   Status GetDatasetDef(int64_t dataset_id, DatasetDef& dataset_def);
 
-  // Gets the next split for the specified job id, repetition, and split
+  // Gets the next split for the specified job id, iteration, and split
   // provider index.
-  Status GetSplit(int64_t job_id, int64_t repetition,
+  Status GetSplit(int64_t job_id, int64_t iteration,
                   int64_t split_provider_index, Tensor& split,
                   bool& end_of_splits);
 
@@ -76,7 +76,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // id is stored in `job_client_id`.
   Status GetOrCreateJob(int64_t dataset_id,
                         const ProcessingModeDef& processing_mode,
-                        const absl::optional<JobKey>& job_key,
+                        const absl::optional<JobKeyDef>& job_key,
                         absl::optional<int64_t> num_consumers,
                         TargetWorkers target_workers, int64_t& job_client_id);
 

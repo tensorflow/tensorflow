@@ -111,8 +111,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
       profile.InitProfiles({shape}, ProfileStrategy::kOptimal);
       std::vector<PartialTensorShape> shape_vec{shape, {}};
-      TF_CHECK_OK(convert::CreateStaticEngine(params, info, 1, shape_vec,
-                                              &profile, &segment_string));
+      TF_CHECK_OK(convert::CreateStaticEngine(
+          params, nullptr, info, 1, shape_vec, &profile, &segment_string));
     }
 
     // Create the op.

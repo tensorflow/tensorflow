@@ -35,7 +35,10 @@ module attributes {tf.versions = {producer = 462 : i32}} {
   }
 }
 
-// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
 // CHECK-SAME: ) -> tensor<?x?xf32> {
@@ -73,7 +76,10 @@ module attributes {tf.versions = {producer = 462 : i32}} {
   }
 }
 
-// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
 // CHECK-SAME: ) -> tensor<?x?xf32> {
@@ -107,7 +113,10 @@ module attributes {tf.versions = {producer = 462 : i32}} {
   }
 }
 
-// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
 // CHECK-SAME: ) -> tensor<?x?xf32> {
@@ -141,7 +150,10 @@ module attributes {tf.versions = {producer = 462 : i32}} {
   }
 }
 
-// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
 // CHECK-SAME:   %[[ARG1:.*]]: tensor<?xi32> {jitrt.constraint = "value"}

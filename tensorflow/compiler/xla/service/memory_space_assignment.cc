@@ -230,14 +230,14 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
       if (it != cache->while_nest_multiplier.end()) {
         while_nest_multiplier = it->second;
       } else {
-        while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
+        while_nest_multiplier = IPow<float>(
             options_.xla_tpu_memory_space_assignment_while_execution_count,
             CalculateComputationNestLevel(&instruction,
                                           /*while_only=*/true));
         cache->while_nest_multiplier[&instruction] = while_nest_multiplier;
       }
     } else {
-      while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
+      while_nest_multiplier = IPow<float>(
           options_.xla_tpu_memory_space_assignment_while_execution_count,
           CalculateComputationNestLevel(&instruction,
                                         /*while_only=*/true));
@@ -551,10 +551,9 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
         *instruction_and_logical_time.first);
     instructions_elapsed_time[logical_time] =
         elapsed_time *
-        tensorflow::MathUtil::IPow<float>(
-            cost_analysis_.options()
-                .xla_tpu_memory_space_assignment_while_execution_count,
-            while_nest_level);
+        IPow<float>(cost_analysis_.options()
+                        .xla_tpu_memory_space_assignment_while_execution_count,
+                    while_nest_level);
   }
   // As an optimization, create a cumulative sum vector of elapsed time.
   float cumsum = 0.0;
@@ -590,10 +589,10 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     while_nest_level_change_.push_back(change_idx);
   }
   for (int i = 0; i <= max_while_nest_level; ++i) {
-    while_execution_counts_.push_back(tensorflow::MathUtil::IPow<float>(
-        cost_analysis_.options()
-            .xla_tpu_memory_space_assignment_while_execution_count,
-        i));
+    while_execution_counts_.push_back(
+        IPow<float>(cost_analysis_.options()
+                        .xla_tpu_memory_space_assignment_while_execution_count,
+                    i));
   }
 }
 
@@ -1350,7 +1349,6 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
       AllocateCrossProgramPrefetchBuffer(module, prefetch_candidate);
     }
   }
-
 
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
           << options_.max_size_in_bytes;
@@ -2198,6 +2196,7 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
       repack_block->colocations = colocations;
     }
   }
+  ClearPendingChunks();
 }
 
 absl::optional<AlternateMemoryBestFitHeap::RequiredMemoryAssignment>
@@ -3061,9 +3060,19 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
           ? options_.while_use_extra_outstanding_prefetch_limit
           : 0;
   Result result = Result::kSuccess;
+  // As a compilation time optimization, store the prefetch start time where we
+  // have first seen out of memory. There is no point of exploring prefetch
+  // start times earlier than this point.
+  absl::optional<int64_t> out_of_mem_start;
   while (!options_.prefetch_interval_picker->Done()) {
     alternate_mem_interval.start = options_.prefetch_interval_picker->Next();
     CHECK_LT(alternate_mem_interval.start, prefetch_end_time);
+    if (out_of_mem_start.has_value() &&
+        alternate_mem_interval.start <= *out_of_mem_start) {
+      VLOG(4) << "This would OOM (cached).";
+      result_mark(Result::kFailOutOfMemory, result);
+      continue;
+    }
     int64_t estimated_prefetch_end_time =
         options_.prefetch_interval_picker->EstimatedPrefetchEndTime(
             shape, alternate_mem_interval.start, prefetch_end_time);
@@ -3078,7 +3087,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
     if (!prefetch_async_copy_resource_.HasEnoughResource(
             alternate_mem_interval.start, prefetch_end_time,
             prefetch_resource)) {
-      VLOG(2) << "This would violate asynchronous copy resource = "
+      VLOG(4) << "This would violate asynchronous copy resource = "
               << prefetch_resource;
       result_mark(Result::kFailViolatesAsyncCopyResource, result);
       continue;
@@ -3113,6 +3122,12 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
       request.allocation_value->allocation_sequence()->back()->AddUse(
           request.use->hlo_use);
       return Result::kSuccess;
+    } else {
+      // Mark the out of memory start with the prefetch start time so that we
+      // don't explore prefetch start times earlier than this point.
+      out_of_mem_start =
+          std::max(out_of_mem_start.has_value() ? *out_of_mem_start : -1,
+                   alternate_mem_interval.start);
     }
     result_mark(Result::kFailOutOfMemory, result);
   }
@@ -3373,7 +3388,7 @@ float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
         options_.cost_analysis->GetInstructionElapsedInAlternateMemory(
             *instruction, operands_in_alternate_memory,
             outputs_in_alternate_memory);
-    float while_nest_multiplier = tensorflow::MathUtil::IPow<float>(
+    float while_nest_multiplier = IPow<float>(
         options_.xla_tpu_memory_space_assignment_while_execution_count,
         options_.cost_analysis->CalculateComputationNestLevel(
             instruction,

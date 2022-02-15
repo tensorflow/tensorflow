@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -59,10 +60,10 @@ using mlir::linalg::LinalgTilingLoopType;
 using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
 using mlir::linalg::PaddingValueComputationFunction;
-using mlir::linalg::PadTensorOp;
 using mlir::linalg::TiledLoopOp;
 using mlir::linalg::YieldOp;
 using mlir::tensor::ExpandShapeOp;
+using mlir::tensor::PadOp;
 
 // Tiles a GenericOp that models a 2D row or column reduction.
 struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
@@ -244,7 +245,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
       auto element_type = slice.getType().cast<ShapedType>().getElementType();
 
       // Pad input tile.
-      Value pad = PadTensorOp::createPadHighOp(
+      Value pad = mlir::tensor::createPadHighOp(
           RankedTensorType::get({tile_size}, element_type), slice,
           neutral_value, false, nested_loc, b);
 
@@ -312,8 +313,8 @@ struct TileReductionPass : public TileReductionBase<TileReductionPass> {
     reduction_1d_tile_size = reduction_1d_tile;
     reduction_2d_tile_sizes = reduction_2d_tiles;
   }
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
     auto context = func.getContext();
 
     auto filter = LinalgTransformationFilter(
@@ -325,13 +326,13 @@ struct TileReductionPass : public TileReductionBase<TileReductionPass> {
            "Tile size for 1D reduction should be a multiple of vector size");
     auto patterns =
         mlir::linalg::getLinalgTilingCanonicalizationPatterns(context);
-    patterns.insert<OneDimReductionTilingPattern>(
-        reduction_vector_size, reduction_1d_tile_size, filter,
-        patterns.getContext());
+    patterns.add<OneDimReductionTilingPattern>(reduction_vector_size,
+                                               reduction_1d_tile_size, filter,
+                                               patterns.getContext());
 
     assert(reduction_2d_tile_sizes.size() == 2 &&
            "Tiling sizes for 2D reductions should have two elements");
-    patterns.insert<RowOrColumnReductionTilingPattern>(
+    patterns.add<RowOrColumnReductionTilingPattern>(
         LinalgTilingOptions{}
             .setTileSizes(reduction_2d_tile_sizes)
             .setLoopType(LinalgTilingLoopType::TiledLoops),
@@ -347,11 +348,11 @@ struct TileReductionPass : public TileReductionBase<TileReductionPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass() {
   return std::make_unique<TileReductionPass>();
 }
 
-std::unique_ptr<mlir::FunctionPass> CreateTileReductionPass(
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass(
     int64_t reduction_vector_size, int64_t reduction_1d_tile_size,
     llvm::ArrayRef<int64_t> reduction_2d_tile_sizes) {
   return std::make_unique<TileReductionPass>(

@@ -94,12 +94,11 @@ void Destroy(XLA_ShapedBuffer* c_buffer);
 // TpuEmbeddingEngineParametersData
 struct TpuEmbeddingEngineParametersData {
   // Backing vector for struct
-  std::array<std::vector<FloatList*>, 8> vectors;
+  std::array<std::vector<FloatListRef*>, 8> vectors;
   TpuEmbeddingEngineParameters c_params;
 };
 
 std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables);
-void Destroy(const TpuEmbeddingEngineParametersData* data);
 
 xla::MaybeOwningDeviceMemory FromC(
     SE_MaybeOwningDeviceMemory* se_mem,

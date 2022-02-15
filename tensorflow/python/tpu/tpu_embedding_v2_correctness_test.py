@@ -54,6 +54,12 @@ flags.DEFINE_string('model_dir', os.environ.get('TEST_TMPDIR'),
 
 class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
 
+  def skip_if_oss(self):
+    if FLAGS.project is not None or FLAGS.zone is not None:
+      self.skipTest(
+          'Skipping tests for oss as it is slow to run every test in cloud tpu.'
+      )
+
   def setUp(self):
     super(TPUEmbeddingCorrectness, self).setUp()
     self.embedding_values = np.array(list(range(32)), dtype=np.float64)
@@ -186,6 +192,8 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
                          [True, False], [True, False], [True, False]))
   def test_embedding(self, optimizer_name, training, sparse,
                      is_high_dimensional):
+    if optimizer_name != 'sgd':
+      self.skip_if_oss()
     strategy, mid_level_api, optimizer = (
         self._create_strategy_and_mid_level(optimizer_name))
 

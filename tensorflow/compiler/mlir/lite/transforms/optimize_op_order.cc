@@ -85,8 +85,8 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
 // This transformation pass optimizes the op execution order of the ops in the
 // model.
 struct OptimizeOpOrderPass
-    : public PassWrapper<OptimizeOpOrderPass, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<OptimizeOpOrderPass, OperationPass<FuncOp>> {
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -99,11 +99,11 @@ struct OptimizeOpOrderPass
   }
 };
 
-void OptimizeOpOrderPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
+void OptimizeOpOrderPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
   auto* ctx = func.getContext();
-  patterns.insert<PushDownDequantize>(ctx);
+  patterns.add<PushDownDequantize>(ctx);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -39,17 +40,6 @@ namespace tflite {
 namespace gpu {
 
 namespace {
-
-int GetNumOutputSlices(int dst_channels) {
-  const int dst_depth = DivideRoundUp(dst_channels, 4);
-  if (dst_depth % 4 == 0 || dst_depth >= 16) {
-    return 4;
-  } else if (dst_depth % 2 == 0 || dst_depth >= 4) {
-    return 2;
-  } else {
-    return 1;
-  }
-}
 
 struct GlobalIdsParams {
   std::vector<std::string> global_ids;
@@ -202,7 +192,7 @@ std::string GenerateConvolution(const ConvolutionMetal::ConvParams& params,
 
   const bool use_filters_constants =
       !params.need_dst_loop && !params.need_src_loop && params.x_kernel_is_1 &&
-      params.y_kernel_is_1;
+      params.y_kernel_is_1 && !params.groups_support;
 
   const auto src_storage_type = definition.src_tensors[0].storage_type;
   const auto dst_storage_type = definition.dst_tensors[0].storage_type;
@@ -235,6 +225,18 @@ kernel void ComputeFunction(
     c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
          "return;\n";
   }
+  if (params.groups_support) {
+    c += "      int conv_group_id = Z / args.dst_group_size;\n";
+    c += "      int src_start_slice = conv_group_id * args.src_group_size;\n";
+    c += "      int src_end_slice = src_start_slice + args.src_group_size;\n";
+  }
+  const std::string src_group_start_slice =
+      params.groups_support ? "src_start_slice" : "0";
+  const std::string src_group_end_slice =
+      params.groups_support ? "src_end_slice" : "args.src_tensor.Slices()";
+  const std::string src_group_slices = params.groups_support
+                                           ? "args.src_group_size"
+                                           : "args.src_tensor.Slices()";
   for (int z = 0; z < params.block_size.z; ++z) {
     for (int y = 0; y < params.block_size.y; ++y) {
       for (int x = 0; x < params.block_size.x; ++x) {
@@ -262,7 +264,7 @@ kernel void ComputeFunction(
     std::string kern_x = params.x_kernel_is_1 ? "" : " * args.kernel_size_x";
     std::string kern_y = params.y_kernel_is_1 ? "" : " * args.kernel_size_y";
     std::string dst_offset =
-        params.need_dst_loop ? " + Z * 4 * args.src_tensor.Slices()" : "";
+        params.need_dst_loop ? " + Z * 4 * " + src_group_slices : "";
     if (!params.need_dst_loop) {
       c += "  " + addr_space + " FLT4* tmp = args.weights.GetPtr();\n";
     } else {
@@ -274,9 +276,8 @@ kernel void ComputeFunction(
              ") * 4 * args.src_tensor.Slices();\n";
       } else {
         c += "  " + addr_space +
-             " FLT4* tmp = args.weights.GetPtr() + Z * 4 * "
-             "args.src_tensor.Slices()" +
-             kern_x + kern_y + ";\n";
+             " FLT4* tmp = args.weights.GetPtr() + Z * 4 * " +
+             src_group_slices + kern_x + kern_y + ";\n";
       }
     }
   }
@@ -368,19 +369,32 @@ kernel void ComputeFunction(
         const std::string s_yx = s_y + s_x;
         if (definition.src_tensors[0].storage_type ==
             TensorStorageType::BUFFER) {
-          c += "  device FLT4* src_loc_" + s_yx +
-               " = args.src_tensor.GetHandle() + "
-               "args.src_tensor.GetWHOffset(c_x" +
-               s_x + ", c_y" + s_y + ");\n";
+          if (params.groups_support) {
+            c += "  args.src_tensor.GetAddress(base_addr_" + s_yx + ", c_x" +
+                 s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
+            c += "  device FLT4* src_loc_" + s_yx +
+                 " = args.src_tensor.GetHandle() + base_addr_" + s_yx + ";\n";
+          } else {
+            c += "  device FLT4* src_loc_" + s_yx +
+                 " = args.src_tensor.GetHandle() + "
+                 "args.src_tensor.GetWHOffset(c_x" +
+                 s_x + ", c_y" + s_y + ");\n";
+          }
         } else if (definition.src_tensors[0].storage_type ==
                    TensorStorageType::IMAGE_BUFFER) {
-          c += "  int src_loc_" + s_yx + " = args.src_tensor.GetWHOffset(c_x" +
-               s_x + ", c_y" + s_y + ");\n";
+          if (params.groups_support) {
+            c += "  args.src_tensor.GetAddress(src_loc_" + s_yx + ", c_x" +
+                 s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
+          } else {
+            c += "  int src_loc_" + s_yx +
+                 " = args.src_tensor.GetWHOffset(c_x" + s_x + ", c_y" + s_y +
+                 ");\n";
+          }
         }
       }
     }
   }
-  c += "  int s = 0;\n";
+  c += "  int s = " + src_group_start_slice + ";\n";
   if (params.need_src_loop) {
     c += "  do {\n";
   }
@@ -506,7 +520,7 @@ kernel void ComputeFunction(
          ";\n";
   }
   if (params.need_src_loop) {
-    c += "  } while (s < args.src_tensor.Slices());\n";
+    c += "  } while (s < " + src_group_end_slice + ");\n";
   }
   if (!params.x_kernel_is_1) {
     c += "  x++;\n";
@@ -1074,6 +1088,21 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
       GetConvParams(gpu_info, attr, definition.precision, new_shape);
 
   ConvolutionMetal desc(definition);
+  const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
+  if (attr.groups != 1) {
+    params.groups_support = true;
+    const int dst_group_slices = dst_slices / attr.groups;
+    if (dst_group_slices % params.block_size.z != 0) {
+      if (params.block_size.z == 4 && dst_group_slices % 2 == 0) {
+        params.block_size.z = 2;
+      } else {
+        params.block_size.z = 1;
+      }
+    }
+    desc.args_.AddInt("src_group_size", src_slices);
+    desc.args_.AddInt("dst_group_size", dst_slices / attr.groups);
+  }
   desc.params_ = params;
   const bool stride_correction =
       definition.IsBatchSupported() && attr.strides.w != 1;

@@ -933,7 +933,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
              f"The variable shape {self._shape}, and the "
              f"assigned value shape {value_tensor.shape} are incompatible."))
       kwargs = {}
-      if forward_compat.forward_compatible(2022, 1, 15):
+      if forward_compat.forward_compatible(2022, 2, 23):
         # If the shape is fully defined, we do a runtime check with the shape of
         # value.
         validate_shape = self._shape.is_fully_defined()
@@ -1821,6 +1821,7 @@ class ResourceVariable(BaseResourceVariable):
               shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
+          handle._parent_trackable = weakref.ref(self)
         # pylint: disable=protected-access
         if (self._in_graph_mode and initial_value is not None and
             initial_value.op._get_control_flow_context() is not None):
@@ -2051,6 +2052,8 @@ class UninitializedVariable(BaseResourceVariable):
             name=name,
             graph_mode=self._in_graph_mode,
             initial_value=extra_handle_data)
+        handle._parent_trackable = weakref.ref(self)
+
         if self._in_graph_mode:
           # We only need to add the read_variable_op in TF1.
           with ops.name_scope("Read"):

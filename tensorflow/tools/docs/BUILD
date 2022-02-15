@@ -24,7 +24,6 @@ tpu_module = [
 ]
 
 keras_module = [
-    # TODO(scottzhu): Move the Keras docstring test to Keras repo.
     "keras.",
 ]
 
@@ -53,12 +52,14 @@ py_test(
     args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module + keras_module)],
     python_version = "PY3",
     tags = [
+        "manual",  # b/215770086
         "no_oss_py2",
         "no_pip",
         "no_rocm",  # No need to rerun this test for ROCm config.
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",
+        "notap",  # b/215770086
         "notsan",
     ],
     deps = [

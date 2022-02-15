@@ -40,21 +40,7 @@ struct AdjustContrast {
     scalar_broadcast[1] = height;
     scalar_broadcast[2] = width;
     scalar_broadcast[3] = channels;
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<int, 2> reduction_axis;
-    reduction_axis[0] = 1;
-    reduction_axis[1] = 2;
-    Eigen::array<int, 4> broadcast_dims;
-    broadcast_dims[0] = 1;
-    broadcast_dims[1] = height;
-    broadcast_dims[2] = width;
-    broadcast_dims[3] = 1;
-    Eigen::Tensor<int, 4>::Dimensions reshape_dims;
-    reshape_dims[0] = batch;
-    reshape_dims[1] = 1;
-    reshape_dims[2] = 1;
-    reshape_dims[3] = channels;
-#else
+
     Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2> >
         reduction_axis;
     Eigen::IndexList<Eigen::type2index<1>, int, int, Eigen::type2index<1> >
@@ -65,7 +51,7 @@ struct AdjustContrast {
         reshape_dims;
     reshape_dims.set(0, batch);
     reshape_dims.set(3, channels);
-#endif
+
     Eigen::Sizes<1, 1, 1, 1> scalar;
     float num_reduced_coeffs = height * width;
     mean_values.device(d) =
@@ -102,26 +88,7 @@ struct AdjustContrastv2 {
     scalar_broadcast[1] = height;
     scalar_broadcast[2] = width;
     scalar_broadcast[3] = channels;
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<int, 2> reduction_axis;
-    reduction_axis[0] = 0;
-    reduction_axis[1] = 1;
-    Eigen::array<int, 4> broadcast_dims;
-    broadcast_dims[0] = 1;
-    broadcast_dims[1] = height;
-    broadcast_dims[2] = width;
-    broadcast_dims[3] = 1;
-    Eigen::Tensor<int, 4>::Dimensions reshape_dims;
-    reshape_dims[0] = batch;
-    reshape_dims[1] = 1;
-    reshape_dims[2] = 1;
-    reshape_dims[3] = channels;
-    Eigen::array<int, 4> reduced_dims_first;
-    reduced_dims_first[0] = 1;
-    reduced_dims_first[1] = 2;
-    reduced_dims_first[2] = 0;
-    reduced_dims_first[3] = 3;
-#else
+
     Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<1> >
         reduction_axis;
     Eigen::IndexList<Eigen::type2index<1>, int, int, Eigen::type2index<1> >
@@ -135,7 +102,7 @@ struct AdjustContrastv2 {
     Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2>,
                      Eigen::type2index<0>, Eigen::type2index<3> >
         reduced_dims_first;
-#endif
+
     Eigen::Sizes<1, 1, 1, 1> scalar;
     float num_reduced_coeffs = height * width;
     output.device(d) = (input.template cast<float>()

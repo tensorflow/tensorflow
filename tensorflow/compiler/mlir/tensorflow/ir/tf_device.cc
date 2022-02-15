@@ -139,9 +139,8 @@ bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 // tf_device.parallel_execute
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-LogicalResult Verify(ParallelExecuteOp op) {
+LogicalResult ParallelExecuteOp::verify() {
+  ParallelExecuteOp op = *this;
   const auto& regions = op.getOperation()->getRegions();
   if (regions.size() < 2) {
     return op.emitOpError() << "must have at least two regions.";
@@ -174,8 +173,6 @@ LogicalResult Verify(ParallelExecuteOp op) {
 
   return success();
 }
-
-}  // namespace
 
 // static
 void ParallelExecuteOp::build(OpBuilder& builder, OperationState& state,
@@ -409,6 +406,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   // lengths.
   p->printOptionalAttrDict(op->getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
                                kOperandSegmentSizesAttr});
+  *p << ' ';
   p->printRegion(op.body(), /*printEntryBlockArgs=*/false);
 }
 
@@ -422,7 +420,51 @@ LogicalResult VerifyCompatibleTypes(Type a, Type b) {
   return success();
 }
 
-LogicalResult Verify(ReplicateOp op) {
+void BuildReplicateOp(
+    Builder* builder, OperationState* state, int n,
+    llvm::Optional<DictionaryAttr> devices,
+    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
+    ValueRange packed_inputs, TypeRange replica_output_types) {
+  DCHECK_GE(n, 2);
+  state->addAttribute("n", builder->getI32IntegerAttr(n));
+
+  if (devices.hasValue()) state->addAttribute("devices", devices.getValue());
+
+  Region* region = state->addRegion();
+  region->push_back(new Block);
+  Block& block = region->front();
+
+  for (auto& replicated_input : replicated_inputs) {
+    DCHECK_EQ(llvm::size(replicated_input.first), n);
+    for (auto input : replicated_input.first) {
+      DCHECK(succeeded(
+          VerifyCompatibleTypes(input.getType(), replicated_input.second)));
+      state->addOperands(input);
+    }
+    block.addArgument(replicated_input.second, state->location);
+  }
+
+  for (auto packed_input : packed_inputs) {
+    state->addOperands(packed_input);
+    block.addArgument(packed_input.getType(), state->location);
+  }
+
+  // Add derived `operand_segment_sizes` attribute.
+  int32_t num_replicated_inputs = replicated_inputs.size() * n;
+  int32_t num_packed_inputs = packed_inputs.size();
+  auto operand_segment_sizes =
+      DenseIntElementsAttr::get(VectorType::get({2}, builder->getI32Type()),
+                                {num_replicated_inputs, num_packed_inputs});
+  state->addAttribute(kOperandSegmentSizesAttr, operand_segment_sizes);
+
+  for (const auto& output_type : replica_output_types)
+    state->addTypes(llvm::SmallVector<Type, 8>(n, output_type));
+}
+
+}  // anonymous namespace
+
+LogicalResult ReplicateOp::verify() {
+  ReplicateOp op = *this;
   int32_t n = op.n();
 
   // Check number of devices, if set, matches `n`.
@@ -513,48 +555,6 @@ LogicalResult Verify(ReplicateOp op) {
 
   return success();
 }
-
-void BuildReplicateOp(
-    Builder* builder, OperationState* state, int n,
-    llvm::Optional<DictionaryAttr> devices,
-    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
-    ValueRange packed_inputs, TypeRange replica_output_types) {
-  DCHECK_GE(n, 2);
-  state->addAttribute("n", builder->getI32IntegerAttr(n));
-
-  if (devices.hasValue()) state->addAttribute("devices", devices.getValue());
-
-  Region* region = state->addRegion();
-  region->push_back(new Block);
-  Block& block = region->front();
-
-  for (auto& replicated_input : replicated_inputs) {
-    DCHECK_EQ(llvm::size(replicated_input.first), n);
-    for (auto input : replicated_input.first) {
-      DCHECK(succeeded(
-          VerifyCompatibleTypes(input.getType(), replicated_input.second)));
-      state->addOperands(input);
-    }
-    block.addArgument(replicated_input.second);
-  }
-
-  for (auto packed_input : packed_inputs) {
-    state->addOperands(packed_input);
-    block.addArgument(packed_input.getType());
-  }
-
-  // Add derived `operand_segment_sizes` attribute.
-  int32_t num_replicated_inputs = replicated_inputs.size() * n;
-  int32_t num_packed_inputs = packed_inputs.size();
-  auto operand_segment_sizes =
-      DenseIntElementsAttr::get(VectorType::get({2}, builder->getI32Type()),
-                                {num_replicated_inputs, num_packed_inputs});
-  state->addAttribute(kOperandSegmentSizesAttr, operand_segment_sizes);
-
-  for (const auto& output_type : replica_output_types)
-    state->addTypes(llvm::SmallVector<Type, 8>(n, output_type));
-}
-}  // anonymous namespace
 
 void ReplicateOp::build(
     OpBuilder& builder, OperationState& state, int n,
@@ -753,9 +753,9 @@ static LogicalResult EliminatePassThroughResults(ClusterOp op,
 }
 }  // anonymous namespace
 
-void ClusterOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ClusterOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
-  results.insert(EliminatePassThroughResults);
+  results.add(EliminatePassThroughResults);
 }
 
 //===----------------------------------------------------------------------===//
@@ -782,9 +782,9 @@ struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
 };
 }  // anonymous namespace
 
-void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void LaunchOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
-  results.insert<DropEmptyLaunch>(context);
+  results.add<DropEmptyLaunch>(context);
 }
 
 }  // namespace tf_device

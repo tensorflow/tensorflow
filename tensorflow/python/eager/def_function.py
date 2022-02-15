@@ -980,9 +980,9 @@ class Function(core.GenericFunction, trackable.Trackable):
         # stateless function.
         return self._stateless_fn(*args, **kwds)
     else:
-      _, _, _, filtered_flat_args = \
+      _, _, filtered_flat_args = (
           self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-              *args, **kwds)
+              *args, **kwds))
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._call_flat(
           filtered_flat_args, self._concrete_stateful_fn.captured_inputs)  # pylint: disable=protected-access
@@ -1042,9 +1042,9 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds, _, filtered_flat_args = \
+    canon_args, canon_kwds, filtered_flat_args = (
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
-            *args, **kwds)
+            *args, **kwds))
     return function_lib.defun(fn_with_cond)(canon_args, canon_kwds,
                                             filtered_flat_args)
 
@@ -1059,9 +1059,9 @@ class Function(core.GenericFunction, trackable.Trackable):
     fn_name = concrete_fn.name
 
     # pylint: disable=protected-access
-    _, _, _, filtered_flat_args = \
+    _, _, filtered_flat_args = (
         concrete_fn._function_spec.canonicalize_function_inputs(
-            *args, **kwargs)
+            *args, **kwargs))
 
     def compiler_ir_generator(stage="hlo", device_name=None):
       # TODO(cheshire): This is a hack to get the current "preferred" device,

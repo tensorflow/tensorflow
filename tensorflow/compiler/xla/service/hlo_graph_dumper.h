@@ -50,7 +50,6 @@ enum class RenderedGraphFormat {
   kDot,
   kHtml,
   kUrl,
-  kFusionVisualization,
 };
 
 struct HloRenderOptions {
@@ -115,6 +114,10 @@ void RegisterFusionState(const HloComputation& computation,
 // wins.
 void RegisterGraphToURLRenderer(
     std::function<StatusOr<std::string>(absl::string_view dot)> renderer);
+
+// Generates a fusion explorer for the given computation using the data in
+// fusion_visualizer_state.
+StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation);
 
 }  // namespace xla
 

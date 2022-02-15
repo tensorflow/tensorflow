@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
@@ -61,6 +60,8 @@ struct XlaBuilderFriend {
                             const Shape& shape);
 
   static HloInstructionProto* GetInstruction(XlaOp op);
+  static HloInstructionProto* GetInstructionByHandle(XlaBuilder* builder,
+                                                     int64_t handle);
 };
 
 }  // namespace internal

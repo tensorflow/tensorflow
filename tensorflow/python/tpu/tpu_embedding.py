@@ -224,12 +224,12 @@ class EnqueueData(
 class RaggedEnqueueData(
     collections.namedtuple(
         'RaggedEnqueueData',
-        ['embedding_indices', 'row_lengths', 'aggregation_weights'])):
+        ['embedding_indices', 'row_splits', 'aggregation_weights'])):
   """RaggedTensor Data to be enqueued through generate_enqueue_ops()."""
 
   def __new__(cls,
               embedding_indices,
-              row_lengths=None,
+              row_splits=None,
               aggregation_weights=None):
     """Data to be enqueued through generate_enqueue_ops().
 
@@ -238,9 +238,9 @@ class RaggedEnqueueData(
         corresponds to ids.values in embedding_lookup(), when ids is a
         RaggedTensor. Both int32 and int64 are allowed and will be converted to
         int32 internally.
-      row_lengths: A rank 1 Tensor specifying the length of each row to split
-        embedding_indices and aggregation_weights. It corresponds to
-        ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. Both
+      row_splits: A rank 1 Tensor specifying the length of  the break points for
+        splitting embedding_indices and aggregation_weights. It corresponds to
+        ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. Both
         int32 and int64 are allowed and will be converted to int32 internally.
       aggregation_weights: A rank 1 Tensor containing per training example
         aggregation weights. It corresponds to the values field of a
@@ -252,14 +252,14 @@ class RaggedEnqueueData(
 
     """
     return super(RaggedEnqueueData,
-                 cls).__new__(cls, embedding_indices, row_lengths,
+                 cls).__new__(cls, embedding_indices, row_splits,
                               aggregation_weights)
 
   @staticmethod
   def from_ragged_tensor(rg_tensor, weights=None):
     return RaggedEnqueueData(
         rg_tensor.values,
-        rg_tensor.row_lengths(),
+        rg_tensor.row_splits,
         aggregation_weights=weights.values if weights is not None else None)
 
 
@@ -1383,9 +1383,8 @@ class TPUEmbedding(object):
     _validate_feature_to_config_dict(table_to_config_dict,
                                      feature_to_config_dict)
     self._feature_to_config_dict = _create_ordered_dict(feature_to_config_dict)
-    self._table_to_features_dict, self._table_to_num_features_dict = (
-        _create_table_to_features_and_num_features_dicts(
-            self._feature_to_config_dict))
+    self._table_to_features_dict = (
+        _create_table_to_features_dict(self._feature_to_config_dict))
     self._combiners = _create_combiners(self._table_to_config_dict,
                                         self._table_to_features_dict)
 
@@ -1548,8 +1547,6 @@ class TPUEmbedding(object):
                                              len(self.hosts))
       table_descriptor.dimension = table_config.dimension
 
-      table_descriptor.num_features = self._table_to_num_features_dict[table]
-
       optimization_parameters = (
           self._optimizer_handler_dict[table].get_optimization_parameters())
 
@@ -1613,7 +1610,6 @@ class TPUEmbedding(object):
           feature_descriptor.input_shape.extend([self._batch_size_per_core])
 
     config_proto.mode = self._mode
-    config_proto.batch_size_per_tensor_core = self._batch_size_per_core
     config_proto.num_hosts = self._num_hosts
     config_proto.num_tensor_cores = self._num_cores
     config_proto.sharding_strategy = (
@@ -1814,12 +1810,12 @@ class TPUEmbedding(object):
                            'aggregation_weights', feature, enqueue_data)
 
         elif isinstance(enqueue_data, RaggedEnqueueData):
-          if enqueue_data.row_lengths is None and combiner:
+          if enqueue_data.row_splits is None and combiner:
             logging.warn(
-                'No row lengths set for features %f table %f but '
+                'No row splits set for features %f table %f but '
                 'combiner is set to %s.', feature,
                 self._feature_to_config_dict[feature].table_id, combiner)
-          _check_agreement(enqueue_data.row_lengths, 'row_lengths', feature,
+          _check_agreement(enqueue_data.row_splits, 'row_splits', feature,
                            enqueue_data)
           _check_agreement(enqueue_data.aggregation_weights,
                            'aggregation_weights', feature, enqueue_data)
@@ -1873,7 +1869,7 @@ class TPUEmbedding(object):
 
     Args:
       enqueue_datas: a `Dict` of `RaggedEnqueueData` objects for embedding.
-      ragged: If True, extract row lengths from the data rather than sample
+      ragged: If True, extract row splits from the data rather than sample
         indices.
 
     Returns:
@@ -1881,7 +1877,7 @@ class TPUEmbedding(object):
     """
 
     kwargs = {
-        'sample_indices_or_row_lengths': [],
+        'sample_indices_or_row_splits': [],
         'embedding_indices': [],
         'aggregation_weights': [],
     }
@@ -1892,9 +1888,9 @@ class TPUEmbedding(object):
       for feature in features:
         enqueue_data = enqueue_datas[feature]
         if ragged:
-          kwargs['sample_indices_or_row_lengths'].append(
-              enqueue_data.row_lengths if enqueue_data
-              .row_lengths is not None else int_zeros)
+          kwargs['sample_indices_or_row_splits'].append(
+              enqueue_data.row_splits if enqueue_data
+              .row_splits is not None else int_zeros)
         else:
           if (self._feature_to_config_dict[feature].max_sequence_length > 0 and
               enqueue_data.sample_indices is not None and
@@ -1902,15 +1898,15 @@ class TPUEmbedding(object):
             # Pad the sample indices as if the enqueued sparse tensor is rank 2.
             sample_indices = array_ops.pad(
                 enqueue_data.sample_indices, paddings=[[0, 0], [0, 1]])
-            kwargs['sample_indices_or_row_lengths'].append(sample_indices)
+            kwargs['sample_indices_or_row_splits'].append(sample_indices)
           else:
             # If the sample_indices is rank 1 or not present, treat it as dense
             # tensor.
             if (enqueue_data.sample_indices is None or
                 enqueue_data.sample_indices.shape[1] == 1):
-              kwargs['sample_indices_or_row_lengths'].append(int_zeros)
+              kwargs['sample_indices_or_row_splits'].append(int_zeros)
             else:
-              kwargs['sample_indices_or_row_lengths'].append(
+              kwargs['sample_indices_or_row_splits'].append(
                   enqueue_data.sample_indices)
 
         kwargs['aggregation_weights'].append(
@@ -2963,30 +2959,19 @@ def _create_combiners(table_to_config_dict, table_to_features_dict):
   return combiners
 
 
-def _create_table_to_features_and_num_features_dicts(feature_to_config_dict):
+def _create_table_to_features_dict(feature_to_config_dict):
   """Create mapping from table to a list of its features."""
   table_to_features_dict_tmp = {}
-  table_to_num_features_dict_tmp = {}
   for feature, feature_config in six.iteritems(feature_to_config_dict):
     if feature_config.table_id in table_to_features_dict_tmp:
       table_to_features_dict_tmp[feature_config.table_id].append(feature)
     else:
       table_to_features_dict_tmp[feature_config.table_id] = [feature]
-      table_to_num_features_dict_tmp[feature_config.table_id] = 0
-    if feature_config.max_sequence_length == 0:
-      table_to_num_features_dict_tmp[feature_config.table_id] = (
-          table_to_num_features_dict_tmp[feature_config.table_id] + 1)
-    else:
-      table_to_num_features_dict_tmp[feature_config.table_id] = (
-          table_to_num_features_dict_tmp[feature_config.table_id] +
-          feature_config.max_sequence_length)
 
   table_to_features_dict = collections.OrderedDict()
-  table_to_num_features_dict = collections.OrderedDict()
   for table in sorted(table_to_features_dict_tmp):
     table_to_features_dict[table] = sorted(table_to_features_dict_tmp[table])
-    table_to_num_features_dict[table] = table_to_num_features_dict_tmp[table]
-  return table_to_features_dict, table_to_num_features_dict
+  return table_to_features_dict
 
 
 def _create_device_fn(hosts):

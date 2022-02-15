@@ -150,6 +150,7 @@ inside device cluster. This would allow shape inference pass to further
 refine operand/result shapes of these ops. This is only safe to do when
 compiling to XLA.
 ### `-tf-einsum`: Transform Einsum to other TF Ops for the supported variants
+### `-tf-executor-break-up-islands`: Transform from TF control dialect to TF executor dialect.
 ### `-tf-executor-convert-control-to-data-outputs`: Chain control outputs of while loop body
 This pass converts the control outputs of a while loop body function to data
 outputs. Thus, inter iteration control dependencies are transformed to
@@ -412,7 +413,6 @@ and will then replace the island with the wrapped call:
     return %0 : tensor<i32>
   }
 ```
-### `-tf-functional-control-flow-to-cfg`: Transform from TF control dialect to TF executor dialect.
 ### `-tf-functional-control-flow-to-cfg`: Transform functional control flow Ops to MLIR Control Form Graph (CFG) form
 ### `-tf-functional-control-flow-to-regions`: Transforms functional control flow operations to their region-based counterparts
 This pass transforms functional control flow operations in the TensorFlow
@@ -658,6 +658,12 @@ will be transformed into this functional operation
     then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
   } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
 ```
+### `-tf-replica-id-to-device-ordinal`: Set device ordinal with replica id
+This pass sets the device ordinal attribute of the ops using the replica id
+attribute. This is run immediately after the replica_to_island pass which
+sets the replica id attribute of these ops. Note for single chip usecase,
+the pass will check if there is one op and sets the device ordinal attribute
+to be zero.
 ### `-tf-replicate-invariant-op-hoisting`: Hoists replicate invariant operations out of replicate
 This pass looks for replicate invariant ops in a `tf_device.replicate` op
 region and hoists them out. It also makes `tf.Shape` ops replicate invariant

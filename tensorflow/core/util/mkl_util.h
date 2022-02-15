@@ -263,7 +263,7 @@ class MklDnnShape {
 #define INVALID_DIM_SIZE -1
 
  public:
-  MklDnnShape() {
+  MklDnnShape() : data_{} {
     for (size_t i = 0; i < sizeof(data_.sizes_) / sizeof(data_.sizes_[0]);
          ++i) {
       data_.sizes_[i] = -1;
@@ -1276,6 +1276,14 @@ class MklDnnData {
         bIs3D(false),
         allocated_buffer_(nullptr),
         cpu_engine_(e) {}
+
+  // MklDnnData does not use any smart pointers,
+  // hence default operator= will result in memory leak if user_memory was
+  // already initialized. See
+  // https://github.com/tensorflow/tensorflow/pull/45593 as an example of such
+  // leak.
+  MklDnnData(const MklDnnData&) = default;
+  MklDnnData& operator=(const MklDnnData&) = delete;
 
   ~MklDnnData() {
     if (allocated_buffer_ != nullptr) {

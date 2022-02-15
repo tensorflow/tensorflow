@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -49,6 +50,14 @@ static llvm::cl::opt<bool> enable_float16_quantization(
                    "quantization is applied."),
     llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<std::string> enable_custom_op_quantization(
+    "tfl-enable-custom-op-quantization",
+    llvm::cl::desc(
+        "Specifies which pairs of a custom op and indicies are "
+        "quantizable where the indicies are separated with a space."),
+    llvm::cl::ZeroOrMore);
+
 //===----------------------------------------------------------------------===//
 // The prepare-dynamic-range-quantize Pass.
 //
@@ -67,7 +76,8 @@ using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 // This pass runs before the quantization pass and apply preprocess if
 // applicable.
 class PrepareDynamicRangeQuantizePass
-    : public PassWrapper<PrepareDynamicRangeQuantizePass, FunctionPass> {
+    : public PassWrapper<PrepareDynamicRangeQuantizePass,
+                         OperationPass<FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<TensorFlowLiteDialect, ::mlir::quant::QuantizationDialect>();
@@ -84,6 +94,9 @@ class PrepareDynamicRangeQuantizePass
     quant_specs_.disable_per_channel =
         !enable_dynamic_range_per_channel_quantization;
     quant_specs_.minimum_elements_for_weights = min_elements_for_weights;
+    ParseCustomOpSpecs(enable_custom_op_quantization,
+                       CustomOpUpdateOptions::kINputIndices,
+                       quant_specs_.custom_map);
   }
 
   // Constructor used by manually creating the pass.
@@ -103,7 +116,7 @@ class PrepareDynamicRangeQuantizePass
   // method preprocess the function to remove all stats ops.
   void removeAllStatsOp(FuncOp func);
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   QuantizationSpecs quant_specs_;
@@ -151,14 +164,30 @@ class PrepareDynamicRangeQuantizableOp
   }
 
  private:
-  // Check if any specific operand is supported for int8 quantization.
+  // Check if the operand_index is included in the quantizable_indices.
+  bool isQuantizableIndex(const int operand_index,
+                          const std::vector<int>& quantizable_indices) const {
+    return std::find(std::begin(quantizable_indices),
+                     std::end(quantizable_indices),
+                     operand_index) != std::end(quantizable_indices);
+  }
+
+  // Check if any specific operand and its index pair is supported for int8
+  // quantization. For dynamic range quantizable ops, it refers to the op
+  // specification for checking the support. For custom ops, it checks the
+  // provided map.
   bool hasInt8QuantizableOperandAt(Operation* op, int operand_index) const {
-    if (auto quantizable_op = dyn_cast<DynamicRangeQuantizedOpInterface>(op)) {
+    if (auto custom_op = llvm::dyn_cast_or_null<CustomOp>(op)) {
+      std::string op_name = custom_op.custom_code().str();
+      auto custom_map_iter = quant_specs_.custom_map.find(op_name);
+      if (custom_map_iter != quant_specs_.custom_map.end())
+        return isQuantizableIndex(
+            operand_index, custom_map_iter->second.quantizable_input_indices);
+    } else if (auto quantizable_op =
+                   llvm::dyn_cast<DynamicRangeQuantizedOpInterface>(op)) {
       const auto& quantizable_indices =
           quantizable_op.GetQuantizableOperandIndices();
-      return std::find(std::begin(quantizable_indices),
-                       std::end(quantizable_indices),
-                       operand_index) != std::end(quantizable_indices);
+      return isQuantizableIndex(operand_index, quantizable_indices);
     }
     return false;
   }
@@ -212,14 +241,18 @@ class PrepareDynamicRangeQuantizableOp
 
     auto affine_user = dyn_cast<AffineQuantizedOpInterface>(quantize_op);
 
-    bool op_with_narrow_range =
-        affine_user &&
-        affine_user.GetAffineOperandIndex() == quantize_operand_num &&
-        affine_user.RequiredNarrowRangeAffineOperand();
+    bool op_with_per_axis_support = false;
 
-    bool op_with_per_axis_support =
-        op_with_narrow_range && affine_user.GetQuantizationDimIndex() != -1 &&
-        !quant_specs_.disable_per_channel;
+    if (!llvm::dyn_cast_or_null<CustomOp>(quantize_op)) {
+      bool op_with_narrow_range =
+          affine_user &&
+          affine_user.GetAffineOperandIndex() == quantize_operand_num &&
+          affine_user.RequiredNarrowRangeAffineOperand();
+
+      op_with_per_axis_support = op_with_narrow_range &&
+                                 affine_user.GetQuantizationDimIndex() != -1 &&
+                                 !quant_specs_.disable_per_channel;
+    }
 
     QuantizedType quant_type = nullptr;
     DenseFPElementsAttr attr;
@@ -378,7 +411,7 @@ class PrepareDynamicRangeQuantizableOp
       // old ConstantOp is guaranteed to have one F32->F16 cast regardless of
       // its number of users.
       rewriter.setInsertionPointAfter(op);
-      auto new_const = rewriter.create<ConstantOp>(
+      auto new_const = rewriter.create<arith::ConstantOp>(
           op->getLoc(), new_result_type, new_value_attr);
       auto dq = rewriter.create<DQ>(op->getLoc(), old_result_type, new_const);
       cast_op->replaceAllUsesWith(dq);
@@ -402,15 +435,15 @@ void PrepareDynamicRangeQuantizePass::removeAllStatsOp(FuncOp func) {
   });
 }
 
-void PrepareDynamicRangeQuantizePass::runOnFunction() {
-  FuncOp func = getFunction();
+void PrepareDynamicRangeQuantizePass::runOnOperation() {
+  FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
 
   ConvertTFLQuantOpsToMlirQuantOps(func);
   removeAllStatsOp(func);
 
-  OwningRewritePatternList patterns(&getContext());
-  patterns.insert<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
+  RewritePatternSet patterns(&getContext());
+  patterns.add<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   ConvertMlirQuantOpsToTFLQuantOps(func);

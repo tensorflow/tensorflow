@@ -68,7 +68,11 @@ StatusOr<pybind11::bytes> JsonToPprofProfile(std::string json) {
   tensorflow::tfprof::pprof::Profile profile;
   auto status = tensorflow::protobuf::util::JsonStringToMessage(json, &profile);
   if (!status.ok()) {
-    return InvalidArgument("JSON parsing failed: %s", status.message());
+    // TODO(phawkins): the explicit `std::string` cast here is to work around
+    // https://github.com/google/jax/issues/9534 which appears to be an ABSL and
+    // protobuf version compatibility problem.
+    return InvalidArgument("JSON parsing failed: %s",
+                           std::string{status.message()});
   }
   return py::bytes(profile.SerializeAsString());
 }
@@ -80,7 +84,11 @@ StatusOr<std::string> PprofProfileToJson(py::bytes binary_proto) {
   auto status =
       tensorflow::protobuf::util::MessageToJsonString(profile, &output);
   if (!status.ok()) {
-    return InvalidArgument("JSON printing failed: %s", status.message());
+    // TODO(phawkins): the explicit `std::string` cast here is to work around
+    // https://github.com/google/jax/issues/9534 which appears to be an ABSL and
+    // protobuf version compatibility problem.
+    return InvalidArgument("JSON printing failed: %s",
+                           std::string{status.message()});
   }
   return output;
 }

@@ -58,22 +58,22 @@ struct PeelTiledLoop
 struct PeelTiledLoopsPass : public PeelTiledLoopsBase<PeelTiledLoopsPass> {
   void getDependentDialects(mlir::DialectRegistry &registry) const override {}
 
-  void runOnFunction() override {
-    auto func_op = getFunction();
+  void runOnOperation() override {
+    auto func_op = getOperation();
 
     // Apply some canonicalizations before loop splitting confuses the
     // situation.
     // TODO(tpopp): See if this is still necessary in the integrated version.
-    mlir::OwningRewritePatternList canonicalizations(func_op.getContext());
+    mlir::RewritePatternSet canonicalizations(func_op.getContext());
     mlir::linalg::TiledLoopOp::getCanonicalizationPatterns(
         canonicalizations, func_op.getContext());
     mlir::linalg::populateLinalgTilingCanonicalizationPatterns(
         canonicalizations);
     (void)applyPatternsAndFoldGreedily(func_op, std::move(canonicalizations));
 
-    mlir::OwningRewritePatternList loopPeeling(func_op.getContext());
-    loopPeeling.insert<PeelTiledLoop>(func_op.getContext());
-    (void)applyPatternsAndFoldGreedily(func_op, std::move(loopPeeling));
+    mlir::RewritePatternSet loop_peeling(func_op.getContext());
+    loop_peeling.insert<PeelTiledLoop>(func_op.getContext());
+    (void)applyPatternsAndFoldGreedily(func_op, std::move(loop_peeling));
 
     func_op->walk([&](mlir::linalg::TiledLoopOp op) {
       if (op->hasAttr(kWasPeeledAttr)) op->removeAttr(kWasPeeledAttr);
@@ -83,7 +83,7 @@ struct PeelTiledLoopsPass : public PeelTiledLoopsBase<PeelTiledLoopsPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreatePeelTiledLoopsPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreatePeelTiledLoopsPass() {
   return std::make_unique<PeelTiledLoopsPass>();
 }
 }  // namespace tensorflow

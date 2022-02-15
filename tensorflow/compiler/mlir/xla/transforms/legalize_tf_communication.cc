@@ -283,8 +283,7 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
       /*handle=*/builder.getI64IntegerAttr(channel_id++),
       /*type=*/builder.getI64IntegerAttr(3), builder.getContext());
   auto result_type = result.getType();
-  auto recv_result_type =
-      TupleType::get(builder.getContext(), {result_type, token.getType()});
+  SmallVector<Type, 2> recv_result_type = {result_type, token.getType()};
   auto recv =
       builder.create<RecvOp>(loc, recv_result_type, token, channel_handle,
                              /*is_host_transfer=*/builder.getBoolAttr(true));
@@ -294,17 +293,9 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
 
   if (tpu_core) SetOpSharding(recv, *tpu_core);
 
-  auto get_tuple_element =
-      builder.create<GetTupleElementOp>(loc, recv.getResult(), /*index=*/0);
-  if (tpu_core) SetOpSharding(get_tuple_element, *tpu_core);
+  result.replaceAllUsesWith(recv.getResult(0));
 
-  result.replaceAllUsesWith(get_tuple_element);
-
-  auto new_token = builder.create<GetTupleElementOp>(loc, recv.getResult(),
-                                                     /*index=*/1);
-  if (tpu_core) SetOpSharding(new_token, *tpu_core);
-
-  return new_token.getResult();
+  return recv.getResult(1);
 }
 
 // Creates a new token if necessary, acting as a sink to previous tokens. If
@@ -553,7 +544,8 @@ Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
 
   auto old_args_size = block.getNumArguments();
 
-  block.addArguments(types);
+  block.addArguments(
+      types, SmallVector<Location>(types.size(), block.getParent()->getLoc()));
 
   auto old_args = ArrayRef<Value>(block.getArguments().begin(),
                                   block.getArguments().begin() + old_args_size);
@@ -822,7 +814,7 @@ LogicalResult RewriteFunction(
   // If a function is public, it's signature should not be modified, and instead
   // a token will be created. Otherwise a token block argument is inserted.
   Value init_token =
-      rewrite_block ? func_body.addArgument(token_type)
+      rewrite_block ? func_body.addArgument(token_type, func.getLoc())
                     : builder.create<CreateTokenOp>(func.getLoc(), token_type)
                           .getResult();
 

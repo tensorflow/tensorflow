@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
+#include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -51,10 +52,15 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::StrCat;
+
 using ::tfrt::jitrt::CompilationOptions;
+using ::tfrt::jitrt::CompilationPipelineOptions;
+using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
 using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConverter;
 
@@ -73,23 +79,27 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
                                                  Specialization specialization,
                                                  bool vectorize,
                                                  bool legalize_i1_tensors) {
+  // Options for the default JitRt compilation pipeline (lowering to LLVM).
+  CompilationPipelineOptions copts;
+  copts.alignment = EIGEN_MAX_ALIGN_BYTES;
+  copts.num_worker_threads = 4;
+
   CompilationOptions opts;
-  opts.alignment = EIGEN_MAX_ALIGN_BYTES;
-  // Create an async task for each worker thread.
-  opts.num_worker_threads = 4;
   opts.register_dialects = [](mlir::DialectRegistry& registry) {
     mlir::RegisterAllTensorFlowDialects(registry);
+    RegisterDefaultJitRtDialects(registry);
     // Needed to verify function argument attributes which are used to
     // annotate dynamic shaped types with static type information.
     mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
   };
-  opts.register_compilation_pipeline = [=](mlir::OpPassManager& pm) {
+  opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
     tensorflow::TfJitRtPipelineOptions opts;
     opts.vectorize = vectorize;
     opts.legalize_i1_tensors = legalize_i1_tensors;
     tensorflow::CreateTfJitRtPipeline(pm, opts);
+    CreateDefaultJitRtCompilationPipeline(pm, copts);
   };
-  opts.register_specialization_pipeline = CreateJitRtSpecializationPipeline;
+  opts.create_specialization_pipeline = CreateJitRtSpecializationPipeline;
   opts.specialization = specialization;
   opts.calling_convention = CompilationOptions::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
@@ -299,7 +309,7 @@ std::vector<py::array> TfJitRtExecutor::Execute(
 
   // Get an executable that might be specialized to the operands.
   llvm::Expected<AsyncValuePtr<Executable>> executable =
-      jit_executable.GetExecutable(memrefs, exec_ctx);
+      jit_executable.GetExecutable(memrefs);
   if (auto err = executable.takeError())
     throw std::runtime_error(
         StrCat("Failed to get Executable: ", std::move(err)));
@@ -317,10 +327,16 @@ std::vector<py::array> TfJitRtExecutor::Execute(
 
   RemainingResults results(result_storage);
 
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(&host_context_);
+  opts.async_task_runner = &async_task_runner;
+
   // Convert returned memrefs to python arrays.
-  PyBindingReturnValueConverter converter(results);
+  PyBindingConversionContext results_ctx;
+  PyBindingReturnValueConverter converter(results, results_ctx);
   converter.AddConversion(ReturnStridedMemref<MemrefToPyArray>);
-  if (auto err = (*executable)->Execute(memrefs, converter, exec_ctx))
+  if (auto err = (*executable)->Execute(memrefs, converter, opts))
     throw std::runtime_error(StrCat("Unsupported argument: ", err));
 
   // Pull Python arrays out of async values.

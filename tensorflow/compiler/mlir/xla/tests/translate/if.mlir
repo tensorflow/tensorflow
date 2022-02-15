@@ -17,7 +17,7 @@ func @main(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
   // CHECK:   %[[VAL2:.+]] = f32[] conditional(pred[] %[[VAL1]], f32[] %[[A0]], f32[] %[[A0]]), true_computation=[[R0]], false_computation=[[R1]]
-  %2 = "mhlo.if"(%0) ( {
+  %2 = "mhlo.if"(%0) ({
     %6 = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%6) : (tensor<f32>) -> ()
   },  {
@@ -39,7 +39,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
-  %2:2 = "mhlo.if"(%0) ( {
+  %2:2 = "mhlo.if"(%0) ({
     %log = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
     %add = mhlo.add %log, %arg1 : tensor<f32>
     "mhlo.return"(%add, %log) : (tensor<f32>, tensor<f32>) -> ()
@@ -78,7 +78,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
-  %2:2 = "mhlo.if"(%0) ( {
+  %2:2 = "mhlo.if"(%0) ({
     %log = "mhlo.log"(%cst) : (tensor<f32>) -> tensor<f32>
     %add = mhlo.add %log, %arg1 : tensor<f32>
     "mhlo.return"(%arg0, %add) : (tensor<f32>, tensor<f32>) -> ()
@@ -117,7 +117,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
-  %2:2 = "mhlo.if"(%0) ( {
+  %2:2 = "mhlo.if"(%0) ({
     %log = "mhlo.log"(%cst) : (tensor<f32>) -> tensor<f32>
     %add = mhlo.add %log, %arg1 : tensor<f32>
     "mhlo.return"(%arg0, %add) : (tensor<f32>, tensor<f32>) -> ()
@@ -157,7 +157,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
-  %2:2 = "mhlo.if"(%0) ( {
+  %2:2 = "mhlo.if"(%0) ({
     %cst1 = arith.constant  dense<1.000000e+01> : tensor<f32>
     "mhlo.return"(%cst1, %cst1) : (tensor<f32>, tensor<f32>) -> ()
   },  {
@@ -197,7 +197,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
-  %2:2 = "mhlo.if"(%0) ( {
+  %2:2 = "mhlo.if"(%0) ({
     %cst1 = arith.constant  dense<1.000000e+01> : tensor<f32>
     "mhlo.return"(%cst1, %cst1) : (tensor<f32>, tensor<f32>) -> ()
   },  {
@@ -239,12 +239,12 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 func @main(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
   %cst = arith.constant  dense<1.000000e+01> : tensor<f32>
 
-  %0:2 = "mhlo.if"(%arg0) ( {
+  %0:2 = "mhlo.if"(%arg0) ({
         // R2
     %1 = mhlo.constant dense<false> : tensor<i1>
     %cst0 = mhlo.constant dense<1.000000e+01> : tensor<f32>
 
-    %2 = "mhlo.if"(%1) ( {
+    %2 = "mhlo.if"(%1) ({
         // R0
       "mhlo.return"(%cst0) : (tensor<f32>) -> ()
     },  {

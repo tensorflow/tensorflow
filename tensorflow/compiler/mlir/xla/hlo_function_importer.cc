@@ -74,6 +74,11 @@ std::string SanitizeFunctionName(llvm::StringRef name) {
 
 // Returns whether the instruction is a default dot operation.
 bool DotIsDefault(const HloInstruction* instruction) {
+  const auto& operands = instruction->operands();
+  // eg. vector[3] dot matrix[3, 2] => [2] not default dot
+  if (operands[0]->shape().rank() < operands[1]->shape().rank()) {
+    return false;
+  }
   auto dnums = instruction->dot_dimension_numbers();
   DotDimensionNumbers default_dimension_numbers;
   default_dimension_numbers.add_lhs_contracting_dimensions(
@@ -163,6 +168,24 @@ mlir::Operation* HloFunctionImporter::CreateTupleFromOpResults(
   assert(defining_tuple_op && "builder didn't return the right type");
   auto tupleOp = defining_tuple_op.getOperation();
   return tupleOp;
+}
+
+static bool IsNestedTupleInData(Type type) {
+  auto tuple_type = type.dyn_cast<mlir::TupleType>();
+  if (!tuple_type) return false;
+
+  assert(tuple_type.getType(1).isa<mlir::mhlo::TokenType>() &&
+         "Infeed: Non token type");
+  auto data_type = tuple_type.getType(0);
+
+  auto data_tuple_type = data_type.dyn_cast<mlir::TupleType>();
+  if (!data_tuple_type) return false;
+
+  for (auto child_type : data_tuple_type.getTypes()) {
+    if (child_type.isa<mlir::TupleType>()) return true;
+  }
+
+  return false;
 }
 
 void HloFunctionImporter::FlattenTupleType(
@@ -267,6 +290,7 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
 tensorflow::Status HloFunctionImporter::ImportAsRegion(
     const HloComputation& computation, mlir::Region* region,
     bool flatten_region_arg_tuple) {
+  auto loc = region->getLoc();
   // TODO(hinsu): Store computation name as an attribute for round-trip.
   auto* block = new mlir::Block;
   region->push_back(block);
@@ -279,10 +303,13 @@ tensorflow::Status HloFunctionImporter::ImportAsRegion(
     for (auto arg : args) {
       llvm::SmallVector<Type> flattened_arg_types;
       FlattenTupleType(arg, flattened_arg_types);
-      block->addArguments(flattened_arg_types);
+      block->addArguments(
+          flattened_arg_types,
+          mlir::SmallVector<mlir::Location>(flattened_arg_types.size(), loc));
     }
   } else {
-    block->addArguments(args);
+    block->addArguments(args,
+                        mlir::SmallVector<mlir::Location>(args.size(), loc));
   }
 
   return ImportInstructions(computation, block, flatten_region_arg_tuple);
@@ -484,10 +511,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "feature_index",
           builder_->getI64IntegerAttr(instruction->feature_index())));
       if (instruction->opcode() == HloOpcode::kBatchNormGrad) {
-        return func_builder
-            ->create<mlir::mhlo::BatchNormGradOp>(loc, result_type, operands,
-                                                  attributes)
-            .getOperation();
+        // Flatten the return type if they are tuple-typed.
+        llvm::SmallVector<Type> flattened_ret_types;
+        FlattenTupleType(result_type, flattened_ret_types);
+
+        auto op = func_builder
+                      ->create<mlir::mhlo::BatchNormGradOp>(
+                          loc, flattened_ret_types, operands, attributes)
+                      .getOperation();
+
+        return CreateTupleFromOpResults(func_builder, loc, op, result_type);
       } else if (instruction->opcode() == HloOpcode::kBatchNormInference) {
         return func_builder
             ->create<mlir::mhlo::BatchNormInferenceOp>(loc, result_type,
@@ -495,10 +528,17 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             .getOperation();
       } else {
         assert(instruction->opcode() == HloOpcode::kBatchNormTraining);
-        return func_builder
-            ->create<mlir::mhlo::BatchNormTrainingOp>(loc, result_type,
-                                                      operands, attributes)
-            .getOperation();
+
+        // Flatten the return type if they are tuple-typed.
+        llvm::SmallVector<Type> flattened_ret_types;
+        FlattenTupleType(result_type, flattened_ret_types);
+
+        auto op = func_builder
+                      ->create<mlir::mhlo::BatchNormTrainingOp>(
+                          loc, flattened_ret_types, operands, attributes)
+                      .getOperation();
+
+        return CreateTupleFromOpResults(func_builder, loc, op, result_type);
       }
 
     case HloOpcode::kDot: {
@@ -652,24 +692,46 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kInfeed: {
+      if (IsNestedTupleInData(result_type)) {
+        result_type.dump();
+        assert(0 && "InfeedWithTokenInternal: nested tuple found");
+      }
       attributes.push_back(builder_->getNamedAttr(
           "infeed_config",
           mlir::StringAttr::get(builder_->getContext(),
                                 instruction->infeed_config())));
-      TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
-                          ConvertShapeToMlirLayout(instruction->shape()));
-      attributes.push_back(builder_->getNamedAttr("layout", layout));
-      return func_builder
-          ->create<mlir::mhlo::InfeedOp>(loc, result_type, operands, attributes)
-          .getOperation();
+
+      llvm::SmallVector<mlir::Attribute> flattened_attr;
+      TF_RETURN_IF_ERROR(
+          ConvertShapeToMlirLayout(instruction->shape(), flattened_attr));
+      attributes.push_back(builder_->getNamedAttr(
+          "layout", builder_->getArrayAttr(makeArrayRef(flattened_attr))));
+
+      // Flatten the return-type if they are tuple-typed.
+      llvm::SmallVector<Type> flattened_ret_types;
+      FlattenTupleType(result_type, flattened_ret_types);
+
+      auto op = func_builder->create<mlir::mhlo::InfeedOp>(
+          loc, flattened_ret_types, operands, attributes);
+
+      return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                      result_type);
     }
     case HloOpcode::kOutfeed: {
       attributes.push_back(builder_->getNamedAttr(
           "outfeed_config",
           mlir::StringAttr::get(builder_->getContext(),
                                 instruction->outfeed_config())));
+
+      assert(operands.size() == 2 && "Expected 2 operands for HLO Infeed");
+
+      // In case operands[0] is a tuple, flatten it.
+      llvm::SmallVector<Value> flattened_operands;
+      FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
+      flattened_operands.push_back(operands[1]);
+
       return func_builder
-          ->create<mlir::mhlo::OutfeedOp>(loc, result_type, operands,
+          ->create<mlir::mhlo::OutfeedOp>(loc, result_type, flattened_operands,
                                           attributes)
           .getOperation();
     }
@@ -936,8 +998,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           llvm::makeArrayRef(operands).take_front(num_inputs),
           llvm::makeArrayRef(operands).drop_front(num_inputs),
           ConvertDimensions(instruction->dimensions()));
-      TF_RETURN_IF_ERROR(
-          ImportAsRegion(*instruction->to_apply(), &reduce.body()));
+      TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
+                                        &reduce.body(),
+                                        /*flatten_region_arg_tuple=*/true));
 
       // Check if the output needs to be tupled.
       if (return_types.size() == 1 && return_types.front() == result_type) {
@@ -979,10 +1042,17 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kRngBitGenerator: {
       auto rng_op = Cast<HloRngBitGeneratorInstruction>(instruction);
+
+      // Flatten the return type if they are tuple-typed.
+      llvm::SmallVector<Type> flattened_ret_types;
+      FlattenTupleType(result_type, flattened_ret_types);
+
       auto op = func_builder->create<mlir::mhlo::RngBitGeneratorOp>(
-          loc, result_type,
+          loc, flattened_ret_types,
           func_builder->getI32IntegerAttr(rng_op->algorithm()), operands[0]);
-      return op.getOperation();
+
+      return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                      result_type);
     }
     case HloOpcode::kWhile: {
       llvm::SmallVector<Value> flattened_operands;
@@ -1219,6 +1289,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return {func_builder->create<mlir::mhlo::CompareOp>(
           loc, operands[0], zero, func_builder->getStringAttr("NE"))};
     }
+    case HloOpcode::kOptimizationBarrier: {
+      llvm::SmallVector<Value> flattened_operands;
+      llvm::SmallVector<Type> flattened_operand_types;
+      FlattenTupleType(operands[0].getType(), flattened_operand_types);
+      FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
+
+      auto op = func_builder->create<mlir::mhlo::OptimizationBarrierOp>(
+          loc, flattened_operand_types, flattened_operands);
+
+      return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                      operands[0].getType());
+    }
 
 #define NO_ATTRIBUTE_CASE(hlo_op_code, mlir_op)                               \
   case HloOpcode::hlo_op_code: {                                              \
@@ -1286,13 +1368,24 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 #undef NO_ATTRIBUTE_CASE
 
     case HloOpcode::kFusion: {
+      // Flatten the tuple-typed operands.
+      llvm::SmallVector<Value> flattened_operands;
+      for (auto& operand : operands)
+        FlattenTupleValue(func_builder, loc, operand, flattened_operands);
+
+      // Flatten the return type if they are tuple-typed.
+      llvm::SmallVector<Type> flattened_ret_types;
+      FlattenTupleType(result_type, flattened_ret_types);
+
       auto fusion = func_builder->create<mlir::mhlo::FusionOp>(
-          loc, result_type, operands,
+          loc, flattened_ret_types, flattened_operands,
           builder_->getStringAttr(xla::ToString(instruction->fusion_kind())));
-      TF_RETURN_IF_ERROR(
-          ImportAsRegion(*instruction->fused_instructions_computation(),
-                         &fusion.fused_computation()));
-      return fusion.getOperation();
+      TF_RETURN_IF_ERROR(ImportAsRegion(
+          *instruction->fused_instructions_computation(),
+          &fusion.fused_computation(), /*flatten_region_arg_tuple=*/true));
+
+      return CreateTupleFromOpResults(func_builder, loc, fusion.getOperation(),
+                                      result_type);
     }
     case HloOpcode::kBitcast: {
       auto bitcast = func_builder->create<mlir::mhlo::BitcastOp>(
@@ -1505,18 +1598,19 @@ void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
       mlir::Builder(op->getContext()).getIndexTensorAttr(minor_to_major));
 }
 
-StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
-    const xla::Shape& shape) {
-  if (shape.IsToken()) return builder_->getUnitAttr();
+Status HloFunctionImporter::ConvertShapeToMlirLayout(
+    const xla::Shape& shape,
+    llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr) {
+  if (shape.IsToken()) {
+    return tensorflow::Status::OK();
+  }
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
     for (int i = 0; i < shape.tuple_shapes_size(); i++) {
-      TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
-                          ConvertShapeToMlirLayout(shape.tuple_shapes(i)));
-      tuple_layouts.push_back(layout);
+      TF_RETURN_IF_ERROR(
+          ConvertShapeToMlirLayout(shape.tuple_shapes(i), flattened_attr));
     }
-    llvm::ArrayRef<mlir::Attribute> array_ref(tuple_layouts);
-    return builder_->getArrayAttr(array_ref);
+    return tensorflow::Status::OK();
   }
   if (shape.IsArray()) {
     const xla::Layout l = shape.layout();
@@ -1525,7 +1619,8 @@ StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
       minor_to_major.push_back(builder_->getI64IntegerAttr(i));
     }
     llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);
-    return builder_->getArrayAttr(array_ref);
+    flattened_attr.push_back(builder_->getArrayAttr(array_ref));
+    return tensorflow::Status::OK();
   }
   return tensorflow::errors::Internal("Couldn't convert layout.");
 }

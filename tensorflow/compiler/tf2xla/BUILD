@@ -13,6 +13,9 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//tensorflow/compiler/xla/service/cpu:build_defs.bzl", "runtime_copts")
 
@@ -267,6 +270,7 @@ cc_library(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
     hdrs = ["xla_compiled_cpu_function.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/service:custom_call_status_internal",

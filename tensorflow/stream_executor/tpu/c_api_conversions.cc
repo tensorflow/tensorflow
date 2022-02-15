@@ -378,16 +378,6 @@ std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables) {
   return data;
 }
 
-void Destroy(const TpuEmbeddingEngineParametersData* data) {
-  for (int i = 0; i < 8; i++) {
-    for (int table_id = 0; table_id < data->c_params.num_tables; table_id++) {
-      if (data->c_params.parameters[i][table_id] != nullptr) {
-        Destroy(data->c_params.parameters[i][table_id]);
-      }
-    }
-  }
-}
-
 void Destroy(XLA_ShapeIndex* shape_index) { delete[] shape_index; }
 void Destroy(SE_DeviceMemoryBase*) {}
 

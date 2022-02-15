@@ -152,14 +152,14 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
 
 struct DecomposeResourceOpsPass
     : public DecomposeResourceOpsPassBase<DecomposeResourceOpsPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
 
-    if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
-      getFunction().emitError() << kBadDecompositionMessage;
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      getOperation().emitError() << kBadDecompositionMessage;
       signalPassFailure();
     }
   }
@@ -170,7 +170,7 @@ struct DecomposeResourceOpsInClusterPass
           DecomposeResourceOpsInClusterPass> {
   void runOnOperation() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
     FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 

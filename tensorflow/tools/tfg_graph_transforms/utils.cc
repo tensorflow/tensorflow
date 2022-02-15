@@ -18,56 +18,15 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace mlir {
 namespace tfg {
 namespace graph_transforms {
 
-static constexpr char kBinarySavedModelExtension[] = "pb";
-static constexpr char kTextSavedModelExtension[] = "pbtxt";
-
-tensorflow::Status ReadSavedModelProto(
-    const std::string& input_file, tensorflow::SavedModel& saved_model_proto) {
-  // Proto might be either in binary or text format.
-  tensorflow::StringPiece extension = tensorflow::io::Extension(input_file);
-  bool binary_extenstion = !extension.compare(kBinarySavedModelExtension);
-  bool text_extension = !extension.compare(kTextSavedModelExtension);
-
-  if (!binary_extenstion && !text_extension) {
-    LOG(WARNING) << "Proto type cannot be identified based on the extension";
-    // Try load binary first.
-    auto status = tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                              input_file, &saved_model_proto);
-    if (status.ok()) {
-      return status;
-    }
-
-    // Binary proto loading failed, attempt to load text proto.
-    return tensorflow::ReadTextProto(tensorflow::Env::Default(), input_file,
-                                     &saved_model_proto);
-  }
-
-  if (binary_extenstion) {
-    return tensorflow::ReadBinaryProto(tensorflow::Env::Default(), input_file,
-                                       &saved_model_proto);
-  }
-
-  if (text_extension) {
-    return tensorflow::ReadTextProto(tensorflow::Env::Default(), input_file,
-                                     &saved_model_proto);
-  }
-
-  return tensorflow::errors::InvalidArgument(
-      "Expected either binary or text saved model protobuf");
-}
-
 bool IsTextProto(const std::string& input_file) {
   tensorflow::StringPiece extension = tensorflow::io::Extension(input_file);
-  return !extension.compare(kTextSavedModelExtension);
+  return !extension.compare("pbtxt");
 }
 
 }  // namespace graph_transforms

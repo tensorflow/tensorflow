@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -958,7 +959,7 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
       host_compute_op->getAttrOfType<StringAttr>("host_mlir_module");
   if (host_module.getValue().empty()) return false;
 
-  mlir::OwningModuleRef module_for_func;
+  mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
   FuncOp func = host_compute_op.GetHostFunc(&module_for_func);
 
   // Update/use input shapes for function.
@@ -1043,7 +1044,8 @@ bool ShapeInference::InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
   DCOMMENT_OP(op, "Inferring shape for with N = " << N << " and M = " << M);
 
   // Initialize with function input types.
-  SmallVector<Type> input_types(f.getArgumentTypes());
+  auto input_types = llvm::to_vector<1>(
+      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
   DatasetInput input_elements =
       GetDatasetInput(op->getOperand(0).getDefiningOp());
@@ -1147,7 +1149,8 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   }
 
   // Initialize with function input types.
-  SmallVector<Type> input_types(f.getArgumentTypes());
+  auto input_types = llvm::to_vector<1>(
+      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
   // Track if changed to skip enqueueing.
   bool changed = false;
@@ -1643,6 +1646,7 @@ bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
   if (op->hasTrait<OpTrait::SameOperandsAndResultShape>())
     return RefineShapeForPassThroughOps(op);
   if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);
+  if (isa<tensor::CastOp>(op)) return InferShapeForCast(op);
   return false;
 }
 
@@ -1751,10 +1755,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // needed.
   if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);
 
-  // tf.Cast and tensor::Cast are only inferred if they have at least one user
-  // in the TF dialect or feeding into the function return. This is necessary to
-  // avoid inserting casts which cannot be refined.
-  if (isa<CastOp, tensor::CastOp>(op)) return InferShapeForCast(op);
+  // tf.Cast is only inferred if it has at least one user in the TF dialect or
+  // feeding into the function return. This is necessary to avoid inserting
+  // casts which cannot be refined.
+  if (isa<CastOp>(op)) return InferShapeForCast(op);
 
   // Handle IfOp here by inferring the shape from the else/then function
   // results. Since `output_shapes` is a derived attribute, avoid going down the

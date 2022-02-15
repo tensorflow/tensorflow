@@ -54,7 +54,7 @@ def test_acos(fn, rank):
       arg = np.random.uniform(0, 10.0, size=shape).astype(np.float32)
 
       [res] = jitrt.execute(compiled, [arg])
-      np.testing.assert_allclose(res, np.arccos(arg), atol=1e-06)
+      np.testing.assert_allclose(res, np.arccos(arg), atol=3e-04, rtol=3e-04)
 
 
 class TfACosTest(test.TestCase):

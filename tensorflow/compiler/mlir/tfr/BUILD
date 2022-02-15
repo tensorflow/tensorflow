@@ -48,6 +48,7 @@ td_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:CallInterfacesTdFiles",
         "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+        "@llvm-project//mlir:FunctionInterfacesTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:ShapeOpsTdFiles",
         "@llvm-project//mlir:SideEffectTdFiles",
@@ -160,6 +161,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -237,7 +239,7 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/hash/hash.h"
@@ -58,7 +59,7 @@ namespace py = pybind11;
 
 struct Uniquer {
   absl::Mutex mu;
-  NameUniquer name_uniquer TF_GUARDED_BY(mu);
+  NameUniquer name_uniquer ABSL_GUARDED_BY(mu);
 };
 
 Uniquer* GetUniquer() {
@@ -127,7 +128,7 @@ StatusOr<std::string> GetComputationHloDotGraph(
 StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
-  return hlo_module->Hash();
+  return absl::HashOf(*hlo_module);
 }
 // Safe version of ShapeUtil::MakeShapeWithLayout that fails gracefully on
 // invalid input.
@@ -210,7 +211,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("__ne__", [](const Layout& layout,
                         const Layout& other) { return layout != other; })
       .def("__hash__",
-           [](const Layout& layout) { return absl::Hash<Layout>()(layout); })
+           [](const Layout& layout) { return absl::HashOf(layout); })
       .def("to_string", &Layout::ToString);
 
   py::class_<Shape> shape_class(m, "Shape");
@@ -336,8 +337,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         const Shape& other) { return shape == other; })
       .def("__ne__", [](const Shape& shape,
                         const Shape& other) { return shape != other; })
-      .def("__hash__",
-           [](const Shape& shape) { return absl::Hash<Shape>()(shape); })
+      .def("__hash__", [](const Shape& shape) { return absl::HashOf(shape); })
       .def("__repr__", [](const Shape& shape) {
         return shape.ToString(/*print_layout=*/true);
       });
@@ -367,9 +367,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         const ShapeIndex& other) { return shape_ind == other; })
       .def("__ne__", [](const ShapeIndex& shape_ind,
                         const ShapeIndex& other) { return shape_ind != other; })
-      .def("__hash__", [](const ShapeIndex& shape_ind) {
-        return absl::Hash<ShapeIndex>()(shape_ind);
-      });
+      .def("__hash__",
+           [](const ShapeIndex& shape_ind) { return absl::HashOf(shape_ind); });
 
   // Literals
   py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
@@ -471,7 +470,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   m.def(
       "hlo_module_cost_analysis",
       [](PyClient* client,
-         const HloModule& module) -> StatusOr<std::map<std::string, float>> {
+         const HloModule& module) -> StatusOr<HloCostAnalysis::Properties> {
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
@@ -690,6 +689,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)
       .value("MAXIMAL", OpSharding::MAXIMAL)
+      .value("MANUAL", OpSharding::MANUAL)
       .value("TUPLE", OpSharding::TUPLE)
       .value("OTHER", OpSharding::OTHER);
 
@@ -713,6 +713,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                       &xla::OpSharding::mutable_tile_assignment_devices);
   DefRepeatedProperty(op_sharding, "tuple_shardings",
                       &xla::OpSharding::mutable_tuple_shardings);
+  DefRepeatedProperty(op_sharding, "last_tile_dims",
+                      &xla::OpSharding::mutable_last_tile_dims);
 
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)

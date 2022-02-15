@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 
 #include <algorithm>
+#include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"

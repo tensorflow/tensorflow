@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
@@ -606,6 +605,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
   Status BlockHostUntilReady() override;
 
+  void OnReady(std::function<void(Status)> callback) override;
+
   bool IsOnCpu() const override;
 
   // Similar to Delete, drops the buffer's reference to its associated device
@@ -677,9 +678,9 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   PjRtStreamExecutorDevice* const device_;
 
   mutable absl::Mutex mu_;
-  std::shared_ptr<TrackedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<TrackedDeviceBuffer> device_buffer_ ABSL_GUARDED_BY(mu_);
   // Count of holds on the buffer.
-  std::array<int, ScopedHold::Type::kMaxValue> holds_ TF_GUARDED_BY(mu_);
+  std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
 };
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by

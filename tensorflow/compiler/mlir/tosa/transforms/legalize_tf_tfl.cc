@@ -37,16 +37,16 @@ namespace {
 class LegalizeTFTFL : public TosaLegalizeTFTFLPassBase<LegalizeTFTFL> {
  public:
   explicit LegalizeTFTFL() {}
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void LegalizeTFTFL::runOnFunction() {
+void LegalizeTFTFL::runOnOperation() {
   MLIRContext* ctx = &getContext();
-  OwningRewritePatternList patterns(ctx);
+  RewritePatternSet patterns(ctx);
   populateLegalizeTFPatterns(ctx, patterns);
   populateLegalizeTFLPatterns(ctx, patterns);
 
-  FuncOp func = getFunction();
+  FuncOp func = getOperation();
   if (ApplyPatternsWithShapeResolution(func, std::move(patterns)).failed()) {
     signalPassFailure();
   }

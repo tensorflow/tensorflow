@@ -383,6 +383,7 @@ def tf_copts(
         if_libtpu(["-DLIBTPU_ON_GCE"], []) +
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
+        if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
         # Compile in oneDNN based ops when building for x86 platforms
         if_mkl(["-DINTEL_MKL"]) +
         # Enable additional ops (e.g., ops with non-NHWC data layout) and
@@ -1389,6 +1390,7 @@ def tf_gpu_cc_test(
         kernels = [],
         linkopts = [],
         **kwargs):
+    targets = []
     tf_cc_test(
         name = name,
         size = size,
@@ -1399,10 +1401,12 @@ def tf_gpu_cc_test(
         kernels = kernels,
         linkopts = linkopts,
         linkstatic = linkstatic,
+        suffix = "_cpu",
         tags = tags,
         deps = deps,
         **kwargs
     )
+    targets.append(name + "_cpu")
     tf_cc_test(
         name = name,
         size = size,
@@ -1426,6 +1430,7 @@ def tf_gpu_cc_test(
         ]),
         **kwargs
     )
+    targets.append(name + "_gpu")
     if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
         cleaned_tags = tags + two_gpu_tags
         if "requires-gpu-nvidia" in cleaned_tags:
@@ -1453,6 +1458,9 @@ def tf_gpu_cc_test(
             ]),
             **kwargs
         )
+        targets.append(name + "_2gpu")
+
+    native.test_suite(name = name, tests = targets, tags = tags)
 
 # terminology changes: saving tf_cuda_* definition for compatibility
 def tf_cuda_cc_test(*args, **kwargs):
@@ -1539,6 +1547,7 @@ def tf_cc_tests(
             name = name,
             tests = test_names,
             visibility = visibility,
+            tags = tags,
         )
 
 def tf_cc_test_mkl(
@@ -2018,7 +2027,7 @@ def tf_custom_op_library_additional_deps():
         "@com_google_protobuf//:protobuf_headers",  # copybara:comment
         clean_dep("//third_party/eigen3"),
         clean_dep("//tensorflow/core:framework_headers_lib"),
-    ] + if_windows([clean_dep("//tensorflow/python:pywrap_tensorflow_import_lib")])
+    ]
 
 # A list of targets that contains the implementation of
 # tf_custom_op_library_additional_deps. It's used to generate a DEF file for
@@ -2116,6 +2125,8 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
     ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudart_static",
+    ]) + if_windows([
+        clean_dep("//tensorflow/python:pywrap_tensorflow_import_lib"),
     ]) + tf_custom_op_library_additional_deps()
 
     # Override EIGEN_STRONG_INLINE to inline when
@@ -2560,6 +2571,9 @@ def gpu_py_test(
     configs = ["cpu", "gpu"]
     if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
         configs = configs + ["2gpu"]
+
+    targets = []
+
     for config in configs:
         test_name = name
         test_tags = tags
@@ -2569,9 +2583,12 @@ def gpu_py_test(
             test_tags = test_tags + two_gpu_tags
             if "requires-gpu-nvidia" in test_tags:
                 test_tags.remove("requires-gpu-nvidia")
-        if xla_enable_strict_auto_jit:
+
+        # TODO(b/215751004): CPU on XLA tests are skipped intentionally.
+        if config != "cpu" and xla_enable_strict_auto_jit:
+            strict_auto_jit_test_name = test_name + "_xla_" + config
             tf_py_test(
-                name = test_name + "_xla_" + config,
+                name = strict_auto_jit_test_name,
                 size = size,
                 srcs = srcs,
                 args = args,
@@ -2586,10 +2603,10 @@ def gpu_py_test(
                 xla_enable_strict_auto_jit = True,
                 **kwargs
             )
-        if config == "gpu":
-            test_name += "_gpu"
-        if config == "2gpu":
-            test_name += "_2gpu"
+            targets.append(strict_auto_jit_test_name)
+
+        test_name = test_name + "_" + config
+
         tf_py_test(
             name = test_name,
             size = size,
@@ -2606,6 +2623,9 @@ def gpu_py_test(
             xla_enable_strict_auto_jit = False,
             **kwargs
         )
+        targets.append(test_name)
+
+    native.test_suite(name = name, tests = targets, tags = tags)
 
 # terminology changes: saving cuda_* definition for compatibility
 def cuda_py_test(*args, **kwargs):

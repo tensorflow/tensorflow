@@ -157,3 +157,12 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+cuda_py_test(
+    name = "graph_building_test",
+    size = "small",
+    srcs = ["graph_building_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+    ],
+)

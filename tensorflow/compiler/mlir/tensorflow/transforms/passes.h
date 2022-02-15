@@ -76,10 +76,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass();
 
 // Performs TF.data optimizations.
-std::unique_ptr<FunctionPass> CreateTFDataOptimizationPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateTFDataOptimizationPass();
 
-std::unique_ptr<FunctionPass> CreateMoveTransposesPass();
-std::unique_ptr<FunctionPass> CreateLayoutAssignmentPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateMoveTransposesPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateLayoutAssignmentPass();
 
 // Guarantee that all FuncOp's have a single use.
 std::unique_ptr<OperationPass<ModuleOp>> CreateGuaranteeAllFuncsOneUsePass();
@@ -91,7 +91,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass();
 std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass();
 
 // Pass that transform Einsum to other TF Ops for the supported variants.
-std::unique_ptr<FunctionPass> CreateTransformEinsumPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateTransformEinsumPass();
 
 // Optimizes Tensorflow graph.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass();
@@ -114,7 +114,7 @@ CreateTensorDeviceCopyConversionPass();
 std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass();
 
 void populateTfControlFlowToScfPatterns(MLIRContext* context,
-                                        OwningRewritePatternList* patterns);
+                                        RewritePatternSet* patterns);
 // Create a pass to convert TensorFlow control flow to SCF.
 std::unique_ptr<OperationPass<ModuleOp>> createConvertTfControlFlowToScfPass();
 
@@ -204,7 +204,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass();
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
 
 // Addds the HLO to TF rewrite patterns to the specified pattern list.
-void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
+void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);
 
 // Matches sequence of ops to TensorFlow fused kernels. This pass should not be
@@ -346,6 +346,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateReplicateInvariantOpHoistingPass();
 // Creates a pass that forms replica `tf_executor.island` from a single
 // `tf_device.replicate` island.
 std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass();
+
+// Creates a pass that sets the device ordinal attribute of the required op
+// using the replica id attribute.
+std::unique_ptr<OperationPass<FuncOp>> CreateReplicaIDToDeviceOrdinalPass();
 
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.

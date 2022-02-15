@@ -60,7 +60,7 @@ func @dynamic_pad(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>, %arg2: tensor<2xin
   // CHECK: %[[TMP3:.*]] = memref.load %[[INTER]][%c0] : memref<2xindex>
   // CHECK: %[[TMP4:.*]] = arith.cmpi slt, %[[DIM0]], %c1 : index
   // CHECK: %[[TMP5:.*]] = arith.subi %[[DIM0]], %c1 : index
-  // CHECK: %[[TMP6:.*]] = select %[[TMP4]], %c0, %[[TMP5]] : index
+  // CHECK: %[[TMP6:.*]] = arith.select %[[TMP4]], %c0, %[[TMP5]] : index
   // CHECK: %[[TMP7:.*]] = arith.muli %[[TMP3]], %[[TMP6]] : index
   // CHECK: %[[TMP8:.*]] = arith.addi %[[TMP7]], %[[DIM0]] : index
   // CHECK: %[[TMP9:.*]] = arith.addi %[[TMP8]], %[[TMP1]] : index
@@ -71,7 +71,7 @@ func @dynamic_pad(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>, %arg2: tensor<2xin
   // CHECK: %[[TMP14:.*]] = memref.load %[[INTER]][%c1] : memref<2xindex>
   // CHECK: %[[TMP15:.*]] = arith.cmpi slt, %[[TMP11]], %c1 : index
   // CHECK: %[[TMP16:.*]] = arith.subi %[[TMP11]], %c1 : index
-  // CHECK: %[[TMP17:.*]] = select %[[TMP15]], %c0, %[[TMP16]] : index
+  // CHECK: %[[TMP17:.*]] = arith.select %[[TMP15]], %c0, %[[TMP16]] : index
   // CHECK: %[[TMP18:.*]] = arith.muli %[[TMP14]], %[[TMP17]] : index
   // CHECK: %[[TMP19:.*]] = arith.addi %[[TMP18]], %[[TMP11]] : index
   // CHECK: %[[TMP20:.*]] = arith.addi %[[TMP19]], %[[TMP12]] : index
@@ -122,8 +122,8 @@ func @row_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
   // CHECK: lmhlo.reduce
   // CHECK-SAME: %[[ARG]], %[[VAL]], %[[OUT]]
   // CHECK: return %[[OUT]] : memref<?xf32>
-  %0 = "mhlo.reduce"(%arg0, %arg1) ( {
-  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>}
@@ -142,8 +142,8 @@ func @column_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32>
   // CHECK: lmhlo.reduce
   // CHECK-SAME: %[[ARG]], %[[VAL]], %[[OUT]]
   // CHECK: return %[[OUT]] : memref<?xf32>
-  %0 = "mhlo.reduce"(%arg0, %arg1) ( {
-  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):  // no predecessors
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>}

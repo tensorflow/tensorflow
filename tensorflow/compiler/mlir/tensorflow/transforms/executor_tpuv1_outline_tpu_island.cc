@@ -128,8 +128,9 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     // created entry block arguments in the function body.
     {
       Block &entry_block = outlined_func.getBody().front();
+      auto loc = outlined_func.getLoc();
       for (Value operand : operands) {
-        BlockArgument newArg = entry_block.addArgument(operand.getType());
+        BlockArgument newArg = entry_block.addArgument(operand.getType(), loc);
         replaceAllUsesInRegionWith(operand, newArg, outlined_func.getBody());
       }
     }

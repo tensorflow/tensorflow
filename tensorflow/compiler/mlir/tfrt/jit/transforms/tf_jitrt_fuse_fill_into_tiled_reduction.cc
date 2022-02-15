@@ -56,10 +56,10 @@ using mlir::linalg::YieldOp;
 using mlir::tensor::ExtractSliceOp;
 using mlir::tensor::InsertSliceOp;
 
-SmallVector<OpFoldResult> GetReductionDimStep(TiledLoopOp tiled_loop) {
+SmallVector<OpFoldResult> GetParallelDimStep(TiledLoopOp tiled_loop) {
   assert(tiled_loop.getNumLoops() == 2 && "Expected a 2D loop");
-  Value step = tiled_loop.isParallelDimension(0) ? tiled_loop.step().back()
-                                                 : tiled_loop.step().front();
+  Value step = tiled_loop.isParallelDimension(0) ? tiled_loop.step().front()
+                                                 : tiled_loop.step().back();
   if (auto constant = step.getDefiningOp<mlir::arith::ConstantOp>()) {
     return {constant.getValue()};
   }
@@ -112,7 +112,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
     auto init = fill.output().getDefiningOp<InitTensorOp>();
 
     Value init_clone = rewriter.create<InitTensorOp>(
-        init.getLoc(), GetReductionDimStep(tiled_loop),
+        init.getLoc(), GetParallelDimStep(tiled_loop),
         init.getType().cast<mlir::RankedTensorType>().getElementType());
     mlir::OpOperand *init_clone_output_operand;
     rewriter.updateRootInPlace(tiled_loop, [&]() {
@@ -316,19 +316,20 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
 
 struct FuseFillIntoTiledReductionPass
     : public FuseFillIntoTiledReductionBase<FuseFillIntoTiledReductionPass> {
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
     auto context = func.getContext();
 
     mlir::RewritePatternSet patterns(context);
-    patterns.insert<FuseFillIntoTiledReductionPattern>(context);
+    patterns.add<FuseFillIntoTiledReductionPattern>(context);
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateFuseFillIntoTiledReductionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateFuseFillIntoTiledReductionPass() {
   return std::make_unique<FuseFillIntoTiledReductionPass>();
 }
 

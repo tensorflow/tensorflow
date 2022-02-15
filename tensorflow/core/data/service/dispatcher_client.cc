@@ -89,14 +89,14 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t repetition,
+Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t iteration,
                                              int64_t split_provider_index,
                                              Tensor& split,
                                              bool& end_of_splits) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetSplitRequest req;
   req.set_job_id(job_id);
-  req.set_repetition(repetition);
+  req.set_iteration(iteration);
   req.set_split_provider_index(split_provider_index);
   GetSplitResponse resp;
   grpc::ClientContext client_ctx;
@@ -133,7 +133,7 @@ Status DataServiceDispatcherClient::RegisterDataset(
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64_t dataset_id, const ProcessingModeDef& processing_mode,
-    const absl::optional<JobKey>& job_key,
+    const absl::optional<JobKeyDef>& job_key,
     absl::optional<int64_t> num_consumers, TargetWorkers target_workers,
     int64_t& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());

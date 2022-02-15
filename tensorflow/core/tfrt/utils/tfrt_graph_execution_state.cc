@@ -114,7 +114,7 @@ TfrtGraphExecutionState::Create(tensorflow::GraphDef graph_def,
   }
 
   // `CreateGraphExecutionState()` will preprocess the graph (e.g., apply
-  // Placer).
+  // Placer to the top level graph).
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
       fallback_state.CreateGraphExecutionState(std::move(graph_def)));

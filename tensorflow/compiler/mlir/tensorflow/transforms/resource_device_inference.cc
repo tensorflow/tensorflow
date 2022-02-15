@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/visitor_util.h"
 
 #define DEBUG_TYPE "tf-resource-device-inference"
 
@@ -169,65 +168,59 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
 
   // To support WhileRegion, we need to propagate device attributes from
   // WhileRegion operands to body/cond region arguments *prior* to visiting
-  // these regions. Use tensorflow::walk() instead of MLIR core walker to
-  // implement such a pre-order walk.
-  auto walk_res = tensorflow::GenericWalk(
-      func_op, [&](Operation* op, const tensorflow::WalkStage& stage) {
-        // We just need to visit operations in pre-order mode.
-        if (!stage.IsBeforeAllRegions()) return WalkResult::advance();
-
-        if (auto var_handle = dyn_cast<VarHandleOp>(op)) {
-          // Record VarHandleOp's device attribute.
-          StringRef device_attr = GetDeviceAttr(op);
-          if (device_attr.empty()) return WalkResult::advance();
-          auto res = AddResourceDeviceAndEmitError(var_handle.resource(),
-                                                   device_attr, op, result);
-          if (failed(res)) return WalkResult::interrupt();
-        } else if (auto identity = dyn_cast<IdentityOp>(op)) {
-          LLVM_DEBUG(dump("Visiting ", identity));
-          // Try to construct IdentityOp's attribute from recorded assignment.
-          if (!GetDeviceAttr(op).empty()) return WalkResult::advance();
-          for (auto output : filter_resources(op->getResults())) {
-            LLVM_DEBUG(llvm::dbgs() << "  Processing output #"
-                                    << output.getResultNumber() << "\n");
-            if (auto device = result->DeviceForResource(output)) {
-              LLVM_DEBUG(llvm::dbgs()
-                         << " Setting device = " << *device << "\n");
-              identity->setAttr(kDeviceAttr, builder.getStringAttr(*device));
-            }
-          }
-        } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {
-          // For WhileRegion, do local analysis prior to visiting the attached
-          // regions and propagate device annotations to the cond and body
-          // region arguments. The annotations are the union of annotations
-          // on the input and result. Resource alias analysis already propagates
-          // resource ID from the inputs to the results for a while, so just
-          // need to consider the results.
-          LLVM_DEBUG(llvm::dbgs() << "Visiting WhileRegion\n");
-
-          for (auto output : filter_resources(while_region.getResults())) {
-            auto device = result->DeviceForResource(output);
-            int output_index = output.getResultNumber();
-            if (!device) {
-              LLVM_DEBUG(llvm::dbgs()
-                         << "  No device for output #" << output_index << "\n");
-              continue;
-            }
-            // Transfer the annotation to both region arguments
-            for (Region* region : while_region.getRegions()) {
-              BlockArgument arg = region->getArgument(output_index);
-              LLVM_DEBUG(llvm::dbgs()
-                         << "  Propagating device = '" << *device
-                         << "' to arg #" << output_index << " of region #"
-                         << region->getRegionNumber() << "\n");
-              if (failed(AddResourceDeviceAndEmitError(arg, *device,
-                                                       while_region, result)))
-                return WalkResult::interrupt();
-            }
-          }
+  // these regions, so use a pre-order walk.
+  WalkResult walk_res = func_op.walk<WalkOrder::PreOrder>([&](Operation* op) {
+    if (auto var_handle = dyn_cast<VarHandleOp>(op)) {
+      // Record VarHandleOp's device attribute.
+      StringRef device_attr = GetDeviceAttr(op);
+      if (device_attr.empty()) return WalkResult::advance();
+      auto res = AddResourceDeviceAndEmitError(var_handle.resource(),
+                                               device_attr, op, result);
+      if (failed(res)) return WalkResult::interrupt();
+    } else if (auto identity = dyn_cast<IdentityOp>(op)) {
+      LLVM_DEBUG(dump("Visiting ", identity));
+      // Try to construct IdentityOp's attribute from recorded assignment.
+      if (!GetDeviceAttr(op).empty()) return WalkResult::advance();
+      for (auto output : filter_resources(op->getResults())) {
+        LLVM_DEBUG(llvm::dbgs() << "  Processing output #"
+                                << output.getResultNumber() << "\n");
+        if (auto device = result->DeviceForResource(output)) {
+          LLVM_DEBUG(llvm::dbgs() << " Setting device = " << *device << "\n");
+          identity->setAttr(kDeviceAttr, builder.getStringAttr(*device));
         }
-        return WalkResult::advance();
-      });
+      }
+    } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {
+      // For WhileRegion, do local analysis prior to visiting the attached
+      // regions and propagate device annotations to the cond and body
+      // region arguments. The annotations are the union of annotations
+      // on the input and result. Resource alias analysis already propagates
+      // resource ID from the inputs to the results for a while, so just
+      // need to consider the results.
+      LLVM_DEBUG(llvm::dbgs() << "Visiting WhileRegion\n");
+
+      for (auto output : filter_resources(while_region.getResults())) {
+        auto device = result->DeviceForResource(output);
+        int output_index = output.getResultNumber();
+        if (!device) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "  No device for output #" << output_index << "\n");
+          continue;
+        }
+        // Transfer the annotation to both region arguments
+        for (Region* region : while_region.getRegions()) {
+          BlockArgument arg = region->getArgument(output_index);
+          LLVM_DEBUG(llvm::dbgs()
+                     << "  Propagating device = '" << *device << "' to arg #"
+                     << output_index << " of region #"
+                     << region->getRegionNumber() << "\n");
+          if (failed(AddResourceDeviceAndEmitError(arg, *device, while_region,
+                                                   result)))
+            return WalkResult::interrupt();
+        }
+      }
+    }
+    return WalkResult::advance();
+  });
   return failure(walk_res.wasInterrupted());
 }
 

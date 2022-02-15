@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
@@ -313,6 +312,8 @@ HloModuleProto HloModule::ToProto() const {
         *proto.mutable_profile_info()->Add();
     profile_info_proto.set_profile_type(profile_info.profile_type());
     profile_info_proto.set_relative_speedup(profile_info.relative_speedup());
+    profile_info_proto.set_profile_source(profile_info.profile_source());
+    profile_info_proto.set_compilation_event(profile_info.compilation_event());
   }
   return proto;
 }
@@ -441,7 +442,7 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
   }
 
-  for (auto prefetch : proto.cross_program_prefetches()) {
+  for (const auto& prefetch : proto.cross_program_prefetches()) {
     module->AddCrossProgramPrefetch(
         prefetch.parameter(),
         ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
@@ -453,6 +454,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
                         HloSharding::FromProto(proto.spmd_output_sharding()));
     module->set_spmd_output_sharding(hlo_sharding);
+  }
+  for (const auto& profile_info : proto.profile_info()) {
+    module->add_profile_info(profile_info);
   }
   return std::move(module);
 }
@@ -838,7 +842,7 @@ HloComputation* HloModule::DeepCloneComputation(HloComputation* computation,
 }
 
 uint64_t HloModule::RandomNew64() const {
-  tensorflow::mutex_lock l(rng_mutex_);
+  absl::MutexLock l(&rng_mutex_);
   return rng_();
 }
 
@@ -848,19 +852,6 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
-}
-
-uint64_t HloModule::Hash() const {
-  uint64_t result = entry_computation_layout().Hash();
-  // Use MakeComputationSorted() instead of MakeComputationPostOrder()
-  // because naming may affect the order of MakeComputationPostOrder() but not
-  // MakeComputationSorted().
-  for (auto* computation : MakeComputationSorted()) {
-    for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      result = tensorflow::Hash64Combine(result, instruction->Hash());
-    }
-  }
-  return result;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

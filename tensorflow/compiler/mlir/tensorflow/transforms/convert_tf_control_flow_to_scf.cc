@@ -35,7 +35,10 @@ static void moveBlock(Block* source_block, Block* destination_block,
   if (!destination_block->empty())
     rewriter.eraseOp(destination_block->getTerminator());
 
-  destination_block->addArguments(block_arguments_type);
+  destination_block->addArguments(
+      block_arguments_type,
+      SmallVector<Location>(block_arguments_type.size(),
+                            source_block->getParent()->getLoc()));
   rewriter.mergeBlocks(source_block, destination_block,
                        destination_block->getArguments());
 }
@@ -180,14 +183,14 @@ class ConvertWhileRegionOp : public OpRewritePattern<WhileRegionOp> {
 }  // end anonymous namespace
 
 void populateTfControlFlowToScfPatterns(MLIRContext* context,
-                                        OwningRewritePatternList* patterns) {
-  patterns->insert<ConvertIfRegionOp, ConvertWhileRegionOp>(context);
+                                        RewritePatternSet* patterns) {
+  patterns->add<ConvertIfRegionOp, ConvertWhileRegionOp>(context);
 }
 
 struct ConvertTfControlFlowToScf
     : public ConvertTfControlFlowToScfPassBase<ConvertTfControlFlowToScf> {
   void runOnOperation() override {
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     populateTfControlFlowToScfPatterns(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }

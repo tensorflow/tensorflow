@@ -40,9 +40,7 @@ from tensorflow.python.util import tf_decorator
 
 ASYNC_STATEFUL_OPS = frozenset((
     "CollectiveGather",
-    "CollectiveGatherV2",
     "CollectiveReduce",
-    "CollectiveReduceV2",
     "CollectiveBcastSend",
     "CollectiveBcastSendV2",
     "CollectiveBcastRecv",

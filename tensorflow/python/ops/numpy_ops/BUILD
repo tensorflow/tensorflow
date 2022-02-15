@@ -69,6 +69,9 @@ cuda_py_test(
 cuda_py_test(
     name = "np_array_ops_test",
     srcs = ["np_array_ops_test.py"],
+    tags = [
+        "no_windows",  # TODO(b/215381493)
+    ],
     deps = [
         ":numpy",
         "//tensorflow/python:platform",

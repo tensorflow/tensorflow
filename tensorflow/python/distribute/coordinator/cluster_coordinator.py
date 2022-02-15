@@ -696,7 +696,7 @@ class Worker(object):
     """Runs a closure with preemption handling."""
     assert closure is not None
     try:
-      with self._cluster.failure_handler.wait_on_failure(
+      with self.failure_handler.wait_on_failure(
           on_failure_fn=lambda: self._cluster.closure_queue.put_back(closure),
           on_transient_failure_fn=lambda: self._cluster.closure_queue.put_back(
               closure),
@@ -1059,7 +1059,7 @@ class ClusterCoordinator(object):
 
     Args:
       fn: A `tf.function`; the function to be dispatched to a worker for
-        execution asynchronously. Regular python funtion is not supported to be
+        execution asynchronously. Regular python function is not supported to be
         scheduled.
       args: Positional arguments for `fn`.
       kwargs: Keyword arguments for `fn`.

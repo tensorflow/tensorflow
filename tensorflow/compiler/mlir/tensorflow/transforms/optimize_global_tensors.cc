@@ -136,11 +136,11 @@ void EraseUnusedGlobalTensors(ModuleOp module,
 
 void EraseUnusedBoundInputs(ModuleOp module) {
   for (auto func : module.getOps<FuncOp>()) {
-    SmallVector<unsigned, 4> args_to_erase;
+    llvm::BitVector args_to_erase(func.getNumArguments());
     for (int i = 0, e = func.getNumArguments(); i < e; i++) {
       if (func.getArgAttr(i, "tf_saved_model.bound_input") &&
           func.getArgument(i).use_empty()) {
-        args_to_erase.push_back(i);
+        args_to_erase.set(i);
       }
     }
     func.eraseArguments(args_to_erase);

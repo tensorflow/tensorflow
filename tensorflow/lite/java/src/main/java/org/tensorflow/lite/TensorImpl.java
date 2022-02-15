@@ -24,7 +24,6 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.util.Arrays;
-import org.checkerframework.checker.nullness.qual.Nullable;
 
 /** Implementation of {@link Tensor}. */
 // TODO(b/153882978): Add scalar getters similar to TF's Java API.
@@ -241,7 +240,7 @@ final class TensorImpl implements Tensor {
 
   /** Returns the provided buffer's shape if specified and different from this Tensor's shape. */
   // TODO(b/80431971): Remove this method after deprecating multi-dimensional array inputs.
-  int @Nullable [] getInputShapeIfDifferent(Object input) {
+  int[] getInputShapeIfDifferent(Object input) {
     if (input == null) {
       return null;
     }

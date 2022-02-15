@@ -83,8 +83,8 @@ class TfMathOpsTest(parameterized.TestCase):
       # for identical results to Eigen.
       ('exp_scalar', 'Exp', math.exp, False, Rtol.AVX2),
       ('exp_vector', 'Exp', math.exp, True, Rtol.AVX2),
-      ('reciprocal_scalar', 'Reciprocal', math.reciprocal, False, Rtol.ZERO),
-      ('reciprocal_vector', 'Reciprocal', math.reciprocal, True, Rtol.ZERO),
+      ('reciprocal_scalar', 'Reciprocal', math.reciprocal, False, Rtol.BASE),
+      ('reciprocal_vector', 'Reciprocal', math.reciprocal, True, Rtol.BASE),
       # Rsqrt: The AVX2 intrinsic is only emitted with vectorization.
       ('rsqrt_scalar', 'Rsqrt', math.rsqrt, False, Rtol.BASE),
       ('rsqrt_vector', 'Rsqrt', math.rsqrt, True, Rtol.AVX2),

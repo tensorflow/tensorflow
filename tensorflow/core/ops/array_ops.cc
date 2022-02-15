@@ -1199,7 +1199,7 @@ REGISTER_OP("GatherV2")
     .Attr("batch_dims: int = 0")
     .Output("output: Tparams")
     .Attr("Tparams: type")
-    .Attr("Tindices: {int32,int64}")
+    .Attr("Tindices: {int16, int32,int64}")
     .Attr("Taxis: {int32,int64}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle params_shape;
@@ -1284,7 +1284,7 @@ REGISTER_OP("GatherNd")
     .Input("indices: Tindices")
     .Output("output: Tparams")
     .Attr("Tparams: type")
-    .Attr("Tindices: {int32,int64}")
+    .Attr("Tindices: {int16, int32,int64}")
     .SetShapeFn(shape_inference::GatherNdShape);
 
 // --------------------------------------------------------------------------
@@ -1728,7 +1728,7 @@ REGISTER_OP("StridedSlice")
     .Input("strides: Index")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("Index: {int32, int64}")
+    .Attr("Index: {int16, int32, int64}")
     .Attr("begin_mask: int = 0")
     .Attr("end_mask: int = 0")
     .Attr("ellipsis_mask: int = 0")
@@ -3176,7 +3176,7 @@ REGISTER_OP("ScatterNd")
     .Input("shape: Tindices")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("Tindices: {int32, int64}")
+    .Attr("Tindices: {int16, int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle indices_shape;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));
@@ -3194,7 +3194,7 @@ REGISTER_OP("TensorScatterUpdate")
     .Input("updates: T")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("Tindices: {int32, int64}")
+    .Attr("Tindices: {int16, int32, int64, uint16}")
     .SetShapeFn(ScatterNdTensorShape);
 
 REGISTER_OP("TensorScatterAdd")

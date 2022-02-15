@@ -48,8 +48,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
-                                         mlir::OwningModuleRef* module) {
+Status HandleInputOutputArraysWithModule(
+    const toco::ModelFlags& model_flags,
+    mlir::OwningOpRef<mlir::ModuleOp>* module) {
   mlir::FuncOp entry_function = nullptr;
   for (auto func : module->get().getOps<mlir::FuncOp>()) {
     if (auto tf_attrs =

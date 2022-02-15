@@ -134,15 +134,15 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
 struct TensorFlowOptimizePass
     : public TensorFlowOptimizePassBase<TensorFlowOptimizePass> {
   LogicalResult initialize(MLIRContext *context) override {
-    OwningRewritePatternList pattern_list(context);
+    RewritePatternSet pattern_list(context);
     populateWithGenerated(pattern_list);
     pattern_list.insert<SimplifyBroadcastReshape>(context);
     patterns = std::move(pattern_list);
     return success();
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, patterns)))
       signalPassFailure();
   }

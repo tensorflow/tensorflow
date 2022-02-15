@@ -15,6 +15,7 @@ limitations under the License.
 
 // This transformation pass applies some clean up steps after quantization.
 
+#include <string>
 #include <utility>
 
 #include "llvm/Support/Casting.h"
@@ -23,8 +24,15 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<std::string> enable_custom_op_no_side_effect(
+    "tfl-enable-no-side-effect",
+    llvm::cl::desc("Specifies which custom ops are NoSideEffect."),
+    llvm::cl::ZeroOrMore);
 
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
@@ -34,14 +42,20 @@ namespace TFL {
 namespace {
 
 // Applies all the clean up steps after quantization.
-class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
+class PostQuantizePass
+    : public PassWrapper<PostQuantizePass, OperationPass<FuncOp>> {
  public:
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
-  explicit PostQuantizePass() : emit_quant_adaptor_ops_(false) {}
+  explicit PostQuantizePass() : emit_quant_adaptor_ops_(false) {
+    ParseCustomOpSpecs(enable_custom_op_no_side_effect,
+                       CustomOpUpdateOptions::kNoSideEffect, custom_op_map_);
+  }
 
   // Constructor used by manually creating the pass.
-  explicit PostQuantizePass(bool emit_quant_adaptor_ops)
-      : emit_quant_adaptor_ops_(emit_quant_adaptor_ops) {}
+  explicit PostQuantizePass(bool emit_quant_adaptor_ops,
+                            const CustomOpMap& custom_op_map)
+      : emit_quant_adaptor_ops_(emit_quant_adaptor_ops),
+        custom_op_map_(custom_op_map) {}
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -53,7 +67,7 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
     return "Apply post quantization clean up after quantization";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   // Set this flag to true if the inputs and outputs are in floating point. The
@@ -61,11 +75,12 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
   // feeding them to the model and convert them back to floating point
   // (i.e. dequantize) as the output.
   bool emit_quant_adaptor_ops_;
+  CustomOpMap custom_op_map_;
 };
 
 // Cleans up unnecessary QDQ pattern for input/output ops.
 class PostQuantizeRemoveQDQPass
-    : public PassWrapper<PostQuantizeRemoveQDQPass, FunctionPass> {
+    : public PassWrapper<PostQuantizeRemoveQDQPass, OperationPass<FuncOp>> {
  public:
   // Constructor used by the PassRegistration. This will remove QDQ ops.
   explicit PostQuantizeRemoveQDQPass() {}
@@ -80,13 +95,14 @@ class PostQuantizeRemoveQDQPass
     return "Remove qdq from input and output nodes after quantization";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // TODO(fengliuai): migrate to use modify_io_nodes pass.
 void RemoveQuantizationAdaptorOps(FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
   auto& bb = func.front();
+  auto loc = func.getLoc();
 
   int num_args = bb.getNumArguments();
   llvm::SmallVector<Type, 4> input_types;
@@ -107,7 +123,7 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
       auto quantize_output = quantize_op.output();
       auto quantize_type = quantize_output.getType();
       input_types.push_back(quantize_type);
-      auto new_arg = bb.addArgument(quantize_type);
+      auto new_arg = bb.addArgument(quantize_type, loc);
       quantize_output.replaceAllUsesWith(new_arg);
       quantize_op.erase();
       arg.dropAllUses();
@@ -125,7 +141,7 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
     // the pattern isn't found.
     Type arg_type = arg.getType();
     input_types.push_back(arg_type);
-    auto new_arg = bb.addArgument(arg_type);
+    auto new_arg = bb.addArgument(arg_type, loc);
     arg.replaceAllUsesWith(new_arg);
     arg.dropAllUses();
     bb.eraseArgument(0);
@@ -204,8 +220,9 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
 template <typename OpTy>
 struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
  public:
-  explicit PruneUnusedOpsWithSideEffect(MLIRContext* context)
-      : OpRewritePattern<OpTy>(context) {}
+  explicit PruneUnusedOpsWithSideEffect(MLIRContext* context,
+                                        const CustomOpMap& custom_op_map = {})
+      : OpRewritePattern<OpTy>(context), custom_op_map(custom_op_map) {}
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter& rewriter) const override {
@@ -217,43 +234,54 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
         return failure();
       }
     }
+    // Remove if the custom op is in the provided map and is NoSideEffect.
+    auto custom_op = llvm::isa<CustomOp>(op);
+    if (custom_op) {
+      auto q = llvm::cast<CustomOp>(op);
+      std::string op_name = q.custom_code().str();
+      if ((custom_op_map.find(op_name) == custom_op_map.end()) ||
+          !custom_op_map.find(op_name)->second.no_side_effect)
+        return failure();
+    }
     rewriter.eraseOp(op);
     return success();
   }
+  CustomOpMap custom_op_map;
 };
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
-void PostQuantizePass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
+void PostQuantizePass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(patterns);
-  patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
-  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::LSTMOp>>(ctx);
-  patterns
-      .insert<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
-          ctx);
-  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
+  patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
+  patterns.add<PruneUnusedOpsWithSideEffect<TFL::LSTMOp>>(ctx);
+  patterns.add<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
+      ctx);
+  patterns.add<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
+  patterns.add<PruneUnusedOpsWithSideEffect<TFL::CustomOp>>(ctx,
+                                                            custom_op_map_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
-    RemoveQuantizationAdaptorOps(getFunction());
+    RemoveQuantizationAdaptorOps(getOperation());
   }
 
-  OwningRewritePatternList phase_2_patterns(&getContext());
+  RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
-  phase_2_patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>,
-                          RemoveVolatileOps<kPreserveInputsAndOutputs>>(ctx);
+  phase_2_patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
+                       RemoveVolatileOps<kPreserveInputsAndOutputs>>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
-void PostQuantizeRemoveQDQPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
+void PostQuantizeRemoveQDQPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(patterns);
-  patterns.insert<RemoveVolatileOps<kPreserveNone>>(ctx);
+  patterns.add<RemoveVolatileOps<kPreserveNone>>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
@@ -261,8 +289,9 @@ void PostQuantizeRemoveQDQPass::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
-    bool emit_quant_adaptor_ops) {
-  return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops);
+    bool emit_quant_adaptor_ops, const CustomOpMap& custom_op_map) {
+  return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops,
+                                            custom_op_map);
 }
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantizeRemoveQDQ

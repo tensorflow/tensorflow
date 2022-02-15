@@ -1092,7 +1092,7 @@ func ArgMaxOutputType(value tf.DataType) ArgMaxAttr {
 //
 // Arguments:
 //
-//	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+//	dimension: int16, int32 or int64, must be in the range `[-rank(input), rank(input))`.
 // Describes which dimension of the input Tensor to reduce across. For vectors,
 // use dimension = 0.
 func ArgMax(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMaxAttr) (output tf.Output) {
@@ -12068,17 +12068,17 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) Dyn
 // the corresponding feature.
 //
 // Arguments:
-//	sample_indices_or_row_lengths: A list of rank 2 Tensors specifying the training example to which the
+//	sample_indices_or_row_splits: A list of rank 2 Tensors specifying the training example to which the
 // corresponding embedding_indices and aggregation_weights values belong.
 // If the size of its first dimension is 0, we assume each embedding_indices
 // belongs to a different sample. Both int32 and int64 are allowed and will
 // be converted to int32 internally.
 //
-// Or a list of rank 1 Tensors specifying the row lengths for splitting
+// Or a list of rank 1 Tensors specifying the row splits for splitting
 // embedding_indices and aggregation_weights into rows. It corresponds to
-// ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
+// ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. When
 // enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
-// the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+// the row splits is 1-D dense tensor. When empty, we assume a dense tensor is
 // passed to the op Both int32 and int64 are allowed and will be converted to
 // int32 internally.
 //	embedding_indices: A list of rank 1 Tensors, indices into the embedding
@@ -12095,7 +12095,7 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) Dyn
 // of TPU cores in the task on which the node is placed.
 //
 // Returns the created operation.
-func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_lengths []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, device_ordinal tf.Output, optional ...DynamicEnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
+func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_splits []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, device_ordinal tf.Output, optional ...DynamicEnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
@@ -12106,7 +12106,7 @@ func DynamicEnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices
 	opspec := tf.OpSpec{
 		Type: "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch",
 		Input: []tf.Input{
-			tf.OutputList(sample_indices_or_row_lengths), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override, device_ordinal,
+			tf.OutputList(sample_indices_or_row_splits), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override, device_ordinal,
 		},
 		Attrs: attrs,
 	}
@@ -13081,17 +13081,17 @@ func EnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) EnqueueTPU
 // the corresponding feature.
 //
 // Arguments:
-//	sample_indices_or_row_lengths: A list of rank 2 Tensors specifying the training example to which the
+//	sample_indices_or_row_splits: A list of rank 2 Tensors specifying the training example to which the
 // corresponding embedding_indices and aggregation_weights values belong.
 // If the size of its first dimension is 0, we assume each embedding_indices
 // belongs to a different sample. Both int32 and int64 are allowed and will
 // be converted to int32 internally.
 //
-// Or a list of rank 1 Tensors specifying the row lengths for splitting
+// Or a list of rank 1 Tensors specifying the row splits for splitting
 // embedding_indices and aggregation_weights into rows. It corresponds to
-// ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
+// ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. When
 // enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
-// the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+// the row splits is 1-D dense tensor. When empty, we assume a dense tensor is
 // passed to the op Both int32 and int64 are allowed and will be converted to
 // int32 internally.
 //	embedding_indices: A list of rank 1 Tensors, indices into the embedding
@@ -13106,7 +13106,7 @@ func EnqueueTPUEmbeddingArbitraryTensorBatchCombiners(value []string) EnqueueTPU
 // in TPUEmbeddingConfiguration is used, otherwise mode_override is used.
 //
 // Returns the created operation.
-func EnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_lengths []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, optional ...EnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
+func EnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row_splits []tf.Output, embedding_indices []tf.Output, aggregation_weights []tf.Output, mode_override tf.Output, optional ...EnqueueTPUEmbeddingArbitraryTensorBatchAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
@@ -13117,7 +13117,7 @@ func EnqueueTPUEmbeddingArbitraryTensorBatch(scope *Scope, sample_indices_or_row
 	opspec := tf.OpSpec{
 		Type: "EnqueueTPUEmbeddingArbitraryTensorBatch",
 		Input: []tf.Input{
-			tf.OutputList(sample_indices_or_row_lengths), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override,
+			tf.OutputList(sample_indices_or_row_splits), tf.OutputList(embedding_indices), tf.OutputList(aggregation_weights), mode_override,
 		},
 		Attrs: attrs,
 	}
@@ -38963,10 +38963,10 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 // inverse of the `tf.gather_nd` operator which extracts values or slices from a
 // given tensor.
 //
-// This operation is similar to `tf.tensor_scatter_add`, except that the tensor is
-// zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+// This operation is similar to `tf.tensor_scatter_nd_add`, except that the tensor
+// is zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
 // is identical to calling
-// `tf.tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`.
+// `tf.tensor_scatter_nd_add(tf.zeros(shape, values.dtype), indices, values)`
 //
 // If `indices` contains duplicates, the duplicate `values` are accumulated
 // (summed).
@@ -48902,23 +48902,18 @@ func TensorMapStackKeys(scope *Scope, input_handle tf.Output, key_dtype tf.DataT
 //
 //     indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
 //
-// The simplest form of tensor_scatter_add is to add individual elements to a
+// The simplest form of `tensor_scatter_nd_add` is to add individual elements to a
 // tensor by index. For example, say we want to add 4 elements in a rank-1
 // tensor with 8 elements.
 //
 // In Python, this scatter add operation would look like this:
 //
-// ```python
-//     indices = tf.constant([[4], [3], [1], [7]])
-//     updates = tf.constant([9, 10, 11, 12])
-//     tensor = tf.ones([8], dtype=tf.int32)
-//     updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
-//     print(updated)
-// ```
-//
-// The resulting tensor would look like this:
-//
-//     [1, 12, 1, 11, 10, 1, 1, 13]
+// >>> indices = tf.constant([[4], [3], [1], [7]])
+// >>> updates = tf.constant([9, 10, 11, 12])
+// >>> tensor = tf.ones([8], dtype=tf.int32)
+// >>> updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+// <tf.Tensor: shape=(8,), dtype=int32,
+// numpy=array([ 1, 12,  1, 11, 10,  1,  1, 13], dtype=int32)>
 //
 // We can also, insert entire slices of a higher rank tensor all at once. For
 // example, if we wanted to insert two slices in the first dimension of a
@@ -48926,25 +48921,20 @@ func TensorMapStackKeys(scope *Scope, input_handle tf.Output, key_dtype tf.DataT
 //
 // In Python, this scatter add operation would look like this:
 //
-// ```python
-//     indices = tf.constant([[0], [2]])
-//     updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+// >>> indices = tf.constant([[0], [2]])
+// >>> updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
 //                             [7, 7, 7, 7], [8, 8, 8, 8]],
 //                            [[5, 5, 5, 5], [6, 6, 6, 6],
 //                             [7, 7, 7, 7], [8, 8, 8, 8]]])
-//     tensor = tf.ones([4, 4, 4],dtype=tf.int32)
-//     updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
-//     print(updated)
-// ```
+// >>> tensor = tf.ones([4, 4, 4],dtype=tf.int32)
+// >>> updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+// <tf.Tensor: shape=(4, 4, 4), dtype=int32,
+// numpy=array([[[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
+//              [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
+//              [[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
+//              [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]], dtype=int32)>
 //
-// The resulting tensor would look like this:
-//
-//     [[[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
-//      [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
-//      [[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
-//      [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]]
-//
-// Note that on CPU, if an out of bound index is found, an error is returned.
+// Note: on CPU, if an out of bound index is found, an error is returned.
 // On GPU, if an out of bound index is found, the index is ignored.
 //
 // Arguments:

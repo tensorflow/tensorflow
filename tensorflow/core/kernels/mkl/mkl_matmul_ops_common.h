@@ -38,12 +38,14 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 inline bool ExecuteSingleThreadedGemm(int m, int n, int k, int bytes) {
   // Ideally we would like to determine blocking and then come up with
   // a heuristic but what we are targeting are very small models whose
-  // total size is < L2. So we will do this simple calculation
+  // total size is < x*L2. So we will do this simple calculation
   // to determine if the matrix multiplication should be run on a single thread.
+  // TODO(Intel-tf): this needs to be vastly improved, perhaps at a lower level
+  // than the integration.
   ptrdiff_t l2_size = cache_sizes.m_l2;
-  constexpr int kHeuristicMultiplier = 1;
-  const int mul_size = bytes * (m * n + k * (m + n));
-  const int l2_heur = l2_size * kHeuristicMultiplier;
+  constexpr float kHeuristicMultiplier = 1.01;
+  const float mul_size = bytes * (m * n + k * (m + n));
+  const float l2_heur = l2_size * kHeuristicMultiplier;
   return mul_size < l2_heur;
 }
 
@@ -856,8 +858,9 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
       MklMatMulPrimitiveFactory<T, T, T, T>::Get(params, 0);
 
   // Execute matmul primitive.
+  auto st = ExecuteSingleThreadedGemm(m, n, k, sizeof(T));
   std::shared_ptr<stream> cpu_stream;
-  MklDnnThreadPool eigen_tp(ctx);
+  MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
   cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
   matmul_prim->Execute(cpu_stream, a, b, c);
 }

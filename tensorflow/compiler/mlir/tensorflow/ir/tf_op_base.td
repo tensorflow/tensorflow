@@ -117,7 +117,7 @@ class TF_AllTypesMatch<list<string> names> :
 // might lead to incorrect execution order, while if not used where it should
 // be, it can only lead to reduced performance due to conservative ordering.
 // Example op where the invariant is not true: `TF_VarHandleOp`.
-def TF_UniqueResourceAllocation: OpTraitList<[
+def TF_UniqueResourceAllocation: TraitList<[
     TF_ResourceHandleAllocatorInterface,
     NativeOpTrait<"TF::UniqueResourceAllocation">
 ]>;
@@ -165,8 +165,11 @@ def TF_DatasetMemoryCacheResource : TF_ResourceBase<"DatasetMemoryCache">;
 def TF_DatasetIteratorResource : TF_ResourceBase<"DatasetIterator">;
 def TF_TPUEmbeddingResource : TF_ResourceBase<"TPUEmbedding">;
 def TF_GeneratorOpResource : TF_ResourceBase<"GeneratorOp">;
-def TF_SendRecvResource : TF_ResourceBase<"SendRecv">;
-def TF_TPUCompileExecuteResource : TF_ResourceBase<"TPUCompileExecute">;
+def TF_SendResource : TF_ResourceBase<"Send">;
+def TF_RecvResource : TF_ResourceBase<"Recv">;
+def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
+def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
+
 // Fake resource, see `TF_MustExecute` below.
 def TF_MustExecuteResource : TF_ResourceBase<"MustExecute">;
 
@@ -222,8 +225,12 @@ def TF_GeneratorOpSideEffect : MemoryEffects<[MemWrite<TF_GeneratorOpResource>]>
 def TF_TPUEmbeddingWriteEffect : MemoryEffects<[MemWrite<TF_TPUEmbeddingResource>]>;
 def TF_TPUEmbeddingReadEffect : MemoryEffects<[MemRead<TF_TPUEmbeddingResource>]>;
 
-def TF_SendRecvSideEffect : MemoryEffects<[MemWrite<TF_SendRecvResource>]>;
-def TF_TPUCompileExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUCompileExecuteResource>]>;
+def TF_SendSideEffect : MemoryEffects<[MemWrite<TF_SendResource>]>;
+def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
+
+def TF_TPUExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUExecuteResource>]>;
+
+def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
 
 // Trait for enforcing that a side-effecting op is executed, even if it would be
 // considered dead by MLIR (see b/195782952).
@@ -237,7 +244,7 @@ def TF_MustExecute : MemoryEffects<[MemWrite<TF_MustExecuteResource>]>;
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//
 
-class TF_Op<string mnemonic, list<OpTrait> traits = []> :
+class TF_Op<string mnemonic, list<Trait> traits = []> :
     Op<TF_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//

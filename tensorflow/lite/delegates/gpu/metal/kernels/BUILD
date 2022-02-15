@@ -71,8 +71,11 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal_simd",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task",
+        "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
     ],
 )
 
@@ -760,6 +763,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal_simd",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_test_util",
@@ -794,6 +798,8 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task",
+        "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
     ],
 )
 

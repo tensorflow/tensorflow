@@ -51,16 +51,6 @@ Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                       ncclGetErrorString(s)));
 }
 
-Status ToStatus(cudaError_t s, const char* file, int64_t line,
-                const char* expr) {
-  if (s == cudaSuccess) {
-    return Status::OK();
-  }
-  return tensorflow::errors::Internal(
-      absl::StrFormat("%s:%d: CUDA operation %s failed: %s", file, line, expr,
-                      cudaGetErrorString(s)));
-}
-
 ncclRedOp_t ToNcclReduction(ReductionKind kind) {
   switch (kind) {
     case ReductionKind::SUM:
@@ -259,7 +249,9 @@ void CheckNcclAsyncError(NcclComm& lockable_comm) {
     ncclResult_t async_err;
     XLA_CUDA_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));
     if (async_err != ncclSuccess) {
-      LOG(ERROR) << "Async NCCL error. Aborting communicator: " << comm;
+      LOG(ERROR) << "Aborting communicator: " << comm
+                 << " due to async NCCL error: "
+                 << ncclGetErrorString(async_err);
       XLA_CUDA_RETURN_IF_ERROR(ncclCommAbort(comm));
     }
     return XLA_CUDA_STATUS(async_err);

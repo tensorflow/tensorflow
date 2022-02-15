@@ -42,12 +42,12 @@ class FooHardware : public SimpleHardware {
  public:
   static constexpr char kId[] = "FOO";
 
-  mlir::OwningRewritePatternList GetTransformations(
+  mlir::RewritePatternSet GetTransformations(
       MLIRContext* context) const override {
-    mlir::OwningRewritePatternList patterns;
+    mlir::RewritePatternSet patterns;
     // Pick the transformations that we want to perform,
     // We can add other transformations we like here.
-    patterns.insert<LowerPackIntoConcatReshape, UnrollSplit, UnrollSplitV,
+    patterns.add<LowerPackIntoConcatReshape, UnrollSplit, UnrollSplitV,
                   PadSlice>(context);
     return patterns;
   }
@@ -105,7 +105,7 @@ class MyCustomHardware : public TargetHardware {
     // call customized cost model.
   }
   
-  mlir::OwningRewritePatternList GetTransformations(
+  mlir::RewritePatternSet GetTransformations(
       MLIRContext* context) const override {
     // customized transformations patterns: ops lowering/fusion, layout
     // transformation, etc.

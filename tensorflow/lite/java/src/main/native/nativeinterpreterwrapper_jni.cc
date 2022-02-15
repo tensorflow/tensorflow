@@ -57,10 +57,6 @@ BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
   return CastLongToPointer<BufferErrorReporter>(env, handle);
 }
 
-TfLiteOpaqueDelegate* convertLongToDelegate(JNIEnv* env, jlong handle) {
-  return CastLongToPointer<TfLiteOpaqueDelegate>(env, handle);
-}
-
 int getDataType(TfLiteType data_type) {
   switch (data_type) {
     case kTfLiteFloat32:
@@ -77,20 +73,6 @@ int getDataType(TfLiteType data_type) {
       return 6;
     default:
       return -1;
-  }
-}
-
-void printDims(char* buffer, int max_size, int* dims, int num_dims) {
-  if (max_size <= 0) return;
-  buffer[0] = '?';
-  int size = 1;
-  for (int i = 1; i < num_dims; ++i) {
-    if (max_size > size) {
-      int written_size =
-          snprintf(buffer + size, max_size - size, ",%d", dims[i]);
-      if (written_size < 0) return;
-      size += written_size;
-    }
   }
 }
 

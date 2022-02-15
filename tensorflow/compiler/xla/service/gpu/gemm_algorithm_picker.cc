@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
 
 #include <limits>
+#include <string>
 
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
@@ -45,12 +46,12 @@ using tensorflow::AutotuneResult;
 using GemmCacheKey =
     std::tuple<se::StreamExecutor*, Shape, Shape, Shape, std::string>;
 
-static tensorflow::mutex autotune_cache_mu(tensorflow::LINKER_INITIALIZED);
-static auto& autotune_cache TF_GUARDED_BY(autotune_cache_mu) =
+static absl::Mutex autotune_cache_mu(absl::kConstInit);
+static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new absl::flat_hash_map<GemmCacheKey,
                              absl::optional<se::blas::AlgorithmType>>();
-static int64_t cache_hits TF_GUARDED_BY(autotune_cache_mu) = 0;
-static int64_t cache_misses TF_GUARDED_BY(autotune_cache_mu) = 0;
+static int64_t cache_hits ABSL_GUARDED_BY(autotune_cache_mu) = 0;
+static int64_t cache_misses ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 
 // Experimentally tries to pick the best algorithm for the given gemm.
 //
@@ -223,13 +224,13 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   const HloInstruction* rhs = instr->operand(1);
 
   // Don't run autotuning concurrently on the same GPU.
-  tensorflow::mutex_lock gpu_lock = LockGpu(stream->parent());
+  absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
   GemmCacheKey key =
       std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
                       instr->shape(), gemm_config.SerializeAsString());
 
-  tensorflow::mutex_lock cache_lock(autotune_cache_mu);
+  absl::MutexLock cache_lock(&autotune_cache_mu);
   auto it = autotune_cache.find(key);
   int64_t autotuning_requests = cache_hits + cache_misses;
   if (autotuning_requests && autotuning_requests % 10 == 0) {

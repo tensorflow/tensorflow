@@ -34,7 +34,7 @@ func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf16>) {
 
 // CHECK-LABEL: func @reduce_scatter
 func @reduce_scatter(%data: memref<4x16xf32>, %result:memref<4x4xf32>) {
-  "lmhlo.reduce_scatter"(%data, %result) ( {
+  "lmhlo.reduce_scatter"(%data, %result) ({
     // reduction computation
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
@@ -466,7 +466,7 @@ func @broadcast_in_dim_zero_rank_memref(%arg0: memref<i32>, %out: memref<1x2x3xi
 
 // CHECK-LABEL: func @reduce_memref
 func @reduce_memref(%input: memref<10xf32>, %init: memref<f32>, %out: memref<1xf32>) -> () {
-  "lmhlo.reduce"(%input, %init, %out) ( {
+  "lmhlo.reduce"(%input, %init, %out) ({
   ^bb0(%arg1: memref<f32>, %arg2: memref<f32>, %result: memref<f32>):
     "lmhlo.add"(%arg1, %arg2, %result) : (memref<f32>, memref<f32>, memref<f32>) -> ()
     "lmhlo.terminator"() : () -> ()
@@ -478,7 +478,7 @@ func @reduce_memref(%input: memref<10xf32>, %init: memref<f32>, %out: memref<1xf
 
 // CHECK-LABEL: func @fusion_memref
 func @fusion_memref(%input1: memref<10xf32>, %input2: memref<10xf32>, %input3: memref<10xf32>, %out: memref<10xf32>) -> () {
-  "lmhlo.fusion"() ( {
+  "lmhlo.fusion"() ({
     %0 = bufferization.to_tensor %input1 : memref<10xf32>
     %1 = bufferization.to_tensor %input2 : memref<10xf32>
     %2 = "mhlo.add"(%0, %1) {name = "add"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
@@ -494,7 +494,7 @@ func @fusion_memref(%input1: memref<10xf32>, %input2: memref<10xf32>, %input3: m
 
 // CHECK-LABEL: func @case_memref
 func @case_memref(%index: memref<i32>, %operand_1: memref<f32>, %operand_2: memref<f32>, %operand_3: memref<f32>, %out: memref<f32>) -> () {
-  "lmhlo.case"(%index) ( {
+  "lmhlo.case"(%index) ({
     ^bb0:
       "lmhlo.negate"(%operand_1, %out) : (memref<f32>, memref<f32>) -> ()
       "lmhlo.terminator"() : () -> ()
@@ -954,7 +954,7 @@ func @while_memrefs(%arg0: memref<i64>, %arg1: memref<5xf32>, %arg0_out: memref<
 func @scatter_memrefs(%input: memref<200x100x300xf32>, %indices: memref<10x2xi32>,
                       %updates: memref<10x300xf32>, %arg_out: memref<200x100x300xf32>) -> () {
   "lmhlo.scatter" (%input, %indices, %updates, %arg_out) ({
-  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>): // no predecessors
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
     %add = mhlo.add %lhs, %rhs : tensor<f32>
     "mhlo.return"(%add) : (tensor<f32>) -> ()
   }) {
@@ -996,6 +996,42 @@ func @map_memrefs(%arg0: memref<20xf32>, %arg1: memref<20xf32>, %arg_out: memref
 
 // -----
 
+func @pad_output_rank_error(%arg0: memref<1x2x3xf16>, %arg1: memref<f16>, %arg2: memref<4x5xf16>) {
+  // expected-error@+1{{output's rank(2) is not same as operand's rank(3)}}
+  "lmhlo.pad"(%arg0, %arg1, %arg2) {
+         edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+         edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+         interior_padding = dense<0> : tensor<3xi64>
+   } : (memref<1x2x3xf16>, memref<f16>, memref<4x5xf16>) -> ()
+   return
+}
+
+// -----
+
+func @pad_config_rank_error(%arg0: memref<1x2x3xf16>, %arg1: memref<f16>, %arg2: memref<2x4x5xf16>) {
+  // expected-error@+1{{pad configurations to be specified for all 3 dimensions}}
+  "lmhlo.pad"(%arg0, %arg1, %arg2) {
+         edge_padding_high = dense<[1, 1]> : tensor<2xi64>,
+         edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>,
+         interior_padding = dense<0> : tensor<3xi64>
+   } : (memref<1x2x3xf16>, memref<f16>, memref<2x4x5xf16>) -> ()
+   return
+}
+
+// -----
+
+func @pad_config_error(%arg0: memref<2x2x3xf16>, %arg1: memref<f16>, %arg2: memref<2x4x5xf16>) {
+  // expected-error@+1{{expected 0-th dimension size after padding is 6 but found 2}}
+  "lmhlo.pad"(%arg0, %arg1, %arg2) {
+         edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>,
+         edge_padding_low = dense<[1, 1, 2]> : tensor<3xi64>,
+         interior_padding = dense<[2, 0, 0]> : tensor<3xi64>
+   } : (memref<2x2x3xf16>, memref<f16>, memref<2x4x5xf16>) -> ()
+   return
+}
+
+// -----
+
 // CHECK-LABEL: func @rng_get_and_update_state_memrefs
 func @rng_get_and_update_state_memrefs(%state: memref<1xui64>) -> () {
   "lmhlo.rng_get_and_update_state"(%state) { delta = 1 : i64 } : (memref<1xui64>) -> ()
@@ -1007,7 +1043,7 @@ func @rng_get_and_update_state_memrefs(%state: memref<1xui64>) -> () {
 // CHECK-LABEL: func @sort_memrefs
 func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
-  "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ( {
+  "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
     %7 = "mhlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1020,7 +1056,7 @@ func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
 // CHECK-LABEL: func @sort_memrefs
 func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
-  "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ( {
+  "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
     %7 = "mhlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
@@ -1033,7 +1069,7 @@ func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
 // CHECK-LABEL: func @sort_memrefs
 func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
-  "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ( {
+  "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
     %7 = "mhlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()

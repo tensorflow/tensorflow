@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -257,6 +256,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleOptimizationBarrier(HloInstruction* barrier) override;
 
   std::string ToString() const;
 

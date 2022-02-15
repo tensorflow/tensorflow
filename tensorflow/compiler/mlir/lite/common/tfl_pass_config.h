@@ -37,7 +37,6 @@ struct PassConfig {
         quant_specs(std::move(specs)),
         form_clusters(false),
         unfold_batch_matmul(true),
-        legalize_tf_while(true),
         shape_inference(true),
         runtime_verification(true),
         enable_tflite_variables(false),
@@ -62,10 +61,6 @@ struct PassConfig {
   // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
   // of tfl.fully_connected ops.
   bool unfold_batch_matmul;
-  // Whether to legalize TF While to TFL While.
-  // Note: This is staging step and will be removed.
-  // TODO(b/137395003): Remove post switching legalization.
-  bool legalize_tf_while;
   // Whether to outline WhileOp at the end of the pipeline.
   bool outline_tf_while = false;
   // Whether to do shape inference.
@@ -98,7 +93,6 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << absl::StrJoin(pass_config.trim_functions_allowlist.vec(), ",")
             << "\nform_clusters: " << pass_config.form_clusters
             << "\nunfold_batch_matmul: " << pass_config.unfold_batch_matmul
-            << "\nlegalize_tf_while: " << pass_config.legalize_tf_while
             << "\noutline_tf_while: " << pass_config.outline_tf_while
             << "\nshape_inference: " << pass_config.shape_inference
             << "\nruntime_verification: " << pass_config.runtime_verification

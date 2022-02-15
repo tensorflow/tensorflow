@@ -15,7 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertLmhloToGpuPass : FunctionPass<"lmhlo-to-gpu"> {
+def ConvertLmhloToGpuPass : Pass<"lmhlo-to-gpu", "mlir::FuncOp"> {
   let summary = "Convert lmhlo ops to gpu dialect.";
   let description = [{
     Some lmhlo ops are converted to gpu dialect. Others are moved inside

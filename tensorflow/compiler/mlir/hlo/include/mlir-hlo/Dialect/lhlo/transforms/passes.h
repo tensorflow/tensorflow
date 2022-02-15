@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSES_H_
+#ifndef MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSES_H
+#define MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSES_H
 
 #include <memory>
 
@@ -23,7 +23,6 @@ limitations under the License.
 namespace mlir {
 
 class FuncOp;
-class FunctionPass;
 class ModuleOp;
 class Operation;
 template <typename T>
@@ -31,7 +30,7 @@ class OperationPass;
 class Pass;
 namespace lmhlo {
 class FusionOp;
-}
+}  // namespace lmhlo
 
 namespace lmhlo {
 
@@ -39,7 +38,7 @@ namespace lmhlo {
 std::unique_ptr<OperationPass<FuncOp>> createLhloLegalizeToAffinePass();
 
 // Lowers from LHLO dialect to GPU dialect.
-std::unique_ptr<FunctionPass> createLegalizeToGpuPass();
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass();
 
 // Fuses linalg ops obtained after LHLO lowering. To enable fusion,
 // operations are first tiled.
@@ -50,7 +49,7 @@ std::unique_ptr<FunctionPass> createLegalizeToGpuPass();
 // 'tile_sizes' provides the tile sizes to use for tiling. If the linalg
 // operation has more dimensions than tile sizes provided, 1 is used as
 // default.
-std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
+std::unique_ptr<OperationPass<FuncOp>> createLhloFuseLinalgPass(
     bool use_parallel_loops = false, llvm::ArrayRef<unsigned> tile_sizes = {});
 
 // Lowers from LHLO dialect to parallel loops.
@@ -59,22 +58,11 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 // Legalizes tensor load ops that are inserted during mhlo to lmhlo conversion.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToTensorOpPass();
 
-// fuse lmhlo ops to kLoop/kInput fusion patterns
-std::unique_ptr<OperationPass<FuncOp>> createLhloFusionPass(
-    int max_num_arguments_per_kernel = 64);
-
-// inline lmhlo.Fusion
-std::unique_ptr<OperationPass<FuncOp>> createLhloFusionInlinerPass();
-
-// Lowers the roots of lmhlo.fusion to parallel loops
-std::unique_ptr<OperationPass<FuncOp>>
-createLhloLegalizeRootsToParallelLoopsPass();
-
 // Input inline fusion pass for fusion codegen
-std::unique_ptr<FunctionPass> createInputInlineFusionPass();
+std::unique_ptr<OperationPass<FuncOp>> createInputInlineFusionPass();
 
 }  // namespace lmhlo
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSES_H_
+#endif  // MLIR_HLO_DIALECT_LHLO_TRANSFORMS_PASSES_H

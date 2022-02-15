@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -184,10 +183,6 @@ class LayoutUtil {
   // Constructs a new layout by making the given dimension `dim` in the given
   // layout `layout` as the most major dimension.
   static Layout MoveDimToMajor(const Layout& layout, int64_t dim);
-
-  // Compute a hash for `layout`.
-  // TODO(majnemer): remove the need for this helper.
-  static size_t Hash(const Layout& layout) { return HashOf(layout); }
 
   // Returns the linearized index of the cell at the given indices. The unit
   // of the offset is in elements of the shape.

@@ -50,7 +50,7 @@ func @non_tf_op() {
   // CHECK: "tf_device.launch"
   // CHECK-NOT "tf_device.launch"
   // CHECK: "tf.opA"
-  "tf_device.launch"() ( {
+  "tf_device.launch"() ({
     "tf.opA"()  : () -> tensor<i1>
     tf_device.return
   }) {device = "CPU:0"} : () -> ()

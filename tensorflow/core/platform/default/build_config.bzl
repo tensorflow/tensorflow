@@ -518,7 +518,6 @@ def tf_proto_library(
     # ABI violations).
     _ignore = (
         js_codegen,
-        exports,
         create_service,
         create_java_proto,
         create_grpc_library,
@@ -530,6 +529,7 @@ def tf_proto_library(
         name = name,
         srcs = srcs,
         deps = protodeps + well_known_proto_libs(),
+        exports = exports,
         visibility = visibility,
         testonly = testonly,
         tags = tags,

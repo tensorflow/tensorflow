@@ -352,7 +352,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::ProdOp>(),
     TypeID::get<TF::QrOp>(),
     TypeID::get<TF::RandomStandardNormalOp>(),
-    TypeID::get<TF::RandomUniformOp>(),
     TypeID::get<TF::RangeOp>(),
     TypeID::get<TF::ReshapeOp>(),
     TypeID::get<TF::ReverseV2Op>(),
@@ -372,7 +371,6 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::SqueezeOp>(),
     TypeID::get<TF::StatefulPartitionedCallOp>(),
     TypeID::get<TF::StopGradientOp>(),
-    TypeID::get<TF::StridedSliceOp>(),
     TypeID::get<TF::StridedSliceGradOp>(),
     TypeID::get<TF::SumOp>(),
     TypeID::get<TF::TensorScatterUpdateOp>(),
@@ -738,12 +736,12 @@ class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
 
   LegalizeTF(const LegalizeTF&) {}
 
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
-    patterns.insert<Tf2XlaRewritePattern>(
-        &getContext(), device_type_, prefer_tf2xla_, legalize_test_only_ops_);
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
+    patterns.add<Tf2XlaRewritePattern>(&getContext(), device_type_,
+                                       prefer_tf2xla_, legalize_test_only_ops_);
     if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
+            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       signalPassFailure();
   }
 
@@ -753,11 +751,11 @@ class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
 }  // end namespace
 
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          OwningRewritePatternList& patterns,
+                                          RewritePatternSet& patterns,
                                           MLIRContext* ctx,
                                           bool prefer_tf2xla) {
-  patterns.insert<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,
-                                        /*legalize_test_only_ops=*/false);
+  patterns.add<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,
+                                     /*legalize_test_only_ops=*/false);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(

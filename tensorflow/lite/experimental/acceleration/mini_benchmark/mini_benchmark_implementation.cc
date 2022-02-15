@@ -456,13 +456,13 @@ class MiniBenchmarkImpl : public MiniBenchmark {
   }
 
   MinibenchmarkStatus GetNnApiSlPointerIfPresent(
-      const NnApiSupportLibrary** nnapi_sl) {
+      const NnApiSLDriverImplFL5** nnapi_sl) {
     *nnapi_sl = nullptr;
     const auto& settings_to_test = *settings_->settings_to_test();
     for (const auto* setting_to_test : settings_to_test) {
       if (setting_to_test->nnapi_settings()) {
-        const NnApiSupportLibrary* curr_nnapi_sl_handle =
-            reinterpret_cast<const NnApiSupportLibrary*>(
+        const NnApiSLDriverImplFL5* curr_nnapi_sl_handle =
+            reinterpret_cast<const NnApiSLDriverImplFL5*>(
                 setting_to_test->nnapi_settings()->support_library_handle());
 
         if (*nnapi_sl != nullptr && *nnapi_sl != curr_nnapi_sl_handle) {
@@ -490,7 +490,7 @@ class MiniBenchmarkImpl : public MiniBenchmark {
   void CreateValidatorIfNececessary() {
     if (validator_) return;
 
-    const NnApiSupportLibrary* nnapi_sl;
+    const NnApiSLDriverImplFL5* nnapi_sl;
     MinibenchmarkStatus get_nnapi_sl_status =
         GetNnApiSlPointerIfPresent(&nnapi_sl);
     if (get_nnapi_sl_status != kMinibenchmarkSuccess) {

@@ -18,11 +18,12 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
-def GMLST_Dialect : Dialect {
+def GmlSt_Dialect : Dialect {
   let name = "gml_st";
   let cppNamespace = "::mlir::gml_st";
 
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let useDefaultTypePrinterParser = 1;
 }
 
 #endif // GML_ST_OPS_BASE

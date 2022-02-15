@@ -291,14 +291,11 @@ class TensorType(trace.TraceType):
   def __init__(self, signature_context, shape, dtype, name):
     self.dtype = dtype
     self.name = name
-    self.shape_rank = shape.rank
 
-    if self.shape_rank is None:
-      self.shape_dims = None
-    elif signature_context.include_tensor_ranks_only:
-      self.shape_dims = (None,) * self.shape_rank
+    if signature_context.include_tensor_ranks_only and shape.rank is not None:
+      self.shape = tensor_shape.TensorShape([None] * shape.rank)
     else:
-      self.shape_dims = tuple(shape.as_list())
+      self.shape = shape
 
   def is_subtype_of(self, other):
     if not isinstance(other, TensorType):
@@ -311,35 +308,14 @@ class TensorType(trace.TraceType):
     if self.name != other.name:
       return False
 
-    # All Tensors are subtypes of a Tensor with no shape.
-    if other.shape_rank is None:
-      return True
-
-    # A Tensor with no rank is never a subtype of a Tensor with rank.
-    if self.shape_rank is None:
-      return False
-
-    # Tensor with a defined shape can only be subtype of another with a defined
-    # shape if they have the same number of dimensions.
-    assert self.shape_rank == len(self.shape_dims)
-    assert other.shape_rank == len(other.shape_dims)
-    if self.shape_rank != other.shape_rank:
-      return False
-
-    # A Tensor is a subtype of other if for each corresponding dimension,
-    # other has the same value or None.
-    if any(o is not None and s != o
-           for s, o in zip(self.shape_dims, other.shape_dims)):
-      return False
-
-    return True
+    return self.shape.is_subtype_of(other.shape)
 
   def most_specific_common_supertype(self, others):
     # TODO(b/202430155) Implement for shape relaxation.
     return None
 
   def __hash__(self) -> int:
-    return hash((self.dtype, self.name, self.shape_rank, self.shape_dims))
+    return hash((self.dtype, self.name, self.shape))
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -355,8 +331,7 @@ class TensorType(trace.TraceType):
     if self.name != other.name:
       return False
 
-    return (self.shape_rank == other.shape_rank and
-            self.shape_dims == other.shape_dims)
+    return self.shape == other.shape
 
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.

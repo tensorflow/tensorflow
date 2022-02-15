@@ -114,7 +114,7 @@ Literal ExecuteWithRunner(std::unique_ptr<HloModule> module,
 }  // namespace
 
 Status RunAndCompare(
-    const std::string& hlo_filename, HloRunnerInterface* test_runner,
+    std::unique_ptr<HloModule> test_module, HloRunnerInterface* test_runner,
     HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
     const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto,
@@ -126,11 +126,6 @@ Status RunAndCompare(
       config->set_seed(42);
     };
   }
-
-  std::unique_ptr<HloModule> test_module =
-      LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
-                         options.input_format, config_modifier_hook)
-          .ValueOrDie();
 
   if (options.flatten_control_flow) {
     HloControlFlowFlattening control_flow_flattening(
@@ -229,4 +224,20 @@ Status RunAndCompare(
                                   /*detailed_message=*/true, &OnMiscompare);
 }
 
+Status RunAndCompare(
+    const std::string& hlo_filename, HloRunnerInterface* test_runner,
+    HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
+    const RunHloModuleOptions& options,
+    xla::RunHloModuleIterationLiterals* iteration_literals_proto,
+    std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
+        reference_module_modifier_hook,
+    std::function<void(HloModuleConfig*)> config_modifier_hook) {
+  std::unique_ptr<HloModule> test_module =
+      LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
+                         options.input_format, config_modifier_hook)
+          .ValueOrDie();
+  return RunAndCompare(std::move(test_module), test_runner, reference_runner,
+                       engine, options, iteration_literals_proto,
+                       reference_module_modifier_hook, config_modifier_hook);
+}
 }  // namespace xla

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -42,7 +44,7 @@ namespace {
 // This transformation pass takes an operation with unknown op properties and
 // wrap it by a TFL::CustomTfOp.
 struct RaiseCustomOpsPass
-    : public PassWrapper<RaiseCustomOpsPass, FunctionPass> {
+    : public PassWrapper<RaiseCustomOpsPass, OperationPass<FuncOp>> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<TensorFlowLiteDialect>();
   }
@@ -63,15 +65,15 @@ struct RaiseCustomOpsPass
     return "Raise custom ops into tflite dialect.";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   // If this set is empty, then all the qualified ops will be wrapped.
   const absl::flat_hash_set<std::string> target_op_names;
 };
 
-void RaiseCustomOpsPass::runOnFunction() {
-  auto fn = getFunction();
+void RaiseCustomOpsPass::runOnOperation() {
+  auto fn = getOperation();
   OpBuilder builder(fn.getContext());
 
   llvm::SmallVector<Operation *, 4> custom_ops;
@@ -92,8 +94,9 @@ void RaiseCustomOpsPass::runOnFunction() {
 
   for (auto *op : custom_ops) {
     builder.setInsertionPoint(op);
-    auto custom_op = builder.create<CustomTfOp>(
-        op->getLoc(), op->getResultTypes(), op->getOperands());
+    Location loc = op->getLoc();
+    auto custom_op = builder.create<CustomTfOp>(loc, op->getResultTypes(),
+                                                op->getOperands());
     Region region;
     Block *new_block = new Block;
     region.push_back(new_block);
@@ -101,12 +104,13 @@ void RaiseCustomOpsPass::runOnFunction() {
     builder.setInsertionPointToEnd(&region.front());
     Operation *inner_op = builder.clone(*op);
 
-    new_block->addArguments(op->getOperandTypes());
-    for (auto idx_args : llvm::enumerate(new_block->getArguments())) {
+    new_block->addArguments(op->getOperandTypes(),
+                            SmallVector<Location>(op->getNumOperands(), loc));
+    for (auto &idx_args : llvm::enumerate(new_block->getArguments())) {
       inner_op->setOperand(idx_args.index(), idx_args.value());
     }
     custom_op->setAttrs(inner_op->getAttrs());
-    builder.create<YieldOp>(op->getLoc(), inner_op->getResults());
+    builder.create<YieldOp>(loc, inner_op->getResults());
     custom_op.body().takeBody(region);
 
     op->replaceAllUsesWith(custom_op);

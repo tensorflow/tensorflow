@@ -4584,15 +4584,15 @@ port::Status CudnnSupport::GetConvolveRunners(
     // This will happen once per unique conv configuration/shape that gets
     // affected (and not, for example, on every conv launch).  Confusion over
     // whether this has happened or not has repeatedly wasted a lot of time
-    // debugging, so it's getting promoted to an error log.
-    LOG(ERROR) << "Disabling cuDNN frontend for the following convolution:\n"
-               << "  input: " << input_descriptor.ToString() << "\n"
-               << "  filter: " << filter_descriptor.ToString() << "\n"
-               << "  " << convolution_descriptor.ToString() << "\n"
-               << "  ... because "
-               << (is_unsupported_x32
-                       ? "Tx32 convolutions are unsupported."
-                       : "the current cuDNN version does not support it.");
+    // debugging, so be sure it shows up in the logs.
+    LOG(INFO) << "Disabling cuDNN frontend for the following convolution:\n"
+              << "  input: " << input_descriptor.ToString() << "\n"
+              << "  filter: " << filter_descriptor.ToString() << "\n"
+              << "  " << convolution_descriptor.ToString() << "\n"
+              << "  ... because "
+              << (is_unsupported_x32
+                      ? "Tx32 convolutions are unsupported."
+                      : "the current cuDNN version does not support it.");
   }
 
   if (!actually_use_cudnn_frontend) {
@@ -5201,12 +5201,12 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
     // This will happen once per unique conv configuration/shape that gets
     // affected (and not, for example, on every conv launch).  Confusion over
     // whether this has happened or not has repeatedly wasted a lot of time
-    // debugging, so it's getting promoted to an error.
-    LOG(ERROR) << "Disabling cuDNN frontend for the following convolution:\n"
-               << "  input: " << input_descriptor.ToString() << "\n"
-               << "  filter: " << filter_descriptor.ToString() << "\n"
-               << "  " << convolution_descriptor.ToString() << "\n"
-               << "  ... because " << reason;
+    // debugging, so be sure it shows up in the logs.
+    LOG(INFO) << "Disabling cuDNN frontend for the following convolution:\n"
+              << "  input: " << input_descriptor.ToString() << "\n"
+              << "  filter: " << filter_descriptor.ToString() << "\n"
+              << "  " << convolution_descriptor.ToString() << "\n"
+              << "  ... because " << reason;
   }
 
   if (input_type == dnn::DataType::kInt8 &&

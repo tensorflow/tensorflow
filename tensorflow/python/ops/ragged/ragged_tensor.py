@@ -1556,7 +1556,8 @@ class RaggedTensor(composite_tensor.CompositeTensor,
                                f"{old_row_length} vs. {size}.")
         partition._uniform_row_length = ops.convert_to_tensor(size, dtype)
         if partition._nrows is None:
-          partition._nrows = array_ops.size(partition._row_splits) - 1
+          partition._nrows = array_ops.size(
+              partition._row_splits, out_type=dtype) - 1
 
     # Inner dimensions
     flat_shape = tensor_shape.as_shape([None] + shape[self.ragged_rank + 1:])

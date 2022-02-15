@@ -48,7 +48,7 @@ class InitTextFileToImportPass
   }
 
  private:
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 class ConvertInitializeTableFromTextFileV2
@@ -137,12 +137,12 @@ class ConvertInitializeTableFromTextFileV2
   StringRef saved_model_dir_;
 };
 
-void InitTextFileToImportPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void InitTextFileToImportPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   MLIRContext* context = &getContext();
-  FuncOp func = getFunction();
+  FuncOp func = getOperation();
 
-  patterns.insert<ConvertInitializeTableFromTextFileV2>(
+  patterns.add<ConvertInitializeTableFromTextFileV2>(
       context, StringRef(saved_model_dir_));
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

@@ -26,7 +26,7 @@ limitations under the License.
 //      tf_executor.yield %2 : tensor<i1>
 //  }
 //  %3:2 = tf_executor.island(%0) {
-//    %4 = "tf_device.parallel_execute"() ( {
+//    %4 = "tf_device.parallel_execute"() ({
 //      %5 = "tf.opB"() : () -> tensor<i1>
 //      tf_device.return %5 : tensor<i1>
 //    }, {
@@ -83,7 +83,7 @@ namespace {
 struct ParallelExecuteToIslandsPass
     : public TF::ParallelExecuteToIslandsPassBase<
           ParallelExecuteToIslandsPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Convert parallel_execute op to a set of islands where each region of
@@ -180,11 +180,11 @@ void CreateIslandsFromParallelExecute(
   island_op.erase();
 }
 
-void ParallelExecuteToIslandsPass::runOnFunction() {
+void ParallelExecuteToIslandsPass::runOnOperation() {
   // Find islands with a single `tf_device.parallel_execute` and create
   // individual islands per execute region of the parallel_execute.
   llvm::SmallVector<tf_executor::IslandOp, 4> parallel_execute_op_islands;
-  getFunction().walk([&](tf_executor::GraphOp graph_op) {
+  getOperation().walk([&](tf_executor::GraphOp graph_op) {
     for (auto island_op : graph_op.getOps<tf_executor::IslandOp>()) {
       if (!island_op.WrapsSingleOp()) continue;
 

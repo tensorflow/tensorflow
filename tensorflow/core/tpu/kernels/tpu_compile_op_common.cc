@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -45,6 +47,18 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
+
+namespace {
+
+std::string TruncateMessage(const std::string& msg, size_t max_len) {
+  if (msg.size() > max_len) {
+    return absl::StrCat(msg.substr(0, max_len), " ... [truncated]");
+  } else {
+    return msg;
+  }
+}
+
+}  // namespace
 
 namespace tensorflow {
 namespace tpu {
@@ -134,11 +148,10 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
            .has_value()) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(compile_status.code());
-    proto.set_status_error_message(compile_status.error_message());
+    proto.set_status_error_message(
+        TruncateMessage(compile_status.error_message(), 128));
     status_payload = proto.SerializeAsString();
   }
-  metrics::UpdateTpuErrorCounter("TpuCompileOp",
-                                 error_name(compile_status.code()));
   OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
                                 TpuCompileInterface::kTpuCompileErrorPayloadKey,
                                 status_payload, compile_status);
@@ -161,15 +174,16 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
     ConfigProto::Experimental::MlirBridgeRollout rollout_state =
         GetMlirBridgeRolloutState(config ? absl::make_optional(*config)
                                          : absl::nullopt);
-    compile_status = Compile(MlirToHloArgs{mlir_module_, rollout_state},
-                             mesh_state->data(), arg_shapes, tpu_program_group);
+    compile_status =
+        Compile(MlirToHloArgs{mlir_module_, rollout_state}, mesh_state->data(),
+                arg_shapes, &key, tpu_program_group);
   } else {
     compile_status =
         Compile(FunctionToHloArgs{&function_,
                                   flib_runtime->GetFunctionLibraryDefinition(),
                                   flib_runtime->graph_def_version(),
                                   {&guaranteed_constants}},
-                mesh_state->data(), arg_shapes, tpu_program_group);
+                mesh_state->data(), arg_shapes, &key, tpu_program_group);
   }
 
   absl::Time end_time = absl::Now();
@@ -180,6 +194,8 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
             << session_name << " took " << duration << " and "
             << (compile_status.ok() ? "succeeded" : "failed");
   tpu_program_group->LogProgramMemorySummary();
+  metrics::UpdateTpuErrorCounter("TpuCompileOp",
+                                 error_name(compile_status.code()));
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
 
@@ -208,10 +224,15 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
         ctx->input_list("guaranteed_constants", &guaranteed_constants));
   }
 
+  ResourceMgr* resource_mgr = ctx->resource_manager();
+
+  // The session_id needs to be unique among live sessions.
+  // Recycled session_id is acceptable if it is unique among live sessions.
+  uint64_t session_id = reinterpret_cast<uint64_t>(resource_mgr);
   const TpuCompilationCacheKey key = CreateCompilationCacheKey(
       function_.name(), metadata_.function_library_fingerprint(),
       mlir_module_fingerprint_, guaranteed_constants, dynamic_shapes, metadata_,
-      *mesh_state);
+      *mesh_state, session_id, resource_mgr);
 
   // Process-wide cache of TPU executables.
   TpuCompilationCacheInterface* cache;
@@ -356,8 +377,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     tpu::CompilationResultProto proto;
     proto.set_status_code(status.code());
     if (!status.ok()) {
-      proto.set_status_error_message(
-          absl::StrCat("Compilation failure: ", status.error_message()));
+      proto.set_status_error_message(TruncateMessage(
+          absl::StrCat("Compilation failure: ", status.error_message()), 128));
     }
     if (return_hlo_protos_) {
       // Return the HloProtos as part of compilation status.

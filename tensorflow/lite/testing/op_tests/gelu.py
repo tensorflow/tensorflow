@@ -21,8 +21,8 @@ from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
 
-def _tflite_convert_verify_num_ops(tflite_convert_function, *args, **kwargs):
-  """Verifies that the result of the conversion is a single op."""
+def _tflite_convert_verify_op(tflite_convert_function, *args, **kwargs):
+  """Verifies that the result of the conversion contains Gelu op."""
   result = tflite_convert_function(*args, **kwargs)
   tflite_model_binary = result[0]
   if not result[0]:
@@ -30,12 +30,10 @@ def _tflite_convert_verify_num_ops(tflite_convert_function, *args, **kwargs):
     raise RuntimeError("Failed to build model: \n\n" + result[1])
   interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
   interpreter.allocate_tensors()
-  # Only 1 node should be in the graph.
-  if len(interpreter._get_ops_details()) != 1:  # pylint: disable=protected-access
-    raise RuntimeError(
-        "Expected to generate 1 node graph, got %s " %
-        "\n".join(str(x) for x in interpreter._get_ops_details()))  # pylint: disable=protected-access
-  return result
+  for op in interpreter._get_ops_details():  # pylint: disable=protected-access
+    if op["op_name"] == "GELU":
+      return result
+  raise RuntimeError("Expected to generate GELU op node in graph.")
 
 
 @register_make_test_function()
@@ -46,6 +44,8 @@ def make_gelu_tests(options):
       "input_dtype": [tf.float32],
       "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
                       [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+      "fully_quantize": [False, True],
+      "input_range": [(-10, 10)],
       "approximate": [True, False],
   }]
 
@@ -71,6 +71,6 @@ def make_gelu_tests(options):
 
   if not options.run_with_flex:
     options.tflite_convert_function = functools.partial(
-        _tflite_convert_verify_num_ops,
+        _tflite_convert_verify_op,
         options.tflite_convert_function)
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)

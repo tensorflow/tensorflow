@@ -23,7 +23,8 @@ namespace tensorflow {
 
 // Creates a pass that lowers lmhlo_gpu ops to tfrt_gpu. Prepares the function
 // to be consumed by MLIR's gpu-async-region pass.
-std::unique_ptr<mlir::FunctionPass> createConvertLmhloToGpuPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+createConvertLmhloToGpuPass();
 
 void registerConvertLmhloToGpuPass();
 

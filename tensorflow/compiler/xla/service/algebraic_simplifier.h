@@ -399,10 +399,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
                           HloInstruction* operand = nullptr);
 
   // Replace old instruction with new instruction if old and new instructions
-  // have the same shape. Updates uses and root instruction. Returns whether a
-  // replacement was made.
-  bool ReplaceInstructionIfSameShape(HloInstruction* old_instruction,
-                                     HloInstruction* new_instruction);
+  // are compatible (have the same shape and replacement preserves sharding).
+  // Updates uses and root instruction. Returns whether a replacement was made.
+  bool ReplaceInstructionIfCompatible(HloInstruction* old_instruction,
+                                      HloInstruction* new_instruction);
 
   // Returns whether the shape of the output of the given instructions are the
   // same for the purposes of simplification. If options_.is_layout_sensitive()
@@ -411,15 +411,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // tests shape compatibility (ShapeUtil::Compatible).
   bool SameShape(const HloInstruction* lhs, const HloInstruction* rhs) const;
 
-  // Returns whether it was possible to transform `root` to a clamp instruction.
-  // With min a minimum instruction, max a maximum instruction, min_operand a
-  // operand of min and max_operand a operand of max.
-  // Precondition: root is either a minimum or a maximum.
-  bool TransformToClampIfSameShape(HloInstruction* root, HloInstruction* min,
-                                   HloInstruction* min_operand,
-                                   HloInstruction* operand, HloInstruction* max,
-                                   HloInstruction* max_operand);
-
   // A Broadcast that feeds an element-wise operation with a unique non-scalar
   // operand can sink to after the operation.
   StatusOr<bool> TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
@@ -427,9 +418,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
   StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
-      const HloInstruction& dot, HloInstruction* lhs,
-      int64_t lhs_contracting_dim, HloInstruction* rhs,
-      int64_t rhs_contracting_dim, bool swapped);
+      HloInstruction* dot, HloInstruction* lhs, int64_t lhs_contracting_dim,
+      HloInstruction* rhs, int64_t rhs_contracting_dim, bool swapped);
 
   StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
 

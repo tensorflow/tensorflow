@@ -378,8 +378,9 @@ static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {
   registry.insert<mlir::tf_executor::TensorFlowExecutorDialect>();
 }
 
-static mlir::OwningModuleRef SerializedMlirStringAttrToMlirModuleTranslate(
-    llvm::StringRef input, mlir::MLIRContext* context) {
+static mlir::OwningOpRef<mlir::ModuleOp>
+SerializedMlirStringAttrToMlirModuleTranslate(llvm::StringRef input,
+                                              mlir::MLIRContext* context) {
   mlir::Attribute attr = mlir::parseAttribute(input, context);
   if (!attr || !attr.isa<mlir::StringAttr>()) {
     LOG(ERROR) << "Input is not parsable as a MLIR StringAttr.";
@@ -390,7 +391,7 @@ static mlir::OwningModuleRef SerializedMlirStringAttrToMlirModuleTranslate(
   mlir::DialectRegistry registry;
   RegisterMlirInputDialects(registry);
   context->appendDialectRegistry(registry);
-  mlir::OwningModuleRef module_ref;
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref;
   auto status =
       DeserializeMlirModule(str_attr.getValue().str(), context, &module_ref);
   if (!status.ok()) {

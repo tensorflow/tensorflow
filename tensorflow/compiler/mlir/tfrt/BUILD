@@ -18,6 +18,7 @@ package_group(
         "//tensorflow/core/tfrt/experimental/data/...",
         "//tensorflow/core/tfrt/saved_model/...",
         "//tensorflow/core/tfrt/graph_executor/...",
+        "//tensorflow/core/tfrt/tfrt_session/...",
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/mlir/tfrt_compiler/...",
@@ -30,6 +31,7 @@ package_group(
         "//smartass/brain/ops/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
+        "//third_party/auroraml/...",
     ]),
 )
 
@@ -103,6 +105,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
+        "//tensorflow/compiler/mlir/hlo:reshape_simplifier",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -110,7 +113,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticTransforms",
         "@llvm-project//mlir:Async",
+        "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
@@ -120,7 +125,6 @@ cc_library(
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToSCF",
@@ -130,12 +134,17 @@ cc_library(
 
 tfrt_cc_library(
     name = "tf_jitrt",
+    srcs = ["jit/tf_jitrt.cc"],
     hdrs = ["jit/tf_jitrt.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/runtime_fallback/util:type_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@tf_runtime//:dtype",
@@ -152,6 +161,7 @@ tfrt_cc_library(
         ":tf_jitrt",
         ":tf_jitrt_pipeline",
         ":tf_jitrt_request_context",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/core:framework",
@@ -174,6 +184,7 @@ tfrt_cc_library(
         "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:async_runtime",
         "@tf_runtime//backends/jitrt:async_runtime_api",
+        "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )
 
@@ -627,6 +638,7 @@ tf_cc_binary(
         "@llvm-project//mlir:Shape",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:print_stream_pass",
+        "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )
 

@@ -35,7 +35,6 @@ int main(int argc, char **argv) {
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
 
-  return failed(mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n",
-                                  registry,
-                                  /*preloadDialectsInContext=*/false));
+  return failed(
+      mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
 }

@@ -44,11 +44,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateRewriteTFFrameworkAssert();
 namespace transforms {
 
 // Pass to find and annotate candidates for buffer reuse.
-std::unique_ptr<FunctionPass> CreateBufferReusePass();
+std::unique_ptr<OperationPass<FuncOp>> CreateBufferReusePass();
 
 // Pass to rewrite all TF operations to JIT invocations through the TF
 // framework.
-std::unique_ptr<FunctionPass> CreateTFToJITInvocationPass(
+std::unique_ptr<OperationPass<FuncOp>> CreateTFToJITInvocationPass(
     llvm::ArrayRef<int64_t> tile_sizes = {},
     llvm::ArrayRef<int64_t> unroll_factors = {}, int64_t max_supported_rank = 5,
     bool enable_ftz = false, bool index_64bit = false, bool cpu_codegen = false,
@@ -68,7 +68,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
 
 // Pass to bufferize `linalg.tiled_loop` including the operations contained in
 // its body.
-std::unique_ptr<FunctionPass> CreateTiledLoopBufferizePass();
+std::unique_ptr<OperationPass<FuncOp>> CreateTiledLoopBufferizePass();
 
 // Pass to tranform computations on values to their corresponding parts on
 // buffers.
@@ -78,7 +78,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateConvertToSignlessPass();
 
 // Pass to convert scf::ParallelOp to scf::ForOp.
-std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
+std::unique_ptr<OperationPass<FuncOp>> CreateParallelLoopsToSequential();
 
 // Pass to annotate GPU Module with its PTX.
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
@@ -87,21 +87,21 @@ std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     bool print_llvmir = false, bool enable_ftz = false);
 
 // Pass to propagate tensorflow runtime ABI knowledge across kernel boundaries.
-std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels();
+std::unique_ptr<OperationPass<FuncOp>> CreatePropagateTfAbiKnowledgeToKernels();
 
 // Pass to propagate shape equalities across kernel boundaries.
-std::unique_ptr<FunctionPass> CreatePropagateShapeKnowledgeToKernels();
+std::unique_ptr<OperationPass<FuncOp>> CreatePropagateShapeKnowledgeToKernels();
 
 // Pass to print content of memrefs.
-std::unique_ptr<FunctionPass> CreateEmbedMemRefPrintsPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateEmbedMemRefPrintsPass();
 
 /// Greedily maps loops to GPU hardware dimensions.
-std::unique_ptr<mlir::FunctionPass> CreateMapParallelLoopsPass();
+std::unique_ptr<mlir::OperationPass<FuncOp>> CreateMapParallelLoopsPass();
 
 /// We need to direct fusion to the inner loops. This cannot be done with
 /// a passmanager alone ATM, as nested pass managers require operations to
 /// be closed from above.
-std::unique_ptr<mlir::FunctionPass> CreateFuseInnerParallelLoopsPass();
+std::unique_ptr<mlir::OperationPass<FuncOp>> CreateFuseInnerParallelLoopsPass();
 
 /// Pass that transforms gpu modules in standard dialect to NNVM.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
@@ -112,19 +112,19 @@ std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
 CreateGpuKernelToRocdlPass();
 
 // Pass to lower index cast on tensors to tensor dialect.
-std::unique_ptr<FunctionPass> CreateLowerIndexCastPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateLowerIndexCastPass();
 
 // Pass to simplify shape ops.
-std::unique_ptr<FunctionPass> CreateShapeSimplification();
+std::unique_ptr<OperationPass<FuncOp>> CreateShapeSimplification();
 
 // Pass to create vectorized code for CPU.
-std::unique_ptr<FunctionPass> CreateVectorizationPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateVectorizationPass();
 
 // Pass to remove unneeded code generated in VectorizationPass.
-std::unique_ptr<FunctionPass> CreateVectorizationCleanupPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateVectorizationCleanupPass();
 
 // Pass to remove copies which are consumed by a GenericOp.
-std::unique_ptr<FunctionPass> CreateCopyCleanupPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateCopyCleanupPass();
 
 }  // namespace transforms
 

@@ -118,6 +118,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -1272,6 +1273,24 @@ xla_test(
 )
 
 xla_test(
+    name = "convolution_test_cudnn_frontend_disabled",
+    timeout = "long",
+    srcs = ["convolution_test.cc"],
+    backend_args = {"gpu": ["--xla_gpu_enable_cudnn_frontend=false"]},
+    backends = ["gpu"],
+    shard_count = 50,
+    tags = [
+        "no_rocm",
+        "nozapfhahn",
+        "optonly",
+    ],
+    deps = CONVOLUTION_TEST_DEPS + [
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
     name = "convolution_variants_test",
     timeout = "long",
     srcs = ["convolution_variants_test.cc"],
@@ -1362,7 +1381,6 @@ xla_test(
         "//tensorflow/core/lib/math:math_util",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:test",
-        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1439,9 +1457,7 @@ xla_test(
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -1725,17 +1741,15 @@ xla_test(
         ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -2435,6 +2449,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )
 

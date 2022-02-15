@@ -17,7 +17,10 @@ func @single_op_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   return %0 : tensor<?xf32>
 }
 
-// CHECK: module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK-LABEL: func @compute
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<?xf32>
 // CHECK: %[[RES:.*]] = "tf.Rsqrt"(%[[ARG0]])
@@ -35,7 +38,10 @@ func @one_compiled_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   return %1 : tensor<?xf32>
 }
 
-// CHECK: module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK-LABEL: func @compute
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<?xf32>
 // CHECK: %[[RES0:.*]] = "tf.Rsqrt"(%[[ARG0]])

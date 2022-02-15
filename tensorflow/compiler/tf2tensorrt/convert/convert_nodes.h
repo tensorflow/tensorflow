@@ -149,6 +149,9 @@ Status ConvertSegmentToGraphDef(
 // - convert_successfully: indicates whether the conversion to TensorRT network
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
+// Note: When 'cluster' is not null, it contains the graph to be converted.
+//       We may perform additional optimizations to the graph before converting
+//       the graph.
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
@@ -158,7 +161,8 @@ Status ConvertGraphDefToEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
-    bool use_explicit_precision);
+    bool use_explicit_precision,
+    tensorflow::grappler::Cluster* cluster = nullptr);
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
