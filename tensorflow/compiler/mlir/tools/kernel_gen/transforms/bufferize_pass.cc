@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for translating mixed IR to buffer form.
 // Currently it supports MHLO and some operations from the Standard dialect.
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -249,6 +250,10 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     tensor::registerBufferizableOpInterfaceExternalModels(registry);
     arith::registerBufferizableOpInterfaceExternalModels(registry);
   }
+  // Default alignment_ specified in passes.td
+  FinalBufferizePass() = default;
+
+  explicit FinalBufferizePass(uint64_t alignment) { alignment_ = alignment; }
 
   void runOnOperation() override {
     // Bufferize ops using BufferizableOpInterface. This could be switched to
@@ -256,6 +261,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     RewritePatternSet patterns(&getContext());
     bufferization::BufferizationOptions options =
         bufferization::getPartialBufferizationOptions();
+    options.bufferAlignment = alignment_;
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
     options.addToDialectFilter<arith::ArithmeticDialect, StandardOpsDialect,
@@ -327,6 +333,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTiledLoopBufferizePass() {
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass() {
   return std::make_unique<FinalBufferizePass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass(
+    uint64_t alignment) {
+  return std::make_unique<FinalBufferizePass>(alignment);
 }
 
 }  // namespace transforms

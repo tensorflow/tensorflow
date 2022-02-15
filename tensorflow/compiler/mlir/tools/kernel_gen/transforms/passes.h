@@ -126,6 +126,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreateVectorizationCleanupPass();
 // Pass to remove copies which are consumed by a GenericOp.
 std::unique_ptr<OperationPass<FuncOp>> CreateCopyCleanupPass();
 
+std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass(
+    uint64_t alignment);
+
 }  // namespace transforms
 
 #define GEN_PASS_REGISTRATION

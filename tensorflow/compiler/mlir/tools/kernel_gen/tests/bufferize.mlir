@@ -1,8 +1,9 @@
-// RUN: kernel-gen-opt %s --computeop-and-func-bufferize --final-bufferize \
-// RUN:   --split-input-file | FileCheck %s --check-prefixes=CHECK,ALLOC
-// RUN: kernel-gen-opt %s --computeop-and-func-bufferize --final-bufferize \
-// RUN:  --promote-buffers-to-stack --split-input-file |\
-// RUN:  FileCheck %s  --check-prefixes=CHECK,ALLOCA
+// RUN: kernel-gen-opt %s --computeop-and-func-bufferize \
+// RUN:    --final-bufferize=alignment=128 --split-input-file | FileCheck %s \
+// RUN:    --check-prefixes=CHECK,ALLOC
+// RUN: kernel-gen-opt %s --computeop-and-func-bufferize \
+// RUN:    --final-bufferize=alignment=128 --promote-buffers-to-stack \
+// RUN:    --split-input-file | FileCheck %s  --check-prefixes=CHECK,ALLOCA
 
 // CHECK-LABEL: @tensor.extract
 // CHECK-SAME: (%[[ARG:.*]]: memref<?xf32>) -> f32
@@ -80,6 +81,7 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
 // -----
 
 // CHECK: memref.global "private" constant @[[BUFFER:.*]] : memref<3xf32> = dense<[4.000000e+00, 5.000000e+00, 6.000000e+00]>
+// CHECK-SAME: alignment = 128
 // CHECK: @const
 // CHECK-SAME: -> memref<3xf32>
 func @const() -> tensor<3xf32> {
@@ -92,6 +94,7 @@ func @const() -> tensor<3xf32> {
 // -----
 
 // CHECK: memref.global "private" constant @[[BUFFER:.*]] : memref<3xf32> = dense<4.000000e+00>
+// CHECK-SAME: alignment = 128
 // CHECK: @const_splat
 // CHECK-SAME: -> memref<3xf32>
 func @const_splat() -> tensor<3xf32> {
