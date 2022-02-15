@@ -397,8 +397,8 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
 
   def __make_cmp_key(self, value):
     """Converts `value` to a hashable key."""
-    if isinstance(value,
-                  (int, float, bool, np.generic, dtypes.DType, TypeSpec)):
+    if isinstance(value, (int, float, bool, np.generic, dtypes.DType, TypeSpec,
+                          tensor_shape.TensorShape)):
       return value
     if isinstance(value, compat.bytes_or_text_types):
       return value
@@ -414,12 +414,6 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
       return tuple([self.__make_cmp_key(v) for v in value])
     if isinstance(value, list):
       return (list, tuple([self.__make_cmp_key(v) for v in value]))
-    if isinstance(value, tensor_shape.TensorShape):
-      if value.ndims is None:
-        # Note: we include a type object in the tuple, to ensure we can't get
-        # false-positive matches (since users can't include type objects).
-        return (tensor_shape.TensorShape, None)
-      return (tensor_shape.TensorShape, tuple(value.as_list()))
     if isinstance(value, np.ndarray):
       return (np.ndarray, value.shape,
               TypeSpec.__nested_list_to_tuple(value.tolist()))
