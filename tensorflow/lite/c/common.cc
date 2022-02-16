@@ -21,6 +21,8 @@ limitations under the License.
 #include <string.h>
 #endif  // TF_LITE_STATIC_MEMORY
 
+extern "C" {
+
 size_t TfLiteIntArrayGetSizeInBytes(int size) {
   static TfLiteIntArray dummy;
 
@@ -266,13 +268,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 }
 
 TfLiteDelegate TfLiteDelegateCreate(void) {
-  TfLiteDelegate d = {
-      .data_ = NULL,
-      .Prepare = NULL,
-      .CopyFromBufferHandle = NULL,
-      .CopyToBufferHandle = NULL,
-      .FreeBufferHandle = NULL,
-      .flags = kTfLiteDelegateFlagsNone,
-  };
+  TfLiteDelegate d{};
   return d;
 }
+
+}  // extern "C"
