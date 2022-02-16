@@ -1296,6 +1296,14 @@ Status HloEvaluator::HandleReal(HloInstruction* real) {
 Status HloEvaluator::HandleImag(HloInstruction* imag) {
   auto operand = imag->operand(0);
   switch (operand->shape().element_type()) {
+    case BF16: {
+      auto result_or = ElementWiseUnaryOpImpl<bfloat16, bfloat16>(
+          imag, [](bfloat16 elem_operand) { return bfloat16(0); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
     case C64: {
       auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
           imag, [](complex64 elem_operand) { return std::imag(elem_operand); },
@@ -1307,6 +1315,30 @@ Status HloEvaluator::HandleImag(HloInstruction* imag) {
     case C128: {
       auto result_or = ElementWiseUnaryOpImpl<double, complex128>(
           imag, [](complex128 elem_operand) { return std::imag(elem_operand); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    case F16: {
+      auto result_or = ElementWiseUnaryOpImpl<Eigen::half, Eigen::half>(
+          imag, [](Eigen::half elem_operand) { return Eigen::half(0); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    case F32: {
+      auto result_or = ElementWiseUnaryOpImpl<float, float>(
+          imag, [](float elem_operand) { return 0; },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    case F64: {
+      auto result_or = ElementWiseUnaryOpImpl<double, double>(
+          imag, [](double elem_operand) { return 0; },
           GetEvaluatedLiteralFor(imag->operand(0)));
 
       TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));

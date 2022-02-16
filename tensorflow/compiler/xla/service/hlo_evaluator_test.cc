@@ -483,6 +483,18 @@ TEST_F(HloEvaluatorTest, DoesImagC128) {
   TestUnaryOp(HloOpcode::kImag, std::move(expected_imag), std::move(x));
 }
 
+TEST_P(HloEvaluatorBf16Test, DoesImagF32AndBf16) {
+  auto x = LiteralUtil::CreateR1<float>({1, -100});
+  auto expected_imag = LiteralUtil::CreateR1<float>({0, 0});
+  TestUnaryOp(HloOpcode::kImag, std::move(expected_imag), std::move(x));
+}
+
+TEST_F(HloEvaluatorTest, DoesImagF64) {
+  auto x = LiteralUtil::CreateR1<double>({1, -100});
+  auto expected_imag = LiteralUtil::CreateR1<double>({0, 0});
+  TestUnaryOp(HloOpcode::kImag, std::move(expected_imag), std::move(x));
+}
+
 // Verifies that HloEvaluator evaluates a HLO Computation with non-parameter nor
 // constant operands.
 TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
