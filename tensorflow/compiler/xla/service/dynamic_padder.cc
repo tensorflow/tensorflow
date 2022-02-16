@@ -113,7 +113,11 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kConvolution:
     case HloOpcode::kDot: {
       // Use 0 as padding value for convolution and dot.
-      PrimitiveType ptype = inst->shape().element_type();
+      //
+      // Note that the output type (inst->shape().element_type()) isn't
+      // necessarily the same as the input type (element type of operands).  For
+      // example, a dot can take s8 as input and output s32.
+      PrimitiveType ptype = inst->operand(0)->shape().element_type();
       return comp->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(ptype)));
     }

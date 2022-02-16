@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -42,10 +44,11 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 namespace {
+
+namespace m = ::xla::match;
+namespace op = xla::testing::opcode_matchers;
 
 OpDynamismSupport OpHasDynamismSupport(HloInstruction* hlo) {
   if (hlo->opcode() != HloOpcode::kCustomCall) {
@@ -476,6 +479,26 @@ ENTRY main {
     EXPECT_THAT(module_->entry_computation()->root_instruction()->operand(i),
                 op::Parameter());
   }
+}
+
+TEST_F(DynamicPadderTest, PadS8ToS32Dot) {
+  const std::string hlo_text = R"(
+HloModule test
+ENTRY test {
+  a = s8[<=16,32] parameter(0)
+  b = s8[32,64] parameter(1)
+  ROOT root = s32[<=16,64] dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+  module_ = GetHloModule(hlo_text);
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+
+  EXPECT_THAT(module_->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall("SliceToDynamic",
+                                       m::Dot(m::Op().WithShape(S8, {16, 32}),
+                                              m::Op().WithShape(S8, {32, 64}))
+                                           .WithShape(S32, {16, 64}),
+                                       m::Op(), m::Op())));
 }
 
 // Test that dynamic padder has the same result as if not padded.
