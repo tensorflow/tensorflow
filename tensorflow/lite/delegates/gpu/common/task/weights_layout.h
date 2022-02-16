@@ -46,6 +46,9 @@ struct WeightsDescription {
   int GetOutputGroupSize() const;
   bool IsI4O4() const;
   bool IsO4I4() const;
+  bool IsCustomSpatial() const;
+
+  bool operator==(const WeightsDescription& t) const;
 };
 
 }  // namespace gpu
