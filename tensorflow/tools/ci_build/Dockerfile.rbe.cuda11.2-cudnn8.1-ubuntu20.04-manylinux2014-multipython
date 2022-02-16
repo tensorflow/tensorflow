@@ -7,9 +7,9 @@
 # libstdc++ (4.8) in /dt9.
 #
 # To push a new version, run:
-# $ docker build -f Dockerfile.rbe.cuda11.2-cudnn8.1-ubuntu18.04-manylinux2014-multipython \
-#  --tag "gcr.io/tensorflow-testing/nosla-cuda11.2-cudnn8.1-ubuntu18.04-manylinux2014-multipython" .
-# $ docker push gcr.io/tensorflow-testing/nosla-cuda11.2-cudnn8.1-ubuntu18.04-manylinux2014-multipython
+# $ docker build -f Dockerfile.rbe.cuda11.2-cudnn8.1-ubuntu20.04-manylinux2014-multipython \
+#  --tag "gcr.io/tensorflow-testing/nosla-cuda11.2-cudnn8.1-ubuntu20.04-manylinux2014-multipython" .
+# $ docker push gcr.io/tensorflow-testing/nosla-cuda11.2-cudnn8.1-ubuntu20.04-manylinux2014-multipython
 
 FROM nvidia/cuda:11.2.1-cudnn8-devel-ubuntu20.04 as devtoolset
 

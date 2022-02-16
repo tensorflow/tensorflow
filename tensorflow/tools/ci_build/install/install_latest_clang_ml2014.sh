@@ -14,9 +14,10 @@
 # limitations under the License.
 # ==============================================================================
 
-# manylinux2014 requires Ubuntu 20.04 as it installs gcc 9.3.1 which requires
-# a newer version of the GNU assembler. Clang is not available for Ubuntu 20.04
-# in Google mirror so we download the official release.
+# Clang is not available for Ubuntu 20.04 in Google mirror so we download the
+# official release. Manylinux2014 RBE Docker container uses Ubuntu 20.04 as a
+# base image because it installs gcc 9.3.1 that requires a newer version of the
+# GNU assembler.
 CLANG_MAJOR_VERSION=$(echo ${CLANG_VERSION}  | grep -o "[^.]*" | head -1)
 INSTALL_DIR="/clang${CLANG_MAJOR_VERSION}"
 CLANG_ARCHIVE="https://github.com/llvm/llvm-project/releases/download/llvmorg-${CLANG_VERSION}/clang+llvm-${CLANG_VERSION}-x86_64-linux-gnu-ubuntu-20.04.tar.xz"
