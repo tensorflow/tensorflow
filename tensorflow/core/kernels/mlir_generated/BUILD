@@ -189,13 +189,14 @@ tf_kernel_library(
         ":gpu_tan_kernels",
         ":gpu_tanh_kernels",
         "//third_party/eigen3",
-    ])
-    + if_mlir_generated_experimental_kernels_enabled([
-        ":gpu_atanh_kernels_experimental",
-    ],
-    [
-        ":gpu_atanh_kernels",
-    ]),
+    ]) + if_mlir_generated_experimental_kernels_enabled(
+        [
+           ":gpu_atanh_kernels_experimental",
+        ],
+        [
+           ":gpu_atanh_kernels",
+        ],
+    ),
 )
 
 tf_kernel_library(
