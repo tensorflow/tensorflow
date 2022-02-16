@@ -668,10 +668,10 @@ cc_library(
         "replica_id_thunk.cc",
         "sequential_thunk.cc",
         "thunk_schedule.cc",
-        "triangular_solve_thunk.cc",
         "while_thunk.cc",
     ] + if_gpu_is_configured([
         "cholesky_thunk.cc",
+        "triangular_solve_thunk.cc",
     ]),
     hdrs = [
         "bef_thunk.h",
@@ -690,10 +690,10 @@ cc_library(
         "replica_id_thunk.h",
         "sequential_thunk.h",
         "thunk_schedule.h",
-        "triangular_solve_thunk.h",
         "while_thunk.h",
     ] + if_gpu_is_configured([
         "cholesky_thunk.h",
+        "triangular_solve_thunk.h",
     ]),
     local_defines = select({
         ":is_bef_thunk_enabled": ["BEF_THUNKS=1"],
@@ -715,7 +715,6 @@ cc_library(
         ":ir_emission_utils",
         ":nccl_collective_thunks",
         ":launch_dimensions",
-        ":precompiled_kernels",
         ":stream_assignment",
         ":stream_executor_util",
         ":thunk",
@@ -771,7 +770,9 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
+        ":precompiled_kernels",
+    ]) + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_stream",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
@@ -1071,7 +1072,7 @@ tf_cc_test(
 cc_library(
     name = "cusolver_context",
     srcs = if_gpu_is_configured(["cusolver_context.cc"]),
-    hdrs = ["cusolver_context.h"],
+    hdrs = if_gpu_is_configured(["cusolver_context.h"]),
     deps = [
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
@@ -1777,17 +1778,17 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor:stream_executor_headers",
+        "//tensorflow/stream_executor/gpu:gpu_driver_header",
     ]) + [
         ":metrics",
-        "//tensorflow/stream_executor/gpu:gpu_driver_header",
     ],
 )
 
 tf_cc_test(
     name = "nvptx_compiler_test",
-    srcs = [
+    srcs = if_gpu_is_configured([
         "nvptx_compiler_test.cc",
-    ],
+    ]),
     tags = [
         "gpu",
         "no_rocm",
