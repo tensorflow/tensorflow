@@ -398,7 +398,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   CompilationThreadPool& thread_pool = CompilationThreadPool::Get(host);
 
   thread_pool.Schedule([kernel_info, runner, workers = *worker_threads,
-                        ptr = entry.ptr, request_id = req_ctx->id(),
+                        ref = entry.ptr.CopyRef(), request_id = req_ctx->id(),
                         session_name = GetSessionName(req_ctx),
                         tf_jitrt_opts = opts]() {
     TraceMe trace_me([&] {
@@ -476,9 +476,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
-      ptr.SetError(std::move(err));
+      ref.SetError(std::move(err));
     else
-      ptr.emplace(std::move(*jit_executable));
+      ref.emplace(std::move(*jit_executable));
   });
 
   return entry.ptr;
