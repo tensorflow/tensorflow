@@ -442,7 +442,7 @@ HloInstruction* GenerateBinaryMask(
 //  [[a,b,P]
 //   [c,d,P]]
 //
-Status RewriteDynamicReshapeSplitInput(
+StatusOr<bool> RewriteDynamicReshapeSplitInput(
     HloInstruction* reshape, int64_t input_dim,
     absl::Span<const int64_t> output_dims,
     absl::Span<HloInstruction*> output_dynamic_dims,
@@ -470,7 +470,7 @@ Status RewriteDynamicReshapeSplitInput(
   if (input_shape_binary_mask == nullptr) {
     // No need to rewrite.
     VLOG(2) << "No need to rewrite";
-    return Status::OK();
+    return false;
   }
 
   // Step 2. Do a cumsum on the binary mask.
@@ -565,7 +565,7 @@ Status RewriteDynamicReshapeSplitInput(
   TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
       reshape, reshape_dynamic, {}));
 
-  return Status::OK();
+  return true;
 }
 
 // RewriteDynamicReshapeCombineInput is similar to
@@ -626,7 +626,7 @@ Status RewriteDynamicReshapeSplitInput(
 //            |
 //       [a,b,c,d,P,P]
 //
-Status RewriteDynamicReshapeCombineInput(
+StatusOr<bool> RewriteDynamicReshapeCombineInput(
     HloInstruction* reshape, absl::Span<const int64_t> input_dims,
     int64_t output_dim, absl::Span<HloInstruction*> input_dynamic_dims,
     DynamicDimensionInference* dynamic_dimension_inference) {
@@ -648,9 +648,8 @@ Status RewriteDynamicReshapeCombineInput(
       GenerateBinaryMask(reshape, output_dim, input_dims, input_dynamic_dims,
                          one, zero, /*split_input=*/false);
   if (output_shape_binary_mask == nullptr) {
-    // No need to rewrite.
     VLOG(2) << "No need to rewrite";
-    return Status::OK();
+    return false;
   }
 
   // Step 2.
@@ -743,10 +742,10 @@ Status RewriteDynamicReshapeCombineInput(
   TF_RETURN_IF_ERROR(
       dynamic_dimension_inference->ForwardDynamicSize(reshape, gather, {}));
 
-  return Status::OK();
+  return true;
 }
 
-Status RewriteDynamicReshapeSingleGroup(
+StatusOr<bool> RewriteDynamicReshapeSingleGroup(
     HloInstruction* reshape, absl::Span<const int64_t> input_dims,
     absl::Span<const int64_t> output_dims,
     absl::Span<HloInstruction*> input_dynamic_dims,
@@ -763,9 +762,9 @@ Status RewriteDynamicReshapeSingleGroup(
     int64_t input_dim = input_dims[0];
     // Size 1 dimension doesn't need a rewrite.
     if (operand_shape.dimensions()[input_dim] == 1) {
-      return Status::OK();
+      return false;
     }
-    // One input dimension is splitted into multiple output dimensions.
+    // One input dimension is split into multiple output dimensions.
     return RewriteDynamicReshapeSplitInput(reshape, input_dim, output_dims,
                                            output_dynamic_dims,
                                            dynamic_dimension_inference);
@@ -774,16 +773,17 @@ Status RewriteDynamicReshapeSingleGroup(
   if (output_dims.size() == 1) {
     int64_t output_dim = output_dims[0];
     if (output_shape.dimensions()[output_dim] == 1) {
-      return Status::OK();
+      return false;
     }
-    // One input dimension is splitted into multiple output dimensions.
+    // One input dimension is split into multiple output dimensions.
     return RewriteDynamicReshapeCombineInput(reshape, input_dims, output_dim,
                                              input_dynamic_dims,
                                              dynamic_dimension_inference);
   }
-  // Shouldn't get here;
+
+  // Shouldn't get here.
   TF_RET_CHECK(false);
-  return Status::OK();
+  return false;
 }
 
 StatusOr<bool> RewriteReverse(
@@ -1716,10 +1716,13 @@ StatusOr<bool> RewriteDynamicReshape(
         reshape, unflatten, {}));
 
     TF_ASSIGN_OR_RETURN(
-        changed, RewriteDynamicReshape(flatten, dynamic_dimension_inference));
+        bool changed_unused,
+        RewriteDynamicReshape(flatten, dynamic_dimension_inference));
     TF_ASSIGN_OR_RETURN(
-        changed, RewriteDynamicReshape(unflatten, dynamic_dimension_inference));
+        changed_unused,
+        RewriteDynamicReshape(unflatten, dynamic_dimension_inference));
     TF_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(unflatten));
+
     return true;
   }
 
@@ -1749,9 +1752,12 @@ StatusOr<bool> RewriteDynamicReshape(
           reshape->ToString());
     }
 
-    TF_RETURN_IF_ERROR(RewriteDynamicReshapeSingleGroup(
-        reshape, input_dims, output_dims, absl::MakeSpan(input_dynamic_dims),
-        absl::MakeSpan(output_dynamic_dims), dynamic_dimension_inference));
+    TF_ASSIGN_OR_RETURN(bool c, RewriteDynamicReshapeSingleGroup(
+                                    reshape, input_dims, output_dims,
+                                    absl::MakeSpan(input_dynamic_dims),
+                                    absl::MakeSpan(output_dynamic_dims),
+                                    dynamic_dimension_inference));
+    changed |= c;
   }
 
   if (reshape->opcode() == HloOpcode::kDynamicReshape) {
@@ -1761,6 +1767,7 @@ StatusOr<bool> RewriteDynamicReshape(
     TF_RETURN_IF_ERROR(reshape->ReplaceAllUsesWith(static_reshape));
     TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
         reshape, static_reshape, {}));
+    changed = true;
   }
 
   return changed;
@@ -2126,67 +2133,78 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
       }
       if (inst->opcode() == HloOpcode::kConcatenate) {
         TF_ASSIGN_OR_RETURN(
-            changed, RewriteDynamicConcat(inst, &dynamic_dimension_inference));
+            bool c, RewriteDynamicConcat(inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
       if (inst->opcode() == HloOpcode::kReverse) {
-        TF_ASSIGN_OR_RETURN(changed,
+        TF_ASSIGN_OR_RETURN(bool c,
                             RewriteReverse(inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
       if (inst->opcode() == HloOpcode::kSort) {
         TF_ASSIGN_OR_RETURN(
-            changed, RewriteDynamicSort(inst, &dynamic_dimension_inference));
+            bool c, RewriteDynamicSort(inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
       if (inst->opcode() == HloOpcode::kReshape ||
           inst->opcode() == HloOpcode::kDynamicReshape) {
         TF_ASSIGN_OR_RETURN(
-            changed, RewriteDynamicReshape(inst, &dynamic_dimension_inference));
+            bool c, RewriteDynamicReshape(inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
 
       // Elementwise binary with dynamic shapes have implicit broadcast
       // semantics.
       if (inst->IsElementwiseBinary()) {
-        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicBinaryOp(
-                                         inst, &dynamic_dimension_inference));
+        TF_ASSIGN_OR_RETURN(
+            bool c, RewriteDynamicBinaryOp(inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
 
       if (inst->opcode() == HloOpcode::kDynamicUpdateSlice) {
-        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicUpdateSlice(
-                                         inst, &dynamic_dimension_inference));
+        TF_ASSIGN_OR_RETURN(bool c, RewriteDynamicUpdateSlice(
+                                        inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
 
       if (inst->IsCustomCall("DynamicConvolutionInputGrad")) {
-        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicConvolutionInputGrad(
-                                         inst, &dynamic_dimension_inference));
+        TF_ASSIGN_OR_RETURN(bool c, RewriteDynamicConvolutionInputGrad(
+                                        inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
 
       if (inst->IsCustomCall("DynamicConvolutionForward")) {
-        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicConvolutionForward(
-                                         inst, &dynamic_dimension_inference));
+        TF_ASSIGN_OR_RETURN(bool c, RewriteDynamicConvolutionForward(
+                                        inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
 
       if (inst->IsCustomCall("DynamicConvolutionKernelGrad")) {
-        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicConvolutionKernelGrad(
-                                         inst, &dynamic_dimension_inference));
+        TF_ASSIGN_OR_RETURN(bool c, RewriteDynamicConvolutionKernelGrad(
+                                        inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
 
       if (inst->IsCustomCall("DynamicReduceWindowSamePadding")) {
-        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicReduceWindowSamePadding(
-                                         inst, &dynamic_dimension_inference));
+        TF_ASSIGN_OR_RETURN(bool c, RewriteDynamicReduceWindowSamePadding(
+                                        inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
 
       if (inst->IsCustomCall("DynamicSelectAndScatterSamePadding")) {
-        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicSelectAndScatterSamePadding(
-                                         inst, &dynamic_dimension_inference));
+        TF_ASSIGN_OR_RETURN(bool c, RewriteDynamicSelectAndScatterSamePadding(
+                                        inst, &dynamic_dimension_inference));
+        changed |= c;
         continue;
       }
 
@@ -2254,23 +2272,24 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   for (auto* computation : module->computations()) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(
-          bool replaced_get_size,
-          ReplaceGetSize(instruction, &dynamic_dimension_inference));
-      changed = changed || replaced_get_size;
+          bool c, ReplaceGetSize(instruction, &dynamic_dimension_inference));
+      changed |= c;
     }
   }
 
   for (auto* computation : module->computations()) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
-      TF_ASSIGN_OR_RETURN(bool replaced_set_size, ReplaceSetSize(instruction));
-      TF_ASSIGN_OR_RETURN(bool replaced_set_bound,
-                          ReplaceSetBound(instruction));
-      changed = changed || replaced_set_size;
-      changed = changed || replaced_set_bound;
+      TF_ASSIGN_OR_RETURN(bool c, ReplaceSetSize(instruction));
+      changed |= c;
+
+      TF_ASSIGN_OR_RETURN(c, ReplaceSetBound(instruction));
+      changed |= c;
     }
   }
+
   HloDCE dce;
-  TF_ASSIGN_OR_RETURN(changed, dce.Run(module));
+  TF_ASSIGN_OR_RETURN(bool c, dce.Run(module));
+  changed |= c;
 
   VLOG(2) << "Post DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());

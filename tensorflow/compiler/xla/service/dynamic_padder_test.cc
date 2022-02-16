@@ -92,7 +92,7 @@ class DynamicPadderTest : public HloTestBase {
     options.custom_call_handler = CustomCallDynamicDimensionInference;
     options.op_supports_dynamism_handler = OpHasDynamismSupport;
     DynamicPadder padder(std::move(options));
-    return padder.Run(module_.get());
+    return RunHloPass(&padder, module_.get());
   }
 
   void ExpectPadded(const HloInstruction* inst) {
