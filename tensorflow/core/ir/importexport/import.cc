@@ -758,73 +758,6 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                  builder.getI32TensorAttr(resource_arg_unique_ids_values));
   }
 
-  llvm::SmallVector<Type> arg_types;
-  llvm::SmallString<8> arg_or_res_attr_name;
-  {
-    llvm::SmallVector<Attribute> arg_attrs;
-    arg_types.reserve(fbody->arg_types.size() * 2);
-    for (auto& enumerated_arg : llvm::enumerate(fbody->arg_nodes)) {
-      int arg_id = enumerated_arg.index();
-      Node* arg = enumerated_arg.value();
-      // Find node in the graph using the node id instead of using `arg`
-      // directly because the graph has been cloned.
-      Operation* arg_op = importer.GetOperationForNode(arg->id());
-      if (!arg_op) return Internal("Missing mapping for arg #", arg->id());
-      if (arg_op->getName().getStringRef() != "tfg._Arg")
-        return InvalidArgument("Expect `_Arg` node but got ",
-                               arg_op->getName().getStringRef().str());
-      if (arg_op->getNumResults() != 2)
-        return InvalidArgument(
-            "Expect `_Arg` node to have a single output, got ",
-            arg_op->getNumResults());
-      body->addArgument(arg_op->getResult(0).getType(), unknown_loc);
-      arg_types.push_back(arg_op->getResult(0).getType());
-      arg_op->getResult(0).replaceAllUsesWith(body->getArguments().back());
-
-      body->addArgument(arg_op->getResult(1).getType(), unknown_loc);
-      arg_types.push_back(arg_op->getResult(1).getType());
-      arg_op->getResult(1).replaceAllUsesWith(body->getArguments().back());
-
-      arg_op->erase();
-
-      int64_t index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(arg->attrs(), "index", &index));
-      const OpDef_ArgDef& input = signature.input_arg(index);
-      NamedAttrList input_attrs;
-      input_attrs.set("tfg.name", builder.getStringAttr(input.name()));
-      if (!input.description().empty())
-        input_attrs.append("tfg.description",
-                           builder.getStringAttr(input.description()));
-
-      if (input.is_ref())
-        input_attrs.append("tfg.is_ref", builder.getUnitAttr());
-
-      if (input.handle_data_size()) {
-        TF_ASSIGN_OR_RETURN(Attribute handle_data,
-                            ConvertHandleData(builder, input.handle_data()));
-
-        input_attrs.append("tfg.handle_data", handle_data);
-      }
-
-      auto it = fbody->fdef.arg_attr().find(arg_id);
-      if (it != fbody->fdef.arg_attr().end()) {
-        for (const auto& namedAttr : it->second.attr()) {
-          std::string name = absl::StrCat("tf.", namedAttr.first);
-          const AttrValue& tf_attr = namedAttr.second;
-          TF_ASSIGN_OR_RETURN(
-              Attribute attr,
-              ConvertAttributeValue(tf_attr, builder, tfgDialect));
-          input_attrs.append(name, attr);
-        }
-      }
-      arg_attrs.push_back(input_attrs.getDictionary(context));
-      arg_attrs.push_back(builder.getDictionaryAttr({}));
-    }
-    attrs.push_back(
-        builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
-                             builder.getArrayAttr(arg_attrs)));
-  }
-
   SmallVector<Value> ret_operands;
   SmallVector<Type> ret_types;
   SmallVector<Attribute> control_ret_attrs;
@@ -891,22 +824,90 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
             "'");
       // Find node in the graph using the node id instead of using `arg`
       // directly because the graph has been cloned.
-      TFOp control_ret_op = importer.GetOperationForNode(ret->id());
-      ret_operands.push_back(control_ret_op.controlRet());
+      Operation* control_ret_op = importer.GetOperationForNode(ret->id());
+      if (!control_ret_op)
+        return Internal("Missing mapping for control result '", sig_name, "'");
+      ret_operands.push_back(TFOp(control_ret_op).controlRet());
       control_ret_attrs.push_back(builder.getDictionaryAttr(
           NamedAttribute(tfgDialect->getTfgNameAttrIdentifier(),
                          builder.getStringAttr(sig_name))));
     }
   }
 
-  func_op->setAttrs(attrs);
-
-  func_op->setAttr(
-      "type", TypeAttr::get(builder.getFunctionType(arg_types, ret_types)));
-
   builder = OpBuilder::atBlockEnd(func_op.getBody());
   builder.create<ReturnOp>(module.getLoc(), ret_operands,
                            builder.getArrayAttr(control_ret_attrs));
+
+  SmallVector<Type> arg_types;
+  SmallString<8> arg_or_res_attr_name;
+  {
+    SmallVector<Attribute> arg_attrs;
+    arg_types.reserve(fbody->arg_types.size() * 2);
+    for (auto& enumerated_arg : llvm::enumerate(fbody->arg_nodes)) {
+      int arg_id = enumerated_arg.index();
+      Node* arg = enumerated_arg.value();
+      // Find node in the graph using the node id instead of using `arg`
+      // directly because the graph has been cloned.
+      Operation* arg_op = importer.GetOperationForNode(arg->id());
+      if (!arg_op) return Internal("Missing mapping for arg #", arg->id());
+      if (arg_op->getName().getStringRef() != "tfg._Arg")
+        return InvalidArgument("Expect `_Arg` node but got ",
+                               arg_op->getName().getStringRef().str());
+      if (arg_op->getNumResults() != 2)
+        return InvalidArgument(
+            "Expect `_Arg` node to have a single output, got ",
+            arg_op->getNumResults());
+      body->addArgument(arg_op->getResult(0).getType(), unknown_loc);
+      arg_types.push_back(arg_op->getResult(0).getType());
+      arg_op->getResult(0).replaceAllUsesWith(body->getArguments().back());
+
+      body->addArgument(arg_op->getResult(1).getType(), unknown_loc);
+      arg_types.push_back(arg_op->getResult(1).getType());
+      arg_op->getResult(1).replaceAllUsesWith(body->getArguments().back());
+
+      arg_op->erase();
+
+      int64_t index;
+      TF_RETURN_IF_ERROR(GetNodeAttr(arg->attrs(), "index", &index));
+      const OpDef_ArgDef& input = signature.input_arg(index);
+      NamedAttrList input_attrs;
+      input_attrs.set("tfg.name", builder.getStringAttr(input.name()));
+      if (!input.description().empty())
+        input_attrs.append("tfg.description",
+                           builder.getStringAttr(input.description()));
+
+      if (input.is_ref())
+        input_attrs.append("tfg.is_ref", builder.getUnitAttr());
+
+      if (input.handle_data_size()) {
+        TF_ASSIGN_OR_RETURN(Attribute handle_data,
+                            ConvertHandleData(builder, input.handle_data()));
+
+        input_attrs.append("tfg.handle_data", handle_data);
+      }
+
+      auto it = fbody->fdef.arg_attr().find(arg_id);
+      if (it != fbody->fdef.arg_attr().end()) {
+        for (const auto& namedAttr : it->second.attr()) {
+          std::string name = absl::StrCat("tf.", namedAttr.first);
+          const AttrValue& tf_attr = namedAttr.second;
+          TF_ASSIGN_OR_RETURN(
+              Attribute attr,
+              ConvertAttributeValue(tf_attr, builder, tfgDialect));
+          input_attrs.append(name, attr);
+        }
+      }
+      arg_attrs.push_back(input_attrs.getDictionary(context));
+      arg_attrs.push_back(builder.getDictionaryAttr({}));
+    }
+    attrs.push_back(
+        builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
+                             builder.getArrayAttr(arg_attrs)));
+  }
+
+  func_op->setAttrs(attrs);
+  func_op->setAttr(
+      "type", TypeAttr::get(builder.getFunctionType(arg_types, ret_types)));
 
   return func_op;
 }
@@ -964,16 +965,15 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
 
   llvm::StringMap<llvm::StringMap<SmallVector<Value, 1>>> values_map;
   for (const std::string& name : flib_def.ListFunctionNames()) {
-    const llvm::StringMap<std::string> gradients;
     const FunctionDef* fdef = flib_def.Find(name);
     if (IsGenericFunction(*fdef)) {
       TF_RETURN_IF_ERROR(ConvertGenericFunction(*fdef, builder));
     } else {
-      TF_ASSIGN_OR_RETURN(
-          GraphFuncOp imported_func,
-          ImportFunctionDef(module.get(), debug_info, flib_def, *fdef,
-                            /*instantiation_attributes=*/{}));
-      (void)imported_func;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          ImportFunctionDef(*module, debug_info, flib_def, *fdef,
+                            /*instantiation_attributes=*/{})
+              .status(),
+          "While importing FunctionDef: ", fdef->signature().name());
     }
   }
   return module;
