@@ -51,6 +51,8 @@
     *   Add nominal support for unsigned 16-bit integer tensor types. Note that
         very few TFLite kernels support this type natively, so its use in mobile
         ML authoring is generally discouraged.
+    * Experimental support for lowering `list_ops.tensor_list_set_item` with
+      `DynamicUpdateSlice`.
 
 # Bug Fixes and Other Changes
 

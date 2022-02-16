@@ -3922,6 +3922,30 @@ def TFL_GeluOp: TFL_Op<"gelu", [
   let hasOptions = 1;
 }
 
+def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = "DynamicUpdateSlice.";
+  let description = [{
+    DynamicUpdateSlice op that have the same semantics with XLA
+    DynamicUpdateSlice.
+    Generates a result which is the value of the input array
+    operand, with a slice update overwritten at start_indices.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dynamicupdateslice.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[I8, I32, I64, F32]>:$operand,
+    TFL_TensorOf<[I8, I32, I64, F32]>:$update,
+    TFL_I32Tensor:$start_indices
+  );
+
+  let results = (
+    outs TFL_TensorOf<[I8, I32, I64, F32]>:$output);
+}
+
 //===----------------------------------------------------------------------===//
 // Quantization ops.
 //===----------------------------------------------------------------------===//

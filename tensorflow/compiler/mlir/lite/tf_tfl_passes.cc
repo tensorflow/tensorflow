@@ -202,8 +202,10 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass(
         /*allow_tensorlist_pass_through=*/toco_flags.force_select_tf_ops() ||
             toco_flags.enable_select_tf_ops(),
-        /*default_to_single_batch=*/toco_flags
-            .default_to_single_batch_in_tensor_list_ops()));
+        /*default_to_single_batch=*/
+        toco_flags.default_to_single_batch_in_tensor_list_ops(),
+        /*enable_dynamic_update_slice=*/
+        toco_flags.enable_dynamic_update_slice()));
   }
 
   // This pass does resource analysis of saved model global tensors and marks
@@ -398,7 +400,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   // This is needed for control flow support with TF TensorList.
   pm.addPass(mlir::TFL::CreateLowerStaticTensorListPass(
       /*allow_tensorlist_pass_through=*/false,
-      /*default_to_single_batch=*/false));
+      /*default_to_single_batch=*/false,
+      /*enable_dynamic_update_slice=*/false));
 
   // Saved model pass to mark global tensors immutable.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
