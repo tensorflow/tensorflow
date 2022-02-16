@@ -34,34 +34,9 @@ func @transpose_2d(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-NEXT:        affine.apply
 // CHECK-NEXT:        vector.transfer_read
 // AVX2 shuffle/asm sequence.
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        llvm.inline_asm
-// CHECK-NEXT:        llvm.inline_asm
-// CHECK-NEXT:        llvm.inline_asm
-// CHECK-NEXT:        llvm.inline_asm
-// CHECK-NEXT:        llvm.inline_asm
-// CHECK-NEXT:        llvm.inline_asm
-// CHECK-NEXT:        llvm.inline_asm
-// CHECK-NEXT:        llvm.inline_asm
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
-// CHECK-NEXT:        vector.shuffle
+// CHECK-COUNT-12:        vector.shuffle
+// CHECK-COUNT-8:        llvm.inline_asm
+// CHECK-COUNT-8:        vector.shuffle
 // Vector xfer write: unrolled second vector dimension.
 // CHECK-NEXT:        vector.transfer_write
 // CHECK-NEXT:        affine.apply
