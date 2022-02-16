@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -485,8 +487,8 @@ class PjRtClient {
       std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
 
   // Note that literal must remain in scope until the transfer has completed, so
-  // the caller should, for example, wait for BlockHostUntilReady() completes on
-  // the return value before letting literal go out of scope.
+  // the caller should, for example, wait for GetReadyFuture()->Await()
+  // completes on the return value before letting literal go out of scope.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) = 0;
 
@@ -664,7 +666,7 @@ class PjRtBuffer {
   // it. A return value of nullptr indicates that PjRtBuffer has been
   // deleted. The buffer returned from Release may be safely dropped at any time
   // even if it still has pending async operations. The client should call
-  // BlockHostUntilReady before calling ReleaseDeviceMemoryOwnership with
+  // GetReadyFuture()->Await before calling ReleaseDeviceMemoryOwnership with
   // wait_for_operations_to_complete=false, to ensure that the host has
   // synchronized past any outstanding write operations to the buffer. If
   // wait_for_operations_to_complete=true the host will block until any
@@ -736,9 +738,29 @@ class PjRtBuffer {
           serialized_descriptors_and_callbacks,
       const ScatterDetails& scatter_details) = 0;
 
+  // Returns a future that can be used to discover when the data in the
+  // PjRtBuffer has been computed, or an error has occurred.
+  //
+  // If the buffer has been deleted or donated the returned future will
+  // immediately hold an error, however if GetReadyFuture() is called before
+  // the buffer has been deleted or donated then the returned future will stay
+  // valid (will not transition to error as a consequence of buffer deletion)
+  // even if the buffer is subsequently donated or deleted.
+  virtual PjRtFuture<Status> GetReadyFuture() = 0;
+
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
-  virtual Status BlockHostUntilReady() = 0;
+  ABSL_DEPRECATED("Use GetReadyFuture()->Await() instead")
+  Status BlockHostUntilReady() {
+    auto s = GetReadyFuture().Await();
+    // Fix up error string because some clients rely on it.
+    if (!s.ok() && s.error_message() ==
+                       "GetReadyFuture() called on deleted or donated buffer") {
+      return InvalidArgument(
+          "BlockHostUntilReady() called on deleted or donated buffer");
+    }
+    return s;
+  }
 
   // Calls callback when the buffer is ready.
   //
@@ -746,7 +768,7 @@ class PjRtBuffer {
   //
   // is semantically almost identical to:
   //
-  //   ForkThread([]() { callback(buf->BlockHostUntilReady()); });
+  //   ForkThread([]() { callback(buf->Await()); });
   //
   // the only difference being that the callback may happen immediately on the
   // calling thread. (The implementation may also be more efficient.)
@@ -754,7 +776,10 @@ class PjRtBuffer {
   // The interface makes no assumptions about what thread calls callback, so the
   // caller must ensure that callback returns quickly and hands off long-running
   // work or any blocking operation to a caller-managed threadpool.
-  virtual void OnReady(std::function<void(Status)> callback) = 0;
+  ABSL_DEPRECATED("Use GetReadyFuture()->OnReady() instead")
+  void OnReady(std::function<void(Status)> callback) {
+    return GetReadyFuture().OnReady(std::move(callback));
+  }
 
   // Whether this buffer is on CPU and thus allows for certain optimizations.
   virtual bool IsOnCpu() const = 0;
