@@ -15,9 +15,9 @@ limitations under the License.
 
 namespace stream_executor {
 
-int64_t GetWorkspaceLimit(const string& envvar_in_mb,
-                          int64_t default_value_in_bytes) {
-  const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
+int64_t GetWorkspaceLimit(int64_t default_value_in_bytes) {
+  const char* workspace_limit_in_mb_str =
+      getenv("TF_CUBLAS_WORKSPACE_LIMIT_IN_MB");
   if (workspace_limit_in_mb_str != nullptr &&
       strcmp(workspace_limit_in_mb_str, "") != 0) {
     int64_t scratch_limit_in_mb = -1;
@@ -25,11 +25,26 @@ int64_t GetWorkspaceLimit(const string& envvar_in_mb,
                                           &scratch_limit_in_mb)) {
       return scratch_limit_in_mb * (1 << 20);
     } else {
-      LOG(WARNING) << "Invalid value for env-var " << envvar_in_mb << ": "
+      LOG(WARNING) << "Invalid value for TF_CUBLAS_WORKSPACE_LIMIT_IN_MB: "
                    << workspace_limit_in_mb_str;
     }
   }
   return default_value_in_bytes;
+}
+
+int MatmulMaxAutotuneAlgorithmCount() {
+  int64_t value;
+  tensorflow::Status status = tensorflow::ReadInt64FromEnvVar(
+      "TF_MATMUL_AUTOTUNE_MAX_ALGORITHMS", 10, &value);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
+  }
+  static constexpr const int kMaxValue = std::numeric_limits<int>::max();
+  if (value < 1 || value > kMaxValue) {
+    LOG(ERROR) << "Invalid value for TF_MATMUL_AUTOTUNE_MAX_ALGORITHMS: "
+               << value << " is not in range [1, " << kMaxValue << "]";
+  }
+  return value;
 }
 
 static inline port::StatusOr<blas::DataType> GetBlasDataType(
@@ -78,10 +93,10 @@ port::StatusOr<const blas::PlanAndAlgorithms*> GetPlanAndAlgorithms(
     Stream* stream, BatchMatmulParameters matmul_parameters, int64_t batch_size,
     tensorflow::DataType dtype, blas::MatrixDescriptor lhs_matrix,
     blas::MatrixDescriptor rhs_matrix, blas::MatrixDescriptor output_matrix) {
-  static const int64_t max_scratch_size = GetWorkspaceLimit(
-      "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+  static const int64_t max_scratch_size =
+      GetWorkspaceLimit(1LL << 32);  // 4GB by default
   static const int64_t max_autotune_algorithm_count =
-      tensorflow::MatmulMaxAutotuneAlgorithmCount();
+      MatmulMaxAutotuneAlgorithmCount();
   const blas::PlanAndAlgorithms* plan_and_algorithms =
       BatchMatmulPlanMapSingleton::GetInstance()->Find(matmul_parameters);
   if (!plan_and_algorithms) {

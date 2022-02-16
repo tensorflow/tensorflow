@@ -102,7 +102,6 @@ cc_library(
 )
 
 MATH_DEPS = [
-    "//tensorflow/core/kernels:fill_functor",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",

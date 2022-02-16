@@ -30,11 +30,15 @@ DeviceMemory<T> AsDeviceMemory(const T* gpu_memory) {
   return typed;
 }
 
+// Reads the maximum number of algorithms for GEMM autotuning from the
+// environment variable TF_MATMUL_AUTOTUNE_MAX_ALGORITHMS. If no value is set,
+// return the default value.
+int MatmulMaxAutotuneAlgorithmCount();
+
 // Get a workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
-int64_t GetWorkspaceLimit(const string& envvar_in_mb,
-                          int64_t default_value_in_bytes);
+int64_t GetWorkspaceLimit(int64_t default_value_in_bytes);
 
 // Encapsulates information which defines a unique
 // batched matmul operation.

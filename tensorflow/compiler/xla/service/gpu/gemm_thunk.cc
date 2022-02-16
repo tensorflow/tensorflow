@@ -37,8 +37,8 @@ BlasScratchAllocator::BlasScratchAllocator(
     : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
 int64_t BlasScratchAllocator::GetMemoryLimitInBytes() {
-  static const int64_t max_scratch_size = se::GetWorkspaceLimit(
-      "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+  static const int64_t max_scratch_size =
+      se::GetWorkspaceLimit(1LL << 32);  // 4GB by default
   return max_scratch_size;
 }
 
