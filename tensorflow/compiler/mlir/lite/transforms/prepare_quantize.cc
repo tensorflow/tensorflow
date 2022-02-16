@@ -380,9 +380,8 @@ void PrepareQuantizePass::runOnOperation() {
   // consistent. Otherwise some FileCheck tests would fail.
   RewritePatternSet patterns_1(&getContext());
   if (quant_specs_.post_training_quantization) {
-    patterns_1.insert<PrepareLstmOutputScale<LSTMOp>>(ctx);
-    patterns_1.insert<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(
-        ctx);
+    patterns_1.add<PrepareLstmOutputScale<LSTMOp>>(ctx);
+    patterns_1.add<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(ctx);
   }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns_1));
 
@@ -390,24 +389,23 @@ void PrepareQuantizePass::runOnOperation() {
   // convert all of them to signed.
   RewritePatternSet patterns_2(&getContext());
   if (is_signed) {
-    patterns_2.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(
-        ctx);
+    patterns_2.add<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
     // Convert quant stats to int8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.insert<PrepareQuantStats>(bit_width, false, true,
-                                         quant_specs_.legacy_float_scale, ctx);
+    patterns_2.add<PrepareQuantStats>(bit_width, false, true,
+                                      quant_specs_.legacy_float_scale, ctx);
   } else {
     // Convert quant stats to uint8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.insert<PrepareQuantStats>(bit_width, false, false,
-                                         quant_specs_.legacy_float_scale, ctx);
+    patterns_2.add<PrepareQuantStats>(bit_width, false, false,
+                                      quant_specs_.legacy_float_scale, ctx);
   }
 
   if (quant_specs_.post_training_quantization) {
-    patterns_2.insert<ConvertLstmStatsToQDQs<LSTMOp>>(ctx, quant_specs_);
-    patterns_2.insert<ConvertLstmStatsToQDQs<UnidirectionalSequenceLSTMOp>>(
+    patterns_2.add<ConvertLstmStatsToQDQs<LSTMOp>>(ctx, quant_specs_);
+    patterns_2.add<ConvertLstmStatsToQDQs<UnidirectionalSequenceLSTMOp>>(
         ctx, quant_specs_);
-    patterns_2.insert<ConvertSvdfStatsToQDQs>(ctx, quant_specs_);
+    patterns_2.add<ConvertSvdfStatsToQDQs>(ctx, quant_specs_);
   }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 
