@@ -25,7 +25,6 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps_utils as acd
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -98,14 +97,14 @@ def while_loop(cond,
         control_flow_ops._shape_invariant_to_type_spec, loop_vars,
         list(shape_invariants), expand_composites=False)
     shape_invariants = nest.map_structure(
-        _get_shape_invariant, loop_vars,
+        control_flow_ops._get_shape_invariant, loop_vars,
         list(shape_invariants), expand_composites=False)
 
   else:
     signature = nest.map_structure(
         type_spec.type_spec_from_value, loop_vars, expand_composites=False)
     shape_invariants = nest.map_structure(
-        _get_shape_invariant, loop_vars,
+        control_flow_ops._get_shape_invariant, loop_vars,
         expand_composites=False)
   if not name:
     name = "while"
@@ -1410,41 +1409,6 @@ def _build_accumulator_name(tensor):
 def _is_loop_invariant(tensor, inputs, outputs):
   return (any(tensor is t for t in inputs) and
           any(tensor is t for t in outputs))
-
-
-def _get_shape_invariant(var, shape=None):
-  """Returns shape invariant(s) for the given variable.
-
-  Args:
-    var: The tensor whose shape is described.
-    shape: The shape invariant for the tensor.  If not specified, then a default
-      shape invariant for `var` is returned.
-
-  Returns:
-    `TensorShape` or `list` of `TensorShape`: The shape invariant for `var` (if
-    it is a `Tensor`), or the shape invariants for the components that comprise
-    `var` (if it is a `CompositeTensor`).
-  """
-  if isinstance(var, composite_tensor.CompositeTensor):
-    # Get a TypeSpec for `var`.
-    if shape is None:
-      spec = var._type_spec  # pylint: disable=protected-access
-    else:
-      spec = control_flow_ops._shape_invariant_to_type_spec(var, shape)
-
-    tensor_specs = nest.flatten(spec, expand_composites=True)
-    return [tspec.shape for tspec in tensor_specs]
-
-  elif shape is None:
-    return var.shape
-  elif isinstance(shape, tensor_spec.TensorSpec):
-    if var.dtype != shape.dtype:
-      raise TypeError("TensorSpec %r is not compatible with %r" % (shape, var))
-    return shape.shape
-  elif isinstance(shape, type_spec.TypeSpec):
-    raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
-  else:
-    return shape
 
 
 class _OperationWithOutputs(ops.Operation):
