@@ -271,6 +271,7 @@ int main(int argc, char **argv) {
   pass_config.unfold_batch_matmul = unfold_batchmatmul;
   pass_config.unfold_large_splat_constant = unfold_large_splat_constant;
   pass_config.guarantee_all_funcs_one_use = guarantee_all_funcs_one_use;
+  pass_config.enable_dynamic_update_slice = enable_dynamic_update_slice;
   pass_config.runtime_verification = true;
   pass_config.outline_tf_while = true;
 
@@ -283,6 +284,7 @@ int main(int argc, char **argv) {
   toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
   toco_flags.set_allow_custom_ops(emit_custom_ops);
   toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
+  toco_flags.set_enable_dynamic_update_slice(enable_dynamic_update_slice);
   // Read list of user select ops.
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))
