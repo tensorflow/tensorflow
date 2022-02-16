@@ -75,15 +75,6 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.BitwiseAnd`
 *   `raw_ops.BitwiseOr`
 *   `raw_ops.BitwiseXor`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesBucketize`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesCreateQuantileStreamResource`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesFlushQuantileSummaries`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesMakeQuantileSummaries`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesQuantileStreamResourceAddSummaries`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesQuantileStreamResourceDeserialize`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesQuantileStreamResourceFlush`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesQuantileStreamResourceGetBucketBoundaries`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesQuantileStreamResourceHandleOp`
 *   `raw_ops.BroadcastArgs`
 *   `raw_ops.BroadcastGradientArgs`
 *   `raw_ops.BroadcastTo`
@@ -243,7 +234,6 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.IRFFT`
 *   `raw_ops.IRFFT2D`
 *   `raw_ops.IRFFT3D`
-*   (only internal, removed in OSS) `raw_ops.IsBoostedTreesQuantileStreamResourceInitialized`
 *   `raw_ops.IsFinite`
 *   `raw_ops.IsNan`
 *   `raw_ops.IsVariableInitialized`
