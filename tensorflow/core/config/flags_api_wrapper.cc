@@ -19,7 +19,6 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
-#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/config/flags.h"
 

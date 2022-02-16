@@ -88,6 +88,5 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )

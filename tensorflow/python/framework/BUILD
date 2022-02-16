@@ -1320,6 +1320,7 @@ py_library(
         ":gpu_util",
         ":random_seed",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/config:flags_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:platform",
