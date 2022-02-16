@@ -191,10 +191,10 @@ tf_kernel_library(
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled(
         [
-           ":gpu_atanh_kernels_experimental",
+            ":gpu_atanh_kernels_experimental",
         ],
         [
-           ":gpu_atanh_kernels",
+            ":gpu_atanh_kernels",
         ],
     ),
 )
