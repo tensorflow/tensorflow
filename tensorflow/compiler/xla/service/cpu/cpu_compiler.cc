@@ -49,6 +49,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
@@ -811,6 +812,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // efficient broadcast operations moving.
   // Move up broadcasting operations to allow for more fusion opportunities.
   pm.addPass(mlir::mhlo::CreateExpandHloTuplesPass("main"));
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeGeneralDotPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -866,6 +868,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // Deallocate all temporary buffers.
   pm.addNestedPass<mlir::FuncOp>(
       mlir::bufferization::createBufferDeallocationPass());
+
+  pm.addPass(mlir::createBufferizationToMemRefPass());
 
   // Specilize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat,
   // and immediately canonicalize to clean up not taken branches.
