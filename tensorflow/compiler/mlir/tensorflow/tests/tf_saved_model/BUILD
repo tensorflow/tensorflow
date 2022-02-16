@@ -77,5 +77,6 @@ glob_lit_tests(
         file: [file[:-3]]
         for file in test_files
     },
+    size_override = {"multi_arguments_results_v1.py": "medium"},
     test_file_exts = ["py"],
 )
