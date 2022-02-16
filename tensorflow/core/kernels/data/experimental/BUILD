@@ -72,6 +72,41 @@ tf_cc_test(
 )
 
 tf_kernel_library(
+    name = "assert_prev_dataset_op",
+    srcs = ["assert_prev_dataset_op.cc"],
+    hdrs = ["assert_prev_dataset_op.h"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data:dataset_proto_cc",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:rewrite_utils",
+        "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:protobuf",
+    ],
+)
+
+tf_cc_test(
+    name = "assert_prev_dataset_op_test",
+    size = "small",
+    srcs = ["assert_prev_dataset_op_test.cc"],
+    deps = [
+        ":assert_prev_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/kernels/data:range_dataset_op",
+        "//tensorflow/core/kernels/data:take_dataset_op",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_kernel_library(
     name = "auto_shard_dataset_op",
     srcs = ["auto_shard_dataset_op.cc"],
     hdrs = ["auto_shard_dataset_op.h"],
@@ -842,6 +877,7 @@ tf_kernel_library(
     deps = [
         ":assert_cardinality_dataset_op",
         ":assert_next_dataset_op",
+        ":assert_prev_dataset_op",
         ":choose_fastest_branch_dataset_op",
         ":choose_fastest_dataset_op",
         ":compression_ops",
