@@ -433,6 +433,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `RESIZE_BILINEAR`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `TRANSPOSE_CONV`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
