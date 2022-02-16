@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 
+#include <algorithm>
 #include <atomic>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/allocator_retry.h"
@@ -38,16 +40,16 @@ namespace tensorflow {
 
 constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
 
-BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                           bool allow_growth, const string& name,
-                           bool garbage_collection)
-    : garbage_collection_(garbage_collection),
+BFCAllocator::BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator,
+                           size_t total_memory, const string& name,
+                           const Options& opts)
+    : opts_(opts),
       coalesce_regions_(sub_allocator->SupportsCoalescing()),
-      sub_allocator_(sub_allocator),
+      sub_allocator_(std::move(sub_allocator)),
       name_(name),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1) {
-  if (allow_growth) {
+  if (opts.allow_growth) {
     // 2MiB smallest initial allocation, unless total memory available
     // is less.
     curr_region_allocation_bytes_ =
@@ -257,10 +259,24 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
                                 const AllocationAttributes& allocation_attr) {
   VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes;
   void* result = [&] {
-    if (!allocation_attr.retry_on_failure) {
-      // Return immediately upon the first failure if this is for allocating an
-      // optional scratch space.
-      bool dump_log_on_failure = VLOG_IS_ON(2);
+    if (!opts_.allow_retry_on_failure || !allocation_attr.retry_on_failure) {
+      // If we have globally disabled retry-on-failure and fail to allocate an
+      // "important" alloc, we want to print a log, because the program may be
+      // about to fail due to OOM.
+      //
+      // Bit of a hack: We deem "important" allocs as those which are retryable.
+      // In TF, *non*-retryable allocations are usually those which we can
+      // tolerate failing.  For example, we allocate convolution scratch memory
+      // as non-retryable; if it fails, we'll just use a fallback algorithm that
+      // uses no scratch.
+      static std::atomic<int32> log_counter{0};
+      constexpr int kMaxFailureLogs = 10;
+      bool dump_log_on_failure =
+          (/*retry is globally disabled*/ !opts_.allow_retry_on_failure &&
+           /*alloc is "important"*/ allocation_attr.retry_on_failure &&
+           log_counter.load(std::memory_order_relaxed) < kMaxFailureLogs) ||
+          VLOG_IS_ON(2);
+
       uint64 freed_by_count = 0;
       if (allocation_attr.freed_by_func != nullptr) {
         freed_by_count = (*allocation_attr.freed_by_func)();
@@ -268,17 +284,18 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
       void* res = AllocateRawInternal(unused_alignment, num_bytes,
                                       dump_log_on_failure, freed_by_count);
       if (res == nullptr) {
-        static std::atomic<int32> log_counter{0};
         int32 counter_value = log_counter.load(std::memory_order_relaxed);
-        if (counter_value < 10) {
+        if (counter_value < kMaxFailureLogs) {
           log_counter.store(counter_value + 1, std::memory_order_relaxed);
           LOG(WARNING)
               << "Allocator (" << Name() << ") ran out of memory trying "
               << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
-              << " with freed_by_count=" << freed_by_count
-              << ". The caller indicates that this is not a failure, but"
-              << " may mean that there could be performance gains if more"
-              << " memory were available.";
+              << " with freed_by_count=" << freed_by_count << "."
+              << (!allocation_attr.retry_on_failure
+                      ? " The caller indicates that this is not a failure, but"
+                        " this may mean that there could be performance gains "
+                        "if more memory were available."
+                      : "");
         }
       }
       return res;
@@ -303,7 +320,7 @@ size_t BFCAllocator::RoundedBytes(size_t bytes) {
 bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes)
     TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
   // Do nothing if garbage collection is off.
-  if (!garbage_collection_) {
+  if (!opts_.garbage_collection) {
     return false;
   }
 
@@ -547,17 +564,17 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         RemoveFreeChunkIterFromBin(&b->free_chunks, citer);
 
         // If we can break the size of the chunk into two reasonably large
-        // pieces, do so.  In any case don't waste more than a threshold of
-        // kMaxInternalFragmentation bytes on padding this alloc. If this
-        // threshold is not set by the user, then use 128MB as the default
-        // threshold.
-        const int64_t kMaxInternalFragmentation =
-            (internal_fragmentation_fraction_ > 0.0)
-                ? internal_fragmentation_fraction_ * memory_limit_
+        // pieces, do don't waste more than max_internal_fragmentation_bytes on
+        // padding. If this threshold is not set by the user, then use 128MB as
+        // the default.
+        const int64_t max_internal_fragmentation_bytes =
+            (opts_.fragmentation_fraction > 0.0)
+                ? opts_.fragmentation_fraction * memory_limit_
                 : 128 << 20;
+
         if (chunk->size >= rounded_bytes * 2 ||
             static_cast<int64_t>(chunk->size) - rounded_bytes >=
-                kMaxInternalFragmentation) {
+                max_internal_fragmentation_bytes) {
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }

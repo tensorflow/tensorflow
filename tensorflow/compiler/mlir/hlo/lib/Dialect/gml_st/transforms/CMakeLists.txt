@@ -1,4 +1,3 @@
-#
 # Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +30,7 @@ add_mlir_library(GmlStTilingInterface
 
 add_mlir_library(GmlStPasses
   greedy_tiling.cc
+  gml_st_to_scf.cc
 
   DEPENDS
   MLIRGmlStPassIncGen
@@ -43,4 +43,32 @@ add_mlir_library(GmlStPasses
   MLIRIR
   MLIRPass
   MLIRSupport
+)
+
+add_mlir_library(GmlStTransforms
+  transforms.cc
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MLIRAffine
+  MLIRDialectUtils
+  MLIRIR
+  MLIRSCFUtils
+)
+
+add_mlir_library(GmlStTestPasses
+  test_passes.cc
+
+  DEPENDS
+  MLIRGmlStTestPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  GmlStTransforms
+  MLIRPass
+  MLIRTransforms
 )

@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -114,13 +115,6 @@ void BaseRendezvousMgr::Cleanup(int64_t step_id) {
   }
   if (rendez) {
     StartAbortRendevous(rendez, errors::Aborted("Cleanup ", step_id));
-  }
-}
-
-void BaseRendezvousMgr::CleanupAll() {
-  mutex_lock l(mu_);
-  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
-    iter->second->Unref();
   }
 }
 
@@ -414,7 +408,8 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
       for (auto& call : cm_and_token_and_calls.second.second) {
         call->StartAbort(derived_status);
       }
-      calls_[cm_and_token_and_calls.first].second.clear();
+      auto* cm = cm_and_token_and_calls.first;
+      calls_[cm].second.clear();
     }
     calls_.clear();
   }
@@ -447,6 +442,12 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
               errors::Cancelled("RecvFromRemoteAsync is cancelled."));
         }
       });
+
+      if (!already_cancelled) {
+        calls_.emplace(
+            cm,
+            std::make_pair(token, absl::flat_hash_set<BaseRecvTensorCall*>{}));
+      }
     }
   }
 
@@ -454,11 +455,6 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
     call->StartAbort(errors::Cancelled("RecvFromRemoteAsync is cancelled."));
   } else {
     mutex_lock l(calls_mu_);
-    if (calls_.find(cm) == calls_.end()) {
-      calls_.emplace(
-          cm, std::make_pair(
-                  token, std::unordered_set<BaseRecvTensorCall*>{}));  // NOLINT
-    }
     bool emplaced = calls_[cm].second.emplace(call).second;
     CHECK(emplaced);  // Crash OK.
   }

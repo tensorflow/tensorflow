@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -54,14 +54,14 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::AffineDialect, mlir::arith::ArithmeticDialect,
                       mlir::memref::MemRefDialect, mlir::StandardOpsDialect>();
-  mlir::OwningModuleRef mlir_module(
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
   mlir::FuncOp function =
       EmitConvolutionForwardAsMlir(conv, "Conv", &context).ValueOrDie();
 
   mlir_module->push_back(function);
-  (void)mlir_module->verify();
+  (void)mlir_module->verifyInvariants();
 
   std::string mlir_text;
   {
@@ -73,7 +73,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
   {
     mlir::PassManager pm(mlir_module->getContext());
     pm.addPass(mlir::createLowerAffinePass());
-    pm.addPass(mlir::createLowerToCFGPass());
+    pm.addPass(mlir::createConvertSCFToCFPass());
     pm.addPass(mlir::createMemRefToLLVMPass());
     pm.addPass(mlir::createLowerToLLVMPass());
     CHECK(mlir::succeeded(pm.run(*mlir_module)));

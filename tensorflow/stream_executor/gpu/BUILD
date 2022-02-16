@@ -65,7 +65,7 @@ cc_library(
 
 cc_library(
     name = "gpu_driver_header",
-    hdrs = ["gpu_driver.h"],
+    hdrs = if_gpu_is_configured(["gpu_driver.h"]),
     visibility = [
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/core/util/autotune_maps:__subpackages__",
@@ -85,12 +85,12 @@ cc_library(
 cc_library(
     name = "gpu_event_header",
     hdrs = if_gpu_is_configured(["gpu_event.h"]),
-    deps = [
+    deps = if_gpu_is_configured([
         ":gpu_driver_header",
         ":gpu_stream_header",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor/lib",
-    ],
+    ]),
 )
 
 cc_library(

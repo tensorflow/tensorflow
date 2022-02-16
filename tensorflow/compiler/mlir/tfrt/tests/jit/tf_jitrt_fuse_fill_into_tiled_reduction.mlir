@@ -60,7 +60,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<
 
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D:.*]]
 // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[DIM_0]]] : [[TY_1D:.*]]
-// CHECK:      %[[INIT_TILE:.*]] = linalg.init_tensor [2] : tensor<2xf32>
+// CHECK:      %[[INIT_TILE:.*]] = linalg.init_tensor [4] : tensor<4xf32>
 // CHECK:      %[[FILL:.*]] = linalg.fill(%[[C0_F32]], %[[INIT]])
 // CHECK:      %[[DIM_0_:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D]]
 // CHECK:      %[[DIM_1:.*]] = tensor.dim %[[LHS]], %[[C1]] : [[TY_2D]]
@@ -70,7 +70,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<
 // CHECK-SAME:   ins (%[[LHS_:.*]] = %[[LHS]]: [[TY_2D]],
 // CHECK-SAME:        %[[RHS_:.*]] = %[[RHS]]: [[TY_2D]])
 // CHECK-SAME:   outs (%[[OUT_:.*]] = %[[FILL]]: [[TY_1D]],
-// CHECK-SAME:         %[[INIT_TILE_:.*]] = %[[INIT_TILE]]: tensor<2xf32>)
+// CHECK-SAME:         %[[INIT_TILE_:.*]] = %[[INIT_TILE]]: tensor<4xf32>)
 
 // CHECK:      %[[LHS_SUB:.*]] = tensor.extract_slice %[[LHS_]][%[[I]], %[[J]]]
 // CHECK:      %[[RHS_SUB:.*]] = tensor.extract_slice %[[RHS_]][%[[I]], %[[J]]]
@@ -95,7 +95,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<
 
 // CHECK:      %[[INIT_TILE_UPDATE:.*]] = tensor.insert_slice %[[SUM_SUB:.*]] into %[[INIT_TILE_]]
 // CHECK:      %[[UPDATE:.*]] = tensor.insert_slice %[[ACC:.*]] into %[[OUT_]]
-// CHECK:      linalg.yield %[[UPDATE]], %[[INIT_TILE_UPDATE]] : [[TY_1D]], tensor<2xf32>
+// CHECK:      linalg.yield %[[UPDATE]], %[[INIT_TILE_UPDATE]] : [[TY_1D]], tensor<4xf32>
 
 // -----
 

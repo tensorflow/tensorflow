@@ -16,6 +16,8 @@ limitations under the License.
 // This file implements logic for fusing linalg ops obtained after LHLO
 // lowering.
 
+#include <utility>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
@@ -166,7 +168,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       }
     });
     auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+      return signalPassFailure();
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
@@ -187,7 +190,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       }
 
       auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+        return signalPassFailure();
     }
     for (auto* e : erase_set) e->erase();
   }

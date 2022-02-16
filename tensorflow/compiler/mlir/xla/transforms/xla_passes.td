@@ -15,7 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def PrepareForExportPass : FunctionPass<"xla-prepare-for-export"> {
+def PrepareForExportPass : Pass<"xla-prepare-for-export", "mlir::FuncOp"> {
   let summary = "Prepare for XLA export";
 
   let description = [{

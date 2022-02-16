@@ -237,6 +237,9 @@ cc_library(
     name = "weights_layout",
     srcs = ["weights_layout.cc"],
     hdrs = ["weights_layout.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+    ],
 )
 
 cc_library(

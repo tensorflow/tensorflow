@@ -51,7 +51,7 @@ namespace {
 // computation.
 struct FusedKernelMatcherPass
     : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 bool IsActivationFunction(Operation *op) {
@@ -244,10 +244,10 @@ class FuseMatMulBiasAdd
   }
 };
 
-void FusedKernelMatcherPass::runOnFunction() {
+void FusedKernelMatcherPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
-  patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
+  auto func = getOperation();
+  patterns.add<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

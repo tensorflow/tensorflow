@@ -23,7 +23,7 @@ namespace tensorflow {
 namespace data {
 
 StatusOr<DatasetBase*> GetFinalizedDataset(OpKernelContext* ctx,
-                                           DatasetBase* dataset) {
+                                           const DatasetBase* dataset) {
   return dataset->Finalize(
       ctx, [ctx, dataset]() -> StatusOr<core::RefCountPtr<DatasetBase>> {
         core::RefCountPtr<DatasetBase> dataset_ref_ptr;

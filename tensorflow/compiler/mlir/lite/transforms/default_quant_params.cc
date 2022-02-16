@@ -45,7 +45,7 @@ namespace TFL {
 
 namespace {
 class DefaultQuantParamsPass
-    : public PassWrapper<DefaultQuantParamsPass, FunctionPass> {
+    : public PassWrapper<DefaultQuantParamsPass, OperationPass<FuncOp>> {
  public:
   explicit DefaultQuantParamsPass(double default_min, double default_max,
                                   bool is_signed)
@@ -53,7 +53,7 @@ class DefaultQuantParamsPass
         default_max_(default_max),
         is_signed_(is_signed) {}
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -101,8 +101,8 @@ class DefaultQuantParamsPass
 };
 }  // namespace
 
-void DefaultQuantParamsPass::runOnFunction() {
-  FuncOp func = getFunction();
+void DefaultQuantParamsPass::runOnOperation() {
+  FuncOp func = getOperation();
   OpBuilder builder(func);
 
   std::vector<Value> activation_values;

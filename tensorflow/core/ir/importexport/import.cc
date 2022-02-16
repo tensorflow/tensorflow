@@ -84,6 +84,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 #define DEBUG_TYPE "graphdef-to-mlir"
 
@@ -591,7 +592,7 @@ Status GraphImporter::ConvertNode(const Node& node) {
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
                         ConvertAttributeValue(tf_attr, builder_, dialect_));
-    result.addAttribute(name, attr);
+    result.addAttribute(PromoteToTFGAttribute(name), attr);
   }
   Attribute assigned_device =
       result.attributes.get(dialect_->getAssignedDeviceAttrIdentifier());
@@ -757,12 +758,92 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                  builder.getI32TensorAttr(resource_arg_unique_ids_values));
   }
 
-  llvm::SmallVector<Type> arg_types;
-  llvm::SmallString<8> arg_or_res_attr_name;
+  SmallVector<Value> ret_operands;
+  SmallVector<Type> ret_types;
+  SmallVector<Attribute> control_ret_attrs;
   {
-    llvm::SmallVector<Attribute> arg_attrs;
+    SmallVector<Attribute> res_attrs;
+    ret_types.reserve(fbody->ret_types.size() * 2);
+    for (Node* ret : fbody->ret_nodes) {
+      // Find node in the graph using the node id instead of using `arg`
+      // directly because the graph has been cloned.
+      Operation* ret_op = importer.GetOperationForNode(ret->id());
+      if (!ret_op) return Internal("Missing mapping for return #", ret->id());
+      if (ret_op->getName().getStringRef() != "tfg._Retval" &&
+          ret_op->getName().getStringRef() != "tfg._DeviceRetval")
+        return InvalidArgument("Expect `_Retval` node but got ",
+                               ret_op->getName().getStringRef().str());
+      if (ret_op->getNumOperands() != 1)
+        return InvalidArgument(
+            "Expect `_Retval` node to have a single input, got ",
+            ret_op->getNumOperands());
+
+      ret_operands.push_back(ret_op->getOperand(0));
+      ret_types.push_back(ret_op->getOperand(0).getType());
+      ret_op->erase();
+
+      NamedAttrList output_attrs;
+      int64_t index;
+      TF_RETURN_IF_ERROR(GetNodeAttr(ret->attrs(), "index", &index));
+      const OpDef_ArgDef& output = signature.output_arg(index);
+      output_attrs.append("tfg.name", builder.getStringAttr(output.name()));
+      Type output_type;
+      if (output.type() != tensorflow::DT_INVALID) {
+        TF_RETURN_IF_ERROR(
+            ConvertDataType(output.type(), builder, &output_type));
+        output_attrs.append("tfg.dtype", TypeAttr::get(output_type));
+      }
+      if (!output.description().empty())
+        output_attrs.append("tfg.description",
+                            builder.getStringAttr(output.description()));
+      if (output.handle_data_size()) {
+        TF_ASSIGN_OR_RETURN(Attribute handle_data,
+                            ConvertHandleData(builder, output.handle_data()));
+        output_attrs.append("tfg.handle_data", handle_data);
+      }
+      res_attrs.push_back(output_attrs.getDictionary(context));
+    }
+    attrs.push_back(
+        builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
+                             builder.getArrayAttr(res_attrs)));
+    DenseMap<StringRef, Node*> control_ret_nodes;
+    for (Node* node : fbody->control_ret_nodes)
+      control_ret_nodes.insert({node->name(), node});
+
+    for (const std::string& sig_name : signature.control_output()) {
+      auto it = fdef.control_ret().find(sig_name);
+      if (it == fdef.control_ret().end())
+        return InvalidArgument(
+            "Signature control_output not found in fdef.control_ret: ",
+            sig_name);
+      Node* ret = control_ret_nodes[it->second];
+      if (!ret)
+        return InvalidArgument(
+            "Control return node '", it->second,
+            "' not found in the graph for signature control output '", sig_name,
+            "'");
+      // Find node in the graph using the node id instead of using `arg`
+      // directly because the graph has been cloned.
+      Operation* control_ret_op = importer.GetOperationForNode(ret->id());
+      if (!control_ret_op)
+        return Internal("Missing mapping for control result '", sig_name, "'");
+      ret_operands.push_back(TFOp(control_ret_op).controlRet());
+      control_ret_attrs.push_back(builder.getDictionaryAttr(
+          NamedAttribute(tfgDialect->getTfgNameAttrIdentifier(),
+                         builder.getStringAttr(sig_name))));
+    }
+  }
+
+  builder = OpBuilder::atBlockEnd(func_op.getBody());
+  builder.create<ReturnOp>(module.getLoc(), ret_operands,
+                           builder.getArrayAttr(control_ret_attrs));
+
+  SmallVector<Type> arg_types;
+  SmallString<8> arg_or_res_attr_name;
+  {
+    SmallVector<Attribute> arg_attrs;
     arg_types.reserve(fbody->arg_types.size() * 2);
-    for (auto enumerated_arg : llvm::enumerate(fbody->arg_nodes)) {
+    for (auto& enumerated_arg : llvm::enumerate(fbody->arg_nodes)) {
       int arg_id = enumerated_arg.index();
       Node* arg = enumerated_arg.value();
       // Find node in the graph using the node id instead of using `arg`
@@ -824,91 +905,9 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                              builder.getArrayAttr(arg_attrs)));
   }
 
-  llvm::SmallVector<Value> ret_operands;
-  llvm::SmallVector<Type> ret_types;
-  NamedAttrList return_attrs;
-  {
-    llvm::SmallVector<Attribute> res_attrs;
-    ret_types.reserve(fbody->ret_types.size() * 2);
-    for (Node* ret : fbody->ret_nodes) {
-      // Find node in the graph using the node id instead of using `arg`
-      // directly because the graph has been cloned.
-      Operation* ret_op = importer.GetOperationForNode(ret->id());
-      if (!ret_op) return Internal("Missing mapping for return #", ret->id());
-      if (ret_op->getName().getStringRef() != "tfg._Retval" &&
-          ret_op->getName().getStringRef() != "tfg._DeviceRetval")
-        return InvalidArgument("Expect `_Retval` node but got ",
-                               ret_op->getName().getStringRef().str());
-      if (ret_op->getNumOperands() != 1)
-        return InvalidArgument(
-            "Expect `_Retval` node to have a single input, got ",
-            ret_op->getNumOperands());
-
-      ret_operands.push_back(ret_op->getOperand(0));
-      ret_types.push_back(ret_op->getOperand(0).getType());
-      ret_op->erase();
-
-      NamedAttrList output_attrs;
-      int64_t index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(ret->attrs(), "index", &index));
-      const OpDef_ArgDef& output = signature.output_arg(index);
-      output_attrs.append("tfg.name", builder.getStringAttr(output.name()));
-      Type output_type;
-      if (output.type() != tensorflow::DT_INVALID) {
-        TF_RETURN_IF_ERROR(
-            ConvertDataType(output.type(), builder, &output_type));
-        output_attrs.append("tfg.dtype", TypeAttr::get(output_type));
-      }
-      if (!output.description().empty())
-        output_attrs.append("tfg.description",
-                            builder.getStringAttr(output.description()));
-      if (output.handle_data_size()) {
-        TF_ASSIGN_OR_RETURN(Attribute handle_data,
-                            ConvertHandleData(builder, output.handle_data()));
-        output_attrs.append("tfg.handle_data", handle_data);
-      }
-      res_attrs.push_back(output_attrs.getDictionary(context));
-    }
-    attrs.push_back(
-        builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
-                             builder.getArrayAttr(res_attrs)));
-    DenseMap<StringRef, Node*> control_ret_nodes;
-    for (Node* node : fbody->control_ret_nodes)
-      control_ret_nodes.insert({node->name(), node});
-    for (const auto& enumerated_ret :
-         llvm::enumerate(signature.control_output())) {
-      int ret_id = enumerated_ret.index();
-      const std::string& sig_name = enumerated_ret.value();
-      auto it = fdef.control_ret().find(sig_name);
-      if (it == fdef.control_ret().end())
-        return InvalidArgument(
-            "Signature control_output not found in fdef.control_ret: ",
-            sig_name);
-      Node* ret = control_ret_nodes[it->second];
-      if (!ret)
-        return InvalidArgument(
-            "Control return node '", it->second,
-            "' not found in the graph for signature control output '", sig_name,
-            "'");
-      // Find node in the graph using the node id instead of using `arg`
-      // directly because the graph has been cloned.
-      Operation* control_ret_op = importer.GetOperationForNode(ret->id());
-      ret_operands.push_back(
-          control_ret_op->getResult(control_ret_op->getNumResults() - 1));
-      return_attrs.append(
-          absl::StrCat("tfg.control_ret_name_", res_attrs.size() + ret_id),
-          builder.getStringAttr(fdef.signature().control_output(ret_id)));
-    }
-  }
-
   func_op->setAttrs(attrs);
-
   func_op->setAttr(
       "type", TypeAttr::get(builder.getFunctionType(arg_types, ret_types)));
-
-  builder = OpBuilder::atBlockEnd(func_op.getBody());
-  builder.create<ReturnOp>(module.getLoc(), ret_operands)
-      ->setAttrs(return_attrs);
 
   return func_op;
 }
@@ -947,12 +946,13 @@ tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
 }
 // Convert a Graph and function libs to a MLIR module containing the graph and
 // expressed in TFG dialect.
-tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
+tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
     MLIRContext* context, const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
   LoadDialects(context);
   // Create the graph operation in which we will convert the individual nodes.
-  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
+  OwningOpRef<mlir::ModuleOp> module =
+      ModuleOp::create(UnknownLoc::get(context));
   OpBuilder builder = OpBuilder::atBlockEnd(module->getBody());
 
   auto graph_op = builder.create<GraphOp>(
@@ -965,16 +965,15 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
 
   llvm::StringMap<llvm::StringMap<SmallVector<Value, 1>>> values_map;
   for (const std::string& name : flib_def.ListFunctionNames()) {
-    const llvm::StringMap<std::string> gradients;
     const FunctionDef* fdef = flib_def.Find(name);
     if (IsGenericFunction(*fdef)) {
       TF_RETURN_IF_ERROR(ConvertGenericFunction(*fdef, builder));
     } else {
-      TF_ASSIGN_OR_RETURN(
-          GraphFuncOp imported_func,
-          ImportFunctionDef(module.get(), debug_info, flib_def, *fdef,
-                            /*instantiation_attributes=*/{}));
-      (void)imported_func;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          ImportFunctionDef(*module, debug_info, flib_def, *fdef,
+                            /*instantiation_attributes=*/{})
+              .status(),
+          "While importing FunctionDef: ", fdef->signature().name());
     }
   }
   return module;
@@ -982,7 +981,7 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
 
 // Convert a GraphDef to a MLIR module containing the graph and expressed in TFG
 // dialect.
-tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
+tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphDefToMlir(
     MLIRContext* context, const GraphDebugInfo& debug_info,
     const GraphDef& graphdef) {
   VLOG(4) << "ConvertGraphdefToMlir begin";
@@ -995,6 +994,24 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(options, graphdef, &graph));
   return ImportGraphAndFunctionsToMlir(context, graph, debug_info,
                                        graph.flib_def());
+}
+
+tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelToMlir(
+    mlir::MLIRContext* context, const tensorflow::GraphDebugInfo& debug_info,
+    const tensorflow::SavedModel& saved_model) {
+  if (saved_model.meta_graphs_size() == 0) {
+    return tensorflow::errors::InvalidArgument(
+        "Input saved model has no meta graphs");
+  }
+
+  if (saved_model.meta_graphs_size() > 1) {
+    return tensorflow::errors::InvalidArgument(
+        "Input saved model has more than one meta graph, currently not "
+        "supported");
+  }
+
+  const auto& graphdef = saved_model.meta_graphs(0).graph_def();
+  return ImportGraphDefToMlir(context, debug_info, graphdef);
 }
 
 }  // namespace tfg

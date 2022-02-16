@@ -60,6 +60,20 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+
+namespace {
+// This object tracks the EagerContext owned by global_py_eager_context in
+// pywrap_tfe_src.cc. Since the vast majority of the Python API is dependent on
+// that global_py_eager_context (including memory management), the Py object
+// owns the C object, so this pointer is non-owning.
+EagerContext* global_c_eager_context = nullptr;
+
+}  // namespace
+
+void SetCEagerContext(EagerContext* ctx) { global_c_eager_context = ctx; }
+
+EagerContext* GetCEagerContext() { return global_c_eager_context; }
+
 namespace {
 
 bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
@@ -647,21 +661,6 @@ EagerContext::~EagerContext() {
   if (!remote_contexts_.empty()) {
     CloseAndClearAllRemoteContexts();
   }
-
-  // Clean up all the rendezvous instances created via EagerContext.
-  // Currently there are 3 cases in which a rendezvous instances is created:
-  // (1). Created through a rendezvous_creator passed to EagerContext.
-  // (2). Created through rendezvous_mgr.
-  // (3). Created within EagerContext using LocalRendezvousTable.
-  //
-  // Currently case-(3) is taken care of automatically when an EagerContext
-  // instance is deleted. The following code takes care of case-(2). Case-(1)
-  // is tricky as EagerContext does not have a way to access those rendezvous
-  // instances.
-  // TODO (tfrt-dev): Take care of case-(1) mentioned above.
-  if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
-    worker_env_->rendezvous_mgr->CleanupAll();
-  }
 #endif  // !IS_MOBILE_PLATFORM
 
   if (rendezvous_) {
@@ -939,6 +938,7 @@ std::vector<string> EagerContext::ListFunctionNames() {
 }
 
 Status EagerContext::RemoveFunction(const string& func) {
+  // TODO(mdan): The context owns these functions. Why check refcount then?
   bool is_last_ref = false;
   {
     mutex_lock l(cache_mu_);

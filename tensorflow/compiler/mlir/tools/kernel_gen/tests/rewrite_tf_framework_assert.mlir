@@ -14,7 +14,7 @@ func @assert(%ctx: !tf_framework.op_kernel_context)
   return %unranked_f32, %unranked_i32 : memref<*xf32>, memref<*xi32>
 }
 // CHECK:   [[TRUE:%.*]] = arith.constant true
-// CHECK:   cond_br [[TRUE]], ^bb1, ^bb2
+// CHECK:   cf.cond_br [[TRUE]], ^bb1, ^bb2
 // CHECK: ^bb1:
 // CHECK:   [[BUF_F32:%.*]] = tf_framework.alloc([[CTX]]) : memref<2xf32>
 // CHECK:   [[OUT_F32:%.*]] = memref.cast [[BUF_F32]]
@@ -44,9 +44,9 @@ func @double_assert(%ctx: !tf_framework.op_kernel_context)
 }
 // CHECK-DAG:   [[TRUE:%.*]] = arith.constant true
 // CHECK-DAG:   [[FALSE:%.*]] = arith.constant false
-// CHECK:   cond_br [[TRUE]], ^bb1, ^bb3
+// CHECK:   cf.cond_br [[TRUE]], ^bb1, ^bb3
 // CHECK: ^bb1:
-// CHECK:   cond_br [[FALSE]], ^bb2, ^bb4
+// CHECK:   cf.cond_br [[FALSE]], ^bb2, ^bb4
 // CHECK: ^bb2:
 // CHECK:   [[BUF:%.*]] = tf_framework.alloc([[CTX]]) : memref<2xf32>
 // CHECK:   [[OUT:%.*]] = memref.cast [[BUF]]

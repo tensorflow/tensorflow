@@ -55,6 +55,7 @@ class ConvolutionTransposed4x4 : public GPUOperation {
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
+    desc.type = DeduceDataTypeFromPrecision(definition_.precision);
     desc.layout = weights_layout_;
     desc.spatial_remap = GetSpatialWeightsRemap();
     return desc;

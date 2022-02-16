@@ -314,12 +314,12 @@ class ShapeEqualityKnowledge {
 struct PropagateShapeKnowledgeToKernels
     : public PropagateShapeKnowledgeToKernelsBase<
           PropagateShapeKnowledgeToKernels> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     ShapeEqualityKnowledge knowledge;
 
-    knowledge.build(getFunction());
+    knowledge.build(getOperation());
 
-    getFunction().walk([&](gpu::LaunchFuncOp launch) {
+    getOperation().walk([&](gpu::LaunchFuncOp launch) {
       auto module = launch->getParentOfType<ModuleOp>();
       auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
 
@@ -374,7 +374,8 @@ struct PropagateShapeKnowledgeToKernels
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreatePropagateShapeKnowledgeToKernels() {
+std::unique_ptr<OperationPass<FuncOp>>
+CreatePropagateShapeKnowledgeToKernels() {
   return std::make_unique<PropagateShapeKnowledgeToKernels>();
 }
 

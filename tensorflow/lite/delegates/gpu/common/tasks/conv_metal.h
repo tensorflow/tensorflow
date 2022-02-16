@@ -72,6 +72,7 @@ class ConvolutionMetal : public GPUOperation {
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
+    desc.type = DeduceDataTypeFromPrecision(definition_.precision);
     desc.layout = params_.weights_layout;
     desc.output_group_size = params_.block_size.z;
     return desc;

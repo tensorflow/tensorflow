@@ -120,6 +120,7 @@ cuda_py_test(
     srcs = ["random_gamma_test.py"],
     shard_count = 4,
     tags = [
+        "no_windows",  # TODO(b/218876472)
         "nomsan",  # b/216320808
         "nozapfhahn",
     ],

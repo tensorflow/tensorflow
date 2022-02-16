@@ -185,13 +185,13 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
 // Hooks for tf-mlir-translate
 //----------------------------------------------------------------------------/
 
-static mlir::OwningModuleRef HloToMlirHloTranslate(llvm::StringRef input,
-                                                   mlir::MLIRContext* context) {
+static mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslate(
+    llvm::StringRef input, mlir::MLIRContext* context) {
   return xla::HloToMlirHloTranslateFunction(input, context,
                                             import_all_computations);
 }
 
-static mlir::OwningModuleRef HloTextToMlirHloTranslate(
+static mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslate(
     llvm::StringRef input, mlir::MLIRContext* context) {
   return xla::HloTextToMlirHloTranslateFunction(input, context,
                                                 import_all_computations);

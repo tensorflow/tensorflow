@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -88,9 +89,6 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   // TODO(zhifengc): Have a background thread in worker that
   // periodically calls CleanupAll().
   void Cleanup(int64_t step_id) override;
-
-  // Remove all rendezvous instances owned by the rendezvous_mgr.
-  void CleanupAll() override;
 
  protected:
   virtual BaseRemoteRendezvous* Create(int64_t step_id,
@@ -213,10 +211,9 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   // manager.
   //
   // Note: pointer to CancellationManager can be nullptr in certain use cases.
-  std::unordered_map<
+  absl::flat_hash_map<
       CancellationManager*,
-      std::pair<CancellationToken,
-                std::unordered_set<BaseRecvTensorCall*>>>  // NOLINT
+      std::pair<CancellationToken, absl::flat_hash_set<BaseRecvTensorCall*>>>
       calls_ TF_GUARDED_BY(calls_mu_);
 
   bool is_initialized_locked() TF_SHARED_LOCKS_REQUIRED(mu_) {

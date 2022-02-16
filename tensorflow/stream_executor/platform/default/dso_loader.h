@@ -53,6 +53,9 @@ port::StatusOr<void*> GetHipfftDsoHandle();
 port::StatusOr<void*> GetRocrandDsoHandle();
 port::StatusOr<void*> GetRoctracerDsoHandle();
 port::StatusOr<void*> GetRocsolverDsoHandle();
+#if TF_ROCM_VERSION >= 40500
+port::StatusOr<void*> GetHipsolverDsoHandle();
+#endif
 port::StatusOr<void*> GetHipsparseDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();
 
@@ -88,6 +91,9 @@ port::StatusOr<void*> GetMiopenDsoHandle();
 port::StatusOr<void*> GetHipfftDsoHandle();
 port::StatusOr<void*> GetRocrandDsoHandle();
 port::StatusOr<void*> GetRocsolverDsoHandle();
+#if TF_ROCM_VERSION >= 40500
+port::StatusOr<void*> GetHipsolverDsoHandle();
+#endif
 port::StatusOr<void*> GetRoctracerDsoHandle();
 port::StatusOr<void*> GetHipsparseDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();

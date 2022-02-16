@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/internal/tensor_utils_common.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict

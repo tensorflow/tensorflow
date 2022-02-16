@@ -526,6 +526,15 @@ std::unique_ptr<Graph> Graph::Clone() {
   return new_graph;
 }
 
+void Graph::Clear() {
+  // Do a direct iteration clearing nodes removing the RemoveNode helper method.
+  // This could avoid this helper and clear directly if it becomes performance
+  // sensitive.
+  for (Node* n : nodes()) {
+    if (!n->IsSource() && !n->IsSink()) RemoveNode(n);
+  }
+}
+
 const VersionDef& Graph::versions() const { return *versions_; }
 void Graph::set_versions(const VersionDef& versions) { *versions_ = versions; }
 

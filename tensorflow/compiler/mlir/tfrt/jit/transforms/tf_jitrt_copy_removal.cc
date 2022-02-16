@@ -23,15 +23,15 @@ namespace {
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // -------------------------------------------------------------------------- //
-// Remove redundant linalg.copy operations
+// Remove redundant memref.copy operations
 // -------------------------------------------------------------------------- //
 struct LinalgTrivialCopyRemovalPass
     : public LinalgTrivialCopyRemovalBase<LinalgTrivialCopyRemovalPass> {
-  void runOnFunction() override {
-    mlir::FuncOp function = getFunction();
+  void runOnOperation() override {
+    mlir::FuncOp function = getOperation();
 
     mlir::SmallVector<mlir::Operation*> to_erase;
-    function.walk([&to_erase](mlir::linalg::CopyOp copy) {
+    function.walk([&to_erase](mlir::memref::CopyOp copy) {
       // Only match precise alloc/copy/dealloc triples.
       auto alloc = llvm::dyn_cast<mlir::memref::AllocOp>(copy->getPrevNode());
       auto dealloc =
@@ -60,7 +60,8 @@ struct LinalgTrivialCopyRemovalPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateLinalgTrivialCopyRemovalPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateLinalgTrivialCopyRemovalPass() {
   return std::make_unique<LinalgTrivialCopyRemovalPass>();
 }
 

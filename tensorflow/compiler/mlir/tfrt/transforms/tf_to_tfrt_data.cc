@@ -248,8 +248,8 @@ class TFToTFRTDataRewritePass
       return data_converter.isSignatureLegal(op.getType());
     });
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.insert<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
-                    ConstOpConversion, ReturnOpConversion>(context);
+    patterns.add<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
+                 ConstOpConversion, ReturnOpConversion>(context);
     mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
         patterns, data_converter);
 
@@ -276,9 +276,9 @@ void CreateTFExecutorToTFRTDataPipeline(mlir::OpPassManager &pm) {
   pm.addPass(CreateTFToTFRTDataConversionPass());
 }
 
-Status TFDataGraphDefToTFDataMLIR(const GraphDef &graph_def,
-                                  mlir::MLIRContext *mlir_ctx,
-                                  mlir::OwningModuleRef *module_ref) {
+Status TFDataGraphDefToTFDataMLIR(
+    const GraphDef &graph_def, mlir::MLIRContext *mlir_ctx,
+    mlir::OwningOpRef<mlir::ModuleOp> *module_ref) {
   // Import to TF dialect
   string output_node;
   for (const auto &node : graph_def.node()) {
@@ -330,7 +330,7 @@ std::unique_ptr<mlir::Pass> CreateTFToTFRTDataConversionPass() {
 Status TFDataGraphDefToHostBEF(const GraphDef &graph_def,
                                tfrt::BefBuffer *bef) {
   mlir::MLIRContext mlir_ctx;
-  mlir::OwningModuleRef module_ref;
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref;
   TF_RETURN_IF_ERROR(
       TFDataGraphDefToTFDataMLIR(graph_def, &mlir_ctx, &module_ref));
   TF_RETURN_IF_ERROR(CompileTFDataMLIRToBEF(module_ref.get(), bef));

@@ -54,7 +54,7 @@ namespace TFL {
 namespace {
 
 struct LegalizeJaxRandomPass
-    : public PassWrapper<LegalizeJaxRandomPass, FunctionPass> {
+    : public PassWrapper<LegalizeJaxRandomPass, OperationPass<FuncOp>> {
  public:
   StringRef getArgument() const final { return "tfl-legalize-random"; }
   StringRef getDescription() const final {
@@ -64,7 +64,7 @@ struct LegalizeJaxRandomPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 inline OpaqueElementsAttr CustomOption(ImplicitLocOpBuilder *builder,
@@ -84,8 +84,8 @@ inline bool IsJaxRandomNormal(mlir::FuncOp func) {
   return func.getName().contains("tfl_wrapped_jax_random_normal");
 }
 
-void LegalizeJaxRandomPass::runOnFunction() {
-  auto func = getFunction();
+void LegalizeJaxRandomPass::runOnOperation() {
+  auto func = getOperation();
   if (!IsJaxRandomUniform(func) && !IsJaxRandomNormal(func)) return;
   auto result_tuple_ty =
       func.getType().getResult(0).dyn_cast_or_null<TupleType>();

@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -31,10 +30,10 @@ std::vector<const OpMetrics*> SortedOpMetricsDb(const OpMetricsDb& metrics_db,
 template <typename Record>
 inline void SetExecutionTimes(const OpMetrics& metrics, Record* record) {
   record->set_occurrences(metrics.occurrences());
-  record->set_total_time_in_us(PicosToMicros(metrics.time_ps()));
+  record->set_total_time_in_us(PicoToMicro(metrics.time_ps()));
   record->set_avg_time_in_us(
       SafeDivide(record->total_time_in_us(), metrics.occurrences()));
-  record->set_total_self_time_in_us(PicosToMicros(metrics.self_time_ps()));
+  record->set_total_self_time_in_us(PicoToMicro(metrics.self_time_ps()));
   record->set_avg_self_time_in_us(
       SafeDivide(record->total_self_time_in_us(), metrics.occurrences()));
 }
@@ -84,11 +83,11 @@ template <typename Record>
 inline void SetRooflineMetrics(const OpMetrics& metrics,
                                double ridge_point_operational_intensity,
                                Record* record) {
-  using ::tensorflow::profiler::PicosToNanos;
+  using ::tensorflow::profiler::PicoToNano;
   record->set_measured_flop_rate(
-      SafeDivide(metrics.flops(), PicosToNanos(metrics.time_ps())));
+      SafeDivide(metrics.flops(), PicoToNano(metrics.time_ps())));
   record->set_measured_memory_bw(
-      SafeDivide(metrics.bytes_accessed(), PicosToNanos(metrics.time_ps())));
+      SafeDivide(metrics.bytes_accessed(), PicoToNano(metrics.time_ps())));
   record->set_operational_intensity(
       SafeDivide(metrics.flops(), metrics.bytes_accessed()));
   record->set_bound_by((metrics.bytes_accessed() != 0)

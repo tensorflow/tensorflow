@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the LHLO dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H_
+#ifndef MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H
+#define MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.h"
@@ -60,4 +60,4 @@ class LmhloDialect : public Dialect {
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H_
+#endif  // MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_H

@@ -130,6 +130,7 @@ cc_library(
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),
@@ -609,6 +610,7 @@ tf_cuda_library(
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
         "convert/ops/data_format_vec_permute.cc",
+        "convert/ops/einsum.cc",
         "convert/ops/quantization_ops.cc",
         "convert/ops/slice_ops.cc",
         "convert/trt_optimization_pass.cc",
@@ -959,6 +961,7 @@ pybind_extension(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor",
         "@pybind11",
     ],
 )

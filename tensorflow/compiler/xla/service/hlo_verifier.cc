@@ -1432,6 +1432,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
@@ -1547,6 +1548,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:
+      case HloOpcode::kOptimizationBarrier:
       case HloOpcode::kParameter:
       case HloOpcode::kRecv:
       case HloOpcode::kRecvDone:

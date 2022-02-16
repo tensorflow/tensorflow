@@ -41,7 +41,8 @@ namespace tac {
 namespace {
 
 struct DeviceTransformNNAPIPass
-    : public mlir::PassWrapper<DeviceTransformNNAPIPass, FunctionPass> {
+    : public mlir::PassWrapper<DeviceTransformNNAPIPass,
+                               OperationPass<FuncOp>> {
   llvm::StringRef getArgument() const final {
     return "tfl-device-transform-nnapi";
   }
@@ -51,11 +52,11 @@ struct DeviceTransformNNAPIPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void DeviceTransformNNAPIPass::runOnFunction() {
-  auto func = getFunction();
+void DeviceTransformNNAPIPass::runOnOperation() {
+  auto func = getOperation();
   auto* ctx = &getContext();
   NNAPIHardware nnapi_hardware;
   RewritePatternSet patterns = nnapi_hardware.GetTransformations(ctx);

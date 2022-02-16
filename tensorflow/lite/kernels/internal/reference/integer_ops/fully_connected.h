@@ -62,11 +62,12 @@ inline void FullyConnected(
   }
 }
 
+template <typename AccumScalar>
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
     const int16_t* input_data, const RuntimeShape& filter_shape,
     const int8_t* filter_data, const RuntimeShape& bias_shape,
-    const int64_t* bias_data, const RuntimeShape& output_shape,
+    const AccumScalar* bias_data, const RuntimeShape& output_shape,
     int16_t* output_data) {
   const int32_t filter_offset = params.weights_offset;
   const int32_t output_multiplier = params.output_multiplier;
@@ -85,7 +86,7 @@ inline void FullyConnected(
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
   for (int b = 0; b < batches; ++b) {
     for (int out_c = 0; out_c < output_depth; ++out_c) {
-      int64_t acc = 0;
+      AccumScalar acc = 0;
       for (int d = 0; d < accum_depth; ++d) {
         int32_t input_val = input_data[b * accum_depth + d];
         int32_t filter_val = filter_data[out_c * accum_depth + d];

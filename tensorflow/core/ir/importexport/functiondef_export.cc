@@ -126,9 +126,8 @@ static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
 
   auto sig_arg_attrs = arg_attrs.getAs<DictionaryAttr>("tfg.arg_attrs");
   if (arg_def_attrs && sig_arg_attrs) {
-    absl::flat_hash_set<absl::string_view> attrs_to_ignore = {};
     TF_RETURN_IF_ERROR(ConvertAttributes(
-        sig_arg_attrs.getValue(), attrs_to_ignore,
+        sig_arg_attrs.getValue(), /*attrs_to_ignore=*/{},
         /*remove_ref_type=*/false, arg_def_attrs->mutable_attr()));
   }
   return Status::OK();

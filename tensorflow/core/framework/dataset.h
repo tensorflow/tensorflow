@@ -1032,7 +1032,7 @@ class DatasetBase : public core::RefCounted {
   virtual StatusOr<DatasetBase*> Finalize(
       OpKernelContext* ctx,
       std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
-          make_finalized_dataset);
+          make_finalized_dataset) const;
 
   // Wrapper around a GraphDefBuilder which provides support for serializing
   // Datasets as GraphDefs.
@@ -1099,9 +1099,9 @@ class DatasetBase : public core::RefCounted {
   const string node_name_;
   Metadata metadata_;
   Options options_;
-  mutex mu_;
+  mutable mutex mu_;
   mutable mutex cardinality_mu_;
-  core::RefCountPtr<DatasetBase> finalized_dataset_;
+  mutable core::RefCountPtr<DatasetBase> finalized_dataset_;
   //  The number of source datasets feeding into the dataset. A source dataset
   //  is a leaf in the subtree of dataset inputs.
   int64_t num_sources_ = -1;

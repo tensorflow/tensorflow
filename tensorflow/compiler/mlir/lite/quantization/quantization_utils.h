@@ -66,18 +66,22 @@ constexpr char kVolatileOpAttrName[] = "volatile";
 constexpr char kDebugModeOpFloatAttrName[] = "debug_float";
 constexpr char kDebugModeOpQuantAttrName[] = "debug_quant";
 
+// Used to annotate custom ops if they are quantizable.
+constexpr char kQuantTraitAttrName[] = "_tfl_quant_trait";
+enum QuantizationTrait { FullyQuantizable = 0, NotQuantizable = 1 };
+constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
+                                                  "not_quantizable"};
+
 constexpr double kNearZeroTolerance = 1.0e-6;
 
-enum QuantizationTrait { FullyQuantizable, NotQuantizable };
-
 using QuantParams = quant::QuantizedType;
-using QuantSpec = mlir::TFL::QuantizationSpecs;
+using QuantSpec = mlir::quant::QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
     std::function<QuantParams(const std::vector<QuantParams>&, bool)>;
 using StringSet = absl::flat_hash_set<std::string>;
-using CustomMap = TFL::CustomOpMap;
+using CustomMap = quant::CustomOpMap;
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {
@@ -251,6 +255,42 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
   }
 };
 
+template <typename VerifierT>
+bool UsedBy(Operation* op) {
+  for (Operation* user : op->getUsers()) {
+    if (llvm::isa_and_nonnull<VerifierT>(user)) return true;
+  }
+  return false;
+}
+
+template <typename VerifierT>
+void CreateVerifier(Operation* quantizing_op, Operation* quantized_op,
+                    PatternRewriter& rewriter, int result_idx,
+                    const QuantPassSpec& quant_params) {
+  rewriter.setInsertionPointAfter(quantized_op);
+  FloatAttr tolerance = rewriter.getF32FloatAttr(
+      quant_params.numeric_verify_spec.error_tolerance);
+  BoolAttr log =
+      rewriter.getBoolAttr(quant_params.numeric_verify_spec.log_if_failed_flag);
+  // Verify the quantized value by sending the result to the verifier.
+  rewriter.create<VerifierT>(
+      quantizing_op->getLoc(), quantized_op->getResult(result_idx).getType(),
+      quantized_op->getResult(result_idx), quantizing_op->getResult(result_idx),
+      tolerance, log);
+}
+
+template <>
+inline bool UsedBy<void>(Operation* op) {
+  return false;
+}
+
+// This specialization is not going to be called, but needed for compilation.
+template <>
+inline void CreateVerifier<void>(Operation* quantizing_op,
+                                 Operation* quantized_op,
+                                 PatternRewriter& rewriter, int result_idx,
+                                 const QuantPassSpec& quant_params) {}
+
 // A base rewrite pattern which matches any N-in-M-out operations with
 // quantization parameters propagated to at least one of its operands. The
 // quantization parameters are annotated by the Q/DQ op pairs. Each
@@ -378,7 +418,7 @@ class QuantizationPattern : public RewritePattern {
 
       // An op with float inputs and outputs are expected when it's used by a
       // NumericVerify op. Skip this op.
-      if (enable_verify && usedByVerifier(quantizing_op)) {
+      if (enable_verify && UsedBy<VERIFIER>(quantizing_op)) {
         continue;
       }
 
@@ -405,7 +445,7 @@ class QuantizationPattern : public RewritePattern {
                   custom_map)) {
             // Dynamic range quantization is applied by having Q as an input.
             // Only int8 weight is supported for now.
-            inputs.push_back(dq_op.input());
+            inputs.push_back(dq_op.getOperand());
           } else {
             // Otherwise, it's the case where the operand is activations or the
             // quantizing_op is non-supported/weight-only.
@@ -413,7 +453,7 @@ class QuantizationPattern : public RewritePattern {
           }
         } else {
           if (auto dq_op = dyn_cast_or_null<DQ>(operand.getDefiningOp())) {
-            inputs.push_back(dq_op.input());
+            inputs.push_back(dq_op.getOperand());
           } else if (!ele_type.isF32()) {
             // If the operand is an integer tensor, then it doesn't require the
             // DQ op in the pattern.
@@ -445,7 +485,8 @@ class QuantizationPattern : public RewritePattern {
         // If the user is the Quantize op, it must be the only user.
         if (result.hasOneUse() && llvm::isa<Q>(*result.user_begin())) {
           auto user = llvm::cast<Q>(*result.user_begin());
-          outputs_replaced.insert({user.output(), enumerated_result.index()});
+          outputs_replaced.insert(
+              {user.getResult(), enumerated_result.index()});
           output_types.push_back(user.getType());
         } else if (!result_ele_type.isF32()) {
           // If the result is an integer tensor, then it doesn't require the
@@ -487,14 +528,14 @@ class QuantizationPattern : public RewritePattern {
       // To verify the numericals, the original floating-point ops are
       // preserved in the graph. The result of these floating-point ops are sent
       // to a numeric verifier op as the reference.
-      if (enable_verify) {
+      if (enable_verify && !std::is_same<VERIFIER, void>()) {
         // For constant operands, the floating-point constant is duplicated in
         // case it is quantized.
         for (int i = 0, e = quantized_op->getNumOperands(); i < e; ++i) {
           auto def = quantized_op->getOperand(i).getDefiningOp();
           if (auto q = llvm::dyn_cast_or_null<Q>(def)) {
             DenseFPElementsAttr attr;
-            if (!matchPattern(q.input(), m_Constant(&attr))) {
+            if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
               continue;
             }
             auto cst = rewriter.create<arith::ConstantOp>(
@@ -511,16 +552,8 @@ class QuantizationPattern : public RewritePattern {
                    .isa<FloatType>()) {
             continue;
           }
-          rewriter.setInsertionPointAfter(quantized_op);
-          FloatAttr tolerance = rewriter.getF32FloatAttr(
-              quant_params_.numeric_verify_spec.error_tolerance);
-          BoolAttr log = rewriter.getBoolAttr(
-              quant_params_.numeric_verify_spec.log_if_failed_flag);
-          // Verify the quantized value by sending the result to the verifier.
-          rewriter.create<VERIFIER>(
-              quantizing_op->getLoc(), quantized_op->getResult(i).getType(),
-              quantized_op->getResult(i), quantizing_op->getResult(i),
-              tolerance, log);
+          CreateVerifier<VERIFIER>(quantizing_op, quantized_op, rewriter, i,
+                                   quant_params_);
 
           if (enable_whole_model_verify) {
             RewireFloatModelBackbone(quantized_op, quantizing_op);
@@ -532,13 +565,6 @@ class QuantizationPattern : public RewritePattern {
   }
 
  private:
-  bool usedByVerifier(Operation* op) const {
-    for (Operation* user : op->getUsers()) {
-      if (llvm::isa_and_nonnull<VERIFIER>(user)) return true;
-    }
-    return false;
-  }
-
   // Reconnects float ops in the whole-model verify mode. Works for both
   // Quantizable ops and Unquantizable ops
   void RewireFloatModelBackbone(Operation* quantized_op,

@@ -105,7 +105,7 @@ FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
 void EncapsulateFuncAndSerialize(FuncOp func,
                                  std::string* serialized_func_module) {
   // Create a new module to hold func and all referenced functions.
-  OwningModuleRef module_for_func =
+  OwningOpRef<mlir::ModuleOp> module_for_func =
       ModuleOp::create(mlir::UnknownLoc::get(func.getContext()));
   SymbolTable symbol_table(module_for_func.get());
 

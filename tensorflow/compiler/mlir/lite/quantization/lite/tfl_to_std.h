@@ -28,6 +28,34 @@ void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func);
 // ops in the function.
 void ConvertMlirQuantOpsToTFLQuantOps(FuncOp func);
 
+// A helper class to convert target function to another representation using
+// `ConvertForward` function during construction and convert target function
+// back to the original representation using `ConvertBackward` function during
+// deconstruction.
+template <void (*ConvertForward)(FuncOp), void (*ConvertBackward)(FuncOp)>
+class ScopedOpsConverter {
+ public:
+  explicit ScopedOpsConverter(FuncOp func) : func_(func) {
+    ConvertForward(func_);
+  }
+
+  ScopedOpsConverter(const ScopedOpsConverter&) = delete;
+  ScopedOpsConverter operator=(const ScopedOpsConverter&) = delete;
+  ScopedOpsConverter(const ScopedOpsConverter&&) = delete;
+  ScopedOpsConverter operator=(const ScopedOpsConverter&&) = delete;
+
+  ~ScopedOpsConverter() { ConvertBackward(func_); }
+
+ private:
+  FuncOp func_;
+};
+
+using ScopedTFLQuantOpsToMlirQuantOpsConverter =
+    ScopedOpsConverter<ConvertTFLQuantOpsToMlirQuantOps,
+                       ConvertMlirQuantOpsToTFLQuantOps>;
+using ScopedMlirQuantOpsToTFLQuantOpsConverter =
+    ScopedOpsConverter<ConvertMlirQuantOpsToTFLQuantOps,
+                       ConvertTFLQuantOpsToMlirQuantOps>;
 }  // namespace TFL
 }  // namespace mlir
 

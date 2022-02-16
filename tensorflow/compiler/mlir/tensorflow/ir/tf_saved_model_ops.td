@@ -92,7 +92,7 @@ def TfSavedModel_Dialect : Dialect {
 // Op definitions
 //===----------------------------------------------------------------------===//
 
-class TfSavedModel_Op<string mnemonic, list<OpTrait> traits = []> :
+class TfSavedModel_Op<string mnemonic, list<Trait> traits = []> :
     Op<TfSavedModel_Dialect, mnemonic, traits> {
 }
 
@@ -128,7 +128,7 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
     UnitAttr:$is_mutable
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TfSavedModel_SessionInitializerOp: TfSavedModel_Op<"session_initializer"> {
@@ -152,7 +152,7 @@ def TfSavedModel_SessionInitializerOp: TfSavedModel_Op<"session_initializer"> {
   );
 
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 }

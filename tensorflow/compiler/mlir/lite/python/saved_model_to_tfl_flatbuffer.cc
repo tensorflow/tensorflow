@@ -48,8 +48,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
-                                         mlir::OwningModuleRef* module) {
+Status HandleInputOutputArraysWithModule(
+    const toco::ModelFlags& model_flags,
+    mlir::OwningOpRef<mlir::ModuleOp>* module) {
   mlir::FuncOp entry_function = nullptr;
   for (auto func : module->get().getOps<mlir::FuncOp>()) {
     if (auto tf_attrs =
@@ -127,7 +128,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                            const toco::TocoFlags& toco_flags,
                                            string* result) {
   mlir::MLIRContext context;
-  mlir::TFL::QuantizationSpecs quant_specs;
+  mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<string> node_names;

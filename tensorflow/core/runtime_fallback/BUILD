@@ -98,6 +98,7 @@ cc_library(
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "//tensorflow/core/tfrt/utils:thread_pool",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/runtime_fallback/util:fallback_test_util",
         "@tf_runtime//:bef_executor_driver",
