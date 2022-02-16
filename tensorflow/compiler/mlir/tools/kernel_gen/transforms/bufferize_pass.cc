@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
+#include "mlir/Dialect/Vector/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -122,10 +123,40 @@ struct ComputeOpAndFuncBufferizePass
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<linalg::LinalgDialect, bufferization::BufferizationDialect,
-                    lmhlo::LmhloDialect, memref::MemRefDialect>();
+                    lmhlo::LmhloDialect, memref::MemRefDialect,
+                    vector::VectorDialect>();
+    vector::registerBufferizableOpInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {
+    // Bufferize ops using BufferizableOpInterface. This could be switched to
+    // One-Shot Bufferize in the future.
+    RewritePatternSet patterns(&getContext());
+    bufferization::BufferizationOptions options =
+        bufferization::getPartialBufferizationOptions();
+    // TODO(springerm): Add dialects to this filter as more and more dialects
+    // will be migrated to BufferizableOpInterface-based bufferization.
+    options.allowDialectInFilter<vector::VectorDialect>();
+    // Ops inside TiledLoopOps have special handling.
+    options.denyOperationInFilter([](Operation* op) {
+      return mlir::isa<linalg::TiledLoopOp>(op->getParentOp());
+    });
+    bufferization::AlwaysCopyBufferizationState bufferization_state(options);
+    bufferization::populateBufferizationPattern(bufferization_state, patterns);
+
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      signalPassFailure();
+      return;
+    }
+
+    // Bufferize the remaining IR with dialect conversion. This will disappear
+    // eventually once all bufferization is done via BufferizableOpInterface.
+    if (failed(runDialectConversionBasedBufferization())) signalPassFailure();
+  }
+
+ private:
+  LogicalResult runDialectConversionBasedBufferization() {
     RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
@@ -168,6 +199,7 @@ struct ComputeOpAndFuncBufferizePass
                                                       target);
     scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
                                                          target);
+
     // TODO(herhut): Move this legality configuration to bufferize itself?
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();
@@ -188,9 +220,7 @@ struct ComputeOpAndFuncBufferizePass
         .addDynamicallyLegalOp<vector::TransferWriteOp, vector::TransferReadOp>(
             isLegalOrInsideTiledLoop);
 
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns))))
-      signalPassFailure();
+    return applyPartialConversion(getOperation(), target, std::move(patterns));
   }
 };
 
@@ -246,9 +276,10 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     registry.insert<AffineDialect, memref::MemRefDialect, scf::SCFDialect,
                     shape::ShapeDialect, tensor::TensorDialect,
                     tf_framework::TFFrameworkDialect, lmhlo::LmhloDialect,
-                    arith::ArithmeticDialect>();
-    tensor::registerBufferizableOpInterfaceExternalModels(registry);
+                    arith::ArithmeticDialect, vector::VectorDialect>();
     arith::registerBufferizableOpInterfaceExternalModels(registry);
+    tensor::registerBufferizableOpInterfaceExternalModels(registry);
+    vector::registerBufferizableOpInterfaceExternalModels(registry);
   }
   // Default alignment_ specified in passes.td
   FinalBufferizePass() = default;
@@ -264,8 +295,9 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     options.bufferAlignment = alignment_;
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.addToDialectFilter<arith::ArithmeticDialect, StandardOpsDialect,
-                               tensor::TensorDialect>();
+    options
+        .allowDialectInFilter<arith::ArithmeticDialect, StandardOpsDialect,
+                              tensor::TensorDialect, vector::VectorDialect>();
     bufferization::AlwaysCopyBufferizationState bufferization_state(options);
     bufferization::populateBufferizationPattern(bufferization_state, patterns);
 
