@@ -11,7 +11,7 @@
 #  --tag "gcr.io/tensorflow-testing/nosla-cuda11.2-cudnn8.1-ubuntu18.04-manylinux2014-multipython" .
 # $ docker push gcr.io/tensorflow-testing/nosla-cuda11.2-cudnn8.1-ubuntu18.04-manylinux2014-multipython
 
-FROM nvidia/cuda:11.2.1-cudnn8-devel-ubuntu18.04 as devtoolset
+FROM nvidia/cuda:11.2.1-cudnn8-devel-ubuntu20.04 as devtoolset
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
@@ -38,7 +38,7 @@ RUN /build_devtoolset.sh devtoolset-7 /dt7
 RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 # TODO(klimek): Split up into two different docker images.
-FROM nvidia/cuda:11.2.1-cudnn8-devel-ubuntu18.04
+FROM nvidia/cuda:11.2.1-cudnn8-devel-ubuntu20.04
 COPY --from=devtoolset /dt7 /dt7
 COPY --from=devtoolset /dt9 /dt9
 
@@ -94,9 +94,11 @@ RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10"
 
-ENV CLANG_VERSION="r91087153210132a4c2d3cf19a4526d8f395cb5a4"
-COPY install/install_latest_clang.sh /install/
-RUN /install/install_latest_clang.sh
+# Clang is not available for Ubuntu 20.04 in Google mirror so we download the
+# official release
+ENV CLANG_VERSION="11.0.0"
+COPY install/install_latest_clang_ml2014.sh /install/
+RUN /install/install_latest_clang_ml2014.sh
 
 # TensorRT 7 for CUDA 11.1 is compatible with CUDA 11.2, but requires
 # libnvrtc.so.11.1. See https://github.com/NVIDIA/TensorRT/issues/1064.

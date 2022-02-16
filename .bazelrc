@@ -453,12 +453,12 @@ build:rbe_cpu_linux --config=rbe_cpu_linux_base
 
 # rbe config option that uses the manylinux2014 toolchain
 build:rbe_cpu_linux_ml2014 --config=rbe_linux
-build:rbe_cpu_linux_ml2014 --host_crosstool_top="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_cpu_linux_ml2014 --crosstool_top="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_cpu_linux_ml2014 --extra_toolchains="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_cpu_linux_ml2014 --extra_execution_platforms="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_cpu_linux_ml2014 --host_platform="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_cpu_linux_ml2014 --platforms="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux_ml2014 --host_crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_cpu_linux_ml2014 --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_cpu_linux_ml2014 --extra_toolchains="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_cpu_linux_ml2014 --extra_execution_platforms="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux_ml2014 --host_platform="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux_ml2014 --platforms="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
 
 build:rbe_lite_linux --config=rbe_linux_base
 build:rbe_lite_linux --config=rbe_cpu_linux_base
@@ -499,16 +499,16 @@ build:rbe_linux_cuda_nvcc_py310 --config=rbe_linux_cuda11.2_nvcc_py3.10
 
 # RBE gpu config for manylinux2014
 build:rbe_linux_cuda_nvcc_py39_ml2014 --config=rbe_linux_cuda_base
-build:rbe_linux_cuda_nvcc_py39_ml2014 --host_crosstool_top="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_linux_cuda_nvcc_py39_ml2014 --crosstool_top="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_linux_cuda_nvcc_py39_ml2014 --extra_toolchains="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cuda_nvcc_py39_ml2014 --extra_execution_platforms="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cuda_nvcc_py39_ml2014 --host_platform="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cuda_nvcc_py39_ml2014 --platforms="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda"
-build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_tensorrt"
-build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_nccl"
-build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --host_crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --extra_toolchains="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --extra_execution_platforms="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --host_platform="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --platforms="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_tensorrt"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_nccl"
+build:rbe_linux_cuda_nvcc_py39_ml2014 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 # Deprecated configs that people might still use.
 build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_nvcc_py39
@@ -554,7 +554,7 @@ build:rbe_linux_py3_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_man
 
 # rbe_linux_py3 with manylinux2014 toolchain
 build:rbe_linux_py3_ml2014 --config=rbe_linux_py3
-build:rbe_linux_py3_ml2014 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
+build:rbe_linux_py3_ml2014 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 build:rbe_win --config=rbe
 build:rbe_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_02082022:toolchain"
@@ -642,7 +642,7 @@ test:release_cpu_linux --test_env=LD_LIBRARY_PATH
 # manylinux2014 config for cpu
 build:release_cpu_linux_manylinux2014 --config=release_base
 build:release_cpu_linux_manylinux2014 --config=avx_linux
-build:release_cpu_linux_manylinux2014 --crosstool_top="@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:release_cpu_linux_manylinux2014 --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
 test:release_cpu_linux_manylinux2014 --test_env=LD_LIBRARY_PATH
 
 build:release_cpu_macos --config=release_base
@@ -670,7 +670,7 @@ build:release_gpu_linux_11_4 --crosstool_top=@ubuntu18.04-gcc7_manylinux2010-cud
 # manylinux2014 config for gpu
 build:release_gpu_linux_manylinux2014 --config=release_gpu_linux
 build:release_gpu_linux_manylinux2014 --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
-build:release_gpu_linux_manylinux2014 --crosstool_top=@ubuntu18.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
+build:release_gpu_linux_manylinux2014 --crosstool_top=@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
 
 
 build:release_cpu_windows --config=release_base
