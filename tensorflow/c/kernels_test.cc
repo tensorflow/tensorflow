@@ -770,7 +770,10 @@ std::string ExpectedString(const char* type) {
     EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
     KernelList list;                                                         \
     list.ParseFromArray(buf->data, buf->length);                             \
-    ASSERT_EQ(ExpectedString(#dtype), list.DebugString());                   \
+    KernelList expected_proto;                                               \
+    protobuf::TextFormat::ParseFromString(ExpectedString(#dtype),            \
+                                          &expected_proto);                  \
+    ASSERT_EQ(expected_proto.DebugString(), list.DebugString());             \
                                                                              \
     TF_DeleteBuffer(buf);                                                    \
     TF_DeleteStatus(status);                                                 \
