@@ -88,7 +88,7 @@ class Delegate {
   }
 
   bool force_fp16() const {
-#ifdef XNNPACK_FORCE_PRECISION_FP16
+#ifdef XNNPACK_DELEGATE_FORCE_PRECISION_FP16
     return true;
 #else
     return (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16) != 0;
@@ -4429,8 +4429,10 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   TfLiteXNNPackDelegateOptions options = {0};
 
   // Quantized inference is enabled by default on Web platform
-#ifdef __EMSCRIPTEN__
+#ifdef XNNPACK_DELEGATE_ENABLE_QS8
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QS8;
+#endif
+#ifdef XNNPACK_DELEGATE_ENABLE_QU8
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
 #endif
 

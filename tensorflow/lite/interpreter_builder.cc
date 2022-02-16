@@ -144,7 +144,7 @@ std::map<std::string, uint32_t> GetMapFromTensorMap(
 }
 
 inline bool ShouldCreateLazyDelegateProviders(int num_fp32_tensors) {
-#ifdef TFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS
+#if defined(XNNPACK_DELEGATE_ENABLE_QS8) || defined(XNNPACK_DELEGATE_ENABLE_QU8)
   return true;
 #else
   return num_fp32_tensors > 0;

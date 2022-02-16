@@ -443,28 +443,7 @@ cc_library(
         "model_builder.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + tflite_copts_warnings() +
-            # As xnn_enable_qs8_explicit_true and xnn_enable_qu8_explicit_true
-            # could be specified simultaneously, use two selects here.
-            select({
-                "@XNNPACK//:xnn_enable_qs8_explicit_false": [],
-                "@XNNPACK//:xnn_enable_qs8_explicit_true": [
-                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-                ],
-                "//tensorflow:emscripten": [
-                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-                ],
-                "//conditions:default": [],
-            }) + select({
-        "@XNNPACK//:xnn_enable_qu8_explicit_false": [],
-        "@XNNPACK//:xnn_enable_qu8_explicit_true": [
-            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-        ],
-        "//tensorflow:emscripten": [
-            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-        ],
-        "//conditions:default": [],
-    }),
+    copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
@@ -493,6 +472,8 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates:telemetry",
+        "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
+        "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels/internal:compatibility",
