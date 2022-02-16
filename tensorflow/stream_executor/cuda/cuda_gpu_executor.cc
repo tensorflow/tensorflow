@@ -199,7 +199,7 @@ static std::string GetBinaryDir(bool strip_exe) {
 #else
 #if defined(PLATFORM_WINDOWS)
   HMODULE hModule = GetModuleHandle(NULL);
-  GetModuleFileName(hModule, exe_path, MAX_PATH);
+  GetModuleFileName(hModule, static_cast<LPWSTR>(exe_path), MAX_PATH);
 #else
   PCHECK(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1);
 #endif
