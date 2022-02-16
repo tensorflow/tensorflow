@@ -19,6 +19,10 @@ include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.td"
 
 def NonScalarType : Type<Neg<HasAnyRankOfPred<[0]>>, "Non scalar type">;
 
+def HasSingleElement: Constraint<CPred<"($0.size() == 1)">>;
+
+def EmptyList: NativeCodeCall<"llvm::SmallVector<mlir::Value>{}">;
+
 // Creates a tf.ReadVariable op that reads a resource `$2` that has the same
 // element type as `$1`. The op created will use location of `$0`.
 def CreateTFReadVariableOp : NativeCodeCall<
@@ -607,4 +611,19 @@ def DecomposeResourceApplyProximalAdagrad :
      (TF_AssignVariableOp $var_resource, $var_new, (CreateConstBoolAttrFalse)),
      (TF_AssignVariableOp $accum_resource, $accum_new, (CreateConstBoolAttrFalse))
    ]
+   >;
+
+def DecomposeCollectiveReduceV2 :
+  Pattern<
+    (TF_CollectiveReduceV2Op:$src_op
+       $input, $group_size, $group_key, $instance_key, $ordering_token,
+       $merge_op, $final_op, $communication_hint, $timeout_seconds,
+       $max_subdivs_per_device
+    ),
+    [(TF_CollectiveReduceV2Op
+       $input, $group_size, $group_key, $instance_key, (EmptyList),
+       $merge_op, $final_op, $communication_hint, $timeout_seconds,
+       $max_subdivs_per_device
+    )],
+    [(HasSingleElement $ordering_token)]
    >;
