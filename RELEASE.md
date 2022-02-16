@@ -28,6 +28,7 @@
         optimizers, and the previous generation of optimizers will be moved to
         `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
     *   Added L2 unit normalization layer `tf.keras.layers.UnitNormalization`.
+    *   Added `tf.keras.layers.RandomBrightness` layer for image preprocessing.
     *   Added APIs for switching between interactive logging and absl logging.
         By default, Keras always writes the logs to stdout. However, this is not
         optimal in a non-interactive environment, where you don't have access to
