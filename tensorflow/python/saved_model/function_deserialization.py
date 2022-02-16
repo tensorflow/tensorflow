@@ -18,7 +18,6 @@ import collections
 import re
 from absl import logging
 
-from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
@@ -375,8 +374,8 @@ def load_function_def_library(library,
 
   loaded_gradients = {}
   for fdef in _sort_function_defs(library, function_deps):
-    copy = _fix_fdef(fdef, functions, load_shared_name_suffix,
-                     new_gradient_op_types)
+    orig_name = _fix_fdef_in_place(fdef, functions, load_shared_name_suffix,
+                                   new_gradient_op_types)
 
     # Setup function signatures and outputs
     #
@@ -387,13 +386,13 @@ def load_function_def_library(library,
     # restore time, so we must instead pass them to the FuncGraph explicitly.
     structured_input_signature = None
     structured_outputs = None
-    if (saved_object_graph is not None
-        and fdef.signature.name in saved_object_graph.concrete_functions):
+    if (saved_object_graph is not None and
+        orig_name in saved_object_graph.concrete_functions):
       # TODO(b/204324043): Offload the deserialization of the protos to the
       # first class objects by passing the actual protos. This is blocked on
       # importing `nested_structure_coder` in function.py causing a circular
       # dependency.
-      proto = saved_object_graph.concrete_functions[fdef.signature.name]
+      proto = saved_object_graph.concrete_functions[orig_name]
       structured_input_signature = nested_structure_coder.decode_proto(
           proto.canonicalized_input_signature)
       structured_outputs = nested_structure_coder.decode_proto(
@@ -406,14 +405,14 @@ def load_function_def_library(library,
     # import).
     with graph.as_default():
       func_graph = function_def_lib.function_def_to_graph(
-          copy,
+          fdef,
           structured_input_signature=structured_input_signature,
           structured_outputs=structured_outputs)
     # Restores gradients for function-call ops (not the same as ops that use
     # custom gradients)
     _restore_gradient_functions(func_graph, renamed_functions, loaded_gradients)
 
-    for dep in function_deps[fdef.signature.name]:
+    for dep in function_deps[orig_name]:
       functions[dep].add_to_graph(func_graph)
 
     # We do not initialize the new ConcreteFunction's function_spec and/or
@@ -424,14 +423,14 @@ def load_function_def_library(library,
     # However, we copy the FunctionDef attributes to the new ConcreteFunction,
     # excluding the "_input_shapes", which may cause an error during input shape
     # initialization at a later stage.
-    if "_input_shapes" in copy.attr:
-      del copy.attr["_input_shapes"]
-    func = function_lib.ConcreteFunction(func_graph, attrs=copy.attr)
+    if "_input_shapes" in fdef.attr:
+      del fdef.attr["_input_shapes"]
+    func = function_lib.ConcreteFunction(func_graph, attrs=fdef.attr)
     if wrapper_function:
       func = wrapper_function(func)
     func.add_to_graph(graph)
 
-    functions[fdef.signature.name] = func
+    functions[orig_name] = func
     renamed_functions[func.name] = func
     if any(op.type == "TRTEngineOp" for op in func_graph.get_operations()):
       # TODO(b/150708051): Remove this hack once TensorRT SavedModel integration
@@ -439,8 +438,8 @@ def load_function_def_library(library,
       # with previous behavior.
       func.add_to_graph(ops.get_default_graph())
 
-    if fdef.signature.name in gradients_to_register:
-      gradient_op_type = gradients_to_register[fdef.signature.name]
+    if orig_name in gradients_to_register:
+      gradient_op_type = gradients_to_register[orig_name]
       loaded_gradients[compat.as_bytes(gradient_op_type)] = func
       ops.RegisterGradient(gradient_op_type)(_gen_gradient_func(func))
 
@@ -565,14 +564,15 @@ def fix_node_def(node_def, functions, shared_name_suffix):
           shared_name + compat.as_bytes(shared_name_suffix))
 
 
-def _fix_fdef(orig_fdef, functions, shared_name_suffix, new_gradient_op_types):
+def _fix_fdef_in_place(fdef, functions, shared_name_suffix,
+                       new_gradient_op_types):
   """Fixes a FunctionDef proto to be loaded in current context.
 
   In particular, when loading a function library into an eager context, one
   must rename the functions to avoid conflicts with existent functions.
 
   Args:
-    orig_fdef: FunctionDef proto to fix. It is not modified.
+    fdef: FunctionDef proto to fix. It is mutated in-place.
     functions: map from function name to a ConcreteFunction instance.
     shared_name_suffix: A unique string for this load which helps to avoid
       `shared_name` collisions across loads. Two functions from the same load
@@ -582,10 +582,9 @@ def _fix_fdef(orig_fdef, functions, shared_name_suffix, new_gradient_op_types):
       op type.
 
   Returns:
-    A fixed copy of the original FunctionDef
+    orig_name: original value of fdef.signature.name
   """
-  fdef = function_pb2.FunctionDef()
-  fdef.CopyFrom(orig_fdef)
+  orig_name = fdef.signature.name
   contains_unsaved_custom_gradients = False
 
   for node_def in fdef.node_def:
@@ -603,7 +602,7 @@ def _fix_fdef(orig_fdef, functions, shared_name_suffix, new_gradient_op_types):
         " likely fail if a gradient is requested.", fdef.signature.name)
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
-  return fdef
+  return orig_name
 
 
 def _list_function_deps(fdef, library_function_names, library_gradient_names):
