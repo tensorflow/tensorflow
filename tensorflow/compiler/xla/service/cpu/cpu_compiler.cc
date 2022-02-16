@@ -924,14 +924,26 @@ StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
   // Add buffer mappings
   llvm::SmallVector<mlir::Attribute> operand_mapping;
   for (auto i : module->entry_computation()->parameter_instructions()) {
-    auto slice = assignment->GetUniqueSlice(i, {});
+    auto slice = assignment->GetUniqueTopLevelSlice(i);
     operand_mapping.push_back(
         builder.getI32IntegerAttr(static_cast<int32_t>(slice->index())));
   }
 
   auto root_instr = module->entry_computation()->root_instruction();
-  auto result_mapping = builder.getI32IntegerAttr(static_cast<int32_t>(
-      assignment->GetUniqueTopLevelOutputSlice()->index()));
+  auto output_allocation = assignment->GetUniqueTopLevelOutputSlice();
+
+  // Gather mappings to each element in the tuple if necessary
+  llvm::SmallVector<mlir::Attribute> result_inner_mapping;
+  if (output_allocation->allocation()->is_tuple()) {
+    for (auto i : llvm::seq<int>(0, root_instr->shape().tuple_shapes_size())) {
+      result_inner_mapping.push_back(mlir::IntegerAttr::get(
+          mlir::IntegerType::get(&mlir_context, 64),
+          assignment->GetUniqueSlice(root_instr, {i})->index()));
+    }
+  }
+
+  auto result_mapping = builder.getI32IntegerAttr(
+      static_cast<int32_t>(output_allocation->index()));
   mlir_module->walk([&](mlir::FuncOp f) {
     if (f.sym_name() == "main") {
       for (auto& p : llvm::enumerate(operand_mapping)) {
@@ -939,13 +951,8 @@ StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
       }
       f->setAttr("xla_framework.result_mapping", result_mapping);
     }
-    if (root_instr->opcode() == HloOpcode::kTuple) {
-      llvm::SmallVector<mlir::Attribute> result_inner_mapping;
-      for (auto i : root_instr->operands()) {
-        result_inner_mapping.push_back(
-            mlir::IntegerAttr::get(mlir::IntegerType::get(f.getContext(), 64),
-                                   assignment->GetUniqueSlice(i, {})->index()));
-      }
+
+    if (output_allocation->allocation()->is_tuple()) {
       f->setAttr("xla_framework.result_inner_mapping",
                  mlir::ArrayAttr::get(f.getContext(), result_inner_mapping));
     }
