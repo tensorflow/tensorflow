@@ -101,10 +101,10 @@ class TfrtContext {
   bool IsAsync() const;
 
  private:
-  ResourceContext resource_context_;
   std::unique_ptr<CoreRuntime> corert_;
   ::tfrt::HostContext* host_context_;
   OpHandler* fallback_op_handler_;
+  ResourceContext resource_context_;
   tensorflow::EagerContext* eager_context_;
   std::unique_ptr<ThreadPoolInterfaceWrapper> eager_ctx_thread_pool_;
 

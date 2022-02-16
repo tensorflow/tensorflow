@@ -118,6 +118,13 @@ void BaseRendezvousMgr::Cleanup(int64_t step_id) {
   }
 }
 
+void BaseRendezvousMgr::CleanupAll() {
+  mutex_lock l(mu_);
+  for (auto iter = table_.begin(); iter != table_.end(); iter++) {
+    iter->second->Unref();
+  }
+}
+
 BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
                                            int64_t step_id)
     : env_(env),
