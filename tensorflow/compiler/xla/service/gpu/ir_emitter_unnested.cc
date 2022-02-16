@@ -2901,7 +2901,7 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
     if (IsBefThunkEnabled()) {
       std::vector<BufferAllocation::Slice> buffers = {source_slice,
                                                       result_slice};
-      TF_ASSIGN_OR_RETURN(thunk, CreateBefCollectivePermuteThunk(
+      TF_ASSIGN_OR_RETURN(thunk, CreateBefCollectiveThunk(
                                      GetThunkInfo(op), op, std::move(buffers),
                                      replica_count, partition_count));
     } else {
@@ -2980,7 +2980,9 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
         arg_buffers.push_back(buffer.destination_buffer);
       }
       TF_ASSIGN_OR_RETURN(
-          thunk, CreateBefThunk(GetThunkInfo(op), op, std::move(arg_buffers)));
+          thunk,
+          CreateBefCollectiveThunk(GetThunkInfo(op), op, std::move(arg_buffers),
+                                   replica_count, partition_count));
     } else {
       thunk = absl::make_unique<NcclThunkType>(GetThunkInfo(op), op,
                                                /*buffers=*/std::move(buffers));

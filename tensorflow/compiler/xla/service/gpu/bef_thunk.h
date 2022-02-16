@@ -41,8 +41,8 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
     Thunk::ThunkInfo thunk_info, mlir::Operation* op,
     std::vector<BufferAllocation::Slice> buffers);
 
-// Creates a Thunk that uses TFRT BEF execution to perform Collective Permute.
-StatusOr<std::unique_ptr<Thunk>> CreateBefCollectivePermuteThunk(
+// Creates a Thunk that uses TFRT BEF execution to perform Collective ops.
+StatusOr<std::unique_ptr<Thunk>> CreateBefCollectiveThunk(
     Thunk::ThunkInfo thunk_info, mlir::Operation* op,
     std::vector<BufferAllocation::Slice> buffers, int64_t replica_count,
     int64_t partition_count);

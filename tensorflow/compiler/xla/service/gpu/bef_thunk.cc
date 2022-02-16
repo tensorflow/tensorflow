@@ -305,7 +305,7 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefThunk(
                    std::move(bef_result.first), std::move(bef_result.second)));
 }
 
-StatusOr<std::unique_ptr<Thunk>> CreateBefCollectivePermuteThunk(
+StatusOr<std::unique_ptr<Thunk>> CreateBefCollectiveThunk(
     Thunk::ThunkInfo thunk_info, mlir::Operation* op,
     std::vector<BufferAllocation::Slice> buffers, int64_t replica_count,
     int64_t partition_count) {
@@ -514,7 +514,7 @@ StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefThunk(
   return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
 }
 
-StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefCollectivePermuteThunk(
+StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefCollectiveThunk(
     Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>,
     int64_t, int64_t) {
   return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
