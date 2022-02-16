@@ -249,6 +249,7 @@ TEST(NNAPIDelegate, ResizeInputTensorsWorks) {
 TEST(NNAPIDelegate, ResizeDynamicBatchInputTensorsWorks) {
   StatefulNnApiDelegate::Options options;
   options.allow_dynamic_dimensions = true;
+  options.max_execution_cache_size = 1;
 
   FloatAddOpModel m(options,
                     {TensorType_FLOAT32, /*shape=*/{1, 3, 2, 1}, /*min=*/0.0f,
@@ -279,21 +280,38 @@ TEST(NNAPIDelegate, ResizeDynamicBatchInputTensorsWorks) {
                      /*block_size=*/{}, /*block_map=*/{},
                      /*shape_signature=*/{1, -1, 2, 1}},
                     ActivationFunctionType_NONE);
-  EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 3, 2, 1}), kTfLiteOk);
-  EXPECT_EQ(m.ResizeInputTensor(m.input2(), {1, 3, 2, 1}), kTfLiteOk);
-  EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 0.9, 0.7});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 0.2, 0.8});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3, 1.1, 1.5}));
 
-  EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 2, 2, 1}), kTfLiteOk);
-  EXPECT_EQ(m.ResizeInputTensor(m.input2(), {1, 2, 2, 1}), kTfLiteOk);
-  EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
-  m.PopulateTensor<float>(m.input1(), {0.7, 0.8, 0.9, 0.7});
-  m.PopulateTensor<float>(m.input2(), {0.3, 0.5, 0.2, 0.8});
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1.0, 1.3, 1.1, 1.5}));
+  // Define 2 test cases, each with a different dynamic dimension value.
+  auto RunTestCase1 = [&m]() {
+    EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 3, 2, 1}), kTfLiteOk);
+    EXPECT_EQ(m.ResizeInputTensor(m.input2(), {1, 3, 2, 1}), kTfLiteOk);
+    EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
+    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 0.9, 0.7});
+    m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 0.2, 0.8});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray({-1.9, 0.4, 1.0, 1.3, 1.1, 1.5}));
+  };
+  auto RunTestCase2 = [&m]() {
+    EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 2, 2, 1}), kTfLiteOk);
+    EXPECT_EQ(m.ResizeInputTensor(m.input2(), {1, 2, 2, 1}), kTfLiteOk);
+    EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
+    m.PopulateTensor<float>(m.input1(), {0.7, 0.8, 0.9, 0.7});
+    m.PopulateTensor<float>(m.input2(), {0.3, 0.5, 0.2, 0.8});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({1.0, 1.3, 1.1, 1.5}));
+  };
+
+  // TODO(b/221070667): Find a way to test whether the execution has indeed been
+  // reused or not.
+  // This will create a new execution for case 1.
+  RunTestCase1();
+  // This will reuse the execution for case 1.
+  RunTestCase1();
+  // This will destroy case 1, and create a new execution for case 2.
+  RunTestCase2();
+  // This will destroy case 2, and create a new execution for case 1.
+  RunTestCase1();
 }
 
 // Sanity check for the state-ful NNAPI delegate.
@@ -401,6 +419,7 @@ TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
   StatefulNnApiDelegate::Options options;
   // Allow NNAPI CPU fallback path.
   options.disallow_nnapi_cpu = false;
+  options.max_execution_cache_size = 1;
   FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
@@ -451,7 +470,20 @@ TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+
+  // Run the inference multiple times with the same buffer so that the execution
+  // can be reused.
+  for (int i = 0; i < 10; i++) {
+    // Change the value a little bit.
+    input1_data[0] = -2.0 + i;
+    memcpy(input1_memory_data, input1_data, kInput1ByteSize);
+    m.MarkInputTensorDataStale(m.input1());
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9 + i, 0.4, 1.0, 1.3}));
+  }
+
   // Run the inference multiple times and each time register a buffer.
+  // Each will destroy the previous cache and create a new execution.
   for (int i = 0; i < 10; i++) {
     // Change the value a little bit.
     input1_data[0] = -2.0 + i;
