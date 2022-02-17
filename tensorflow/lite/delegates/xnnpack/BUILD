@@ -110,7 +110,7 @@ cc_library(
     hdrs = ["xnnpack_delegate.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + select({
-        ":xnnpack_force_float_precision_explicit_fp16": ["XNNPACK_DELEGATE_FORCE_PRECISION_FP16=1"],
+        ":xnnpack_force_float_precision_explicit_fp16": ["-DXNNPACK_DELEGATE_FORCE_PRECISION_FP16=1"],
         "//conditions:default": [],
     }),
     linkstatic = True,
