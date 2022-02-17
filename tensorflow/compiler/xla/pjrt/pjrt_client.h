@@ -313,7 +313,7 @@ class PjRtClient {
   // TODO(zhangqiaorjc): Convert this to pure virtual and push down.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_replicas_per_slice, int num_partitions,
-      int num_slices) const {
+      const MultiSliceConfig* multi_slice_config) const {
     return Unimplemented("Multi slice device assignment is not supported.");
   }
 
