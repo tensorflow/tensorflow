@@ -429,6 +429,18 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `RELU`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `RELU6`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `RELU_N1_TO_1`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `RESHAPE`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
