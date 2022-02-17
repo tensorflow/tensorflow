@@ -694,6 +694,9 @@ xla_test(
     name = "bef_executable_test",
     srcs = ["bef_executable_test.cc"],
     backends = ["gpu"],
+    tags = [
+        "no_rocm",
+    ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:reference_util",
