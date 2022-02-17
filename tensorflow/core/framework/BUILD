@@ -1743,6 +1743,7 @@ tf_proto_library(
         ":tensor_shape_proto",
         ":types_proto",
     ],
+    visibility = ["//tensorflow:internal"],
 )
 
 # copybara:uncomment_begin(google-only)
