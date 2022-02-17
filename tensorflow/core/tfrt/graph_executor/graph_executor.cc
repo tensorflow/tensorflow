@@ -403,6 +403,10 @@ tensorflow::Status GraphExecutor::Run(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
+  return graph_execution_state_->Extend(graph);
+}
+
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
 GraphExecutor::LoadClientGraph(const GraphExecutor::ClientGraph& client_graph) {
   auto loaded_client_graph = std::make_unique<LoadedClientGraph>();
