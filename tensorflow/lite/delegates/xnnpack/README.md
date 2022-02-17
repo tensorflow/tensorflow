@@ -413,6 +413,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `LOGISTIC`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `MAX_POOL_2D`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
