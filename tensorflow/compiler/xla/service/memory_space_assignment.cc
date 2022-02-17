@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
@@ -3148,11 +3149,10 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
   if (!preferred_offset) {
     // First find the earliest use that is the same or later than the end time.
     const auto& use_times = request.all_use_times;
-    auto use_time_it = use_times.begin();
-    for (; *use_time_it < end_time; ++use_time_it) {
-    }
+    auto use_time_it = absl::c_lower_bound(use_times, end_time);
     CHECK(use_time_it != use_times.end());
     int64_t earliest_use = *use_time_it;
+    auto earliest_use_it = use_time_it;
 
     // Then find the latest use that can be allocated contiguously without
     // copies.
@@ -3166,24 +3166,31 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     CHECK(use_time_it != use_times.end());
     int64_t latest_contiguous_use_time = *use_time_it;
 
-    // Find a chunk that's as long living as possible iterating in reverse over
-    // the use times.
-    for (; use_time_it >= use_times.begin() && *use_time_it >= end_time;
-         --use_time_it) {
-      alternate_mem_interval->end = *use_time_it;
-      ChunkCandidate chunk_candidate =
-          FindChunkCandidate(*alternate_mem_interval);
-      if (chunk_candidate.heap_size <= available_heap_size()) {
-        alternate_mem_interval->end = end_time;
-        VLOG(3) << "FindBestChunkCandidate earliest use = " << earliest_use
-                << ", latest contiguous use = " << latest_contiguous_use_time
-                << ", use with available mem = " << *use_time_it
-                << ", offset = " << chunk_candidate.chunk.offset;
-        return chunk_candidate;
-      }
+    // Find a chunk that's as long living as possible.
+    absl::optional<ChunkCandidate> last_chunk_candidate;
+    int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
+    std::lower_bound(earliest_use_it, std::next(use_time_it), -1,
+                     [&](int64_t use, int64_t) {
+                       alternate_mem_interval->end = use;
+                       ChunkCandidate chunk_candidate =
+                           FindChunkCandidate(*alternate_mem_interval);
+                       if (chunk_candidate.heap_size <= available_heap_size()) {
+                         if (use > latest_matching_use) {
+                           last_chunk_candidate = chunk_candidate;
+                           latest_matching_use = use;
+                         }
+                         return true;
+                       }
+                       return false;
+                     });
+    if (last_chunk_candidate.has_value()) {
+      VLOG(3) << "FindBestChunkCandidate earliest use = " << earliest_use
+              << ", latest contiguous use = " << latest_contiguous_use_time
+              << ", use with available mem = " << latest_matching_use
+              << ", offset = " << last_chunk_candidate->chunk.offset;
     }
     alternate_mem_interval->end = end_time;
-    return absl::nullopt;
+    return last_chunk_candidate;
   }
   // If a preferred offset is given, try to find an allocation at that offset
   // only.
