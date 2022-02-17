@@ -308,7 +308,8 @@ def _get_tensorrt_rewriter_config(conversion_params,
   rewriter_config_with_trt.remapping = False
 
   # Prevent folding of Const->QDQ chains.
-  rewriter_config_with_trt.experimental_disable_folding_quantization_emulation = (
+  rewriter_config_with_trt. \
+    experimental_disable_folding_quantization_emulation = (
       trt_utils.is_linked_tensorrt_version_greater_equal(8, 0, 0) or
       trt_utils.is_loaded_tensorrt_version_greater_equal(8, 0, 0))
 
