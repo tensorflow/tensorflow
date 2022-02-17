@@ -13,6 +13,7 @@ load(
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
+    "if_google",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -2565,7 +2566,10 @@ test_suite(
         "//tensorflow/compiler/xla/tests:scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:select_and_scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:while_test_gpu",
-    ],
+    ] + if_google([
+        # Currently fails in OSS.
+        "//tensorflow/compiler/xla/tests:convolution_test_gpu",
+    ]),
 )
 
 test_suite(
@@ -2628,7 +2632,10 @@ test_suite(
         "//tensorflow/compiler/xla/tests:scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:select_and_scatter_test_gpu",
         "//tensorflow/compiler/xla/tests:triangular_solve_test_gpu",
-    ],
+    ] + if_google([
+        # Currently fails in OSS.
+        "//tensorflow/compiler/xla/tests:convolution_test_gpu",
+    ]),
 )
 
 cc_library(
