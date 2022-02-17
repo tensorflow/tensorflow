@@ -715,9 +715,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   OpBuilder builder = OpBuilder::atBlockEnd(module.getBody());
   MLIRContext* context = module->getContext();
   Location unknown_loc = builder.getUnknownLoc();
-  GraphFuncOp func_op = builder.create<GraphFuncOp>(
-      unknown_loc, name, FunctionType::get(context, {}, {}),
-      /*generic=*/false);
+  GraphFuncOp func_op = builder.create<GraphFuncOp>(unknown_loc);
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   const OpDef& signature = fdef.signature();
 

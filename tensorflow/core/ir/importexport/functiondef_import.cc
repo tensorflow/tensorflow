@@ -250,9 +250,7 @@ Status ImportGenericFunction(
   Location unknown_loc = builder.getUnknownLoc();
   MLIRContext* context = builder.getContext();
 
-  auto func_op = builder.create<GraphFuncOp>(unknown_loc, signature.name(),
-                                             FunctionType::get(context, {}, {}),
-                                             /*generic=*/true);
+  auto func_op = builder.create<GraphFuncOp>(unknown_loc);
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   NamedAttrList attrs;
   DictionaryAttr func_attrs = builder.getDictionaryAttr({});
