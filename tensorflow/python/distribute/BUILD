@@ -215,6 +215,9 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = [
+        "notsan",  # TODO(b/220133218)
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
