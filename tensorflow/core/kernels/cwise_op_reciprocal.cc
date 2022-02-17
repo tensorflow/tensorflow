@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER5(UnaryOp, CPU, "Inv", functor::inverse, float, Eigen::half, double,
-          complex64, complex128);
+REGISTER6(UnaryOp, CPU, "Inv", functor::inverse, float, Eigen::half, double,
+          bfloat16, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER6(UnaryOp, GPU, "Inv", functor::inverse, float, Eigen::half, double,
@@ -25,8 +25,8 @@ REGISTER6(UnaryOp, GPU, "Inv", functor::inverse, float, Eigen::half, double,
 #endif
 #endif
 
-REGISTER5(SimpleBinaryOp, CPU, "InvGrad", functor::inverse_grad, float,
-          Eigen::half, double, complex64, complex128);
+REGISTER6(SimpleBinaryOp, CPU, "InvGrad", functor::inverse_grad, float,
+          Eigen::half, double, bfloat16, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(SimpleBinaryOp, GPU, "InvGrad", functor::inverse_grad, float,
           Eigen::half, double);
