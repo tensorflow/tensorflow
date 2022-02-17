@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER6(UnaryOp, CPU, "Atan", functor::atan, Eigen::half, bfloat16, float,
-          double,complex64, complex128);
+          double, complex64, complex128);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
