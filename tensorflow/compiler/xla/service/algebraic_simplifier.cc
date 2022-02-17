@@ -4502,25 +4502,6 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     }
   }
 
-  // ds(ds(x,id),inner_id) -> ds(x, id + inner_id)
-  if (operand->opcode() == HloOpcode::kDynamicSlice) {
-    TF_RETURN_IF_ERROR(dynamic_slice->ReplaceOperandWithDifferentShape(
-        0, operand->mutable_operand(0)));
-    for (int64_t i = 1; i < dynamic_slice->operand_count(); ++i) {
-      HloInstruction* index = dynamic_slice->mutable_operand(i);
-      HloInstruction* inner_index = operand->mutable_operand(i);
-      inner_index = inner_index->AddInstruction(HloInstruction::CreateTernary(
-          inner_index->shape(), HloOpcode::kClamp,
-          MakeScalarLike(inner_index, 0), inner_index,
-          MakeScalarLike(inner_index,
-                         operand->operand(0)->shape().dimensions(i - 1))));
-      HloInstruction* combined_index =
-          operand->AddInstruction(HloInstruction::CreateBinary(
-              index->shape(), HloOpcode::kAdd, index, inner_index));
-      TF_RETURN_IF_ERROR(dynamic_slice->ReplaceOperandWith(i, combined_index));
-    }
-    changed_ = true;
-  }
   return Status::OK();
 }
 
@@ -4610,33 +4591,6 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // bound indices.
   if (ShapeUtil::IsZeroElementArray(dus_update->shape())) {
     return ReplaceInstruction(dynamic_update_slice, updated);
-  }
-
-  // dus(a,dus(ds(a,id),c,inner_id)),id) is equivalent to dus(a,c,inner_id + id)
-  if (dus_update->opcode() == HloOpcode::kDynamicUpdateSlice &&
-      (dus_update->operand(0)->opcode() == HloOpcode::kDynamicSlice &&
-       dus_update->operand(0)->operand(0) == dynamic_update_slice->operand(0) &&
-       absl::c_equal(
-           absl::MakeConstSpan(dynamic_update_slice->operands()).subspan(2),
-           absl::MakeConstSpan(dus_update->operand(0)->operands())
-               .subspan(1)))) {
-    TF_RETURN_IF_ERROR(dynamic_update_slice->ReplaceOperandWithDifferentShape(
-        1, dus_update->mutable_operand(1)));
-    for (int64_t i = 2; i < dynamic_update_slice->operand_count(); ++i) {
-      HloInstruction* index = dynamic_update_slice->mutable_operand(i);
-      HloInstruction* inner_index = dus_update->mutable_operand(i);
-      inner_index = inner_index->AddInstruction(HloInstruction::CreateTernary(
-          inner_index->shape(), HloOpcode::kClamp,
-          MakeScalarLike(inner_index, 0), inner_index,
-          MakeScalarLike(inner_index, dus_update->shape().dimensions(i - 2))));
-      HloInstruction* combined_index =
-          dus_update->AddInstruction(HloInstruction::CreateBinary(
-              index->shape(), HloOpcode::kAdd, index, inner_index));
-      TF_RETURN_IF_ERROR(
-          dynamic_update_slice->ReplaceOperandWith(i, combined_index));
-    }
-    changed_ = true;
-    return Status::OK();
   }
   return Status::OK();
 }
