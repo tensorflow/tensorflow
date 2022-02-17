@@ -542,8 +542,16 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
 Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloModule* module, bool is_aot_compile,
-    LLVMTargetMachineFeatures* target_machine_features) {
+    LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
   HloPassPipeline pipeline("HLO passes after layout assignment");
+
+  // CopyInsertion is still needed by BufferAssignment. MLIR passes will handle
+  // everything else done by XLA, but CopyInsertion is needed to interface with
+  // the existing runtime.
+  if (is_mlir_compile) {
+    pipeline.AddPass<CopyInsertion>();
+    return pipeline.Run(module).status();
+  }
 
   // After layout assignment, use a layout-sensitive verifier.
   pipeline.AddPass<HloPassPipeline>("after layout assignment")
@@ -612,11 +620,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
                                                    &target_machine_features));
 
-  if (!UseMlirHloLowering(is_mlir_compile, module)) {
-    return RunHloPassesAfterLayoutAssn(module, is_aot_compile,
-                                       &target_machine_features);
-  }
-  return Status::OK();
+  return RunHloPassesAfterLayoutAssn(
+      module, is_aot_compile, &target_machine_features,
+      UseMlirHloLowering(is_mlir_compile, module));
 }
 
 namespace {
