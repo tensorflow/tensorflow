@@ -1778,6 +1778,18 @@ Uses oneDNN APIs to perform fused batch normalization and relu.
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklFusedMish")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {bfloat16, float}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+oneDNN version of the Mish operator. Uses oneDNN APIs to implement Mish operator.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is expected
+to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklFusedBatchMatMulV2")
     .Input("x: T")
     .Input("y: T")

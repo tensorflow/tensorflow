@@ -1010,6 +1010,82 @@ TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv3D_BF16) {
   RunTest<3, DT_BFLOAT16>();
 }
 
+#ifdef INTEL_MKL
+class RemapperFuseSoftplusTanhMul : public RemapperTest {
+ public:
+  template <DataType DTYPE>
+  void RunTest() {
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto input_shape = ops::Placeholder::Shape({8, 32, 32, 3});
+    auto filter_shape = ops::Placeholder::Shape({1, 1, 3, 128});
+    auto bias_shape = ops::Placeholder::Shape({128});
+
+    auto input = Placeholder(s.WithOpName("input"), DTYPE, input_shape);
+    auto filter = Placeholder(s.WithOpName("filter"), DTYPE, filter_shape);
+    auto bias = Placeholder(s.WithOpName("bias"), DTYPE, bias_shape);
+
+    std::vector<int> strides = {1, 1, 1, 1};
+    auto conv =
+        ops::Conv2D(s.WithOpName("conv"), input, filter, strides, "SAME");
+    auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+    auto softplus = ops::Softplus(s.WithOpName("softplus"), bias_add);
+    auto tanh = ops::Tanh(s.WithOpName("tanh"), softplus);
+    auto mul = ops::Mul(s.WithOpName("mul"), tanh, bias_add);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), mul);
+
+    auto input_t = GenerateTensorWithSetRandom<DTYPE>({8, 32, 32, 3});
+    auto filter_t = GenerateTensorWithSetRandom<DTYPE>({1, 1, 3, 128});
+    auto bias_t = GenerateTensorWithSetRandom<DTYPE>({128});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}, {"filter", filter_t}, {"bias", bias_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "mul") {
+        EXPECT_EQ(node.op(), "_MklFusedMish");
+        ASSERT_EQ(node.input_size(), 1);
+        EXPECT_EQ(node.input(0), "bias_add");
+        found++;
+      }
+    }
+    EXPECT_EQ(found, 1);
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    if (DTYPE == DT_BFLOAT16) {
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 1e-2);
+    } else {
+      test::ExpectClose(tensors[0], tensors_expected[0], 1e-6);
+    }
+  }
+};
+
+TEST_F(RemapperFuseSoftplusTanhMul, FP32) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  RunTest<DT_FLOAT>();
+}
+TEST_F(RemapperFuseSoftplusTanhMul, BF16) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  RunTest<DT_BFLOAT16>();
+}
+#endif
+
 class RemapperTensorToHashBucketTest : public RemapperTest {
  public:
   template <DataType DTYPE>
