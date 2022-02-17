@@ -943,6 +943,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:device_set",
+        "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
     ],
     alwayslink = 1,
