@@ -675,15 +675,13 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   if (auto err = executable.takeError())
     return ReturnErrors(results, std::move(err), exec_ctx);
 
-  // If executable is available execute it inline.
-  if (LLVM_LIKELY(executable->IsAvailable())) {
-    if (LLVM_UNLIKELY(executable->IsError())) {
-      ReturnErrors(results, executable->GetError(), exec_ctx);
-    } else {
-      ExecuteImpl(executable->get(), memrefs, operands, results, exec_ctx);
-    }
-    return;
-  }
+  // If executable is available execute it inline ...
+  if (LLVM_LIKELY(executable->IsConcrete()))
+    return ExecuteImpl(executable->get(), memrefs, operands, results, exec_ctx);
+
+  // ... or maybe return errors.
+  if (LLVM_UNLIKELY(executable->IsError()))
+    return ReturnErrors(results, executable->GetError(), exec_ctx);
 
   // Otherwise execute it when the executable will become available. This
   // requires careful lifetime extension of all async values passed as operands
@@ -734,15 +732,13 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
   if (auto err = jit_executable.takeError())
     return ReturnErrors(results, std::move(err), exec_ctx);
 
-  // If kernel is available execute it inline.
-  if (LLVM_LIKELY(jit_executable->IsAvailable())) {
-    if (LLVM_UNLIKELY(jit_executable->IsError())) {
-      ReturnErrors(results, jit_executable->GetError(), exec_ctx);
-    } else {
-      ExecuteImpl(**jit_executable, operands, results, exec_ctx, debug);
-    }
-    return;
-  }
+  // If kernel is available execute it inline ...
+  if (LLVM_LIKELY(jit_executable->IsConcrete()))
+    return ExecuteImpl(**jit_executable, operands, results, exec_ctx, debug);
+
+  // ... or maybe return errors.
+  if (LLVM_UNLIKELY(jit_executable->IsError()))
+    return ReturnErrors(results, jit_executable->GetError(), exec_ctx);
 
   // Otherwise execute it when the executable will become available. This
   // requires careful lifetime extension of all async values passed as operands
