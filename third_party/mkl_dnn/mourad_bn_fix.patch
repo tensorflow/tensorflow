@@ -1,0 +1,289 @@
+diff --git a/src/cpu/x64/jit_uni_tbb_batch_normalization.cpp b/src/cpu/x64/jit_uni_tbb_batch_normalization.cpp
+index 81d6473ed8..ab630ca52a 100644
+--- a/src/cpu/x64/jit_uni_tbb_batch_normalization.cpp
++++ b/src/cpu/x64/jit_uni_tbb_batch_normalization.cpp
+@@ -44,6 +44,10 @@ using acc_data_t = float;
+ 
+ constexpr int bits_per_byte = 8;
+ 
++bool normalize_only(const batch_normalization_pd_t *bdesc) {
++    return bdesc->stats_is_src() && bdesc->is_fwd();
++}
++
+ dim_t get_c_padded(const batch_normalization_pd_t *bdesc) {
+     return bdesc->src_md()->padded_dims[1];
+ }
+@@ -781,7 +785,8 @@ struct jit_bnorm_fwd_t : public jit_generator {
+ 
+     struct call_params_t {
+         size_t N, C, S;
+-        const void *src, *dst;
++        const void *src;
++        void *dst;
+         const uint8_t *ws;
+         const acc_data_t *mean, *var;
+         const acc_data_t *scale, *shift;
+@@ -947,35 +952,6 @@ struct jit_bnorm_fwd_t : public jit_generator {
+         }
+     }
+ 
+-    void compute_nspc(bool stream_store_allowed) {
+-        Label label_C, label_S;
+-        mov(reg_S_, dword[PARAM_ADDR(S)]);
+-        L(label_S);
+-        {
+-            mov(reg_off_dat_, reg_off_dat_save_);
+-            xor_(reg_off_c_, reg_off_c_);
+-
+-            mov(reg_C_, dword[PARAM_ADDR(C)]);
+-            L(label_C);
+-            {
+-                load_c_specifics();
+-
+-                compute_bnorm(stream_store_allowed);
+-
+-                add(reg_off_c_, simd_w * acc_type_size_);
+-                add(reg_off_dat_, stride_C_ * data_type_size_);
+-
+-                dec(reg_C_);
+-                jnz(label_C);
+-            }
+-
+-            add(reg_off_dat_save_, stride_S_ * data_type_size_);
+-
+-            dec(reg_S_);
+-            jnz(label_S);
+-        }
+-    }
+-
+     void compute(bool stream_store_allowed) {
+         Label label_N;
+         mov(reg_N_, ptr[rsp + stack_off_N]);
+@@ -988,9 +964,7 @@ struct jit_bnorm_fwd_t : public jit_generator {
+             xor_(reg_off_dat_save_, reg_off_dat_save_);
+             xor_(reg_off_c_, reg_off_c_);
+ 
+-            tag_kind_ == jit_memory_tag_kind_t::nspc
+-                    ? compute_nspc(stream_store_allowed)
+-                    : compute_blocked(stream_store_allowed);
++            compute_blocked(stream_store_allowed);
+ 
+             if (isa == sse41 && tag_kind_ == jit_memory_tag_kind_t::blocked) {
+                 xor_(reg_off_dat_save_, reg_off_dat_save_);
+@@ -1764,12 +1738,31 @@ struct driver_t : public c_compatible {
+                 : working_set_size * C_blks_ >= l3_size / 2 && l3_size > 0;
+ 
+         if (tag_kind_ == jit_memory_tag_kind_t::nspc) {
+-            C_blk_step_ = C_blks_;
++            if (normalize_only(bdesc_)) {
++                // blocks have to fit in a 4rth of L1 so that they don't get evicted
++                // There are at most 6 tensors: src, dst, mean, var, scale, shift
++                dim_t n_tensors = 2 + bdesc_->use_scale() + bdesc_->use_shift()
++                        + 2 * bdesc_->use_scaleshift();
++                C_blk_step_ = utils::saturate<dim_t>(1, C_blks_,
++                        platform::get_per_core_cache_size(1)
++                                / get_vlen<isa>(jit_memory_tag_kind_t::nspc)
++                                / n_tensors);
++            } else
++                C_blk_step_ = C_blks_;
+         } else {
+-            C_blk_step_ = l3_size / working_set_size;
+-            C_blk_step_ = nstl::max<dim_t>(C_blk_step_, 1);
+-            C_blk_step_ = nstl::min<dim_t>(C_blk_step_, C_blks_);
++            C_blk_step_ = utils::saturate<dim_t>(
++                    1, C_blks_, l3_size / working_set_size);
+         }
++#if 0
++        auto nthr = bnorm_dims_t();
++        thread_distribution(C_blk_step_, nthr);
++        printf("%s(%d): nthr_(%ld) N(%ld) C(%ld) S(%ld) glob(%ld) do_blk(%d) "
++               "nspc(%d) "
++               "cblk_step(%ld) cblk(%ld)\n",
++                __FILE__, __LINE__, nthr_, nthr.N, nthr.C, nthr.S, nthr.glob,
++                do_blocking_, tag_kind_ == jit_memory_tag_kind_t::nspc,
++                C_blk_step_, C_blks_);
++#endif
+     }
+ 
+     status_t create_kernel() {
+@@ -1896,6 +1889,60 @@ struct driver_t : public c_compatible {
+         reduce(var, r_var);
+     }
+ 
++    void nspc_norm(const typename jit_bnorm_fwd_t<isa>::call_params_t *params) {
++        const auto strides
++                = get_data_strides<isa>(bdesc_, jit_memory_tag_kind_t::nspc);
++        const auto strideN = std::get<0>(strides);
++        const auto strideS = std::get<1>(strides);
++        const float eps = bdesc_->desc()->batch_norm_epsilon;
++        dim_t C = params->C * simd_w;
++
++#if 0 // working same perf as eigen
++        for (int n = 0; n < params->N; ++n) {
++            const float *src_ = static_cast<const float *>(params->src) + n * strideN;
++            float *dst_ = static_cast<float *>(params->dst) + n * strideN;
++            for (int sp = 0; sp < params->S;
++                    ++sp, dst_ += strideS, src_ += strideS) {
++#pragma omp simd
++                for (int c = 0; c < C; ++c) {
++                    float gamma = (params->scale ? params->scale[c] : 1.0f);
++                    float multiplier = gamma / sqrtf(params->var[c] + eps);
++                    float u = params->mean[c];
++                    float beta = params->shift ? params->shift[c] : 0.0f;
++                    float s = src_[c];
++                    dst_[c] = multiplier * (s - u) + beta;
++                }
++            }
++        }
++#else
++        // slightly faster. Can be faster if we relax math
++        // and precompute mulitplier*u + beta in an array on stack.
++
++        // precomputing those in stack reduces the accesses across sockets
++        float multiplier[C];
++        float summand[C];
++        for (int c = 0; c < C; ++c) {
++            float mul = params->scale[c] / sqrtf(params->var[c] + eps);
++            multiplier[c] = mul;
++            summand[c] = params->shift[c] - mul * params->mean[c];
++        }
++
++        for (int n = 0; n < params->N; ++n) {
++            const float *src_
++                    = static_cast<const float *>(params->src) + n * strideN;
++            float *dst_ = static_cast<float *>(params->dst) + n * strideN;
++            for (int sp = 0; sp < params->S;
++                    ++sp, dst_ += strideS, src_ += strideS) {
++#pragma omp simd
++                for (int c = 0; c < C; ++c) {
++                    dst_[c] = multiplier[c] * src_[c] + summand[c];
++                }
++            }
++        }
++
++#endif
++    }
++
+     void exec_fwd_step_normalization(const dim_t C_blks,
+             const bnorm_dims_t &nthr, const void *src, void *dst,
+             const acc_data_t *scale, const acc_data_t *shift,
+@@ -1915,7 +1962,13 @@ struct driver_t : public c_compatible {
+             c.N = stop.N - start.N;
+             c.C = stop.C - start.C;
+             c.S = stop.S - start.S;
+-
++#if 0
++            static int printed = 1;
++            if (ithr.glob == 0 && printed) {
++                printed = 0;
++                printf("jN(%ld), jC(%ld), jS(%ld)\n", c.N, c.C, c.S);
++            }
++#endif
+             const size_t d_off = start.N * stride_N + start.C * stride_C
+                     + start.S * stride_S;
+             c.src = (void *)((char *)src + d_off * dt_size_);
+@@ -1927,6 +1980,7 @@ struct driver_t : public c_compatible {
+             c.shift = shift ? &shift[start.C * simd_w] : nullptr;
+             c.blk_has_tail = blk_has_tail && stop.C == C_blks;
+             (*ker_fwd_)(&c);
++            //nspc_norm(&c);
+         });
+     }
+ 
+@@ -1962,7 +2016,6 @@ struct driver_t : public c_compatible {
+                         mean + C_blk_st * simd_w, var + C_blk_st * simd_w, rbuf,
+                         (C_blk_st + C_blk_step) * simd_w > C_);
+             }
+-
+             exec_fwd_step_normalization(C_blk_step, nthr,
+                     (void *)((char *)src + (C_blk_st * stride_C) * dt_size_),
+                     (void *)((char *)dst + (C_blk_st * stride_C) * dt_size_),
+@@ -2163,27 +2216,77 @@ struct driver_t : public c_compatible {
+                 || bdesc->desc()->prop_kind == prop_kind::backward_data;
+     }
+ 
++    void thread_distribution_nspc(dim_t C_blks, bnorm_dims_t &nthr) {
++        if (normalize_only(bdesc_)) {
++#if 1
++            // We want to keep some granularity on S so that we can
++            // stay on 1 socket if possible, this is why we divide
++            // work in chunks fitting in L2
++
++            dim_t n_nd_tensors = 2; // src and dst
++            dim_t n_1d_tensors = bdesc_->use_scale() + bdesc_->use_shift()
++                    + 2 * bdesc_->use_scaleshift();
++
++            dim_t size_1d = get_c_padded(bdesc_) * sizeof(acc_data_t);
++            dim_t size_nd = N_ * S_ * size_1d;
++
++            dim_t total_size = n_1d_tensors * size_1d + n_nd_tensors * size_nd;
++            // argument to getDataCacheSize: L1:0, L2:1, L3:2
++            dim_t n_chunks = total_size / cpu().getDataCacheSize(1);
++
++            // we prioritize parallelization on N, then S, and finally C
++            nthr.N = utils::saturate<dim_t>(1, N_, n_chunks);
++            nthr.S = utils::saturate<dim_t>(1, S_, n_chunks / nthr.N);
++            nthr.C = utils::saturate<dim_t>(
++                    1, C_blks, n_chunks / (nthr.N * nthr.S));
++
++#if 0
++            nthr.N = nstl::min<dim_t>(N_, getenv_int("N_THR", nthr.N));
++            nthr.S = nstl::min<dim_t>(S_, getenv_int("S_THR", nthr.S));
++            nthr.C = nstl::min<dim_t>(C_blks, getenv_int("C_THR", nthr.C));
++
++            printf("total_size(%ld), l2size(%ld), n_1d(%ld) s1d(%ld) n_nd(%ld) s_nd(%ld)\n",
++                   total_size, cpu().getDataCacheSize(1),
++                   n_1d_tensors, size_1d, 
++                   n_nd_tensors, size_nd);
++
++#endif
++
++#else
++            nthr.N = nstl::min<dim_t>(nthr_, N_);
++            nthr.S = utils::saturate<dim_t>(1, S_, nthr_ / nthr.N);
++            nthr.C = utils::saturate<dim_t>(1, C_, nthr_ / (nthr.N * nthr.S));
++#endif
++        } else {
++            if ((nthr_ <= C_blks && nthr_ == 1) || C_blks <= 8)
++                nthr.C = 1;
++            else if (nthr_ >= 8 && C_blks <= 32)
++                nthr.C = 8;
++            else {
++                nthr.C = math::gcd((dim_t)nthr_, C_blks);
++                // Unroll by channels in JIT kernel
++                if ((nthr.C == C_blks) || (nthr.C == nthr_)) nthr.C = 1;
++            }
++            nthr.N = utils::saturate((dim_t)1, N_, nthr_ / nthr.C);
++            nthr.S = utils::saturate((dim_t)1, S_, nthr_ / (nthr.C * nthr.N));
++        }
++    }
++
+     void thread_distribution(dim_t C_blks, bnorm_dims_t &nthr) {
+         if (do_blocking_) {
+             nthr.N = nstl::min<dim_t>(N_, nthr_);
+             nthr.C = nstl::min<dim_t>(C_blks, nthr_ / nthr.N);
++            nthr.S = utils::saturate((dim_t)1, S_, nthr_ / (nthr.C * nthr.N));
+         } else {
+             if (tag_kind_ == jit_memory_tag_kind_t::nspc) {
+-                if ((nthr_ <= C_blks && nthr_ == 1) || C_blks <= 8)
+-                    nthr.C = 1;
+-                else if (nthr_ >= 8 && C_blks <= 32)
+-                    nthr.C = 8;
+-                else {
+-                    nthr.C = math::gcd((dim_t)nthr_, C_blks);
+-                    // Unroll by channels in JIT kernel
+-                    if ((nthr.C == C_blks) || (nthr.C == nthr_)) nthr.C = 1;
+-                }
++                thread_distribution_nspc(C_blks, nthr);
+             } else {
+                 nthr.C = math::gcd((dim_t)nthr_, C_blks);
++                nthr.N = utils::saturate((dim_t)1, N_, nthr_ / nthr.C);
++                nthr.S = utils::saturate(
++                        (dim_t)1, S_, nthr_ / (nthr.C * nthr.N));
+             }
+-            nthr.N = utils::saturate((dim_t)1, N_, nthr_ / nthr.C);
+         }
+-        nthr.S = utils::saturate((dim_t)1, S_, nthr_ / (nthr.C * nthr.N));
+         nthr.glob = nthr.N * nthr.C * nthr.S;
+     }
+ 
