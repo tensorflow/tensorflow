@@ -192,7 +192,7 @@ std::string Status::ToString() const {
   if (state_ == nullptr) {
     return "OK";
   } else {
-    std::string result(error_name(code()));
+    std::string result(error_name(state_->code));
     result += ": ";
     result += state_->msg;
 
