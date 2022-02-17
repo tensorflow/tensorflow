@@ -79,6 +79,7 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
                                                  const std::string& entrypoint,
                                                  Specialization specialization,
                                                  bool vectorize,
+                                                 bool codegen_transpose,
                                                  bool legalize_i1_tensors) {
   // Options for the default JitRt compilation pipeline (lowering to LLVM).
   CompilationPipelineOptions copts;
@@ -96,6 +97,7 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(const std::string& mlir_module,
   opts.create_compilation_pipeline = [=](mlir::PassManager& pm) {
     tensorflow::TfJitRtPipelineOptions opts;
     opts.vectorize = vectorize;
+    opts.codegen_transpose = codegen_transpose;
     opts.legalize_i1_tensors = legalize_i1_tensors;
     tensorflow::CreateTfJitRtPipeline(pm, opts);
     CreateDefaultJitRtCompilationPipeline(pm, copts);
@@ -278,7 +280,8 @@ PYBIND11_MODULE(_tf_jitrt_executor, m) {
            py::arg("mlir_module"), py::arg("entrypoint"),
            py::arg("specialization") =
                tensorflow::TfJitRtExecutor::Specialization::kEnabled,
-           py::arg("vectorize") = false, py::arg("legalize_i1_tensors") = false)
+           py::arg("vectorize") = false, py::arg("codegen_transpose") = false,
+           py::arg("legalize_i1_tensors") = false)
       .def("execute", &tensorflow::TfJitRtExecutor::Execute)
       .def("built_with", &tensorflow::TfJitRtExecutor::BuiltWith,
            py::arg("cpu_feature"));
