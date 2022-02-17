@@ -332,9 +332,9 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
       for (int j = 0; j < outputs.size(); ++j) {
         op_def.dst_tensors.push_back(tensor_reserver->Get(outputs[j]->id));
       }
-      RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, create_info.hints,
-                                           inputs, outputs, node,
-                                           &gpu_subgraph));
+      RETURN_IF_ERROR(GPUOperationFromNode(
+          gpu_info, op_def, create_info.hints, inputs, outputs, node,
+          /*shared_conv_weights=*/nullptr, &gpu_subgraph));
     }
     absl::flat_hash_map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
