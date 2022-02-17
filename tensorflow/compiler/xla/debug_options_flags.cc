@@ -82,6 +82,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_bef_executable(false);
   opts.set_xla_gpu_bef_thunk(false);
+  opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
 
   return opts;
 }
@@ -697,6 +698,12 @@ static void AllocateFlags() {
       bool_setter_for(&DebugOptions::set_xla_gpu_bef_thunk),
       flag_values->xla_gpu_bef_thunk(),
       "Whether to enable XLIR to compile thunks to TFRT BEF."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_nccl_termination_timeout_seconds",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_nccl_termination_timeout_seconds),
+      flag_values->xla_gpu_nccl_termination_timeout_seconds(),
+      "Timeout in seconds before terminating jobs stuck in NCCL Rendezvous."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }  // NOLINT(readability/fn_size)
