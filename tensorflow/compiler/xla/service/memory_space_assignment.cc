@@ -492,6 +492,10 @@ bool InstructionCountPrefetchIntervalPicker::Done() const {
   return end_time_ - current_prefetch_time_ <= min_overlap_count_;
 }
 
+int64_t InstructionCountPrefetchIntervalPicker::latest_time() const {
+  return end_time_ - min_overlap_count_ - 1;
+}
+
 std::string InstructionCountPrefetchIntervalPicker::ToDebugString() const {
   return absl::StrCat("Overlapped HLOs = ", end_time_ - current_prefetch_time_);
 }
@@ -814,6 +818,10 @@ bool CostAnalysisPrefetchIntervalPicker::Done() const {
          decreasing_prefetch_time_iterator_ < earliest_prefetch_time_;
 }
 
+int64_t CostAnalysisPrefetchIntervalPicker::latest_time() const {
+  return latest_prefetch_time_;
+}
+
 void CostAnalysisPrefetchIntervalPicker::SetRetryNumber(int retry_number) {
   retry_number_ = retry_number;
 }
@@ -927,7 +935,8 @@ AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
       allocations_(allocations),
       options_(options),
       alias_analysis_(alias_analysis),
-      hlo_live_range_(hlo_live_range) {
+      hlo_live_range_(hlo_live_range),
+      peak_memory_usage_(hlo_live_range.schedule_end_time() + 1) {
   // Override buffer interval compare if provided.
   if (options.buffer_interval_compare) {
     buffer_interval_compare_ = *options.buffer_interval_compare;
@@ -2438,6 +2447,14 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks(
     const Chunk& chunk = interval_and_chunk.second.chunk;
     VLOG(3) << "Uncommitting: (" << interval.start << ", " << interval.end
             << ") off = " << chunk.offset << " size = " << chunk.size;
+    for (int i = interval.start; i <= interval.end; ++i) {
+      peak_memory_usage_[i] -= chunk.size;
+      CHECK_GE(peak_memory_usage_[i], 0)
+          << "Peak memory usage at " << i
+          << " is below zero after uncommitting. " << interval.start << "-"
+          << interval.end << " : [" << chunk.offset << ", " << chunk.size
+          << "]";
+    }
     interval_tree_.Remove(interval.start, interval.end, chunk);
   }
   for (const auto& interval : pending_async_copies_) {
@@ -2534,7 +2551,31 @@ void AlternateMemoryBestFitHeap::AddToPendingChunks(
           << buffer_interval.end << " : [" << chunk_candidate.chunk.offset
           << ", " << chunk_candidate.chunk.size << "]";
   pending_chunks_.emplace_back(buffer_interval, chunk_candidate);
+  for (int i = buffer_interval.start; i <= buffer_interval.end; ++i) {
+    peak_memory_usage_[i] += chunk_candidate.chunk.size;
+    CHECK_LE(peak_memory_usage_[i], options_.max_size_in_bytes)
+        << "Peak memory usage at " << i
+        << " exceeds the max size of alternate memory. "
+        << buffer_interval.start << "-" << buffer_interval.end << " : ["
+        << chunk_candidate.chunk.offset << ", " << chunk_candidate.chunk.size
+        << "]";
+  }
   CommitChunk(buffer_interval, chunk_candidate);
+}
+
+absl::optional<int>
+AlternateMemoryBestFitHeap::FindEarliestTimeToSatisfyPeakMemory(
+    int start_time, int end_time, int64_t size) const {
+  int earliest_time;
+  for (earliest_time = end_time;
+       earliest_time >= start_time &&
+       peak_memory_usage_[earliest_time] + size <= options_.max_size_in_bytes;
+       --earliest_time) {
+  }
+  if (earliest_time == end_time) {
+    return absl::nullopt;
+  }
+  return earliest_time + 1;
 }
 
 AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
@@ -3042,6 +3083,23 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
   int64_t prefetch_end_time =
       FindPrefetchEndTime(request, earliest_prefetch_time);
 
+  // As a compile time optimization, use the peak memory usage to filter out
+  // allocation times that would push us to OOM.
+  absl::optional<int> earliest_non_oom_prefetch_time =
+      FindEarliestTimeToSatisfyPeakMemory(earliest_prefetch_time,
+                                          prefetch_end_time, request.size);
+  Result result = Result::kSuccess;
+  if (!earliest_non_oom_prefetch_time) {
+    VLOG(3) << "Any prefetch in range (" << earliest_prefetch_time << ", "
+            << prefetch_end_time << ") for size " << request.size
+            << " would go out of memory.";
+    result_mark(Result::kFailOutOfMemory, result);
+    return result;
+  }
+  VLOG(4) << "After peak memory check, prefetch range is ("
+          << *earliest_non_oom_prefetch_time << ", " << prefetch_end_time
+          << "). Original earliest prefetch time is " << earliest_prefetch_time;
+  earliest_prefetch_time = *earliest_non_oom_prefetch_time;
   options_.prefetch_interval_picker->Begin(
       request.use->hlo_use, earliest_prefetch_time, prefetch_end_time);
   VLOG(3) << "Trying prefetch picker = "
@@ -3052,6 +3110,19 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
   BufferInterval alternate_mem_interval;
   alternate_mem_interval.buffer = request.allocation_value->value();
   alternate_mem_interval.size = request.size;
+  // As a compile time optimization, try a prefetch allocation that is as late
+  // as possible. If this is not able to find a chunk candidate, none of the
+  // earlier tries will succeed either.
+  alternate_mem_interval.start =
+      options_.prefetch_interval_picker->latest_time();
+  auto chunk_candidate = FindBestChunkCandidate(
+      request, request.preferred_offset, &alternate_mem_interval);
+  if (!chunk_candidate) {
+    VLOG(3) << "The latest prefetch (" << alternate_mem_interval.start << ", "
+            << request.end_time << ") cannot find a valid chunk. Giving up.";
+    result_mark(Result::kFailOutOfMemory, result);
+    return result;
+  }
   const HloUse& use = request.use->hlo_use;
   const Shape& shape = ShapeUtil::GetSubshape(
       use.instruction->operand(use.operand_number)->shape(), use.operand_index);
@@ -3060,7 +3131,6 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
       request.use->hlo_use.instruction->opcode() == HloOpcode::kWhile
           ? options_.while_use_extra_outstanding_prefetch_limit
           : 0;
-  Result result = Result::kSuccess;
   // As a compilation time optimization, store the prefetch start time where we
   // have first seen out of memory. There is no point of exploring prefetch
   // start times earlier than this point.
