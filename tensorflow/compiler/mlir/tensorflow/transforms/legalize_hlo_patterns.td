@@ -598,4 +598,10 @@ def : Pat<
 (FloatOrDefaultCompare $compare_type),
 (FloatOrDefaultCompare $compare_type1)]>;
 
+//===----------------------------------------------------------------------===//
+// TorchIndexSelect op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(HLO_TorchIndexSelectOp $params, $indices, $axis, $batch_dims),
+      (TF_GatherV2Op $params, $indices, (TF_ConstOp $axis), $batch_dims)>;
 
