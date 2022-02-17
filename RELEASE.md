@@ -52,8 +52,13 @@
     *   Add nominal support for unsigned 16-bit integer tensor types. Note that
         very few TFLite kernels support this type natively, so its use in mobile
         ML authoring is generally discouraged.
-    * Experimental support for lowering `list_ops.tensor_list_set_item` with
-      `DynamicUpdateSlice`.
+    *   Experimental support for lowering `list_ops.tensor_list_set_item` with
+        `DynamicUpdateSlice`.
+    *   Enabled a new MLIR-based dynamic range quantization backend by default
+        *   The new backend is used for post-training int8 dynamic range
+            quantization and post-training float16 quantization.
+        *   Set `experimental_new_dynamic_range_quantizer` in
+            tf.lite.TFLiteConverter to False to disable this change
 
 # Bug Fixes and Other Changes
 
