@@ -1211,7 +1211,7 @@ class Trackable(object):
     """
     return {}, {}
 
-  def _serialize_to_proto(self, **kwargs):
+  def _serialize_to_proto(self, object_proto=None, **kwargs):
     """Returns a proto of any type to be saved into the SavedModel.
 
     Trackable classes decorated with `register_serializable` should overwrite
@@ -1223,19 +1223,22 @@ class Trackable(object):
     APIs such as `tensorflow::LoadSavedModel` will not read this field at all.
 
     Args:
-      **kwargs: Keyword arguments passed to the object during saving. There are
-        no kwargs at this time. One future kwarg would be the SavedModel
-        directory, which will be used by the Assets object.
+      object_proto: A `SavedObject` proto that may be filled by this function.
+        Only the core serializable types (Variable, Function, Constant, Asset)
+        should modify this argument.
+      **kwargs: Future keyword arguments passed to the object during saving.
 
     Returns:
-      A new proto
+      A proto that serializes this class's type.
     """
-    del kwargs
+    del object_proto, kwargs  # Unused.
 
     return None
 
   @classmethod
-  def _deserialize_from_proto(cls, **kwargs):
+  def _deserialize_from_proto(
+      cls, proto=None, dependencies=None, object_proto=None, export_dir=None,
+      asset_file_def=None, operation_attributes=None, **kwargs):
     """Returns a new object restored by the SavedModel.
 
     Trackable classes decorated with `register_serializable` should overwrite
@@ -1293,16 +1296,22 @@ class Trackable(object):
     ```
 
     Args:
-      **kwargs: Keyword arguments passed to the object when loading. As of now,
-        the only supported kwarg is:
-        * proto: A `google.protobuf.Any` proto read from the SavedModel.
-        * dependencies: A dictionary mapping names to dependencies (see
-          `_deserialization_dependencies`).
+      proto: A `google.protobuf.Any` proto read from the `SavedModel`.
+      dependencies: A dictionary mapping names to dependencies (see
+        `_deserialization_dependencies`)
+      object_proto: The `SavedObject` proto for this object.
+      export_dir: The `SavedModel` directory
+      asset_file_def: The `MetaGraphDef`'s `asset_file_def` field.
+      operation_attributes: Dictionary mapping nodes to attribute from the
+        imported `GraphDef`.
+      **kwargs: Future keyword arguments passed to the object when loading.
 
     Returns:
       A new object.
     """
-    del kwargs
+    del (proto, dependencies, object_proto, export_dir, asset_file_def,
+         operation_attributes, kwargs)
+
     return cls()
 
   def _add_trackable_child(self, name, value):

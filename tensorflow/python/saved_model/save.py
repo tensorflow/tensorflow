@@ -23,7 +23,6 @@ import sys
 import traceback
 
 from absl import logging
-import numpy
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import versions_pb2
@@ -33,6 +32,7 @@ from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager import function_saved_model_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
@@ -74,10 +74,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 _UNCOPIABLE_DTYPES = frozenset((dtypes.resource, dtypes.variant))
 
-# A container for an EagerTensor constant which has been copied to the exported
-# Graph.
-_CapturedConstant = collections.namedtuple("_CapturedConstant",
-                                           ["eager_tensor", "graph_tensor"])
 # Container for tensors captured from external functions.
 _CapturedTensor = collections.namedtuple("_CapturedTensor",
                                          ["name", "concrete_function"])
@@ -307,7 +303,7 @@ class _SaveableView(object):
       assert self.node_ids[node] == node_id
       object_proto = proto.nodes.add()
       object_proto.slot_variables.extend(self._slot_variables.get(node, ()))
-      if isinstance(node, (_CapturedConstant, _CapturedTensor)):
+      if isinstance(node, _CapturedTensor):
         continue
       for child in self.augmented_graph_view.list_children(node):
         child_proto = object_proto.children.add()
@@ -363,7 +359,7 @@ class _SaveableView(object):
     for node_id in _dependency_sorted_node_ids(self):
       obj = self.nodes[node_id]
       tensors = obj._export_to_saved_model_graph(  # pylint: disable=protected-access
-          object_map, tensor_map, self._options)
+          object_map=object_map, tensor_map=tensor_map, options=self._options)
       if isinstance(obj, tracking.Asset):
         _add_asset_info(obj, asset_info, tensor_map[obj.asset_path])
       for tensor in tensors:
@@ -379,31 +375,12 @@ class _SaveableView(object):
         if (tensor_util.is_tf_type(capture) and
             capture.dtype not in _UNCOPIABLE_DTYPES and
             capture not in self.captured_tensor_node_ids):
-          capture_constant_value = tensor_util.constant_value(capture)
-          if capture_constant_value is None:
-            raise ValueError(
-                f"Unable to save function {concrete_function.name} because it "
-                f"captures graph tensor {capture} from a parent function which "
-                "cannot be converted to a constant with `tf.get_static_value`.")
-
-          if numpy.prod(capture.shape.as_list()) > 1 and numpy.all(
-              capture_constant_value == capture_constant_value.flat[0]):
-            # For the common case of a constant array filled with the same
-            # value, rebuidling the constant op specifically with the shape arg,
-            # since otherwise the whole array is written into the node def,
-            # causing performance and graph proto size issues (protos cannot be
-            # bigger than 2GB).
-            copied_tensor = constant_op.constant(
-                capture_constant_value.flat[0],
-                dtype=capture.dtype,
-                shape=capture.shape)
-          else:
-            copied_tensor = constant_op.constant(capture_constant_value)
-
-          node = _CapturedConstant(
-              eager_tensor=capture, graph_tensor=copied_tensor)
+          node = function_saved_model_utils.TrackableConstant(
+              capture, concrete_function)
+          node._export_to_saved_model_graph(  # pylint: disable=protected-access
+              object_map=object_map, tensor_map=tensor_map,
+              options=self._options)
           self.add_capture_and_node(capture, node)
-          tensor_map[capture] = copied_tensor
 
     return object_map, tensor_map, asset_info
 
@@ -1004,7 +981,7 @@ def _dependency_sorted_node_ids(saveble_view):
     node_id = saveble_view.node_ids[node]
     deps = dependency_map[node_id] = []
     # TODO(kathywu): Remove once all of these have been converted to trackable.
-    if isinstance(node, (_CapturedConstant, _CapturedTensor)):
+    if isinstance(node, _CapturedTensor):
       continue  # These are not `Trackable` and therefore have no dependencies.
     for _, dep in saveble_view.augmented_graph_view.list_dependencies(node):
       if dep not in saveble_view.node_ids:
@@ -1072,8 +1049,6 @@ def _write_object_proto(obj, proto, asset_file_def_index, list_children_fn):
   elif isinstance(obj, defun.ConcreteFunction):
     proto.bare_concrete_function.CopyFrom(
         function_serialization.serialize_bare_concrete_function(obj))
-  elif isinstance(obj, _CapturedConstant):
-    proto.constant.operation = obj.graph_tensor.op.name
   elif isinstance(obj, _CapturedTensor):
     proto.captured_tensor.name = obj.name
     proto.captured_tensor.concrete_function = obj.concrete_function
@@ -1094,7 +1069,7 @@ def _write_object_proto(obj, proto, asset_file_def_index, list_children_fn):
   registered_name = registration.get_registered_class_name(obj)
   if registered_name:
     proto.registered_name = registered_name
-    serialized_user_proto = obj._serialize_to_proto()  # pylint: disable=protected-access
+    serialized_user_proto = obj._serialize_to_proto(object_proto=proto)  # pylint: disable=protected-access
     if serialized_user_proto is not None:
       proto.serialized_user_proto.Pack(serialized_user_proto)
 

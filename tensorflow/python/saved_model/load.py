@@ -29,7 +29,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
@@ -61,8 +60,10 @@ _LOAD_V2_LABEL = "load_v2"
 # instead of "registered_name" field. The "kind" field has almost the same
 # functionality as the registered_name, but only contains built-in TensorFlow
 # types (like variable, functions, assets).
-_BUILT_IN_REGISTRATIONS = {"asset": tracking.Asset,
-                           "resource": resource.RestoredResource}
+_BUILT_IN_REGISTRATIONS = {
+    "asset": tracking.Asset,
+    "resource": resource.RestoredResource,
+    "constant": function_saved_model_utils.TrackableConstant}
 
 
 def _unused_handle():
@@ -581,8 +582,14 @@ class Loader(object):
           object_proto=proto,
           dependencies=dependencies,
           export_dir=self._export_dir,
-          asset_file_def=self._asset_file_def)
-      return obj, type(obj)._add_trackable_child  # pylint: disable=protected-access
+          asset_file_def=self._asset_file_def,
+          operation_attributes=self._operation_attributes)
+      if isinstance(obj, base.Trackable):
+        setter = type(obj)._add_trackable_child  # pylint: disable=protected-access
+      else:
+        # Returned object may be non-Trackable (e.g. when restoring captures).
+        setter = setattr
+      return obj, setter
     else:
       return self._recreate_default(proto, node_id, dependencies)
 
@@ -596,7 +603,6 @@ class Loader(object):
             self._recreate_bare_concrete_function,
             proto=proto.bare_concrete_function, dependencies=deps),
         "variable": lambda: self._recreate_variable(proto.variable),
-        "constant": lambda: self._recreate_constant(proto.constant),
         "captured_tensor": functools.partial(
             self._get_tensor_from_fn, proto.captured_tensor),
     }
@@ -666,16 +672,6 @@ class Loader(object):
           trainable=trainable,
           synchronization=synchronization,
           aggregation=aggregation), setattr
-
-  def _recreate_constant(self, proto):
-    tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
-    ndarray = tensor_util.MakeNdarray(tensor_proto)
-    if dtypes.as_dtype(tensor_proto.dtype) == dtypes.string:
-      with ops.device("CPU"):
-        imported_constant = constant_op.constant(ndarray)
-    else:
-      imported_constant = constant_op.constant(ndarray)
-    return imported_constant, setattr
 
   def _get_tensor_from_fn(self, proto):
     outer_graph = self._concrete_functions[proto.concrete_function].graph
