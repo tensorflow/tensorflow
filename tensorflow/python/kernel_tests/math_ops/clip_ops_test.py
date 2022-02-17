@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -530,6 +531,15 @@ class ClipTest(test.TestCase):
     w = clip_ops.clip_by_value(zero, 1.0, zero)
     with self.session() as sess:
       sess.run([x, y, z, w], feed_dict={zero: np.zeros((7, 0))})
+
+  def testClipByNormNegative(self):
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), "must > 0"):
+      with self.session():
+        x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
+        clip_norm = -4.0
+        ans = clip_ops.clip_by_norm(x, clip_norm)
+        self.evaluate(ans)
 
 
 if __name__ == '__main__':
