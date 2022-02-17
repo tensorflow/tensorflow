@@ -177,8 +177,21 @@ class GraphImporter {
  private:
   // Returns the inferred output type at index `idx` of the `node` in the
   // context.
-  tensorflow::StatusOr<Type> InferOutputType(const Node& node, int idx,
-                                             Builder builder);
+  Status InferOutputTypes(Builder& builder, OperationState& result,
+                          const Node& node);
+  // Try to infer the output types of a node from one of its attributes. Certain
+  // nodes have a required `output_shapes` attribute, e.g. while, if, and
+  // iterator nodes. All nodes might have an `_output_shapes` attribute.
+  Optional<Status> InferOutputTypesFromShapesAttribute(Builder& builder,
+                                                       OperationState& result,
+                                                       const Node& node);
+  // Try to infer the output types of the nodes using TF's inference context.
+  // Returns `None` if the node has inputs, if it is unregistered, or if it does
+  // not have a shape inference function.
+  Optional<Status> InferOutputTypesWithContext(Builder& builder,
+                                               OperationState& result,
+                                               const Node& node);
+
   // Most types with subtypes have only one subtype.
   using ElementSubtypes = llvm::SmallVector<TensorType, 1>;
 
@@ -235,116 +248,112 @@ class GraphImporter {
   NodeValueMap node_values_;
 };
 
-tensorflow::StatusOr<Type> GraphImporter::InferOutputType(const Node& node,
-                                                          int idx,
-                                                          Builder builder) {
-  DataType dtype = node.properties()->output_types[idx];
-
-  // Returns output type given inference context.
-  auto shape_ic = [&](InferenceContext* c) {
-    return ConvertDataTypeAndShape(dtype, c->output(idx),
-                                   c->output_handle_shapes_and_types(idx), c,
-                                   builder);
-  };
-
-  if (node.IsWhileNode()) {
-    auto* output_shapes = node.attrs().Find("output_shapes");
-    auto* element_types = node.attrs().Find("T");
-    if (output_shapes && !output_shapes->list().shape().empty()) {
-      const auto& output_shape = output_shapes->list().shape(idx);
-      const auto& element_type = element_types->list().type(idx);
-      return ConvertToMlirTensorType(output_shape, element_type, &builder);
-    }
-  }
-
-  auto type_from_array_attr = [&node, &idx, &builder](
-                                  absl::string_view output_shape_attr,
-                                  absl::string_view element_type_attr) {
-    auto* output_shapes = node.attrs().Find(output_shape_attr);
-    auto* element_types = node.attrs().Find(element_type_attr);
-    const auto& output_shape = output_shapes->list().shape(idx);
-    const auto& element_type = element_types->list().type(idx);
-    return ConvertToMlirTensorType(output_shape, element_type, &builder);
-  };
-
-  if (node.type_string() == "IteratorGetNext" ||
+Optional<Status> GraphImporter::InferOutputTypesFromShapesAttribute(
+    Builder& builder, OperationState& result, const Node& node) {
+  const AttrValue* output_shapes = nullptr;
+  if (node.IsWhileNode() || node.IsIfNode() || node.IsCaseNode() ||
+      node.type_string() == "IteratorGetNext" ||
       node.type_string() == "IteratorGetNextSync" ||
-      node.type_string() == "MultiDeviceIteratorGetNextFromShard")
-    return type_from_array_attr("output_shapes", "output_types");
-
-  if (node.type_string() == "InfeedDequeueTuple")
-    return type_from_array_attr("shapes", "dtypes");
-
-  if (node.type_string() == "InfeedDequeue") {
-    assert(idx == 0);
-    const auto& output_shape = node.attrs().Find("shape")->shape();
-    const auto& element_type = node.attrs().Find("dtype")->type();
-    return ConvertToMlirTensorType(output_shape, element_type, &builder);
+      node.type_string() == "MultiDeviceIteratorGetNextFromShard") {
+    output_shapes = node.attrs().Find("output_shapes");
+  } else if (node.type_string() == "InfeedDequeueTuple") {
+    output_shapes = node.attrs().Find("shapes");
+  } else if ((output_shapes = node.attrs().Find("_output_shapes"))) {
+    // Check for a generic `_output_shapes` attribute. Only use it if it matches
+    // the number of outputs.
+    if (output_shapes->list().shape_size() != node.num_outputs())
+      output_shapes = nullptr;
   }
+  if (!output_shapes) return {};
 
-  // Returns a simple, more conservative unranked tensor type.
-  auto default_type = [&]() -> tensorflow::StatusOr<Type> {
-    Type element_type;
-    TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
-    return UnrankedTensorType::get(element_type);
-  };
+  // The output shapes attribute is required. It may also be empty. Handle the
+  // latter case gracefully.
+  auto& shapes = output_shapes->list().shape();
+  if (shapes.empty()) return {};
+  if (shapes.size() != node.num_outputs()) {
+    return InvalidArgument("Failed to infer output shapes: expected ",
+                           node.num_outputs(), " output shapes but got ",
+                           output_shapes->list().shape_size());
+  }
+  for (auto& it : llvm::enumerate(shapes)) {
+    DataType dtype = node.properties()->output_types[it.index()];
+    TF_ASSIGN_OR_RETURN(Type output_type,
+                        ConvertToMlirTensorType(it.value(), dtype, &builder));
+    result.addTypes(output_type);
+  }
+  return Status::OK();
+}
 
+Optional<Status> GraphImporter::InferOutputTypesWithContext(
+    Builder& builder, OperationState& result, const Node& node) {
   // Below we only try and do some shape inference for "source" ops which have
   // no inputs.
-  if (node.num_inputs() > 0) return default_type();
-
-  // Do some simply inference here to get the function arguments correct for
-  // this common case.
-  // TODO(jpienaar): Reconsider post refactoring shape functions.
-  if (node.IsArg()) {
-    if (dtype == tensorflow::DT_RESOURCE) {
-      const AttrValue* dtype_attr = node.attrs().Find("_handle_dtypes");
-      const AttrValue* shape_attr = node.attrs().Find("_handle_shapes");
-      if (dtype_attr && shape_attr) {
-        if (dtype_attr->list().type().empty()) {
-          return InvalidArgument(
-              "Invalid \"_handle_dtypes\" attribute value for _Arg node: ",
-              shape_attr->DebugString());
-        }
-        if (shape_attr->list().shape().empty()) {
-          return InvalidArgument(
-              "Invalid \"_handle_shapes\" attribute value for _Arg node: ",
-              shape_attr->DebugString());
-        }
-        DataType dtype = dtype_attr->list().type(0);
-        const TensorShapeProto& shape_proto = shape_attr->list().shape(0);
-        TF_ASSIGN_OR_RETURN(
-            auto etype, ConvertToMlirTensorType(shape_proto, dtype, &builder));
-        return UnrankedTensorType::get(ResourceType::get(
-            {etype.cast<TensorType>()}, builder.getContext()));
-      } else {
-        return UnrankedTensorType::get(ResourceType::get(builder.getContext()));
-      }
-    } else if (auto shape = node.attrs().Find("_output_shapes")) {
-      if (shape->has_list() && shape->list().shape_size() == 1) {
-        return ConvertToMlirTensorType(shape->list().shape().at(0), dtype,
-                                       &builder);
-      }
-    }
-  }
+  if (node.num_inputs() > 0) return {};
 
   const tensorflow::OpRegistrationData* op_reg_data;
   TF_RETURN_IF_ERROR(
       graph_->op_registry()->LookUp(node.type_string(), &op_reg_data));
   if (!op_reg_data) {
     DVLOG(3) << "Skipping inference for unregistered op " << node.type_string();
-    return default_type();
+    return {};
   }
-  if (op_reg_data->shape_inference_fn == nullptr) {
+  if (!op_reg_data->shape_inference_fn) {
     DVLOG(3) << "Skipping inference for op without shape function "
              << node.type_string();
-    return default_type();
+    return {};
   }
   InferenceContext c(graph_->versions().producer(), node.attrs(),
                      op_reg_data->op_def, std::vector<PartialTensorShape>{}, {},
                      /*input_tensors_as_shapes=*/{}, {});
   TF_RETURN_IF_ERROR(c.Run(op_reg_data->shape_inference_fn));
-  return shape_ic(&c);
+
+  for (int idx : llvm::seq(0, node.num_outputs())) {
+    DataType dtype = node.properties()->output_types[idx];
+    TF_ASSIGN_OR_RETURN(
+        Type output_type,
+        ConvertDataTypeAndShape(dtype, c.output(idx),
+                                c.output_handle_shapes_and_types(idx), &c,
+                                builder));
+    result.addTypes(output_type);
+  }
+  return Status::OK();
+}
+
+Status GraphImporter::InferOutputTypes(Builder& builder, OperationState& result,
+                                       const Node& node) {
+  // Exit early if there are no outputs.
+  if (node.num_outputs() == 0) return Status::OK();
+
+  // Try to infer an output shape from a shapes attribute.
+  if (Optional<Status> status =
+          InferOutputTypesFromShapesAttribute(builder, result, node))
+    return *status;
+
+  // Handle a special case for `InfeedDequeue`.
+  if (node.type_string() == "InfeedDequeue") {
+    assert(node.num_outputs() == 1 && "expected 1 result");
+    const auto& output_shape = node.attrs().Find("shape")->shape();
+    const auto& element_type = node.attrs().Find("dtype")->type();
+    TF_ASSIGN_OR_RETURN(
+        Type output_type,
+        ConvertToMlirTensorType(output_shape, element_type, &builder));
+    result.addTypes(output_type);
+    return Status::OK();
+  }
+
+  // Try to infer output shapes using shape inference.
+  if (Optional<Status> status =
+          InferOutputTypesWithContext(builder, result, node))
+    return *status;
+
+  // If all else fails, fallback to importing tensors as unranked.
+  for (int idx : llvm::seq(0, node.num_outputs())) {
+    DataType dtype = node.properties()->output_types[idx];
+    Type element_type;
+    TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
+    result.addTypes(UnrankedTensorType::get(element_type));
+  }
+  return Status::OK();
 }
 
 tensorflow::StatusOr<TensorType> GraphImporter::ConvertDataTypeAndShape(
@@ -550,11 +559,8 @@ Status GraphImporter::ConvertNode(const Node& node) {
   OperationState result(GetLocation(node),
                         absl::StrCat("tfg.", node.type_string()));
   // Compute the result types.
-  for (int i : llvm::seq(0, node.num_outputs())) {
-    TF_ASSIGN_OR_RETURN(auto type, InferOutputType(node, i, builder_));
-    result.types.push_back(type);
-  }
-  result.types.push_back(ControlType::get(builder_.getContext()));
+  TF_RETURN_IF_ERROR(InferOutputTypes(builder_, result, node));
+  result.addTypes(ControlType::get(builder_.getContext()));
 
   // Input edges can be nondeterministically ordered, sort them here. First the
   // data edges in the expected order and then the control edges using the
