@@ -411,6 +411,14 @@ class HloModule {
     relative_speedup_ = relative_speedup;
   }
 
+  // Sets the **unoptimized** fingerprint for the module. This fingerprint is
+  // prior to any optimizations.
+  void set_autofdo_fingerprint(absl::string_view fingerprint) {
+    autofdo_fingerprint_ = std::string(fingerprint);
+  }
+
+  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -477,6 +485,9 @@ class HloModule {
 
   // Relative speedup of best config compared to default config.
   double relative_speedup_;
+
+  // The unoptimized module fingerprint.
+  std::string autofdo_fingerprint_;
 };
 
 }  // namespace xla
