@@ -1862,6 +1862,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "nomsan",  # b/154224457: Re-enable when fixed.
+        "notsan",  # TODO(b/220133218)
     ],
     # b/155301154 broken with XLA:GPU
     xla_enable_strict_auto_jit = True,
