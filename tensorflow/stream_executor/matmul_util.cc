@@ -175,5 +175,4 @@ port::StatusOr<blas::BlasLtMatmulPlanParams> CreatePlanParams(
   return plan_params;
 }
 
-
 }  // namespace stream_executor
