@@ -79,6 +79,12 @@
         `tf.data.experimental.parse_example_dataset` to match the behavior of
         `tf.io.parse_example`.
 
+*    `tf.keras`:
+
+    *   Fixed bug in optimizers that prevented them from properly checkpointing
+        slot variables when they are `ShardedVariable`s (used for training with
+        `tf.distribute.experimental.ParameterServerStrategy`).
+
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *   <NOTES SHOULD BE GROUPED PER AREA>

@@ -1382,7 +1382,7 @@ class Trackable(object):
     """Returns this object's `Trackable` attributes.
 
     This method is used to build the object graph (or the object hierarchy,
-    in pickling terms) for checkpoint save/restore, and SavedModel export.
+    in pickling terms) for checkpoint save/restore, and `SavedModel` export.
 
     Override this method to define the children of this instance. Please read
     the implementation restrictions:
@@ -1394,14 +1394,14 @@ class Trackable(object):
 
     **Rule 2: [Checkpoint-only] Do not create new objects.**
 
-    When saving to a SavedMdoel, this method is called *exactly once* for each
+    When saving to a `SavedModel`, this method is called *exactly once* for each
     `Trackable` in the object graph. When saving or restoring from a checkpoint,
     this method may be called *multiple times*. Thus, this method may create
     new Trackables when `save_type == SaveType.SAVEDMODEL` but not when
     `save_type == SaveType.CHECKPOINT`.
 
-    When saving to SavedModel, new `Trackable` children can be created to save
-    non-Trackable attributes to the SavedModel. In the example below, `hyper`
+    When saving to `SavedModel`, new `Trackable` children can be created to save
+    non-Trackable attributes to the `SavedModel`. In the example below, `hyper`
     is a regular python float hyperparameter. To save this value, a new Variable
     is created to store the value of `hyper`:
 
@@ -1430,15 +1430,15 @@ class Trackable(object):
       return {'hyper': tf.Variable(self.hyper)}
     ```
 
-    **Rule 3: [SavedModel-only] Watch out for un-traced tf.functions.**
+    **Rule 3: [`SavedModel`-only] Watch out for un-traced tf.functions.**
 
     At the begining of `_trackable_children`, always call
     `get_concrete_function()` for any `tf.function` that has an input signature.
 
-    When `tf.functions` are saved to SavedModel, any `tf.functions` that have an
-    input signature and has never been called is traced at export time in order
-    to copy the op graph into the SavedModel. `tf.functions` that are traced
-    for the first time are allowed to create new state:
+    When `tf.functions` are saved to `SavedModel`, any `tf.functions` that have
+    an input signature and has never been called is traced at export time in
+    order to copy the op graph into the `SavedModel`. `tf.functions` that are
+    traced for the first time are allowed to create new state:
 
 
     ```
@@ -1451,7 +1451,7 @@ class Trackable(object):
 
     A problem occurs when there is a `Trackable` that returns `fn` as one of its
     children and `self.v` has not been created yet. When `fn` is traced,
-    `self.v` is added to the `Trackable`, but SavedModel does not see this
+    `self.v` is added to the `Trackable`, but `SavedModel` does not see this
     modification since the `Trackable`'s children have already been gathered.
 
     Therefore, as a precaution, call `get_concrete_function()` at the very
@@ -1467,11 +1467,11 @@ class Trackable(object):
     Args:
       save_type: A string, can be 'savedmodel' or 'checkpoint'. Defaults to
         SaveType.CHECKPOINT.
-      **kwargs: Keyword arguments passed to the object when saving SavedModel or
-        Checkpoints. Possible kwargs include (more may be added later):
+      **kwargs: Keyword arguments passed to the object when saving `SavedModel`
+        or Checkpoints. Possible kwargs include (more may be added later):
         * cache: An object identity dictionary (a dictionary that uses "is" to
           match keys, so that unhashable object may be used as keys). An empty
-          cache is created at the start of every SavedModel export, and shared
+          cache is created at the start of every `SavedModel` export, and shared
           between all `Trackable` subclasses in the same object graph. This
           object is used for advanced saving functionality.
 
