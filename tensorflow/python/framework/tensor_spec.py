@@ -224,9 +224,6 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
   def _to_batched_tensor_list(self, value):
     return self._to_tensor_list(value)
 
-  def __tf_tracing_type__(self, signature_context):
-    return ops.TensorType(signature_context, self.shape, self.dtype, self.name)
-
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
 @type_spec.register("tf.BoundedTensorSpec")
