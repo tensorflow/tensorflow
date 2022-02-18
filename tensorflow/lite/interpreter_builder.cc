@@ -212,19 +212,29 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
 }
 
 InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
-                                       const OpResolver& op_resolver)
+                                       const OpResolver& op_resolver,
+                                       const InterpreterOptions* options)
     : model_(model.GetModel()),
       op_resolver_(op_resolver),
       error_reporter_(ValidateErrorReporter(model.error_reporter())),
       metadata_(model.ReadAllMetadata()),
-      allocation_(model.allocation()) {}
+      allocation_(model.allocation()) {
+  if (options) {
+    options_ = *options;
+  }
+}
 
 InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
                                        const OpResolver& op_resolver,
-                                       ErrorReporter* error_reporter)
+                                       ErrorReporter* error_reporter,
+                                       const InterpreterOptions* options)
     : model_(model),
       op_resolver_(op_resolver),
-      error_reporter_(ValidateErrorReporter(error_reporter)) {}
+      error_reporter_(ValidateErrorReporter(error_reporter)) {
+  if (options) {
+    options_ = *options;
+  }
+}
 
 InterpreterBuilder::~InterpreterBuilder() {}
 
@@ -756,9 +766,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   // Set num threads after all the subgraphs are added.
   (*interpreter)->SetNumThreads(num_threads_);
 
-  if (preserve_all_tensors_) {
-    (*interpreter)->PreserveAllTensorsExperimental();
-  }
+  // Set Interpreter options
+  (*interpreter)->ApplyOptions(&options_);
 
   (*interpreter)->SetProfiler(tflite::profiling::MaybeCreatePlatformProfiler());
 

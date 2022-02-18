@@ -495,7 +495,6 @@ cc_library(
     srcs = [
         "core/subgraph.cc",
         "graph_info.cc",
-        "interpreter_builder_experimental.cc",
         "interpreter_experimental.cc",
         "signature_runner.cc",
     ],

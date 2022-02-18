@@ -48,12 +48,6 @@ TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
   return primary_subgraph().ReleaseNonPersistentMemory();
 }
 
-void Interpreter::EnsureDynamicTensorsAreReleased() {
-  for (auto& subgraph : subgraphs_) {
-    subgraph->EnsureDynamicTensorsAreReleased();
-  }
-}
-
 TfLiteStatus Interpreter::ResetVariableTensors() {
   for (auto& subgraph : subgraphs_) {
     TF_LITE_ENSURE_STATUS(subgraph->ResetVariableTensors());
@@ -167,12 +161,25 @@ Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
 
-TfLiteStatus Interpreter::PreserveAllTensorsExperimental() {
-  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
-       ++subgraph_index) {
-    TF_LITE_ENSURE_STATUS(
-        subgraphs_[subgraph_index]->PreserveAllTensorsExperimental());
+TfLiteStatus Interpreter::ApplyOptions(InterpreterOptions* options) {
+  if (options == nullptr) {
+    return kTfLiteOk;
   }
+
+  // Handle `experimental_preserve_all_tensors_`.
+  if (options->GetPreserveAllTensors()) {
+    for (auto& subgraph : subgraphs_) {
+      subgraph->PreserveAllTensorsExperimental();
+    }
+  }
+
+  // Handle `experimental_ensure_dynamic_tensors_are_released_`.
+  if (options->GetEnsureDynamicTensorsAreReleased()) {
+    for (auto& subgraph : subgraphs_) {
+      subgraph->EnsureDynamicTensorsAreReleased();
+    }
+  }
+
   return kTfLiteOk;
 }
 
