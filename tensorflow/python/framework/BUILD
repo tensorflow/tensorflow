@@ -1247,6 +1247,7 @@ pytype_library(
         ":dtypes",
         ":tensor_shape",
         "//tensorflow/python:platform",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
