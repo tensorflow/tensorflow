@@ -177,7 +177,6 @@ def FallbackWaitForCompilationOp : TF_JITRT_Op<"test.wait_for_compilation",
 
     This kernel is intended for use in tests to deterministically call
     specialized kernels when specialization is done lazily.
-    ```
   }];
 
   let arguments = (ins
@@ -189,6 +188,30 @@ def FallbackWaitForCompilationOp : TF_JITRT_Op<"test.wait_for_compilation",
 
   let assemblyFormat = [{
     $kernel `(` $chain `)` attr-dict
+  }];
+}
+
+def FallbackResetCompilationThreadPoolOp :
+    TF_JITRT_Op<"test.reset_compilation_thread_pool",
+    [TFRT_CostFunctionInterface, TFRT_FixedCost<1>]> {
+  let summary = "resets the thread pool running compilation tasks";
+  let description = [{
+    `tf_jitrt.test.reset_compilation_thread_pool` resets the compilation thread
+    pool, i.e., it waits for the completion of all compilation tasks and
+    destroys all captured async value references.
+
+    This kernel is intended for use in tests to make sure that we do not trigger
+    async value leak checks because of racy execution.
+  }];
+
+  let arguments = (ins
+    TFRT_ChainType:$chain
+  );
+
+  let results = (outs TFRT_ChainType:$scheduled);
+
+  let assemblyFormat = [{
+    $chain attr-dict
   }];
 }
 

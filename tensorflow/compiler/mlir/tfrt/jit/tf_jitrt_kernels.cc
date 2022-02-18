@@ -126,8 +126,7 @@ using ::tensorflow::thread::ThreadPool;
 
 class CompilationThreadPool : public SharedContext {
  public:
-  explicit CompilationThreadPool(HostContext* host)
-      : thread_pool_(Env::Default(), "tf-jitrt-compiler", /*num_threads=*/32) {}
+  explicit CompilationThreadPool(HostContext* host) { Reset(); }
 
   static CompilationThreadPool& Get(HostContext* host) {
     return host->GetOrCreateSharedContext<CompilationThreadPool>();
@@ -139,14 +138,21 @@ class CompilationThreadPool : public SharedContext {
     // thread pool requires std::function tasks, we have to do manual memory
     // management here.
     auto ptr = std::make_unique<Task>(std::forward<Task>(task));
-    thread_pool_.Schedule([ptr = ptr.release()]() {
+    thread_pool_->Schedule([ptr = ptr.release()]() {
       (*ptr)();
       delete ptr;
     });
   }
 
+  // This is an unsafe function intended only for use in tests. It is undefined
+  // behavior to call it concurrently with `Schedule`.
+  void Reset() {
+    thread_pool_ = std::make_unique<ThreadPool>(
+        Env::Default(), "tf-jitrt-compiler", /*num_threads=*/32);
+  }
+
  private:
-  ThreadPool thread_pool_;
+  std::unique_ptr<ThreadPool> thread_pool_;
 };
 
 // -------------------------------------------------------------------------- //
@@ -529,6 +535,20 @@ static AsyncValueRef<Chain> WaitForCompilation(
 }
 
 // -------------------------------------------------------------------------- //
+// TFRT kernel function for tf_jitrt.test.reset_compilation_thread_pool.
+// -------------------------------------------------------------------------- //
+
+static AsyncValueRef<Chain> ResetCompilationThreadPool(
+    Argument<Chain> chain, const ExecutionContext& exec_ctx) {
+  // Make sure that we reset the compilation thread pool only from a thread pool
+  // (concurrent work queue) managed by the HostContext.
+  return EnqueueWork(exec_ctx, [host = exec_ctx.host()]() -> Chain {
+    CompilationThreadPool::Get(host).Reset();
+    return {};
+  });
+}
+
+// -------------------------------------------------------------------------- //
 // Execute compiled JitRt kernels with Fallback Runtime interop.
 // -------------------------------------------------------------------------- //
 
@@ -817,6 +837,8 @@ void RegisterTfJitRuntimeKernels(KernelRegistry* registry) {
 
   registry->AddKernel("tf_jitrt.test.wait_for_compilation",
                       TFRT_KERNEL(WaitForCompilation));
+  registry->AddKernel("tf_jitrt.test.reset_compilation_thread_pool",
+                      TFRT_KERNEL(ResetCompilationThreadPool));
 }
 
 }  // namespace tensorflow
