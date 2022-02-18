@@ -283,6 +283,11 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
     tensor_usages[input.first] = -1;  // so as inputs "updated" before operation
                                       // 0, we will mark them with -1
   }
+  std::vector<SharedWeightsConvDesc> shared_conv_weights;
+  std::vector<SharedWeightsConvDesc>* shared_conv_weights_ptr =
+      create_info.hints.Check(ModelHints::kReuseConvWeights)
+          ? &shared_conv_weights
+          : nullptr;
   for (int i = 0; i < graph_nodes.size(); ++i) {
     const Node& node = *graph_nodes[i];
     if (consumed_nodes.find(node.id) != consumed_nodes.end()) {
@@ -334,7 +339,7 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
       }
       RETURN_IF_ERROR(GPUOperationFromNode(
           gpu_info, op_def, create_info.hints, inputs, outputs, node,
-          /*shared_conv_weights=*/nullptr, &gpu_subgraph));
+          shared_conv_weights_ptr, &gpu_subgraph));
     }
     absl::flat_hash_map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
@@ -353,6 +358,9 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
         auto global_id = tensor_reserver->Add(td);
         mapping_to_global_ids[j] = global_id;
       }
+    }
+    if (!shared_conv_weights.empty() && !mapping_to_global_ids.empty()) {
+      shared_conv_weights.back().RemapIds(mapping_to_global_ids);
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
       GpuNode gpu_node;

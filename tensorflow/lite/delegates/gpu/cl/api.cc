@@ -667,6 +667,7 @@ CreateGpuModelInfo GetCreateInfo(const Environment& environment,
                             InferencePriority::MIN_LATENCY) ==
       PriorityImportance::HIGHER) {
     create_info.hints.Add(ModelHints::kNoWinogradOptimizations);
+    create_info.hints.Add(ModelHints::kReuseConvWeights);
   }
   return create_info;
 }
