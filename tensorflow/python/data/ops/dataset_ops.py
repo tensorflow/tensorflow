@@ -65,6 +65,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest as tf_nest
@@ -4300,6 +4301,35 @@ def to_variant(dataset):
   return dataset._variant_tensor  # pylint: disable=protected-access
 
 
+# TODO(b/202447704): Merge into DatasetSpec.
+class DatasetSpecTraceType(trace.TraceType):
+  """Defines the Tracing Protocol for Dataset objects.
+
+  The default TraceType supplied by TypeSpec does not take into account
+  `element_spec` and therefore reuses concrete functions for cases where
+  the `element_spec` is different.
+  """
+
+  def __init__(self, element_spec, dataset_shape):
+    self._components = (element_spec, tuple(dataset_shape.as_list()))
+
+  def is_subtype_of(self, other):
+    return self == other
+
+  def most_specific_common_supertype(self, others):
+    return None
+
+  def __hash__(self):
+    return hash(DatasetSpecTraceType)
+
+  def __eq__(self, other):
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    return isinstance(
+        other, DatasetSpecTraceType) and self._components == other._components
+
+
 @tf_export(
     "data.DatasetSpec",
     v1=["data.DatasetSpec", "data.experimental.DatasetStructure"])
@@ -4379,6 +4409,9 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   def _to_legacy_output_classes(self):
     return self
+
+  def __tf_tracing_type__(self, _):
+    return DatasetSpecTraceType(self._element_spec, self._dataset_shape)
 
 
 class _NumpyIterator(object):
