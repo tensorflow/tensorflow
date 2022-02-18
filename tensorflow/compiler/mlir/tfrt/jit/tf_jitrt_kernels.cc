@@ -165,10 +165,12 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
   RequestContext* req_ctx = exec_ctx.request_ctx();
 
   auto* fallback = req_ctx->GetDataIfExists<KernelFallbackCompatRequestState>();
-  if (!fallback) return MakeStringError("fallback request state was not found");
+  if (LLVM_UNLIKELY(!fallback))
+    return MakeStringError("fallback request state was not found");
 
   // Return user provided intra op thread pool if it is available.
-  if (fallback->intra_op_threadpool()) return fallback->intra_op_threadpool();
+  if (LLVM_LIKELY(fallback->intra_op_threadpool()))
+    return fallback->intra_op_threadpool();
 
   // Otherwise find the default CPU device in the device manager.
   Device* host_cpu = fallback->device_manager().HostCPU();
@@ -263,14 +265,9 @@ static const std::string GetSessionName(RequestContext* req_ctx) {
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     const CompilationUnitAttribute& kernel, const ExecutionContext& exec_ctx,
     const Optional<TfJitRtPipelineOpts>& opts = None) {
-  // We only support functions nested in top level compiled module.
-  if (kernel.nested_symbols().size() != 1)
-    return MakeStringError(
-        "kernel function has to be defined in a top-level module");
-
   // Request context must be initialized with the tf_jitrt state.
   auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
-  if (!state)
+  if (LLVM_UNLIKELY(!state))
     return MakeStringError("tf_jitrt state not found in the request context");
 
   // We rely on the unique `id` provided by the CompilationUnitAttribute to look
@@ -286,7 +283,8 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   JitExecutableCache* jit_executable_cache = state->jit_executable_cache;
 
   // Maybe return JitExecutable from the cache.
-  if (auto cached = jit_executable_cache->Find(key)) return cached;
+  auto cached = jit_executable_cache->Find(key);
+  if (LLVM_LIKELY(cached)) return cached;
 
   // Get the worker threads from the execution context. Do this before
   // allocating an async value to make sure that we can try to instantiate the
@@ -309,6 +307,12 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     std::string name;
     std::string serialized_operation;
   } kernel_info;
+
+  // We only support functions nested in top level compiled module.
+  if (kernel.nested_symbols().size() != 1)
+    return MakeStringError(
+        "kernel function has to be defined in a top-level module");
+
   // TODO(ecg): use designed initializers + const when C++20 is adopted.
   kernel_info.id = kernel.id();
   kernel_info.entrypoint = kernel.nested_symbols()[0];
@@ -658,8 +662,9 @@ static void ExecuteImpl(Executable& executable,
   // Get the worker threads from the execution context.
   Expected<Eigen::ThreadPoolInterface*> worker_threads =
       GetWorkerThreads(exec_ctx);
-  if (auto err = worker_threads.takeError())
-    return ReturnErrors(results, std::move(err), exec_ctx);
+
+  if (LLVM_UNLIKELY(!worker_threads))
+    return ReturnErrors(results, worker_threads.takeError(), exec_ctx);
 
   // Use Eigen thread pool to execute all async tasks.
   EigenThreadPoolAsyncTaskRunner async_task_runner(*worker_threads);
@@ -670,7 +675,8 @@ static void ExecuteImpl(Executable& executable,
 
   // Execution error automatically forwarded to all results, we only need to
   // notify the HostContext to emit the diagnostics for the kernel invocation.
-  if (auto err = executable.Execute(memrefs, converter, opts)) {
+  auto err = executable.Execute(memrefs, converter, opts);
+  if (LLVM_UNLIKELY(err)) {
     EmitError(exec_ctx, StrCat(err));
     return;
   }
@@ -695,8 +701,9 @@ static void ExecuteImpl(JitExecutable& jit_executable,
 
   Expected<AsyncValuePtr<Executable>> executable = jit_executable.GetExecutable(
       memrefs, user_data, debug ? &debug_listener : nullptr);
-  if (auto err = executable.takeError())
-    return ReturnErrors(results, std::move(err), exec_ctx);
+
+  if (LLVM_UNLIKELY(!executable))
+    return ReturnErrors(results, executable.takeError(), exec_ctx);
 
   // If executable is available execute it inline ...
   if (LLVM_LIKELY(executable->IsConcrete()))
@@ -752,8 +759,8 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
   Expected<AsyncValuePtr<JitExecutable>> jit_executable =
       CompileImpl(kernel, exec_ctx, opts);
 
-  if (auto err = jit_executable.takeError())
-    return ReturnErrors(results, std::move(err), exec_ctx);
+  if (LLVM_UNLIKELY(!jit_executable))
+    return ReturnErrors(results, jit_executable.takeError(), exec_ctx);
 
   // If kernel is available execute it inline ...
   if (LLVM_LIKELY(jit_executable->IsConcrete()))
