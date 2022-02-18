@@ -45,7 +45,6 @@ int main(int argc, char **argv) {
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<mlir::xla_framework::XLAFrameworkDialect,
                   mlir::TF::TensorFlowDialect, mlir::tf_type::TFTypeDialect>();
-  return failed(mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n",
-                                  registry,
-                                  /*preloadDialectsInContext=*/false));
+  return failed(
+      mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n", registry));
 }

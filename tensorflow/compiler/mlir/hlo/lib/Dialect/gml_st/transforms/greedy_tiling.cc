@@ -28,7 +28,7 @@ namespace {
 class GreedyTilingPass : public GreedyTilingPassBase<GreedyTilingPass> {
   void runOnOperation() final {
     getOperation()->walk([](MaterializeOp materialize) {
-      auto defining_op = materialize.source().getDefiningOp();
+      auto *defining_op = materialize.source().getDefiningOp();
       if (auto tileable = dyn_cast_or_null<TilingInterface>(defining_op)) {
         OpBuilder builder(materialize);
         if (auto newTile = tileable.tile(materialize, builder)) {

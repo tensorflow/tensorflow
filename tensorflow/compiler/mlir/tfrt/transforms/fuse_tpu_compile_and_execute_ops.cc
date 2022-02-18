@@ -114,12 +114,16 @@ class FuseTpuCompileAndExecutePass
         }
       }
 
+      auto producer_name =
+          exec_op->getAttrOfType<mlir::StringAttr>("_producer_name");
+      if (!producer_name)
+        producer_name = mlir::StringAttr::get(&getContext(), "default");
       auto compile_and_execute_op =
           builder.create<mlir::TF::TPUCompileMlirAndExecuteOp>(
               exec_op.getLoc(), output_types, exec_op_args,
               static_shape_tensors,
               builder.getI32ArrayAttr(static_shaped_operand_indices_attr),
-              compile_op.mlir_module(), compile_op.metadata());
+              compile_op.mlir_module(), compile_op.metadata(), producer_name);
 
       exec_op.replaceAllUsesWith(compile_and_execute_op.results());
       for (auto program_result : compile_op.program()) {

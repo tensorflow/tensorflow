@@ -216,10 +216,8 @@ func @merge_assuming_ops(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
   // CHECK:      %[[SHAPE0:.*]] = shape.shape_of %[[ARG0]]
   // CHECK:      %[[SHAPE1:.*]] = shape.shape_of %[[ARG1]]
   // CHECK:      %[[SHAPE2:.*]] = shape.shape_of %[[ARG2]]
-  // CHECK:      %[[WITNESS0:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]]
-  // CHECK:      %[[WITNESS1:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
-  // CHECK:      %[[COMBINED_WITNESS:.*]] = shape.assuming_all %[[WITNESS0]], %[[WITNESS1]]
-  // CHECK:      %[[MERGED:.*]]:2 = shape.assuming %[[COMBINED_WITNESS]]
+  // CHECK:      %[[WITNESS:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
+  // CHECK:      %[[MERGED:.*]]:2 = shape.assuming %[[WITNESS]]
   // CHECK-SAME: {
   // CHECK:        "some.op"
   // CHECK:        %[[RESULT0:.*]] = "some.producer"

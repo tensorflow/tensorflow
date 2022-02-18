@@ -53,10 +53,6 @@ namespace {
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
 using QType = quant::QuantizedType;
 
-constexpr char kQuantTraitAttr[] = "_tfl_quant_trait";
-constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
-                                                  "not_quantizable"};
-
 // This method expands the range to be larger than or equal to 1.0e-6, if it is
 // very small (< 1.0e-6). This is to prevent very large quantized value by this
 // range.
@@ -194,8 +190,8 @@ bool IsOpNotQuantizable(Operation* op) {
   // If it is terminator or not quantizable or any ops form the mlir quant
   // ops dialect, we shouldn't rewrite.
   bool attr_enforced_quantizable =
-      op->hasAttrOfType<StringAttr>(kQuantTraitAttr) &&
-      op->getAttrOfType<StringAttr>(kQuantTraitAttr).getValue().str() ==
+      op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
+      op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue().str() ==
           QuantTraitValues[QuantizationTrait::FullyQuantizable];
 
   // Constant ops do not have QuantizableResult attribute but they can deal with

@@ -518,7 +518,7 @@ void TransformEinsumPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
 
-  patterns.insert<ConvertTFEinsumOp>(&getContext());
+  patterns.add<ConvertTFEinsumOp>(&getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

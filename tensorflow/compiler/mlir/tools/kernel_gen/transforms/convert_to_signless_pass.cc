@@ -85,7 +85,7 @@ struct ConvertToSignlessPass
         [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<ConvertToSignless>(converter, &context);
+    patterns.add<ConvertToSignless>(converter, &context);
     // FuncOp is special as it has type encoding via attributes.
     populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
                                                              converter);

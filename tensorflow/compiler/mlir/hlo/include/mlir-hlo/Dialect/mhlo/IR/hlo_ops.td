@@ -461,9 +461,8 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
     }
   }];
 
-  let results = (outs HLO_Tensor);
-  let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];
-  let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
+  let results = (outs HLO_Tensor:$result);
+  let assemblyFormat = "operands attr-dict `:` type($result)";
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
@@ -496,7 +495,8 @@ def HLO_ComplexOp: HLO_BinaryElementwiseOp<"complex",
     a complex value.
   }];
   let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
-  let results = (outs HLO_ComplexTensor);
+  let results = (outs HLO_ComplexTensor:$result);
+  let assemblyFormat = "`(`operands`)` attr-dict `:` `(`type(operands)`)` `->` type($result)";
   let hasFolder = 1;
 }
 
@@ -690,7 +690,9 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
     DefaultValuedStrAttr<StrAttr, "">:$infeed_config,
     OptionalAttr<ArrayAttr>:$layout
   );
-  let results = (outs Variadic<HLO_TensorOrToken>);
+  // TODO(@sdasgup): The following code need to be adjusted once the
+  // allowance of tuple-return-type for infeed is revoked.
+  let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -710,6 +712,8 @@ def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
   }];
 
   let arguments = (ins
+    // TODO(@sdasgup): The following code need to be adjusted once the
+    // allowance of tuple-return-type for infeed is revoked.
     Variadic<HLO_TensorOrTuple>:$operands,
     HLO_Token:$token,
     DefaultValuedStrAttr<StrAttr, "">:$outfeed_config
@@ -912,10 +916,8 @@ def HLO_WhileOp: HLO_Op<"while", [
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
   let hasCanonicalizer = 1;
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
-  let printer = [{ return ::mlir::mhlo::printWhileOp(*this, p); }];
-  let parser = [{ return ::mlir::mhlo::parseWhileOp(parser, result); }];
-
 }
 
 def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
@@ -1020,16 +1022,14 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
     OpBuilder<(ins "ValueRange":$inputs, "ValueRange":$init_values,
       "DenseIntElementsAttr":$dimensions)>];
 
-  let hasFolder = 1;
   let hasCanonicalizer = 1;
+  let hasCustomAssemblyFormat = 1;
+  let hasFolder = 1;
   let hasVerifier = 1;
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
-
-  let printer = [{ return ::mlir::mhlo::printReduceOp(*this, p); }];
-  let parser = [{ return ::mlir::mhlo::parseReduceOp(parser, result); }];
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -1198,7 +1198,8 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]> {
 }
 
 def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
-    [NoSideEffect, SameOperandsAndResultElementType]> {
+    [NoSideEffect, AllTypesMatch<["operand", "result"]>,
+    AllShapesMatch<["scale", "offset", "mean", "variance"]>]> {
   let summary = "Batch Normalization for Inference";
   let description = [{
     Normalizes an array across batch and spatial dimensions.
@@ -1207,19 +1208,24 @@ def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
   }];
 
   let arguments = (ins
-    HLO_Tensor:$operand,
-    HLO_Tensor:$scale,
-    HLO_Tensor:$offset,
-    HLO_Tensor:$mean,
-    HLO_Tensor:$variance,
+    RankedTensorOf<[AnyFloat]>:$operand,
+    1DTensorOf<[AnyFloat]>:$scale,
+    1DTensorOf<[AnyFloat]>:$offset,
+    1DTensorOf<[AnyFloat]>:$mean,
+    1DTensorOf<[AnyFloat]>:$variance,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
-  let results = (outs HLO_Tensor);
+  let results = (outs RankedTensorOf<[AnyFloat]>:$result);
+
+  let hasVerifier = 1;
 }
 
-def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]> {
+def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training",
+    [NoSideEffect, AllTypesMatch<["operand", "output"]>,
+    AllElementTypesMatch<["operand", "batch_mean", "batch_var"]>,
+    AllShapesMatch<["scale", "offset", "batch_mean", "batch_var"]>]> {
   let summary = "Batch Normalization for Training";
   let description = [{
     Normalizes an array across batch and spatial dimensions.
@@ -1228,15 +1234,19 @@ def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    HLO_Tensor:$operand,
-    HLO_Tensor:$scale,
-    HLO_Tensor:$offset,
+    RankedTensorOf<[AnyFloat]>:$operand,
+    1DTensorOf<[AnyFloat]>:$scale,
+    1DTensorOf<[AnyFloat]>:$offset,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
-  let results = (outs Variadic<HLO_TensorOrToken>);
+  let results = (outs
+      RankedTensorOf<[AnyFloat]>:$output,
+      1DTensorOf<[AnyFloat]>:$batch_mean,
+      1DTensorOf<[AnyFloat]>:$batch_var);
 
+  let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
 }
 

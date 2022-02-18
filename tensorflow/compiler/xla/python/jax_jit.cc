@@ -149,7 +149,7 @@ bool CallSignature::operator==(const CallSignature& other) const {
                   static_arg_names) ==
              std::tie(other.dynamic_arg_treedefs, other.dynamic_arg_names,
                       other.dynamic_arg_signatures, other.device,
-                      other.jax_enable_x64, static_arg_names) &&
+                      other.jax_enable_x64, other.static_arg_names) &&
          // `==` on py:objects is the Python `is`. We need equal.
          std::equal(
              static_args.begin(), static_args.end(), other.static_args.begin(),

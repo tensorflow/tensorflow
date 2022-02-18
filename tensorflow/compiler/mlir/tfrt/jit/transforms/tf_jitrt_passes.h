@@ -64,9 +64,14 @@ CreateVectorizeTiledOpsPass();
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 createRewriteVectorMultiReductionPass();
 
-// Pass to tile elementwise ops on tensors.
+// Pass to tile elementwise linalg.generic on tensors.
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass();
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass(
+    int64_t cwise_tile_size);
+
+// Pass to tile linalg.fill on tensors.
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileFillPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileFillPass(
     int64_t cwise_tile_size);
 
 // Pass to split _Fused Tensorflow kernels into primitives.

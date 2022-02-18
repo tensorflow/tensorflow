@@ -307,7 +307,7 @@ struct LegalizeGeneralDotPass
 
 void mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(
     RewritePatternSet *patterns, MLIRContext *ctx) {
-  patterns->insert<GeneralDotConvert>(ctx);
+  patterns->add<GeneralDotConvert>(ctx);
 }
 
 std::unique_ptr<::mlir::Pass> mlir::mhlo::createLegalizeGeneralDotPass() {

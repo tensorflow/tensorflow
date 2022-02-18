@@ -19,7 +19,7 @@ tf_native_cc_binary(
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 

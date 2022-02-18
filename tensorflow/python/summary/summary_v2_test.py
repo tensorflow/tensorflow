@@ -179,6 +179,20 @@ class SummaryV2Test(test.TestCase):
     input_3d = array_ops.ones((5, 3, 1))  # 3-D input tensor
     self.assertAllEqual(mock_audio_v2.call_args[1]['data'], input_3d)
 
+  @test_util.run_v2_only
+  def test_text_summary_v2(self):
+    """Tests text v2 invocation."""
+    with test.mock.patch.object(
+        summary_v2, 'text', autospec=True) as mock_text_v2:
+      with summary_ops_v2.create_summary_file_writer(
+          self.get_temp_dir()).as_default(step=22):
+        i = constant_op.constant('lorem ipsum', dtype=dtypes.string)
+        tensor = summary_lib.text('text', i)
+    # Returns empty string.
+    self.assertEqual(tensor.numpy(), b'')
+    self.assertEqual(tensor.dtype, dtypes.string)
+    mock_text_v2.assert_called_once_with('text', data=i, step=22)
+
 
 if __name__ == '__main__':
   test.main()

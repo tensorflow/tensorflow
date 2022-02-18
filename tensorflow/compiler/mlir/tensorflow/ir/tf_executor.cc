@@ -1018,7 +1018,7 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
 
 void GraphOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  results.insert<DropEmptyGraph, HoistInnerOpsSingleIslandGraph>(context);
+  results.add<DropEmptyGraph, HoistInnerOpsSingleIslandGraph>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1076,8 +1076,8 @@ struct DropEmptyIslandNoOperandOneDataResult
 
 void IslandOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.insert<DropEmptyIslandNoOperandNoDataResult,
-                 DropEmptyIslandNoOperandOneDataResult>(context);
+  results.add<DropEmptyIslandNoOperandNoDataResult,
+              DropEmptyIslandNoOperandOneDataResult>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1106,7 +1106,7 @@ struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
 
 void ControlTriggerOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                    MLIRContext *context) {
-  results.insert<DropEmptyControlTrigger>(context);
+  results.add<DropEmptyControlTrigger>(context);
 }
 
 //===----------------------------------------------------------------------===//

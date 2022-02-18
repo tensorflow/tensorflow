@@ -57,10 +57,6 @@ BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
   return CastLongToPointer<BufferErrorReporter>(env, handle);
 }
 
-TfLiteOpaqueDelegate* convertLongToDelegate(JNIEnv* env, jlong handle) {
-  return CastLongToPointer<TfLiteOpaqueDelegate>(env, handle);
-}
-
 int getDataType(TfLiteType data_type) {
   switch (data_type) {
     case kTfLiteFloat32:

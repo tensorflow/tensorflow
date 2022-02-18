@@ -16,7 +16,7 @@ func @ambiguous_reuse_output(%pred : i1)
   // CHECK: reuse_output = -1 : i32
   %mem = memref.alloc() : memref<2x3xi64>
   %other_mem = memref.alloc() : memref<2x3xi64>
-  cond_br %pred, ^bb0, ^bb1
+  cf.cond_br %pred, ^bb0, ^bb1
 ^bb0:
   return %mem, %other_mem : memref<2x3xi64>, memref<2x3xi64>
 ^bb1:
@@ -256,7 +256,7 @@ func @never_used(%arg0 : memref<3xi64>) -> memref<3xi64> attributes {tf_entry} {
 // CHECK-LABEL: @branching_reuse
 func @branching_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
     attributes {tf_entry} {
-  cond_br %pred, ^bb0, ^bb1
+  cf.cond_br %pred, ^bb0, ^bb1
 ^bb0:
   // CHECK: alloc
   // CHECK-SAME: reuse_input_candidates = [1 : i32]
@@ -267,12 +267,12 @@ func @branching_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
   %c0 = arith.constant 0 : index
   memref.load %arg[%c0] : memref<6xi64>
 
-  br ^bb2(%mem0 : memref<6xi64>)
+  cf.br ^bb2(%mem0 : memref<6xi64>)
 ^bb1:
   // CHECK: alloc
   // CHECK-SAME: reuse_input_candidates = [1 : i32]
   %mem1 = memref.alloc() : memref<6xi64>
-  br ^bb2(%mem1 : memref<6xi64>)
+  cf.br ^bb2(%mem1 : memref<6xi64>)
 ^bb2(%result : memref<6xi64>):
   return %result : memref<6xi64>
 }
@@ -280,7 +280,7 @@ func @branching_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
 // CHECK-LABEL: @branching_no_reuse
 func @branching_no_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
     attributes {tf_entry} {
-  cond_br %pred, ^bb0, ^bb1
+  cf.cond_br %pred, ^bb0, ^bb1
 ^bb0:
   // CHECK: alloc
   // CHECK-SAME: reuse_input_candidates = []
@@ -293,12 +293,12 @@ func @branching_no_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
   // Keep buffer argument live in this branch and prevent reuse.
   memref.load %arg[%c0] : memref<6xi64>
 
-  br ^bb2(%mem0 : memref<6xi64>)
+  cf.br ^bb2(%mem0 : memref<6xi64>)
 ^bb1:
   // CHECK: alloc
   // CHECK-SAME: reuse_input_candidates = [1 : i32]
   %mem1 = memref.alloc() : memref<6xi64>
-  br ^bb2(%mem1 : memref<6xi64>)
+  cf.br ^bb2(%mem1 : memref<6xi64>)
 ^bb2(%result : memref<6xi64>):
   return %result : memref<6xi64>
 }
@@ -362,7 +362,7 @@ func @alloc_before_branching(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
   // CHECK-SAME: reuse_input_candidates = []
   %mem = memref.alloc() : memref<6xi64>
   %c0 = arith.constant 0 : index
-  cond_br %pred, ^bb0, ^bb1
+  cf.cond_br %pred, ^bb0, ^bb1
 ^bb0:
   // Last use of `arg` before first use of `mem` (can reuse).
   memref.load %arg[%c0] : memref<6xi64>
@@ -382,7 +382,7 @@ func @alloc_before_branching_2(%pred : i1, %arg : memref<6xi64>)
   // CHECK-SAME: reuse_input_candidates = []
   %mem = memref.alloc() : memref<6xi64>
   %c0 = arith.constant 0 : index
-  cond_br %pred, ^bb0, ^bb1
+  cf.cond_br %pred, ^bb0, ^bb1
 ^bb0:
   // Last use of `arg` after first use of `mem` (cannot reuse).
   memref.load %mem[%c0] : memref<6xi64>

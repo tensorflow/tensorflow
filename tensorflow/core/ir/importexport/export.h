@@ -54,6 +54,7 @@ using GetValueNameFn = llvm::function_ref<Status(
 // in the provided `output_name` string.
 Status ConvertOperationToNode(mlir::Operation &op, NodeDef *node,
                               GetValueNameFn get_value_name);
+Status ConvertOperationToNode(mlir::Operation &op, NodeDef *node);
 
 // Convert the handle_data_arr to the `handle_data` field of the provided arg.
 // Each entry of the array is itself an array with two entries: a Type and a

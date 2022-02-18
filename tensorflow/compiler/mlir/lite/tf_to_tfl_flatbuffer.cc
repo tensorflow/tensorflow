@@ -288,8 +288,10 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
+  // TODO(b/176267167): Quantize flex fallback in the MLIR pipeline
   if (quant_specs.weight_quantization &&
-      !quant_specs.RunAndRewriteDynamicRangeQuantizationPasses()) {
+      (!quant_specs.RunAndRewriteDynamicRangeQuantizationPasses() ||
+       !pass_config.emit_builtin_tflite_ops)) {
     // Apply post-training dynamic range quantization from the old TOCO
     // quantizer.Once MLIR has support for this, we can remove this if
     // statement.

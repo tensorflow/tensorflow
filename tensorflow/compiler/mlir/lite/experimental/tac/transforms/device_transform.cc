@@ -207,8 +207,9 @@ struct RemoveUnusedQuant : public OpRewritePattern<TFL::QuantizeOp> {
 
 void OptimizeQuantizedOpToFloat(FuncOp func, MLIRContext* context) {
   RewritePatternSet patterns(func.getContext());
-  patterns.insert<FoldQuantizedI32ToFloat, FoldQuantizeDequantize,
-                  RemoveUnusedQuant>(context);
+  patterns
+      .add<FoldQuantizedI32ToFloat, FoldQuantizeDequantize, RemoveUnusedQuant>(
+          context);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

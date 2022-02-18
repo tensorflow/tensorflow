@@ -142,7 +142,7 @@ void InitTextFileToImportPass::runOnOperation() {
   MLIRContext* context = &getContext();
   FuncOp func = getOperation();
 
-  patterns.insert<ConvertInitializeTableFromTextFileV2>(
+  patterns.add<ConvertInitializeTableFromTextFileV2>(
       context, StringRef(saved_model_dir_));
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

@@ -114,6 +114,33 @@ func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
+// Check that we recursively lower nested ifs.
+// CHECK-LABEL: func @conditional_nested(
+func @conditional_nested(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %cst = arith.constant dense<1.000000e+01> : tensor<f32>
+
+  %cmp1 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+
+  // CHECK: scf.if
+  %if1 = "mhlo.if"(%cmp1) ({
+    %cmp2 = "mhlo.compare"(%arg1, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %log = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
+
+    // CHECK: scf.if
+    %if2 = "mhlo.if"(%cmp2) ({
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+    },  {
+      "mhlo.return"(%log) : (tensor<f32>) -> ()
+    }) : (tensor<i1>) -> tensor<f32>
+    "mhlo.return"(%if2) : (tensor<f32>) -> ()
+  },  {
+    %exp = "mhlo.exponential"(%arg0) : (tensor<f32>) -> tensor<f32>
+    "mhlo.return"(%exp) : (tensor<f32>) -> ()
+  }) : (tensor<i1>) -> tensor<f32>
+
+  return %if1 : tensor<f32>
+}
+
 // Test the two branches case as the common. Following tests verify degenerate
 // behavior.
 // CHECK-LABEL: func @case2(
@@ -196,6 +223,23 @@ func @case0(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>) -> tensor<4xf32> {
       // CHECK: %[[VAL_2:.*]] = "mhlo.log"(%[[VAL_1]]) : (tensor<4xf32>) -> tensor<4xf32>
       %2 = "mhlo.log"(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%2) : (tensor<4xf32>) -> ()
+  }) : (tensor<i32>) -> tensor<4xf32>
+  // CHECK: return %[[VAL_2]] : tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// Case with only one branch is inlined. Check that we recursively lower.
+// CHECK-LABEL: func @case0_nested(
+// CHECK-SAME:    %[[VAL_0:.*]]: tensor<i32>,
+// CHECK-SAME:    %[[VAL_1:.*]]: tensor<4xf32>) -> tensor<4xf32> {
+func @case0_nested(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>) -> tensor<4xf32> {
+  %1 = "mhlo.case"(%arg0) ({
+    %2 = "mhlo.case"(%arg0) ({
+      // CHECK: %[[VAL_2:.*]] = "mhlo.log"(%[[VAL_1]]) : (tensor<4xf32>) -> tensor<4xf32>
+      %3 = "mhlo.log"(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
+      "mhlo.return"(%3) : (tensor<4xf32>) -> ()
+    }) : (tensor<i32>) -> tensor<4xf32>
+    "mhlo.return"(%2) : (tensor<4xf32>) -> ()
   }) : (tensor<i32>) -> tensor<4xf32>
   // CHECK: return %[[VAL_2]] : tensor<4xf32>
   return %1 : tensor<4xf32>

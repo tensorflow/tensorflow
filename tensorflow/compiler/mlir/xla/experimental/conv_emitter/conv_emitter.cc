@@ -318,15 +318,14 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
                       filter_spatial_indvars.end());
 
     return builder.create<mlir::arith::ExtFOp>(
-        location,
+        location, builder.getF32Type(),
         builder.createOrFold<mlir::AffineLoadOp>(
             location, input,
             mlir::AffineMap(input_shape_info.affine_map)
                 .compose(mlir::AffineMap::get(
                     /*dimCount=*/2 + num_spatial_dims * 2,
                     /*symbolCount=*/0, input_indices, builder.getContext())),
-            input_vars),
-        builder.getF32Type());
+            input_vars));
   }();
 
   mlir::Value loaded_filter = [&] {
@@ -337,10 +336,9 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
                        filter_spatial_indvars.end());
 
     return builder.create<mlir::arith::ExtFOp>(
-        location,
+        location, builder.getF32Type(),
         builder.createOrFold<mlir::AffineLoadOp>(
-            location, filter, filter_shape_info.affine_map, filter_vars),
-        builder.getF32Type());
+            location, filter, filter_shape_info.affine_map, filter_vars));
   }();
 
   auto accum_load_op =
@@ -363,9 +361,8 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
     builder.createOrFold<mlir::AffineStoreOp>(
         location,
         builder.create<mlir::arith::TruncFOp>(
-            location,
-            builder.createOrFold<mlir::AffineLoadOp>(location, output_acc),
-            builder.getF16Type()),
+            location, builder.getF16Type(),
+            builder.createOrFold<mlir::AffineLoadOp>(location, output_acc)),
         output, output_shape_info.affine_map, output_vars);
   }
 

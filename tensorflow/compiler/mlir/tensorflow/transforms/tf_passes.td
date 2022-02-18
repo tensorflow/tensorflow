@@ -307,6 +307,18 @@ def ReplicateToIslandPass : Pass<"tf-replicate-to-island", "mlir::FuncOp"> {
   let constructor = "TFDevice::CreateReplicateToIslandPass()";
 }
 
+def ReplicaIDToDeviceOrdinalPass : Pass<"tf-replica-id-to-device-ordinal", "mlir::FuncOp"> {
+  let summary = "Set device ordinal with replica id";
+  let constructor = "TFDevice::CreateReplicaIDToDeviceOrdinalPass()";
+    let description = [{
+    This pass sets the device ordinal attribute of the ops using the replica id
+    attribute. This is run immediately after the replica_to_island pass which
+    sets the replica id attribute of these ops. Note for single chip usecase,
+    the pass will check if there is one op and sets the device ordinal attribute
+    to be zero.
+  }];
+}
+
 def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   Pass<"tf-readonly-references-to-resources", "mlir::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";

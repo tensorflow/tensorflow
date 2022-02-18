@@ -145,4 +145,23 @@ mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
   llvm_unreachable("unsupported type");
 }
 
+mlir::Value MakeBitPatternConstant(mlir::OpBuilder& builder, mlir::Location loc,
+                                   mlir::Type type, uint32_t bit_pattern) {
+  llvm::APInt value(32, bit_pattern);
+  if (type.isSignlessInteger(/*width=*/32)) {
+    return builder.create<tfrt::compiler::ConstantI32Op>(loc,
+                                                         value.getZExtValue());
+  }
+  if (type.isUnsignedInteger(/*width=*/32)) {
+    return builder.create<tfrt::compiler::ConstantUI32Op>(loc,
+                                                          value.getZExtValue());
+  }
+  if (type.isF32()) {
+    llvm::APFloat value_float(value.bitsToFloat());  // Like reinterpret_cast.
+    return builder.create<tfrt::compiler::ConstantF32Op>(loc, value_float);
+  }
+
+  llvm_unreachable("unsupported type");
+}
+
 }  // namespace tensorflow

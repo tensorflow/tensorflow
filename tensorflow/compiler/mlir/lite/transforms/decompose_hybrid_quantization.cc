@@ -145,11 +145,11 @@ void DecomposeHybridQuantizationPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto *ctx = &getContext();
   auto func = getOperation();
-  patterns.insert<DequantizeConverter<TFL::Conv2DOp>,
-                  DequantizeConverter<TFL::Conv3DOp>,
-                  DequantizeConverter<TFL::DepthwiseConv2DOp>,
-                  DequantizeConverter<TFL::FullyConnectedOp>,
-                  DequantizeConverter<TFL::TransposeConvOp>>(ctx);
+  patterns.add<DequantizeConverter<TFL::Conv2DOp>,
+               DequantizeConverter<TFL::Conv3DOp>,
+               DequantizeConverter<TFL::DepthwiseConv2DOp>,
+               DequantizeConverter<TFL::FullyConnectedOp>,
+               DequantizeConverter<TFL::TransposeConvOp>>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

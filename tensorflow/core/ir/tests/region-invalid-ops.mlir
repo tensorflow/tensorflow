@@ -7,8 +7,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
     yield(%fwd) [%ctl] : tensor<*xf32>
   } else {
     yield(%fwd) : tensor<*xf32>
-  } {Tcond = i1, Tout = [f32], output_shapes = [#tf_type.shape<>]}
-  : (tensor<*xi32>) -> (tensor<*xf32>)
+  } : (tensor<*xi32>) -> (tensor<*xf32>)
 }
 
 // -----
@@ -20,8 +19,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
     return(%fwd) [%ctl] : tensor<*xf32>
   } else {
     yield(%fwd) : tensor<*xf32>
-  } {Tcond = i1, Tout = [f32], output_shapes = [#tf_type.shape<>]}
-  : (tensor<*xi1>) -> (tensor<*xf32>)
+  } : (tensor<*xi1>) -> (tensor<*xf32>)
 }
 
 // -----
@@ -33,8 +31,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
     yield(%fwd) [%ctl] : tensor<*xf32>
   } else {
     return(%fwd) : tensor<*xf32>
-  } {Tcond = i1, Tout = [f32], output_shapes = [#tf_type.shape<>]}
-  : (tensor<*xi1>) -> (tensor<*xf32>)
+  } : (tensor<*xi1>) -> (tensor<*xf32>)
 }
 
 // -----
@@ -45,8 +42,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   // expected-error@+1 {{branch region #0 is not terminated by a 'tfg.yield'}}
   %CaseRegion, %ctl_1 = CaseRegion %Index {
     return(%A) : tensor<f32>
-  } {Tout = [f32], branch_attrs = [{}], output_shapes = [#tf_type.shape<>]}
-  : (tensor<i32>) -> (tensor<f32>)
+  } : (tensor<i32>) -> (tensor<f32>)
 }
 
 // -----
@@ -57,8 +53,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   // expected-error@+1 {{has 1 regions but 2 branch function attributes}}
   %CaseRegion, %ctl_1 = CaseRegion %Index {
     yield(%A) : tensor<f32>
-  } {Tout = [f32], branch_attrs = [{}, {}], output_shapes = [#tf_type.shape<>]}
-  : (tensor<i32>) -> (tensor<f32>)
+  } {branch_attrs = [{}, {}]} : (tensor<i32>) -> (tensor<f32>)
 }
 
 // -----
@@ -74,8 +69,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   } do {
   ^bb0(%arg0: tensor<*xi32>, %arg1: !tf_type.control):
     yield(%arg0) [%arg1] : tensor<*xi32>
-  } {T = [i32], output_shapes = [#tf_type.shape<>], parallel_iterations = 10 :i64}
-  : tensor<*xi32>
+  } {parallel_iterations = 10 :i64} : tensor<*xi32>
 }
 
 // -----
@@ -92,8 +86,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   ^bb0(%arg0: tensor<*xi32>, %arg1: !tf_type.control):
     %Cond, %ctl_2 = Cond : () -> (tensor<*xi1>)
     condition %Cond : tensor<*xi1> (%arg0) : tensor<*xi32>
-  } {T = [i32], output_shapes = [#tf_type.shape<>], parallel_iterations = 10 :i64}
-  : tensor<*xi32>
+  } {parallel_iterations = 10 :i64} : tensor<*xi32>
 }
 
 // -----
@@ -105,7 +98,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %For, %ctl_1 = ForRegion(%Arg) [%ctl] from %Index to %Index by %Index {
   ^bb0(%arg0: tensor<i64>, %arg1: tensor<*xf32>, %arg2: !tf_type.control, %arg3: !tf_type.control):
     yield(%arg1) [%arg3] : tensor<*xf32>
-  } {T = [f32]} : tensor<*xf32>
+  } : tensor<*xf32>
 }
 
 // -----
@@ -117,7 +110,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %For, %ctl_1 = ForRegion(%Arg) [%ctl] from %Index to %Index by %Index {
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<*xf32>, %arg2: !tf_type.control, %arg3: !tf_type.control):
     return(%arg1) [%arg3] : tensor<*xf32>
-  } {T = [f32]} : tensor<*xf32>
+  } : tensor<*xf32>
 }
 
 // -----
@@ -129,7 +122,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %ctl_1 = ForRegion [%ctl] from %Index to %Index by %Index {
   ^bb0:
     yield
-  } {T = [f32]}
+  }
 }
 
 // -----
@@ -141,7 +134,7 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %For, %ctl_1 = ForRegion(%Arg) [%ctl] from %Index to %Index by %Index {
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<*xf32>, %arg2: !tf_type.control):
     yield(%arg1) [%arg2] : tensor<*xf32>
-  } {T = [f32]} : tensor<*xf32>
+  } : tensor<*xf32>
 }
 
 // -----
@@ -152,5 +145,5 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %For, %ctl_1 = ForRegion(%Index) [%ctl] from %Index to %Index by %Index {
   ^bb0(%arg0: tensor<i32>, %arg1: !tf_type.control, %arg2: !tf_type.control, %arg3: tensor<*xf32>):
     yield(%arg0) [%arg2] : tensor<i32>
-  } {T = [f32]} : tensor<i32>
+  } : tensor<i32>
 }

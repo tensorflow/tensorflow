@@ -982,6 +982,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -997,6 +998,7 @@ cc_library(
         ":mhlo_pass_details",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ControlFlowOps",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",
@@ -1567,6 +1569,38 @@ cc_library(
 )
 
 gentbl_cc_library(
+    name = "gml_st_test_passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=GmlStTest",
+            ],
+            "include/mlir-hlo/Dialect/gml_st/transforms/test_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/test_passes.td",
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "all_test_passes",
+    srcs = ["lib/Dialect/gml_st/transforms/test_passes.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/gml_st/transforms/test_passes.h"],
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gml_st_test_passes_inc_gen",
+        ":gml_st_transforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+gentbl_cc_library(
     name = "transforms_pass_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
@@ -1766,11 +1800,10 @@ cc_library(
 
 cc_binary(
     name = "mlir-hlo-opt",
-    srcs = [
-        "tools/mlir-hlo-opt/mlir-hlo-opt.cpp",
-    ],
+    srcs = ["tools/mlir-hlo-opt/mlir-hlo-opt.cpp"],
     deps = [
         ":all_passes",
+        ":all_test_passes",
         ":gml_st",
         ":hlo_dialect_registration",
         ":lhlo",
@@ -2015,5 +2048,20 @@ cc_library(
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "gml_st_transforms",
+    srcs = ["lib/Dialect/gml_st/transforms/transforms.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/gml_st/transforms/transforms.h"],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:SCFUtils",
     ],
 )

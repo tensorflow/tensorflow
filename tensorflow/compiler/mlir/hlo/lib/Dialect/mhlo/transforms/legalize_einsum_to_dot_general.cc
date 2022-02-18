@@ -119,7 +119,7 @@ struct LegalizeEinsumToDotGeneralPass
 
 void PopulateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
                                         RewritePatternSet *patterns) {
-  patterns->insert<EinsumToDotGeneralPattern>(context);
+  patterns->add<EinsumToDotGeneralPattern>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeEinsumToDotGeneralPass() {

@@ -83,7 +83,7 @@ struct LegalizeToTensorOpPass
     auto func = getOperation();
     auto* context = &getContext();
     RewritePatternSet patterns(context);
-    patterns.insert<ForwardShapeOfOp, ForwardExtractOp>(context);
+    patterns.add<ForwardShapeOfOp, ForwardExtractOp>(context);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       func.emitError("applyPatternsAndFoldGreedily does not converge");
       signalPassFailure();

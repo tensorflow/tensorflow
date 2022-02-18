@@ -183,7 +183,7 @@ struct EraseConstOp : public OpRewritePattern<ConstOp> {
 
 void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                           MLIRContext* context) {
-  results.insert<EraseConstOp>(context);
+  results.add<EraseConstOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -354,7 +354,7 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
 
 void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
-  results.insert<RemoveCopyInReduceBody>(context);
+  results.add<RemoveCopyInReduceBody>(context);
 }
 
 //===----------------------------------------------------------------------===//

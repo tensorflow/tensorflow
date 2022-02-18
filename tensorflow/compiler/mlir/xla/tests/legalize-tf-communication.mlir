@@ -876,7 +876,7 @@ func private @callee() {
 
 // expected-error@+1 {{'builtin.func' ops with more than one block are not supported}}
 func @multi_block_func() {
-  br ^bb1
+  cf.br ^bb1
 ^bb1:
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
   return

@@ -135,13 +135,13 @@ rocblas_operation RocblasAdjointOp() {
 }
 
 #if TF_ROCM_VERSION >= 40500
-using gpuSolverOp_t   =  hipsolverOperation_t;
-using gpuSolverFill_t =  hipsolverFillMode_t; 
-using gpuSolverSide_t =  hipsolverSideMode_t;
+using gpuSolverOp_t = hipsolverOperation_t;
+using gpuSolverFill_t = hipsolverFillMode_t;
+using gpuSolverSide_t = hipsolverSideMode_t;
 #else
-using gpuSolverOp_t   =  rocblas_operation;
-using gpuSolverFill_t =  rocblas_fill; 
-using gpuSolverSide_t =  rocblas_side;
+using gpuSolverOp_t = rocblas_operation;
+using gpuSolverFill_t = rocblas_fill;
+using gpuSolverSide_t = rocblas_side;
 #endif
 #endif
 
@@ -271,7 +271,7 @@ class GpuSolver {
   //
   // The method names below
   // map to those in ROCSolver/Hipsolver, which follow the naming
-  // convention in LAPACK. See rocm_solvers.cc for a mapping of 
+  // convention in LAPACK. See rocm_solvers.cc for a mapping of
   // GpuSolverMethod to library API
 
   // LU factorization.
@@ -282,15 +282,14 @@ class GpuSolver {
 
   // Uses LU factorization to solve A * X = B.
   template <typename Scalar>
-  Status Getrs(const gpuSolverOp_t trans, int n, int nrhs, Scalar* A,
-               int lda, const int* dev_pivots, Scalar* B, int ldb,
-               int* dev_lapack_info);
+  Status Getrs(const gpuSolverOp_t trans, int n, int nrhs, Scalar* A, int lda,
+               const int* dev_pivots, Scalar* B, int ldb, int* dev_lapack_info);
 
   template <typename Scalar>
   Status GetrfBatched(int n, Scalar** dev_A, int lda, int* dev_pivots,
                       DeviceLapackInfo* info, const int batch_count);
 
-// No GetrsBatched for HipSolver yet.
+  // No GetrsBatched for HipSolver yet.
   template <typename Scalar>
   Status GetrsBatched(const rocblas_operation trans, int n, int nrhs,
                       Scalar** A, int lda, int* dev_pivots, Scalar** B,
@@ -310,7 +309,8 @@ class GpuSolver {
                       DeviceLapackInfo* dev_lapack_info, int batch_size);
 
   // Computes matrix inverses for a batch of small matrices with size n < 32.
-  // Returns Status::OK() if the kernel was launched successfully. Uses GetrfBatched and GetriBatched
+  // Returns Status::OK() if the kernel was launched successfully. Uses
+  // GetrfBatched and GetriBatched
   template <typename Scalar>
   Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
                        const Scalar* const host_a_inverse_dev_ptrs[],
@@ -364,13 +364,12 @@ class GpuSolver {
 #if TF_ROCM_VERSION >= 40500
   // Hermitian (Symmetric) Eigen decomposition.
   template <typename Scalar>
-  Status Heevd(gpuSolverOp_t jobz, gpuSolverFill_t uplo, int n,
-               Scalar* dev_A, int lda,
-               typename Eigen::NumTraits<Scalar>::Real* dev_W,
+  Status Heevd(gpuSolverOp_t jobz, gpuSolverFill_t uplo, int n, Scalar* dev_A,
+               int lda, typename Eigen::NumTraits<Scalar>::Real* dev_W,
                int* dev_lapack_info);
 #endif
 
-#else //GOOGLE_CUDA
+#else  // GOOGLE_CUDA
   // ====================================================================
   // Wrappers for cuSolverDN and cuBlas solvers start here.
   //

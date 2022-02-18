@@ -178,7 +178,7 @@ class UnfuseBatchNormInferencePattern
 // primitives.
 void PopulateUnfuseBatchNormPatterns(MLIRContext* context,
                                      RewritePatternSet* patterns) {
-  patterns->insert<UnfuseBatchNormInferencePattern>(context);
+  patterns->add<UnfuseBatchNormInferencePattern>(context);
 }
 
 }  // namespace mhlo

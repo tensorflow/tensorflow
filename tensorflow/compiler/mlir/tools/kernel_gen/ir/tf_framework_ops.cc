@@ -68,16 +68,11 @@ void TFFrameworkDialect::printType(Type type, DialectAsmPrinter &os) const {
   llvm_unreachable("unexpected TF Framework type kind");
 }
 
-template <typename OpTy>
-LogicalResult Verify(OpTy op) {
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // TFAllocOp
 //===----------------------------------------------------------------------===//
-template <>
-LogicalResult Verify<TFAllocOp>(TFAllocOp op) {
+LogicalResult TFAllocOp::verify() {
+  TFAllocOp op = *this;
   // Check that the total number of operands matches the number of dynamic
   // dimensions specified in the memref type.
   unsigned result_dyn_dims = op.getType().getNumDynamicDims();

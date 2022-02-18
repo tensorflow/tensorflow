@@ -27,8 +27,6 @@ include "mlir/Interfaces/LoopLikeInterface.td"
 
 class GMLST_Op<string mnemonic, list<Trait> traits> :
     Op<GmlSt_Dialect, mnemonic, traits> {
-  let printer = [{ return mlir::gml_st::print(p, *this); }];
-  let parser = [{ return mlir::gml_st::parse$cppClass(parser, result); }];
   let hasVerifier = 1;
 }
 
@@ -380,6 +378,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
   }];
 
   let hasCanonicalizer = 1;
+  let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
 }
 

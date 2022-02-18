@@ -239,24 +239,6 @@ def TFGraph_GetResultOp : TFGraph_Op<"get_result",
 // op-specific cases.
 // TODO(jeffniu): Also, many of these should be derived attributes (e.g. types).
 
-// A cast operation.
-def TFGraph_CastOp : TFGraph_Op<"Cast", [NoSideEffect]> {
-  let summary = "Cast between two compatible tensor types.";
-
-  let arguments = (ins
-    // Op operands.
-    TFGraph_Tensor:$x,
-    Variadic<ControlType>:$ctls,
-    // Required attributes.
-    TFGraph_TypeOrPlaceholder:$SrcT,
-    TFGraph_TypeOrPlaceholder:$DstT,
-    DefaultValuedAttr<BoolAttr, "false">:$Truncate
-  );
-  let results = (outs AnyType:$y, ControlType:$ctl);
-
-  let hasFolder = 1;
-}
-
 // Base class for TFGraph concrete ops.
 class TFGraph_ConcreteOp<string mnemonic, list<Trait> traits = []> :
     TFGraph_Op<mnemonic, traits>;
@@ -417,12 +399,9 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     // Op operands.
     I1Tensor:$cond,
     Variadic<ControlType>:$ctls,
-    // Required attributes.
-    TypeAttr:$Tcond,
-    TypeArrayAttr:$Tout,
+    // Optional attributes.
     OptionalAttr<DictionaryAttr>:$then_attrs,
-    OptionalAttr<DictionaryAttr>:$else_attrs,
-    TFGraph_ShapesAttr:$output_shapes
+    OptionalAttr<DictionaryAttr>:$else_attrs
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
   let regions = (region SizedRegion<1>:$then_region,
@@ -483,10 +462,8 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     // Op operands.
     I32Tensor:$branch_index,
     Variadic<ControlType>:$ctls,
-    // Required attributes.
-    TypeArrayAttr:$Tout,
-    OptionalAttr<TFGraph_DictionaryArrayAttr>:$branch_attrs,
-    TFGraph_ShapesAttr:$output_shapes
+    // Optional attributes.
+    OptionalAttr<TFGraph_DictionaryArrayAttr>:$branch_attrs
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
@@ -560,12 +537,10 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     // Op operands.
     Variadic<TFGraph_Tensor>:$init,
     Variadic<ControlType>:$ctls,
-    // Required attributes.
-    TypeArrayAttr:$T,
+    I64Attr:$parallel_iterations,
+    // Optional attributes.
     OptionalAttr<DictionaryAttr>:$cond_attrs,
-    OptionalAttr<DictionaryAttr>:$body_attrs,
-    TFGraph_ShapesAttr:$output_shapes,
-    I64Attr:$parallel_iterations
+    OptionalAttr<DictionaryAttr>:$body_attrs
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
   let regions = (region SizedRegion<1>:$cond_region,
@@ -667,8 +642,7 @@ def TFGraph_ForRegionOp : TFGraph_RegionOp<
     I32ScalarTensor:$delta,
     Variadic<TFGraph_Tensor>:$init,
     Variadic<ControlType>:$ctls,
-    // Required attributes.
-    TypeArrayAttr:$T,
+    // Optional attributes.
     OptionalAttr<DictionaryAttr>:$body_attrs
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);

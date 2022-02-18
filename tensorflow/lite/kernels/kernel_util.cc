@@ -529,6 +529,9 @@ int TfLiteTypeGetSize(TfLiteType type) {
       return 1;
     case kTfLiteBool:
       return sizeof(bool);
+    case kTfLiteUInt16:
+      static_assert(sizeof(uint16_t) == 2, "");
+      return 2;
     case kTfLiteInt16:
       static_assert(sizeof(int16_t) == 2, "");
       return 2;

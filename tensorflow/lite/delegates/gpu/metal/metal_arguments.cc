@@ -36,6 +36,9 @@ bool IsWordSymbol(char symbol) {
 
 void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
                      std::string* str) {
+  if (!str) {
+    return;
+  }
   size_t position = str->find(old_word);
   while (position != std::string::npos) {
     char prev = position == 0 ? '.' : (*str)[position - 1];
@@ -175,6 +178,16 @@ using namespace metal;
     arguments += ",\n";
   }
   *code = absl::Substitute(*code, arguments);
+  return absl::OkStatus();
+}
+
+absl::Status MetalArguments::Init(bool use_arguments_buffer,
+                                  MetalDevice* device, Arguments* args) {
+  RETURN_IF_ERROR(AllocateObjects(*args, device->device()));
+  RETURN_IF_ERROR(AddObjectArgs(device->GetInfo(), *args));
+  args->MoveObjectRefs(&object_refs_);
+  CopyScalarArgumentsToStructWithVec4Fields(*args);
+  RETURN_IF_ERROR(SetObjectsResources(*args));
   return absl::OkStatus();
 }
 

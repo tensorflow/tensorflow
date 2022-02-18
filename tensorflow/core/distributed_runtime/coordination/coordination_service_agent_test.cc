@@ -66,7 +66,8 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(DeleteKeyValue);
-
+  UNIMPLEMENTED(Barrier);
+  UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
 };
 

@@ -24,6 +24,7 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 }
 
 const char* const kGemmCallTarget = "__cublas$gemm";
+const char* const kTriangularSolveCallTarget = "__cublas$triangularSolve";
 const char* const kCudnnConvForwardCallTarget = "__cudnn$convForward";
 const char* const kCudnnConvBackwardInputCallTarget =
     "__cudnn$convBackwardInput";

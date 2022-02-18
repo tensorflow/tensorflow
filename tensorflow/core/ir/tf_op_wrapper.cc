@@ -69,5 +69,14 @@ void TFOp::setAssignedDevice(StringAttr device) {
   op_->setAttr(getDialect()->getAssignedDeviceAttrIdentifier(), device);
 }
 
+StringAttr TFOp::tpuReplicate() {
+  return op_->getAttrOfType<StringAttr>(
+      getDialect()->getTfgTpuReplicateAttrIdentifier());
+}
+
+void TFOp::setTpuReplicate(StringAttr tpu_replicate) {
+  op_->setAttr(getDialect()->getTfgTpuReplicateAttrIdentifier(), tpu_replicate);
+}
+
 }  // namespace tfg
 }  // namespace mlir

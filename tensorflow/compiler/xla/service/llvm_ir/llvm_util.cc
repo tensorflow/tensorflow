@@ -133,7 +133,7 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
           << " index=" << llvm_ir::DumpToString(*index);
 
   return b->CreateInBoundsGEP(
-      array_type_as_pointer->getElementType(), array,
+      array_type_as_pointer->getPointerElementType(), array,
       llvm::isa<llvm::GlobalVariable>(array)
           ? llvm::ArrayRef<llvm::Value*>({b->getInt64(0), index})
           : index);

@@ -6,6 +6,9 @@ package(licenses = ["notice"])
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    tags_override = {
+        "canonicalize.mlir": ["no_oss"],  # b/217962257
+    },
     test_file_exts = ["mlir"],
 )
 

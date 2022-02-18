@@ -554,7 +554,7 @@ use dimension = 0.}]>:$dimension
   );
 
   let results = (outs
-    TensorOf<[TF_Int16, TF_Int32, TF_Int64]>:$output
+    TensorOf<[TF_Int16, TF_Int32, TF_Int64, TF_Uint16]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3805,6 +3805,59 @@ def TF_DummySeedGeneratorOp : TF_Op<"DummySeedGenerator", []> {
   let results = (outs
     Res<TF_ResourceTensor, "", [TF_DatasetSeedGeneratorAlloc]>:$handle
   );
+}
+
+def TF_DynamicEnqueueTPUEmbeddingArbitraryTensorBatchOp : TF_Op<"DynamicEnqueueTPUEmbeddingArbitraryTensorBatch", [SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
+  let summary = [{
+Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
+  }];
+
+  let description = [{
+embedding_indices[i] and aggregation_weights[i] correspond
+to the ith feature.
+
+The tensors at corresponding positions in the three input lists (sample_indices,
+embedding_indices and aggregation_weights) must have the same shape, i.e. rank 1
+with dim_size() equal to the total number of lookups into the table described by
+the corresponding feature.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_I32OrI64Tensor>, [{A list of rank 2 Tensors specifying the training example to which the
+corresponding embedding_indices and aggregation_weights values belong.
+If the size of its first dimension is 0, we assume each embedding_indices
+belongs to a different sample. Both int32 and int64 are allowed and will
+be converted to int32 internally.
+
+Or a list of rank 1 Tensors specifying the row splits for splitting
+embedding_indices and aggregation_weights into rows. It corresponds to
+ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. When
+enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
+the row splits is 1-D dense tensor. When empty, we assume a dense tensor is
+passed to the op Both int32 and int64 are allowed and will be converted to
+int32 internally.}]>:$sample_indices_or_row_splits,
+    Arg<Variadic<TF_I32OrI64Tensor>, [{A list of rank 1 Tensors, indices into the embedding
+tables. Both int32 and int64 are allowed and will be converted to
+int32 internally.}]>:$embedding_indices,
+    Arg<Variadic<TF_F32OrF64Tensor>, [{A list of rank 1 Tensors containing per training
+example aggregation weights. Both float32 and float64 are allowed and will
+be converted to float32 internally.}]>:$aggregation_weights,
+    Arg<TF_StrTensor, [{A string input that overrides the mode specified in the
+TPUEmbeddingConfiguration. Supported values are {'unspecified', 'inference',
+'training', 'backward_pass_only'}. When set to 'unspecified', the mode set
+in TPUEmbeddingConfiguration is used, otherwise mode_override is used.}]>:$mode_override,
+    Arg<TF_Int32Tensor, [{The TPU device to use. Should be >= 0 and less than the number
+of TPU cores in the task on which the node is placed.}]>:$device_ordinal,
+
+    DefaultValuedAttr<StrArrayAttr, "{}">:$combiners
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandTypeAttr T1 = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T2 = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T3 = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_DynamicStitchOp : TF_Op<"DynamicStitch", [NoSideEffect, SameVariadicOperandSize]> {
@@ -14144,10 +14197,10 @@ This op returns an `output` tensor with the `shape` you specify. This op is the
 inverse of the `tf.gather_nd` operator which extracts values or slices from a
 given tensor.
 
-This operation is similar to `tf.tensor_scatter_add`, except that the tensor is
-zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+This operation is similar to `tf.tensor_scatter_nd_add`, except that the tensor
+is zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
 is identical to calling
-`tf.tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`.
+`tf.tensor_scatter_nd_add(tf.zeros(shape, values.dtype), indices, values)`
 
 If `indices` contains duplicates, the duplicate `values` are accumulated
 (summed).
@@ -18278,23 +18331,18 @@ The last dimension of `indices` corresponds to indices into elements
 
     indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
 
-The simplest form of tensor_scatter_add is to add individual elements to a
+The simplest form of `tensor_scatter_nd_add` is to add individual elements to a
 tensor by index. For example, say we want to add 4 elements in a rank-1
 tensor with 8 elements.
 
 In Python, this scatter add operation would look like this:
 
-```python
-    indices = tf.constant([[4], [3], [1], [7]])
-    updates = tf.constant([9, 10, 11, 12])
-    tensor = tf.ones([8], dtype=tf.int32)
-    updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
-    print(updated)
-```
-
-The resulting tensor would look like this:
-
-    [1, 12, 1, 11, 10, 1, 1, 13]
+>>> indices = tf.constant([[4], [3], [1], [7]])
+>>> updates = tf.constant([9, 10, 11, 12])
+>>> tensor = tf.ones([8], dtype=tf.int32)
+>>> updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+<tf.Tensor: shape=(8,), dtype=int32,
+numpy=array([ 1, 12,  1, 11, 10,  1,  1, 13], dtype=int32)>
 
 We can also, insert entire slices of a higher rank tensor all at once. For
 example, if we wanted to insert two slices in the first dimension of a
@@ -18302,25 +18350,20 @@ rank-3 tensor with two matrices of new values.
 
 In Python, this scatter add operation would look like this:
 
-```python
-    indices = tf.constant([[0], [2]])
-    updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
+>>> indices = tf.constant([[0], [2]])
+>>> updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
                             [7, 7, 7, 7], [8, 8, 8, 8]],
                            [[5, 5, 5, 5], [6, 6, 6, 6],
                             [7, 7, 7, 7], [8, 8, 8, 8]]])
-    tensor = tf.ones([4, 4, 4],dtype=tf.int32)
-    updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
-    print(updated)
-```
+>>> tensor = tf.ones([4, 4, 4],dtype=tf.int32)
+>>> updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+<tf.Tensor: shape=(4, 4, 4), dtype=int32,
+numpy=array([[[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
+             [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
+             [[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
+             [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]], dtype=int32)>
 
-The resulting tensor would look like this:
-
-    [[[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
-     [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
-     [[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
-     [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]]
-
-Note that on CPU, if an out of bound index is found, an error is returned.
+Note: on CPU, if an out of bound index is found, an error is returned.
 On GPU, if an out of bound index is found, the index is ignored.
   }];
 
