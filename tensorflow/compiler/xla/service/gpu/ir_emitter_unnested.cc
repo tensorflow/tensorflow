@@ -78,6 +78,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -996,7 +997,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto conv_result_slice, GetAllocationSlice(conv_result));
   TF_ASSIGN_OR_RETURN(auto scratch_slice, GetAllocationSlice(scratch_result));
 
-  if (IsBefThunkEnabled()) {
+  if (IsBefThunkEnabled(hlo_module_config_)) {
     operand_slices.push_back(conv_result_slice);
     operand_slices.push_back(scratch_slice);
     TF_ASSIGN_OR_RETURN(
@@ -1178,7 +1179,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(auto thunk, [&]() -> StatusOr<std::unique_ptr<Thunk>> {
     if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op)) {
-      if (IsBefThunkEnabled()) return make_bef_thunk(gemm);
+      if (IsBefThunkEnabled(hlo_module_config_)) return make_bef_thunk(gemm);
       return make_gemm_thunk(gemm);
     }
 
@@ -1187,7 +1188,8 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
       TF_ASSIGN_OR_RETURN(auto bias, GetAllocationSlice(gemm.bias()));
       TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(gemm.output()));
 
-      if (IsBefThunkEnabled()) return make_bef_thunk(gemm, bias);
+      if (IsBefThunkEnabled(hlo_module_config_))
+        return make_bef_thunk(gemm, bias);
 
       // The bias is passed inside the output buffer. If those buffers are
       // shared we can just use it, otherwise copy the bias values into the
@@ -1321,7 +1323,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
                       GetAllocationSlice(cholesky_op.scratch()));
   TF_ASSIGN_OR_RETURN(auto info_buffer, GetAllocationSlice(cholesky_op.info()));
 
-  if (IsBefThunkEnabled()) {
+  if (IsBefThunkEnabled(hlo_module_config_)) {
     std::vector<BufferAllocation::Slice> buffers = {
         operand_buffer, a_buffer, workspace_buffer, info_buffer};
     TF_ASSIGN_OR_RETURN(
@@ -1419,7 +1421,7 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
   }
 
   std::unique_ptr<Thunk> thunk;
-  if (IsBefThunkEnabled()) {
+  if (IsBefThunkEnabled(hlo_module_config_)) {
     auto values_to_non_optional_slices = [&](mlir::ValueRange values)
         -> StatusOr<std::vector<BufferAllocation::Slice>> {
       std::vector<BufferAllocation::Slice> slices;
@@ -2866,7 +2868,7 @@ Status IrEmitterUnnested::EmitReplicaOrPartitionId(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                       GetAllocationSlice(casted.getOperand()));
   std::unique_ptr<Thunk> thunk;
-  if (IsBefThunkEnabled()) {
+  if (IsBefThunkEnabled(hlo_module_config_)) {
     TF_ASSIGN_OR_RETURN(thunk,
                         CreateBefThunk(GetThunkInfo(op), op, {result_slice}));
   } else {
@@ -2898,7 +2900,7 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   } else {
     std::unique_ptr<Thunk> thunk;
-    if (IsBefThunkEnabled()) {
+    if (IsBefThunkEnabled(hlo_module_config_)) {
       std::vector<BufferAllocation::Slice> buffers = {source_slice,
                                                       result_slice};
       TF_ASSIGN_OR_RETURN(thunk, CreateBefCollectiveThunk(
@@ -2967,10 +2969,11 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
 
   if (should_use_nccl_thunk) {
     std::unique_ptr<Thunk> thunk;
-    if (IsBefThunkEnabled() && (mlir::isa<mlir::lmhlo::AllGatherOp>(op) ||
-                                mlir::isa<mlir::lmhlo::AllReduceOp>(op) ||
-                                mlir::isa<mlir::lmhlo::ReduceScatterOp>(op) ||
-                                mlir::isa<mlir::lmhlo::AllToAllOp>(op))) {
+    if (IsBefThunkEnabled(hlo_module_config_) &&
+        (mlir::isa<mlir::lmhlo::AllGatherOp>(op) ||
+         mlir::isa<mlir::lmhlo::AllReduceOp>(op) ||
+         mlir::isa<mlir::lmhlo::ReduceScatterOp>(op) ||
+         mlir::isa<mlir::lmhlo::AllToAllOp>(op))) {
       std::vector<BufferAllocation::Slice> arg_buffers;
       arg_buffers.reserve(buffers.size() * 2);
       for (const auto& buffer : buffers) {
@@ -3201,7 +3204,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
                                 std::string(kernel->getName()),
                                 ir_emitter_context_->llvm_module());
 
-  if (IsBefThunkEnabled()) {
+  if (IsBefThunkEnabled(hlo_module_config_)) {
     return CreateBefKernelThunk(thunk_info, non_constant_buffers,
                                 std::string(kernel->getName()),
                                 launch_dimensions);
@@ -5511,15 +5514,14 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   }
 
   if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
-#if BEF_EXECUTABLE
-    // BEF-mode GpuExecutable allocates temp memory, and so the custom-call
-    // implementation for TriangularSolve is not needed.
-    return Status::OK();
-#else
+    if (IsBefEnabled(hlo_module_config_)) {
+      // XLIR allocates temp memory, and so the custom-call implementation for
+      // TriangularSolve is not needed.
+      return Status::OK();
+    }
     return InternalError(
         "TriangularSolve is implemented as a custom-call; we do not expect to "
         "lower a true HLO TriangularSolve op.");
-#endif
   }
 
   if (mlir::isa<mlir::lmhlo::FusionOp>(op)) {

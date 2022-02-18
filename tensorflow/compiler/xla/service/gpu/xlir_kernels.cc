@@ -38,8 +38,6 @@
 namespace xla {
 namespace gpu {
 
-#if BEF_THUNKS
-
 static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
     tfrt::Argument<tfrt::gpu::GpuContext> context,
     const tfrt::ExecutionContext& exec_ctx) {
@@ -82,8 +80,6 @@ static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
   }
   return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
 }
-
-#endif  // BEF_THUNKS
 
 static llvm::Expected<DeviceAssignment::LogicalID> GetLogicalId(
     const tfrt::ExecutionContext& exec_ctx) {
@@ -367,9 +363,8 @@ static llvm::Error CustomCall(
 static void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
   kernel_reg->AddKernel("xlir.custom_call",
                         TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
-#if BEF_THUNKS
+  // This kernel is only used for bef thunks, not bef executables.
   kernel_reg->AddKernel("xlir.module.load", TFRT_KERNEL(ModuleLoad));
-#endif  // BEF_THUNKS
   kernel_reg->AddKernel("xlir.replica_id",
                         TFRT_KERNEL_WITH_CHAIN_RESULT(ReplicaId));
   kernel_reg->AddKernel("xlir.partition_id",

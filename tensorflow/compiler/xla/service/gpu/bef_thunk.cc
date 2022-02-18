@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/errors.h"
 
-#if BEF_THUNKS
+#if XLA_ENABLE_XLIR
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -63,9 +63,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-bool IsBefThunkEnabled() { return true; }
-
 namespace {
 
 struct MlirAndTfrtHostCtx {
@@ -504,28 +501,32 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 }  // namespace gpu
 }  // namespace xla
-#else   // BEF_THUNKS
+#else  // XLA_ENABLE_XLIR
+
 namespace xla {
 
-bool gpu::IsBefThunkEnabled() { return false; }
+static Status GetXlirDisabledError() {
+  return tensorflow::errors::FailedPrecondition(
+      "Built without XLA_ENABLE_XLIR");
+}
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefThunk(
     Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>) {
-  return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
+  return GetXlirDisabledError();
 }
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefCollectiveThunk(
     Thunk::ThunkInfo, mlir::Operation*, std::vector<BufferAllocation::Slice>,
     int64_t, int64_t) {
-  return tensorflow::errors::FailedPrecondition("BefThunks are disabled.");
+  return GetXlirDisabledError();
 }
 
 StatusOr<std::unique_ptr<gpu::Thunk>> gpu::CreateBefKernelThunk(
     Thunk::ThunkInfo, absl::Span<const BufferAllocation* const>,
     const std::string&, const LaunchDimensions&) {
-  return tensorflow::errors::FailedPrecondition(
-      "BefKernelThunks are disabled.");
+  return GetXlirDisabledError();
 }
 
 }  // namespace xla
-#endif  // BEF_THUNKS
+
+#endif  // XLA_ENABLE_XLIR

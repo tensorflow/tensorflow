@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/platform.h"
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -71,10 +71,29 @@ limitations under the License.
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
-#endif  // BEF_EXECUTABLE
+#endif  // XLA_ENABLE_XLIR
 
 namespace xla {
 namespace gpu {
+
+bool IsBefExecutableEnabled(const HloModuleConfig& config) {
+#if XLA_ENABLE_XLIR
+  return config.debug_options().xla_gpu_bef_executable();
+#else   // XLA_ENABLE_XLIR
+  (void)config;
+  return false;
+#endif  // XLA_ENABLE_XLIR
+}
+
+bool IsBefThunkEnabled(const HloModuleConfig& config) {
+#if XLA_ENABLE_XLIR
+  return config.debug_options().xla_gpu_bef_thunk();
+#else   // XLA_ENABLE_XLIR
+  (void)config;
+  return false;
+#endif  // XLA_ENABLE_XLIR
+}
+
 namespace {
 
 using ::tensorflow::profiler::ScopedAnnotation;
@@ -101,14 +120,14 @@ static std::string ModuleUniqueName(absl::string_view module_name,
 }  // namespace
 
 void GpuExecutable::BefBufferDeleter::operator()(uint8_t* ptr) const {
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   tfrt::AlignedFree(ptr);
 #else
-  LOG(FATAL) << "OwnedBefBuffer only supported with BEF_EXECUTABLE";
+  LOG(FATAL) << "OwnedBefBuffer only supported with XLA_ENABLE_XLIR";
 #endif
 }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
 struct GpuExecutable::BefExecutable {
  private:
   explicit BefExecutable(OwnedBefBuffer buffer)
@@ -168,7 +187,7 @@ struct GpuExecutable::BefExecutable {
   absl::Mutex mutex;
   tfrt::gpu::GpuContextCache gpu_ctx_cache TF_GUARDED_BY(mutex);
 };
-#endif
+#endif  // XLA_ENABLE_XLIR
 
 StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
   auto thunks_or_bef = std::move(params.thunks_or_bef);
@@ -179,14 +198,14 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
     return result;
   }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   if (absl::holds_alternative<OwnedBefBuffer>(thunks_or_bef)) {
     auto& bef_buffer = absl::get<OwnedBefBuffer>(thunks_or_bef);
     TF_ASSIGN_OR_RETURN(result->bef_executable_,
                         BefExecutable::Create(std::move(bef_buffer)));
     return result;
   }
-#endif
+#endif  // XLA_ENABLE_XLIR
 
   return InternalError("No thunk or bef provided");
 }
@@ -250,7 +269,7 @@ GpuExecutable::~GpuExecutable() {
     }
   }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   delete bef_executable_;
 #endif
 }
@@ -579,7 +598,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
   return out.ConsumeResult();
 }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
 // TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc.
 static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
     stream_executor::DeviceMemoryBase* data) {
@@ -693,7 +712,7 @@ static Status ExecuteBef(const std::string& module_name,
       run_options, start_micros,
       block_host_until_done ? run_options->stream() : nullptr);
 }
-#endif  // BEF_EXECUTABLE
+#endif  // XLA_ENABLE_XLIR
 
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
@@ -871,13 +890,13 @@ Status GpuExecutable::ExecuteThunksOrBef(
                          buffer_allocations, block_host_until_done);
   }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   if (bef_executable_) {
     return ExecuteBef(module_name_, bef_executable_, run_options,
                       buffer_allocations, allocations_.size(),
                       block_host_until_done);
   }
-#endif  // BEF_EXECUTABLE
+#endif  // XLA_ENABLE_XLIR
 
   return FailedPrecondition("Expected thunk or bef is not supplied.");
 }
@@ -977,7 +996,7 @@ Status GpuExecutable::SetUpMlirAllocation(
   return Status::OK();
 }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
 static void ApplyEntryFunctionAttributes(
     mlir::MLIRContext& context, mlir::FuncOp& func,
     xla::EntryFunctionAttributes entry_func_attrs, int buffer_param_offset) {
@@ -996,10 +1015,11 @@ static void ApplyEntryFunctionAttributes(
                         builder.getIndexAttr(buffer.lmhlo_params()));
     }
     if (buffer.has_lmhlo_param_shape_index()) {
-      arg_attr_list.set("lmhlo.param_shape_index",
-                        builder.getI64TensorAttr(llvm::makeArrayRef(
-                            buffer.lmhlo_param_shape_index().indices().begin(),
-                            buffer.lmhlo_param_shape_index().indices().end())));
+      arg_attr_list.set(
+          "lmhlo.param_shape_index",
+          builder.getI64TensorAttr(llvm::makeArrayRef(
+              buffer.lmhlo_param_shape_index().indices().data(),
+              buffer.lmhlo_param_shape_index().indices().size())));
     }
     if (!buffer.lmhlo_constant_name().empty()) {
       arg_attr_list.set("lmhlo.constant_name",
@@ -1011,8 +1031,8 @@ static void ApplyEntryFunctionAttributes(
     if (buffer.has_lmhlo_output_index()) {
       arg_attr_list.set("lmhlo.output_index",
                         builder.getI64TensorAttr(llvm::makeArrayRef(
-                            buffer.lmhlo_output_index().indices().begin(),
-                            buffer.lmhlo_output_index().indices().end())));
+                            buffer.lmhlo_output_index().indices().data(),
+                            buffer.lmhlo_output_index().indices().size())));
     }
     args_attrs.push_back(arg_attr_list.getDictionary(&context));
   }
@@ -1020,12 +1040,12 @@ static void ApplyEntryFunctionAttributes(
   func->setAttr("result_xla_shape",
                 builder.getStringAttr(entry_func_attrs.result_xla_shape()));
 }
-#endif  // BEF_EXECUTABLE
+#endif  // XLA_ENABLE_XLIR
 
 StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
     std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
     xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version) {
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   OwnedBefBuffer bef_buffer = [bef]() {
     auto ptr = static_cast<uint8_t*>(
         tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
@@ -1064,9 +1084,9 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
                         module_name, result_xla_shape, std::move(allocations),
                         std::move(output_info), bef_executable));
   return executable;
-#else   // BEF_EXECUTABLE
-  return FailedPrecondition("LoadFromBef only supported with BEF_EXECUTABLE");
-#endif  // BEF_EXECUTABLE
+#else   // XLA_ENABLE_XLIR
+  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
+#endif  // XLA_ENABLE_XLIR
 }
 
 StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>
