@@ -136,7 +136,8 @@ struct ComputeOpAndFuncBufferizePass
         bufferization::getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options.allowDialectInFilter<vector::VectorDialect>();
+    options
+        .allowDialectInFilter<tensor::TensorDialect, vector::VectorDialect>();
     // Ops inside TiledLoopOps have special handling.
     options.denyOperationInFilter([](Operation* op) {
       return mlir::isa<linalg::TiledLoopOp>(op->getParentOp());
