@@ -35,6 +35,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.eager import function_cache
+from tensorflow.python.eager import function_saved_model_utils
 from tensorflow.python.eager import function_spec
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
@@ -2380,6 +2381,47 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       return "ConcreteFunction {}".format(self.pretty_printed_signature())
     else:
       return self.__repr__()
+
+  def _trackable_children(self, save_type="checkpoint", **kwargs):
+    """Implements `Trackable`."""
+    if save_type == "checkpoint":
+      # Functions do not save values to the checkpoint.
+      return {}
+
+    # Before continuing, check if the function has been marked as unsaveable.
+    if not self.graph.saveable:
+      raise ValueError(
+          (f"Unable to save function {self.name} for the following reason(s):\n"
+           + "\n".join(self.graph.saving_errors)))
+
+    captured_trackables = {}
+    for n, (capture, _) in enumerate(self.graph.captures):
+      key = f"capture_{n}"
+      if hasattr(capture, "_cached_variable"):
+        raise AssertionError(
+            "This function uses a cached variable, so this function should not "
+            "be saved. If you see this message, this is a bug in saving.")
+      if (capture.dtype not in (dtypes.variant, dtypes.resource) and
+          # Distributed variable objects may be captured directly.
+          not resource_variable_ops.is_resource_variable(capture)):
+        captured_trackables[key] = (
+            function_saved_model_utils.TrackableConstant(capture, self))
+
+      # The other captures are variant/resource type tensors or distributed
+      # variables, which are not currently returned.
+      # TODO(b/217979389): Return the non-constant captures as children.
+
+    return captured_trackables
+
+  def _deserialization_dependencies(self, children):
+    return children
+
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   **unused_kwargs):
+    self.add_to_graph()
+    object_map[self] = function_saved_model_utils.ExportedConcreteFunction(
+        self, tensor_map)
+    return []
 
 
 _pywrap_utils.RegisterType("Tensor", ops.Tensor)
