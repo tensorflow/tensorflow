@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #endif  // !IS_MOBILE_PLATFORM
@@ -548,6 +549,36 @@ Status UpdateContextWithServerDef(EagerContext* context,
 
   // Initialize remote eager workers.
   if (reset_context) {
+    const auto& config = server_def.default_session_config();
+    const bool enable_coordination =
+        !config.experimental().coordination_config().service_type().empty();
+
+    if (enable_coordination) {
+      WorkerCacheInterface* worker_cache = server->master_env()->worker_cache;
+      LOG_AND_RETURN_IF_ERROR(
+          context->GetDistributedManager()->EnableCoordinationService(
+              config.experimental().coordination_config().service_type(),
+              server->worker_env(), server_def, worker_cache));
+      std::unique_ptr<CoordinationClientCache> client_cache;
+      LOG_AND_RETURN_IF_ERROR(
+          worker_cache->GetCoordinationClientCache(&client_cache));
+      CoordinationServiceAgent* agent =
+          context->GetDistributedManager()->GetCoordinationServiceAgent();
+      if (agent->IsInitialized()) {
+        // This can happen when users repeatedly invoke SetServerDef in the same
+        // EagerContext, most likely with the same cluster setup.
+        // TODO(hanyangtay,haoyuzhang): Consider resetting the agent when
+        // coordination service agent Reset() is implemented.
+        LOG(INFO) << "Coordination service agent on " << worker_name
+                  << " is already initialized. Skip initializing...";
+      } else {
+        TF_RETURN_IF_ERROR(agent->Initialize(
+            server->worker_env()->env, server_def, std::move(client_cache),
+            /*error_fn=*/[](Status s) {
+              LOG(ERROR) << "Coordination agent is set to error: " << s;
+            }));
+      }
+    }
     const Status s = CreateRemoteContexts(
         context, remote_workers, context_id, context_view_id, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
