@@ -166,6 +166,12 @@ cc_library(
     data = ["rocm/lib/%{hipsolver_lib}"],
 )
 
+cc_library(
+    name = "hipblas",
+    srcs = ["rocm/lib/%{hipblas_lib}"],
+    data = ["rocm/lib/%{hipblas_lib}"],
+)
+
 filegroup(
     name = "rocm_root",
     srcs = [
