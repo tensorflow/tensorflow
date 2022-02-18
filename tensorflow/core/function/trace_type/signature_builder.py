@@ -15,7 +15,7 @@
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
 import collections.abc
-from typing import Any, Callable
+from typing import Any, Callable, Hashable
 import weakref
 
 from tensorflow.core.function.trace_type import default_types
@@ -57,19 +57,20 @@ class WeakrefDeletionObserver:
 class SignatureContext(trace.TracingContext):
   """Container for variables and flags shared across signature tracing."""
 
-  def __init__(self, include_tensor_ranks_only=False):
+  def __init__(self, include_tensor_ranks_only: bool = False):
     self._deletion_observer = WeakrefDeletionObserver()
     self._include_tensor_ranks_only = include_tensor_ranks_only
     self._global_to_local_id = {}
 
   # TODO(b/202772221): Consider dropping after alias pattern matching is
   # supported.
-  def get_local_id(self, local_id):
-
+  def make_reference_type(self, base_type: trace.TraceType,
+                          local_id: Hashable) -> trace.TraceType:
     if local_id not in self._global_to_local_id:
       self._global_to_local_id[local_id] = len(self._global_to_local_id)
 
-    return self._global_to_local_id[local_id]
+    return default_types.Reference(base_type,
+                                   self._global_to_local_id[local_id])
 
   # TODO(b/202430155): Remove this flag after TraceType shape relaxation.
   @property
