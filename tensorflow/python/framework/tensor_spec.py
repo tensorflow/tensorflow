@@ -28,7 +28,7 @@ from tensorflow.python.util.tf_export import tf_export
 class DenseSpec(type_spec.TypeSpec):
   """Describes a dense object with shape, dtype, and name."""
 
-  __slots__ = ["_shape", "_shape_tuple", "_dtype", "_name"]
+  __slots__ = ["_shape", "_dtype", "_name"]
 
   _component_specs = property(lambda self: self)
 
@@ -45,8 +45,6 @@ class DenseSpec(type_spec.TypeSpec):
         not convertible to a `tf.DType`.
     """
     self._shape = tensor_shape.TensorShape(shape)
-    # TODO(b/216204766): Remove once uses are deleted.
-    self._shape_tuple = None
     self._dtype = dtypes.as_dtype(dtype)
     self._name = name
 
