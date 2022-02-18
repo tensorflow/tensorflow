@@ -507,7 +507,6 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
 
 // To be used inside depthwise_conv_grad_op.cc.
 // TODO(reedwm): Move this and the definition to depthwise_conv_grad_op.cc.
-template struct LaunchConv2DBackpropInputOp<GPUDevice, bfloat16>;
 template struct LaunchConv2DBackpropInputOp<GPUDevice, float>;
 template struct LaunchConv2DBackpropInputOp<GPUDevice, Eigen::half>;
 template struct LaunchConv2DBackpropInputOp<GPUDevice, double>;

@@ -1205,7 +1205,6 @@ REGISTER_KERNEL_BUILDER(
     Conv2DOp<GPUDevice, int32>);
 
 // To be used inside depthwise_conv_op.cc.
-template struct LaunchConv2DOp<GPUDevice, bfloat16>;
 template struct LaunchConv2DOp<GPUDevice, float>;
 template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
 template struct LaunchConv2DOp<GPUDevice, double>;
