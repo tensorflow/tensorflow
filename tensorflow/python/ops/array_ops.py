@@ -1882,7 +1882,8 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     mask = ops.convert_to_tensor(mask, name="mask")
     if mask.dtype != dtypes.bool:
-      raise TypeError("Invalid `mask`: expected bool but got %s." % mask.dtype)
+      raise TypeError(
+          "Invalid `mask`: expected bool but got %s." % mask.dtype)
 
     shape_mask = mask.get_shape()
     ndims_mask = shape_mask.ndims
