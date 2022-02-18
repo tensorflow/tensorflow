@@ -1229,6 +1229,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_depth_to_space_test",
+    srcs = ["signed_quantized_depth_to_space_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":depth_to_space_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantized_elu_test",
     srcs = ["signed_quantized_elu_test.cc"],
     linkopts = select({
@@ -1343,7 +1358,7 @@ cc_test(
     deps = [
         ":quantized_resize_bilinear_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1373,7 +1388,7 @@ cc_test(
     deps = [
         ":quantized_transpose_conv_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1463,7 +1478,7 @@ cc_test(
     deps = [
         ":test_main",
         ":transpose_conv_tester",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1537,6 +1552,21 @@ cc_test(
     }),
     deps = [
         ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_depth_to_space_test",
+    srcs = ["unsigned_quantized_depth_to_space_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":depth_to_space_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1643,7 +1673,7 @@ cc_test(
     deps = [
         ":quantized_resize_bilinear_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1673,7 +1703,7 @@ cc_test(
     deps = [
         ":quantized_transpose_conv_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(DepthToSpace, SinglePixel) {
+TEST(UnsignedQuantizedDepthToSpace, SinglePixel) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -46,10 +46,10 @@ TEST(DepthToSpace, SinglePixel) {
       .InputWidth(1)
       .OutputChannels(channel_rng())
       .BlockSize(block_rng())
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(DepthToSpace, SingleRow) {
+TEST(UnsignedQuantizedDepthToSpace, SingleRow) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -71,10 +71,10 @@ TEST(DepthToSpace, SingleRow) {
       .InputWidth(width_rng())
       .OutputChannels(channel_rng())
       .BlockSize(block_rng())
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(DepthToSpace, SingleColumn) {
+TEST(UnsignedQuantizedDepthToSpace, SingleColumn) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -96,10 +96,10 @@ TEST(DepthToSpace, SingleColumn) {
       .InputWidth(1)
       .OutputChannels(channel_rng())
       .BlockSize(block_rng())
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(DepthToSpace, FullImage) {
+TEST(UnsignedQuantizedDepthToSpace, FullImage) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -121,10 +121,10 @@ TEST(DepthToSpace, FullImage) {
       .InputWidth(size_rng())
       .OutputChannels(channel_rng())
       .BlockSize(block_rng())
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
-TEST(DepthToSpace, MultiThreading) {
+TEST(UnsignedQuantizedDepthToSpace, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
@@ -149,7 +149,7 @@ TEST(DepthToSpace, MultiThreading) {
       .InputWidth(size_rng())
       .OutputChannels(channel_rng())
       .BlockSize(block_rng())
-      .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+      .Test(TensorType_UINT8, xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack
