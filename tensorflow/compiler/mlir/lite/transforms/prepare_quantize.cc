@@ -16,6 +16,7 @@ limitations under the License.
 // This transformation pass applies quantization propagation on TFLite dialect.
 #include <iterator>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/Optional.h"
