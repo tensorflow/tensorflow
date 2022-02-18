@@ -266,18 +266,17 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   if (!state)
     return MakeStringError("tf_jitrt state not found in the request context");
 
-  JitExecutableCache* jit_executable_cache = state->jit_executable_cache;
-
-  // TODO(ezhulenev): CompilationUnitAttribute in addition to an `id` should
-  // provide a hash (or something like sha-256 fingerprint) of its content for
-  // cache lookup. Currently we rely on the fact that the SavedModel never
-  // unloads a Bef file, and there is a 1-to-1 relationship between the
-  // ResourceContext and the SavedModel, so the `id` is guaranteed to be a
-  // unique key for the cache lookup.
+  // We rely on the unique `id` provided by the CompilationUnitAttribute to look
+  // up the JitExecutable in the cache. This id is guaranteed to be unique
+  // within a Bef file. Currently we rely on the fact that the SavedModel
+  // never unloads a Bef file, and there is a 1-to-1 relationship between the
+  // ResourceContext and the SavedModel.
   //
   // TODO(b/206081322): Different compilation options should create unique
   // compiled kernel cache keys.
-  intptr_t key = kernel.id();
+  size_t key = kernel.id();
+
+  JitExecutableCache* jit_executable_cache = state->jit_executable_cache;
 
   // Maybe return JitExecutable from the cache.
   if (auto cached = jit_executable_cache->Find(key)) return cached;
