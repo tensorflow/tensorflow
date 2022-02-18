@@ -528,6 +528,7 @@ static void DepthwiseConvBackpropInputReference(const DepthwiseArgs& args,
 }
 
 // Extern template instantiated in conv_grad_input_ops.cc.
+extern template struct LaunchConv2DBackpropInputOp<CPUDevice, bfloat16>;
 extern template struct LaunchConv2DBackpropInputOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropInputOp<CPUDevice, float>;
 extern template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
@@ -714,6 +715,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
                               .TypeConstraint<T>("T"),               \
                           DepthwiseConv2dNativeBackpropInputOp<CPUDevice, T>);
 
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)
@@ -1031,6 +1033,7 @@ static void DepthwiseConvBackpropFilterReference(const DepthwiseArgs& args,
 }
 
 // Extern template instantiated in conv_grad_filter_ops.cc.
+extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, bfloat16>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, float>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
@@ -1087,14 +1090,16 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
     cudnn_use_autotune_ = CudnnUseAutotune();
 
-    if (std::is_same<T, Eigen::half>::value) {
+    if (std::is_same<T, bfloat16>::value) {
+      dtype_ = DT_BFLOAT16;
+    } else if (std::is_same<T, Eigen::half>::value) {
       dtype_ = DT_HALF;
     } else if (std::is_same<T, float>::value) {
       dtype_ = DT_FLOAT;
     } else if (std::is_same<T, double>::value) {
       dtype_ = DT_DOUBLE;
     } else {
-      LOG(ERROR) << "Only half, float, and double are supported.";
+      LOG(ERROR) << "Only bfloat16, half, float, and double are supported.";
     }
     // Use CuDNN grouped conv (filter gradients) when input/output is
     // float16(half). See cudnn release note 7.6.3. (https://docs.nvidia.com/dee
@@ -1245,6 +1250,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
           .Device(DEVICE_CPU)                     \
           .TypeConstraint<T>("T"),                \
       DepthwiseConv2dNativeBackpropFilterOp<CPUDevice, T>);
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)

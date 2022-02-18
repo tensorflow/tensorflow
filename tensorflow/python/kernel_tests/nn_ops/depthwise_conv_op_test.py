@@ -321,6 +321,7 @@ class DepthwiseConv2DTest(test.TestCase):
           dtypes.float16: 4e-2,
           dtypes.float32: 1e-5,
           dtypes.float64: 1e-12,
+          dtypes.bfloat16: 1e-2,
       }[data_type]
 
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=data_type)
@@ -1097,7 +1098,8 @@ class DepthwiseConv2DDeterministicTest(test.TestCase):
     if tf_config.list_physical_devices("GPU"):
       self.skipTest("Test only runs when there is no GPU")
     data_format = "NHWC"  # CPU does not implement NCHW version of op
-    for dtype in [dtypes.float32, dtypes.float64]:
+    for dtype in [dtypes.float32, dtypes.float64, \
+        dtypes.bfloat16.as_numpy_dtype]:
       self._testForwardCase(data_format=data_format, dtype=dtype)
 
   def _testBackwardCase(self,
@@ -1152,7 +1154,8 @@ class DepthwiseConv2DDeterministicTest(test.TestCase):
     if tf_config.list_physical_devices("GPU"):
       self.skipTest("Test only runs when there is no GPU")
     data_format = "NHWC"  # CPU does not implement NCHW version of op
-    for dtype in [dtypes.float32, dtypes.float64]:
+    for dtype in [dtypes.float32, dtypes.float64, \
+        dtypes.bfloat16.as_numpy_dtype]:
       self._testBackwardCase(data_format=data_format, dtype=dtype)
 
 
