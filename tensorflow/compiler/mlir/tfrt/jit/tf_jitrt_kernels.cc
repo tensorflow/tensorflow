@@ -86,6 +86,7 @@ using ::tfrt::HostContext;
 using ::tfrt::IndirectAsyncValue;
 using ::tfrt::KernelRegistry;
 using ::tfrt::MakeAvailableAsyncValueRef;
+using ::tfrt::MakeConstructedAsyncValueRef;
 using ::tfrt::MakeErrorAsyncValueRef;
 using ::tfrt::MakeStringError;
 using ::tfrt::RCArray;
@@ -499,12 +500,15 @@ static AsyncValueRef<Chain> Compile(StringAttribute device,
   if (auto err = executable.takeError())
     return MakeErrorAsyncValueRef(StrCat(err));
 
-  // Immediately return an available chain once we schedule the compilation.
-  return MakeAvailableAsyncValueRef<Chain>();
+  // Mark chain available once we compile the default executable.
+  auto chain = MakeConstructedAsyncValueRef<Chain>();
+  executable->AndThen([chain]() { chain.SetStateConcrete(); });
+
+  return chain;
 }
 
 // -------------------------------------------------------------------------- //
-// TFRT kernel function definition for tf_jitrt.fallback.wait_for_compilation.
+// TFRT kernel function definition for tf_jitrt.test.wait_for_compilation.
 // -------------------------------------------------------------------------- //
 
 static AsyncValueRef<Chain> WaitForCompilation(
@@ -807,11 +811,12 @@ void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
 
 void RegisterTfJitRuntimeKernels(KernelRegistry* registry) {
   registry->AddKernel("tf_jitrt.fallback.compile", TFRT_KERNEL(Compile));
-  registry->AddKernel("tf_jitrt.fallback.wait_for_compilation",
-                      TFRT_KERNEL(WaitForCompilation));
   registry->AddKernel("tf_jitrt.fallback.execute", TFRT_KERNEL(Execute));
   registry->AddKernel("tf_jitrt.fallback.debug.execute",
                       TFRT_KERNEL(ExecuteDebug));
+
+  registry->AddKernel("tf_jitrt.test.wait_for_compilation",
+                      TFRT_KERNEL(WaitForCompilation));
 }
 
 }  // namespace tensorflow
