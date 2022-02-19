@@ -18,7 +18,6 @@ limitations under the License.
 #include <limits>
 #include <string>
 
-#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
@@ -66,6 +65,35 @@ GpuGemmConfig GetGpuGemmConfig(const HloInstruction* gemm) {
   return config;
 }
 
+StatusOr<tensorflow::DataType> EncodePrimitiveTypeAsDataType(
+    PrimitiveType type) {
+  static const absl::flat_hash_map<PrimitiveType, tensorflow::DataType>&
+      data_type_map =
+          *new absl::flat_hash_map<PrimitiveType, tensorflow::DataType>({
+              {PRED, tensorflow::DT_BOOL},
+              {BF16, tensorflow::DT_BFLOAT16},
+              {F16, tensorflow::DT_HALF},
+              {F32, tensorflow::DT_FLOAT},
+              {F64, tensorflow::DT_DOUBLE},
+              {C64, tensorflow::DT_COMPLEX64},
+              {S8, tensorflow::DT_INT8},
+              {S16, tensorflow::DT_INT16},
+              {S32, tensorflow::DT_INT32},
+              {S64, tensorflow::DT_INT64},
+              {U8, tensorflow::DT_UINT8},
+              {U16, tensorflow::DT_UINT16},
+              {U32, tensorflow::DT_UINT32},
+              {U64, tensorflow::DT_UINT64},
+              {C128, tensorflow::DT_COMPLEX128},
+          });
+
+  auto it = data_type_map.find(type);
+  if (it == data_type_map.end()) {
+    return InternalError("Unsupported type in PrimitiveTypeToDataType.");
+  }
+  return it->second;
+}
+
 Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
                            se::DeviceMemoryAllocator* allocator,
                            se::RedzoneAllocator& input_output_allocator,
@@ -91,7 +119,7 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
     return InternalError("GEMM output matrix must not be transposed.");
   }
   TF_ASSIGN_OR_RETURN(tensorflow::DataType dtype,
-                      tensorflow::EncodePrimitiveTypeAsDataType(element_type));
+                      EncodePrimitiveTypeAsDataType(element_type));
 
   int device_id = stream->parent()->device_ordinal();
   bool trans_x = lhs_matrix.transpose == se::blas::Transpose::kTranspose;
@@ -342,7 +370,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   const HloInstruction* rhs = instr->operand(1);
 
   // Don't run autotuning concurrently on the same GPU.
-  absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
+  tensorflow::mutex_lock gpu_lock = LockGpu(stream->parent());
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
   const int32_t cublas_autotune_level =
       hlo_module_config.debug_options().xla_gpu_autotune_level();

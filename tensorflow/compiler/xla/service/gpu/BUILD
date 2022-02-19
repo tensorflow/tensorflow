@@ -919,7 +919,6 @@ cc_library(
         ":gpu_conv_runner",
         ":ir_emission_utils",
         ":stream_executor_util",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
