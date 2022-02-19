@@ -1209,6 +1209,46 @@ Status TfrtCpuBuffer::BlockHostUntilReady() {
   return status;
 }
 
+void TfrtCpuBuffer::OnReady(std::function<void(Status)> callback) {
+  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(&mu_);
+    if (tracked_device_buffer_ == nullptr) {
+      callback(
+          InvalidArgument("OnReady() called on deleted or donated buffer"));
+      return;
+    }
+    device_buffer = tracked_device_buffer_;
+  }
+
+  std::vector<tfrt::RCReference<tfrt::AsyncValue>> avs;
+  avs.reserve(device_buffer->DefinitionEvents().size());
+  // Wait for all definition events to complete.
+  for (const auto& ev : device_buffer->DefinitionEvents()) {
+    avs.push_back(ev.CopyRCRef());
+  }
+
+  absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> avs_to_move;
+  avs_to_move.reserve(avs.size());
+  for (const auto& av : avs) {
+    avs_to_move.push_back(av.CopyRef());
+  }
+
+  EnqueueWorkWhenReady(
+      client_->GetHostContext(), avs,
+      [avs = std::move(avs_to_move), callback = std::move(callback)]() {
+        Status s;
+        for (const auto& av : avs) {
+          if (auto* error = av->GetErrorIfPresent()) {
+            s.Update(FailedPrecondition(
+                "Error in OnReady waiting for buffer ready: %s",
+                error->message));
+          }
+        }
+        callback(s);
+      });
+}
+
 TfrtCpuExecutable::TfrtCpuExecutable(
     int num_replicas, int num_partitions,
     std::shared_ptr<DeviceAssignment> device_assignment,

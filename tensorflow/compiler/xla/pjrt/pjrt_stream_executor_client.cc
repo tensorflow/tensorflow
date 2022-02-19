@@ -1587,6 +1587,41 @@ Status PjRtStreamExecutorBuffer::BlockHostUntilReady() {
   return Status::OK();
 }
 
+void PjRtStreamExecutorBuffer::OnReady(std::function<void(Status)> callback) {
+  std::shared_ptr<TrackedDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(&mu_);
+    if (device_buffer_ == nullptr) {
+      callback(
+          InvalidArgument("OnReady() called on deleted or donated buffer"));
+      return;
+    }
+    device_buffer = device_buffer_;
+  }
+  LocalDeviceState* local_device_state = device_->local_device_state();
+  std::unique_ptr<se::Stream> stream;
+  for (auto& event : device_buffer->definition_events()) {
+    if (!event->IsComplete()) {
+      if (stream == nullptr) {
+        stream = local_device_state->BorrowStreamFromPool();
+      }
+      event->WaitForEventOnStream(stream.get());
+    }
+  }
+  if (stream == nullptr) {
+    callback(Status::OK());
+  } else {
+    auto* stream_ptr = stream.release();
+    local_device_state->ThenExecuteCallback(
+        stream_ptr,
+        [callback = std::move(callback), stream_ptr, local_device_state]() {
+          callback(Status::OK());
+          local_device_state->ReturnStreamToPool(
+              std::unique_ptr<se::Stream>(stream_ptr));
+        });
+  }
+}
+
 namespace {
 
 // Helper struct for the tuple that is transiently constructed to hold the

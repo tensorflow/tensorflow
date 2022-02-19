@@ -85,7 +85,7 @@ static bool ControlElementwiseOpsFusion(const OpResult &producer_result,
 }
 
 struct FusionPass : public FusionBase<FusionPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     Operation *op = getOperation();
 
     RewritePatternSet patterns(op->getContext());
@@ -98,7 +98,7 @@ struct FusionPass : public FusionBase<FusionPass> {
   }
 };
 
-std::unique_ptr<mlir::FunctionPass> CreateFusionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateFusionPass() {
   return std::make_unique<FusionPass>();
 }
 

@@ -609,7 +609,7 @@ func @dot_illegal_input_type(%arg0: tensor<3xf32>, %arg1: tensor<?x3xf32>) -> te
 // -----
 
 func @dot_illegal_result_type(%arg0: tensor<?x3xf32>, %arg1: tensor<3xf32>) -> tensor<3x?xf32> {
-  // expected-error@+1 {{Unexpected result type}}
+  // expected-error@+1 {{op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<3x?xf32>'}}
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?x3xf32>, tensor<3xf32>) -> tensor<3x?xf32>
   return %0 : tensor<3x?xf32>
 }
@@ -646,18 +646,11 @@ func @imag_fp_input(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
-func @infeed_invalid_number_of_results(%token: !mhlo.token) -> tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>> {
-  // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
-  %0 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout = [[[0]], unit, [0]]} : (!mhlo.token) -> tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>>
-  return %0 : tuple<tuple<tensor<i32>>, !mhlo.token, tensor<i32>>
-}
-
-// -----
-
-func @infeed_non_token_second_result(%token: !mhlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>> {
-  // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
-  %0 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout = [[[0]], [0]]} : (!mhlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>>
-  return %0 : tuple<tuple<tensor<i32>>, tensor<i32>>
+func @infeed_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<i32>, tensor<i32>> {
+  // expected-error@+1 {{last element of result types is expected to be of token type, but got 'tensor<i32>'}}
+  %0:2 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout = [[[0]], [0]]} : (!mhlo.token) -> (tensor<i32>, tensor<i32>)
+  %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>>
+  return %1 : tuple<tensor<i32>, tensor<i32>>
 }
 
 // -----
@@ -794,30 +787,17 @@ func @real_fp_input(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
-func @recv_invalid_number_of_results(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !mhlo.token> {
-  // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
-  %0 = "mhlo.recv"(%token) {
-    channel_handle = {
-      handle = 5 : i64,
-      type = 3 : i64  // Host to device channel
-    },
-    is_host_transfer = true
-  } : (!mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !mhlo.token>
-  return %0 : tuple<tensor<3x4xi32>, tensor<i32>, !mhlo.token>
-}
-
-// -----
-
 func @recv_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>> {
-  // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
-  %0 = "mhlo.recv"(%token) {
+  // expected-error@+1 {{last element of result types is expected to be of token type, but got 'tensor<i32>'}}
+  %0:2 = "mhlo.recv"(%token) {
     channel_handle = {
       handle = 5 : i64,
       type = 3 : i64  // Host to device channel
     },
     is_host_transfer = true
-  } : (!mhlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>>
-  return %0 : tuple<tensor<3x4xi32>, tensor<i32>>
+  } : (!mhlo.token) -> (tensor<3x4xi32>, tensor<i32>)
+  %1 =  "mhlo.tuple"(%0#0, %0#1) : (tensor<3x4xi32>, tensor<i32>) -> tuple<tensor<3x4xi32>, tensor<i32>>
+  return %1 : tuple<tensor<3x4xi32>, tensor<i32>>
 }
 
 // -----
@@ -2382,7 +2362,8 @@ func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %2 = arith.constant dense<0> : tensor<i32>
     %3 = "mhlo.slice"(%arg2) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
     %4 = "mhlo.compare"(%arg1, %3) {comparison_direction = "LT"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
-    "mhlo.return"(%4) : (tensor<1xi1>) -> ()
+    %5 = "mhlo.reshape"(%4) : (tensor<1xi1>) -> tensor<i1>
+    "mhlo.return"(%5) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
     %3 = "mhlo.broadcast_in_dim"(%arg3) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
@@ -2740,4 +2721,60 @@ func @error_incompatible_alias_element_types (%arg0: tensor<2xf32> {mhlo.result_
     ) -> (tuple<i32, tensor<2xi32>>) {
   %0 = "Test.Op"() : () -> (tuple<i32, tensor<2xi32>>)
   return %0 : tuple<i32, tensor<2xi32>>
+}
+
+// -----
+
+func @error_batch_norm_train(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %offset: tensor<2xf32>) -> tuple<tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>> {
+  // expected-error@+1 {{expects feature_index to be smaller than the rank of operand type; got feature_index 4, and rank 4.}}
+  %0:3 = "mhlo.batch_norm_training" (%input, %scale, %offset) {epsilon = 0.001 : f32, feature_index = 4 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+  %1 = "mhlo.tuple"(%0#0, %0#1, %0#2) : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>) -> tuple<tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>>
+  return %1 : tuple<tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>>
+}
+
+// -----
+
+func @error_batch_norm_train(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %offset: tensor<2xf32>) -> tuple<tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>> {
+  // expected-error@+1 {{expects feature_index to be a non-negative number, got -1.}}
+  %0:3 = "mhlo.batch_norm_training" (%input, %scale, %offset) {epsilon = 0.001 : f32, feature_index = -1 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+  %1 = "mhlo.tuple"(%0#0, %0#1, %0#2) : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>) -> tuple<tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>>
+  return %1 : tuple<tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>>
+}
+
+// -----
+
+func @error_batch_norm_train(%input: tensor<2x2x2x2xf32>, %scale: tensor<3xf32>, %offset: tensor<3xf32>) -> tensor<2x2x2x2xf32> {
+  // expected-error@+1 {{expects the size of scale factor to be same as the feature count, but the size of scale factor is 3 and the feature count is 2.}}
+  %0:3 = "mhlo.batch_norm_training" (%input, %scale, %offset) {epsilon = 0.001 : f32, feature_index = 3 : i64} : (tensor<2x2x2x2xf32>, tensor<3xf32>, tensor<3xf32>) -> (tensor<2x2x2x2xf32>, tensor<3xf32>, tensor<3xf32>)
+  return %0#0 : tensor<2x2x2x2xf32>
+}
+
+// -----
+
+func @error_batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>, %mean: tensor<256xf32>, %variance: tensor<256xf32>) -> (tensor<4x256xf32>) {
+  // expected-error@+1 {{expects feature_index to be smaller than the rank of operand type; got feature_index 2, and rank 2.}}
+  %0 = "mhlo.batch_norm_inference" (%input, %scale, %offset, %mean, %variance) {epsilon = 1.001000e-05 : f32, feature_index = 2 : i64} :
+      (tensor<4x256xf32>, tensor<256xf32>, tensor<256xf32>, tensor<256xf32>,
+        tensor<256xf32>) -> tensor<4x256xf32>
+  return %0 : tensor<4x256xf32>
+}
+
+// -----
+
+func @error_batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>, %mean: tensor<256xf32>, %variance: tensor<256xf32>) -> (tensor<4x256xf32>) {
+  // expected-error@+1 {{expects feature_index to be a non-negative number, got -1.}}
+  %0 = "mhlo.batch_norm_inference" (%input, %scale, %offset, %mean, %variance) {epsilon = 1.001000e-05 : f32, feature_index = -1 : i64} :
+      (tensor<4x256xf32>, tensor<256xf32>, tensor<256xf32>, tensor<256xf32>,
+        tensor<256xf32>) -> tensor<4x256xf32>
+  return %0 : tensor<4x256xf32>
+}
+
+// -----
+
+func @error_batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<25xf32>, %offset: tensor<25xf32>, %mean: tensor<25xf32>, %variance: tensor<25xf32>) -> (tensor<4x256xf32>) {
+  // expected-error@+1 {{expects the size of scale factor to be same as the feature count, but the size of scale factor is 25 and the feature count is 256.}}
+  %0 = "mhlo.batch_norm_inference" (%input, %scale, %offset, %mean, %variance) {epsilon = 1.001000e-05 : f32, feature_index = 1 : i64} :
+      (tensor<4x256xf32>, tensor<25xf32>, tensor<25xf32>, tensor<25xf32>,
+        tensor<25xf32>) -> tensor<4x256xf32>
+  return %0 : tensor<4x256xf32>
 }

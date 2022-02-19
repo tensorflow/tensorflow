@@ -46,7 +46,7 @@ Any other values are considered **atoms**.  Not all collection types are
 considered nested structures.  For example, the following types are
 considered atoms:
 
-* `set`
+* `set`; `{"a", "b"}` is an atom, while `["a", "b"]` is a nested structure.
 * [`dataclass` classes](https://docs.python.org/library/dataclasses.html)
 * `tf.Tensor`
 * `numpy.array`

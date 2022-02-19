@@ -81,26 +81,6 @@ is_tfrt_enabled = tfrt_utils.enabled
 _RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION",
                                               "1") == "1"
 
-# This flag and associated environment var are transient and will eventually be
-# removed.
-# TODO(b/214312827): remove this once the python flag apis are finalized.
-_GRAPH_BUILDING_OPTIMIZATION = os.getenv(
-    "TF_FLAG_GRAPH_BUILDING_OPTIMIZATION") == "1"
-
-
-def enable_graph_building_optimization():
-  global _GRAPH_BUILDING_OPTIMIZATION
-  _GRAPH_BUILDING_OPTIMIZATION = True
-
-
-def graph_building_optimization_enabled():
-  return _GRAPH_BUILDING_OPTIMIZATION
-
-
-def disable_graph_building_optimization():
-  global _GRAPH_BUILDING_OPTIMIZATION
-  _GRAPH_BUILDING_OPTIMIZATION = False
-
 
 # This method should only be called after the context has beein initialized.
 def enable_run_eager_op_as_function():

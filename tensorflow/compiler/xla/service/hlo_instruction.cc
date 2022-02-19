@@ -64,6 +64,19 @@ using absl::StrAppend;
 using absl::StrCat;
 using absl::StrJoin;
 
+HloInstruction* HloInstruction::AddInstruction(
+    std::unique_ptr<HloInstruction> derived_instruction) {
+  HloInstruction* derived =
+      parent()->AddInstruction(std::move(derived_instruction));
+  const bool has_prior_sharding = derived->has_sharding();
+  SetupDerivedInstruction(derived);
+  if (!has_prior_sharding && (derived->opcode() == HloOpcode::kReshape ||
+                              derived->opcode() == HloOpcode::kTranspose)) {
+    derived->clear_sharding();
+  }
+  return derived;
+}
+
 /* static */
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const HloInstructionProto& proto,
@@ -3713,16 +3726,17 @@ bool HloInstruction::IsElementwiseOnOperand(int64_t operand_idx) const {
   return IsElementwiseImpl(operand_idx);
 }
 
+namespace {
+
+// Indicates how an instruction uses a value (such as an operand).
+//
+// Does it (a) not use it, (b) use it, or (c) use it multiple times?
+enum class UseKind { kReuse = 0, kUse = 1, kNoUse = 2 };
+
 // A helper class for memoized, recursive computation of HloOpcode::kFusion
 // in HloInstruction::OperandElementUse below.
-class HloInstruction::FusionReusesParamElements {
+class FusionReusesParamElements {
  public:
-  using UseKind = HloInstruction::UseKind;
-
-  // We could rather iterate backwards through fused_instructions_ here, as it
-  // is in reverse postorder, and compute whether each fused instruction reuses
-  // the value of this parameter, which would save stack space but not allow us
-  // to finish early if we find a reuse.
   static UseKind Compute(int64_t i, const HloInstruction& hlo) {
     absl::flat_hash_map<const HloInstruction*, UseKind> memoization_cache;
     return ComputeInternal(i, hlo, &memoization_cache);
@@ -3730,135 +3744,41 @@ class HloInstruction::FusionReusesParamElements {
 
  private:
   static UseKind ComputeInternal(
-      int64_t i, const HloInstruction& hlo,
-      absl::flat_hash_map<const HloInstruction*, UseKind>* cache) {
-    if (auto hlo_param = DynCast<HloParameterInstruction>(&hlo)) {
-      if (hlo_param->parameter_number() == i) {
-        return UseKind::kUse;
-      }
-    }
-
-    auto p = cache->emplace(&hlo, UseKind::kNoUse);
-    auto value_it = p.first;
-    const bool key_is_new = p.second;
-
-    if (key_is_new) {
-      for (int64_t j = 0; j < hlo.operands_.size(); ++j) {
-        UseKind old_val = value_it->second;
-
-        // The next operation invalidates iterators.
-        UseKind new_val =
-            Fold(old_val,
-                 FoldUseMandatory(hlo.OperandElementUse(j),
-                                  ComputeInternal(i, *hlo.operand(j), cache)));
-
-        // Re-acquire the iterator. We could work harder to do this only if
-        // absolutely necessary, but this code is not hot enough to warrant
-        // that.
-        value_it = cache->find(&hlo);
-        value_it->second = new_val;
-        // Fold() minimizes the UseKind value. If it is already minimum, we can
-        // break the loop early.
-        if (new_val == UseKind::kReuse) {
-          break;
-        }
-      }
-    }
-    return value_it->second;
-  }
-
-  // Combines two UseKinds.
-  //
-  // This is the min operation on the lattice
-  //
-  //   kReuse < kUse < kNoUse.
-  //
-  // Two kUses uses which have different permutations count as kReuse.
-  static UseKind Fold(UseKind a, UseKind b) {
-    // Without loss of generality, let `b` be the operation with the larger use
-    // kind.
-    if (b.kind < a.kind) {
-      std::swap(a, b);
-    }
-    // If the kinds are different, return the smaller one, namely `a`.
-    if (a.kind != b.kind) {
-      return a;
-    }
-    // If the kinds are both kUse, check that they're the same permutation.
-    if (a.kind == UseKind::kUse && b.kind == UseKind::kUse &&
-        a.permutation_instr != b.permutation_instr) {
-      return UseKind::kReuse;
-    }
-    return a;  // They're the same.
-  }
-
-  // Combines two UseKinds differently than Fold().
-  //
-  // This is the min operation on the lattice
-  //
-  //   kNoUse < kReuse < kUse.
-  //
-  // If `a` and `b` are both kUse and one has a non-null permutation
-  // instruction, returns kUse with that permutation.  OTOH if both have
-  // different, non-null permutation instructions, returns kReuse.
-  //
-  // You can think of this sort of as a conjunction, whereas Fold is sort of a
-  // disjunction.  FoldUseMandatory() says "no use" if either input isn't used,
-  // whereas Fold() would say "use".
-  static UseKind FoldUseMandatory(UseKind a, UseKind b) {
-    if (a.kind == UseKind::kNoUse || b.kind == UseKind::kNoUse) {
-      return UseKind::kNoUse;
-    }
-    if (a.kind == UseKind::kReuse || b.kind == UseKind::kReuse) {
-      return UseKind::kReuse;
-    }
-    if (a.permutation_instr == b.permutation_instr) {
-      return a;  // They're the same.
-    }
-    if (b.permutation_instr == nullptr) {
-      return a;
-    }
-    if (a.permutation_instr == nullptr) {
-      return b;
-    }
-    return UseKind::kReuse;
-  }
+      int64_t outer_param_num, const HloInstruction& hlo,
+      absl::flat_hash_map<const HloInstruction*, UseKind>* cache);
 };
 
-HloInstruction::UseKind HloInstruction::OperandElementUse(
-    int64_t operand_num) const {
-  switch (opcode_) {
+}  // namespace
+
+// Returns how this instruction uses elements of its operand at operand_num.
+static UseKind OperandElementUse(const HloInstruction& instr,
+                                 int64_t operand_num) {
+  switch (instr.opcode()) {
     case HloOpcode::kBitcast:
-      // A bitcast that only adds or removes degenerate (i.e. size 1) dimensions
-      // doesn't permute its elements, so it counts as a plain, non-permuting
-      // use.
-      return ShapeUtil::DropDegenerateDimensions(shape()) ==
-                     ShapeUtil::DropDegenerateDimensions(operand(0)->shape())
-                 ? UseKind::kUse
-                 : UseKind::Permuting(this);
     case HloOpcode::kConcatenate:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
-      return UseKind::Permuting(this);
+    case HloOpcode::kGather:
+      return UseKind::kUse;
     case HloOpcode::kPad:
       // Pad reuses the padding value but not the padded array elements.
-      return operand_num > 0 ? UseKind::kReuse : UseKind::Permuting(this);
+      return operand_num > 0 ? UseKind::kReuse : UseKind::kUse;
     case HloOpcode::kReduce:
       // Reduce reuses the init values but not the operand array elements.
-      return operand_num >= Cast<HloReduceInstruction>(this)->input_count()
+      return operand_num >= Cast<HloReduceInstruction>(&instr)->input_count()
                  ? UseKind::kReuse
-                 : UseKind::Permuting(this);
+                 : UseKind::kUse;
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
       return FusionReusesParamElements::Compute(operand_num,
-                                                *fused_expression_root());
+                                                *instr.fused_expression_root());
     case HloOpcode::kDot:
       // Matrix-vector dots do not reuse the matrix operand.
-      if (shape().dimensions_size() <= 1) {
-        if ((operand_num == 0 && operand(1)->shape().rank() <= 1) ||
-            (operand_num == 1 && operand(0)->shape().rank() <= 1)) {
+      if (instr.shape().dimensions_size() <= 1) {
+        if ((operand_num == 0 && instr.operand(1)->shape().rank() <= 1) ||
+            (operand_num == 1 && instr.operand(0)->shape().rank() <= 1)) {
           return UseKind::kUse;
         }
       }
@@ -3869,13 +3789,72 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(
         return UseKind::kUse;
       }
       return UseKind::kReuse;
-    case HloOpcode::kGather:
-      // Gather reads its indices in a linear fashion, and it permutes the
-      // vector it's gathering from.
-      return operand_num == 0 ? UseKind::kUse : UseKind::Permuting(this);
     default:
-      return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
+      return instr.IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }
+}
+
+UseKind FusionReusesParamElements::ComputeInternal(
+    int64_t outer_param_num, const HloInstruction& hlo,
+    absl::flat_hash_map<const HloInstruction*, UseKind>* cache) {
+  if (auto hlo_param = DynCast<HloParameterInstruction>(&hlo)) {
+    if (hlo_param->parameter_number() == outer_param_num) {
+      return UseKind::kUse;
+    }
+  }
+
+  auto p = cache->emplace(&hlo, UseKind::kNoUse);
+  auto value_it = p.first;
+  const bool key_is_new = p.second;
+
+  if (!key_is_new) {
+    return value_it->second;
+  }
+
+  // Our dataflow graph has no loops, so we don't need the fixed point
+  // computation.
+  for (int64_t operand_num = 0; operand_num < hlo.operands().size();
+       ++operand_num) {
+    UseKind old_val = value_it->second;
+
+    // Compute updated value.
+    UseKind new_val = [&] {
+      // How does the HLO use this operand.
+      UseKind hlo_use = OperandElementUse(hlo, operand_num);
+
+      // If the HLO does not use the outer operand, return previous value.
+      if (hlo_use == UseKind::kNoUse) {
+        return old_val;
+      }
+
+      UseKind operand_use =
+          ComputeInternal(outer_param_num, *hlo.operand(operand_num), cache);
+
+      // If the operand does not use the outer operand, return the previous
+      // value.
+      if (operand_use == UseKind::kNoUse) {
+        return old_val;
+      }
+
+      // Meet operator on a lattice:
+      //
+      //   kReuse < kUse < kNoUse.
+      return std::min({old_val, hlo_use, operand_use});
+    }();
+
+    value_it = cache->find(&hlo);
+    value_it->second = new_val;
+    // Fold() minimizes the UseKind value. If it is already minimum, we do not
+    // have to check all the remaining operands.
+    if (new_val == UseKind::kReuse) {
+      break;
+    }
+  }
+  return value_it->second;
+}
+
+bool HloInstruction::ReusesOperandElements(int64_t i) const {
+  return OperandElementUse(*this, i) == UseKind::kReuse;
 }
 
 std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>

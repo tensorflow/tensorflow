@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
@@ -82,7 +83,8 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(GetKeyValue);
   UNIMPLEMENTED(DeleteKeyValue);
-
+  UNIMPLEMENTED(Barrier);
+  UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
 
  private:
@@ -112,6 +114,52 @@ class TestCoordinationClientCache : public CoordinationClientCache {
   std::unordered_map<std::string, CoordinationClient*> clients_;
 };
 
+class CoordinationBarrierTest : public ::testing::Test {
+ protected:
+  CoordinationBarrierTest() {
+    // Set up fake cluster with 3 workers.
+    const int num_tasks = 3;
+    const ServerDef& server_def = GetMultiClientServerDef("worker", num_tasks);
+    auto client_cache = std::make_unique<TestCoordinationClientCache>();
+    for (int i = 0; i < num_tasks; ++i) {
+      CoordinatedTask task;
+      task.set_job_name("worker");
+      task.set_task_id(i);
+
+      auto client = std::make_unique<TestCoordinationClient>();
+      client_cache->AddWorker(absl::StrCat("/job:worker/replica:0/task:", i),
+                              client.get());
+
+      tasks_.push_back(task);
+      clients_.push_back(std::move(client));
+    }
+
+    coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
+        kCoordinationServiceType, Env::Default(), server_def,
+        std::move(client_cache));
+    // Register the workers.
+    for (int i = 0; i < num_tasks; ++i) {
+      absl::Notification register0;
+      coord_service_->RegisterWorker(tasks_[i], /*incarnation=*/0,
+                                     [&register0](Status s) {
+                                       TF_ASSERT_OK(s);
+                                       register0.Notify();
+                                     });
+      register0.WaitForNotification();
+    }
+  }
+
+  CoordinationServiceInterface* GetCoordinationService() {
+    return coord_service_.get();
+  }
+  CoordinatedTask GetTask(int i) { return tasks_[i]; }
+
+ private:
+  std::unique_ptr<CoordinationServiceInterface> coord_service_;
+  std::vector<CoordinatedTask> tasks_;
+  std::vector<std::unique_ptr<TestCoordinationClient>> clients_;
+};
+
 // Construct fake device protos.
 DeviceAttributes CreateTestTfDevice(absl::string_view name) {
   DeviceAttributes device;
@@ -131,8 +179,18 @@ xla::DeviceProto CreateTestXlaDevice(absl::string_view name,
 TEST(CoordinationServiceTest, TestStandaloneService) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 2);
   Status status = Status::OK();
-  const uint64 w0_incarnation = random::New64();
-  const uint64 w1_incarnation = random::New64();
+  const uint64_t w0_incarnation = random::New64();
+  const uint64_t w1_incarnation = random::New64();
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
+  // Not specified in server def.
+  CoordinatedTask worker_2;
+  worker_2.set_job_name("worker");
+  worker_2.set_task_id(2);
 
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   TestCoordinationClient wi0;
@@ -145,45 +203,55 @@ TEST(CoordinationServiceTest, TestStandaloneService) {
           std::move(client_cache));
 
   absl::Notification register0;
-  coord_service->RegisterWorker("worker", 0, w0_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_0, w0_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register0.Notify();
   });
   register0.WaitForNotification();
   absl::Notification wait_for_all;
-  coord_service->WaitForAllTasks("worker", 0, {}, [&](Status s) {
+  coord_service->WaitForAllTasks(worker_0, {}, [&](Status s) {
     TF_ASSERT_OK(s);
     wait_for_all.Notify();
   });
   // Not all workers are registered, so must not be notified here.
   ASSERT_FALSE(wait_for_all.HasBeenNotified());
   absl::Notification register1;
-  coord_service->RegisterWorker("worker", 1, w1_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_1, w1_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register1.Notify();
   });
   register1.WaitForNotification();
-  coord_service->WaitForAllTasks("worker", 1, {},
+  coord_service->WaitForAllTasks(worker_1, {},
                                  [&](Status s) { TF_ASSERT_OK(s); });
   // All tasks have registered.
   wait_for_all.WaitForNotification();
 
-  TF_ASSERT_OK(coord_service->RecordHeartbeat("worker", 0, w0_incarnation));
-  TF_ASSERT_OK(coord_service->RecordHeartbeat("worker", 1, w1_incarnation));
-  EXPECT_TRUE(errors::IsInvalidArgument(
-      coord_service->RecordHeartbeat("worker", 2, 0)));
+  TF_ASSERT_OK(coord_service->RecordHeartbeat(worker_0, w0_incarnation));
+  TF_ASSERT_OK(coord_service->RecordHeartbeat(worker_1, w1_incarnation));
+  EXPECT_TRUE(
+      errors::IsInvalidArgument(coord_service->RecordHeartbeat(worker_2, 0)));
 
   // Sending heartbeat with incarnation mismatch leads to Aborted error
-  EXPECT_TRUE(
-      errors::IsAborted(coord_service->RecordHeartbeat("worker", 1, 0)));
-  EXPECT_TRUE(
-      errors::IsAborted(coord_service->RecordHeartbeat("worker", 1, 0)));
+  EXPECT_TRUE(errors::IsAborted(coord_service->RecordHeartbeat(worker_1, 0)));
+  EXPECT_TRUE(errors::IsAborted(coord_service->RecordHeartbeat(worker_1, 0)));
   // Error is propagated to other workers
   EXPECT_TRUE(errors::IsAborted(wi0.GetStatus()));
 }
 
 TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   ServerDef server_def = GetMultiClientServerDef("chief", 1);
+  CoordinatedTask chief;
+  chief.set_job_name("chief");
+  chief.set_task_id(0);
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
+  CoordinatedTask evaluator;
+  evaluator.set_job_name("evaluator");
+  evaluator.set_task_id(0);
 
   // Add a worker job with 2 tasks
   ClusterDef* cluster_def = server_def.mutable_cluster();
@@ -219,25 +287,25 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
           std::move(client_cache));
 
   absl::Notification register_chief;
-  coord_service->RegisterWorker("chief", 0, 0, [&](Status s) {
+  coord_service->RegisterWorker(chief, 0, [&](Status s) {
     TF_ASSERT_OK(s);
-    coord_service->WaitForAllTasks("chief", 0, {}, [&](Status s) {
+    coord_service->WaitForAllTasks(chief, {}, [&](Status s) {
       TF_ASSERT_OK(s);
       register_chief.Notify();
     });
   });
   absl::Notification register_worker0;
-  coord_service->RegisterWorker("worker", 0, 0, [&](Status s) {
+  coord_service->RegisterWorker(worker_0, 0, [&](Status s) {
     TF_ASSERT_OK(s);
-    coord_service->WaitForAllTasks("worker", 0, {}, [&](Status s) {
+    coord_service->WaitForAllTasks(worker_0, {}, [&](Status s) {
       TF_ASSERT_OK(s);
       register_worker0.Notify();
     });
   });
   absl::Notification register_worker1;
-  coord_service->RegisterWorker("worker", 1, 0, [&](Status s) {
+  coord_service->RegisterWorker(worker_1, 0, [&](Status s) {
     TF_ASSERT_OK(s);
-    coord_service->WaitForAllTasks("worker", 1, {}, [&](Status s) {
+    coord_service->WaitForAllTasks(worker_1, {}, [&](Status s) {
       TF_ASSERT_OK(s);
       register_worker1.Notify();
     });
@@ -250,7 +318,7 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   Status status = Status::OK();
   // Registering the evaluator task is unexpected
   absl::Notification register_evaluator;
-  coord_service->RegisterWorker("evaluator", 0, 0, [&](Status s) {
+  coord_service->RegisterWorker(evaluator, 0, [&](Status s) {
     status = s;
     register_evaluator.Notify();
   });
@@ -260,8 +328,14 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
 
 TEST(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
   ServerDef server_def = GetMultiClientServerDef("worker", 2);
-  const uint64 w0_incarnation = random::New64();
-  const uint64 w1_incarnation = random::New64();
+  const uint64_t w0_incarnation = random::New64();
+  const uint64_t w1_incarnation = random::New64();
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
 
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   TestCoordinationClient wi0;
@@ -280,13 +354,13 @@ TEST(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
           std::move(client_cache));
 
   absl::Notification register0;
-  coord_service->RegisterWorker("worker", 0, w0_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_0, w0_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register0.Notify();
   });
   register0.WaitForNotification();
   absl::Notification register1;
-  coord_service->RegisterWorker("worker", 1, w1_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_1, w1_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register1.Notify();
   });
@@ -295,15 +369,21 @@ TEST(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
   // No heartbeat for a while, leader consider the worker as stale
   Env::Default()->SleepForMicroseconds(2 * kHeartbeatTimeoutMs * 1000);
   EXPECT_TRUE(errors::IsUnavailable(
-      coord_service->RecordHeartbeat("worker", 0, w0_incarnation)));
+      coord_service->RecordHeartbeat(worker_0, w0_incarnation)));
   EXPECT_TRUE(errors::IsUnavailable(
-      coord_service->RecordHeartbeat("worker", 1, w1_incarnation)));
+      coord_service->RecordHeartbeat(worker_1, w1_incarnation)));
 }
 
 TEST(CoordinationServiceTest, TestWorkerRestart) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 2);
-  const uint64 w0_incarnation = random::New64();
-  const uint64 w1_incarnation = random::New64();
+  const uint64_t w0_incarnation = random::New64();
+  const uint64_t w1_incarnation = random::New64();
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
 
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   TestCoordinationClient wi0;
@@ -316,13 +396,13 @@ TEST(CoordinationServiceTest, TestWorkerRestart) {
           std::move(client_cache));
 
   absl::Notification register0;
-  coord_service->RegisterWorker("worker", 0, w0_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_0, w0_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register0.Notify();
   });
   register0.WaitForNotification();
   absl::Notification register1;
-  coord_service->RegisterWorker("worker", 1, w1_incarnation, [&](Status s) {
+  coord_service->RegisterWorker(worker_1, w1_incarnation, [&](Status s) {
     TF_ASSERT_OK(s);
     register1.Notify();
   });
@@ -330,7 +410,7 @@ TEST(CoordinationServiceTest, TestWorkerRestart) {
 
   // Simulate worker restart scenario: trying to register to cluster again.
   absl::Notification n_repeated_register;
-  coord_service->RegisterWorker("worker", 1, random::New64(), [&](Status s) {
+  coord_service->RegisterWorker(worker_1, random::New64(), [&](Status s) {
     EXPECT_TRUE(errors::IsAborted(s));
     n_repeated_register.Notify();
   });
@@ -341,6 +421,9 @@ TEST(CoordinationServiceTest, TestWorkerRestart) {
 
 TEST(CoordinationServiceTest, TestSetGetValues) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 1);
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
   Status status = Status::OK();
 
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
@@ -357,7 +440,7 @@ TEST(CoordinationServiceTest, TestSetGetValues) {
   // Key with redundant slashes
   TF_ASSERT_OK(coord_service->InsertKeyValue("path/to//key2/", "value2"));
   // Error when repeatedly inserting the same key
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(errors::IsAlreadyExists(
       coord_service->InsertKeyValue("/path/to/key1/", "value2")));
 
   // Get simple key
@@ -399,6 +482,15 @@ TEST(CoordinationServiceTest, TestSetGetValues) {
 // propagate the aggregated cluster device info correctly.
 TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 3);
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
+  CoordinatedTask worker_2;
+  worker_2.set_job_name("worker");
+  worker_2.set_task_id(2);
   Status status = Status::OK();
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
@@ -421,11 +513,11 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
 
   // Each worker sends its device info.
   CoordinationServiceDeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks("worker", 0, local_devices_0,
+  coord_service->WaitForAllTasks(worker_0, local_devices_0,
                                  [&](Status s) { TF_ASSERT_OK(s); });
-  coord_service->WaitForAllTasks("worker", 1, local_devices_1,
+  coord_service->WaitForAllTasks(worker_1, local_devices_1,
                                  [&](Status s) { TF_ASSERT_OK(s); });
-  coord_service->WaitForAllTasks("worker", 2, local_devices_2, [&](Status s) {
+  coord_service->WaitForAllTasks(worker_2, local_devices_2, [&](Status s) {
     TF_ASSERT_OK(s);
     // Gather the cluster device info.
     cluster_devices = coord_service->ListClusterDevices();
@@ -448,6 +540,15 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
 
 TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 3);
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
+  CoordinatedTask worker_2;
+  worker_2.set_job_name("worker");
+  worker_2.set_task_id(2);
   Status status = Status::OK();
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
@@ -475,11 +576,11 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
 
   // Each worker sends its device info.
   CoordinationServiceDeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks("worker", 0, local_devices_0,
+  coord_service->WaitForAllTasks(worker_0, local_devices_0,
                                  [&](Status s) { TF_ASSERT_OK(s); });
-  coord_service->WaitForAllTasks("worker", 1, local_devices_1,
+  coord_service->WaitForAllTasks(worker_1, local_devices_1,
                                  [&](Status s) { TF_ASSERT_OK(s); });
-  coord_service->WaitForAllTasks("worker", 2, local_devices_2, [&](Status s) {
+  coord_service->WaitForAllTasks(worker_2, local_devices_2, [&](Status s) {
     TF_ASSERT_OK(s);
     // Gather the cluster device info.
     cluster_devices = coord_service->ListClusterDevices();
@@ -497,4 +598,370 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
   EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
                                    EqualsProto(expected_cluster_devices)));
 }
+
+TEST_F(CoordinationBarrierTest, Barrier) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  Status barrier_status_2;
+  absl::Notification n_0;
+  absl::Notification n_1;
+  absl::Notification n_2;
+
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(0),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_0, &n_0](Status s) {
+                                           barrier_status_0 = s;
+                                           n_0.Notify();
+                                         });
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(1),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_1, &n_1](Status s) {
+                                           barrier_status_1 = s;
+                                           n_1.Notify();
+                                         });
+  // Make sure barrier has not been exited prematurely.
+  EXPECT_FALSE(n_0.HasBeenNotified());
+  EXPECT_FALSE(n_1.HasBeenNotified());
+  EXPECT_FALSE(n_2.HasBeenNotified());
+
+  // Last task calls the barrier.
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(2),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_2, &n_2](Status s) {
+                                           barrier_status_2 = s;
+                                           n_2.Notify();
+                                         });
+
+  EXPECT_TRUE(n_0.HasBeenNotified());
+  EXPECT_TRUE(n_1.HasBeenNotified());
+  EXPECT_TRUE(n_2.HasBeenNotified());
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
+}
+
+TEST_F(CoordinationBarrierTest, BarrierWithSubsetOfTasks) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  absl::Notification n_0;
+  absl::Notification n_1;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_0, &n_0](Status s) {
+        barrier_status_0 = s;
+        n_0.Notify();
+      });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_1, &n_1](Status s) {
+        barrier_status_1 = s;
+        n_1.Notify();
+      });
+
+  // All listed tasks passed the barrier.
+  EXPECT_TRUE(n_0.HasBeenNotified());
+  EXPECT_TRUE(n_1.HasBeenNotified());
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+}
+
+TEST_F(CoordinationBarrierTest, BarrierWithMismatchedTasks) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_0](Status s) { barrier_status_0 = s; });
+  // task_1's barrier call specified a conflicting set of tasks (task_2 instead
+  // of task_0).
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{GetTask(1), GetTask(2)},
+      [&barrier_status_1](Status s) { barrier_status_1 = s; });
+
+  EXPECT_TRUE(errors::IsInvalidArgument(barrier_status_0));
+  EXPECT_TRUE(errors::IsInvalidArgument(barrier_status_1));
+}
+
+TEST_F(CoordinationBarrierTest, BarrierByNonParticipatingTask) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  absl::Notification n_0;
+  absl::Notification n_1;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_0](Status s) { barrier_status_0 = s; });
+  // Task 2 unexpectedly calls a barrier that it is not participating in.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(2),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_1](Status s) { barrier_status_1 = s; });
+
+  // Barrier should fail for all tasks with the unexpected call.
+  EXPECT_TRUE(errors::IsInvalidArgument(barrier_status_0));
+  EXPECT_TRUE(errors::IsInvalidArgument(barrier_status_1));
+}
+
+TEST_F(CoordinationBarrierTest, BarrierByNonClusterTask) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  absl::Notification n_0;
+  CoordinatedTask unspecified_task;
+  unspecified_task.set_job_name("worker_from_another_cluster");
+  unspecified_task.set_task_id(2);
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{GetTask(0), unspecified_task},
+      [&barrier_status_0, &n_0](Status s) {
+        barrier_status_0 = s;
+        n_0.Notify();
+      });
+  n_0.WaitForNotification();
+
+  // Barrier should fail with the unexpected participating task argument.
+  EXPECT_TRUE(errors::IsInvalidArgument(barrier_status_0));
+}
+
+TEST_F(CoordinationBarrierTest, BarrierTimeout) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(1);
+  Status barrier_status_0;
+  absl::Notification n_0;
+
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(0),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_0, &n_0](Status s) {
+                                           barrier_status_0 = s;
+                                           n_0.Notify();
+                                         });
+
+  // Block until user-specified timeout.
+  n_0.WaitForNotification();
+  EXPECT_TRUE(errors::IsDeadlineExceeded(barrier_status_0));
+}
+
+TEST_F(CoordinationBarrierTest, BarrierReturnsPreviousError) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(1);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  absl::Notification n_0;
+
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(0),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_0, &n_0](Status s) {
+                                           barrier_status_0 = s;
+                                           n_0.Notify();
+                                         });
+  TF_ASSERT_OK(GetCoordinationService()->ReportTaskError(
+      GetTask(0), errors::Internal("test_error")));
+  // Block until barrier has failed due to task error.
+  n_0.WaitForNotification();
+  // Same response should be returned immediately.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1](Status s) { barrier_status_1 = s; });
+
+  EXPECT_TRUE(errors::IsInternal(barrier_status_0));
+  EXPECT_TRUE(errors::IsInternal(barrier_status_1));
+}
+
+TEST_F(CoordinationBarrierTest, BarrierCancelled) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status](Status s) { barrier_status = s; });
+  Status cancelled_status =
+      GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0));
+
+  EXPECT_TRUE(errors::IsCancelled(barrier_status));
+  TF_EXPECT_OK(cancelled_status);
+}
+
+TEST_F(CoordinationBarrierTest, CancelNonExistentBarrier) {
+  std::string wrong_barrier_id = "wrong_barrier_id";
+
+  // Cancel barrier should fail if non-existent id is specified.
+  Status cancelled_status =
+      GetCoordinationService()->CancelBarrier(wrong_barrier_id, GetTask(0));
+
+  EXPECT_TRUE(errors::IsNotFound(cancelled_status));
+}
+
+TEST_F(CoordinationBarrierTest, CancelAfterBarrierHasPassed) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  Status barrier_status_2;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0](Status s) { barrier_status_0 = s; });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1](Status s) { barrier_status_1 = s; });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(2),
+      /*participating_tasks=*/{},
+      [&barrier_status_2](Status s) { barrier_status_2 = s; });
+  // Cancel barrier should fail if barrier has already been passed.
+  Status cancelled_status =
+      GetCoordinationService()->CancelBarrier(barrier_id, GetTask(0));
+
+  EXPECT_TRUE(errors::IsFailedPrecondition(cancelled_status));
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
+}
+
+TEST_F(CoordinationBarrierTest, PassedBarrierReturnsImmediately) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  Status barrier_status_2;
+  Status barrier_status_repeat;
+  absl::Notification n0;
+  absl::Notification n1;
+  absl::Notification n2;
+  absl::Notification n_repeat;
+
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(0),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_0, &n0](Status s) {
+                                           barrier_status_0 = s;
+                                           n0.Notify();
+                                         });
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(1),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_1, &n1](Status s) {
+                                           barrier_status_1 = s;
+                                           n1.Notify();
+                                         });
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(2),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status_2, &n2](Status s) {
+                                           barrier_status_2 = s;
+                                           n2.Notify();
+                                         });
+  // Repeated call should return the same result.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_repeat, &n_repeat](Status s) {
+        barrier_status_repeat = s;
+        n_repeat.Notify();
+      });
+
+  EXPECT_TRUE(n0.HasBeenNotified());
+  EXPECT_TRUE(n1.HasBeenNotified());
+  EXPECT_TRUE(n2.HasBeenNotified());
+  EXPECT_TRUE(n_repeat.HasBeenNotified());
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
+  TF_EXPECT_OK(barrier_status_repeat);
+}
+
+TEST_F(CoordinationBarrierTest, BarrierFailsIfTaskIsAlreadyInError) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  // Set task 0 to error state.
+  TF_ASSERT_OK(GetCoordinationService()->ReportTaskError(
+      GetTask(0), errors::Internal("test_error")));
+  Status barrier_status;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status](Status s) { barrier_status = s; });
+
+  EXPECT_TRUE(errors::IsInternal(barrier_status));
+}
+
+TEST_F(CoordinationBarrierTest, BarrierFailsUponTaskError) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  absl::Notification n0;
+  Status barrier_status;
+
+  GetCoordinationService()->BarrierAsync(barrier_id, timeout, GetTask(0),
+                                         /*participating_tasks=*/{},
+                                         [&barrier_status, &n0](Status s) {
+                                           barrier_status = s;
+                                           n0.Notify();
+                                         });
+  TF_ASSERT_OK(GetCoordinationService()->ReportTaskError(
+      GetTask(0), errors::Internal("test_error")));
+  n0.WaitForNotification();
+
+  EXPECT_TRUE(errors::IsInternal(barrier_status));
+}
+
+TEST_F(CoordinationBarrierTest,
+       BarrierStillBlocksIfSameTaskCallsOngoingBarrierRepeatedly) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  Status barrier_status_0;
+  Status barrier_status_1;
+  Status barrier_status_2;
+  absl::Notification n_0;
+  absl::Notification n_1;
+  absl::Notification n_2;
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_0, &n_0](Status s) {
+        barrier_status_0 = s;
+        n_0.Notify();
+      });
+  // Duplicate call.
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(0),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_1, &n_1](Status s) {
+        barrier_status_1 = s;
+        n_1.Notify();
+      });
+  // All listed tasks passed the barrier.
+  EXPECT_FALSE(n_0.HasBeenNotified());
+  EXPECT_FALSE(n_1.HasBeenNotified());
+
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, timeout, GetTask(1),
+      /*participating_tasks=*/{GetTask(0), GetTask(1)},
+      [&barrier_status_2, &n_2](Status s) {
+        barrier_status_2 = s;
+        n_2.Notify();
+      });
+  TF_EXPECT_OK(barrier_status_0);
+  TF_EXPECT_OK(barrier_status_1);
+  TF_EXPECT_OK(barrier_status_2);
+}
+
 }  // namespace tensorflow

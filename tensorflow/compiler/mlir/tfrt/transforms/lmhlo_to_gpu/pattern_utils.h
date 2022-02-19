@@ -40,11 +40,18 @@ tfrt::gpu::wrapper::DnnDataType MlirTypeToDnnDataType(
     mlir::Type type,
     se::dnn::FilterLayout filter_layout);
 
-// Creates a TFRT constant op for the specified value of specified type.
+// Creates a TFRT constant op for the specified numerical value of specified
+// type.
 mlir::Value MakeScalingFactorConstant(mlir::OpBuilder& builder,
                                       mlir::Location loc, mlir::Type type,
                                       llvm::APFloat value_real,
                                       llvm::APFloat value_imaginary);
+
+// Creates a TFRT constant op for the specified 32-bit pattern value of
+// specified type.
+mlir::Value MakeBitPatternConstant(mlir::OpBuilder& builder, mlir::Location loc,
+                                   mlir::Type type, uint32_t bit_pattern);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_PATTERN_UTILS_H_

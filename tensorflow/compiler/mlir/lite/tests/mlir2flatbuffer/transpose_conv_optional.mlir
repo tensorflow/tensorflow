@@ -73,7 +73,7 @@ func @main(%arg0: tensor<4xi32>, %arg1: tensor<32x4x4x128xf32>, %arg2: tensor<1x
 // CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:}
 
-  %cst = constant unit
+  %cst = "tfl.no_value"() {value = unit} : () -> none
   %0 = "tfl.transpose_conv"(%arg0, %arg1, %arg2, %cst) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
   return %0 : tensor<1x64x84x32xf32>
 }

@@ -605,6 +605,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
   Status BlockHostUntilReady() override;
 
+  void OnReady(std::function<void(Status)> callback) override;
+
   bool IsOnCpu() const override;
 
   // Similar to Delete, drops the buffer's reference to its associated device

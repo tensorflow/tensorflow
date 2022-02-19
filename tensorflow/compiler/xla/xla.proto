@@ -359,7 +359,14 @@ message DebugOptions {
   // logging a warning and proceeding with fallback.
   bool xla_gpu_strict_conv_algorithm_picker = 156;
 
-  // Next id: 161
+  // If true, enable XLIR to compile gpu programs to TFRT BEF.
+  bool xla_gpu_bef_executable = 161;
+
+  // If true, enable XLIR to compile thunks to TFRT BEF.
+  // This flag has no effect when xla_gpu_bef_executable is true.
+  bool xla_gpu_bef_thunk = 162;
+
+  // Next id: 163
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

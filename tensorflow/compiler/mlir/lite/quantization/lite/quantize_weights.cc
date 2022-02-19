@@ -100,12 +100,12 @@ TfLiteStatus QuantizeWeights(
       reinterpret_cast<const char*>(input_builder.GetBufferPointer()),
       input_builder.GetSize());
 
-  OwningModuleRef module = tflite::FlatBufferToMlir(serialized_model, &context,
-                                                    UnknownLoc::get(&context));
+  OwningOpRef<mlir::ModuleOp> module = tflite::FlatBufferToMlir(
+      serialized_model, &context, UnknownLoc::get(&context));
 
   // Apply quantization passes.
   PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
-  TFL::QuantizationSpecs quant_specs;
+  quant::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.weight_quantization = true;
   quant_specs.weight_only_quantization = weight_only_quantization;

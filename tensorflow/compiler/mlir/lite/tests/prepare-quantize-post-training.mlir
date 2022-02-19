@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: QuantizeLstmCellInput
 func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf32> {
-    %cst_2 = constant unit
+    %cst_2 = "tfl.no_value"() {value = unit} : () -> none
     %cst_3 = arith.constant dense<1.0> : tensor<20x20xf32>
     %cst_7 = arith.constant dense<1.0> : tensor<20xf32>
     %cst_11 = arith.constant dense<1.0> : tensor<20x28xf32>
@@ -29,7 +29,7 @@ func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf32> {
         none, none, none, none) -> tensor<1x28x20xf32>
     %1 = "quant.stats"(%0) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<1x28x20xf32>) -> tensor<1x28x20xf32>
     return %1 : tensor<1x28x20xf32>
-// CHECK-DAG: %[[none:.*]] = constant unit
+// CHECK-DAG: %[[none:.*]] = "tfl.no_value"() {value} : () -> none
 // CHECK-DAG: %[[cell_input:.*]] = arith.constant dense<1.000000e+00> : tensor<1x20xf32>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[cell_input]]) {qtype = tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>} : (tensor<1x20xf32>) -> tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]]) : (tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>) -> tensor<1x20xf32>
@@ -39,7 +39,7 @@ func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf32> {
 
 // CHECK-LABEL: QuantizeWithoutNorm
 func @QuantizeWithoutNorm(%arg0: tensor<1x1x5xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "input0", outputs = "output24"}} {
-  %none = constant unit
+  %none = "tfl.no_value"() {value = unit} : () -> none
   %input = "quant.stats"(%arg0) {layerStats = dense<[-1.2, 1.5]> : tensor<2xf32>} : (tensor<1x1x5xf32>) -> tensor<1x1x5xf32>
   %0 = "tfl.pseudo_const"() {value = dense<[[1.31760073, -0.78338623, 0.287265539, -0.383972764, -0.00321021513], [0.104248755, 1.07823908, 0.138089031, 0.76123321, -1.4124943]]> : tensor<2x5xf32>} : () -> tensor<2x5xf32>
   %1 = "tfl.pseudo_const"() {value = dense<[[2.32939887, -0.623641372, -0.0191893689, 0.326861918, 0.734137893], [0.499284297, 1.25277913, 0.60228157, -1.39478016, 0.115529917]]> : tensor<2x5xf32>} : () -> tensor<2x5xf32>
@@ -118,7 +118,7 @@ func @QuantizeWithoutNorm(%arg0: tensor<1x1x5xf32>) -> tensor<*xf32> attributes 
 
 // CHECK-LABEL: QuantizeLstmCifg
 func @QuantizeLstmCifg(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "input0", outputs = "output24"}} {
-  %none = constant unit
+  %none = "tfl.no_value"() {value = unit} : () -> none
   %input = "quant.stats"(%arg0) {layerStats = dense<[-1.2, 1.5]> : tensor<2xf32>} : (tensor<1x5xf32>) -> tensor<1x5xf32>
   %1 = "tfl.pseudo_const"() {value = dense<[[2.32939887, -0.623641372, -0.0191893689, 0.326861918, 0.734137893], [0.499284297, 1.25277913, 0.60228157, -1.39478016, 0.115529917]]> : tensor<2x5xf32>} : () -> tensor<2x5xf32>
   %2 = "tfl.pseudo_const"() {value = dense<[[0.839470446, 0.564852297, -0.80136007, -0.0372898243, 0.57127893], [-5.516230e-01, -1.082380e+00, 1.41860521, -0.92541927, -1.13971734]]> : tensor<2x5xf32>} : () -> tensor<2x5xf32>
@@ -166,7 +166,7 @@ func @QuantizeLstmCifg(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes {tf.e
   %24 = "quant.stats"(%23) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
   return %24 : tensor<*xf32>
 
-// CHECK: %[[none:.*]] = constant unit
+// CHECK: %[[none:.*]] = "tfl.no_value"() {value} : () -> none
 // CHECK-DAG: %[[input_0:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x5x!quant.uniform<i8:f32, 0.010588235481112611:-15>>) -> tensor<1x5xf32>
 // CHECK-DAG: %[[input_2:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32, 0.018341723389512912>>) -> tensor<2x5xf32>
 // CHECK-DAG: %[[input_3:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32, 0.011170119751156785>>) -> tensor<2x5xf32>

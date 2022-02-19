@@ -249,7 +249,9 @@ void CheckNcclAsyncError(NcclComm& lockable_comm) {
     ncclResult_t async_err;
     XLA_CUDA_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));
     if (async_err != ncclSuccess) {
-      LOG(ERROR) << "Async NCCL error. Aborting communicator: " << comm;
+      LOG(ERROR) << "Aborting communicator: " << comm
+                 << " due to async NCCL error: "
+                 << ncclGetErrorString(async_err);
       XLA_CUDA_RETURN_IF_ERROR(ncclCommAbort(comm));
     }
     return XLA_CUDA_STATUS(async_err);

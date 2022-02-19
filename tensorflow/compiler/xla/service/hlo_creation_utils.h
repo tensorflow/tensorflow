@@ -207,7 +207,7 @@ HloInstruction* MakeR0ConstantHlo(HloComputation* computation, NativeT value) {
 // instruction.
 template <class NativeT>
 HloInstruction* MakeScalarLike(HloInstruction* base, NativeT value) {
-  auto scalar = base->parent()->AddInstruction(
+  auto scalar = base->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<NativeT>(value)
                                          .Convert(base->shape().element_type())
                                          .ValueOrDie()));
@@ -215,7 +215,7 @@ HloInstruction* MakeScalarLike(HloInstruction* base, NativeT value) {
     *scalar->mutable_shape() = base->shape();
     return scalar;
   }
-  return base->parent()->AddInstruction(
+  return base->AddInstruction(
       HloInstruction::CreateBroadcast(base->shape(), scalar, {}));
 }
 

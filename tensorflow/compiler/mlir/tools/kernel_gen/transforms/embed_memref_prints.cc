@@ -76,12 +76,12 @@ void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
     memref_type =
         MemRefType::get(memref_type.getShape(), element_type,
                         memref_type.getLayout(), memref_type.getMemorySpace());
-    memref = b->create<arith::IndexCastOp>(loc, memref, memref_type);
+    memref = b->create<arith::IndexCastOp>(loc, memref_type, memref);
   }
 
   auto unranked_type =
       UnrankedMemRefType::get(element_type, memref_type.getMemorySpaceAsInt());
-  Value unranked_memref = b->create<memref::CastOp>(loc, memref, unranked_type);
+  Value unranked_memref = b->create<memref::CastOp>(loc, unranked_type, memref);
 
   if (element_type.isF32()) {
     emitCallToPrint(loc, "print_memref_f32", unranked_memref, b);
@@ -106,8 +106,8 @@ void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
 // is currently not supported because the data is not located on host.
 struct EmbedMemRefPrintsPass
     : public EmbedMemRefPrintsPassBase<EmbedMemRefPrintsPass> {
-  void runOnFunction() override {
-    FuncOp func = getFunction();
+  void runOnOperation() override {
+    FuncOp func = getOperation();
     if (!func->getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName))
       return;
 
@@ -122,7 +122,7 @@ struct EmbedMemRefPrintsPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateEmbedMemRefPrintsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateEmbedMemRefPrintsPass() {
   return std::make_unique<EmbedMemRefPrintsPass>();
 }
 

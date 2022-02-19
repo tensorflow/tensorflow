@@ -454,7 +454,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -505,8 +505,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
-                         true);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -574,7 +573,7 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -643,7 +642,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -686,7 +685,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -768,7 +767,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -822,7 +821,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -902,7 +901,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
@@ -941,7 +940,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
@@ -1003,7 +1002,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -1079,7 +1078,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -1128,7 +1127,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -1199,7 +1198,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -1244,7 +1243,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -1333,7 +1332,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -1385,7 +1384,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -1475,7 +1474,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -1526,7 +1525,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -1601,7 +1600,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/1,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
@@ -1639,7 +1638,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/1,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
@@ -1715,7 +1714,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
@@ -1744,7 +1743,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
@@ -1772,7 +1771,7 @@ ENTRY %entrycomp (p: f32[2,4]) -> f32[2,4] {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/32));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/32,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
@@ -1812,7 +1811,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
                                    /*num_partitions=*/4));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/4, /*num_replicas=*/2,
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/4,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);

@@ -181,7 +181,7 @@ cc_test(
 
 cc_library(
     name = "common",
-    srcs = ["common.c"],
+    srcs = ["common.cc"],
     hdrs = [
         "builtin_op_data.h",
         "common.h",

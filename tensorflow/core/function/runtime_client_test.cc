@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
@@ -230,7 +232,13 @@ TEST(CreateTest, MlirFromGraphDef) {
 
   EagerContextPtr ectx = TestingEagerCtx();
   Runtime rt(*ectx);
-  TF_ASSERT_OK(rt.CreateFunction(fop));
+  // Note: this is the price we'll have to pay until we can properly link
+  // MLIR headers into pybind wrappers (not to be confused with pybind
+  // converters, which are a separate thing - we just talk about header
+  // dependencies here).
+  OpaqueTfgGraphFuncOp* opaque_fop =
+      reinterpret_cast<OpaqueTfgGraphFuncOp*>(&fop);
+  TF_ASSERT_OK(rt.CreateFunction(opaque_fop));
 
   StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
   TF_ASSERT_OK(rets.status());

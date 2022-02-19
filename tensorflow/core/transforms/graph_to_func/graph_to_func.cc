@@ -88,11 +88,7 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
   func_op.setAllResultAttrs(args_rets_attrs);
 
   OpBuilder body_builder = OpBuilder::atBlockEnd(func_op.getBody());
-  llvm::SmallVector<Value> return_operands;
-  return_operands.reserve(fetches.size() + control_rets.size());
-  for (Value fetch : fetches) return_operands.push_back(fetch);
-  for (Value control_ret : control_rets) return_operands.push_back(control_ret);
-  body_builder.create<ReturnOp>(loc, return_operands);
+  body_builder.create<ReturnOp>(loc, fetches, control_rets);
   graph.erase();
   return Status::OK();
 }

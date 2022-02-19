@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -77,6 +78,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -95,7 +97,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -106,6 +107,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
@@ -120,13 +122,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/logging.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
@@ -824,7 +827,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   //           source_array[static_index.dim0][static_index.dim1];
   //     }
   //   }
-  llvm_ir::LoopEmitter::BodyEmitter body_generator =
+  llvm_ir::BodyEmitter body_generator =
       [&](const llvm_ir::IrArray::Index& array_index) -> Status {
     llvm::Value* linearIndex =
         array_index.Linearize(input_shape.dimensions(), &b_);
@@ -941,7 +944,7 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   //           source_array[dyn_index.dim0][dyn_index.dim1];
   //     }
   //   }
-  llvm_ir::LoopEmitter::BodyEmitter body_generator =
+  llvm_ir::BodyEmitter body_generator =
       [&](const llvm_ir::IrArray::Index& array_index) -> Status {
     llvm::Value* linearIndex =
         array_index.Linearize(input_shape.dimensions(), &b_);
@@ -994,7 +997,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto conv_result_slice, GetAllocationSlice(conv_result));
   TF_ASSIGN_OR_RETURN(auto scratch_slice, GetAllocationSlice(scratch_result));
 
-  if (IsBefThunkEnabled()) {
+  if (IsBefThunkEnabled(hlo_module_config_)) {
     operand_slices.push_back(conv_result_slice);
     operand_slices.push_back(scratch_slice);
     TF_ASSIGN_OR_RETURN(
@@ -1176,7 +1179,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
 
   TF_ASSIGN_OR_RETURN(auto thunk, [&]() -> StatusOr<std::unique_ptr<Thunk>> {
     if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op)) {
-      if (IsBefThunkEnabled()) return make_bef_thunk(gemm);
+      if (IsBefThunkEnabled(hlo_module_config_)) return make_bef_thunk(gemm);
       return make_gemm_thunk(gemm);
     }
 
@@ -1185,7 +1188,8 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
       TF_ASSIGN_OR_RETURN(auto bias, GetAllocationSlice(gemm.bias()));
       TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(gemm.output()));
 
-      if (IsBefThunkEnabled()) return make_bef_thunk(gemm, bias);
+      if (IsBefThunkEnabled(hlo_module_config_))
+        return make_bef_thunk(gemm, bias);
 
       // The bias is passed inside the output buffer. If those buffers are
       // shared we can just use it, otherwise copy the bias values into the
@@ -1319,7 +1323,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
                       GetAllocationSlice(cholesky_op.scratch()));
   TF_ASSIGN_OR_RETURN(auto info_buffer, GetAllocationSlice(cholesky_op.info()));
 
-  if (IsBefThunkEnabled()) {
+  if (IsBefThunkEnabled(hlo_module_config_)) {
     std::vector<BufferAllocation::Slice> buffers = {
         operand_buffer, a_buffer, workspace_buffer, info_buffer};
     TF_ASSIGN_OR_RETURN(
@@ -1372,7 +1376,6 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
 
   std::vector<CustomCallThunk::OptionalSlice> operands;
   std::vector<CustomCallThunk::OptionalSlice> results;
-
   if (custom_call.target_arg_mapping()) {
     auto values_to_slices_with_token_holes =
         [&](mlir::ValueRange operands, mlir::ArrayAttr op_to_target_mapping,
@@ -1418,7 +1421,7 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
   }
 
   std::unique_ptr<Thunk> thunk;
-  if (IsBefThunkEnabled()) {
+  if (IsBefThunkEnabled(hlo_module_config_)) {
     auto values_to_non_optional_slices = [&](mlir::ValueRange values)
         -> StatusOr<std::vector<BufferAllocation::Slice>> {
       std::vector<BufferAllocation::Slice> slices;
@@ -1508,49 +1511,64 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
-  auto triangular_solve_op = mlir::cast<mlir::lmhlo::TriangularSolveOp>(op);
-  auto has_fortran_layout = [](mlir::DenseIntElementsAttr layout_attr) {
-    int64_t n = layout_attr.getNumElements();
-    return layout_attr.getValues<int64_t>()[0] == n - 2 &&
-           layout_attr.getValues<int64_t>()[1] == n - 1;
-  };
-  TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_a()));
-  TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_b()));
-  TF_RET_CHECK(has_fortran_layout(triangular_solve_op.layout_output()));
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
+  auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
 
-  const Shape b_shape = GetShape(triangular_solve_op.b());
+  auto operands = op->getOperands();
+  TF_RET_CHECK(operands.size() == 4);
 
-  const Shape output_shape = GetShape(triangular_solve_op.output());
+  // We expect Fortran layout for everything other than the temp buffer (the
+  // last operand).  Fortran layout is is XLA default layout with elements 0 and
+  // 1 swapped.  For example instead of default layout {3,2,1,0} we'd have
+  // Fortran layout {2,3,1,0}.
+  TF_RET_CHECK(absl::c_all_of(operands.drop_back(1), [&](mlir::Value v) {
+    const Shape& shape = GetShape(v);
+    const Layout& layout = shape.layout();
+    int n = layout.minor_to_major_size();
+    if (n < 2) {
+      return false;
+    }
+    // Unfortunately the HLO -> LMHLO -> HLO conversion loses layout information
+    // if the shape has any dimensions of size 1: In that case, the new HLO
+    // (which we see here) will have an arbitrary value for the location of the
+    // size-1 dimension.  Just skip this assertion if the shape has any
+    // degenerate dimensions.
+    if (absl::c_any_of(shape.dimensions(),
+                       [](int64_t dim) { return dim == 1; })) {
+      return true;
+    }
+    return layout.minor_to_major(0) == n - 2 &&
+           layout.minor_to_major(1) == n - 1 &&
+           std::is_sorted(layout.minor_to_major().begin() + 2,
+                          layout.minor_to_major().end(),
+                          std::greater<int64_t>());
+  }));
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_slice,
-                      GetAllocationSlice(triangular_solve_op.a()));
+                      GetAllocationSlice(operands[0]));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b_slice,
-                      GetAllocationSlice(triangular_solve_op.b()));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
-                      GetAllocationSlice(triangular_solve_op.output()));
-  TF_ASSIGN_OR_RETURN(TriangularSolveOptions_Transpose transpose_a,
-                      ConvertTranspose(triangular_solve_op.transpose_a()));
+                      GetAllocationSlice(operands[1]));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                      GetAllocationSlice(operands[2]));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice temp_slice,
+                      GetAllocationSlice(operands[3]));
 
-  if (IsBefThunkEnabled()) {
-    std::vector<BufferAllocation::Slice> buffers = {a_slice, b_slice,
-                                                    output_slice};
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Thunk> thunk,
-        CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
-    AddThunkToThunkSequence(std::move(thunk));
-    return Status::OK();
-  }
+  const Shape b_shape = GetShape(operands[1]);
+  const PrimitiveType elem_ty = b_shape.element_type();
+  TriangularSolveOptions backend_config;
+  TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(
+      custom_call.backend_config().str(), &backend_config));
 
   ThunkSequence thunks;
 
   // Triangular solve is in-place on 'b', so copy 'b' to the output if they
   // aren't the same buffer.
-  if (b_slice != output_slice) {
+  if (b_slice != result_slice) {
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
         Thunk::ThunkInfo(),
         /*source_address=*/b_slice,
-        /*destination_buffer=*/output_slice,
+        /*destination_buffer=*/result_slice,
         /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape)));
   }
 
@@ -1559,21 +1577,15 @@ Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
   int64_t batch_size = std::accumulate(
       b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
       [](int64_t a, int64_t b) { return a * b; });
-  int64_t elem_size =
-      ShapeUtil::ByteSizeOfPrimitiveType(output_shape.element_type());
+  int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_ty);
   int64_t a_batch_stride =
-      triangular_solve_op.left_side() ? m * m * elem_size : n * n * elem_size;
+      backend_config.left_side() ? m * m * elem_size : n * n * elem_size;
   int64_t b_batch_stride = m * n * elem_size;
-  TriangularSolveOptions options;
-  options.set_left_side(triangular_solve_op.left_side());
-  options.set_lower(triangular_solve_op.lower());
-  options.set_unit_diagonal(triangular_solve_op.unit_diagonal());
-  options.set_transpose_a(transpose_a);
   thunks.push_back(absl::make_unique<TriangularSolveThunk>(
-      GetThunkInfo(op), options,
-      /*a_input_buffer=*/a_slice,
-      /*b_input_buffer=*/output_slice, output_shape.element_type(), batch_size,
-      m, n, a_batch_stride, b_batch_stride));
+      GetThunkInfo(op), backend_config,
+      PtxOptsFromDebugOptions(hlo_module_config_.debug_options()),
+      /*a_buffer=*/a_slice, /*b_buffer=*/result_slice, temp_slice, elem_ty,
+      batch_size, m, n, a_batch_stride, b_batch_stride));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {
@@ -1584,6 +1596,7 @@ Status IrEmitterUnnested::EmitTriangularSolve(mlir::Operation* op) {
   }
   return Status::OK();
 }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Convert the following form of fusion region:
 //   fusion() {
@@ -1649,8 +1662,6 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 // subclass. The logic is de-virtualized and less scattered.
 Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
   auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
-  MlirEmitterContext context;
-  context.SetOperation(fusion);
 
   TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
                       GetOrCreateSubComputationFromRegion(&fusion.region(),
@@ -1690,7 +1701,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
     return true;
   }();
 
-  Shape element_shape = context.output_shapes[0];
+  Shape element_shape = GetShape(fusion.getOutputBuffers()[0]);
   LaunchDimensionsConfig launch_config{unroll_factor, few_waves,
                                        row_vectorized};
   // Check that the shapes is supported.
@@ -1718,16 +1729,17 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
     thunk_sequence_.emplace_back(std::move(kernel_thunk_ptr));
   }
 
-  auto operand_arrays =
-      absl::MakeSpan(ir_arrays).subspan(0, context.operand_shapes.size());
-  auto output_element_arrays = absl::MakeSpan(ir_arrays).subspan(
-      context.operand_shapes.size(), context.output_shapes.size());
+  absl::Span<llvm_ir::IrArray> operand_arrays =
+      absl::MakeSpan(ir_arrays).subspan(0, fusion.getInputBuffers().size());
+  absl::Span<llvm_ir::IrArray> output_element_arrays =
+      absl::MakeSpan(ir_arrays).subspan(fusion.getInputBuffers().size(),
+                                        fusion.getOutputBuffers().size());
 
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
                                           GetNestedComputer());
   FusedIrEmitter fused_emitter(&elemental_emitter);
 
-  for (int i = 0; i < context.operand_shapes.size(); i++) {
+  for (int i = 0; i < fusion.getInputBuffers().size(); i++) {
     auto* builder = &b_;
     auto ir_array = operand_arrays[i];
     fused_emitter.BindGenerator(
@@ -1743,18 +1755,10 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
   llvm::Type* index_type =
       GetIndexTypeForKernel(fusion, launch_dimensions.launch_bound(), &b_);
 
-  if (context.output_shapes.size() > 1) {
-    // For multioutput fusion, we need to emit each operand and the root.
-    TF_RETURN_IF_ERROR(
-        ParallelLoopEmitter(element_generator, output_element_arrays,
-                            launch_dimensions, &b_, launch_config)
-            .EmitLoop(context.name, index_type));
-  } else {
-    TF_RETURN_IF_ERROR(
-        ParallelLoopEmitter(element_generator, output_element_arrays[0],
-                            launch_dimensions, &b_, launch_config)
-            .EmitLoop(context.name, index_type));
-  }
+  TF_RETURN_IF_ERROR(
+      ParallelLoopEmitter(element_generator, output_element_arrays,
+                          launch_dimensions, &b_, launch_config)
+          .EmitLoop(GetIrNameFromLoc(fusion->getLoc()), index_type));
 
   b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
   return Status::OK();
@@ -1837,7 +1841,7 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
                           operand_fused_emitter.GetGenerator(root->operand(0)));
 
       TF_RETURN_IF_ERROR(
-          ParallelLoopEmitter(generator, ir_arrays.back(), launch_dimensions,
+          ParallelLoopEmitter(generator, {ir_arrays.back()}, launch_dimensions,
                               &b_, {unroll_factor})
               .EmitLoop(IrName(GetIrNameFromLoc(fusion_op.getLoc())),
                         GetIndexTypeForKernel(
@@ -2667,20 +2671,19 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
 
 Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   auto sort_op = mlir::cast<mlir::lmhlo::SortOp>(op);
-  MlirEmitterContext context;
-  context.SetOperation(sort_op);
-
   ThunkSequence thunks;
 
-  const Shape& keys_shape = context.operand_shapes[0];
+  std::string op_name = GetIrNameFromLoc(sort_op.getLoc());
+  std::vector<mlir::Value> operands = GetHloOperands(sort_op);
+  const Shape& keys_shape = GetShape(operands[0]);
   int64_t dimension_to_sort = sort_op.dimension();
-  for (int64_t i = 0; i < context.operand_shapes.size(); ++i) {
+  for (int64_t i = 0; i < operands.size(); ++i) {
     // We assume that the layout of all involved operands and outputs is the
     // same.
-    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(keys_shape,
-                                                  context.operand_shapes[i]));
     TF_RET_CHECK(
-        LayoutUtil::LayoutsInShapesEqual(keys_shape, context.output_shapes[i]));
+        LayoutUtil::LayoutsInShapesEqual(keys_shape, GetShape(operands[i])));
+    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+        keys_shape, GetShape(GetHloOutputs(sort_op)[i])));
 
     // If possible, we share buffers. If that is not possible, we need to copy
     // the values, because the emitter does the sorting in-place.
@@ -2691,18 +2694,18 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
     if (destination_buffer != source_address) {
       // TODO(b/26783907): Figure out why we never seem to share buffers for
       // key/value sort.
-      VLOG(2) << context.name << " requires initial D2D copy for operand " << i;
+      VLOG(2) << op_name << " requires initial D2D copy for operand " << i;
       thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo(),
           /*source_address=*/source_address,
           /*destination_buffer=*/destination_buffer,
-          /*mem_size=*/ShapeUtil::ByteSizeOf(context.operand_shapes[i])));
+          /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(operands[i]))));
     }
   }
 
   uint64_t dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
-  int64_t num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
-  VLOG(2) << context.name << " requires " << num_stages << " stages.";
+  int64_t num_stages = Log2Ceiling(dimension_to_sort_bound);
+  VLOG(2) << op_name << " requires " << num_stages << " stages.";
   CHECK_GE(1ULL << num_stages, dimension_to_sort_bound);
   CHECK_LT(1ULL << (num_stages - 1), dimension_to_sort_bound);
 
@@ -2768,10 +2771,10 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   // we have not enough threads, or not enough shared memory. Also it does not
   // give a speedup if the tile size is < 128.
   int64_t total_shared_memory_needed = 0;
-  for (int64_t i = 0; i < context.operand_shapes.size(); ++i) {
+  for (int64_t i = 0; i < operands.size(); ++i) {
     total_shared_memory_needed +=
         kTileSize * ShapeUtil::ByteSizeOfPrimitiveType(
-                        context.operand_shapes[i].element_type());
+                        GetShape(operands[i]).element_type());
   }
   bool no_tiling =
       kTileSize < 128 ||
@@ -2784,7 +2787,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
       "kTileSize=%d < 128, "
       "kThreadsPerBlock=%d > threads_per_block_limit=%d, "
       "total_shared_memory_needed=%d > shared_memory_per_block=%d",
-      context.name, (no_tiling ? "won't" : "will"), kTileSize, kThreadsPerBlock,
+      op_name, (no_tiling ? "won't" : "will"), kTileSize, kThreadsPerBlock,
       ir_emitter_context_->gpu_device_info().threads_per_block_limit,
       total_shared_memory_needed,
       ir_emitter_context_->gpu_device_info().shared_memory_per_block);
@@ -2792,12 +2795,12 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   uint64_t num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
   VLOG(2) << absl::StreamFormat("%s launch dims: %d blocks, %d threads/block",
-                                context.name, num_blocks, kThreadsPerBlock);
+                                op_name, num_blocks, kThreadsPerBlock);
 
   std::vector<llvm_ir::IrArray> ir_arrays;
   auto emit_kernel = [&](absl::Span<const int64_t> xor_masks) {
     VLOG(2) << absl::StreamFormat(
-        "%s uses kernel for xor masks [%s]", context.name,
+        "%s uses kernel for xor masks [%s]", op_name,
         absl::StrJoin(xor_masks, ", ", [](std::string* out, int64_t xor_mask) {
           absl::StrAppendFormat(out, "0x%x", xor_mask);
         }));
@@ -2810,15 +2813,15 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
         BuildKernelThunk(sort_op, sort_op.output(), Thunk::ThunkInfo(),
                          &ir_arrays, launch_dimensions));
     std::vector<IrArray> values_arrays;
-    values_arrays.reserve(context.operand_shapes.size());
-    for (int64_t i = 0; i < context.operand_shapes.size(); ++i) {
+    values_arrays.reserve(operands.size());
+    for (int64_t i = 0; i < operands.size(); ++i) {
       values_arrays.push_back(ir_arrays[i]);
     }
     TF_ASSIGN_OR_RETURN(const HloComputation* comparator,
                         GetOrCreateSubComputationFromRegion(
                             &sort_op.comparator(), /*is_fusion=*/false));
     return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, values_arrays, IrName(context.name), xor_masks, &b_,
+        dimension_to_sort, values_arrays, IrName(op_name), xor_masks, &b_,
         launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
@@ -2851,7 +2854,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
     TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
   }
   VLOG(2) << absl::StreamFormat(
-      "%s requires %d thunks (including any D2D copies)", context.name,
+      "%s requires %d thunks (including any D2D copies)", op_name,
       thunks.size());
 
   AddThunkToThunkSequence(
@@ -2865,7 +2868,7 @@ Status IrEmitterUnnested::EmitReplicaOrPartitionId(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                       GetAllocationSlice(casted.getOperand()));
   std::unique_ptr<Thunk> thunk;
-  if (IsBefThunkEnabled()) {
+  if (IsBefThunkEnabled(hlo_module_config_)) {
     TF_ASSIGN_OR_RETURN(thunk,
                         CreateBefThunk(GetThunkInfo(op), op, {result_slice}));
   } else {
@@ -2897,10 +2900,10 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   } else {
     std::unique_ptr<Thunk> thunk;
-    if (IsBefThunkEnabled()) {
+    if (IsBefThunkEnabled(hlo_module_config_)) {
       std::vector<BufferAllocation::Slice> buffers = {source_slice,
                                                       result_slice};
-      TF_ASSIGN_OR_RETURN(thunk, CreateBefCollectivePermuteThunk(
+      TF_ASSIGN_OR_RETURN(thunk, CreateBefCollectiveThunk(
                                      GetThunkInfo(op), op, std::move(buffers),
                                      replica_count, partition_count));
     } else {
@@ -2966,10 +2969,11 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
 
   if (should_use_nccl_thunk) {
     std::unique_ptr<Thunk> thunk;
-    if (IsBefThunkEnabled() && (mlir::isa<mlir::lmhlo::AllGatherOp>(op) ||
-                                mlir::isa<mlir::lmhlo::AllReduceOp>(op) ||
-                                mlir::isa<mlir::lmhlo::ReduceScatterOp>(op) ||
-                                mlir::isa<mlir::lmhlo::AllToAllOp>(op))) {
+    if (IsBefThunkEnabled(hlo_module_config_) &&
+        (mlir::isa<mlir::lmhlo::AllGatherOp>(op) ||
+         mlir::isa<mlir::lmhlo::AllReduceOp>(op) ||
+         mlir::isa<mlir::lmhlo::ReduceScatterOp>(op) ||
+         mlir::isa<mlir::lmhlo::AllToAllOp>(op))) {
       std::vector<BufferAllocation::Slice> arg_buffers;
       arg_buffers.reserve(buffers.size() * 2);
       for (const auto& buffer : buffers) {
@@ -2979,7 +2983,9 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
         arg_buffers.push_back(buffer.destination_buffer);
       }
       TF_ASSIGN_OR_RETURN(
-          thunk, CreateBefThunk(GetThunkInfo(op), op, std::move(arg_buffers)));
+          thunk,
+          CreateBefCollectiveThunk(GetThunkInfo(op), op, std::move(arg_buffers),
+                                   replica_count, partition_count));
     } else {
       thunk = absl::make_unique<NcclThunkType>(GetThunkInfo(op), op,
                                                /*buffers=*/std::move(buffers));
@@ -3177,7 +3183,8 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
     if (!slice.constant_name.empty()) {
       loc = ir_emitter_context_->llvm_module()->getGlobalVariable(
           slice.constant_name);
-      CHECK_NE(loc, nullptr);
+      CHECK_NE(loc, nullptr)
+          << "Could not find variable '" << slice.constant_name << "'";
     } else {
       CHECK(!buffer_slice.allocation()->is_constant());
       loc = InBoundsGEP(kernel_args.at(buffer_slice.allocation()),
@@ -3197,7 +3204,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
                                 std::string(kernel->getName()),
                                 ir_emitter_context_->llvm_module());
 
-  if (IsBefThunkEnabled()) {
+  if (IsBefThunkEnabled(hlo_module_config_)) {
     return CreateBefKernelThunk(thunk_info, non_constant_buffers,
                                 std::string(kernel->getName()),
                                 launch_dimensions);
@@ -3373,7 +3380,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
                          [=](const IrArray::Index& index) {
                            return init_array.EmitReadArrayElement(index, &b_);
                          },
-                         dest_array, launch_dimensions, &b_)
+                         {dest_array}, launch_dimensions, &b_)
                          .EmitLoop(GetIrNameFromLoc(op->getLoc())));
 
   return std::move(kernel_thunk);
@@ -3436,7 +3443,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
   TF_ASSIGN_OR_RETURN(auto generator,
                       fused_emitter.GetGenerator(instr->operand(1)));
   TF_RETURN_IF_ERROR(
-      ParallelLoopEmitter(generator, dest_array, launch_dimensions, &b_)
+      ParallelLoopEmitter(generator, {dest_array}, launch_dimensions, &b_)
           .EmitLoop(GetIrNameFromLoc(fusion.getLoc())));
   return {std::move(kernel_thunk)};
 }
@@ -3808,9 +3815,8 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForReduce(
     }
 
     for (int oidx = 0; oidx < partial_result_addresses.size(); ++oidx) {
-      llvm::Type* element_type = llvm::cast<llvm::PointerType>(
-                                     partial_result_addresses[oidx]->getType())
-                                     ->getElementType();
+      llvm::Type* element_type =
+          partial_result_addresses[oidx]->getType()->getPointerElementType();
       int bit_width = llvm_ir::GetSizeInBits(element_type);
       llvm::Value* result_from_other_lane = llvm_ir::EmitAllocaAtFunctionEntry(
           element_type, "result_from_other_lane", &b_);
@@ -4019,7 +4025,7 @@ void IrEmitterUnnested::EmitReductionOutputForRowReduction(
           {constant(partial_result_idx), thread_id_info.lane_id});
 
       llvm::Type* element_type =
-          state.partial_result_address->getType()->getElementType();
+          state.partial_result_address->getType()->getPointerElementType();
 
       /* Insure initial value address is in generic, not scratch. */
       llvm::Value* initial_value_addr =
@@ -4312,23 +4318,23 @@ llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
 // TODO(b/33320379): Here each block transposes 1 tile. It may be more
 // efficient to launch fewer blocks so each transposes many tiles.
 void IrEmitterUnnested::EmitHlo021Tile(
-    mlir::Operation* op, Thunk* kernel_thunk, const MlirEmitterContext& context,
+    mlir::lmhlo::FusionOp fusion, Thunk* kernel_thunk,
     absl::Span<const llvm_ir::IrArray> operand_arrays,
     absl::Span<const llvm_ir::IrArray> output_arrays,
     absl::Span<const int64_t> reduced_output_dims,
     absl::Span<const int64_t> tiled_param_ids,
     const TilingScheme& tiling_scheme,
     const LaunchDimensions& launch_dimensions) {
-  std::string name = GetIrNameFromLoc(op->getLoc());
+  std::string name = GetIrNameFromLoc(fusion.getLoc());
 
-  llvm::Type* index_type =
-      GetIndexTypeForKernel(op, launch_dimensions.launch_bound(), &b_);
+  llvm::Type* index_type = GetIndexTypeForKernel(
+      fusion.getOperation(), launch_dimensions.launch_bound(), &b_);
   std::vector<IrArray> param_arrays;
 
   // For each tiled parameter, cast its input IrArray to the corresponding
   // reduced shape and keep the reduced shape live during IR emission.
   std::vector<IrArray> param_in_reduced_shape_arrays;
-  std::vector<llvm::Value*> param_shmem_buffers(context.operand_shapes.size(),
+  std::vector<llvm::Value*> param_shmem_buffers(fusion.getInputBuffers().size(),
                                                 nullptr);
 
   auto get_shared_memory_buffer = [&](llvm::Type* elem_ty,
@@ -4345,8 +4351,8 @@ void IrEmitterUnnested::EmitHlo021Tile(
                           buffer_name);
   };
 
-  for (int64_t id = 0; id < context.operand_shapes.size(); id++) {
-    const Shape& param_shape = context.operand_shapes[id];
+  for (int64_t id = 0; id < fusion.getInputBuffers().size(); id++) {
+    const Shape& param_shape = GetShape(fusion.getInputBuffers()[id]);
     param_arrays.push_back(operand_arrays[id]);
 
     if (absl::c_linear_search(tiled_param_ids, id)) {
@@ -4368,7 +4374,6 @@ void IrEmitterUnnested::EmitHlo021Tile(
       [&](const ThreadIdInfo& thread_id_info,
           const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
           llvm::Value* x_loc, llvm::Value* x_iter_num) {
-        auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op);
         EmitTileElementForFusion(thread_id_info, fusion, operand_arrays,
                                  output_arrays, index, tiling_scheme, y_loc,
                                  x_loc, param_shmem_buffers);
@@ -4557,20 +4562,18 @@ std::vector<int64_t> FilterInputsForShmemTranspose(
 
 StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
     mlir::Operation* op) {
-  CHECK(mlir::isa<mlir::lmhlo::FusionOp>(op));
-
-  MlirEmitterContext context;
-  context.SetOperation(op);
+  auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
   // If the output_shape is reduced to 021 shape, find all the parameters of
   // the HLO that are in the corresponding 012 shape.
   std::vector<int64_t> params_012;
   optional<std::vector<int64_t>> reduced_dims_021;
-  for (int64_t operand_idx = 0; operand_idx < context.operand_shapes.size();
+  for (int64_t operand_idx = 0; operand_idx < fusion.getInputBuffers().size();
        ++operand_idx) {
-    const Shape& operand_shape = context.operand_shapes[operand_idx];
-    auto find_transpose_result =
-        ShapeUtil::FindTranspose021(operand_shape, context.output_shapes[0]);
+    const Shape& operand_shape =
+        GetShape(fusion.getInputBuffers()[operand_idx]);
+    auto find_transpose_result = ShapeUtil::FindTranspose021(
+        operand_shape, GetShape(fusion.getOutputBuffers()[0]));
     if (!find_transpose_result.has_value()) {
       continue;
     }
@@ -4624,7 +4627,8 @@ StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
   constexpr int64_t kShmemPerCore = 48 * 1024;
   int64_t shmem_used = 0;
   for (int64_t i = 0; i < params_012.size(); ++i) {
-    const Shape& operand_shape = context.operand_shapes[params_012[i]];
+    const Shape& operand_shape =
+        GetShape(fusion.getInputBuffers()[params_012[i]]);
     shmem_used +=
         32 * 33 *
         ShapeUtil::ByteSizeOfPrimitiveType(operand_shape.element_type());
@@ -4658,9 +4662,9 @@ StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
       BuildKernelThunk(op, GetThunkInfo(op), &ir_arrays, launch_dimensions));
 
   EmitHlo021Tile(
-      op, kernel_thunk.get(), context,
-      absl::MakeSpan(ir_arrays).subspan(0, context.operand_shapes.size()),
-      absl::MakeSpan(ir_arrays).subspan(context.operand_shapes.size()),
+      fusion, kernel_thunk.get(),
+      absl::MakeSpan(ir_arrays).subspan(0, fusion.getInputBuffers().size()),
+      absl::MakeSpan(ir_arrays).subspan(fusion.getInputBuffers().size()),
       *reduced_dims_021, params_012, tiling_scheme, launch_dimensions);
   AddThunkToThunkSequence(std::move(kernel_thunk));
   return true;
@@ -4768,7 +4772,7 @@ int64_t NearestPowerOfTwo(int64_t v) {
   if (v < 0) {
     return 0;
   }
-  int64_t upper = tensorflow::NextPowerOfTwo64(v);
+  int64_t upper = absl::bit_ceil<uint64_t>(v);
   int64_t lower = upper >> 1;
   return upper - v < v - lower ? upper : lower;
 }
@@ -5478,6 +5482,12 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     if (call.call_target_name() == "SliceToDynamic") {
       return EmitSliceToDynamic(op);
     }
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    if (call.call_target_name() == kTriangularSolveCallTarget) {
+      return EmitTriangularSolveCustomCall(op);
+    }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
     return EmitCustomCallThunk(op);
   }
 
@@ -5497,14 +5507,21 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(op)) {
     return EmitCholeskyThunk(op);
   }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   if (mlir::isa<mlir::lmhlo::FftOp>(op)) {
     return EmitFftThunk(op);
   }
 
   if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
-    return EmitTriangularSolve(op);
+    if (IsBefEnabled(hlo_module_config_)) {
+      // XLIR allocates temp memory, and so the custom-call implementation for
+      // TriangularSolve is not needed.
+      return Status::OK();
+    }
+    return InternalError(
+        "TriangularSolve is implemented as a custom-call; we do not expect to "
+        "lower a true HLO TriangularSolve op.");
   }
 
   if (mlir::isa<mlir::lmhlo::FusionOp>(op)) {
@@ -5609,19 +5626,6 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(mlir::Operation* op) {
       "Thunk:#hlo_op=%s,hlo_module=%s%s#", mlir::GetNameFromLoc(op->getLoc()),
       mlir::GetNameFromLoc(module->getLoc()), unique_id_str);
   return thunk_info;
-}
-
-void MlirEmitterContext::SetOperation(mlir::Operation* op) {
-  this->name = GetIrNameFromLoc(op->getLoc());
-
-  auto operands = GetHloOperands(op);
-  auto outputs = GetHloOutputs(op);
-  for (auto operand : operands) {
-    operand_shapes.push_back(GetShape(operand));
-  }
-  for (auto output : outputs) {
-    output_shapes.push_back(GetShape(output));
-  }
 }
 
 }  // namespace gpu

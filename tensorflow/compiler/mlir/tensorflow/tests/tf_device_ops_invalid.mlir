@@ -37,7 +37,7 @@ func @parser_replicate_operand_type(%arg0: tensor<*xi32>) {
 func @parser_replicate_region() {
   tf_device.replicate() {n = 2 : i32} {
 // expected-error@-1 {{custom op 'tf_device.replicate' expects a single block region}}
-    br ^bb
+    cf.br ^bb
   ^bb:
     tf_device.return
   }

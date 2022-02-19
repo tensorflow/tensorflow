@@ -28,7 +28,7 @@ namespace {
 
 TEST(DumpMlirModuleTest, NoEnvPrefix) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   unsetenv("TF_DUMP_GRAPH_PREFIX");
 
@@ -38,7 +38,7 @@ TEST(DumpMlirModuleTest, NoEnvPrefix) {
 
 TEST(DumpMlirModuleTest, LogInfo) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   setenv("TF_DUMP_GRAPH_PREFIX", "-", 1);
 
@@ -48,7 +48,7 @@ TEST(DumpMlirModuleTest, LogInfo) {
 
 TEST(DumpMlirModuleTest, Valid) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);
   std::string expected_txt_module;
@@ -72,7 +72,7 @@ TEST(DumpMlirModuleTest, Valid) {
 
 TEST(DumpCrashReproducerTest, NoEnvPrefix) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::PassManager pm(&context);
   unsetenv("TF_DUMP_GRAPH_PREFIX");
@@ -84,7 +84,7 @@ TEST(DumpCrashReproducerTest, NoEnvPrefix) {
 
 TEST(DumpCrashReproducerTest, LogInfo) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::PassManager pm(&context);
   setenv("TF_DUMP_GRAPH_PREFIX", "-", 1);
@@ -96,7 +96,7 @@ TEST(DumpCrashReproducerTest, LogInfo) {
 
 TEST(DumpCrashReproducerTest, Valid) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::PassManager pm(&context);
   setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);

@@ -449,15 +449,6 @@ bool IsDensifyConstTensor(TfLiteContext* context, const TfLiteNode* node,
          IsConstantTensor(&context->tensors[node->inputs->data[0]]);
 }
 
-bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
-  if (tensor->dims_signature) {
-    for (int i : TfLiteIntArrayView(tensor->dims_signature)) {
-      if (i == -1) return true;
-    }
-  }
-  return false;
-}
-
 ANeuralNetworksOperandType ConvertTensorTypeToNNType(
     const TfLiteTensor* tensor, TfLiteType ann_type_equivalent,
     bool use_int8_asymm_signed) {
@@ -1842,7 +1833,7 @@ class NNAPIOpBuilder {
             TfLiteTypeGetName(tensor_type));
         return kTfLiteError;
     }
-    bool has_unspecified_dimensions = HasUnspecifiedDimension(tensor);
+    bool has_unspecified_dimensions = ::tflite::HasUnspecifiedDimension(tensor);
     uint32_t tensor_rank = static_cast<uint32_t>(tensor->dims->size);
     std::vector<uint32_t> dims_unspecified(tensor_rank, 0);
     if (has_unspecified_dimensions) {
@@ -4712,7 +4703,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
         mapping_util_->TfLiteIndexToNnTypeConversion(mapping_util_.get(),
                                                      absolute_input_index);
     if (delegate_options.allow_dynamic_dimensions &&
-        HasUnspecifiedDimension(tensor)) {
+        ::tflite::HasUnspecifiedDimension(tensor)) {
       input_nn_operand_type = ConvertTensorTypeToNNType(
           tensor, ann_type_equivalent, use_int8_asymm_signed);
       input_nn_operand_type_ptr = &input_nn_operand_type;
@@ -4837,7 +4828,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     ANeuralNetworksOperandType* output_nn_operand_type_ptr = nullptr;
     TfLiteTensor* tensor = &context->tensors[output_index];
     if (delegate_options.allow_dynamic_dimensions &&
-        HasUnspecifiedDimension(tensor)) {
+        ::tflite::HasUnspecifiedDimension(tensor)) {
       TfLiteType ann_type_equivalent =
           mapping_util_->TfLiteIndexToNnTypeConversion(mapping_util_.get(),
                                                        output_index);
@@ -5451,6 +5442,12 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     }
     // Map inputs to NN API tensor indices.
     for (int input_pos = 0; input_pos < node->inputs->size; ++input_pos) {
+      if (node->inputs->data[input_pos] != kTfLiteOptionalTensor &&
+          context->tensors[node->inputs->data[input_pos]].type ==
+              kTfLiteFloat16 &&
+          IsConstantTensor(&context->tensors[node->inputs->data[input_pos]])) {
+        input_tensor_flags |= NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION;
+      }
       if (reg->builtin_code == kTfLiteBuiltinTransposeConv) {
         // Everything is added during Map since input tensors
         // have different order.
@@ -6313,11 +6310,7 @@ static std::vector<int> GetSupportedOpsWithFp16WeightRemapping(
                                                        node_supported_fn);
   std::set<std::string> unsupported_nodes_info;
   if (partition_helper.Partition(&unsupported_nodes_info) == kTfLiteOk) {
-    // By default, we simply get 1st largest partition as
-    // 'max_delegate_partions'
-    // is set to 1 by default.
-    supported_nodes = partition_helper.GetNodesOfFirstNLargestPartitions(
-        max_number_delegated_partitions);
+    supported_nodes = partition_helper.GetNodesOfFirstNLargestPartitions();
   }
   return supported_nodes;
 }

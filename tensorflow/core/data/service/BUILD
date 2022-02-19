@@ -33,6 +33,7 @@ tf_proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
     cc_api_version = 2,
+    create_java_proto = False,
     protodeps = tf_additional_all_protos(),
 )
 
@@ -41,6 +42,7 @@ tf_proto_library(
     srcs = ["dispatcher.proto"],
     has_services = 1,
     cc_api_version = 2,
+    create_java_proto = False,
     protodeps = tf_additional_all_protos() + [
         ":common_proto",
     ],
@@ -51,6 +53,7 @@ tf_proto_library(
     srcs = ["worker.proto"],
     has_services = 1,
     cc_api_version = 2,
+    create_java_proto = False,
     protodeps = tf_additional_all_protos() + [
         ":common_proto",
         "//tensorflow/core/data:dataset_proto",
@@ -503,6 +506,7 @@ tf_proto_library(
     name = "journal_proto",
     srcs = ["journal.proto"],
     cc_api_version = 2,
+    create_java_proto = False,
     protodeps = [
         ":common_proto",
         "//tensorflow/core:protos_all",

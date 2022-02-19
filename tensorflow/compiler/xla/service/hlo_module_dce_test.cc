@@ -273,7 +273,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElement) {
   SimpleLoop.condition1 {
     loop_var.4 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.6 = s32[] get-tuple-element(loop_var.4), index=0
-    constant.4 = s32[] constant(5)
+    constant.4 = s32[] constant(10)
     ROOT less-than.1 = pred[] compare(get-tuple-element.6, constant.4), direction=LT
   }
   ENTRY SimpleLoop {
@@ -341,7 +341,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElementSwizzled) {
   SimpleLoop.condition1 {
     loop_var.4 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.6 = s32[] get-tuple-element(loop_var.4), index=0
-    constant.4 = s32[] constant(5)
+    constant.4 = s32[] constant(10)
     ROOT less-than.1 = pred[] compare(get-tuple-element.6, constant.4), direction=LT
   }
   ENTRY SimpleLoop {

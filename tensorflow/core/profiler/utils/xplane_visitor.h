@@ -159,7 +159,7 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   absl::string_view DisplayName() const { return metadata_->display_name(); }
 
-  double OffsetNs() const { return PicosToNanos(event_->offset_ps()); }
+  double OffsetNs() const { return PicoToNano(event_->offset_ps()); }
 
   int64_t OffsetPs() const { return event_->offset_ps(); }
 
@@ -168,10 +168,10 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   double TimestampNs() const { return line_->timestamp_ns() + OffsetNs(); }
 
   int64_t TimestampPs() const {
-    return NanosToPicos(line_->timestamp_ns()) + event_->offset_ps();
+    return NanoToPico(line_->timestamp_ns()) + event_->offset_ps();
   }
 
-  double DurationNs() const { return PicosToNanos(event_->duration_ps()); }
+  double DurationNs() const { return PicoToNano(event_->duration_ps()); }
 
   int64_t DurationPs() const { return event_->duration_ps(); }
 

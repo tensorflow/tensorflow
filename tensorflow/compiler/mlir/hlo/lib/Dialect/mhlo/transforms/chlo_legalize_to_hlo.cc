@@ -1467,7 +1467,7 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
   PopulateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
       context, patterns, 5);
   patterns
-      ->insert<ConvertConstantLikeOp, ConvertDynamicReshapeOp, ConvertSelectOp>(
+      ->add<ConvertConstantLikeOp, ConvertDynamicReshapeOp, ConvertSelectOp>(
           context);
 }
 
@@ -1477,7 +1477,7 @@ void PopulateDecomposeChloPatterns(MLIRContext *context,
 
   // Other patterns.
   // clang-format off
-  patterns->insert<ConvertCoshOp,
+  patterns->add<ConvertCoshOp,
                    ConvertDigammaOp,
                    ConvertErfOp,
                    ConvertErfcOp,

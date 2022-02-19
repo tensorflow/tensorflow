@@ -67,6 +67,12 @@ flags.DEFINE_string('model_dir', os.environ.get('TEST_TMPDIR'),
 
 class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
 
+  def skip_if_oss(self):
+    if FLAGS.project is not None or FLAGS.zone is not None:
+      self.skipTest(
+          'Skipping tests for oss as it is slow to run every test in cloud tpu.'
+      )
+
   def setUp(self):
     super(TPUEmbeddingCheckpointTest, self).setUp()
     self.resolver = tpu_cluster_resolver.TPUClusterResolver(
@@ -161,6 +167,7 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
     # This test works right now because we only have one TPU host in the unit
     # environment. Initializing from checkpoint does not understand how to
     # pass the sharding info to the restore op right now.
+    self.skip_if_oss()
 
     class TestModule(module.Module):
 
@@ -310,6 +317,8 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
                                                                    optimizer):
     # Reinitialize the TPU so that we can re-initialize the embeddings with the
     # given optimizer.
+    if optimizer != tpu_embedding_v2_utils.SGD:
+      self.skip_if_oss()
     tpu_strategy_util.initialize_tpu_system(self.resolver)
     optimizer = optimizer(learning_rate=0.1)
 
@@ -332,6 +341,12 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
 
 
 class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
+
+  def skip_if_oss(self):
+    if FLAGS.project is not None or FLAGS.zone is not None:
+      self.skipTest(
+          'Skipping tests for oss as it is slow to run every test in cloud tpu.'
+      )
 
   def setUp(self):
     super(TPUEmbeddingTest, self).setUp()
@@ -435,27 +450,23 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     # matter.
     mid_level_api.build(64)
 
+    # Test pass non tensor to apply_gradients.
     @def_function.function
-    def test_apply():
+    def test_apply_1():
       mid_level_api.apply_gradients((1, 2, 3))
 
     with self.assertRaisesRegex(ValueError, 'found non-tensor type'):
-      strategy.run(test_apply)
+      strategy.run(test_apply_1)
 
-  def test_pass_different_structure_to_apply_gradients(self):
-    strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
-    # We aren't going to actually run anything, so the batch_size here does not
-    # matter.
-    mid_level_api.build(64)
+    # Test pass different structure to apply_gradients.
     @def_function.function
-    def test_apply():
+    def test_apply_2():
       # This should be a tuple as feature_config is a tuple of 3 configs.
       mid_level_api.apply_gradients([1, 2, 3])
 
     with self.assertRaisesRegex(
-        TypeError,
-        'The two structures don\'t have the same nested structure.'):
-      strategy.run(test_apply)
+        TypeError, 'The two structures don\'t have the same nested structure.'):
+      strategy.run(test_apply_2)
 
   def test_pass_none_to_apply_gradients(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
@@ -520,13 +531,12 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     self.num_replicas = strategy.num_replicas_in_sync
     return strategy
 
-  def test_dequeue_on_cpu(self):
+  def test_enqueue_dequeue_apply_gradients_on_cpu(self):
+    # Dequeue on CPU.
     mid_level_api = self._create_mid_level()
     with self.assertRaises(RuntimeError):
       mid_level_api.dequeue()
-
-  def test_enqueue_on_cpu(self):
-    mid_level_api = self._create_mid_level()
+    # Enqueue on CPU.
     features = {
         'watched': sparse_tensor.SparseTensor(
             indices=self.feature_watched_indices,
@@ -534,11 +544,10 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
             dense_shape=[2, 2])}
     with self.assertRaises(RuntimeError):
       mid_level_api.enqueue(features)
-
-  def test_apply_gradients_on_cpu(self):
+    # Apply gradient on CPU.
     mid_level_api = self._create_mid_level()
     with self.assertRaises(RuntimeError):
-      mid_level_api.enqueue(None)
+      mid_level_api.apply_gradients(None)
 
   def test_get_embedding_tables_on_cpu(self):
     mid_level_api = self._create_mid_level()
@@ -573,10 +582,10 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     with self.assertRaisesRegex(ValueError, 'Weight specified for dense input'):
       test_fn()
 
-  def test_enqueue_wrong_weight_type_for_sparse_tensor(self):
+  def test_enqueue_wrong_weight_type_for_sparse_and_ragged_tensor(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
-    sparse = self._create_sparse_dataset(strategy)
+    sparse = self._create_sparse_dataset(strategy, include_weights=True)
     ragged = self._create_ragged_dataset(strategy, include_weights=True)
     sparse_iter = iter(
         strategy.experimental_distribute_dataset(
@@ -590,48 +599,32 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
                 experimental_fetch_to_device=False)))
 
     @def_function.function
-    def test_fn():
+    def test_sparse_fn():
       def step():
         return mid_level_api.dequeue()
 
-      features = next(sparse_iter)
+      features, _ = next(sparse_iter)
       _, weights = next(ragged_iter)
       mid_level_api.enqueue(features, weights=weights, training=False)
       return strategy.run(step)
 
     with self.assertRaisesRegex(
         ValueError, 'which does not match type input which is SparseTensor.'):
-      test_fn()
-
-  def test_enqueue_wrong_weight_type_for_ragged_tensor(self):
-    strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
-
-    sparse = self._create_sparse_dataset(strategy, include_weights=True)
-    ragged = self._create_ragged_dataset(strategy)
-    sparse_iter = iter(
-        strategy.experimental_distribute_dataset(
-            sparse,
-            options=distribute_lib.InputOptions(
-                experimental_fetch_to_device=False)))
-    ragged_iter = iter(
-        strategy.experimental_distribute_dataset(
-            ragged,
-            options=distribute_lib.InputOptions(
-                experimental_fetch_to_device=False)))
+      test_sparse_fn()
 
     @def_function.function
-    def test_fn():
+    def test_ragged_fn():
       def step():
         return mid_level_api.dequeue()
 
       _, weights = next(sparse_iter)
-      features = next(ragged_iter)
+      features, _ = next(ragged_iter)
       mid_level_api.enqueue(features, weights=weights, training=False)
       return strategy.run(step)
 
     with self.assertRaisesRegex(
         ValueError, 'which does not match type input which is RaggedTensor.'):
-      test_fn()
+      test_ragged_fn()
 
   def test_enqueue_sparse_and_ragged(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
@@ -662,31 +655,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
     test_fn()
 
-  def test_enqueue_incorrect_structure_for_features(self):
-    strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
-
-    sparse = self._create_sparse_dataset(strategy)
-    sparse_iter = iter(
-        strategy.experimental_distribute_dataset(
-            sparse,
-            options=distribute_lib.InputOptions(
-                experimental_fetch_to_device=False)))
-
-    @def_function.function
-    def test_fn():
-      def step():
-        return mid_level_api.dequeue()
-
-      features = next(sparse_iter)
-      features = (features[0],)
-      mid_level_api.enqueue(features, training=False)
-      return strategy.run(step)
-
-    # The error here is raised from nest.assert_same_structure
-    with self.assertRaises(ValueError):
-      test_fn()
-
-  def test_enqueue_incorrect_structure_for_weights(self):
+  def test_enqueue_incorrect_structure_for_features_and_weights(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     sparse = self._create_sparse_dataset(strategy, include_weights=True)
@@ -697,7 +666,21 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
                 experimental_fetch_to_device=False)))
 
     @def_function.function
-    def test_fn():
+    def test_features_fn():
+      def step():
+        return mid_level_api.dequeue()
+
+      features = next(sparse_iter)
+      features = (features[0],)
+      mid_level_api.enqueue(features, training=False)
+      return strategy.run(step)
+
+    # The error here is raised from nest.assert_same_structure
+    with self.assertRaises(ValueError):
+      test_features_fn()
+
+    @def_function.function
+    def test_weights_fn():
       def step():
         return mid_level_api.dequeue()
 
@@ -708,7 +691,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
     # The error here is raised from nest.assert_same_structure
     with self.assertRaises(ValueError):
-      test_fn()
+      test_weights_fn()
 
   def test_enqueue_ragged_tensor(self):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
@@ -812,6 +795,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters([True, False])
   def test_enqueue_cpu_tensor_with_outside_compilation(self, use_mlir):
+
     if use_mlir:
       config.enable_mlir_bridge()
 
@@ -834,6 +818,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(True, False)
   def test_enqueue_with_weights(self, ragged):
+    self.skip_if_oss()
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     weight = 0.5
     if ragged:
@@ -885,6 +870,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters([True, False])
   def test_enqueue_with_outside_compilation(self, use_mlir):
+    self.skip_if_oss()
     if use_mlir:
       config.enable_mlir_bridge()
 
@@ -928,6 +914,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(True, False)
   def test_enqueue_with_outside_compilation_in_control_flow(self, use_mlir):
+    self.skip_if_oss()
     if use_mlir:
       config.enable_mlir_bridge()
 
@@ -959,6 +946,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
       enqueue_with_outside_compilation()
 
   def test_enqueue_with_outside_compilation_non_direct_input(self):
+    self.skip_if_oss()
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     mid_level_api.build([
         TensorShape((self.batch_size, 2)),
@@ -987,6 +975,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
       enqueue_with_outside_compilation()
 
   def test_enqueue_with_outside_compilation_auto_mode(self):
+    self.skip_if_oss()
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     mid_level_api.build([
         TensorShape((self.batch_size, 2)),
@@ -1483,6 +1472,12 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 class TPUEmbeddingHighDimensionalTensorTest(parameterized.TestCase,
                                             test.TestCase):
 
+  def skip_if_oss(self):
+    if FLAGS.project is not None or FLAGS.zone is not None:
+      self.skipTest(
+          'Skipping tests for oss as it is slow to run every test in cloud tpu.'
+      )
+
   def setUp(self):
     super(TPUEmbeddingHighDimensionalTensorTest, self).setUp()
     self.embedding_values = np.array(list(range(32)), dtype=np.float64)
@@ -1815,6 +1810,7 @@ class TPUEmbeddingHighDimensionalTensorTest(parameterized.TestCase,
       test_fn()
 
   def test_not_fully_defined_output_shapes_in_feature_config(self):
+    self.skip_if_oss()
     _, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     # Feature config sets undefined output shapes
@@ -1823,6 +1819,7 @@ class TPUEmbeddingHighDimensionalTensorTest(parameterized.TestCase,
       mid_level_api.build()
 
   def test_not_fully_defined_output_shapes_for_build(self):
+    self.skip_if_oss()
     _, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     # Build with undefined output shape

@@ -34,7 +34,7 @@ namespace tensorflow {
 // file; otherwise, load from a GraphDef.
 // Setting prune_unused_nodes to true, would prune unreachable nodes if
 // output_arrays is specified.
-stream_executor::port::StatusOr<mlir::OwningModuleRef>
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     const std::vector<std::string>& extra_tf_opdefs,
@@ -44,11 +44,13 @@ LoadFromGraphdefOrMlirSource(
     llvm::SourceMgr* source_mgr, mlir::MLIRContext* context);
 
 // Load Saved model (either v1 or v2) into MLIR.
-stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
-    bool import_saved_model, bool import_saved_model_v1,
-    const std::vector<std::string>& extra_tf_opdefs,
-    const std::string& input_filename, const std::string& saved_model_tags,
-    const std::string& saved_model_exported_names, mlir::MLIRContext* context);
+stream_executor::port::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ImportSavedModel(bool import_saved_model, bool import_saved_model_v1,
+                 const std::vector<std::string>& extra_tf_opdefs,
+                 const std::string& input_filename,
+                 const std::string& saved_model_tags,
+                 const std::string& saved_model_exported_names,
+                 mlir::MLIRContext* context);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes to convert the module to TFJS dialect and

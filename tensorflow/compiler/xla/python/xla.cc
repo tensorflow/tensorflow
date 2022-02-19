@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -356,6 +357,7 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildPytreeSubmodule(m);
   jax::BuildJaxjitSubmodule(m);
   jax::BuildPmapSubmodule(m);
+  jax::BuildTransferGuardSubmodule(m);
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
 

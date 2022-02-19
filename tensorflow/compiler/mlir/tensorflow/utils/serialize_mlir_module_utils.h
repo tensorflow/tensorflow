@@ -32,7 +32,7 @@ std::string SerializeMlirModule(mlir::ModuleOp module_op);
 // context `mlir_context`.
 Status DeserializeMlirModule(llvm::StringRef serialized_mlir_module,
                              mlir::MLIRContext* mlir_context,
-                             mlir::OwningModuleRef* mlir_module);
+                             mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
 
 }  // namespace tensorflow
 

@@ -108,7 +108,8 @@ func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>, %ar
   registry.insert<mlir::TFL::TensorFlowLiteDialect,
                   mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect>();
   mlir::MLIRContext context(registry);
-  auto module = mlir::OwningModuleRef(mlir::parseSourceString(kMLIR, &context));
+  auto module = mlir::OwningOpRef<mlir::ModuleOp>(
+      mlir::parseSourceString(kMLIR, &context));
   auto module_op = module.get();
   auto serialized_result_fb = ExportRuntimeMetadata(module_op);
   const auto* result =

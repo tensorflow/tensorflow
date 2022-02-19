@@ -491,6 +491,7 @@ def build_conversion_flags(inference_type=dtypes.float32,
                            tf_quantization_mode=None,
                            disable_infer_tensor_range=False,
                            use_fake_quant_num_bits=False,
+                           enable_dynamic_update_slice=False,
                            **_):
   """Builds protocol buffer describing a conversion of a model.
 
@@ -568,6 +569,8 @@ def build_conversion_flags(inference_type=dtypes.float32,
     disable_infer_tensor_range: Disable infering tensor ranges.
     use_fake_quant_num_bits: Allow quantization parameters to be calculated from
       num_bits attribute.
+    enable_dynamic_update_slice: Enable to convert to DynamicUpdateSlice op.
+      (default: False)
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -623,6 +626,7 @@ def build_conversion_flags(inference_type=dtypes.float32,
       disable_per_channel_quantization)
   conversion_flags.enable_mlir_dynamic_range_quantizer = (
       enable_mlir_dynamic_range_quantizer)
+  conversion_flags.enable_dynamic_update_slice = enable_dynamic_update_slice
   if tf_quantization_mode:
     conversion_flags.tf_quantization_mode = tf_quantization_mode
   conversion_flags.disable_infer_tensor_range = disable_infer_tensor_range

@@ -110,18 +110,16 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
 
 StatusOr<HloInstruction*> MakeTransposeHlo(
     HloInstruction* operand, absl::Span<const int64_t> dimensions) {
-  HloComputation* computation = operand->parent();
   TF_ASSIGN_OR_RETURN(
       Shape transpose_shape,
       ShapeInference::InferTransposeShape(operand->shape(), dimensions));
-  return computation->AddInstruction(
+  return operand->AddInstruction(
       HloInstruction::CreateTranspose(transpose_shape, operand, dimensions));
 }
 
 StatusOr<HloInstruction*> MakeReshapeHlo(const Shape& result_shape,
                                          HloInstruction* operand) {
-  HloComputation* computation = operand->parent();
-  return computation->AddInstruction(
+  return operand->AddInstruction(
       HloInstruction::CreateReshape(result_shape, operand));
 }
 

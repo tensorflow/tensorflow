@@ -237,16 +237,16 @@ class BufferReuseAnalysis {
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
-  void runOnFunction() override {
-    if (!getFunction()->getAttrOfType<UnitAttr>(
+  void runOnOperation() override {
+    if (!getOperation()->getAttrOfType<UnitAttr>(
             tf_framework::TFFrameworkDialect::kTFEntryAttrName))
       return;
 
-    BufferReuseAnalysis analysis(getFunction());
+    BufferReuseAnalysis analysis(getOperation());
 
     // Annotate IR with reuse candidates and output indices per allocation.
     Builder builder(&getContext());
-    getFunction().walk([&](memref::AllocOp op) {
+    getOperation().walk([&](memref::AllocOp op) {
       if (auto output_index = analysis.get_output_index(op)) {
         auto attr = builder.getI32IntegerAttr(*output_index);
         op.getOperation()->setAttr(
@@ -263,7 +263,7 @@ struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateBufferReusePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateBufferReusePass() {
   return std::make_unique<BufferReusePass>();
 }
 

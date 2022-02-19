@@ -49,7 +49,7 @@ include "mlir-hlo/Dialect/lhlo/IR/lhlo_structured_interface.td"
 // LMHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-class LHLO_Op<string mnemonic, list<OpTrait> traits> :
+class LHLO_Op<string mnemonic, list<Trait> traits> :
   Op<LHLO_Dialect, mnemonic,
     !listconcat([MemoryEffects<[MemRead, MemWrite]>,
     LmhloStructuredInterface], traits)>;
@@ -83,7 +83,7 @@ def LHLO_IotaOp : LHLO_Op<"iota", []> {
 
 class LHLO_UnaryElementwiseOp<string mnemonic,
                               Type BufferType = LHLO_Buffer,
-                              list<OpTrait> traits = [SameTypeOperands, Elementwise]>
+                              list<Trait> traits = [SameTypeOperands, Elementwise]>
     : LHLO_Op<mnemonic, traits> {
   let arguments = (ins Arg<BufferType, "", [MemRead]>:$input,
                        Arg<BufferType, "", [MemWrite]>:$output);
@@ -98,7 +98,7 @@ def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs", LHLO_Buffer, [SameOperandsShape]>
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 // TODO(timshen): add a custom verifier.
@@ -344,7 +344,7 @@ def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh", LHLO_FpOrComplexBuffer> {
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class LHLO_BinaryElementwiseOp<string mnemonic, Type BufferType = LHLO_Buffer,
-                               list<OpTrait> traits = [SameTypeOperands, Elementwise]> :
+                               list<Trait> traits = [SameTypeOperands, Elementwise]> :
         LHLO_Op<mnemonic, traits> {
   let arguments = (ins
       Arg<BufferType, "", [MemRead]>:$lhs,
@@ -555,7 +555,7 @@ def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [SameVariadicOperandSize]> {
   );
 
   let regions = (region SizedRegion<1>:$body);
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 // TODO(timshen): Add a custom syntax for this.
@@ -628,7 +628,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
                       $api_version,
     OptionalAttr<CustomCallTargetArgMapping>:$target_arg_mapping
   );
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1033,6 +1033,7 @@ def LHLO_PadOp: LHLO_Op<"pad", []> {
     I64ElementsAttr:$interior_padding,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
+  let hasVerifier = 1;
 }
 
 def LHLO_TransposeOp: LHLO_Op<"transpose", []> {
@@ -1072,7 +1073,7 @@ def LHLO_ReducePrecisionOp: LHLO_Op<"reduce_precision", [SameTypeOperands]> {
 }
 
 // Common base class for AllReduce, AllGather, and AllToAll.
-class LHLO_CollectiveCommunicationOp<string name, list<OpTrait> traits = []> :
+class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
   LHLO_Op<name, !listconcat(traits, [SameVariadicOperandSize])> {
   dag arguments_base = (ins
     Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
@@ -1082,7 +1083,7 @@ class LHLO_CollectiveCommunicationOp<string name, list<OpTrait> traits = []> :
     OptionalAttr<ChannelHandle>:$channel_id,
     DefaultValuedAttr<BoolAttr, "false">:$use_global_device_ids
   );
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     // AllGather is cross replica if channel_id is not set.
     bool IsCrossReplica() { return !channel_id().hasValue(); }
@@ -1152,7 +1153,7 @@ def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]> 
     I64ElementsAttr:$source_target_pairs,
     OptionalAttr<ChannelHandle>:$channel_id
   );
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def LHLO_FftOp: LHLO_Op<"fft", []> {

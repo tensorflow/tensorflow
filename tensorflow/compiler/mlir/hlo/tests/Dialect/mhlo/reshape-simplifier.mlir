@@ -7,7 +7,8 @@ func @reshape_expand_front(%arg0: tensor<?x?xf32>) -> tensor<1x?x?xf32> {
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %d1 = tensor.dim %arg0, %c1 : tensor<?x?xf32>
   %shape = tensor.from_elements %c1, %d0, %d1 : tensor<3xindex>
-  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?x?xf32>, tensor<3xindex>) -> tensor<1x?x?xf32>
+  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
+      : (tensor<?x?xf32>, tensor<3xindex>) -> tensor<1x?x?xf32>
 // CHECK: tensor.expand_shape %arg0 [
 // CHECK-SAME: [0, 1], [2]] : tensor<?x?xf32> into tensor<1x?x?xf32>
   return %reshape : tensor<1x?x?xf32>
@@ -22,7 +23,8 @@ func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %d1 = tensor.dim %arg0, %c1 : tensor<?x?xf32>
   %shape = tensor.from_elements %d0, %d1, %c1, %c1 : tensor<4xindex>
-  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?x?xf32>, tensor<4xindex>) -> tensor<?x?x1x1xf32>
+  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
+      : (tensor<?x?xf32>, tensor<4xindex>) -> tensor<?x?x1x1xf32>
 // CHECK: tensor.expand_shape %arg0 [
 // CHECK-SAME: [0], [1, 2, 3]] : tensor<?x?xf32> into tensor<?x?x1x1xf32>
   return %reshape : tensor<?x?x1x1xf32>
@@ -34,7 +36,8 @@ func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
 func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
   %c1 = arith.constant 1 : index
   %shape = tensor.from_elements %c1, %c1, %c1 : tensor<3xindex>
-  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf32>, tensor<3xindex>) -> tensor<1x1x1xf32>
+  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
+      : (tensor<?xf32>, tensor<3xindex>) -> tensor<1x1x1xf32>
 // CHECK: mhlo.dynamic_reshape
   return %reshape : tensor<1x1x1xf32>
 }
@@ -42,12 +45,14 @@ func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
 // -----
 
 // CHECK-LABEL: func @compute_reshape_shape
-func @compute_reshape_shape(%arg0: tensor<?x?xf32>, %arg1: index) -> tensor<2xi32> {
+func @compute_reshape_shape(%arg0: tensor<?x?xf32>, %arg1: index)
+    -> tensor<2xi32> {
   %shape = shape.shape_of %arg0: tensor<?x?xf32> -> tensor<2xindex>
   %casted = arith.index_cast %shape : tensor<2xindex> to tensor<2xi32>
   %mul = mhlo.multiply %casted, %casted : tensor<2xi32>
 // CHECK:  %[[MUL:.*]] = mhlo.multiply
-  %crs = mhlo.compute_reshape_shape %arg1, %mul : index, tensor<2xi32> -> tensor<2xi32>
+  %crs = mhlo.compute_reshape_shape %arg1, %mul
+      : index, tensor<2xi32> -> tensor<2xi32>
   return %crs : tensor<2xi32>
 // CHECK: return %[[MUL]] : tensor<2xi32>
 }
@@ -55,9 +60,11 @@ func @compute_reshape_shape(%arg0: tensor<?x?xf32>, %arg1: index) -> tensor<2xi3
 // -----
 
 // CHECK-LABEL: func @compute_reshape_shape
-func @compute_reshape_shape(%arg0: tensor<2xi32>, %arg1: index) -> tensor<2xi32> {
+func @compute_reshape_shape(%arg0: tensor<2xi32>, %arg1: index)
+    -> tensor<2xi32> {
   %mul = mhlo.multiply %arg0, %arg0 : tensor<2xi32>
-  %crs = mhlo.compute_reshape_shape %arg1, %mul : index, tensor<2xi32> -> tensor<2xi32>
+  %crs = mhlo.compute_reshape_shape %arg1, %mul
+      : index, tensor<2xi32> -> tensor<2xi32>
 // CHECK: mhlo.compute_reshape_shape
   return %crs : tensor<2xi32>
 }
@@ -207,7 +214,12 @@ func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
 // CHECK-SAME:      %arg10: tensor<512xf32>,
 // CHECK-SAME:      %arg11: tensor<512xf32>,
 // CHECK-SAME:      %arg12: tensor<512xf32>)
-func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32>, %arg2: tensor<4xi32>, %arg3: tensor<512xf32>, %arg4: tensor<?x?x512xf32>, %arg5: tensor<512xf32>, %arg6: tensor<512xf32>, %arg7: tensor<512x2048xf32>, %arg8: tensor<2048xf32>, %arg9: tensor<2048x512xf32>, %arg10: tensor<512xf32>, %arg11: tensor<512xf32>, %arg12: tensor<512xf32>) -> tensor<?x512xf32> {
+func @reshape_integration(%arg0: tensor<512x512xf32>,
+    %arg1: tensor<?x8x?x64xf32>, %arg2: tensor<4xi32>, %arg3: tensor<512xf32>,
+    %arg4: tensor<?x?x512xf32>, %arg5: tensor<512xf32>, %arg6: tensor<512xf32>,
+    %arg7: tensor<512x2048xf32>, %arg8: tensor<2048xf32>,
+    %arg9: tensor<2048x512xf32>, %arg10: tensor<512xf32>,
+    %arg11: tensor<512xf32>, %arg12: tensor<512xf32>) -> tensor<?x512xf32> {
   %0 = mhlo.constant dense<512> : tensor<1xi32>
   %1 = shape.shape_of %arg1 : tensor<?x8x?x64xf32> -> tensor<4xindex>
   %2 = shape.num_elements %1 : tensor<4xindex> -> index
@@ -216,23 +228,32 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
   // CHECK: shape.assuming %[[W]]
   %4 = shape.assuming %3 -> (tensor<?x8x?x64xf32>) {
     // CHECK: %[[SHAPE:.*]] = mhlo.compute_reshape_shape %{{.*}}, %[[DYN_SHAPE]]
-    %20 = mhlo.compute_reshape_shape %2, %arg2 : index, tensor<4xi32> -> tensor<4xi32>
+    %20 = mhlo.compute_reshape_shape %2, %arg2
+        : index, tensor<4xi32> -> tensor<4xi32>
     // CHECK: "mhlo.dynamic_reshape"(%arg1, %[[SHAPE]])
-    %21 = "mhlo.dynamic_reshape"(%arg1, %20) : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
+    %21 = "mhlo.dynamic_reshape"(%arg1, %20)
+        : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
     // CHECK: shape.assuming_yield
     shape.assuming_yield %21 : tensor<?x8x?x64xf32>
   }
-  %5 = "mhlo.transpose"(%4) {permutation = dense<[0, 2, 1, 3]> : tensor<4xi64>} : (tensor<?x8x?x64xf32>) -> tensor<?x?x8x64xf32>
-  %6 = "mhlo.transpose"(%5) {permutation = dense<[0, 1, 3, 2]> : tensor<4xi64>} : (tensor<?x?x8x64xf32>) -> tensor<?x?x64x8xf32>
+  %5 = "mhlo.transpose"(%4) {permutation = dense<[0, 2, 1, 3]> : tensor<4xi64>}
+      : (tensor<?x8x?x64xf32>) -> tensor<?x?x8x64xf32>
+  %6 = "mhlo.transpose"(%5) {permutation = dense<[0, 1, 3, 2]>
+      : tensor<4xi64>} : (tensor<?x?x8x64xf32>) -> tensor<?x?x64x8xf32>
   %7 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>
   %8 = arith.index_cast %7 : tensor<4xindex> to tensor<4xi32>
-  %9 = "mhlo.slice"(%8) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>
+  %9 = "mhlo.slice"(%8) {limit_indices = dense<1> : tensor<1xi64>,
+      start_indices = dense<0> : tensor<1xi64>,
+      strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>
   %10 = "mhlo.reshape"(%9) : (tensor<1xi32>) -> tensor<i32>
-  %11 = "mhlo.slice"(%8) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>
+  %11 = "mhlo.slice"(%8) {limit_indices = dense<2> : tensor<1xi64>,
+      start_indices = dense<1> : tensor<1xi64>,
+      strides = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<1xi32>
   %12 = "mhlo.reshape"(%11) : (tensor<1xi32>) -> tensor<i32>
   %13 = mhlo.multiply %10, %12 : tensor<i32>
   %14 = "mhlo.reshape"(%13) : (tensor<i32>) -> tensor<1xi32>
-  %15 = "mhlo.concatenate"(%14, %0) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+  %15 = "mhlo.concatenate"(%14, %0) {dimension = 0 : i64}
+      : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
   %16 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>
   %17 = shape.num_elements %16 : tensor<4xindex> -> index
   // CHECK-NOT: cstr_reshapable
@@ -240,11 +261,45 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
   // CHECK-NOT: assuming
   %19 = shape.assuming %18 -> (tensor<?x512xf32>) {
     // CHECK-NOT: compute_reshape_shape
-    %20 = mhlo.compute_reshape_shape %17, %15 : index, tensor<2xi32> -> tensor<2xi32>
+    %20 = mhlo.compute_reshape_shape %17, %15
+        : index, tensor<2xi32> -> tensor<2xi32>
     // CHECK: tensor.collapse_shape
-    %21 = "mhlo.dynamic_reshape"(%6, %20) : (tensor<?x?x64x8xf32>, tensor<2xi32>) -> tensor<?x512xf32>
+    %21 = "mhlo.dynamic_reshape"(%6, %20)
+        : (tensor<?x?x64x8xf32>, tensor<2xi32>) -> tensor<?x512xf32>
     // CHECK-NOT: assuming_yield
     shape.assuming_yield %21 : tensor<?x512xf32>
   }
   return %19 : tensor<?x512xf32>
+}
+
+// -----
+
+// TODO(b/217611473)
+// CHECK-LABEL: @shape_expansion
+func @shape_expansion(%13 : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
+  // CHECK: "mhlo.dynamic_reshape"
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %14 = tensor.dim %13, %c0 : tensor<?x1xi64>
+  %15 = tensor.from_elements %14, %c1, %c1 : tensor<3xindex>
+  %16 = "mhlo.dynamic_reshape"(%13, %15)
+      : (tensor<?x1xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
+  return %16 : tensor<?x1x1xi64>
+}
+
+// -----
+
+// TODO(b/217611473)
+// CHECK-LABEL: @shape_collapse_and_expansion
+func @shape_collapse_and_expansion(%arg : tensor<3x?xi64>)
+    -> tensor<?x1x1xi64> {
+  // CHECK: "mhlo.dynamic_reshape"
+  %c1 = arith.constant 1 : index
+  %c3 = arith.constant 3 : index
+  %d1 = tensor.dim %arg, %c1 : tensor<3x?xi64>
+  %three_d1 = arith.muli %c3, %d1 : index
+  %15 = tensor.from_elements %three_d1, %c1, %c1 : tensor<3xindex>
+  %16 = "mhlo.dynamic_reshape"(%arg, %15)
+      : (tensor<3x?xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
+  return %16 : tensor<?x1x1xi64>
 }

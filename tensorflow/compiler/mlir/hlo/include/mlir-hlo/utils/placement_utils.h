@@ -1,3 +1,6 @@
+#ifndef MLIR_HLO_UTILS_PLACEMENT_UTILS_H
+#define MLIR_HLO_UTILS_PLACEMENT_UTILS_H
+
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,3 +33,5 @@ constexpr llvm::StringRef c_gpu = "gpu";
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_PLACEMENT_UTIL_H_
+
+#endif

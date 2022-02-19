@@ -736,12 +736,12 @@ class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
 
   LegalizeTF(const LegalizeTF&) {}
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.insert<Tf2XlaRewritePattern>(
-        &getContext(), device_type_, prefer_tf2xla_, legalize_test_only_ops_);
+    patterns.add<Tf2XlaRewritePattern>(&getContext(), device_type_,
+                                       prefer_tf2xla_, legalize_test_only_ops_);
     if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
+            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       signalPassFailure();
   }
 
@@ -754,8 +754,8 @@ void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           RewritePatternSet& patterns,
                                           MLIRContext* ctx,
                                           bool prefer_tf2xla) {
-  patterns.insert<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,
-                                        /*legalize_test_only_ops=*/false);
+  patterns.add<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,
+                                     /*legalize_test_only_ops=*/false);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(

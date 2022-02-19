@@ -268,12 +268,20 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
       info.opencl_info.cl_version == OpenClVersion::kCl2_2) {
     info.opencl_info.image_pitch_alignment =
         GetDeviceInfo<cl_uint>(id, CL_DEVICE_IMAGE_PITCH_ALIGNMENT);
+    info.opencl_info.image_base_address_alignment =
+        GetDeviceInfo<cl_uint>(id, CL_DEVICE_IMAGE_BASE_ADDRESS_ALIGNMENT);
   } else if (info.SupportsExtension("cl_khr_image2d_from_buffer")) {
-    cl_uint result;
+    cl_uint result = 0;
     auto status =
         GetDeviceInfo(id, CL_DEVICE_IMAGE_PITCH_ALIGNMENT_KHR, &result);
     if (status.ok()) {
       info.opencl_info.image_pitch_alignment = result;
+    }
+    result = 0;
+    status =
+        GetDeviceInfo(id, CL_DEVICE_IMAGE_BASE_ADDRESS_ALIGNMENT_KHR, &result);
+    if (status.ok()) {
+      info.opencl_info.image_base_address_alignment = result;
     }
   }
 

@@ -216,6 +216,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
 
   add_pass(CreateFunctionalToExecutorDialectConversionPass());
   add_pass(TFDevice::CreateReplicateToIslandPass());
+  add_pass(TFDevice::CreateReplicaIDToDeviceOrdinalPass());
   add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
   pm.addNestedPass<FuncOp>(TFTPU::CreateTPUDevicePropagationPass());

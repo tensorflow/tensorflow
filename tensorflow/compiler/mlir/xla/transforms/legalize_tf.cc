@@ -1169,7 +1169,7 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
             input_size);
         Value cond = rewriter.create<mlir::arith::CmpIOp>(
             loc, arith::CmpIPredicate::sge, padding_needed, zero);
-        padding_needed = rewriter.create<mlir::SelectOp>(
+        padding_needed = rewriter.create<mlir::arith::SelectOp>(
             loc, padding_needed.getType(), cond, padding_needed, zero);
         *padding_low =
             rewriter.create<arith::DivUIOp>(loc, padding_needed, two);
@@ -1231,8 +1231,8 @@ class ConvertConvDynamic : public OpRewritePattern<OpT> {
     };
     auto get_dim_value = [&](Value val, int64_t dim) {
       Value dim_value = rewriter.create<tensor::DimOp>(loc, val, dim);
-      return rewriter.create<arith::IndexCastOp>(loc, dim_value,
-                                                 shape_scalar_type);
+      return rewriter.create<arith::IndexCastOp>(loc, shape_scalar_type,
+                                                 dim_value);
     };
 
     for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
@@ -1587,8 +1587,8 @@ class ConvertGatherNdOpDynamic : public OpRewritePattern<TF::GatherNdOp> {
               rewriter.getIntegerAttr(indices_ty.getElementType(), dim_size)));
         } else {
           slice_sizes_vals.push_back(rewriter.create<arith::IndexCastOp>(
-              loc, rewriter.create<tensor::DimOp>(loc, params, i),
-              indices_ty.getElementType()));
+              loc, indices_ty.getElementType(),
+              rewriter.create<tensor::DimOp>(loc, params, i)));
         }
       }
     }
@@ -3179,17 +3179,17 @@ class ConvertSliceOpDynamic : public OpRewritePattern<TF::SliceOp> {
           rewriter.create<tensor::ExtractOp>(loc, begin_indices, indices);
       auto size_value = rewriter.create<tensor::ExtractOp>(loc, sizes, indices);
       Value minus_one = rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.create<arith::ConstantIndexOp>(loc, -1),
-          shape_scalar_type);
+          loc, shape_scalar_type,
+          rewriter.create<arith::ConstantIndexOp>(loc, -1));
       auto is_minus_one = rewriter.create<arith::CmpIOp>(
           loc, arith::CmpIPredicate::eq, size_value, minus_one);
       Value end_value =
           rewriter.create<arith::AddIOp>(loc, begin_value, size_value);
       auto dim_value = rewriter.create<arith::IndexCastOp>(
-          loc, rewriter.create<tensor::DimOp>(loc, input, i),
-          shape_scalar_type);
-      end_value = rewriter.create<mlir::SelectOp>(loc, is_minus_one, dim_value,
-                                                  end_value);
+          loc, shape_scalar_type,
+          rewriter.create<tensor::DimOp>(loc, input, i));
+      end_value = rewriter.create<mlir::arith::SelectOp>(loc, is_minus_one,
+                                                         dim_value, end_value);
       auto end_value_casted = rewriter.create<arith::IndexCastOp>(
           loc, rewriter.getIndexType(), end_value);
       end_values.push_back(end_value_casted);
@@ -4294,7 +4294,7 @@ class ConvertMeanOp
   using GenericConvertReductionOp::GenericConvertReductionOp;
   static Value GetInitialValue(Type reduce_element_type, Location loc,
                                PatternRewriter *rewriter) {
-    return GetScalarConstOfType(reduce_element_type, loc, 0, rewriter);
+    return GetScalarNegZeroOfType(reduce_element_type, loc, rewriter);
   }
 };
 
@@ -4310,7 +4310,8 @@ class ConvertSumOp
 
   static Value GetInitialValue(Type reduce_element_type, Location loc,
                                PatternRewriter *rewriter) {
-    return GetScalarConstOfType(reduce_element_type, loc, 0, rewriter);
+    // The neutral element of fp addition is -0.0, not 0.0: '0.0 + -0.0 = 0.0'.
+    return GetScalarNegZeroOfType(reduce_element_type, loc, rewriter);
   }
 };
 
@@ -4443,12 +4444,9 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
 
     IntegerAttr iota_dimension =
         IntegerAttr::get(rewriter.getIntegerType(64), axis);
-    Value index_values =
-        rewriter.create<IotaOp>(loc, index_type, iota_dimension);
-
-    std::vector<int64_t> dimensions = input_type.getShape();
-    dimensions.erase(dimensions.begin() + axis);
-    ArrayRef<int64_t> reduction_result_shape(dimensions);
+    Value input_shape = rewriter.create<shape::ShapeOfOp>(loc, op.input());
+    Value index_values = rewriter.create<DynamicIotaOp>(
+        loc, index_type, input_shape, iota_dimension);
 
     Value operands[] = {op.input(), index_values};
     Value init_values[] = {init_value, index_init_value};
@@ -5353,15 +5351,12 @@ class ConvertInfeedDequeueTupleOp
 
   LogicalResult matchAndRewrite(TF::InfeedDequeueTupleOp op,
                                 PatternRewriter &rewriter) const override {
-    std::vector<Type> result_types(op.outputs().size());
-    for (auto idx_and_output : llvm::enumerate(op.outputs())) {
-      result_types[idx_and_output.index()] = (idx_and_output.value().getType());
-    }
+    std::vector<Type> result_types;
 
-    for (Type t : result_types) {
-      if (auto ty = t.dyn_cast<RankedTensorType>()) {
-        if (!ty.hasStaticShape()) return failure();
-      }
+    for (mlir::Type t : op.getResultTypes()) {
+      auto ty = t.cast<mlir::TensorType>();
+      if (!ty.hasStaticShape()) return failure();
+      result_types.push_back(t);
     }
 
     // Infeed takes a single token operand. Generate the token using
@@ -5403,10 +5398,19 @@ class ConvertInfeedDequeueTupleOp
       }
     }
 
+    if (op->hasAttr("layouts")) {
+      // Append a UnitAttr for the "token" operand of the mhlo.infeed op here to
+      // avoid compilation failure when exporting "layouts" attribute of the
+      // corresponding InfeedDequeueTupleOp to a graph node.
+      data_and_token->setAttr(
+          "layout", rewriter.getArrayAttr(
+                        {op->getAttr("layouts"), rewriter.getUnitAttr()}));
+    }
+
     // The infeed instruction produces a tuple of the infeed data and a token
     // type. Emit get_tuple_element to get infeed data tuple.
     auto data_tuple = rewriter.create<GetTupleElementOp>(
-        op.getLoc(), data_tuple_type, data_and_token,
+        op.getLoc(), data_tuple_type, data_and_token.getResult(0),
         rewriter.getI32IntegerAttr(0));
 
     // Emit get_tuple_element for each result.
@@ -5451,7 +5455,8 @@ class ConvertOutfeedEnqueueTupleOp
     auto token_type = mhlo::TokenType::get(rewriter.getContext());
     auto tuple = rewriter.create<TupleOp>(op.getLoc(), op.inputs());
     auto token = rewriter.create<CreateTokenOp>(op.getLoc(), token_type);
-    rewriter.create<OutfeedOp>(op.getLoc(), token_type, tuple, token,
+    SmallVector<Value> outfeed_data({tuple});
+    rewriter.create<OutfeedOp>(op.getLoc(), token_type, outfeed_data, token,
                                /*outfeed_config=*/rewriter.getStringAttr(""));
     rewriter.eraseOp(op);
     return success();
@@ -5633,8 +5638,8 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
       int64_t dim_size = value_type.getDimSize(dim_idx);
       if (dim_size == ShapedType::kDynamicSize) {
         Value dim_i = rewriter.create<arith::IndexCastOp>(
-            loc, rewriter.create<tensor::DimOp>(loc, op.getOperand(), dim_idx),
-            shape_scalar_type);
+            loc, shape_scalar_type,
+            rewriter.create<tensor::DimOp>(loc, op.getOperand(), dim_idx));
         end_indices.push_back(dim_i);
         if (dim_idx != axis) {
           shape_values.push_back(dim_i);
@@ -6490,7 +6495,7 @@ class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
         RankedTensorType::get(result_ty.getShape(), rewriter.getIndexType());
     auto shape_op =
         rewriter.create<shape::ShapeOfOp>(op.getLoc(), index_tensor, input);
-    rewriter.replaceOpWithNewOp<arith::IndexCastOp>(op, shape_op, result_ty);
+    rewriter.replaceOpWithNewOp<arith::IndexCastOp>(op, result_ty, shape_op);
     return success();
   }
 };
@@ -7275,7 +7280,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
   // clang-format off
-  patterns->insert<
+  patterns->add<
     ConvertAllOp,
     ConvertAnyOp,
     ConvertArgMaxOp,

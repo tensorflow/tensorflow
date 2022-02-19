@@ -133,7 +133,7 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
           << " index=" << llvm_ir::DumpToString(*index);
 
   return b->CreateInBoundsGEP(
-      array_type_as_pointer->getElementType(), array,
+      array_type_as_pointer->getPointerElementType(), array,
       llvm::isa<llvm::GlobalVariable>(array)
           ? llvm::ArrayRef<llvm::Value*>({b->getInt64(0), index})
           : index);
@@ -620,7 +620,7 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
 
   // Generate unwind information so that GDB can crawl through the stack frames
   // created by the JIT compiled code.
-  function->setHasUWTable();
+  function->setUWTableKind(llvm::UWTableKind::Default);
 
   // Tensorflow always flushes denormals to zero, let LLVM know that flushing
   // denormals is safe. This allows vectorization using ARM's neon instruction

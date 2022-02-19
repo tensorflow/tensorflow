@@ -37,4 +37,25 @@ limitations under the License.
 #define GET_OP_CLASSES
 #include "tensorflow/core/ir/ops.h.inc"
 
+namespace mlir {
+namespace tfg {
+
+// Analysis that keeps track of all function names in a module.
+struct FunctionTable {
+  explicit FunctionTable(ModuleOp module);
+
+  // Returns whether there are no functions.
+  bool empty() const { return functions.empty(); }
+
+  // Returns whether `op` may be a call.
+  bool MaybeCall(Operation* op);
+
+ private:
+  // All the functions in the graph.
+  DenseSet<StringRef> functions;
+};
+
+}  // namespace tfg
+}  // namespace mlir
+
 #endif  // TENSORFLOW_CORE_IR_OPS_H_

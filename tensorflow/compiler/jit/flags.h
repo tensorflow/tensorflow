@@ -152,8 +152,9 @@ struct MlirCommonFlags {
 
 // Flags for the JitRt pipeline -- see tf_jitrt_pipeline.h for details.
 struct JitRtFlags {
-  bool vectorize;
+  bool always_specialize;
   bool cost_driven_async_parallel_for;
+  bool vectorize;
 };
 
 // Return a pointer to the DumpGraphFlags struct;

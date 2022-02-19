@@ -39,7 +39,6 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
 // to inject more information in the middle of the conversion before resuming it
 // (like freezing variables for example).
 void AddPreVariableFreezingTFToTFLConversionPasses(
-    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager);
 
@@ -57,13 +56,13 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
 
 // Add the Quantization passes, specified in the quant_specs, into a pass
 // manager.
-void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
+void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager& pass_manager);
 
 // Add the DynamicRangeQuantization passes, specified in the quant_specs, into a
 // pass manager.
 void AddDynamicRangeQuantizationPasses(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const mlir::quant::QuantizationSpecs& quant_specs,
     mlir::OpPassManager& pass_manager);
 }  // namespace tensorflow
 

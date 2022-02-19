@@ -29,16 +29,22 @@ struct ModelHints {
   // Can improve compilation time, but inference can be slower.
   static constexpr ModelHint kReduceKernelsCount = 0x00000001;
   // Can improve tuning time, but inference can be slower.
-  static constexpr ModelHint kFastTuning = 0x00000002;
+  static constexpr ModelHint kFastTuning = 0x00000001 << 1;
 
   // Can improve performance and memory consumption, but slow down
   // initialization and create more unique kernels.
-  static constexpr ModelHint kAllowSpecialKernels = 0x00000004;
+  static constexpr ModelHint kAllowSpecialKernels = 0x00000001 << 2;
 
   // By default we apply Winograd optimized kernels and it improves performance.
   // But it also can increase memory usage and decrease precision.
   // This hint can disable Winograd optimizations.
-  static constexpr ModelHint kNoWinogradOptimizations = 0x00000008;
+  static constexpr ModelHint kNoWinogradOptimizations = 0x00000001 << 3;
+
+  // By default, the same weights can be duplicated among different nodes of
+  // convolution. With this hint we will try to reuse common object, when it
+  // possible.
+  // Can decrease constant memory usage(if model has the same weights).
+  static constexpr ModelHint kReuseConvWeights = 0x00000001 << 4;
 
   void Add(ModelHint hint) {
     if (hint == kFastestInference) {

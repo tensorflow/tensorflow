@@ -51,7 +51,7 @@ bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
 
 }  // namespace
 
-mlir::OwningModuleRef HloToMlirHloTranslateFunction(
+mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
   HloProto hlo_proto;
@@ -61,7 +61,7 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
     return nullptr;
   }
 
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   auto status = ConvertHloToMlirHlo(
       module.get(), hlo_proto.mutable_hlo_module(), import_all_computations);
@@ -73,7 +73,7 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
   return module;
 }
 
-mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
+mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations) {
   std::string content(input.data(), input.size());
@@ -85,7 +85,7 @@ mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
   }
 
   auto hlo_module = std::move(hlo_module_error.ValueOrDie());
-  mlir::OwningModuleRef module =
+  mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   auto status =
       ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations);

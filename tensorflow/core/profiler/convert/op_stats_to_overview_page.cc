@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -190,7 +189,7 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     device_cumulative_fraction += op->self_time_fraction();
     op->set_cumulative_time_fraction(device_cumulative_fraction);
     op->set_flop_rate(
-        SafeDivide(metrics->flops(), PicosToNanos(metrics->time_ps())));
+        SafeDivide(metrics->flops(), PicoToNano(metrics->time_ps())));
     auto iter = kernel_stats_by_op_name.find(op->name());
     if (iter != kernel_stats_by_op_name.end()) {
       op->set_is_op_tensorcore_eligible(

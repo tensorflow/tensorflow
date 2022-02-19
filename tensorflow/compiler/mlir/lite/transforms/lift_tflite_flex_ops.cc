@@ -244,7 +244,7 @@ class LiftTfliteFlexOpsPass
     FuncOp func = getOperation();
 
     mlir::RewritePatternSet patterns(context);
-    patterns.insert<LiftFlexCustomOp>(context);
+    patterns.add<LiftFlexCustomOp>(context);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       signalPassFailure();
       return;

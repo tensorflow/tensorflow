@@ -48,7 +48,7 @@ namespace {
 const char kTFLiteDataLayout[] = "NHWC";
 }  // namespace
 
-void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
+void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreatePrepareQuantizePass(quant_specs));
@@ -71,7 +71,7 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 }
 
 void AddDynamicRangeQuantizationPasses(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const mlir::quant::QuantizationSpecs& quant_specs,
     mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreatePrepareDynamicRangeQuantizePass(quant_specs));
@@ -122,7 +122,6 @@ void AddConvertHloToTfPass(std::string entry_function_name,
 // to inject more information in the middle of the conversion before resuming
 // it.
 void AddPreVariableFreezingTFToTFLConversionPasses(
-    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager) {
   if (pass_config.enable_hlo_to_tf_conversion) {
@@ -203,8 +202,10 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass(
         /*allow_tensorlist_pass_through=*/toco_flags.force_select_tf_ops() ||
             toco_flags.enable_select_tf_ops(),
-        /*default_to_single_batch=*/toco_flags
-            .default_to_single_batch_in_tensor_list_ops()));
+        /*default_to_single_batch=*/
+        toco_flags.default_to_single_batch_in_tensor_list_ops(),
+        /*enable_dynamic_update_slice=*/
+        toco_flags.enable_dynamic_update_slice()));
   }
 
   // This pass does resource analysis of saved model global tensors and marks
@@ -222,9 +223,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   // after the legalize below, for now it needs to be below the above passes
   // that work on TF dialect and before inliner so that the function calls in
   // body and cond are inlined for optimization.
-  if (pass_config.legalize_tf_while) {
-    pass_manager->addPass(mlir::TFL::CreateLegalizeTFWhilePass());
-  }
+  pass_manager->addPass(mlir::TFL::CreateLegalizeTFWhilePass());
 
   // Add function inlining pass. Both TF and TFLite dialects are opted into
   // function inliner interface.
@@ -363,8 +362,7 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
                                 const toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager) {
-  AddPreVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
-                                                pass_config, pass_manager);
+  AddPreVariableFreezingTFToTFLConversionPasses(pass_config, pass_manager);
   AddPostVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
                                                  pass_config, pass_manager);
 }
@@ -402,7 +400,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   // This is needed for control flow support with TF TensorList.
   pm.addPass(mlir::TFL::CreateLowerStaticTensorListPass(
       /*allow_tensorlist_pass_through=*/false,
-      /*default_to_single_batch=*/false));
+      /*default_to_single_batch=*/false,
+      /*enable_dynamic_update_slice=*/false));
 
   // Saved model pass to mark global tensors immutable.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());

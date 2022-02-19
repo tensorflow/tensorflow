@@ -149,6 +149,19 @@ tf_native_cc_binary(
     ],
 )
 
+tf_native_cc_binary(
+    name = "tflite_op_coverage_spec_getters_gen",
+    srcs = [
+        "tools/tflite_op_coverage_spec_getters_gen.cc",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TableGen",
+        "@llvm-project//mlir:TableGen",
+    ],
+)
+
 cc_library(
     name = "numerical_utils",
     srcs = ["numerical_utils.cc"],
