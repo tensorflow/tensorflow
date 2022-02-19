@@ -25,7 +25,6 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps_utils as acd
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -34,7 +33,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util as util_v1
@@ -81,32 +79,34 @@ def while_loop(cond,
   """Like tf.while_loop, except emits a single While op."""
   # Keep the original loop_vars around to know which args were TensorArrays.
   orig_loop_vars = loop_vars
+  flat_orig_loop_vars = nest.flatten(orig_loop_vars, expand_composites=True)
   # Cache its length since we use it at multiple places below.
   len_orig_loop_vars = len(orig_loop_vars)
 
   # Convert TensorArrays to their flow variables. These get converted back to
   # TensorArrays before calling `cond` and `body`. See `wrapped_cond` and
   # `wrapped_body` below.
-  loop_vars = list(_tensor_array_to_flow(orig_loop_vars))
+  loop_vars = _tensor_array_to_flow(loop_vars)
   loop_vars = nest.map_structure(
       ops.internal_convert_to_tensor_or_indexed_slices, loop_vars,
       expand_composites=True)
-  if shape_invariants is not None:
-    nest.assert_same_structure(orig_loop_vars, shape_invariants,
-                               expand_composites=False)
-    signature = nest.map_structure(
-        control_flow_ops._shape_invariant_to_type_spec, loop_vars,
-        list(shape_invariants), expand_composites=False)
-    shape_invariants = nest.map_structure(
-        _get_shape_invariant, loop_vars,
-        list(shape_invariants), expand_composites=False)
 
+  # `loop_vars_signature` is a structure of TypeSpecs and has the same
+  # structure with the `orig_loop_vars`. If `shape_invariants` is not None, its
+  # shape information comes from `shape_invariants` instead of `orig_loop_vars`.
+  # It is used to pack flattened vars into structured vars.
+  if shape_invariants is not None:
+    loop_vars_signature = nest.map_structure(
+        control_flow_ops._shape_invariant_to_type_spec,
+        loop_vars, shape_invariants)
   else:
-    signature = nest.map_structure(
-        type_spec.type_spec_from_value, loop_vars, expand_composites=False)
-    shape_invariants = nest.map_structure(
-        _get_shape_invariant, loop_vars,
-        expand_composites=False)
+    loop_vars_signature = nest.map_structure(
+        control_flow_ops._shape_invariant_to_type_spec, loop_vars)
+
+  flat_shape_invariants = nest.map_structure(
+      lambda spec: spec.shape,
+      nest.flatten(loop_vars_signature, expand_composites=True))
+
   if not name:
     name = "while"
 
@@ -122,13 +122,12 @@ def while_loop(cond,
         if maximum_iterations is not None else None,
         name="loop_counter")
     # Add loop counter needed for computing gradients.
-    loop_vars = [loop_counter, maximum_iterations_loop_var] + loop_vars
+    loop_vars = [loop_counter, maximum_iterations_loop_var] + list(loop_vars)
 
-    shape_invariants = [tensor_shape.TensorShape([])] * 2 + shape_invariants
-    signature = (
+    func_graph_signature = (
         [tensor_spec.TensorSpec.from_tensor(loop_counter),
          tensor_spec.TensorSpec.from_tensor(maximum_iterations_loop_var)] +
-        signature)
+        list(loop_vars_signature))
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
@@ -138,10 +137,11 @@ def while_loop(cond,
       """Extra `cond` wrapper that can handle the extra counter loop_var."""
       # Convert the flow variables in `args` to TensorArrays. `args` should
       # already have the same structure as `orig_loop_vars` but currently there
-      # is no nest.zip so we call `_pack_sequence_as` which flattens both
-      # `orig_loop_vars` and `args`, converts flows in `args` to TensorArrays
-      # and packs it into the structure of `orig_loop_vars`.
-      pred = cond(*_pack_sequence_as(orig_loop_vars, args))
+      # is no nest.zip so we call `_pack_sequence_as` which flattens `args`,
+      # converts flows in `args` to TensorArrays and packs it into the
+      # structure of `loop_vars_signature`.
+      pred = cond(
+          *_pack_sequence_as(loop_vars_signature, flat_orig_loop_vars, args))
       if (tensor_util.is_tf_type(pred) and
           (pred.shape.dims is None or pred.shape.dims)):
         pred = array_ops.squeeze_v2(pred)
@@ -159,7 +159,7 @@ def while_loop(cond,
         wrapped_cond,
         [],  # We provide signature instead of args.
         {},
-        signature=signature,
+        signature=func_graph_signature,
         func_graph=util.WhileCondFuncGraph(
             cond_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies)
@@ -192,10 +192,11 @@ def while_loop(cond,
 
       # Convert the flow variables in `args` to TensorArrays. `args` should
       # already have the same structure as `orig_loop_vars` but currently there
-      # is no nest.zip so we call `_pack_sequence_as` which flattens both
-      # `orig_loop_vars` and `args`, converts flows in `args` to TensorArrays
-      # and packs it into the structure of `orig_loop_vars`.
-      outputs = body(*_pack_sequence_as(orig_loop_vars, args))
+      # is no nest.zip so we call `_pack_sequence_as` which flattens `args`,
+      # converts flows in `args` to TensorArrays and packs it into the
+      # structure of `loop_vars_signature`.
+      outputs = body(
+          *_pack_sequence_as(loop_vars_signature, flat_orig_loop_vars, args))
       if not nest.is_nested_or_composite(outputs):
         outputs = [outputs]
       # Compare the structure of input and output of body converting the
@@ -214,7 +215,7 @@ def while_loop(cond,
         wrapped_body,
         [],  # We provide signature instead of args.
         {},
-        signature=signature,
+        signature=func_graph_signature,
         func_graph=util.WhileBodyFuncGraph(
             body_name, collections=ops.get_default_graph()._collections),  # pylint: disable=protected-access
         add_control_dependencies=add_control_dependencies,
@@ -253,9 +254,7 @@ def while_loop(cond,
     _check_shapes_compat(
         body_graph.outputs[first_loop_var_index:first_loop_var_index +
                            num_flattened_outputs],
-        nest.flatten(
-            shape_invariants[first_loop_var_index:first_loop_var_index +
-                             len_orig_loop_vars], expand_composites=True),
+        flat_shape_invariants,
         nest.flatten(loop_vars[first_loop_var_index:first_loop_var_index +
                                len_orig_loop_vars], expand_composites=True))
 
@@ -294,8 +293,7 @@ def while_loop(cond,
       output_shapes = [t.shape for t in body_graph.outputs]
       orig_loop_vars_range = slice(first_loop_var_index,
                                    first_loop_var_index + num_flattened_outputs)
-      output_shapes[orig_loop_vars_range] = nest.flatten(
-          shape_invariants, expand_composites=True)[orig_loop_vars_range]
+      output_shapes[orig_loop_vars_range] = flat_shape_invariants
 
       outputs = _build_while_op(
           flattened_loop_vars,
@@ -320,7 +318,8 @@ def while_loop(cond,
                              num_flattened_outputs]
   if not back_prop:
     output_loop_vars = [array_ops.stop_gradient(t) for t in output_loop_vars]
-  outputs = _pack_sequence_as(orig_loop_vars, output_loop_vars)
+  outputs = _pack_sequence_as(
+      loop_vars_signature, flat_orig_loop_vars, output_loop_vars)
 
   if return_same_structure:
     return outputs
@@ -1275,9 +1274,10 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     return self._indirect_captures[ops.tensor_id(tensor)]
 
 
-def _check_shapes_compat(output_tensors, shape_invariants, input_tensors):
-  for (t, shape, input_t) in zip(output_tensors, shape_invariants,
-                                 input_tensors):
+def _check_shapes_compat(flat_output_tensors, flat_shape_invariants,
+                         flat_input_tensors):
+  for (t, shape, input_t) in zip(flat_output_tensors, flat_shape_invariants,
+                                 flat_input_tensors):
     if not control_flow_ops._ShapeLessThanOrEqual(t.shape, shape):
       raise ValueError(
           f"Input tensor `{input_t.name}` enters the loop with shape {shape}, "
@@ -1366,7 +1366,7 @@ def _graph_name(graph):
   return "Base"
 
 
-def _pack_sequence_as(structure_with_tas, loop_vars):
+def _pack_sequence_as(loop_vars_signature, flat_orig_loop_vars, loop_vars):
   """Like `nest.pack_sequence_as` but also replaces flows with TensorArrays."""
 
   def flow_to_tensor_array(flow, ta):  # pylint: disable=missing-docstring
@@ -1376,9 +1376,9 @@ def _pack_sequence_as(structure_with_tas, loop_vars):
   flattened_loop_vars = [
       flow_to_tensor_array(*z)
       for z in zip(nest.flatten(loop_vars, expand_composites=True),
-                   nest.flatten(structure_with_tas, expand_composites=True))
+                   flat_orig_loop_vars)
   ]
-  return nest.pack_sequence_as(structure_with_tas, flattened_loop_vars,
+  return nest.pack_sequence_as(loop_vars_signature, flattened_loop_vars,
                                expand_composites=True)
 
 
@@ -1410,41 +1410,6 @@ def _build_accumulator_name(tensor):
 def _is_loop_invariant(tensor, inputs, outputs):
   return (any(tensor is t for t in inputs) and
           any(tensor is t for t in outputs))
-
-
-def _get_shape_invariant(var, shape=None):
-  """Returns shape invariant(s) for the given variable.
-
-  Args:
-    var: The tensor whose shape is described.
-    shape: The shape invariant for the tensor.  If not specified, then a default
-      shape invariant for `var` is returned.
-
-  Returns:
-    `TensorShape` or `list` of `TensorShape`: The shape invariant for `var` (if
-    it is a `Tensor`), or the shape invariants for the components that comprise
-    `var` (if it is a `CompositeTensor`).
-  """
-  if isinstance(var, composite_tensor.CompositeTensor):
-    # Get a TypeSpec for `var`.
-    if shape is None:
-      spec = var._type_spec  # pylint: disable=protected-access
-    else:
-      spec = control_flow_ops._shape_invariant_to_type_spec(var, shape)
-
-    tensor_specs = nest.flatten(spec, expand_composites=True)
-    return [tspec.shape for tspec in tensor_specs]
-
-  elif shape is None:
-    return var.shape
-  elif isinstance(shape, tensor_spec.TensorSpec):
-    if var.dtype != shape.dtype:
-      raise TypeError("TensorSpec %r is not compatible with %r" % (shape, var))
-    return shape.shape
-  elif isinstance(shape, type_spec.TypeSpec):
-    raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
-  else:
-    return shape
 
 
 class _OperationWithOutputs(ops.Operation):
