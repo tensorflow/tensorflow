@@ -307,7 +307,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
         GetI64DenseElementsAttr(dimensions));
 
     TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-        *instr->called_computations()[0], &reduce_op.body(), &builder_));
+        *instr->called_computations()[0], &reduce_op.body(), &builder_,
+        /*flatten_region_arg_tuple=*/true));
     op = reduce_op;
   } else {
     TF_ASSIGN_OR_RETURN(
