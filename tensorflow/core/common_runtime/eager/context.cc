@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 // clang-format off
@@ -53,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -649,6 +652,9 @@ EagerContext::~EagerContext() {
     // TODO(b/136478427): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
                     "Servers don't support clean shutdown.";
+    if (server_->worker_env()->session_mgr != nullptr) {
+      server_->worker_env()->session_mgr->TeardownCoordinationServiceAndAgent();
+    }
     server_.release();
   }
 
