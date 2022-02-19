@@ -4332,7 +4332,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
     return self == other
 
   def most_specific_common_supertype(self, others):
-    return None
+    return self if all(self == other for other in others) else None
 
   # TODO(b/220385675): Once _element_spec is guaranteed to be TypeSpec, the
   # following functions do not need to be overloaded: is_subtype_of,
