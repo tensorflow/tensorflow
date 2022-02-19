@@ -268,6 +268,7 @@ inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t) {
 
 Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
                       FullTypeDef& target) {
+  target.Clear();
   target.set_type_id(TFT_PRODUCT);
 
   AttrMap map;
