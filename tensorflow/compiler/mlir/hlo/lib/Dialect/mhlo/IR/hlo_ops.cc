@@ -4464,6 +4464,28 @@ OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+// simplify select(not(%pred), true_value, false_value) => select(%pred,
+// false_value, true_value)
+static LogicalResult selectCanonicalization(SelectOp selectOp,
+                                            PatternRewriter& rewriter) {
+  if (auto notOp = selectOp.pred().getDefiningOp<NotOp>()) {
+    if (1 ==
+        notOp.operand().getType().cast<ShapedType>().getElementTypeBitWidth()) {
+      std::array<Value, 3> newOperands = {notOp.operand(),
+                                          selectOp.getOperands()[2],
+                                          selectOp.getOperands()[1]};
+      selectOp.getOperation()->setOperands(newOperands);
+      return success();
+    }
+  }
+  return failure();
+}
+
+void SelectOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                           MLIRContext* /*context*/) {
+  results.add(&selectCanonicalization);
+}
+
 // Makes it such that a SelectOp that is a non-root operation in a DRR infers
 // the return type based on operand type.
 LogicalResult SelectOp::inferReturnTypes(
