@@ -668,6 +668,9 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
       return;
     }
     SplitBatchCosts(batch_cost_measurements, processed_size, *batch);
+    // Clear the measurements before unblocking the batch task, as measurements
+    // are associated with the task's thread context.
+    batch_cost_measurements.clear();
     for (int i = 0; i < batch->num_tasks(); ++i) {
       if (batch->task(i).is_partial) {
         batch->mutable_task(i)->status->Update(status);
