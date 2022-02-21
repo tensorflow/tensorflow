@@ -1,7 +1,7 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
-load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library")
+load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library", "tfrt_cc_test")
 
 # TF to TFRT kernels conversion.
 package(
@@ -150,6 +150,19 @@ tfrt_cc_library(
         "@tf_runtime//backends/jitrt",
     ],
 )
+
+# copybara:uncomment_begin
+# tfrt_cc_test(
+#     name = "tf_jitrt_test",
+#     srcs = ["jit/tf_jitrt_test.cc"],
+#     deps = [
+#         ":tf_jitrt",
+#         "@com_google_googletest//:gtest_main",
+#         "@llvm-project//mlir:mlir_c_runner_utils",
+#         "@tf_runtime//backends/jitrt",
+#     ],
+# )
+# copybara:uncomment_end
 
 tfrt_cc_library(
     name = "tf_jitrt_kernels",
