@@ -190,7 +190,7 @@ def InvokeNvcc(argv, log=False):
       nvcc_std_map["c++1z"] = "c++17"
       nvcc_allowed_std_options += ["c++17", "c++1z"]
   std_options = ''.join([' -std=' +
-      nvcc_std_map[define] if define in nvcc_std_map else define
+      (nvcc_std_map[define] if define in nvcc_std_map else define)
       for define in std_options if define in nvcc_allowed_std_options][-1:])
   fatbin_options = ''.join([' --fatbin-options=' + option
       for option in GetOptionValue(argv, '-Xcuda-fatbinary')])
