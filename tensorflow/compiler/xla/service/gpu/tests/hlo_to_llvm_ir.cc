@@ -74,7 +74,6 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
 #if GOOGLE_CUDA
   std::string target_triple = "nvptx64-nvidia-cuda";
   std::string datalayout = "nvptx64-nvidia-cuda";
-<<<<<<< HEAD
   std::string platform_name = "CUDA";
 #else
   std::string target_triple = "amdgcn--amdhsa-amdgiz";
@@ -87,20 +86,10 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                           hlo_module.get(), &llvm_context,
                           /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
                           /*data_layout=*/xla::gpu::nvptx::DataLayout(),
-                          /*platform_name=*/platform_name, gpu_device_info,
+                          /*platform_name=*/platform_name, stream_executor::rocm::kROCmPlatformId,
+                          gpu_device_info,
                           cuda_compute_capability, amdgpu_arch,
                           /*pointer_size=*/8));
-=======
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::Module> llvm_module,
-      xla::gpu::CompileModuleToLlvmIr(
-          hlo_module.get(), &llvm_context,
-          /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
-          /*data_layout=*/xla::gpu::nvptx::DataLayout(),
-          /*platform_name=*/"CUDA",
-          /*platform_id=*/stream_executor::cuda::kCudaPlatformId,
-          gpu_device_info, cuda_compute_capability, /*pointer_size=*/8));
->>>>>>> upstream/master
 
   if (!generate_ptx) {
     llvm_module->print(llvm::outs(), nullptr);

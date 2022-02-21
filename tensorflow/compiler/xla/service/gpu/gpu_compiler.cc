@@ -173,15 +173,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
 
-#if BEF_EXECUTABLE
-=======
 #if XLA_ENABLE_XLIR
->>>>>>> upstream/master
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
@@ -1468,26 +1464,16 @@ HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
-<<<<<<< HEAD
-    const std::string& platform_name, GpuDeviceInfo gpu_device_info,
+    const std::string& platform_name, const se::Platform::Id platform_id,
+    GpuDeviceInfo gpu_device_info,
     se::CudaComputeCapability cuda_compute_capability,
     std::string amdgpu_arch, int pointer_size) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
-      gpu_device_info, cuda_compute_capability, amdgpu_arch,
+      platform_id, gpu_device_info, cuda_compute_capability, amdgpu_arch,
       DummyCanShareBufferFunction,
       pointer_size, &results));
-=======
-    const std::string& platform_name, const se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability, int pointer_size) {
-  CompileModuleResults results;
-  TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
-      hlo_module, llvm_context, target_triple, data_layout, platform_name,
-      platform_id, gpu_device_info, cuda_compute_capability,
-      DummyCanShareBufferFunction, pointer_size, &results));
->>>>>>> upstream/master
   return std::move(results.llvm_module);
 }
 
