@@ -130,6 +130,7 @@ def _gradient_function(op_name, attr_tuple, device, num_inputs, inputs, outputs,
   Args:
     op_name: the name of the op to be differentiated.
     attr_tuple: the attrs, as a tuple.
+    device: the device of the op.
     num_inputs: the number of inputs to the op.
     inputs: inputs to the original operation.
     outputs: outputs to the original operation.
