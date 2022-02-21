@@ -516,6 +516,14 @@ constexpr std::array<std::pair<const char*, nvinfer1::ElementWiseOperation>, 10>
         {"Pow", nvinfer1::ElementWiseOperation::kPOW},
     }};
 
+// Adds a matrix multiplication operation to the TensorRT graph. The "params"
+// pointer is only used to access the TRT network builder. The inputs and
+// parameters for the op are fully specified by input_[a|b] and transpose_[a|b].
+StatusOr<ITensorProxyPtr> ConvertMatMulImpl(OpConverterParams* params,
+                                            TRT_TensorOrWeights input_a,
+                                            TRT_TensorOrWeights input_b,
+                                            bool transpose_a, bool transpose_b);
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

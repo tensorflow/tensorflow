@@ -449,15 +449,6 @@ bool IsDensifyConstTensor(TfLiteContext* context, const TfLiteNode* node,
          IsConstantTensor(&context->tensors[node->inputs->data[0]]);
 }
 
-bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
-  if (tensor->dims_signature) {
-    for (int i : TfLiteIntArrayView(tensor->dims_signature)) {
-      if (i == -1) return true;
-    }
-  }
-  return false;
-}
-
 ANeuralNetworksOperandType ConvertTensorTypeToNNType(
     const TfLiteTensor* tensor, TfLiteType ann_type_equivalent,
     bool use_int8_asymm_signed) {
@@ -1842,7 +1833,7 @@ class NNAPIOpBuilder {
             TfLiteTypeGetName(tensor_type));
         return kTfLiteError;
     }
-    bool has_unspecified_dimensions = HasUnspecifiedDimension(tensor);
+    bool has_unspecified_dimensions = ::tflite::HasUnspecifiedDimension(tensor);
     uint32_t tensor_rank = static_cast<uint32_t>(tensor->dims->size);
     std::vector<uint32_t> dims_unspecified(tensor_rank, 0);
     if (has_unspecified_dimensions) {
@@ -4712,7 +4703,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
         mapping_util_->TfLiteIndexToNnTypeConversion(mapping_util_.get(),
                                                      absolute_input_index);
     if (delegate_options.allow_dynamic_dimensions &&
-        HasUnspecifiedDimension(tensor)) {
+        ::tflite::HasUnspecifiedDimension(tensor)) {
       input_nn_operand_type = ConvertTensorTypeToNNType(
           tensor, ann_type_equivalent, use_int8_asymm_signed);
       input_nn_operand_type_ptr = &input_nn_operand_type;
@@ -4837,7 +4828,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     ANeuralNetworksOperandType* output_nn_operand_type_ptr = nullptr;
     TfLiteTensor* tensor = &context->tensors[output_index];
     if (delegate_options.allow_dynamic_dimensions &&
-        HasUnspecifiedDimension(tensor)) {
+        ::tflite::HasUnspecifiedDimension(tensor)) {
       TfLiteType ann_type_equivalent =
           mapping_util_->TfLiteIndexToNnTypeConversion(mapping_util_.get(),
                                                        output_index);

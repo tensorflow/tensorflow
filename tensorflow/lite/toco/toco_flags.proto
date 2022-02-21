@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 48.
+// Next ID to use: 49.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -290,4 +290,8 @@ message TocoFlags {
   // Enable using num bits set in fake quant attributes for quantization.
   // Note: This is an experimental feature
   optional bool use_fake_quant_num_bits = 47 [default = false];
+
+  // Enable converting to DynamicUpdateSlice op (for ops like TensorListSetItem)
+  // Note: This is an experimental feature
+  optional bool enable_dynamic_update_slice = 48 [default = false];
 }

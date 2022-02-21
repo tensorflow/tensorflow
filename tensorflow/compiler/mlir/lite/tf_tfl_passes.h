@@ -56,13 +56,13 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
 
 // Add the Quantization passes, specified in the quant_specs, into a pass
 // manager.
-void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
+void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager& pass_manager);
 
 // Add the DynamicRangeQuantization passes, specified in the quant_specs, into a
 // pass manager.
 void AddDynamicRangeQuantizationPasses(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const mlir::quant::QuantizationSpecs& quant_specs,
     mlir::OpPassManager& pass_manager);
 }  // namespace tensorflow
 

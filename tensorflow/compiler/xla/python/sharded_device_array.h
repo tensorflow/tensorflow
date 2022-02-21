@@ -47,7 +47,6 @@ namespace jax {
 // - `sharding`, which specifies how to shard the inputs.
 // - `mesh_mapping`, which specifies how to map shards to devices.
 //
-
 // The 3 following structs define how to shard one dimension of an ndarry.
 //
 // `NoSharding` (`None` in Python) means no sharding.
@@ -148,6 +147,29 @@ using MeshDimAssignment = absl::variant<ShardedAxis, Replicated>;
 
 // Describes how each axis is sharded (if it is), and how it's mapped to the
 // devices mesh. See Jax pxla.py for the documentation.
+//
+// ShardingSpec is shared across pmap, pjit and xpmap. For pmap, an input
+// `sharding`  is composed of `NoSharding` and at most one `Unstacked`.
+// If `axis_size=None`, at least one the inputs has a dimension associated to
+// `Unstacked`.
+//
+// Examples:
+//
+// 1. For pmap, with a tensor of shape [8, 2, 2], to unstack along the first
+//    dimension into [8] devices:
+//
+//    sharding = [Unstacked(8), NoSharding, NoSharding]
+//    mesh_mapping = [ShardedAxis(0)]
+//
+// 2. With an input array of shape [6], that we want to chunk into [2, 3]
+//    Assuming an device mesh [3, 4, 2] of devices, we will have:
+//
+//    sharding = [Chunked([2, 3])]
+//    mesh_mapping = [ShardedAxis(1), Replicated, ShardedAxis(0)]
+//
+//    In particular, in the above example, the ShardedAxis refers to indices
+//    of the sharded shape [2, 3]. (only the `Chunked` sharding can produce more
+//    than one dimension).
 class ShardingSpec {
  public:
   ShardingSpec(std::vector<AvalDimSharding> sharding,

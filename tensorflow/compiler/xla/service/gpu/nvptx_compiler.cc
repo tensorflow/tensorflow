@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
@@ -149,12 +150,12 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Find the fastest algorithm for GEMMs.
   post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
 
-  // BEF-mode GpuExecutable allocates temp memory, and so the custom-call
-  // implementation for TriangularSolve is not needed.
-#if !BEF_EXECUTABLE
-  // Transform TriangularSolve ops into custom-calls, so we can add temp memory.
-  post_pipeline.AddPass<TriangularSolveRewriter>();
-#endif
+  if (!IsBefEnabled(hlo_module->config())) {
+    // Transform TriangularSolve ops into custom-calls, so we can add temp
+    // memory. XLIR allocates temp memory, and so the custom-call implementation
+    // for TriangularSolve is not needed.
+    post_pipeline.AddPass<TriangularSolveRewriter>();
+  }
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 

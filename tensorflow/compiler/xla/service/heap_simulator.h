@@ -376,7 +376,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     int64_t end;
 
     // Colocation buffers that need to be collocated with this one.
-    std::vector<const BufferType*> colocations;
+    absl::InlinedVector<const BufferType*, 2> colocations;
 
     // True if this buffer needs an allocation. False if it is collocated with
     // other buffer.

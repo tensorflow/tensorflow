@@ -1,6 +1,10 @@
 path: "tensorflow.__internal__.distribute"
 tf_module {
   member {
+    name: "ShardedVariable"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "combinations"
     mtype: "<type \'module\'>"
   }

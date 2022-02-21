@@ -44,6 +44,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Returns whether GpuExecutable runs on TFRT (instead of thunks).
+bool IsBefExecutableEnabled(const HloModuleConfig& config);
+
+// Returns whether to create BefThunks (if the specific thunk is supported).
+bool IsBefThunkEnabled(const HloModuleConfig& config);
+
+inline bool IsBefEnabled(const HloModuleConfig& config) {
+  return IsBefExecutableEnabled(config) || IsBefThunkEnabled(config);
+}
+
 // GPU-targeting implementation of the XLA Executable interface.
 //
 // Launches the given GPU kernel via the StreamExecutor.
@@ -272,8 +282,11 @@ class GpuExecutable : public Executable {
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
+  // Retains shared ownership of on-device constants that are managed by XLA and
+  // potentially shared with other executables.
+  std::vector<std::shared_ptr<se::DeviceMemoryBase>> shared_constants_;
 
-  // Data for BEF_EXECUTABLE mode only, owned.
+  // Data for bef executable mode only, owned.
   BefExecutable* bef_executable_ = nullptr;
 
   GpuExecutable(const GpuExecutable&) = delete;

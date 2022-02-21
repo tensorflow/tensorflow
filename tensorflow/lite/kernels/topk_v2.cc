@@ -212,8 +212,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTopK, &top_k));
   TF_LITE_ENSURE_TYPES_EQ(context, top_k->type, kTfLiteInt32);
 
-  // Set output dynamic if the input is not const.
-  if (IsConstantTensor(top_k)) {
+  // Set output dynamic if the `top_k` tensor is not constant, or the input has
+  // dynamic dimensions (indicated by dims signature).
+  if (IsConstantTensor(top_k) && !HasUnspecifiedDimension(input)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
   } else {
     TfLiteTensor* output_indexes;

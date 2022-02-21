@@ -28,6 +28,7 @@
         optimizers, and the previous generation of optimizers will be moved to
         `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
     *   Added L2 unit normalization layer `tf.keras.layers.UnitNormalization`.
+    *   Added `tf.keras.layers.RandomBrightness` layer for image preprocessing.
     *   Added APIs for switching between interactive logging and absl logging.
         By default, Keras always writes the logs to stdout. However, this is not
         optimal in a non-interactive environment, where you don't have access to
@@ -41,6 +42,12 @@
         and `Model.predict()` to `"auto"`, which defaults to `verbose=1` for
         most cases and defaults to `verbose=2` when used with
         `ParameterServerStrategy` or with interactive logging disabled.
+   *    Argument `jit_compile` in `Model.compile()` now applies
+        to `Model.evaluate()` and `Model.predict()`.
+        Setting `jit_compile=True` in `compile()` compiles the model's
+        training, evaluation, and inference steps to
+        [XLA](https://www.tensorflow.org/xla).
+        Note that `jit_compile=True` may not necessarily work for all models.
 
 *   `tf.lite`:
 
@@ -51,8 +58,32 @@
     *   Add nominal support for unsigned 16-bit integer tensor types. Note that
         very few TFLite kernels support this type natively, so its use in mobile
         ML authoring is generally discouraged.
+    *   Experimental support for lowering `list_ops.tensor_list_set_item` with
+        `DynamicUpdateSlice`.
+    *   Enabled a new MLIR-based dynamic range quantization backend by default
+        *   The new backend is used for post-training int8 dynamic range
+            quantization and post-training float16 quantization.
+        *   Set `experimental_new_dynamic_range_quantizer` in
+            tf.lite.TFLiteConverter to False to disable this change
 
 # Bug Fixes and Other Changes
+
+*   `tf.data`:
+
+    *   Fixed bug in `tf.data.experimental.parse_example_dataset` when
+        `tf.io.RaggedFeatures` would specify `value_key` but no `partitions`.
+        Before the fix, setting `value_key` but no `partitions` would result in
+        the feature key being replaced by the value key, e.g.
+        `{'value_key': <RaggedTensor>}` instead of `{'key': <RaggedTensor>}`.
+        Now the correct feature key will be used. This aligns the behavior of
+        `tf.data.experimental.parse_example_dataset` to match the behavior of
+        `tf.io.parse_example`.
+
+*    `tf.keras`:
+
+    *   Fixed bug in optimizers that prevented them from properly checkpointing
+        slot variables when they are `ShardedVariable`s (used for training with
+        `tf.distribute.experimental.ParameterServerStrategy`).
 
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
@@ -122,6 +153,10 @@ This release contains contributions from many people at Google, as well as:
 
 *   `tf.data`:
 
+    *   Fixed a bug where setting `options.deterministic = False` would only
+        modify one transformation to run non-deterministically,
+        leaving other transformations deterministic. The option will now
+        apply the same across all transformations.
     *   The optimization `parallel_batch` now becomes default if not disabled by
         users, which will parallelize copying of batch elements.
     *   Added the ability for `TensorSliceDataset` to identify and handle inputs

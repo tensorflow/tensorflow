@@ -314,6 +314,9 @@ int TfLiteTypeGetSize(TfLiteType type);
 // Whether the current platform is mobile (Android or iOS).
 bool IsMobilePlatform();
 
+// Returns whether there is unspecified dimension in the tensor's dim signature.
+bool HasUnspecifiedDimension(const TfLiteTensor* tensor);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_

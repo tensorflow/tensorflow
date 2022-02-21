@@ -136,7 +136,7 @@ struct TensorFlowOptimizePass
   LogicalResult initialize(MLIRContext *context) override {
     RewritePatternSet pattern_list(context);
     populateWithGenerated(pattern_list);
-    pattern_list.insert<SimplifyBroadcastReshape>(context);
+    pattern_list.add<SimplifyBroadcastReshape>(context);
     patterns = std::move(pattern_list);
     return success();
   }

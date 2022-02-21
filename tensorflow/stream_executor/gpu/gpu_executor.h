@@ -113,6 +113,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                           ModuleHandle* module_handle) override;
   bool UnloadModule(ModuleHandle module_handle) override;
 
+  // Allocates and initializes a new constant on the device with the given
+  // content. Or, if a device with identical content is already on-device,
+  // returns a pointer to that buffer with shared ownership.
+  port::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
+      Stream* stream, const std::vector<uint8_t>& content) override;
+
   port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                       const BlockDim& block_dims, const KernelBase& k,
                       const KernelArgsArrayBase& args) override;
@@ -357,6 +363,14 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   std::map<const char*, GpuModuleHandle> in_memory_modules_
       TF_GUARDED_BY(in_memory_modules_mu_);
+
+  absl::Mutex shared_constants_mu_;
+  // On-device constants that can be shared between multiple executables. A
+  // pointer for a given constant will expire when no executables require use
+  // of that constant anymore.
+  using SHA256Digest = std::array<uint8_t, 32>;
+  std::map<const SHA256Digest, std::weak_ptr<DeviceMemoryBase>>
+      shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   // Kernel -> loaded GPU binary. Many kernels may load the same binary.
   std::unordered_map<const KernelBase*, const void*> kernel_to_gpu_binary_

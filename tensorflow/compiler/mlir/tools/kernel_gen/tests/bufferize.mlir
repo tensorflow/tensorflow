@@ -1,8 +1,9 @@
-// RUN: kernel-gen-opt %s --computeop-and-func-bufferize --final-bufferize \
-// RUN:   --split-input-file | FileCheck %s --check-prefixes=CHECK,ALLOC
-// RUN: kernel-gen-opt %s --computeop-and-func-bufferize --final-bufferize \
-// RUN:  --promote-buffers-to-stack --split-input-file |\
-// RUN:  FileCheck %s  --check-prefixes=CHECK,ALLOCA
+// RUN: kernel-gen-opt %s --computeop-and-func-bufferize \
+// RUN:    --final-bufferize=alignment=128 --split-input-file | FileCheck %s \
+// RUN:    --check-prefixes=CHECK,ALLOC
+// RUN: kernel-gen-opt %s --computeop-and-func-bufferize \
+// RUN:    --final-bufferize=alignment=128 --promote-buffers-to-stack \
+// RUN:    --split-input-file | FileCheck %s  --check-prefixes=CHECK,ALLOCA
 
 // CHECK-LABEL: @tensor.extract
 // CHECK-SAME: (%[[ARG:.*]]: memref<?xf32>) -> f32
@@ -20,11 +21,11 @@ func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
 func @tensor.from_elements(%a : f32) -> f32 {
   // CHECK-DAG: %[[B:.*]] = arith.constant 1.2
   // CHECK-DAG: %[[C:.*]] = arith.constant 2.3
-  // ALLOC: %[[MEM:.*]] = memref.alloc() {{.*}} : memref<3xf32>
-  // ALLOCA: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+  // ALLOC: %[[MEM:.*]] = memref.alloc() {{.*}} : memref<3xf32>
+  // ALLOCA: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
   // CHECK: store %[[A]], %[[MEM]][%[[C0]]] : memref<3xf32>
   // CHECK: store %[[B]], %[[MEM]][%[[C1]]] : memref<3xf32>
   // CHECK: store %[[C]], %[[MEM]][%[[C2]]] : memref<3xf32>
@@ -39,11 +40,11 @@ func @tensor.from_elements(%a : f32) -> f32 {
 // CHECK-LABEL: @tensor.generate
 // CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> index
 func @tensor.generate(%arg : tensor<*xf32>) -> index {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
   // ALLOC: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) {{.*}} : memref<?xindex>
   // ALLOCA: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
-  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[SIZE]]) step (%[[C1]]) {
   // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[I]] : memref<*xf32>
   // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
@@ -80,6 +81,7 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
 // -----
 
 // CHECK: memref.global "private" constant @[[BUFFER:.*]] : memref<3xf32> = dense<[4.000000e+00, 5.000000e+00, 6.000000e+00]>
+// CHECK-SAME: alignment = 128
 // CHECK: @const
 // CHECK-SAME: -> memref<3xf32>
 func @const() -> tensor<3xf32> {
@@ -92,6 +94,7 @@ func @const() -> tensor<3xf32> {
 // -----
 
 // CHECK: memref.global "private" constant @[[BUFFER:.*]] : memref<3xf32> = dense<4.000000e+00>
+// CHECK-SAME: alignment = 128
 // CHECK: @const_splat
 // CHECK-SAME: -> memref<3xf32>
 func @const_splat() -> tensor<3xf32> {

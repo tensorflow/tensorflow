@@ -7,6 +7,7 @@ load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -866,4 +867,13 @@ tflite_jni_binary(
     deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",
     ],
+)
+
+#-----------------------------------------------------------------------------
+# bzl_library targets.
+
+bzl_library(
+    name = "aar_with_jni_bzl",
+    srcs = ["aar_with_jni.bzl"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )

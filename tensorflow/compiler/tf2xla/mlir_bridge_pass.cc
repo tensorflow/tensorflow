@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
@@ -147,6 +148,9 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 Status MlirBridgePass::Run(const ConfigProto& config_proto,
                            mlir::ModuleOp module, const Graph& graph,
                            const FunctionLibraryDefinition& function_library) {
+  static absl::once_flag flag;
+  absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
+
   // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
   // This check needs to precede GetPassState for instrumentation purposes.
   if (!HasTPUDevicesAndOps(module)) {
@@ -241,6 +245,9 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
 
 Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
                                    mlir::ModuleOp module) {
+  static absl::once_flag flag;
+  absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
+
   // Skip function graphs as MlirBridgePass will be used instead.
   if (options.is_function_graph) return Status::OK();
 

@@ -189,7 +189,9 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitRngGetAndUpdateState(mlir::Operation* op);
   Status EmitScatter(mlir::Operation* op);
   Status EmitSort(mlir::Operation* op);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitTriangularSolveCustomCall(mlir::Operation* op);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   template <typename NcclThunkType, typename OpTy>
   Status EmitNcclThunk(mlir::Operation* op);

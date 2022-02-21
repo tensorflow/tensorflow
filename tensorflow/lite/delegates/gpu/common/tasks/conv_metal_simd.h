@@ -45,6 +45,7 @@ class ConvolutionMetalSimd : public GPUOperation {
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
+    desc.type = DeduceDataTypeFromPrecision(definition_.precision);
     desc.layout = WeightsLayout::kOSpatialIOGroupO4I4;
     desc.output_group_size = 4;
     return desc;

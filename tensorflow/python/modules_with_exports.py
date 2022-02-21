@@ -55,6 +55,7 @@ from tensorflow.python.distribute.experimental.rpc.rpc_ops import *
 from tensorflow.python.distribute.merge_call_interim import *
 from tensorflow.python.distribute.multi_process_runner import *
 from tensorflow.python.distribute.multi_worker_test_base import *
+from tensorflow.python.distribute.sharded_variable import *
 from tensorflow.python.distribute.strategy_combinations import *
 from tensorflow.python.framework.combinations import *
 from tensorflow.python.framework.composite_tensor import *

@@ -19,8 +19,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -63,6 +65,11 @@ CreateVectorizeTiledOpsPass();
 // Rewrite `vector.multi_reduction` into a sequence of `vector.reduction` ops.
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 createRewriteVectorMultiReductionPass();
+
+// Code generation passes targeting transpose operations.
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileTransposePass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateLowerVectorTransposePass();
 
 // Pass to tile elementwise linalg.generic on tensors.
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass();

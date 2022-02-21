@@ -83,8 +83,7 @@ message CreateWorkerSessionRequest {
   // WorkerSessions.
   int64 master_incarnation = 6;
 
-  // Configures coordination service within worker sessions.
-  CoordinationServiceConfig coordination_service_config = 7;
+  reserved 7;  // Deprecated config that is embedded within server_def now.
 }
 
 message CreateWorkerSessionResponse {}

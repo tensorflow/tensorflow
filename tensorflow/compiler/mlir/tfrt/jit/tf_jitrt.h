@@ -162,7 +162,7 @@ struct ConvertTensor {
     // This is a newly allocated memref, and we need to wrap it into the runtime
     // tensor buffer to pass it back to the caller as a Tensor.
     size_t size = sizeof(T);
-    for (int i = 0; i < rank; ++i) size *= memref_sizes[i];
+    for (int64_t dim : memref_sizes) size *= dim;
 
     // Create a TensorBuffer from the returned memref.
     TF_ANNOTATE_MEMORY_IS_INITIALIZED(memref->data, size);
@@ -176,14 +176,14 @@ struct ConvertTensor {
 
     // Keep track of memrefs already used to construct runtime tensors.
     if (--ctx.num_pending_results > 0)
-      ctx.runtime_tensors.insert({memref->data, buffer});
+      ctx.runtime_tensors.try_emplace(memref->data, buffer);
 
     // Incorrect alignment will lead to a segfault in the downstream Tensorflow
     // kernels, check it before returning to the runtime.
     if (internal::IsStaticStorageDuration(memref)) {
-      CHECK(tensor.IsAligned()) << "global memref is not aligned";
+      DCHECK(tensor.IsAligned()) << "global memref is not aligned";
     } else {
-      CHECK(tensor.IsAligned()) << "allocated memref is not aligned";
+      DCHECK(tensor.IsAligned()) << "allocated memref is not aligned";
     }
 
     return tensor;
