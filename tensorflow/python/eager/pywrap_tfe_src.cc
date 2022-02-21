@@ -3213,6 +3213,22 @@ PyObject* CopySequenceSettingIndicesToNull(
   return result;
 }
 
+PyObject* DeviceFromTensorSeq(PyObject* seq) {
+  for (Py_ssize_t i = 0; i < PySequence_Size(seq); i++) {
+    PyObject* item = PySequence_ITEM(seq, i);
+    PyObject* dev = PyObject_GetAttrString(item, "device");
+    Py_DECREF(item);
+    if (dev) {
+      const char* devStr = TFE_GetPythonString(dev);
+      if (devStr && !string(devStr).empty()) {
+        return dev;
+      }
+      Py_DECREF(dev);
+    }
+  }
+  return Py_None;
+}
+
 PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
                          PyObject* results,
                          PyObject* forward_pass_name_scope = nullptr) {
@@ -3239,6 +3255,11 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   if (!should_record) Py_RETURN_NONE;
 
   string c_op_name = TFE_GetPythonString(op_name);
+
+  PyObject* device = DeviceFromTensorSeq(results);
+  if (device == Py_None) {
+    device = DeviceFromTensorSeq(inputs);
+  }
 
   PyObject* op_outputs;
   bool op_outputs_tuple_created = false;
@@ -3300,7 +3321,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
 
   TapeSetRecordOperation(
       op_name, inputs, results, input_ids, input_dtypes,
-      [op_name, attrs, num_inputs, op_inputs, op_outputs,
+      [op_name, attrs, device, num_inputs, op_inputs, op_outputs,
        forward_pass_name_scope]() {
         Py_INCREF(op_name);
         Py_INCREF(attrs);
@@ -3309,7 +3330,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
         Py_INCREF(op_outputs);
         Py_INCREF(forward_pass_name_scope);
         PyBackwardFunction* function = new PyBackwardFunction(
-            [op_name, attrs, num_inputs, op_inputs, op_outputs,
+            [op_name, attrs, device, num_inputs, op_inputs, op_outputs,
              forward_pass_name_scope](
                 PyObject* output_grads,
                 const std::vector<int64_t>& unneeded_gradients) {
@@ -3330,7 +3351,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
                 skip_input_indices.reset(Py_None);
               }
               tensorflow::Safe_PyObjectPtr callback_args(Py_BuildValue(
-                  "OOOOOOOO", op_name, attrs, num_inputs, op_inputs, op_outputs,
+                  "OOOO0OOOO", op_name, attrs, device, num_inputs, op_inputs, op_outputs,
                   output_grads, skip_input_indices.get(),
                   forward_pass_name_scope));
 
@@ -3343,10 +3364,11 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
             });
         return function;
       },
-      [op_name, attrs, num_inputs, op_inputs, op_outputs,
+      [op_name, attrs, device, num_inputs, op_inputs, op_outputs,
        forward_pass_name_scope](PyBackwardFunction* backward_function) {
         Py_DECREF(op_name);
         Py_DECREF(attrs);
+        Py_DECREF(device);
         Py_DECREF(num_inputs);
         Py_DECREF(op_inputs);
         Py_DECREF(op_outputs);
@@ -3357,6 +3379,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
       forward_function);
 
   Py_DECREF(num_inputs);
+  Py_DECREF(device);
   if (op_outputs_tuple_created) Py_DECREF(op_outputs);
   if (op_inputs_tuple_created) Py_DECREF(op_inputs);
 

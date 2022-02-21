@@ -123,7 +123,7 @@ class _MockOp(object):
     )
 
 
-def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
+def _gradient_function(op_name, attr_tuple, device, num_inputs, inputs, outputs,
                        out_grads, skip_input_indices, forward_pass_name_scope):
   """Calls the gradient function of the op.
 
@@ -153,7 +153,8 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
     if forward_pass_name_scope:
       gradient_name_scope += forward_pass_name_scope + "/"
     with ops.name_scope(gradient_name_scope):
-      return grad_fn(mock_op, *out_grads)
+      with ops.device(device):
+        return grad_fn(mock_op, *out_grads)
   else:
     return grad_fn(mock_op, *out_grads)
 
