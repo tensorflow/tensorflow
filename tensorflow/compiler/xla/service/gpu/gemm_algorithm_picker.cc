@@ -67,31 +67,40 @@ GpuGemmConfig GetGpuGemmConfig(const HloInstruction* gemm) {
 
 StatusOr<tensorflow::DataType> EncodePrimitiveTypeAsDataType(
     PrimitiveType type) {
-  static const absl::flat_hash_map<PrimitiveType, tensorflow::DataType>&
-      data_type_map =
-          *new absl::flat_hash_map<PrimitiveType, tensorflow::DataType>({
-              {PRED, tensorflow::DT_BOOL},
-              {BF16, tensorflow::DT_BFLOAT16},
-              {F16, tensorflow::DT_HALF},
-              {F32, tensorflow::DT_FLOAT},
-              {F64, tensorflow::DT_DOUBLE},
-              {C64, tensorflow::DT_COMPLEX64},
-              {S8, tensorflow::DT_INT8},
-              {S16, tensorflow::DT_INT16},
-              {S32, tensorflow::DT_INT32},
-              {S64, tensorflow::DT_INT64},
-              {U8, tensorflow::DT_UINT8},
-              {U16, tensorflow::DT_UINT16},
-              {U32, tensorflow::DT_UINT32},
-              {U64, tensorflow::DT_UINT64},
-              {C128, tensorflow::DT_COMPLEX128},
-          });
-
-  auto it = data_type_map.find(type);
-  if (it == data_type_map.end()) {
-    return InternalError("Unsupported type in PrimitiveTypeToDataType.");
-  }
-  return it->second;
+  switch (type) {
+    case PRED:
+      return tensorflow::DT_BOOL;
+    case BF16:
+      return tensorflow::DT_BFLOAT16;
+    case F16:
+      return tensorflow::DT_HALF;
+    case F32:
+      return tensorflow::DT_FLOAT;
+    case F64:
+      return tensorflow::DT_DOUBLE;
+    case C64:
+      return tensorflow::DT_COMPLEX64;
+    case C128:
+      return tensorflow::DT_COMPLEX128;
+    case S8:
+      return tensorflow::DT_INT8;
+    case S16:
+      return tensorflow::DT_INT16;
+    case S32:
+      return tensorflow::DT_INT32;
+    case S64:
+      return tensorflow::DT_INT64;
+    case U8:
+      return tensorflow::DT_UINT8;
+    case U16:
+      return tensorflow::DT_UINT16;
+    case U32:
+      return tensorflow::DT_UINT32;
+    case U64:
+      return tensorflow::DT_UINT64;
+    default:
+      return InternalError("Unsupported type in EncodePrimitiveAsDataType.");
+  };
 }
 
 Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
