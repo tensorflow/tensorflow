@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "base/logging.h"
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
@@ -278,6 +279,9 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
   TF_ASSIGN_OR_RETURN(auto reference,
                       reference_runner_.Execute(std::move(reference_module),
                                                 arguments, run_hlo_passes));
+  if (reference.IsAll(0)) {
+    LOG(WARNING) << "Reference value is only zeros.";
+  }
   return LiteralTestUtil::NearOrEqual(/*expected=*/reference, /*actual=*/test,
                                       error);
 }
