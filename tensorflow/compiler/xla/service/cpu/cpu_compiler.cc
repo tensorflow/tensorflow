@@ -825,6 +825,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Transform HLO operations to Linalg.
+  pm.addPass(mlir::mhlo::createLegalizeToMemrefPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
 
@@ -845,6 +846,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgBufferizePass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createConvertLinalgToLoopsPass());
   pm.addPass(mlir::createInlinerPass());
