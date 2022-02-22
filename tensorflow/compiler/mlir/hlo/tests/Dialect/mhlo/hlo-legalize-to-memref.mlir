@@ -125,3 +125,27 @@ func @reshape_unsigned(%operand: tensor<*xui32>) -> tensor<4x3xui32> {
 // CHECK: %[[RESULT:.*]] = builtin.unrealized_conversion_cast %[[RESHAPED]] : memref<4x3xi32> to memref<4x3xui32>
 // CHECK: %[[TRESULT:.*]] = bufferization.to_tensor %[[RESULT]] : memref<4x3xui32>
 // CHECK: return %[[TRESULT]]
+
+// -----
+
+func @reshape_unsigned() -> tensor<2xui64> {
+  %result = mhlo.xla.rng_get_and_update_state {delta = 1 : i64}
+  return %result : tensor<2xui64>
+}
+
+// CHECK:           memref.global "private" @rng_state : memref<i128>
+// CHECK-LABEL:     func @reshape_unsigned
+// CHECK:             %[[GLOBAL:.*]] = memref.get_global @rng_state : memref<i128>
+// CHECK:             %[[OLD_SEED:.*]] = memref.load %[[GLOBAL]][] : memref<i128>
+// CHECK:             %[[DELTA:.*]] = arith.constant 1 : i128
+// CHECK:             %[[NEW_SEED:.*]] = arith.addi %[[OLD_SEED]], %[[DELTA]] : i128
+// CHECK:             memref.store %[[NEW_SEED]], %[[GLOBAL]][] : memref<i128>
+// CHECK:             %[[C64:.*]] = arith.constant 64 : i128
+// CHECK:             %[[UPPER_BITS:.*]] = arith.shrui %[[OLD_SEED]], %[[C64]] : i128
+// CHECK:             %[[UPPER_WORD:.*]] = arith.trunci %[[UPPER_BITS]] : i128 to i64
+// CHECK:             %[[C0:.*]] = arith.constant 0 : i128
+// CHECK:             %[[LOWER_BITS:.*]] = arith.shrui %[[OLD_SEED]], %[[C0]] : i128
+// CHECK:             %[[LOWER_WORD:.*]] = arith.trunci %[[LOWER_BITS]] : i128 to i64
+// CHECK:             %[[PACKED_WORDS:.*]] = tensor.from_elements %[[UPPER_WORD]], %[[LOWER_WORD]] : tensor<2xi64>
+// CHECK:             %[[CASTED_RESULT:.*]] = builtin.unrealized_conversion_cast %[[PACKED_WORDS]] : tensor<2xi64> to tensor<2xui64>
+// CHECK:             return %[[CASTED_RESULT]] : tensor<2xui64>
