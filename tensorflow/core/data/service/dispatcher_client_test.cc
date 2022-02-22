@@ -49,18 +49,31 @@ class DispatcherClientTest : public ::testing::Test {
         test_cluster_->DispatcherAddress(), kProtocol);
   }
 
-  // Creates a dataset and returns the dataset ID.
+  // Registers a range dataset and returns the dataset ID.
   StatusOr<int64_t> RegisterDataset(const DataServiceMetadata& metadata) {
-    const auto dataset_def = testing::RangeDataset(10);
+    return RegisterDataset(testing::RangeDataset(10), metadata);
+  }
+
+  // Registers a dataset and returns the dataset ID.
+  StatusOr<int64_t> RegisterDataset(const DatasetDef& dataset,
+                                    const DataServiceMetadata& metadata) {
     int64_t dataset_id = 0;
     TF_RETURN_IF_ERROR(
-        dispatcher_client_->RegisterDataset(dataset_def, metadata, dataset_id));
+        dispatcher_client_->RegisterDataset(dataset, metadata, dataset_id));
     return dataset_id;
   }
 
   std::unique_ptr<TestCluster> test_cluster_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_client_;
 };
+
+DataServiceMetadata GetTestMetadata() {
+  DataServiceMetadata metadata;
+  metadata.set_element_spec("encoded_element_spec");
+  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  metadata.set_cardinality(kInfiniteCardinality);
+  return metadata;
+}
 
 TEST_F(DispatcherClientTest, GetDataServiceMetadata) {
   DataServiceMetadata metadata;
@@ -88,6 +101,71 @@ TEST_F(DispatcherClientTest, GetDataServiceConfig) {
   EXPECT_EQ(config.deployment_mode(), DEPLOYMENT_MODE_COLOCATED);
 }
 
+TEST_F(DispatcherClientTest, RegisterNamedDataset) {
+  // Registers a named dataset.
+  DatasetDef dataset = testing::RangeDataset(10);
+  dataset.set_name("vizier_dataset");
+  DataServiceMetadata metadata = GetTestMetadata();
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id,
+                          RegisterDataset(dataset, metadata));
+
+  // Registers the dataset again. This should return the same dataseet ID.
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t same_dataset_id,
+                          RegisterDataset(dataset, metadata));
+  EXPECT_EQ(dataset_id, same_dataset_id);
+
+  DatasetDef registered_dataset;
+  TF_ASSERT_OK(
+      dispatcher_client_->GetDatasetDef(dataset_id, registered_dataset));
+  EXPECT_THAT(registered_dataset, testing::EqualsProto(dataset));
+}
+
+TEST_F(DispatcherClientTest, RegisterUnnamedDataset) {
+  // Register an unnamed dataset.
+  DatasetDef dataset = testing::RangeDataset(10);
+  DataServiceMetadata metadata = GetTestMetadata();
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id,
+                          RegisterDataset(dataset, metadata));
+
+  // The registered datasets have the same graph, and are determined to be the
+  // same dataset.
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t same_dataset_id,
+                          RegisterDataset(dataset, metadata));
+  EXPECT_EQ(dataset_id, same_dataset_id);
+
+  DatasetDef registered_dataset;
+  TF_ASSERT_OK(
+      dispatcher_client_->GetDatasetDef(dataset_id, registered_dataset));
+  EXPECT_THAT(registered_dataset, testing::EqualsProto(dataset));
+}
+
+TEST_F(DispatcherClientTest, RegisterNamedAndUnnamedDataset) {
+  // Registering named and unnamed datasets should return different dataset IDs.
+  DatasetDef named_dataset = testing::RangeDataset(10);
+  named_dataset.set_name("vizier_dataset");
+  DataServiceMetadata metadata = GetTestMetadata();
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id,
+                          RegisterDataset(named_dataset, metadata));
+
+  DatasetDef unnamed_dataset = testing::RangeDataset(10);
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t different_dataset_id,
+                          RegisterDataset(unnamed_dataset, metadata));
+  EXPECT_NE(dataset_id, different_dataset_id);
+}
+
+TEST_F(DispatcherClientTest, NamedDatasetsDoNotMatch) {
+  DatasetDef dataset1 = testing::RangeDataset(10);
+  dataset1.set_name("vizier_dataset");
+  DataServiceMetadata metadata = GetTestMetadata();
+  TF_ASSERT_OK(RegisterDataset(dataset1, metadata).status());
+
+  DatasetDef dataset2 = testing::RangeDataset(20);
+  dataset2.set_name("vizier_dataset");
+  EXPECT_THAT(RegisterDataset(dataset2, metadata).status(),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Datasets with the same name should have the "
+                                 "same structure")));
+}
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

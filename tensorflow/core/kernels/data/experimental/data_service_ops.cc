@@ -57,6 +57,12 @@ RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kMetadata, &serialized_metadata));
     serialized_metadata_ = serialized_metadata;
   }
+
+  if (ctx->HasAttr(kDatasetName)) {
+    tstring dataset_name;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDatasetName, &dataset_name));
+    dataset_name_ = dataset_name;
+  }
 }
 
 void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
@@ -92,6 +98,9 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
             "datasets. "
             "Original error: ",
             s));
+  }
+  if (!dataset_name_.empty()) {
+    dataset_def.set_name(dataset_name_);
   }
 
   DataServiceMetadata metadata;

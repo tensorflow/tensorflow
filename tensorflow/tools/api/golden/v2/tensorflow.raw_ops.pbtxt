@@ -3494,7 +3494,7 @@ tf_module {
   }
   member_method {
     name: "RegisterDataset"
-    argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'element_spec\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'None\'], "
+    argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'element_spec\', \'metadata\', \'dataset_name\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "Relu"

@@ -1448,6 +1448,7 @@ REGISTER_OP("RegisterDataset")
     .Attr("external_state_policy: int")
     .Attr("element_spec: string = ''")
     .Attr("metadata: string = ''")
+    .Attr("dataset_name: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("InitializeTableFromDataset")

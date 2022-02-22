@@ -58,6 +58,17 @@ Status RegisterDataset(int64_t id, DispatcherState& state) {
   return RegisterDataset(id, /*fingerprint=*/1, state);
 }
 
+Status RegisterDataset(int64_t id, uint64 fingerprint, const std::string& name,
+                       DispatcherState& state) {
+  Update update;
+  RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
+  register_dataset->set_dataset_id(id);
+  register_dataset->set_fingerprint(fingerprint);
+  register_dataset->set_dataset_name(name);
+  TF_RETURN_IF_ERROR(state.Apply(update));
+  return Status::OK();
+}
+
 Status RegisterWorker(std::string worker_address, DispatcherState& state) {
   Update update;
   update.mutable_register_worker()->set_worker_address(worker_address);
@@ -150,6 +161,34 @@ TEST(DispatcherState, RegisterDataset) {
     EXPECT_EQ(dataset->metadata.compression(),
               DataServiceMetadata::COMPRESSION_UNSPECIFIED);
   }
+}
+
+TEST(DispatcherState, RegisterNamedDataset) {
+  DispatcherState state;
+  int64_t id = state.NextAvailableDatasetId();
+  const uint64_t fingerprint = 99;
+  const std::string dataset_name = "vizier_dataset";
+  TF_EXPECT_OK(RegisterDataset(id, fingerprint, dataset_name, state));
+
+  std::shared_ptr<const Dataset> dataset;
+  TF_EXPECT_OK(state.DatasetFromName(dataset_name, dataset));
+  EXPECT_EQ(dataset->dataset_id, id);
+  EXPECT_EQ(dataset->fingerprint, fingerprint);
+  EXPECT_EQ(dataset->name, dataset_name);
+
+  // The dataset won't be shared with another dataset with the same fingerprint.
+  // Thus, named and unnamed datasets won't share the same data service job.
+  EXPECT_THAT(state.DatasetFromFingerprint(fingerprint, dataset),
+              StatusIs(error::NOT_FOUND,
+                       HasSubstr("Dataset fingerprint 99 not found")));
+}
+
+TEST(DispatcherState, DatasetNameDoesNotExist) {
+  DispatcherState state;
+  std::shared_ptr<const Dataset> dataset;
+  EXPECT_THAT(state.DatasetFromName("vizier_dataset", dataset),
+              StatusIs(error::NOT_FOUND,
+                       HasSubstr("Dataset name vizier_dataset not found")));
 }
 
 TEST(DispatcherState, RegisterDatasetCompression) {

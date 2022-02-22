@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "distribute"
-    argspec: "args=[\'processing_mode\', \'service\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'data_transfer_protocol\', \'compression\', \'target_workers\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'AUTO\', \'AUTO\'], "
+    argspec: "args=[\'processing_mode\', \'service\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'data_transfer_protocol\', \'compression\', \'dataset_name\', \'target_workers\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'AUTO\', \'None\', \'AUTO\'], "
   }
   member_method {
     name: "from_dataset_id"
@@ -22,6 +22,6 @@ tf_module {
   }
   member_method {
     name: "register_dataset"
-    argspec: "args=[\'service\', \'dataset\', \'compression\'], varargs=None, keywords=None, defaults=[\'AUTO\'], "
+    argspec: "args=[\'service\', \'dataset\', \'compression\', \'dataset_name\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\'], "
   }
 }

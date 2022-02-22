@@ -89,12 +89,18 @@ void DispatcherState::RegisterDataset(
     const RegisterDatasetUpdate& register_dataset) {
   int64_t id = register_dataset.dataset_id();
   int64_t fingerprint = register_dataset.fingerprint();
-  auto dataset =
-      std::make_shared<Dataset>(id, fingerprint, register_dataset.metadata());
+  auto dataset = std::make_shared<Dataset>(id, fingerprint,
+                                           register_dataset.dataset_name(),
+                                           register_dataset.metadata());
   DCHECK(!datasets_by_id_.contains(id));
   datasets_by_id_[id] = dataset;
-  DCHECK(!datasets_by_fingerprint_.contains(fingerprint));
-  datasets_by_fingerprint_[fingerprint] = dataset;
+  if (register_dataset.dataset_name().empty()) {
+    DCHECK(!datasets_by_fingerprint_.contains(fingerprint));
+    datasets_by_fingerprint_[fingerprint] = dataset;
+  } else {
+    DCHECK(!datasets_by_name_.contains(register_dataset.dataset_name()));
+    datasets_by_name_[register_dataset.dataset_name()] = dataset;
+  }
   next_available_dataset_id_ = std::max(next_available_dataset_id_, id + 1);
 }
 
@@ -278,6 +284,16 @@ Status DispatcherState::DatasetFromFingerprint(
   auto it = datasets_by_fingerprint_.find(fingerprint);
   if (it == datasets_by_fingerprint_.end()) {
     return errors::NotFound("Dataset fingerprint ", fingerprint, " not found");
+  }
+  dataset = it->second;
+  return Status::OK();
+}
+
+Status DispatcherState::DatasetFromName(
+    const std::string& name, std::shared_ptr<const Dataset>& dataset) const {
+  auto it = datasets_by_name_.find(name);
+  if (it == datasets_by_name_.end()) {
+    return errors::NotFound("Dataset name ", name, " not found");
   }
   dataset = it->second;
   return Status::OK();

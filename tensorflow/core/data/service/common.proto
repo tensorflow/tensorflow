@@ -5,11 +5,13 @@ package tensorflow.data;
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/protobuf/data_service.proto";
 
-// Next tag: 2
+// Next tag: 3
 message DatasetDef {
   // We represent datasets as tensorflow GraphDefs which define the operations
   // needed to create a tf.data dataset.
   GraphDef graph = 1;
+  // Optional name of the dataset.
+  string name = 2;
 }
 
 // Next tag: 3

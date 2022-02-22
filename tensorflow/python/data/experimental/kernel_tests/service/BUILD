@@ -221,6 +221,22 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "shared_dataset_test",
+    size = "medium",
+    srcs = ["shared_dataset_test.py"],
+    shard_count = 3,
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "test_base",
     srcs = ["test_base.py"],

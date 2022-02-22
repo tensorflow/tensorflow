@@ -27,10 +27,11 @@ message Update {
   reserved 13;
 }
 
-// Next tag: 4
+// Next tag: 5
 message RegisterDatasetUpdate {
   int64 dataset_id = 1;
   uint64 fingerprint = 2;
+  string dataset_name = 4;
   DataServiceMetadata metadata = 3;
 }
 

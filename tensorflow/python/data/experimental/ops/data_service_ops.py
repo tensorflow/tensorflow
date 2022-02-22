@@ -381,6 +381,7 @@ def _distribute(processing_mode,
                 task_refresh_interval_hint_ms=None,
                 data_transfer_protocol=None,
                 compression="AUTO",
+                dataset_name=None,
                 target_workers="AUTO"):
   """A transformation that moves dataset processing to the tf.data service.
 
@@ -425,6 +426,10 @@ def _distribute(processing_mode,
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
+    dataset_name: (Optional.) Name of the dataset. If multiple client jobs need
+      to read from the same dataset, they can use the same dataset name. The
+      datasets with the same name should have the same definition. Otherwise, it
+      will raise an invalid argument error.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
       tf.data service workers. If `"LOCAL"`, only reads from local in-processs
@@ -442,7 +447,8 @@ def _distribute(processing_mode,
   compression = _decide_compression(compression, data_transfer_protocol)
 
   def _apply_fn(dataset):  # pylint: disable=missing-docstring
-    dataset_id = _register_dataset(service, dataset, compression=compression)
+    dataset_id = _register_dataset(
+        service, dataset, compression=compression, dataset_name=dataset_name)
     return _from_dataset_id(
         processing_mode,
         service,
@@ -469,6 +475,7 @@ def distribute(processing_mode,
                max_outstanding_requests=None,
                data_transfer_protocol=None,
                compression="AUTO",
+               dataset_name=None,
                target_workers="AUTO"):
   """A transformation that moves dataset processing to the tf.data service.
 
@@ -676,6 +683,10 @@ def distribute(processing_mode,
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
+    dataset_name: (Optional.) Name of the dataset. If multiple client jobs need
+      to read from the same dataset, they can use the same dataset name. The
+      datasets with the same name should have the same definition. Otherwise, it
+      will raise an invalid argument error.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
       tf.data service workers. If `"LOCAL"`, only reads from local in-processs
@@ -698,10 +709,11 @@ def distribute(processing_mode,
       max_outstanding_requests=max_outstanding_requests,
       data_transfer_protocol=data_transfer_protocol,
       compression=compression,
+      dataset_name=dataset_name,
       target_workers=target_workers)
 
 
-def _register_dataset(service, dataset, compression):
+def _register_dataset(service, dataset, compression, dataset_name=None):
   """Registers a dataset with the tf.data service.
 
   This transformation is similar to `register_dataset`, but supports additional
@@ -711,12 +723,16 @@ def _register_dataset(service, dataset, compression):
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
-        address and `<protocol>` can optionally be used to override the default
-        protocol to use. If it's a tuple, it should be (protocol, address).
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
+    dataset_name: (Optional.) Name of the dataset. If multiple client jobs need
+      to read from the same dataset, they can use the same dataset name. The
+      datasets with the same name should have the same definition. Otherwise, it
+      will raise an invalid argument error.
 
   Returns:
     A scalar int64 tensor of the registered dataset's id.
@@ -750,13 +766,14 @@ def _register_dataset(service, dataset, compression):
       address=address,
       protocol=protocol,
       external_state_policy=external_state_policy.value,
-      metadata=metadata.SerializeToString())
+      metadata=metadata.SerializeToString(),
+      dataset_name=dataset_name)
 
   return dataset_id
 
 
 @tf_export("data.experimental.service.register_dataset")
-def register_dataset(service, dataset, compression="AUTO"):
+def register_dataset(service, dataset, compression="AUTO", dataset_name=None):
   """Registers a dataset with the tf.data service.
 
   `register_dataset` registers a dataset with the tf.data service so that
@@ -790,18 +807,22 @@ def register_dataset(service, dataset, compression="AUTO"):
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
-        address and `<protocol>` can optionally be used to override the default
-        protocol to use. If it's a tuple, it should be (protocol, address).
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
     compression: (Optional.) How to compress the dataset's elements before
       transferring them over the network. "AUTO" leaves the decision of how to
       compress up to the tf.data service runtime. `None` indicates not to
       compress.
+    dataset_name: (Optional.) Name of the dataset. If multiple client jobs need
+      to read from the same dataset, they can use the same dataset name. The
+      datasets with the same name should have the same definition. Otherwise, it
+      will raise an invalid argument error.
 
   Returns:
     A scalar int64 tensor of the registered dataset's id.
   """
-  return _register_dataset(service, dataset, compression)
+  return _register_dataset(service, dataset, compression, dataset_name)
 
 
 def _from_dataset_id(processing_mode,

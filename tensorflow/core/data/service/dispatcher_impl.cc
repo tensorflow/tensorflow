@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
+#include "tensorflow/core/data/service/graph_utils.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace data {
@@ -147,6 +149,14 @@ DispatcherConfig ApplyConfigDefaults(const DispatcherConfig& config) {
     new_config.set_client_timeout_ms(kDefaultClientTimeoutMs);
   }
   return new_config;
+}
+
+void VLogLines(int log_level, const std::string& message) {
+#if defined(PLATFORM_GOOGLE)
+  VLOG_LINES(log_level, message);
+#else
+  VLOG(log_level) << message;
+#endif
 }
 
 }  // namespace
@@ -463,32 +473,68 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   GraphDef* graph = dataset_def.mutable_graph();
   PrepareGraph(graph);
   TF_RETURN_IF_ERROR(HashGraph(*graph, &fingerprint));
+  VLogLines(/*log_level=*/4,
+            absl::StrCat("Registering dataset graph: ", graph->DebugString()));
 
+  // Returns the ID if a dataset exists.
   mutex_lock l(mu_);
-#if defined(PLATFORM_GOOGLE)
-  VLOG_LINES(4,
-             absl::StrCat("Registering dataset graph: ", graph->DebugString()));
-#else
-  VLOG(4) << "Registering dataset graph: " << graph->DebugString();
-#endif
-  std::shared_ptr<const Dataset> dataset;
-  Status s = state_.DatasetFromFingerprint(fingerprint, dataset);
-  if (s.ok()) {
-    int64_t id = dataset->dataset_id;
-    VLOG(3) << "Received duplicate RegisterDataset request with fingerprint "
-            << fingerprint << ". Returning id " << id;
-    response->set_dataset_id(id);
+  TF_ASSIGN_OR_RETURN(absl::optional<int64_t> dataset_id,
+                      FindDataset(dataset_def, fingerprint));
+  if (dataset_id) {
+    VLOG(3) << "RegisterDataset returns an existing dataset with fingerprint = "
+            << fingerprint << ", name = " << dataset_def.name()
+            << ". Returning ID " << *dataset_id << ".";
+    response->set_dataset_id(*dataset_id);
     return Status::OK();
-  } else if (!errors::IsNotFound(s)) {
-    return s;
   }
 
+  // Registers a new dataset.
   int64_t id;
   TF_RETURN_IF_ERROR(
       RegisterDataset(fingerprint, dataset_def, request->metadata(), id));
-
   response->set_dataset_id(id);
   VLOG(3) << "Registered new dataset with id " << id;
+  return Status::OK();
+}
+
+StatusOr<absl::optional<int64_t>> DataServiceDispatcherImpl::FindDataset(
+    const DatasetDef& dataset, uint64 fingerprint)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::shared_ptr<const Dataset> existing_dataset;
+  Status s;
+  if (dataset.name().empty()) {
+    s = state_.DatasetFromFingerprint(fingerprint, existing_dataset);
+  } else {
+    s = state_.DatasetFromName(dataset.name(), existing_dataset);
+  }
+
+  if (errors::IsNotFound(s)) {
+    return absl::optional<int64_t>();
+  }
+  TF_RETURN_IF_ERROR(s);
+  if (!dataset.name().empty()) {
+    TF_RETURN_IF_ERROR(ValidateNamedDataset(dataset, *existing_dataset));
+  }
+  return absl::optional<int64_t>(existing_dataset->dataset_id);
+}
+
+Status DataServiceDispatcherImpl::ValidateNamedDataset(
+    const DatasetDef& new_dataset_def, const Dataset& old_dataset)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::shared_ptr<const DatasetDef> old_dataset_def;
+  TF_RETURN_IF_ERROR(GetDatasetDef(old_dataset, old_dataset_def));
+  if (!old_dataset_def) {
+    return errors::Internal(
+        "Could not find DatasetDef for registered dataset with name: ",
+        old_dataset.name, ", ID ", old_dataset.dataset_id);
+  }
+  std::pair<bool, std::string> diff = HaveEquivalentStructures(
+      new_dataset_def.graph(), old_dataset_def->graph());
+  if (!diff.first) {
+    return errors::InvalidArgument(
+        "Datasets with the same name should have the same structure, got ",
+        "diff for dataset name ", new_dataset_def.name(), ": ", diff.second);
+  }
   return Status::OK();
 }
 
@@ -501,6 +547,9 @@ Status DataServiceDispatcherImpl::RegisterDataset(
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
   register_dataset->set_fingerprint(fingerprint);
+  if (!dataset.name().empty()) {
+    register_dataset->set_dataset_name(dataset.name());
+  }
   *register_dataset->mutable_metadata() = metadata;
   TF_RETURN_IF_ERROR(
       dataset_store_->Put(DatasetKey(dataset_id, fingerprint), dataset));

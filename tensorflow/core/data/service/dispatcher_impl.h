@@ -183,6 +183,15 @@ class DataServiceDispatcherImpl {
       int64_t dataset_id,
       std::vector<std::unique_ptr<SplitProvider>>& split_providers)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Finds the dataset with `dataset_name` if `dataset_name` is non-empty.
+  // Otherwise, finds the dataset with `fingerprint`. Returns the dataset ID if
+  // the dataset exists. Otherwise returns nullopt.
+  StatusOr<absl::optional<int64_t>> FindDataset(const DatasetDef& dataset,
+                                                uint64 fingerprint);
+  // Makes sure the datasets have the same graph when they have the same name.
+  // If the graphs differ, it returns an invalid argument error.
+  Status ValidateNamedDataset(const DatasetDef& new_dataset_def,
+                              const DispatcherState::Dataset& old_dataset);
   // Registers a dataset with the given fingerprint, storing the new dataset's
   // id in `dataset_id`.
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,

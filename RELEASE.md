@@ -66,6 +66,12 @@
         *   Set `experimental_new_dynamic_range_quantizer` in
             tf.lite.TFLiteConverter to False to disable this change
 
+*   `tf.data`:
+    *   Add a `dataset_name` param to `register_dataset`. When multiple client
+        jobs need to read from the same dataset, they can use the same dataset
+        name. The datasets with the same name should have the same definition.
+        Otherwise, it will raise an invalid argument error.
+
 # Bug Fixes and Other Changes
 
 *   `tf.data`:
