@@ -4468,17 +4468,14 @@ OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
 // false_value, true_value)
 static LogicalResult selectCanonicalization(SelectOp selectOp,
                                             PatternRewriter& rewriter) {
-  if (auto notOp = selectOp.pred().getDefiningOp<NotOp>()) {
-    if (1 ==
-        notOp.operand().getType().cast<ShapedType>().getElementTypeBitWidth()) {
-      std::array<Value, 3> newOperands = {notOp.operand(),
-                                          selectOp.getOperands()[2],
-                                          selectOp.getOperands()[1]};
-      selectOp.getOperation()->setOperands(newOperands);
-      return success();
-    }
+  auto notOp = selectOp.pred().getDefiningOp<NotOp>();
+  if (!notOp) {
+    return failure();
   }
-  return failure();
+  std::array<Value, 3> newOperands = {notOp.operand(), selectOp.on_false(),
+                                      selectOp.on_true()};
+  selectOp.getOperation()->setOperands(newOperands);
+  return success();
 }
 
 void SelectOp::getCanonicalizationPatterns(RewritePatternSet& results,
