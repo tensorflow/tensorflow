@@ -2886,6 +2886,29 @@ def cc_library_with_android_deps(
 def tensorflow_opensource_extra_deps():
     return []
 
+# Builds a pybind11 compatible library.
+def pybind_library(
+        name,
+        copts = [],
+        features = [],
+        tags = [],
+        deps = [],
+        **kwargs):
+    # Mark common dependencies as required for build_cleaner.
+    tags = tags + ["req_dep=@pybind11", "req_dep=@local_config_python//:python_headers"]
+
+    native.cc_library(
+        name = name,
+        copts = copts + ["-fexceptions"],
+        features = features + [
+            "-use_header_modules",  # Required for pybind11.
+            "-parse_headers",
+        ],
+        tags = tags,
+        deps = deps + ["@pybind11", "@local_config_python//:python_headers"],
+        **kwargs
+    )
+
 # buildozer: disable=function-docstring-args
 def pybind_extension(
         name,

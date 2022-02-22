@@ -1,4 +1,8 @@
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pybind_library")
 load("//tensorflow:tensorflow.bzl", "py_strict_test")
 
 licenses(["notice"])
@@ -36,6 +40,7 @@ pybind_extension(
     hdrs = ["tf_jitrt_executor.h"],
     module_name = "_tf_jitrt_executor",
     deps = [
+        ":conversion_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
         "//tensorflow/compiler/mlir/tfrt/python_tests:python_test_attrs_registration",
@@ -51,5 +56,15 @@ pybind_extension(
         "@tf_runtime//:support",
         "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
+    ],
+)
+
+pybind_library(
+    name = "conversion_utils",
+    srcs = ["conversion_utils.cc"],
+    hdrs = ["conversion_utils.h"],
+    deps = [
+        "@tf_runtime//:dtype",
+        "@tf_runtime//backends/jitrt:types",
     ],
 )
