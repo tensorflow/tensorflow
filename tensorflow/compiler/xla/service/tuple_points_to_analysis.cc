@@ -507,6 +507,13 @@ Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   return Status::OK();
 }
 
+Status TuplePointsToAnalysis::HandleOptimizationBarrier(
+    HloInstruction* barrier) {
+  // A kOptimizationBarrier instruction is a no-op.
+  CreateCopiedPointsToSet(barrier, barrier->operand(0));
+  return Status::OK();
+}
+
 const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(
     const HloInstruction* hlo_instruction) const {
   return *PerInst(hlo_instruction)->points_to_set;

@@ -470,6 +470,8 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   Status BlockHostUntilReady() override;
 
+  void OnReady(std::function<void(Status)> callback) override;
+
   bool IsOnCpu() const override { return true; }
 
   // Returns a hold on the TrackedTfrtCpuDeviceBuffer holding the device

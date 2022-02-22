@@ -249,6 +249,7 @@ cc_library(
         ":python_ref_manager",
         ":python_utils",
         ":traceback",
+        ":transfer_guard_lib",
         ":types",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -549,6 +550,26 @@ cc_library(
 )
 
 cc_library(
+    name = "transfer_guard_lib",
+    srcs = ["transfer_guard_lib.cc"],
+    hdrs = ["transfer_guard_lib.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+    ],
+)
+
+cc_library(
     name = "xla_compiler",
     srcs = ["xla_compiler.cc"],
     hdrs = ["xla_compiler.h"],
@@ -566,6 +587,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -573,7 +595,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:lib",
@@ -608,6 +632,7 @@ pybind_extension(
         ":pmap_lib",
         ":pprof_profile_builder",
         ":profiler",
+        ":transfer_guard_lib",
         ":py_client",
         ":pytree",
         ":python_ref_manager",

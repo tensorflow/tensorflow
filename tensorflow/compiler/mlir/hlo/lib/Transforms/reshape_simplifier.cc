@@ -231,10 +231,16 @@ struct RemoveRedundantCstrReshapable final
 
 struct TurnDynamicReshapeIntoCollapseShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
-  TurnDynamicReshapeIntoCollapseShape(MLIRContext *ctx)
+  explicit TurnDynamicReshapeIntoCollapseShape(MLIRContext *ctx)
       : OpRewritePattern(ctx) {}
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
+    auto input_type = op.operand().getType().dyn_cast<RankedTensorType>();
+    auto output_type = op.getType().dyn_cast<RankedTensorType>();
+    if (!input_type || !output_type ||
+        input_type.getRank() <= output_type.getRank())
+      return failure();
+
     // Require sucessful shape analysis for operand and shape.
     ShapeComponentAnalysis shapeComponentAnalysis;
     auto argShapeInfo = shapeComponentAnalysis.GetShapeInfo(op.operand());
@@ -299,6 +305,10 @@ struct TurnDynamicReshapeIntoCollapseShape final
       // Consume trailing 1 dimensions.
       while (i < argShapeInfo->size() && (*argShapeInfo)[i].isConstant(1))
         reassociation_map.back().push_back(i++);
+
+      // This is effectively a shape expansion that we cannot handle yet.
+      // TODO(b/217611473): Implement shape expansion cases.
+      if (reassociation_map.back().empty()) return failure();
     }
 
     // Fail if not all of the operand shape could be consumed.
@@ -328,7 +338,7 @@ void ReshapeSimplifierPass::runOnOperation() {
   mlir::RewritePatternSet patterns(ctx);
 
   // clang-format off
-  patterns.insert<
+  patterns.add<
       ReshapeToExpandShape,
       RemoveComputeReshapeShape,
       RemoveRedundantCstrReshapable,

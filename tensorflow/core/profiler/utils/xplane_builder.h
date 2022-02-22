@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -201,10 +201,10 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
 
   void SetOffsetPs(int64_t offset_ps) { event_->set_offset_ps(offset_ps); }
 
-  void SetOffsetNs(int64_t offset_ns) { SetOffsetPs(NanosToPicos(offset_ns)); }
+  void SetOffsetNs(int64_t offset_ns) { SetOffsetPs(NanoToPico(offset_ns)); }
 
   void SetTimestampNs(int64_t timestamp_ns) {
-    SetOffsetPs(NanosToPicos(timestamp_ns - line_->timestamp_ns()));
+    SetOffsetPs(NanoToPico(timestamp_ns - line_->timestamp_ns()));
   }
 
   void SetNumOccurrences(int64_t num_occurrences) {
@@ -215,20 +215,20 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
     event_->set_duration_ps(duration_ps);
   }
   void SetDurationNs(int64_t duration_ns) {
-    SetDurationPs(NanosToPicos(duration_ns));
+    SetDurationPs(NanoToPico(duration_ns));
   }
 
   void SetEndTimestampPs(int64_t end_timestamp_ps) {
-    SetDurationPs(end_timestamp_ps - PicosToNanos(line_->timestamp_ns()) -
+    SetDurationPs(end_timestamp_ps - PicoToNano(line_->timestamp_ns()) -
                   event_->offset_ps());
   }
   void SetEndTimestampNs(int64_t end_timestamp_ns) {
-    SetDurationPs(NanosToPicos(end_timestamp_ns - line_->timestamp_ns()) -
+    SetDurationPs(NanoToPico(end_timestamp_ns - line_->timestamp_ns()) -
                   event_->offset_ps());
   }
 
   Timespan GetTimespan() const {
-    return Timespan(NanosToPicos(line_->timestamp_ns()) + event_->offset_ps(),
+    return Timespan(NanoToPico(line_->timestamp_ns()) + event_->offset_ps(),
                     event_->duration_ps());
   }
 

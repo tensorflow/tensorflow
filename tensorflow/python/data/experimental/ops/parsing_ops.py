@@ -147,7 +147,7 @@ def parse_example_dataset(features, num_parallel_calls=1, deterministic=None):
                                        deterministic)
     if any(
         isinstance(feature, parsing_ops.SparseFeature) or
-        (isinstance(feature, parsing_ops.RaggedFeature) and feature.partitions)
+        isinstance(feature, parsing_ops.RaggedFeature)
         for feature in features.values()):
       # pylint: disable=protected-access
       # pylint: disable=g-long-lambda

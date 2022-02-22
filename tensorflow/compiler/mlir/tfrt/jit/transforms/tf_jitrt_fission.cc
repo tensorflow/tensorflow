@@ -80,18 +80,18 @@ struct FusedMatMulFission
 // Break Tensorflow _Fused{Op} operations into primitive ones.
 // -------------------------------------------------------------------------- //
 struct FissionPass : public FissionBase<FissionPass> {
-  void runOnFunction() override {
-    mlir::FuncOp function = getFunction();
+  void runOnOperation() override {
+    mlir::FuncOp function = getOperation();
     mlir::MLIRContext* ctx = function.getContext();
 
     mlir::RewritePatternSet patterns(ctx);
-    patterns.insert<FusedMatMulFission>(ctx);
+    patterns.add<FusedMatMulFission>(ctx);
 
     (void)mlir::applyPatternsAndFoldGreedily(function, std::move(patterns));
   }
 };
 
-std::unique_ptr<mlir::FunctionPass> CreateFissionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateFissionPass() {
   return std::make_unique<FissionPass>();
 }
 

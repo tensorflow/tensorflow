@@ -344,13 +344,12 @@ TEST_F(OptimizeGraphTest, OptimizeFunctions) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  auto statusor_fallback_state =
-      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib);
-  TF_ASSERT_OK(statusor_fallback_state.status());
-  auto statusor_graph_execution_state = TfrtGraphExecutionState::Create(
-      graphdef, *statusor_fallback_state.ValueOrDie(), true);
-  TF_ASSERT_OK(statusor_graph_execution_state.status());
-  auto& graph_execution_state = *statusor_graph_execution_state.ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(graphdef, *fallback_state, true));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -361,11 +360,11 @@ TEST_F(OptimizeGraphTest, OptimizeFunctions) {
   graph_import_config.inputs["a"] = array_info;
   graph_import_config.outputs = {"c"};
 
-  auto statusor_optimized_graph =
-      graph_execution_state.CreateOptimizedGraph(graph_import_config);
-  TF_ASSERT_OK(statusor_optimized_graph.status());
-  GraphDef optimized_graph;
-  statusor_optimized_graph.ValueOrDie().graph->ToGraphDef(&optimized_graph);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  GraphDef optimized_graph_def;
+  optimized_graph.graph->ToGraphDef(&optimized_graph_def);
 
   GraphDef expected;
   {
@@ -409,9 +408,9 @@ TEST_F(OptimizeGraphTest, OptimizeFunctions) {
     TF_ASSERT_OK(scope.ToGraphDef(&expected));
   }
 
-  CompareGraphs(expected, optimized_graph);
+  CompareGraphs(expected, optimized_graph_def);
   CompareFunctions(expected.library().function(0),
-                   optimized_graph.library().function(0));
+                   optimized_graph_def.library().function(0));
 }
 
 TEST_F(OptimizeGraphTest, OptimizeFunctionsUsedByFunctionNodes) {
@@ -462,13 +461,12 @@ TEST_F(OptimizeGraphTest, OptimizeFunctionsUsedByFunctionNodes) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  auto statusor_fallback_state =
-      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib);
-  TF_ASSERT_OK(statusor_fallback_state.status());
-  auto statusor_graph_execution_state = TfrtGraphExecutionState::Create(
-      graphdef, *statusor_fallback_state.ValueOrDie(), true);
-  TF_ASSERT_OK(statusor_graph_execution_state.status());
-  auto& graph_execution_state = *statusor_graph_execution_state.ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(graphdef, *fallback_state, true));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -479,11 +477,11 @@ TEST_F(OptimizeGraphTest, OptimizeFunctionsUsedByFunctionNodes) {
   graph_import_config.inputs["a"] = array_info;
   graph_import_config.outputs = {"c"};
 
-  auto statusor_optimized_graph =
-      graph_execution_state.CreateOptimizedGraph(graph_import_config);
-  TF_ASSERT_OK(statusor_optimized_graph.status());
-  GraphDef optimized_graph;
-  statusor_optimized_graph.ValueOrDie().graph->ToGraphDef(&optimized_graph);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  GraphDef optimized_graph_def;
+  optimized_graph.graph->ToGraphDef(&optimized_graph_def);
 
   GraphDef expected;
   {
@@ -544,8 +542,9 @@ TEST_F(OptimizeGraphTest, OptimizeFunctionsUsedByFunctionNodes) {
 
   // Since `Pow3` is called by `Add1Pow3`, it is optimized.
   CompareFunctions(expected.library().function(1),
-                   optimized_graph.library().function(1));
-  ASSERT_EQ("Pow3", optimized_graph.library().function(1).signature().name());
+                   optimized_graph_def.library().function(1));
+  ASSERT_EQ("Pow3",
+            optimized_graph_def.library().function(1).signature().name());
 }
 
 TEST_F(OptimizeGraphTest, DontOptimizeUnsafeFunction) {
@@ -583,13 +582,12 @@ TEST_F(OptimizeGraphTest, DontOptimizeUnsafeFunction) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  auto statusor_fallback_state =
-      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib);
-  TF_ASSERT_OK(statusor_fallback_state.status());
-  auto statusor_graph_execution_state = TfrtGraphExecutionState::Create(
-      graphdef, *statusor_fallback_state.ValueOrDie(), true);
-  TF_ASSERT_OK(statusor_graph_execution_state.status());
-  auto& graph_execution_state = *statusor_graph_execution_state.ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(graphdef, *fallback_state, true));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -600,17 +598,17 @@ TEST_F(OptimizeGraphTest, DontOptimizeUnsafeFunction) {
   graph_import_config.inputs["a"] = array_info;
   graph_import_config.outputs = {"c"};
 
-  auto statusor_optimized_graph =
-      graph_execution_state.CreateOptimizedGraph(graph_import_config);
-  TF_ASSERT_OK(statusor_optimized_graph.status());
-  GraphDef optimized_graph;
-  statusor_optimized_graph.ValueOrDie().graph->ToGraphDef(&optimized_graph);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  GraphDef optimized_graph_def;
+  optimized_graph.graph->ToGraphDef(&optimized_graph_def);
 
   // The optimized graph remains the same as the original one, because the
   // function used by `If` op is not optimized.
-  CompareGraphs(graphdef, optimized_graph);
+  CompareGraphs(graphdef, optimized_graph_def);
   CompareFunctions(graphdef.library().function(0),
-                   optimized_graph.library().function(0));
+                   optimized_graph_def.library().function(0));
 }
 
 TEST_F(OptimizeGraphTest, FunctionBecomeUnsafeIfAnyOpIsUnsafe) {
@@ -652,13 +650,12 @@ TEST_F(OptimizeGraphTest, FunctionBecomeUnsafeIfAnyOpIsUnsafe) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  auto statusor_fallback_state =
-      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib);
-  TF_ASSERT_OK(statusor_fallback_state.status());
-  auto statusor_graph_execution_state = TfrtGraphExecutionState::Create(
-      graphdef, *statusor_fallback_state.ValueOrDie(), true);
-  TF_ASSERT_OK(statusor_graph_execution_state.status());
-  auto& graph_execution_state = *statusor_graph_execution_state.ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(graphdef, *fallback_state, true));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -669,16 +666,16 @@ TEST_F(OptimizeGraphTest, FunctionBecomeUnsafeIfAnyOpIsUnsafe) {
   graph_import_config.inputs["a"] = array_info;
   graph_import_config.outputs = {"d"};
 
-  auto statusor_optimized_graph =
-      graph_execution_state.CreateOptimizedGraph(graph_import_config);
-  TF_ASSERT_OK(statusor_optimized_graph.status());
-  GraphDef optimized_graph;
-  statusor_optimized_graph.ValueOrDie().graph->ToGraphDef(&optimized_graph);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  GraphDef optimized_graph_def;
+  optimized_graph.graph->ToGraphDef(&optimized_graph_def);
 
   // Both `If` and `PartitionedCall` ops use the function, so the function
   // remains unoptimized.
   CompareFunctions(graphdef.library().function(0),
-                   optimized_graph.library().function(0));
+                   optimized_graph_def.library().function(0));
 }
 
 }  // namespace

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
+#include "tensorflow/compiler/xla/union_find.h"
 
 namespace xla {
 
@@ -121,20 +122,20 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
       } else {
         // This is a GTE of an index that we've removed.  Remove it from the
         // cloned computation.
-        CHECK(user->user_count() == 0 ||
-              user->user_count() == 1 &&
-                  user->users().front() == while_body_root)
-            << "Instruction " << user->ToString(print_no_metadata)
-            << " should be unused (except by root of while body), but has "
-               "users: {"
-            << absl::StrJoin(
-                   user->users(), ", ",
-                   [&](std::string* out, const HloInstruction* instr) {
-                     absl::StrAppend(out, instr->ToString(print_no_metadata));
-                   })
-            << "}";
-
         replacements.emplace(user, nullptr);
+      }
+    }
+    // Remove instructions that depend on removed parameters.
+    for (const auto* hlo : comp->MakeInstructionPostOrder()) {
+      if (hlo == comp->root_instruction() || replacements.contains(hlo)) {
+        continue;
+      }
+      for (const auto* operand : hlo->operands()) {
+        auto op_it = replacements.find(operand);
+        if (op_it != replacements.end() && op_it->second == nullptr) {
+          replacements[hlo] = nullptr;
+          break;
+        }
       }
     }
     return replacements;
@@ -254,7 +255,14 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     return false;
   }
 
+  const int64_t tuple_size = ShapeUtil::TupleElementCount(while_init->shape());
   auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
+  // A set that stores all unused indices. Initialize to all indices and then
+  // remove elements from it.
+  absl::flat_hash_set<int64_t> used_tuple_indices;
+  for (int64_t i = 0; i < tuple_size; ++i) {
+    used_tuple_indices.insert(i);
+  }
 
   // Bail if param0 of while_cond or while_body has users which aren't of type
   // get-tuple-element.
@@ -272,42 +280,11 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     }
   }
 
-  const int64_t tuple_size = ShapeUtil::TupleElementCount(while_init->shape());
   if (tuple_size == 0) {
     VLOG(2) << "Can't remove elements from while loop's tuple -- it's already "
                "empty.";
     return false;
   }
-
-  absl::flat_hash_set<int64_t> used_tuple_indices;
-  for (HloComputation* comp : {while_body, while_cond}) {
-    // The HLO verifier ensures that while_input's shape matches while_init's
-    // shape, which we verified above is a tuple.
-    HloInstruction* while_input = comp->parameter_instruction(0);
-
-    for (const HloInstruction* user : while_input->users()) {
-      // This user doesn't count if it's only used by the while body's root, and
-      // the root places the tuple element into the same index of the tuple as
-      // it came from.  That just amounts to us carrying the variable through
-      // the loop.
-      //
-      // Careful: HloInstruction::operand_index returns the first index the
-      // operand appears in, but it may appear more than once!
-      if (user->user_count() == 1 && user->users().front() == while_body_root &&
-          while_body_root->operand_index(user) == user->tuple_index() &&
-          absl::c_count(while_body_root->operands(), user) == 1) {
-        continue;
-      }
-
-      used_tuple_indices.insert(user->tuple_index());
-      if (used_tuple_indices.size() == tuple_size) {
-        VLOG(2) << "Loop " << while_op->ToString(print_no_metadata)
-                << " uses all of its inputs; no simplification possible.";
-        return false;
-      }
-    }
-  }
-
   absl::flat_hash_set<int64_t> used_indices_after_loop;
   if (while_op == while_op->parent()->root_instruction()) {
     for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
@@ -323,29 +300,118 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     }
     used_indices_after_loop.insert(user->tuple_index());
   }
-  // If a tuple element is used after the loop but not passed unmodified from
-  // the while body's param0 through to the while body's root, count that
-  // element as "used", since removing that element would be observable.
-  for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {
-    if (used_tuple_indices.contains(i) ||
-        !used_indices_after_loop.contains(i)) {
-      continue;
+
+  // We identify unused inputs in two cases:
+  // 1) There is no use after loop, and the input does not affect other outputs.
+  // 2) If a group of elements have inter-dependencies, but their outputs are
+  // not used or are passed-through inputs, they can be removed as a group. We
+  // use a UnionFind to approximate this implementation. (It has false
+  // negatives, e.g., when a subset of a group (uni-directionally) depend on
+  // other parts. UnionFind does not separate such a subset.)
+
+  // Tracks the set of inputs that each instruction depends on (in one
+  // iteration). For case 1).
+  absl::flat_hash_map<HloInstruction*, absl::flat_hash_set<int64_t>>
+      inst_input_deps;
+  // Find disjoint sets of connected instruction groups. This helps finding a
+  // group of inter-dependent indices that can be removed together. For case 2).
+  absl::flat_hash_map<HloInstruction*, tensorflow::UnionFind<HloInstruction*>>
+      disjoint_sets;
+  // Initialize.
+  for (HloComputation* comp : {while_body, while_cond}) {
+    HloInstruction* while_input = comp->parameter_instruction(0);
+    for (HloInstruction* inst : comp->instructions()) {
+      if (inst == while_input || inst == while_body_root) {
+        continue;
+      }
+      disjoint_sets[inst].Get() = inst;
     }
-
-    auto* operand = while_body_root->operand(i);
-    if (operand->opcode() != HloOpcode::kGetTupleElement ||
-        operand->operand(0) != while_body->parameter_instruction(0) ||
-        operand->tuple_index() != i) {
-      VLOG(2) << "Tuple index " << i
-              << " is not passed through loop body unmodified.";
-      used_tuple_indices.insert(i);
-
-      if (used_tuple_indices.size() == tuple_size) {
-        VLOG(2) << "Loop " << while_op->ToString(print_no_metadata)
-                << " uses all of its inputs; no simplification possible.";
-        return false;
+  }
+  // Track the dependencies and merge the disjoint sets.
+  absl::flat_hash_set<int64_t> side_effecting_indices;
+  for (HloComputation* comp : {while_body, while_cond}) {
+    HloInstruction* while_input = comp->parameter_instruction(0);
+    for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
+      if (inst == while_input || inst == while_body_root) {
+        continue;
+      }
+      auto& deps = inst_input_deps[inst];
+      auto& my_set = disjoint_sets[inst];
+      if (inst->opcode() == HloOpcode::kGetTupleElement &&
+          inst->operand(0) == while_input) {
+        deps.insert(inst->tuple_index());
+        HloInstruction* output =
+            while_body_root->mutable_operand(inst->tuple_index());
+        if (output != inst) {
+          disjoint_sets[output].Merge(&my_set);
+        }
+      } else {
+        for (HloInstruction* operand : inst->operands()) {
+          disjoint_sets[operand].Merge(&my_set);
+          const auto& operand_set = inst_input_deps[operand];
+          deps.insert(operand_set.begin(), operand_set.end());
+        }
+      }
+      if (inst->HasSideEffect() || inst == while_cond->root_instruction()) {
+        side_effecting_indices.insert(deps.begin(), deps.end());
       }
     }
+  }
+  // Find inputs that can be removed because they don't affect others.
+  absl::flat_hash_set<int64_t> indices_affecting_others;
+  for (int64_t i = 0; i < tuple_size; ++i) {
+    HloInstruction* output = while_body_root->mutable_operand(i);
+    for (int64_t index : inst_input_deps[output]) {
+      if (index != i) {
+        indices_affecting_others.insert(index);
+      }
+    }
+  }
+  for (int64_t i = 0; i < tuple_size; ++i) {
+    if (!indices_affecting_others.contains(i) &&
+        !used_indices_after_loop.contains(i) &&
+        !side_effecting_indices.contains(i)) {
+      VLOG(2) << "Remove with dependencies " << i;
+      used_tuple_indices.erase(i);
+    }
+  }
+  // Find the connected groups of input/output indices.
+  absl::flat_hash_map<HloInstruction*, absl::flat_hash_set<int64_t>> groups;
+  for (int64_t i = 0; i < tuple_size; ++i) {
+    HloInstruction* output = while_body_root->mutable_operand(i);
+    groups[disjoint_sets[output].Get()].insert(i);
+  }
+  for (HloComputation* comp : {while_body, while_cond}) {
+    HloInstruction* while_input = comp->parameter_instruction(0);
+    for (HloInstruction* gte : while_input->users()) {
+      groups[disjoint_sets[gte].Get()].insert(gte->tuple_index());
+    }
+  }
+  for (const auto& group : groups) {
+    if (absl::c_any_of(group.second, [&](int64_t index) {
+          // We cannot remove this index causes side effects, or if its output
+          // is not passed through from input and it is used after the while op.
+          const HloInstruction* output = while_body_root->operand(index);
+          return side_effecting_indices.contains(index) ||
+                 (used_indices_after_loop.contains(index) &&
+                  !(output->opcode() == HloOpcode::kGetTupleElement &&
+                    output->operand(0) ==
+                        while_body->parameter_instruction(0) &&
+                    output->tuple_index() == index));
+        })) {
+      continue;
+    }
+    VLOG(2) << "Remove with groups:";
+    for (int64_t index : group.second) {
+      VLOG(2) << "    index " << index;
+      used_tuple_indices.erase(index);
+    }
+  }
+
+  if (used_tuple_indices.size() == tuple_size) {
+    VLOG(2) << "Loop " << while_op->ToString(print_no_metadata)
+            << " uses all of its inputs; no simplification possible.";
+    return false;
   }
 
   // If we got here, used_tuple_indices.size() < tuple_size, meaning some

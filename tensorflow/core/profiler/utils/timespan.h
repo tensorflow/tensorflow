@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -123,7 +123,7 @@ inline Timespan PicoSpan(uint64 start_ps, uint64 end_ps) {
 
 // Creates a Timespan from endpoints in milliseconds.
 inline Timespan MilliSpan(double start_ms, double end_ms) {
-  return PicoSpan(MillisToPicos(start_ms), MillisToPicos(end_ms));
+  return PicoSpan(MilliToPico(start_ms), MilliToPico(end_ms));
 }
 
 }  // namespace profiler

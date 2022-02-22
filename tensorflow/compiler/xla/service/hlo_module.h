@@ -399,27 +399,34 @@ class HloModule {
     module->metadata_ = std::move(metadata_);
   }
 
-  void set_autofdo_fingerprint(std::string fingerprint) {
-    autofdo_fingerprint_ = fingerprint;
+  uint64_t session_id() const { return session_id_; }
+
+  void set_session_id(uint64_t session_id) { session_id_ = session_id; }
+
+  void add_profile_info(const HloModuleProto::ProfileInfo& profile_info) {
+    profile_info_list_.push_back(profile_info);
   }
 
-  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
+  void set_profile_info(
+      const std::vector<HloModuleProto::ProfileInfo>& profile_info) {
+    profile_info_list_ = profile_info;
+  }
 
-  void set_autofdo_profile(const void* profile) { autofdo_profile_ = profile; }
-
-  const void* autofdo_profile() const { return autofdo_profile_; }
-
-  void add_profile_info(HloModuleProto::ProfileType profile_type,
-                        double relative_speedup) {
-    HloModuleProto::ProfileInfo profile_info;
-    profile_info.set_profile_type(profile_type);
-    profile_info.set_relative_speedup(relative_speedup);
-    profile_info_list_.push_back(profile_info);
+  const std::vector<HloModuleProto::ProfileInfo>& profile_info() const {
+    return profile_info_list_;
   }
 
   void set_relative_speedup(double relative_speedup) {
     relative_speedup_ = relative_speedup;
   }
+
+  // Sets the **unoptimized** fingerprint for the module. This fingerprint is
+  // prior to any optimizations.
+  void set_autofdo_fingerprint(absl::string_view fingerprint) {
+    autofdo_fingerprint_ = std::string(fingerprint);
+  }
+
+  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
  private:
   HloComputation* AddComputationInternal(
@@ -478,11 +485,8 @@ class HloModule {
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
 
-  // A fingerprint to search an AutofdoProfile entry.
-  std::string autofdo_fingerprint_;
-
-  // An AutofdoProfile instance pointer.
-  const void* autofdo_profile_ = nullptr;
+  // A compilation session id.
+  uint64_t session_id_ = 0;
 
   // An array of ProfileInfo specifying what optimization profiles this module
   // contains, along with the relative speedups.
@@ -490,6 +494,9 @@ class HloModule {
 
   // Relative speedup of best config compared to default config.
   double relative_speedup_;
+
+  // The unoptimized module fingerprint.
+  std::string autofdo_fingerprint_;
 };
 
 }  // namespace xla

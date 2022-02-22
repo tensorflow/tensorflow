@@ -34,10 +34,6 @@ namespace cl {
 class CLArguments;
 }
 
-namespace metal {
-class MetalArguments;
-}
-
 class ArgumentsBinder {
  public:
   virtual absl::Status SetInt(const std::string& name, int value) = 0;
@@ -159,7 +155,6 @@ class Arguments : public ArgumentsBinder {
                                                std::string* code);
 
   friend class cl::CLArguments;
-  friend class metal::MetalArguments;
 
   static constexpr char kArgsPrefix[] = "args.";
 

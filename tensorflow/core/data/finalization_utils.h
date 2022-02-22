@@ -24,9 +24,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// Returns the finalized version of the dataset.
+// Returns the finalized version of the dataset. The returned DatasetBase is
+// unowned and lives for as long as this dataset.
 StatusOr<DatasetBase*> GetFinalizedDataset(OpKernelContext* ctx,
-                                           DatasetBase* dataset);
+                                           const DatasetBase* dataset);
 
 }  // namespace data
 }  // namespace tensorflow

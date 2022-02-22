@@ -95,8 +95,6 @@ PyObject* RegisterPyObject(PyObject* name, PyObject* value) {
 namespace {
 const int kMaxItemsInCache = 1024;
 
-bool WarnedThatSetIsNotSequence = false;
-
 bool IsString(PyObject* o) {
   return PyBytes_Check(o) ||
 #if PY_MAJOR_VERSION < 3
@@ -364,12 +362,7 @@ int IsNestedHelper(PyObject* o) {
   if (IsMappingHelper(o)) return true;
   if (IsMappingViewHelper(o)) return true;
   if (IsAttrsHelper(o)) return true;
-  if (PySet_Check(o) && !WarnedThatSetIsNotSequence) {
-    LOG(WARNING) << "Sets are not currently considered sequences, "
-                    "but this may change in the future, "
-                    "so consider avoiding using them.";
-    WarnedThatSetIsNotSequence = true;
-  }
+
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     int is_instance = IsInstanceOfRegisteredType(to_check, "Sequence");
 

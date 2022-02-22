@@ -97,7 +97,8 @@ func @tfrt_set_resource(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<
 
 // CHECK-LABEL: func @tfrt_get_resource
 func @tfrt_get_resource() -> tensor<3x3xf32> {
-  // CHECK: [[ch3:%.*]], [[results:%.*]]:2 = tfrt_fallback_async.get_resource {{.*}} {device = "/device:CPU:0", indices = [0, 1]}
+  // CHECK: [[ready_ch:%.*]] = tfrt.new.chain
+  // CHECK: [[ch3:%.*]], [[results:%.*]]:2 = tfrt_fallback_async.get_resource [[ready_ch]] {device = "/device:CPU:0", indices = [0, 1]}
   // CHECK: tfrt_fallback_async.executeop key({{.*}}) cost({{.*}}) device("/device:CPU:0") "tf.MatMul"([[results]]#0, [[results]]#1)
   %a, %b = "tf._TfrtGetResource"() {device = "/device:CPU:0", indices = [0, 1], shared_name = ["", ""], container = ["", ""]} : () -> (tensor<3x1xf32>, tensor<1x3xf32>)
   %1 = "tf.MatMul"(%a, %b) {T = f32, device = "/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>

@@ -336,7 +336,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.output_graph_def = optimized_graph;
   cp.precision_mode = precision_mode_;
   cp.minimum_segment_size = minimum_segment_size_;
-  cp.cluster = cluster;
   cp.is_dyn_op = is_dynamic_op_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
@@ -353,7 +352,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     assert(cp.minimum_segment_size > 0);
   }
 
-  auto status = ConvertAfterShapes(cp);
+  auto status = ConvertAfterShapes(cp, cluster);
   VLOG(1) << "Returning from " << name_;
   return status;
 }

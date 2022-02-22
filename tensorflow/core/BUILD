@@ -1314,7 +1314,7 @@ cc_library(
             "-lpthread",
         ],
     }),
-    visibility = ["//tensorflow/python:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = tf_additional_lib_deps() + [
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",

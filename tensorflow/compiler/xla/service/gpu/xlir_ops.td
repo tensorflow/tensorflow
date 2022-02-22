@@ -43,7 +43,7 @@ def XLIR_Dialect : Dialect {
 }
 
 // Base class for XLIR dialect ops.
-class XLIR_Op<string mnemonic, list<OpTrait> traits = []> :
+class XLIR_Op<string mnemonic, list<Trait> traits = []> :
     Op<XLIR_Dialect, mnemonic, traits> {
   let summary = !strconcat("xlir.", mnemonic, " operation");
   let assemblyFormat = "operands attr-dict";

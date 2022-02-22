@@ -1,7 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings")
-load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -442,28 +443,7 @@ cc_library(
         "model_builder.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + tflite_copts_warnings() +
-            # As xnn_enable_qs8_explicit_true and xnn_enable_qu8_explicit_true
-            # could be specified simultaneously, use two selects here.
-            select({
-                "@XNNPACK//:xnn_enable_qs8_explicit_false": [],
-                "@XNNPACK//:xnn_enable_qs8_explicit_true": [
-                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-                ],
-                "//tensorflow:emscripten": [
-                    "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-                ],
-                "//conditions:default": [],
-            }) + select({
-        "@XNNPACK//:xnn_enable_qu8_explicit_false": [],
-        "@XNNPACK//:xnn_enable_qu8_explicit_true": [
-            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-        ],
-        "//tensorflow:emscripten": [
-            "-DTFLITE_ALWAYS_CREATE_LAZY_DELEGATE_PROVIDERS",
-        ],
-        "//conditions:default": [],
-    }),
+    copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
@@ -492,6 +472,8 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/delegates:telemetry",
+        "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qs8",
+        "//tensorflow/lite/delegates/xnnpack:tflite_with_xnnpack_qu8",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -513,7 +495,6 @@ cc_library(
     srcs = [
         "core/subgraph.cc",
         "graph_info.cc",
-        "interpreter_builder_experimental.cc",
         "interpreter_experimental.cc",
         "signature_runner.cc",
     ],
@@ -1196,6 +1177,25 @@ tflite_cc_shared_object(
         ":tflite_version_script.lds",
         "//tensorflow/lite/kernels:builtin_ops_all_linked",
     ],
+)
+
+bzl_library(
+    name = "build_def_bzl",
+    srcs = ["build_def.bzl"],
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    deps = [
+        ":special_rules_bzl",
+        "//tensorflow:tensorflow_bzl",
+        "//tensorflow/lite/java:aar_with_jni_bzl",
+        "@bazel_skylib//rules:build_test",
+    ],
+)
+
+bzl_library(
+    name = "special_rules_bzl",
+    srcs = ["special_rules.bzl"],
+    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    deps = SPECIAL_RULES_DEPS,
 )
 
 tflite_portable_test_suite()

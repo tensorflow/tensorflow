@@ -28,6 +28,8 @@ namespace {
 TEST(TypeToTfLiteType, TypeMapsAreInverseOfEachOther) {
   EXPECT_EQ(kTfLiteInt16,
             typeToTfLiteType<TfLiteTypeToType<kTfLiteInt16>::Type>());
+  EXPECT_EQ(kTfLiteUInt16,
+            typeToTfLiteType<TfLiteTypeToType<kTfLiteUInt16>::Type>());
   EXPECT_EQ(kTfLiteInt32,
             typeToTfLiteType<TfLiteTypeToType<kTfLiteInt32>::Type>());
   EXPECT_EQ(kTfLiteUInt32,

@@ -993,21 +993,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
         control_flow_ops.cond(pred, fn1, fn2)
 
-  @test_util.run_deprecated_v1
-  def testCondRef(self):
-
-    with self.cached_session():
-      x = gen_state_ops.variable(
-          shape=[1],
-          dtype=dtypes.float32,
-          name="x",
-          container="",
-          shared_name="")
-      true_fn = lambda: x
-      false_fn = lambda: constant_op.constant([2.0])
-      r = control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
-      self.assertAllEqual([2.0], self.evaluate(r))
-
   @test_util.run_v1_only("b/120545219")
   def testCondWithControl(self):
     with self.cached_session() as sess:
@@ -2324,8 +2309,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       ]
     _, r = control_flow_ops.while_loop(c, b, [i, x])
     self.assertEqual(r.row_splits.shape.as_list(), [3])
-    self.assertTrue(r.values.row_splits.shape.as_list() in ([6], [None]))
-    self.assertTrue(r.values.values.shape.as_list() in ([49], [None]))
+    self.assertIn(r.values.row_splits.shape.as_list(), ([6], [None]))
+    self.assertIn(r.values.values.shape.as_list(), ([49], [None]))
 
   def testWhileShapeInvariantTensorSpec(self):
     i = constant_op.constant(0)

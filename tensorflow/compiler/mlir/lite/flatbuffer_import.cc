@@ -853,8 +853,8 @@ StatusOr<Operation*> ConvertOp(
     // with `none` value,
     llvm::SmallVector<Value, 4> none_operands(
         input_max_num - op_input_num,
-        builder.create<mlir::ConstantOp>(loc, builder.getNoneType(),
-                                         builder.getUnitAttr()));
+        builder.create<mlir::TFL::NoValueOp>(loc, builder.getNoneType(),
+                                             builder.getUnitAttr()));
     op_state.addOperands(ArrayRef<Value>(none_operands));
   }
 
@@ -1305,8 +1305,8 @@ StatusOr<FuncOp> ConvertSubgraph(
         if (maybe_optional_arg_marker == nullptr) {
           maybe_optional_arg_marker =
               op_builder
-                  .create<mlir::ConstantOp>(base_loc, builder.getNoneType(),
-                                            builder.getUnitAttr())
+                  .create<mlir::TFL::NoValueOp>(base_loc, builder.getNoneType(),
+                                                builder.getUnitAttr())
                   .getResult();
         }
       } else if (!vals_map.at(input_num)) {

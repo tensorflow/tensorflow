@@ -265,6 +265,44 @@ void ConvPowerVR::GenerateCode(const GpuInfo& gpu_info) {
   }
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
+
+  auto src_desc = definition_.src_tensors[0];
+  src_desc.SetAddressMode(AddressMode::kZero);
+  if (definition_.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddSrcTensor("src_tensor", src_desc);
+  if (definition_.src_tensors.size() == 2) {  // dynamic weights
+    const DataType weights_type = definition_.GetDataType();
+    if (conv_params_.weights_layout == WeightsLayout::kOSpatialIOGroupI4O4 ||
+        conv_params_.weights_layout == WeightsLayout::kOSpatialIOGroupO4I4) {
+      definition_.src_tensors[1] = {weights_type, TensorStorageType::BUFFER,
+                                    Layout::HWC};
+      BufferDescriptor desc;
+      desc.element_type = weights_type;
+      desc.element_size = 4;
+      desc.memory_type = conv_params_.weights_upload_type ==
+                                 ConvPowerVR::WeightsUploadType::CONSTANT_MEM
+                             ? MemoryType::CONSTANT
+                             : MemoryType::GLOBAL;
+
+      AddSrcBuffer("weights", desc);
+    } else {
+      TensorDescriptor desc{weights_type, TensorStorageType::TEXTURE_2D,
+                            Layout::HWC};
+      definition_.src_tensors[1] = desc;
+      definition_.src_tensors.push_back(desc);
+      definition_.src_tensors.push_back(desc);
+      definition_.src_tensors.push_back(desc);
+      for (int i = 0; i < 4; ++i) {
+        Texture2DDescriptor desc;
+        desc.element_type = definition_.src_tensors[1 + i].data_type;
+        const std::string name = "weights" + std::to_string(i);
+        AddSrcTexture2D("weights" + std::to_string(i), desc);
+      }
+    }
+  }
+
   code_ = GenerateConv(gpu_info, definition_, stride_correction, conv_params_);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
@@ -360,25 +398,6 @@ std::string ConvPowerVR::GenerateConv(const GpuInfo& gpu_info,
                                       const OperationDef& op_def,
                                       bool stride_correction,
                                       const ConvParams& conv_params) {
-  auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
-  if (op_def.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
-  }
-  AddSrcTensor("src_tensor", src_desc);
-  if (op_def.src_tensors.size() == 2) {
-    // dynamic weights
-    BufferDescriptor desc;
-    desc.element_type = op_def.src_tensors[1].data_type;
-    desc.element_size = 4;
-    desc.memory_type = conv_params.weights_upload_type ==
-                               ConvPowerVR::WeightsUploadType::CONSTANT_MEM
-                           ? MemoryType::CONSTANT
-                           : MemoryType::GLOBAL;
-
-    AddSrcBuffer("weights", desc);
-  }
-
   const auto& src_def = op_def.src_tensors[0];
 
   auto generate_id = [&](const std::string& x, const std::string& y,
@@ -1390,12 +1409,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     work_group_launch_order_ = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
-    if (definition.src_tensors.size() == 2) {
-      // dynamic weights supported only with buffers.
-      conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
-    } else {
-      conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM_X4;
-    }
+    conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM_X4;
   } else if (gpu_info.IsIntel()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(16, 1, 1);

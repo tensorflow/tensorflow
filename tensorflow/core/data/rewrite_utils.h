@@ -47,10 +47,12 @@ RewriterConfig CreateRewriterConfig(
     const absl::flat_hash_set<tstring>& optimizations,
     const absl::flat_hash_set<tstring>& optimizations_configs);
 
-// Rewrites the input dataset using the given config.
+// Rewrites the input dataset using the given config. The rewritten_input
+// stored in the core::RefCountPtr<DatasetBase>* output parameter is owned.
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool record_fingerprint, DatasetBase** rewritten_input);
+                      bool record_fingerprint,
+                      core::RefCountPtr<DatasetBase>* rewritten_input);
 
 // Creates a grappler item for `graph_def`, which is required for graph
 // optimization.

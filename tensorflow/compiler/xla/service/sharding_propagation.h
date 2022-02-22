@@ -34,11 +34,13 @@ class ShardingPropagation : public HloModulePass {
       absl::flat_hash_map<const HloComputation*, HloInstruction*>;
   explicit ShardingPropagation(
       bool is_spmd = false, bool propagate_metadata = false,
-      bool allow_spmd_sharding_propagation_to_output = false)
+      bool allow_spmd_sharding_propagation_to_output = false,
+      bool cse_prevention_only = false)
       : is_spmd_(is_spmd),
         propagate_metadata_(propagate_metadata),
         allow_spmd_sharding_propagation_to_output_(
-            allow_spmd_sharding_propagation_to_output) {}
+            allow_spmd_sharding_propagation_to_output),
+        cse_prevention_only_(cse_prevention_only) {}
   absl::string_view name() const override { return "sharding-propagation"; }
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -60,6 +62,10 @@ class ShardingPropagation : public HloModulePass {
   bool is_spmd_;
   bool propagate_metadata_;
   bool allow_spmd_sharding_propagation_to_output_;
+  // If true, the pass keeps the propagation results only on selected
+  // instructions to prevent CSE across unrelated subgraphs. (A common case is
+  // scalar broadcasts).
+  bool cse_prevention_only_;
 };
 
 }  // namespace xla

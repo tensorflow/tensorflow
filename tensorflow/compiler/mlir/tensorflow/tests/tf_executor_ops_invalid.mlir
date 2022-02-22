@@ -107,7 +107,7 @@ func @graph_with_invalid_terminator(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 func @graph_with_multiple_region(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // expected-error@-1 {{custom op 'tf_executor.graph' expects a single block region}}
-    br ^bb
+    cf.br ^bb
   ^bb:
     tf_executor.fetch %arg0 : tensor<*xf32>
   }

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
@@ -171,6 +172,46 @@ void ConvertReadVariableOpToIdentity(const NodeDef& node,
   identity_node->add_input(node.input(0));
 }
 
+// Returns the name of the VarHandleOp that provides input (possibly indirectly)
+// to node with node_name. A typical indirect chain of nodes (that can occur due
+// to graph inlining) is the following: VarHandleOp -> Identity -> Identity ->
+// ReadVariableOp. Calling the function on any of these nodes would return the
+// name of the VarHandleOp.
+StatusOr<string> GetVarHandleName(
+    const std::unordered_map<string, NodeDef*>& name_to_node_map,
+    string node_name) {
+  const NodeDef* node = name_to_node_map.at(node_name);
+  while (node->input_size() > 0) {
+    auto parent = name_to_node_map.find(node->input(0));
+    if (parent == name_to_node_map.end()) break;
+    node = parent->second;
+    if (node->op() != "Identity") {
+      VLOG(2) << "Stopping at non-identity node " << node->op();
+      break;
+    }
+  }
+  if (node->op() == "VarHandleOp") {
+    return node->name();
+  }
+  return errors::NotFound("No VarHandleOp ancestor found");
+}
+
+// Looks up the variable handle that provides input to node with node_name,
+// and returns the handle name if the handle corresponds to a variable that we
+// want to freeze (i.e. its name is contained in variable_node_names). If there
+// is no such handle in the graph (or we do not want to save that variable)
+// then NotFound error is returned.
+StatusOr<string> GetHandleNameIfNeedsToFreeze(
+    const std::unordered_map<string, NodeDef*>& name_to_node_map,
+    string node_name, const std::unordered_set<string>& variable_node_names) {
+  StatusOr<string> var_handle_name =
+      GetVarHandleName(name_to_node_map, node_name);
+  if (var_handle_name.ok() && variable_node_names.count(*var_handle_name)) {
+    return var_handle_name;
+  }
+  return errors::NotFound("No VarHandleOp ancestor found");
+}
+
 // Freezes the subgraph of all nodes needed by `outputs`.
 Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
                       const std::unordered_set<string>& outputs,
@@ -204,16 +245,30 @@ Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
     if (variable_node_names.find(node.name()) != variable_node_names.end()) {
       ConvertVariableToConstant(node, variable_to_value_map[node.name()],
                                 frozen_graph_def->add_node());
+      continue;
     } else if (node.op() == "ReadVariableOp" &&
-               variable_node_names.find(node.input(0)) !=
-                   variable_node_names.end()) {
+               GetHandleNameIfNeedsToFreeze(name_to_node_map, node.name(),
+                                            variable_node_names)
+                   .ok()) {
       // If the node is a ReadVariableOp, its input VarHandleOp will be
       // converted to a Constant, so we will need to convert it to an Identity.
       ConvertReadVariableOpToIdentity(node, frozen_graph_def->add_node());
-    } else {
-      // If the node isn't a variable, just copy the node as-is.
-      *frozen_graph_def->add_node() = node;
+      continue;
+    } else if (node.op() == "Identity") {
+      StatusOr<string> handle_name = GetHandleNameIfNeedsToFreeze(
+          name_to_node_map, node.name(), variable_node_names);
+      if (handle_name.ok()) {
+        // Identity node that is forwarding the value of a frozen
+        // VarhandleOp. We ensure that the dtype matches of the variable dtype.
+        NodeDef* new_node = frozen_graph_def->add_node();
+        *new_node = node;
+        (*new_node->mutable_attr())["T"] =
+            name_to_node_map.at(*handle_name)->attr().at("dtype");
+        continue;
+      }
     }
+    // If the node isn't a variable, just copy the node as-is.
+    *frozen_graph_def->add_node() = node;
   }
   return Status::OK();
 }

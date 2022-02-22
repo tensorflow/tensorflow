@@ -52,9 +52,9 @@ func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
 // CHECK-SCF-DAG:    %[[REDUCED_RANK1:.*]] = shape.rank %[[REDUCED_SHAPES]]#2
 // CHECK-SCF-DAG:    %[[REDUCED_RANK2:.*]] = shape.rank %[[REDUCED_SHAPES]]#0
 // CHECK-SCF-DAG:    %[[R2_GT_R0:.*]] = arith.cmpi sgt, %[[REDUCED_RANK2]], %[[REDUCED_RANK0]]
-// CHECK-SCF-DAG:    %[[R20:.*]] = select %[[R2_GT_R0]], %[[REDUCED_RANK2]], %[[REDUCED_RANK0]]
+// CHECK-SCF-DAG:    %[[R20:.*]] = arith.select %[[R2_GT_R0]], %[[REDUCED_RANK2]], %[[REDUCED_RANK0]]
 // CHECK-SCF-DAG:    %[[R20_GT_R1:.*]] = arith.cmpi sgt, %[[R20]], %[[REDUCED_RANK1]]
-// CHECK-SCF-DAG:    %[[MAX_RED_RANK:.*]] = select %[[R20_GT_R1]], %[[R20]], %[[REDUCED_RANK1]]
+// CHECK-SCF-DAG:    %[[MAX_RED_RANK:.*]] = arith.select %[[R20_GT_R1]], %[[R20]], %[[REDUCED_RANK1]]
 //                 Generic case 1:
 // CHECK-SCF:        %[[MAX_RED_RANK_LE_1:.*]] = arith.cmpi ule, %[[MAX_RED_RANK]], %[[C1]]
 // CHECK-SCF:        %[[UNSHAPED_RES_1:.*]] = scf.if %[[MAX_RED_RANK_LE_1]]
@@ -414,7 +414,7 @@ func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF-DAG:        %[[REDUCED_RANK0:.*]] = shape.rank %[[REDUCED_SHAPES]]#0
 // CHECK-SCF-DAG:        %[[REDUCED_RANK1:.*]] = shape.rank %[[REDUCED_SHAPES]]#1
 // CHECK-SCF-DAG:        %[[R0_GT_R1:.*]] = arith.cmpi sgt, %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
-// CHECK-SCF-DAG:        %[[MAX_RED_RANK:.*]] = select %[[R0_GT_R1]], %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
+// CHECK-SCF-DAG:        %[[MAX_RED_RANK:.*]] = arith.select %[[R0_GT_R1]], %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
 //                 Generic case 1:
 // CHECK-SCF:            %[[MAX_RED_RANK_LE_1:.*]] = arith.cmpi ule, %[[MAX_RED_RANK]], %[[C1]]
 // CHECK-SCF:            %{{.*}} = scf.if %[[MAX_RED_RANK_LE_1]]
@@ -506,7 +506,7 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-SCF-DAG:        %[[REDUCED_RANK0:.*]] = shape.rank %[[REDUCED_SHAPES]]#0
 // CHECK-SCF-DAG:        %[[REDUCED_RANK1:.*]] = shape.rank %[[REDUCED_SHAPES]]#1
 // CHECK-SCF-DAG:        %[[R0_GT_R1:.*]] = arith.cmpi sgt, %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
-// CHECK-SCF-DAG:        %[[MAX_RED_RANK:.*]] = select %[[R0_GT_R1]], %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
+// CHECK-SCF-DAG:        %[[MAX_RED_RANK:.*]] = arith.select %[[R0_GT_R1]], %[[REDUCED_RANK0]], %[[REDUCED_RANK1]]
 //                 Generic case 1:
 // CHECK-SCF:            %[[MAX_RED_RANK_LE_1:.*]] = arith.cmpi ule, %[[MAX_RED_RANK]], %[[C1]]
 // CHECK-SCF:            %[[UNSHAPED_RES_1:.*]] = scf.if %[[MAX_RED_RANK_LE_1]]

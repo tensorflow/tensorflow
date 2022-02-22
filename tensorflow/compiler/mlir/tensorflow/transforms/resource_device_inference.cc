@@ -168,12 +168,8 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
 
   // To support WhileRegion, we need to propagate device attributes from
   // WhileRegion operands to body/cond region arguments *prior* to visiting
-  // these regions.
-  WalkResult walk_res = func_op->walk([&](Operation* op,
-                                          const WalkStage& stage) {
-    // We just need to visit operations in pre-order mode.
-    if (!stage.isBeforeAllRegions()) return WalkResult::advance();
-
+  // these regions, so use a pre-order walk.
+  WalkResult walk_res = func_op.walk<WalkOrder::PreOrder>([&](Operation* op) {
     if (auto var_handle = dyn_cast<VarHandleOp>(op)) {
       // Record VarHandleOp's device attribute.
       StringRef device_attr = GetDeviceAttr(op);

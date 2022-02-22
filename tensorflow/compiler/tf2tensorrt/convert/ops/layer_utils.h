@@ -220,6 +220,29 @@ class TRTNetworkBuilder {
     return layer;
   }
 
+  // Adds a sequence of elementwise multiplication operations to the network.
+  // The returned layer's output contains the cumulative elementwise product of
+  // all tensors in the input.
+  StatusOr<nvinfer1::ILayer*> CumulativeProd(
+      absl::Span<nvinfer1::ITensor*> inputs) noexcept {
+    TRT_ENSURE(!absl::c_any_of(
+        inputs, [](nvinfer1::ITensor* x) { return x == nullptr; }));
+    nvinfer1::ILayer* out = nullptr;
+    if (inputs.size() == 1) {
+      out = network_->addIdentity(*inputs[0]);
+      TRT_ENSURE(out != nullptr);
+      return out;
+    }
+    nvinfer1::ITensor* last = inputs[0];
+    for (int i = 1; i < inputs.size(); i++) {
+      StatusOr<nvinfer1::IElementWiseLayer*> mul = this->Mul(last, inputs[i]);
+      TRT_ENSURE_PTR_OK(mul);
+      out = *mul;
+      last = (*mul)->getOutput(0);
+    }
+    return out;
+  }
+
   // Adds a Constant layer whose output is a TensorRT shape tensor. The shape
   // tensor's size and values correspond to dim's nbDims and d[], respectively.
   StatusOr<nvinfer1::IConstantLayer*> ConstantShape(
@@ -337,6 +360,25 @@ class TRTNetworkBuilder {
         network_->addSlice(*input, begin, size, stride);
     TRT_ENSURE(layer);
     return layer;
+  }
+
+  // Adds a TensorRT Concatenate operation to the network.
+  StatusOr<nvinfer1::IConcatenationLayer*> Concat(
+      absl::Span<nvinfer1::ITensor* const> inputs, const int axis) {
+    for (nvinfer1::ITensor* input : inputs) {
+      TRT_ENSURE(input);
+    }
+    nvinfer1::IConcatenationLayer* layer = network_->addConcatenation(
+        inputs.data(), static_cast<int32_t>(inputs.size()));
+    TRT_ENSURE(layer);
+    layer->setAxis(axis);
+    return layer;
+  }
+
+  // Adds a TensorRT Concatenate operation to the network.
+  StatusOr<nvinfer1::IConcatenationLayer*> Concat(
+      const std::vector<nvinfer1::ITensor*>& inputs, const int axis) {
+    return this->Concat(absl::MakeSpan(inputs), axis);
   }
 
   // Adds a TensorRT Shape operation, which determines the runtime shape of the
@@ -546,9 +588,57 @@ class TRTNetworkBuilder {
     return FindProducerOf(layer->getInput(input_idx));
   }
 
+  nvinfer1::INetworkDefinition* Network() { return network_; }
+
  private:
   nvinfer1::INetworkDefinition* const network_;
   TrtWeightStore* const weight_store_;
+};
+
+class ShuffleBuilder {
+ private:
+  explicit ShuffleBuilder(TRTNetworkBuilder* builder, nvinfer1::ITensor* input)
+      : builder_(builder) {
+    layer_ = builder->Network()->addShuffle(*input);
+  }
+
+ public:
+  static StatusOr<ShuffleBuilder> Create(TRTNetworkBuilder* builder,
+                                         nvinfer1::ITensor* input) {
+    TRT_ENSURE(builder != nullptr);
+    TRT_ENSURE(input != nullptr);
+    return ShuffleBuilder(builder, input);
+  }
+
+  ShuffleBuilder& SetReshape(const nvinfer1::Dims& dims) {
+    layer_->setReshapeDimensions(dims);
+    return *this;
+  }
+
+  ShuffleBuilder& SetReshape(nvinfer1::ITensor* shape) {
+    layer_->setInput(1, *shape);
+    return *this;
+  }
+
+  ShuffleBuilder& SetFirstTranspose(const nvinfer1::Permutation& perm) {
+    layer_->setFirstTranspose(perm);
+    return *this;
+  }
+
+  ShuffleBuilder& SetSecondTranspose(const nvinfer1::Permutation& perm) {
+    layer_->setSecondTranspose(perm);
+    return *this;
+  }
+
+  StatusOr<nvinfer1::ITensor*> Output() {
+    TRT_ENSURE(layer_ != nullptr);
+    TRT_ENSURE(layer_->getOutput(0) != nullptr);
+    return layer_->getOutput(0);
+  }
+
+ private:
+  TRTNetworkBuilder* builder_;
+  nvinfer1::IShuffleLayer* layer_;
 };
 
 }  // namespace convert

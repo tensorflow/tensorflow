@@ -36,12 +36,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -147,6 +149,14 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   // Find the fastest algorithm for GEMMs.
   post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+
+  if (!IsBefEnabled(hlo_module->config())) {
+    // Transform TriangularSolve ops into custom-calls, so we can add temp
+    // memory. XLIR allocates temp memory, and so the custom-call implementation
+    // for TriangularSolve is not needed.
+    post_pipeline.AddPass<TriangularSolveRewriter>();
+  }
+
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
   return Status::OK();

@@ -82,6 +82,9 @@ upper_tabs:
         path: /lite/guide/faq
       - title: "Roadmap"
         path: /lite/guide/roadmap
+      - title: "Android using Play Services"
+        path: /lite/android/play_services
+        status: experimental
 
       - heading: "Convert a model"
       - title: "Overview"

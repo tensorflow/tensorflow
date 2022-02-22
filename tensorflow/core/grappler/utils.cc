@@ -89,7 +89,7 @@ bool IsSameInput(const string& name1, const string& name2) {
   return tensor1 == tensor2;
 }
 
-bool IsControlInput(const string& name) {
+bool IsControlInput(absl::string_view name) {
   return !name.empty() && name[0] == '^';
 }
 

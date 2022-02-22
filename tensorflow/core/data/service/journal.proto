@@ -42,12 +42,6 @@ message RegisterWorkerUpdate {
   int64 worker_uid = 4;
 }
 
-// Next tag: 3
-message NamedJobKeyDef {
-  string name = 1;
-  int64 index = 2;
-}
-
 // Next tag: 11
 message CreateJobUpdate {
   reserved 3, 5, 6;
@@ -55,8 +49,7 @@ message CreateJobUpdate {
   int64 dataset_id = 2;
   ProcessingModeDef processing_mode_def = 9;
   int64 num_split_providers = 8;
-  // Only some jobs have names, so this may be unset.
-  NamedJobKeyDef named_job_key = 4;
+  JobKeyDef job_key = 4;
   // Optional number of consumers. If set, the job's tasks will provide their
   // elements to consumers round-robin.
   oneof optional_num_consumers {
@@ -69,7 +62,7 @@ message CreateJobUpdate {
 // Next tag: 5
 message ProduceSplitUpdate {
   int64 job_id = 1;
-  int64 repetition = 2;
+  int64 iteration = 2;
   int64 split_provider_index = 4;
   // Whether the split provider reached its end.
   bool finished = 3;

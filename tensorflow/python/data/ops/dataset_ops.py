@@ -65,7 +65,6 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
-from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest as tf_nest
@@ -822,6 +821,13 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       self._args = {}
       self._iterators = {}
 
+    def _normalize_id(self, iterator_id):
+      # In debug mode, iterator ids may be eagerly-generated np.arrays instead
+      # of Tensors. We convert them to scalars to make them hashable.
+      if isinstance(iterator_id, np.ndarray):
+        return iterator_id.item()
+      return iterator_id
+
     def get_next_id(self, *args):
       with self._lock:
         ret = self._next_id
@@ -833,6 +839,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       return np.array(ret, dtype=np.int64)
 
     def get_iterator(self, iterator_id):
+      iterator_id = self._normalize_id(iterator_id)
       try:
         return self._iterators[iterator_id]
       except KeyError:
@@ -841,7 +848,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         return iterator
 
     def iterator_completed(self, iterator_id):
-      del self._iterators[iterator_id]
+      del self._iterators[self._normalize_id(iterator_id)]
 
   @staticmethod
   @deprecation.deprecated_args(None, "Use output_signature instead",
@@ -1070,6 +1077,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         flat_values = script_ops.numpy_function(generator_py_func,
                                                 [iterator_id_t],
                                                 flattened_types)
+
+        # In debug mode the numpy_function will return a scalar if
+        # generator_py_func produces only a single value.
+        if not isinstance(flat_values, (list, tuple)):
+          flat_values = [flat_values]
 
         # The `py_func()` op drops the inferred shapes, so we add them back in
         # here.
@@ -4288,35 +4300,6 @@ def to_variant(dataset):
   return dataset._variant_tensor  # pylint: disable=protected-access
 
 
-# TODO(b/202447704): Merge into DatasetSpec.
-class DatasetSpecTraceType(trace.TraceType):
-  """Defines the Tracing Protocol for Dataset objects.
-
-  The default TraceType supplied by TypeSpec does not take into account
-  `element_spec` and therefore reuses concrete functions for cases where
-  the `element_spec` is different.
-  """
-
-  def __init__(self, element_spec, dataset_shape):
-    self._components = (element_spec, tuple(dataset_shape.as_list()))
-
-  def is_subtype_of(self, other):
-    return self == other
-
-  def most_specific_common_supertype(self, others):
-    return None
-
-  def __hash__(self):
-    return hash(DatasetSpecTraceType)
-
-  def __eq__(self, other):
-    if not isinstance(other, trace.TraceType):
-      return NotImplemented
-
-    return isinstance(
-        other, DatasetSpecTraceType) and self._components == other._components
-
-
 @tf_export(
     "data.DatasetSpec",
     v1=["data.DatasetSpec", "data.experimental.DatasetStructure"])
@@ -4345,6 +4328,15 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
     """The inner element spec."""
     return self._element_spec
 
+  def is_subtype_of(self, other):
+    return self == other
+
+  def most_specific_common_supertype(self, others):
+    return None
+
+  # TODO(b/220385675): Once _element_spec is guaranteed to be TypeSpec, the
+  # following functions do not need to be overloaded: is_subtype_of,
+  # most_specific_common_supertype, __hash__ and __eq__
   def _serialize(self):
     return (self._element_spec, self._dataset_shape)
 
@@ -4397,8 +4389,14 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
   def _to_legacy_output_classes(self):
     return self
 
-  def __tf_tracing_type__(self, _):
-    return DatasetSpecTraceType(self._element_spec, self._dataset_shape)
+  def __hash__(self):
+    # TODO(b/220385675): attributes can be dicts and hence unhashable.
+    return hash(DatasetSpec)
+
+  def __eq__(self, other):
+    return (isinstance(other, DatasetSpec) and
+            self._element_spec == other._element_spec and
+            self._dataset_shape == other._dataset_shape)
 
 
 class _NumpyIterator(object):

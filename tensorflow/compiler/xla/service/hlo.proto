@@ -451,7 +451,7 @@ message HloModuleProto {
 
   xla.OpSharding spmd_output_sharding = 12;
 
-  // The type of optimization profile in use.
+  // The type of optimization profile in use for module-level optimizations.
   enum ProfileType {
     INVALID = 0;
     FLAG = 1;
@@ -465,8 +465,13 @@ message HloModuleProto {
     ProfileType profile_type = 1;
     // Speedup of tuned config compared to default config.
     double relative_speedup = 2;
+    // The source of the optimization profile that this module contains.
+    xla.ProfileSource profile_source = 3;
+    // The compilation event that triggered the use of the profile.
+    xla.CompilationEvent compilation_event = 4;
   }
 
+  // Profile information for the HLO module.
   repeated ProfileInfo profile_info = 13;
 }
 
