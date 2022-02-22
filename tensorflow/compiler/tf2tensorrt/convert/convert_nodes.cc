@@ -3880,6 +3880,10 @@ UnaryOperationMap() {
           {"Ceil", nvinfer1::UnaryOperation::kCEIL},
           {"Floor", nvinfer1::UnaryOperation::kFLOOR},
           {"Erf", nvinfer1::UnaryOperation::kERF},
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+          {"Round", nvinfer1::UnaryOperation::kROUND},
+          {"Sign", nvinfer1::UnaryOperation::kSIGN},
+#endif
       });
   return m;
 }
@@ -3894,6 +3898,18 @@ Status ConvertUnary(OpConverterParams* params) {
   if (op_pair == UnaryOperationMap()->end()) {
     return errors::Unimplemented("Unary op: ", node_def.op(), " not supported");
   }
+
+  // kSIGN  and kROUND are not yet supported in implicit batch mode.
+  // TODO(drivanov): Remove this check when TRT enables these ops in implicit
+  //                 batch mode (nvbugs/3517570).
+  if (params->use_implicit_batch) {
+    const auto& op = params->node_def.op();
+    if (op == "Sign" || op == "Round") {
+      return errors::Unimplemented("Unary op: ", op,
+                                   " not supported in implicit batch mode");
+    }
+  }
+
   if (params->validation_only) return Status::OK();
 
   // Start conversion.
