@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -92,6 +93,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   void SetError(const Status& error) override;
   Status ActivateWatch(const std::string& key,
                        const std::map<std::string, std::string>&) override;
+  // Returns an error if agent is not running.
+  Status ValidateRunningAgent();
   void Stop();
 
  private:
@@ -292,13 +295,9 @@ Status CoordinationServiceAgentImpl::Connect() {
 
 Status CoordinationServiceAgentImpl::WaitForAllTasks(
     const CoordinationServiceDeviceInfo& local_devices) {
-  {
-    mutex_lock l(state_mu_);
-    if (state_ != State::RUNNING) {
-      return MakeCoordinationError(errors::FailedPrecondition(
-          "CoordinationServiceAgentImpl::WaitForAllTasks must be called when "
-          "the coordination service agent is in RUNNING state."));
-    }
+  Status agent_running_status = ValidateRunningAgent();
+  if (!agent_running_status.ok()) {
+    return agent_running_status;
   }
   WaitForAllTasksRequest request;
   *request.mutable_source_task() = task_;
@@ -478,21 +477,79 @@ Status CoordinationServiceAgentImpl::ActivateWatch(
 Status CoordinationServiceAgentImpl::WaitAtBarrier(
     const std::string& barrier_id, absl::Duration timeout,
     const std::vector<CoordinatedTask>& tasks) {
-  return MakeCoordinationError(errors::Unimplemented(
-      "CoordinationServiceAgent::WaitAtBarrierAsync is not implemented."));
+  Status status;
+  absl::Notification n;
+  WaitAtBarrierAsync(barrier_id, timeout, tasks, [&](Status s) {
+    status = s;
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return status;
 }
 
 void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
     const std::string& barrier_id, absl::Duration timeout,
     const std::vector<CoordinatedTask>& tasks, StatusCallback done) {
-  return done(MakeCoordinationError(errors::Unimplemented(
-      "CoordinationServiceAgent::WaitAtBarrierAsync is not implemented.")));
+  Status agent_running_status = ValidateRunningAgent();
+  if (!agent_running_status.ok()) {
+    done(agent_running_status);
+    return;
+  }
+  auto request = std::make_shared<BarrierRequest>();
+  auto response = std::make_shared<BarrierResponse>();
+  request->set_barrier_id(barrier_id);
+  request->set_barrier_timeout_in_ms(timeout / absl::Milliseconds(1));
+  *request->mutable_source_task() = task_;
+  *request->mutable_tasks() = {tasks.begin(), tasks.end()};
+  leader_client_->BarrierAsync(request.get(), response.get(),
+                               [request, response, done = std::move(done)](
+                                   const Status& s) { done(s); });
 }
 
 Status CoordinationServiceAgentImpl::CancelBarrier(
     const std::string& barrier_id) {
-  return MakeCoordinationError(errors::Unimplemented(
-      "CoordinationServiceAgent::CancelBarrier is not implemented."));
+  Status agent_running_status = ValidateRunningAgent();
+  if (!agent_running_status.ok()) {
+    return agent_running_status;
+  }
+  CancelBarrierRequest request;
+  CancelBarrierResponse response;
+  request.set_barrier_id(barrier_id);
+  *request.mutable_source_task() = task_;
+
+  Status status;
+  absl::Notification n;
+  leader_client_->CancelBarrierAsync(&request, &response, [&](const Status& s) {
+    status = s;
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return status;
+}
+
+// Returns an error if agent is not running.
+Status CoordinationServiceAgentImpl::ValidateRunningAgent() {
+  mutex_lock l(state_mu_);
+  switch (state_) {
+    case State::RUNNING:
+      return Status::OK();
+
+    case State::UNINITIALIZED:
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Agent must be in RUNNING state. It is currently UNINITIALIZED."));
+
+    case State::DISCONNECTED:
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Agent must be in RUNNING state. It is currently DISCONNECTED."));
+
+    case State::ERROR:
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Agent must be in RUNNING state. It is currently in ERROR."));
+
+    default:
+      return MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
+          "Agent is not in RUNNING state. Current state: ", state_)));
+  }
 }
 
 }  // namespace

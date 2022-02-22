@@ -2044,6 +2044,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@llvm-project//mlir:Pass",
     "@llvm-project//mlir:Shape",
     "@llvm-project//mlir:StandardOps",
+    "@llvm-project//mlir:Support",
     "@llvm-project//mlir:TransformUtils",
     "@llvm-project//mlir:Transforms",
     "//tensorflow/compiler/mlir/hlo:hlo",

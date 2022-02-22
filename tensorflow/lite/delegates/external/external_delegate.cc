@@ -181,7 +181,7 @@ ExternalDelegateWrapper::~ExternalDelegateWrapper() {
 TfLiteStatus TfLiteExternalDelegateOptionsInsert(
     TfLiteExternalDelegateOptions* options, const char* key,
     const char* value) {
-  if (options->count >= kMaxOptions) {
+  if (options->count >= kExternalDelegateMaxOptions) {
     return kTfLiteError;
   }
   options->keys[options->count] = key;

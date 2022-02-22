@@ -43,7 +43,8 @@ struct PassConfig {
         disable_variable_freezing(false),
         unfold_large_splat_constant(false),
         guarantee_all_funcs_one_use(false),
-        enable_hlo_to_tf_conversion(false) {}
+        enable_hlo_to_tf_conversion(false),
+        enable_dynamic_update_slice(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -82,6 +83,8 @@ struct PassConfig {
   bool guarantee_all_funcs_one_use;
   // Whether to enable the hlo to tf conversion.
   bool enable_hlo_to_tf_conversion;
+  // Whether to enable to use DynamicUpdateSlice op.
+  bool enable_dynamic_update_slice;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,

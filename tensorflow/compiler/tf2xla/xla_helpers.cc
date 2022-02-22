@@ -148,7 +148,7 @@ Status ResolveDeviceAssignment(
     xla::DeviceAssignment& device_assignment,
     xla::gpu::GpuExecutableRunOptions& gpu_options) {
   // TODO(nnigania): workaround for b/199436990
-  static const int kTimeoutSeconds = 300;
+  static const int kTimeoutSeconds = 1000;
   if (ctx->collective_executor() == nullptr) {
     return errors::InvalidArgument(
         "CollectiveExecutor is required but not available");

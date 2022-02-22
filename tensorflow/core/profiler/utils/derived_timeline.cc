@@ -261,7 +261,7 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     if (!hlo_module_name.empty()) {
       std::string name(hlo_module_name);
       if (program_id.has_value()) {
-        absl::StrAppend(&name, " (", program_id.value(), ")");
+        absl::StrAppend(&name, "(", program_id.value(), ")");
       }
       hlo_modules.ExpandOrAddEvent(
           CreateXEvent(*plane.GetOrCreateEventMetadata(name), offset_ps,

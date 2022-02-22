@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -40,6 +41,38 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
+
+// Represents a parsed static while loop. We normalize the loop representation
+// so that it starts from the induction_var_init_value and increments by
+// step_size until it exceeds or goes below loop_bound.
+struct ParsedStaticWhileLoop {
+  // The number of iterations to be executed.
+  int64_t trip_count = -1;
+  // The tuple index of the induction variable in the while argument tuple.
+  int64_t induction_var_index = -1;
+  // The induction variable's initial value.
+  int64_t induction_var_init_value = -1;
+  // The induction variable is incremented by this number (could be negative)
+  // in each iteration.
+  int64_t step_size = -1;
+  int64_t loop_bound = -1;
+};
+
+// Indicates whether a parsed while loop is static or dynamic. If the loop is
+// static, it contains a value for StaticLoopInfo; otherwise the loop is
+// dynamic. We consider a loop dynamic if its induction variable's initial
+// value or the loop bound's value depends on the while's parent computation's
+// parameter.
+struct ParsedWhileLoop {
+  absl::optional<ParsedStaticWhileLoop> static_while_loop;
+  bool is_dynamic() const { return !static_while_loop.has_value(); }
+};
+constexpr ParsedWhileLoop kParsedDynamicWhileLoop = ParsedWhileLoop();
+
+// Tries to parse a while loop using a set of predefined patterns.
+// Returns the parsing result.
+absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
+    HloInstruction* while_op);
 
 // Responsible for evaluating HLO and obtain literal as the evaluation results.
 //

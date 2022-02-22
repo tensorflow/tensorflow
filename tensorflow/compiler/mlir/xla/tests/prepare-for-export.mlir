@@ -11,6 +11,17 @@ func @splat_constants() -> tensor<1x64x224x224xf32> {
 
 // -----
 
+// CHECK-LABEL: @splat_constant_complex_float
+func @splat_constant_complex_float() -> tensor<128x1014x508xcomplex<f64>> {
+// CHECK: %[[CST:.*]] = mhlo.constant dense<(1.000000e+00,2.000000e+00)> : tensor<complex<f64>>
+// CHECK: %[[BCAST:.*]] = "mhlo.broadcast_in_dim"(%[[CST]]
+// CHECK: return %[[BCAST]]
+  %0 = mhlo.constant dense<(1.000000e+00,2.000000e+00)> : tensor<128x1014x508xcomplex<f64>>
+  return %0 : tensor<128x1014x508xcomplex<f64>>
+}
+
+// -----
+
 // CHECK-LABEL: @while_with_implicit_arg_capture
 func @while_with_implicit_arg_capture(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK: mhlo.while

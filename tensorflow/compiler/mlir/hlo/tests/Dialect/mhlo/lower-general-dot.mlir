@@ -55,6 +55,41 @@ func @testBatchPassthrough(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf32>) -
 
 // -----
 
+// CHECK-LABEL: @testVec
+func @testVec(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> tensor<f32> {
+  // CHECK-NEXT: [[R0:%.+]] = "mhlo.reshape"(%arg0) : (tensor<32xf32>) -> tensor<1x32xf32>
+  // CHECK-NEXT: [[M:%.+]] = "mhlo.dot"([[R0]], %arg1)
+  // CHECK-NEXT: [[RR:%.+]] = "mhlo.reshape"([[M]]) : (tensor<1xf32>) -> tensor<f32>
+  // CHECK-NEXT: return [[RR]]
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [0],
+      rhs_contracting_dimensions = [0]
+    >,
+    precision_config = ["DEFAULT", "DEFAULT"]
+  } : (tensor<32xf32>, tensor<32xf32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: @testMatVec
+func @testMatVec(%arg0: tensor<32x20xf32>, %arg1: tensor<32xf32>) -> tensor<20xf32> {
+  // CHECK-NEXT: [[T:%.+]] = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]>
+  // CHECK-NEXT: [[M:%.+]] = "mhlo.dot"([[T]], %arg1)
+  // CHECK-NEXT: return [[M]]
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [0],
+      rhs_contracting_dimensions = [0]
+    >,
+    precision_config = ["DEFAULT", "DEFAULT"]
+  } : (tensor<32x20xf32>, tensor<32xf32>) -> tensor<20xf32>
+  return %0 : tensor<20xf32>
+}
+
+// -----
+
 func @dot_general_to_dot_dynamic(%arg0: tensor<128x4x?x32xf32>, %arg1: tensor<8x?x128x4xf32>) -> tensor<?x32x8x?xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<

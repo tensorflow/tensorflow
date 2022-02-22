@@ -250,7 +250,6 @@ StatusOr<py::object> PyClient::BufferFromPyval(
   options.allow_zero_copy =
       (!force_copy &&
        (host_buffer_semantics == PjRtClient::HostBufferSemantics::kZeroCopy));
-  options.force_lazy_arrays = true;
   TF_ASSIGN_OR_RETURN(DevicePutResult put,
                       DevicePut(argument, device, options));
 

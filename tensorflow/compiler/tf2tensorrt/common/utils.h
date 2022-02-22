@@ -41,6 +41,19 @@ std::tuple<int, int, int> GetLoadedTensorRTVersion();
 #include "tensorflow/core/platform/status.h"
 #include "third_party/tensorrt/NvInfer.h"
 
+#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                           \
+  do {                                                               \
+    return errors::Internal("TFTRT::", __FUNCTION__, ":", __LINE__,  \
+                            " failed to add TRT layer, at: ", node); \
+  } while (0)
+
+#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
+  do {                                           \
+    if (ptr == nullptr) {                        \
+      TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
+    }                                            \
+  } while (0)
+
 // Use this macro within functions that return a Status or StatusOR<T> to check
 // boolean conditions. If the condition fails, it returns an
 // errors::Internal message with the file and line number.

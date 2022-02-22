@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <vector>
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/reference/concatenation.h"
@@ -92,18 +91,14 @@ inline void LstmCell(
   TFLITE_DCHECK_EQ(output_depth, intern_activ_depth / 4);
 
   // Concatenate prev_activ and input data together
-  std::vector<float const*> concat_input_arrays_data;
-  std::vector<RuntimeShape const*> concat_input_arrays_shapes;
-  concat_input_arrays_data.push_back(input_data);
-  concat_input_arrays_data.push_back(prev_activ_data);
-  concat_input_arrays_shapes.push_back(&input_shape);
-  concat_input_arrays_shapes.push_back(&prev_activ_shape);
+  float const* concat_input_arrays_data[2] = {input_data, prev_activ_data};
+  const RuntimeShape* concat_input_arrays_shapes[2] = {&input_shape,
+                                                       &prev_activ_shape};
   tflite::ConcatenationParams concat_params;
   concat_params.axis = 3;
-  concat_params.inputs_count = concat_input_arrays_data.size();
-  Concatenation(concat_params, &(concat_input_arrays_shapes[0]),
-                &(concat_input_arrays_data[0]), concat_temp_shape,
-                concat_temp_data);
+  concat_params.inputs_count = 2;
+  Concatenation(concat_params, concat_input_arrays_shapes,
+                concat_input_arrays_data, concat_temp_shape, concat_temp_data);
 
   // Fully connected
   tflite::FullyConnectedParams fc_params;

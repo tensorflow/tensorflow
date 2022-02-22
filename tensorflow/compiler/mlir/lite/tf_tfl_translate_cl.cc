@@ -142,6 +142,13 @@ opt<bool> guarantee_all_funcs_one_use(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
+opt<bool> enable_dynamic_update_slice(
+    "enable-dynamic-update-slice",
+    llvm::cl::desc("Whether to enable dynamic update slice op to convert "
+                   "TensorListSetItem op."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
 opt<bool> import_hlo("import-hlo",
                      llvm::cl::desc("Whether the input file is hlo file."),
                      llvm::cl::init(false));

@@ -192,7 +192,7 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
                          [True, False], [True, False], [True, False]))
   def test_embedding(self, optimizer_name, training, sparse,
                      is_high_dimensional):
-    if optimizer_name != 'sgd':
+    if optimizer_name != 'sgd' or not training:
       self.skip_if_oss()
     strategy, mid_level_api, optimizer = (
         self._create_strategy_and_mid_level(optimizer_name))
@@ -477,13 +477,20 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
 
     if is_high_dimensional:
       activation_watched_gold = np.stack([activation_watched_gold] *
-                                         self.data_batch_size)
+                                         self.batch_size * num_replicas)
 
       activation_favorited_gold = np.stack([activation_favorited_gold] *
-                                           self.data_batch_size)
+                                           self.batch_size * num_replicas)
 
       activation_friends_gold = np.stack([activation_friends_gold] *
-                                         self.data_batch_size)
+                                         self.batch_size * num_replicas)
+    else:
+      activation_watched_gold = np.concatenate(
+          [activation_watched_gold] * (num_replicas // self.batch_size))
+      activation_favorited_gold = np.concatenate(
+          [activation_favorited_gold] * (num_replicas // self.batch_size))
+      activation_friends_gold = np.concatenate(
+          [activation_friends_gold] * (num_replicas // self.batch_size))
 
     loss_gold = [loss_gold0] * num_replicas
 

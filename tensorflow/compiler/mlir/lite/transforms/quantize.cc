@@ -325,9 +325,9 @@ void QuantizePass::runOnOperation() {
   // Constant quantization is a lossy transformation, so they are applied only
   // after all the other patterns have been aplied.
   RewritePatternSet patterns_2(&getContext());
-  patterns_2.insert<QuantizeConstPattern>(ctx, quant_specs.legacy_float_scale);
+  patterns_2.add<QuantizeConstPattern>(ctx, quant_specs.legacy_float_scale);
   if (quant_params.numeric_verify_spec.whole_model_verify) {
-    patterns_2.insert<quant::RemoveDebugAttrPattern>(ctx);
+    patterns_2.add<quant::RemoveDebugAttrPattern>(ctx);
   }
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 }

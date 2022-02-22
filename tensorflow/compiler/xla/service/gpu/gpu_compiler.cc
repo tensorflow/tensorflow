@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <iterator>
 #include <string>
 #include <utility>
 
@@ -172,11 +173,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
-#endif  // BEF_EXECUTABLE
+#endif  // XLA_ENABLE_XLIR
 
 namespace xla {
 namespace gpu {
@@ -802,7 +803,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
   return std::move(assignment);
 }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
 static StatusOr<OwnedBefBuffer> LowerToBef(
     mlir::ModuleOp mlir_module, absl::string_view entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module) {
@@ -842,7 +843,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(
   std::copy(bef.begin(), bef.end(), ptr);
   return OwnedBefBuffer(ptr, {bef.size()});
 }
-#endif  // BEF_EXECUTABLE
+#endif  // XLA_ENABLE_XLIR
 
 using OutputInfoMap =
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
@@ -968,10 +969,11 @@ static Status CompileModuleToLlvmIrImpl(
 
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
 
-    // TODO(b/218527186): Implement this feature for BEF as well.
-    // TODO(b/218907125): Implement this feature for ROCm as well.
     bool supports_runtime_managed_constants =
-        !(IsBefThunkEnabled() || platform_id == se::rocm::kROCmPlatformId);
+        // TODO(b/218527186): Implement this feature for BEF as well.
+        !IsBefEnabled(hlo_module->config()) &&
+        // TODO(b/218907125): Implement this feature for ROCm as well.
+        platform_id != se::rocm::kROCmPlatformId;
     if (supports_runtime_managed_constants) {
       // Remove these globals from the generated code to indicate that XLA is
       // responsible for allocating and initializing them.
@@ -987,19 +989,21 @@ static Status CompileModuleToLlvmIrImpl(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
-#if BEF_EXECUTABLE
-  std::vector<int64_t> buffer_sizes;
-  llvm::transform(
-      results->allocations, std::back_inserter(buffer_sizes),
-      [](const BufferAllocation& allocation) { return allocation.size(); });
-  TF_ASSIGN_OR_RETURN(results->thunks_or_bef,
-                      LowerToBef(*mlir_module, entry_function.getName().str(),
-                                 buffer_sizes, hlo_module));
-#else   // BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
+  if (IsBefExecutableEnabled(hlo_module->config())) {
+    std::vector<int64_t> buffer_sizes;
+    llvm::transform(
+        results->allocations, std::back_inserter(buffer_sizes),
+        [](const BufferAllocation& allocation) { return allocation.size(); });
+    TF_ASSIGN_OR_RETURN(results->thunks_or_bef,
+                        LowerToBef(*mlir_module, entry_function.getName().str(),
+                                   buffer_sizes, hlo_module));
+    return Status::OK();
+  }
+#endif  // XLA_ENABLE_XLIR
+
   results->thunks_or_bef =
       absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
-#endif  // BEF_EXECUTABLE
-
   return Status::OK();
 }
 
@@ -1354,7 +1358,7 @@ GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec) {
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   CHECK(options.PlatformId() == se::cuda::kCudaPlatformId);
   CHECK(options.executor() != nullptr);
   auto stream_exec = options.executor();
@@ -1429,10 +1433,9 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   }
 
   return std::move(results);
-#else   // BEF_EXECUTABLE
-  return FailedPrecondition(
-      "GpuCompiler::CompileAheadOfTime only supported with BEF_EXECUTABLE");
-#endif  // BEF_EXECUTABLE
+#else   // XLA_ENABLE_XLIR
+  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
+#endif  // XLA_ENABLE_XLIR
 }
 
 HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
@@ -1556,11 +1559,11 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
                                            module_config, ir_emitter_context));
   TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
 
-  // TODO(b/218527186): Implement this feature for BEF as well.
-  // TODO(b/218907125): Implement this feature for ROCm as well.
   bool supports_runtime_managed_constants =
-      !(IsBefThunkEnabled() ||
-        compiler->PlatformId() == se::rocm::kROCmPlatformId);
+      // TODO(b/218527186): Implement this feature for BEF as well.
+      !IsBefEnabled(module_config) &&
+      // TODO(b/218907125): Implement this feature for ROCm as well.
+      compiler->PlatformId() != se::rocm::kROCmPlatformId;
   if (supports_runtime_managed_constants) {
     // Remove these globals from the generated code to indicate that XLA is
     // responsible for allocating and initializing them.

@@ -329,8 +329,7 @@ class QuantizationDriver {
       llvm::dbgs() << "\n\n\n" << current_op->getName() << "\n";
     }
     fn_.walk([&](Operation *op) {
-      if (op->hasTrait<OpTrait::IsTerminator>() ||
-          !op->hasTrait<OpTrait::quant::QuantizableResult>() ||
+      if (op->hasTrait<OpTrait::IsTerminator>() || IsOpNotQuantizable(op) ||
           llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp,
                     arith::ConstantOp>(op))
         return;

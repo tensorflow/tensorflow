@@ -48,20 +48,23 @@ absl::Status ConvolutionWeightsConverterTest(
     }
   }
 
+  WeightsDescription weight_desc_copy = weight_desc;
+  weight_desc_copy.type = DataType::FLOAT32;
   const int flt_count =
-      GetTotalElementsCountForLayout(weight_desc, weights.shape);
+      GetTotalElementsCountForLayout(weight_desc_copy, weights.shape);
   DataType weights_type = DataType::FLOAT32;
 
   std::vector<uint8_t> weights_data(flt_count * SizeOf(weights_type));
-  RearrangeWeights(weights, weight_desc, weights_type,
-                   absl::MakeSpan(weights_data));
+  RearrangeWeights(weights, weight_desc_copy, absl::MakeSpan(weights_data));
 
   std::vector<TensorFloat32> dst_tensors;
-  if (weight_desc.layout == WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
-      weight_desc.layout == WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
+  if (weight_desc_copy.layout ==
+          WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4 ||
+      weight_desc_copy.layout ==
+          WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
     dst_tensors.resize(4);
     const int dst_depth = AlignByN(DivideRoundUp(weights.shape.o, 4),
-                                   weight_desc.output_group_size);
+                                   weight_desc_copy.output_group_size);
     const int src_depth = DivideRoundUp(weights.shape.i, 4);
     const int kernel_x = weights.shape.w;
     const int kernel_y = weights.shape.h;

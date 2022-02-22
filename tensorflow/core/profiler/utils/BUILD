@@ -63,9 +63,6 @@ cc_library(
 cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
-    deps = [
-        "//tensorflow/core/platform:types",
-    ],
 )
 
 cc_library(

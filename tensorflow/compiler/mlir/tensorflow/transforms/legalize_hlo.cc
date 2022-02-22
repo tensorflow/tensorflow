@@ -2877,7 +2877,7 @@ void LegalizeHloToTf::runOnOperation() {
 
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet *patterns,
                                      MLIRContext *context) {
-  patterns->insert<
+  patterns->add<
       ConvertAvgPoolOp, ConvertConvOp, ConvertNonTrivialConvOp,
       ConvertDynamicSliceOp, ConvertDynamicUpdateSliceOp, ConvertGatherOp,
       ConvertIfOp, ConvertMaxPoolOp, ConvertScatterAddOp, ConvertScatterMaxOp,

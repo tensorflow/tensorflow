@@ -533,6 +533,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.sinh, math_ops.sinh)
     self._compareCpu(x, np.cosh, math_ops.cosh)
     self._compareCpu(x, np.tanh, math_ops.tanh)
+    self._compareCpu(x, np.arcsin, math_ops.asin)
 
     # Complex64 versions of asinh() and acosh() in libstdc++ only have 6 digits
     # of precision.
@@ -583,6 +584,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, self._sigmoid, math_ops.sigmoid)
     self._compareCpu(x, np.sin, math_ops.sin)
     self._compareCpu(x, np.cos, math_ops.cos)
+    self._compareCpu(x, np.arcsin, math_ops.asin)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)

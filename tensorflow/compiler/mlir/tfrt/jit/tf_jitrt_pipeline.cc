@@ -82,6 +82,7 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       reduction_2d_tile_sizes));
 
+  if (options.vectorize) pm.addNestedPass<FuncOp>(CreateTileTransposePass());
   pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.vector_size));
   if (options.peel) {
     pm.addNestedPass<FuncOp>(CreatePeelTiledLoopsPass());
@@ -210,12 +211,15 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Remove trivial copy operations.
   pm.addNestedPass<FuncOp>(CreateLinalgTrivialCopyRemovalPass());
 
-  if (options.vectorize) {
+  if (options.vectorize)
     pm.addNestedPass<FuncOp>(mlir::createConvertLinalgTiledLoopsToSCFPass());
-  }
+
   pm.addPass(mlir::createBufferizationToMemRefPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  if (options.vectorize)
+    pm.addNestedPass<FuncOp>(CreateLowerVectorTransposePass());
 
   mlir::VectorTransferToSCFOptions vec_to_scf_options;
   vec_to_scf_options.unroll = true;

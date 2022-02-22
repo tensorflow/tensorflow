@@ -2345,7 +2345,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter = tf.lite.TFLiteConverter.from_saved_model(
         saved_model_dir.full_path)
     converter.optimizations = [lite.Optimize.DEFAULT]
-    converter._experimental_new_dynamic_range_quantizer = (
+    converter.experimental_new_dynamic_range_quantizer = (
         enable_new_dynamic_range_quantizer)
     converter._experimental_disable_per_channel = disable_per_channel
     if enable_float16_quant:
@@ -2554,7 +2554,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_keras_model(model)
     converter.optimizations = [lite.Optimize.DEFAULT]
-    converter._experimental_new_dynamic_range_quantizer = (
+    converter.experimental_new_dynamic_range_quantizer = (
         enable_new_dynamic_range_quantizer)
     converter._experimental_disable_per_channel = disable_per_channel
     if enable_float16_quant:
