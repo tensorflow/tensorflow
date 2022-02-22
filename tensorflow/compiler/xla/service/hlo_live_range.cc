@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -131,34 +132,11 @@ int64_t HloLiveRange::FlattenSchedule(const HloComputation& computation,
 
 void HloLiveRange::CalculateBufferStartEndMap() {
   for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
+    auto it = instruction_schedule_.find(value->defining_instruction());
     // Ignore buffers that are not defined.
-    if (instruction_schedule_.count(value->defining_instruction()) == 0) {
-      continue;
-    }
+    if (it == instruction_schedule_.end()) continue;
 
-    int64_t buffer_start_time = instruction_schedule_[value->instruction()];
-
-    int64_t buffer_end_time = -1;
-    for (const HloUse& use : value->uses()) {
-      const HloInstruction* used = use.instruction;
-      // As an optimization, we deem a while's init value's live range ends as
-      // soon as the loop body starts. This optimization is only applicable in
-      // module scoped mode.
-      if (module_scoped_analysis_ && used->opcode() == HloOpcode::kWhile) {
-        // The current live range is at the end of the while, move it to the
-        // beginning of the body.
-        used = used->while_body()->parameter_instruction(0);
-        VLOG(1) << "Moved value " << value->ToShortString()
-                << " to while param: " << used->ToString();
-      }
-      if (instruction_schedule_.count(used) == 0) {
-        // We didn't track the instruction `used`. This happens when we do
-        // computation scope (versus module scope) heap simulation and when
-        // the used instruction is outside of the computation being simulated.
-        continue;
-      }
-      buffer_end_time = std::max(buffer_end_time, instruction_schedule_[used]);
-    }
+    int64_t buffer_start_time = it->second;
 
     // Parameters are defined at the beginning of the computation. This prevents
     // any instruction that's scheduled before the parameter clobbers the
@@ -171,8 +149,28 @@ void HloLiveRange::CalculateBufferStartEndMap() {
       }
     }
 
-    if (buffer_end_time == -1) {
-      buffer_end_time = buffer_start_time;
+    int64_t buffer_end_time = buffer_start_time;
+
+    for (const HloUse& use : value->uses()) {
+      const HloInstruction* used = use.instruction;
+      // As an optimization, we deem a while's init value's live range ends as
+      // soon as the loop body starts. This optimization is only applicable in
+      // module scoped mode.
+      if (module_scoped_analysis_ && used->opcode() == HloOpcode::kWhile) {
+        // The current live range is at the end of the while, move it to the
+        // beginning of the body.
+        used = used->while_body()->parameter_instruction(0);
+        VLOG(1) << "Moved value " << value->ToShortString()
+                << " to while param: " << used->ToString();
+      }
+
+      // It's possible that we didn't track the instruction `used`. This happens
+      // when we do computation scope (versus module scope) heap simulation and
+      // the used instruction is outside of the computation being simulated.
+      auto it = instruction_schedule_.find(used);
+      if (it != instruction_schedule_.end()) {
+        buffer_end_time = std::max(buffer_end_time, it->second);
+      }
     }
 
     HloPosition end_position;
@@ -187,12 +185,11 @@ void HloLiveRange::CalculateBufferStartEndMap() {
       // should be extended to the end of the computation.
       if (position.instruction == position_comp->root_instruction()) {
         auto it = computation_span_times_.find(position_comp);
-        if (it == computation_span_times_.end()) {
-          continue;
-        }
-        if (buffer_end_time < it->second.end) {
-          buffer_end_time = it->second.end;
-          end_position = position;
+        if (it != computation_span_times_.end()) {
+          if (buffer_end_time < it->second.end) {
+            buffer_end_time = it->second.end;
+            end_position = position;
+          }
         }
       }
     }
@@ -209,13 +206,14 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     }
 
     CHECK(buffer_start_time <= buffer_end_time)
-        << buffer_start_time << ", " << buffer_end_time
+        << buffer_start_time << ", " << buffer_end_time << ": "
         << value->instruction()->ToString();
 
-    auto& live_range = buffer_live_ranges_[value];
-    live_range.start = buffer_start_time;
-    live_range.end = buffer_end_time;
-    live_range.end_position = end_position;
+    bool was_inserted =
+        buffer_live_ranges_
+            .insert({value, {buffer_start_time, buffer_end_time, end_position}})
+            .second;
+    CHECK(was_inserted) << "Value live range already calculated";
   }
 }
 
