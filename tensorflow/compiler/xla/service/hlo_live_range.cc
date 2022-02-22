@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
 
+#include <algorithm>
+#include <tuple>
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
@@ -35,26 +39,23 @@ StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
 
 void HloLiveRange::NormalizeAliasedBuffers() {
   for (const HloBuffer& hlo_buffer : alias_analysis_.buffers()) {
-    std::vector<const HloValue*> aliased_buffers;
+    std::vector<TimeBound*> aliased_live_ranges;
+    aliased_live_ranges.reserve(hlo_buffer.values().size());
     for (const HloValue* hlo_value : hlo_buffer.values()) {
-      if (buffer_live_ranges_.contains(hlo_value)) {
-        aliased_buffers.push_back(hlo_value);
+      auto it = buffer_live_ranges_.find(hlo_value);
+      if (it != buffer_live_ranges_.end()) {
+        aliased_live_ranges.push_back(&it->second);
       }
     }
-    absl::c_sort(
-        aliased_buffers, [&](const HloValue* value1, const HloValue* value2) {
-          const TimeBound& live_range1 = buffer_live_ranges_.at(value1);
-          const TimeBound& live_range2 = buffer_live_ranges_.at(value2);
+    absl::c_sort(aliased_live_ranges,
+                 [](const TimeBound* a, const TimeBound* b) {
+                   return std::forward_as_tuple(a->start, a->end) <
+                          std::forward_as_tuple(b->start, b->end);
+                 });
 
-          return std::forward_as_tuple(live_range1.start, live_range1.end) <
-                 std::forward_as_tuple(live_range2.start, live_range2.end);
-        });
-
-    for (int64_t i = 0; i + 1 < aliased_buffers.size(); ++i) {
-      const HloValue* value1 = aliased_buffers[i];
-      const HloValue* value2 = aliased_buffers[i + 1];
-      TimeBound& live_range1 = buffer_live_ranges_[value1];
-      TimeBound& live_range2 = buffer_live_ranges_[value2];
+    for (int64_t i = 0; i + 1 < aliased_live_ranges.size(); ++i) {
+      TimeBound& live_range1 = *aliased_live_ranges[i];
+      TimeBound& live_range2 = *aliased_live_ranges[i + 1];
       if (live_range1.start == live_range2.start) {
         // If value1 has the same start time as value2, make value1 disappear
         // by setting the end time same as start time:
@@ -69,8 +70,9 @@ void HloLiveRange::NormalizeAliasedBuffers() {
         //
         // Note that only when heap simulator runs before copy insertion can
         // this happen where one instruction defines multiple aliased buffers
-        // -- This is illegle to execute and can be fixed by copy insertion
+        // -- This is illegal to execute and can be fixed by copy insertion
         // later.
+        // FIXME(cjfj): This code doesn't match the behaviour described above.
         live_range1.end = live_range2.end;
         continue;
       }
@@ -79,9 +81,7 @@ void HloLiveRange::NormalizeAliasedBuffers() {
         continue;
       }
 
-      if (live_range1.end > live_range2.end) {
-        live_range2.end = live_range1.end;
-      }
+      live_range2.end = std::max(live_range1.end, live_range2.end);
       live_range1.end = live_range2.start - 1;
     }
   }
