@@ -2744,3 +2744,12 @@ func @error_batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<25xf3
         tensor<25xf32>) -> tensor<4x256xf32>
   return %0 : tensor<4x256xf32>
 }
+
+// -----
+// Test rng_get_and_update_state_op
+// CHECK-LABEL: xla.rng_get_and_update_state
+builtin.func @xla.rng_get_and_update_state() -> tensor<2xui64> {
+  %result = mhlo.xla.rng_get_and_update_state {delta = 1 : i64}
+  return %result : tensor<2xui64>
+}
+// CHECK: mhlo.xla.rng_get_and_update_state
