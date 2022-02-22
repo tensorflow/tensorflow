@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
 
@@ -105,7 +106,9 @@ void TFGraphDialect::initialize() {
   // registered.
   allowUnknownOperations();
 
+  // Create the fallback OpAsmOpInterface instance.
   fallbackOpAsmInterface_ = new TFGraphOpAsmInterface;
+
   // Caching some often used context-owned informations for fast-access.
   name_key_ = StringAttr::get(getContext(), getNameAttrKey());
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
@@ -118,10 +121,17 @@ void TFGraphDialect::initialize() {
 }
 
 // Provides a hook for op interface.
-void *TFGraphDialect::getRegisteredInterfaceForOp(mlir::TypeID interface,
-                                                  mlir::OperationName opName) {
-  if (interface == TypeID::get<mlir::OpAsmOpInterface>()) {
+void *TFGraphDialect::getRegisteredInterfaceForOp(TypeID interface,
+                                                  OperationName opName) {
+  if (interface == TypeID::get<OpAsmOpInterface>()) {
     return fallbackOpAsmInterface_;
+  } else if (interface == TypeID::get<TensorFlowRegistryInterface>()) {
+    if (auto *instance =
+            getRegisteredInterface<TensorFlowRegistryInterfaceBase>()) {
+      // Important: cast to (Concept *) to shift the pointer off the vtable.
+      return static_cast<TensorFlowRegistryInterfaceBase::Concept *>(
+          const_cast<TensorFlowRegistryInterfaceBase *>(instance));
+    }
   }
 
   return nullptr;
