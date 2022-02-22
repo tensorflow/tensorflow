@@ -682,11 +682,12 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedOutputShape3DInt8) {
   QuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
       /*input=*/{TensorType_INT8, {2, 2, 5}, -63.5, 64},
-      /*output=*/{TensorType_INT8, {}, -127, 128}, /*keep_num_dims=*/true,
-      /*bias_tensor_optional=*/false,
+      /*output=*/{TensorType_INT8, {}, -127, 128},
+      /*bias_type=*/TensorType_INT32,
+      /*keep_num_dims=*/true, /*bias_tensor_optional=*/false,
       /*activation_func=*/ActivationFunctionType_RELU,
       /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
-      /*add_bias_for_quantized=*/true, /*input_size=*/5);
+      /*input_size=*/5);
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
@@ -724,11 +725,12 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedOutputShape3DInt16) {
   QuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
       /*input=*/{TensorType_INT16, {2, 2, 5}, 0, 0, scale, 0},
-      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0}, /*keep_num_dims=*/true,
-      /*bias_tensor_optional=*/false,
+      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+      /*bias_type=*/TensorType_INT64,
+      /*keep_num_dims=*/true, /*bias_tensor_optional=*/false,
       /*activation_func=*/ActivationFunctionType_RELU,
       /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
-      /*add_bias_for_quantized=*/true, /*input_size=*/5);
+      /*input_size=*/5);
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
