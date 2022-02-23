@@ -24,6 +24,7 @@ import threading
 import time
 
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute.failure_handling import gce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -178,7 +179,53 @@ class CoordinatedCheckpointManager(object):
     # per program.
     # TODO(wxinyi): make the thread non-daemon.
     threading.Thread(target=self._wait_for_signal, daemon=True).start()
+
+    self._platform_device = gce_util.detect_platform()
+    if self._platform_device is gce_util.PlatformDevice.GCE_GPU:
+      self._start_polling_for_gce_signal()
+      self._exit_code = gce_util._RESTARTABLE_EXIT_CODE
+    elif self._platform_device is gce_util.PlatformDevice.INTERNAL:
+      self._start_watching_for_signal()
+      self._exit_code = _RESTARTABLE_EXIT_CODE
+    else:
+      raise NotImplementedError('CoordinatedCheckpointManager is only supported'
+                                'for MultiWorkerMirroredStrategy with GPU.')
+
+  def _start_watching_for_signal(self):
     signal.signal(signal.SIGTERM, self._sigterm_handler_fn)
+
+  def _start_polling_for_gce_signal(self):
+    self._poll_gce_signal_thread_should_stop = threading.Event()
+    self._poll_gce_signal_thread = threading.Thread(
+        target=self._poll_gce_signal)
+    self._poll_gce_signal_thread.start()
+
+  def _poll_gce_signal(self):
+    """Poll maintenance notice from GCE and notify peers if receiving one."""
+    while True:
+      if self._poll_gce_signal_thread_should_stop.is_set():
+        return
+      if gce_util.request_compute_metadata(
+          'instance/maintenance-event') == 'TERMINATE_ON_HOST_MAINTENANCE':
+        # For the countdown.
+        self._signal_receipt_time = time.time()
+        break
+      time.sleep(1)
+    logging.info('Member %s has received Maintainance notice.',
+                 self._id_in_cluster)
+    context.context().set_config_key_value(_PREEMPTION_KEY, self._id_in_cluster)
+    self._received_own_sigterm.set()
+
+  def _stop_poll_gce_signal_thread(self):
+    if getattr(self, '_poll_gce_signal_thread', None):
+      logging.info('stopping poll-maintenance-notice-from-gce thread')
+      self._poll_gce_signal_thread_should_stop.set()
+      self._poll_gce_signal_thread.join()
+      self._poll_gce_signal_thread = None
+      logging.info('poll-maintenance-notice-from-gce thread stopped')
+
+  def __del__(self):
+    self._stop_poll_gce_signal_thread()
 
   @property
   def total_runs(self):
@@ -339,13 +386,13 @@ class CoordinatedCheckpointManager(object):
                      self._write_checkpoint_manager.directory)
         logging.info('Checkpoint time: %f', end_time - start_time)
 
-        sys.exit(_RESTARTABLE_EXIT_CODE)
+        sys.exit(self._exit_code)
 
     elif (self._received_own_sigterm.is_set() and
           (context.context().get_config_key_value(_PREEMPTION_KEY)
            == self._id_in_cluster)):
 
-      logging.info('Sigterm caught in main thread on preempted worker')
+      logging.info('Termination caught in main thread on preempted worker')
 
       step_to_save_at = str(self._run_counter + 1)
       context.context().set_config_key_value(_RUN_COUNT_KEY, step_to_save_at)

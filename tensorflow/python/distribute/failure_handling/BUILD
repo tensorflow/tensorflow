@@ -14,6 +14,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":gce_util",
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -22,6 +23,16 @@ py_library(
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform",
         "//tensorflow/python/training:checkpoint_management",
+    ],
+)
+
+py_library(
+    name = "gce_util",
+    srcs = [
+        "gce_util.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
     ],
 )
 
@@ -47,5 +58,19 @@ tf_py_test(
         "//tensorflow/python/training:checkpoint_management",
         "//tensorflow/python/training/tracking:util",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "gce_failure_handler_test",
+    srcs = ["gce_failure_handler_test.py"],
+    deps = [
+        ":failure_handling_lib",
+        ":gce_util",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:test_util",
     ],
 )
