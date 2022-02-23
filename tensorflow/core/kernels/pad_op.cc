@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/pad_op.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -253,6 +255,142 @@ class PadOp : public OpKernel {
             paddings_array, pad_value);
   }
 };
+
+// specialization of 2D float tensor padding on CPU
+template <>
+template <>
+void PadOp<CPUDevice, float, int>::Operate<2>(
+    OpKernelContext* context, typename TTypes<float, 2>::ConstTensor input,
+    typename TTypes<int>::ConstMatrix paddings, float pad_value,
+    Tensor* output) {
+  CHECK_EQ(2, paddings.dimension(0));
+  CHECK_EQ(2, paddings.dimension(1));
+
+  const float* in = input.data();
+  int in_d0 = input.dimension(0);
+  int in_d1 = input.dimension(1);
+  float* out = output->template flat<float>().data();
+  int out_d0 = in_d0 + paddings(0, 0) + paddings(0, 1);
+  int out_d1 = in_d1 + paddings(1, 0) + paddings(1, 1);
+  int pad_00 = paddings(0, 0);
+  int pad_10 = paddings(1, 0);
+  int pad_11 = paddings(1, 1);
+
+  std::function<void(int64, int64)> pad = [&](int64 row_start, int64 row_end) {
+    if (row_end <= pad_00 || row_start >= pad_00 + in_d0) {
+      std::fill(out + row_start * out_d1, out + row_end * out_d1, pad_value);
+    } else if (row_start >= pad_00 && row_end <= pad_00 + in_d0) {
+      float* out_ptr = out + row_start * out_d1;
+      const float* in_ptr = in + (row_start - pad_00) * in_d1;
+      for (int i = 0; i < row_end - row_start; i++) {
+        std::fill(out_ptr, out_ptr + pad_10, pad_value);
+        out_ptr += pad_10;
+        memcpy(out_ptr, in_ptr, in_d1 * sizeof(float));
+        out_ptr += in_d1;
+        in_ptr += in_d1;
+        std::fill(out_ptr, out_ptr + pad_11, pad_value);
+        out_ptr += pad_11;
+      }
+    } else if (row_end <= pad_00 + in_d0) {
+      pad(row_start, pad_00);
+      pad(pad_00, row_end);
+    } else if (row_start < pad_00 + in_d0) {
+      pad(row_start, pad_00 + in_d0);
+      pad(pad_00 + in_d0, row_end);
+    } else {
+      pad(row_start, pad_00);
+      pad(pad_00, pad_00 + in_d0);
+      pad(pad_00 + in_d0, row_end);
+    }
+  };
+
+  // shard by rows
+  const DeviceBase::CpuWorkerThreads& worker_threads =
+      *(context->device()->tensorflow_cpu_worker_threads());
+  int64 block_size = out_d0 / worker_threads.num_threads;
+  thread::ThreadPool::SchedulingParams param(
+      thread::ThreadPool::SchedulingStrategy::kFixedBlockSize, absl::nullopt,
+      block_size);
+  worker_threads.workers->ParallelFor(out_d0, param, pad);
+}
+
+// specialization of 3D float tensor padding on CPU
+template <>
+template <>
+void PadOp<CPUDevice, float, int>::Operate<3>(
+    OpKernelContext* context, typename TTypes<float, 3>::ConstTensor input,
+    typename TTypes<int>::ConstMatrix paddings, float pad_value,
+    Tensor* output) {
+  CHECK_EQ(3, paddings.dimension(0));
+  CHECK_EQ(2, paddings.dimension(1));
+
+  const float* in = input.data();
+  int in_d0 = input.dimension(0);
+  int in_d1 = input.dimension(1);
+  int in_d2 = input.dimension(2);
+  float* out = output->template flat<float>().data();
+  int out_d0 = in_d0 + paddings(0, 0) + paddings(0, 1);
+  int out_d1 = in_d1 + paddings(1, 0) + paddings(1, 1);
+  int out_d2 = in_d2 + paddings(2, 0) + paddings(2, 1);
+
+  int pad_00 = paddings(0, 0);
+  int pad_10 = paddings(1, 0);
+  int pad_11 = paddings(1, 1);
+  int pad_20 = paddings(2, 0);
+  int pad_21 = paddings(2, 1);
+
+  std::function<void(int64, int64)> pad = [&](int64 row_start, int64 row_end) {
+    if (row_end <= pad_00 || row_start >= pad_00 + in_d0) {
+      std::fill(out + row_start * out_d1 * out_d2,
+                out + row_end * out_d1 * out_d2, pad_value);
+    } else if (row_start >= pad_00 && row_end <= pad_00 + in_d0) {
+      float* out_ptr = out + row_start * out_d1 * out_d2;
+      const float* in_ptr = in + (row_start - pad_00) * in_d1 * in_d2;
+      for (int i = 0; i < row_end - row_start; i++) {
+        // pad 2d tensor here
+        std::fill(out_ptr, out_ptr + pad_10 * out_d2, pad_value);
+        out_ptr += pad_10 * out_d2;
+        if (pad_20 == 0 && pad_21 == 0) {
+          // fast path if no pad for last dim
+          memcpy(out_ptr, in_ptr, in_d1 * in_d2 * sizeof(float));
+          out_ptr += in_d1 * in_d2;
+          in_ptr += in_d1 * in_d2;
+        } else {
+          for (int j = 0; j < in_d1; j++) {
+            std::fill(out_ptr, out_ptr + pad_20, pad_value);
+            out_ptr += pad_20;
+            memcpy(out_ptr, in_ptr, in_d2 * sizeof(float));
+            out_ptr += in_d2;
+            in_ptr += in_d2;
+            std::fill(out_ptr, out_ptr + pad_21, pad_value);
+            out_ptr += pad_21;
+          }
+        }
+        std::fill(out_ptr, out_ptr + pad_11 * out_d2, pad_value);
+        out_ptr += pad_11 * out_d2;
+      }
+    } else if (row_end <= pad_00 + in_d0) {
+      pad(row_start, pad_00);
+      pad(pad_00, row_end);
+    } else if (row_start < pad_00 + in_d0) {
+      pad(row_start, pad_00 + in_d0);
+      pad(pad_00 + in_d0, row_end);
+    } else {
+      pad(row_start, pad_00);
+      pad(pad_00, pad_00 + in_d0);
+      pad(pad_00 + in_d0, row_end);
+    }
+  };
+
+  // shard by first dim
+  const DeviceBase::CpuWorkerThreads& worker_threads =
+      *(context->device()->tensorflow_cpu_worker_threads());
+  int64 block_size = out_d0 / worker_threads.num_threads;
+  thread::ThreadPool::SchedulingParams param(
+      thread::ThreadPool::SchedulingStrategy::kFixedBlockSize, absl::nullopt,
+      block_size);
+  worker_threads.workers->ParallelFor(out_d0, param, pad);
+}
 
 #define REGISTER_KERNEL(type)                                       \
   REGISTER_KERNEL_BUILDER(Name("Pad")                               \
