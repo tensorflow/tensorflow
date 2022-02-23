@@ -3325,6 +3325,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
        forward_pass_name_scope]() {
         Py_INCREF(op_name);
         Py_INCREF(attrs);
+        Py_INCREF(device);
         Py_INCREF(num_inputs);
         Py_INCREF(op_inputs);
         Py_INCREF(op_outputs);
@@ -3379,7 +3380,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
       forward_function);
 
   Py_DECREF(num_inputs);
-  Py_DECREF(device);
+//  Py_DECREF(device);
   if (op_outputs_tuple_created) Py_DECREF(op_outputs);
   if (op_inputs_tuple_created) Py_DECREF(op_inputs);
 
