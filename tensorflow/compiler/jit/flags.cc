@@ -202,7 +202,7 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge = false;
   bool enable_mlir_bridge_is_explicit = false;
   bool mlir_bridge_safe_mode = false;
-  bool enable_mlir_merge_control_flow_pass = false;
+  bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
   auto setter_for_jitter_tensor_names = [](string sequence) {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
