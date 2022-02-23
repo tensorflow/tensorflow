@@ -235,7 +235,9 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     }
 
     if (IsEmittingForAMDGPU() &&
-        (element_type == F32)) /* is atomic add supported? */ {
+        (element_type == F32
+        || (element_type == F16 && ir_emitter_context_->amdgpu_arch().substr(0,6)=="gfx90a"))
+        ) /* is atomic add supported? */ {
       EmitAMDGPUAtomicAdd(output_address, source);
       return true;
     }
@@ -486,6 +488,44 @@ void IrEmitter::EmitAMDGPUAtomicAdd(llvm::Value* output_address,
           :
           // adds to shared memory are always atomic.
           output_address;
+
+  if(source->getType()->getPrimitiveSizeInBits() == 16)
+  {
+    llvm::VectorType* half2type = llvm::VectorType::get(b_.getHalfTy(), llvm::ElementCount::getFixed(2));
+    auto i16 = b_.getInt16Ty();
+    auto i32 = b_.getInt32Ty();
+    auto i64 = b_.getInt64Ty();
+    auto half2ptr = llvm::PointerType::get(half2type, 1);
+    auto intptr = b_.CreatePtrToInt(output_address, i64);
+    auto alignment = b_.CreateAnd(intptr, llvm::ConstantInt::get(i64, 2ull));
+    intptr = b_.CreateAnd(intptr, llvm::ConstantInt::get(i64, ~3ull));
+    output_ptr = b_.CreateIntToPtr(intptr, half2ptr);
+
+    auto shift = b_.CreateShl(b_.CreateTrunc(alignment, i32), 3);
+    auto i16src = b_.CreateBitCast(source, i16);
+    auto intsrc = b_.CreateZExt(i16src, i32);
+    source = b_.CreateShl(intsrc, shift);
+    source = b_.CreateBitCast(source, half2type); 
+    
+    llvm::Module* module = b_.GetInsertBlock()->getModule();
+    std::vector<llvm::Type*> ir_input_types{half2ptr, half2type};
+
+    llvm::FunctionType* callee_type = llvm::FunctionType::get(
+      half2type, ir_input_types, false);
+
+    // Declares the callee if it is not declared already.
+    llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
+        b_.GetInsertBlock()
+            ->getModule()
+            ->getOrInsertFunction("llvm.amdgcn.global.atomic.fadd.v2f16.p1v2f16.v2f16", callee_type)
+            .getCallee());
+
+    callee->addFnAttr(llvm::Attribute::NoUnwind);
+    callee->addFnAttr(llvm::Attribute::ArgMemOnly);
+
+    b_.CreateCall(callee, {output_ptr, source});//llvm_ir::AsArrayRef(operands));
+    return;
+  }
 
   AtomicRMW(llvm::AtomicRMWInst::FAdd, output_ptr, source, llvm::MaybeAlign(),
             llvm::AtomicOrdering::SequentiallyConsistent,
