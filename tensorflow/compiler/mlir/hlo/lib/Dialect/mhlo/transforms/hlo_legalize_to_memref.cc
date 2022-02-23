@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
 #include <functional>
+#include <memory>
 #include <utility>
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -328,8 +329,8 @@ struct HloLegalizeToMemrefPass
                            bufferization::BufferizationDialect, BuiltinDialect,
                            memref::MemRefDialect, tensor::TensorDialect>();
 
-    auto func = getOperation();
-    if (failed(applyPartialConversion(func, target, std::move(patterns))))
+    auto module = getOperation();
+    if (failed(applyPartialConversion(module, target, std::move(patterns))))
       signalPassFailure();
   }
 };
@@ -348,7 +349,7 @@ void populateHLOToMemrefConversionPattern(
                                                      context);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToMemrefPass() {
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass() {
   return std::make_unique<HloLegalizeToMemrefPass>();
 }
 

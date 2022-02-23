@@ -36,7 +36,7 @@ def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let constructor = "createLegalizeToLhloPass()";
 }
 
-def HloLegalizeToMemrefPass :Pass<"hlo-legalize-to-memref", "FuncOp"> {
+def HloLegalizeToMemrefPass :Pass<"hlo-legalize-to-memref", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to memref dialect.";
   let constructor = "createLegalizeToMemrefPass()";
 }
