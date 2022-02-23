@@ -401,6 +401,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `DEPTH_TO_SPACE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `DEPTHWISE_CONV_2D`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -413,6 +417,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `LOGISTIC`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `MAX_POOL_2D`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
@@ -420,6 +428,11 @@ Below is the list of operators supported in IEEE FP16 inference:
 #### `MEAN`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `MUL`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
 
 #### `PAD`
 
@@ -429,7 +442,23 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
+#### `RELU`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `RELU6`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `RELU_N1_TO_1`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 #### `RESHAPE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `RESIZE_BILINEAR`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
@@ -472,6 +501,11 @@ Below is the list of currently supported quantized operators:
   and can use either per-tensor or per-channel quantization parameters.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `DEPTH_TO_SPACE`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Block size must be greater than 1.
 
 #### `DEPTHWISE_CONV_2D`
 

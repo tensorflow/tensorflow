@@ -2329,6 +2329,7 @@ XLA_VARIADIC_OP_PATTERN(Reduce);
 XLA_VARIADIC_OP_PATTERN(ReduceWindow)
 XLA_VARIADIC_OP_PATTERN(Sort);
 XLA_VARIADIC_OP_PATTERN(Tuple);
+XLA_VARIADIC_OP_PATTERN(Call);
 
 // CustomCall doesn't use the XLA_VARIADIC_OP_PATTERN macro so that you can
 // optionally pass a string_view for the custom_call_target before the other

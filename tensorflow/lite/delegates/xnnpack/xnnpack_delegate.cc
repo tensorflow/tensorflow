@@ -88,7 +88,7 @@ class Delegate {
   }
 
   bool force_fp16() const {
-#ifdef XNNPACK_FORCE_PRECISION_FP16
+#ifdef XNNPACK_DELEGATE_FORCE_PRECISION_FP16
     return true;
 #else
     return (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16) != 0;
@@ -2202,14 +2202,16 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
+                                       node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
@@ -4429,8 +4431,10 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   TfLiteXNNPackDelegateOptions options = {0};
 
   // Quantized inference is enabled by default on Web platform
-#ifdef __EMSCRIPTEN__
+#ifdef XNNPACK_DELEGATE_ENABLE_QS8
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QS8;
+#endif
+#ifdef XNNPACK_DELEGATE_ENABLE_QU8
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
 #endif
 

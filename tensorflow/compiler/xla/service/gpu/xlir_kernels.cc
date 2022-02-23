@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "llvm/Support/Error.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -36,8 +37,6 @@
 
 namespace xla {
 namespace gpu {
-
-#if BEF_THUNKS
 
 static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
     tfrt::Argument<tfrt::gpu::GpuContext> context,
@@ -81,8 +80,6 @@ static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
   }
   return tfrt::gpu::GpuModule(context.ValueRef(), std::move(*module));
 }
-
-#endif  // BEF_THUNKS
 
 static llvm::Expected<DeviceAssignment::LogicalID> GetLogicalId(
     const tfrt::ExecutionContext& exec_ctx) {
@@ -321,11 +318,11 @@ static llvm::Error CustomCall(
     tfrt::StringAttribute symbol) {
   // Lookup custom call target from registry.
   auto platform = stream->platform();
-  auto* target = CustomCallTargetRegistry::Global()->Lookup(
-      symbol.str(), tfrt::StrCat(platform));
+  auto key = absl::AsciiStrToUpper(tfrt::StrCat(platform));  // 'ROCm' -> 'ROCM'
+  auto* target = CustomCallTargetRegistry::Global()->Lookup(symbol.str(), key);
   if (!target) {
     return tfrt::MakeStringError("Custom call target '", symbol.str(),
-                                 "' not registered for platform ", platform);
+                                 "' not registered for platform ", key);
   }
 
   auto current = tfrt::gpu::wrapper::CtxSetCurrent(stream.context()->get());
@@ -366,9 +363,8 @@ static llvm::Error CustomCall(
 static void RegisterXlirKernels(tfrt::KernelRegistry* kernel_reg) {
   kernel_reg->AddKernel("xlir.custom_call",
                         TFRT_KERNEL_WITH_CHAIN_RESULT(CustomCall));
-#if BEF_THUNKS
+  // This kernel is only used for bef thunks, not bef executables.
   kernel_reg->AddKernel("xlir.module.load", TFRT_KERNEL(ModuleLoad));
-#endif  // BEF_THUNKS
   kernel_reg->AddKernel("xlir.replica_id",
                         TFRT_KERNEL_WITH_CHAIN_RESULT(ReplicaId));
   kernel_reg->AddKernel("xlir.partition_id",

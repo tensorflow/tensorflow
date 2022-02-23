@@ -749,6 +749,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
     ]) + if_rocm_is_configured([

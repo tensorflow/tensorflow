@@ -39,8 +39,8 @@ Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags);
 // input arrays.
 Status PopulateQuantizationSpecs(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
-    std::vector<string>* node_dtypes,
+    mlir::quant::QuantizationSpecs* quant_specs,
+    std::vector<string>* node_names, std::vector<string>* node_dtypes,
     std::vector<llvm::Optional<std::vector<int>>>* node_shapes,
     std::vector<llvm::Optional<double>>* node_mins,
     std::vector<llvm::Optional<double>>* node_maxs);

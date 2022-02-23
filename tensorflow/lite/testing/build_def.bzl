@@ -46,6 +46,7 @@ def generated_test_models():
         "depthwiseconv",
         "div",
         "dynamic_rnn",
+        "dynamic_update_slice",
         "einsum",
         "elu",
         "embedding_lookup",

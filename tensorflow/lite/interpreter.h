@@ -63,6 +63,44 @@ namespace interpreter_wrapper {
 class InterpreterWrapper;  // Class for friend declarations.
 }  // namespace interpreter_wrapper
 
+/// Options class for `Interpreter`.
+class InterpreterOptions {
+ public:
+  InterpreterOptions()
+      : experimental_preserve_all_tensors_(false),
+        experimental_ensure_dynamic_tensors_are_released_(false) {}
+
+  /// Preserving all intermediates tensors for debugging.
+  /// WARNING: This is an experimental API and subject to change.
+  void SetPreserveAllTensors(bool value = true) {
+    experimental_preserve_all_tensors_ = value;
+  }
+
+  /// Returns if the `experimental_preserve_all_tensors_` feature is enabled.
+  /// WARNING: This is an experimental API and subject to change.
+  bool GetPreserveAllTensors() { return experimental_preserve_all_tensors_; }
+
+  /// Force all intermediate dynamic tensors to be released once they are not
+  /// used by the model. Please use this configuration with caution, since it
+  /// might reduce the peak memory usage of the model at the cost of a slower
+  /// inference speed.
+  /// WARNING: This is an experimental API and subject to change.
+  void SetEnsureDynamicTensorsAreReleased(bool value = true) {
+    experimental_ensure_dynamic_tensors_are_released_ = value;
+  }
+
+  /// Returns if the `experimental_ensure_dynamic_tensors_are_released_` feature
+  /// is enabled.
+  /// WARNING: This is an experimental API and subject to change.
+  bool GetEnsureDynamicTensorsAreReleased() {
+    return experimental_ensure_dynamic_tensors_are_released_;
+  }
+
+ private:
+  bool experimental_preserve_all_tensors_;
+  bool experimental_ensure_dynamic_tensors_are_released_;
+};
+
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
 /// set of output Tensors. All inputs/output tensors are referenced by index.
@@ -458,13 +496,6 @@ class Interpreter {
   /// invocation. WARNING: Experimental interface, subject to change
   TfLiteStatus ReleaseNonPersistentMemory();
 
-  /// WARNING: This is an experimental API and subject to change.
-  /// Force all intermediate dynamic tensors to be released once they are not
-  /// used by the model. Please use this configuration with caution, since it
-  /// might reduce the peak memory usage of the model at the cost of a slower
-  /// inference speed. `AllocateTensors` needs to be called right after this
-  /// API.
-  void EnsureDynamicTensorsAreReleased();
 
   /// Update allocations for all tensors. This will redim dependent tensors
   /// using the input tensor dimensionality as given. This is relatively
@@ -685,6 +716,10 @@ class Interpreter {
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
+  /// Apply InterpreterOptions which tunes behavior of the interpreter.
+  /// WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus ApplyOptions(InterpreterOptions* options);
+
 #ifndef DOXYGEN_SKIP
   /// Return the number of subgraphs in the model.
   /// WARNING: This is an experimental API and subject to change.
@@ -781,10 +816,6 @@ class Interpreter {
   void SetSignatureDef(std::vector<internal::SignatureDef> signature_defs) {
     signature_defs_ = std::move(signature_defs);
   }
-
-  // Enables preserving intermediates for debugging.  Should only be set by
-  // InterpreterBuilder before allocating any tensors.
-  TfLiteStatus PreserveAllTensorsExperimental();
 
   // Sets model metadata as a mapping of name (key) and buffer (value) strings.
   // Used by InterpreterBuilder, should be called after setting up subgraphs.

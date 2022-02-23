@@ -409,6 +409,16 @@ ShapedType inferDotReturnType(ShapedType lhs, ShapedType rhs) {
 }
 }  // namespace
 
+LogicalResult DotOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  DotOp::Adaptor op(operands);
+  auto lhs_type = op.lhs().getType().cast<ShapedType>();
+  auto rhs_type = op.rhs().getType().cast<ShapedType>();
+  inferredReturnTypes.push_back(inferDotReturnType(lhs_type, rhs_type));
+  return success();
+}
+
 LogicalResult DotOp::verify() {
   auto lhs_type = lhs().getType().cast<ShapedType>();
   auto rhs_type = rhs().getType().cast<ShapedType>();

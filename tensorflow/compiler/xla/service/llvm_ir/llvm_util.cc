@@ -620,7 +620,7 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
 
   // Generate unwind information so that GDB can crawl through the stack frames
   // created by the JIT compiled code.
-  function->setHasUWTable();
+  function->setUWTableKind(llvm::UWTableKind::Default);
 
   // Tensorflow always flushes denormals to zero, let LLVM know that flushing
   // denormals is safe. This allows vectorization using ARM's neon instruction

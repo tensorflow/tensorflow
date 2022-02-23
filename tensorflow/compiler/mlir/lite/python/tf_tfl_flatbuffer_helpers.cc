@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
 #include <ostream>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -48,7 +49,7 @@ namespace tensorflow {
 namespace internal {
 namespace {
 
-using ::mlir::TFL::ReducedPrecisionSupport;
+using ::mlir::quant::ReducedPrecisionSupport;
 
 // Op def string for TFLite_Detection_PostProcess Op.
 const char kDetectionPostProcessOp[] =
@@ -204,8 +205,8 @@ Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
 
 Status PopulateQuantizationSpecs(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
-    std::vector<string>* node_dtypes,
+    mlir::quant::QuantizationSpecs* quant_specs,
+    std::vector<string>* node_names, std::vector<string>* node_dtypes,
     std::vector<llvm::Optional<std::vector<int>>>* node_shapes,
     std::vector<llvm::Optional<double>>* node_mins,
     std::vector<llvm::Optional<double>>* node_maxs) {
@@ -252,8 +253,8 @@ Status PopulateQuantizationSpecs(
     }
   }
 
-  if (mlir::TFL::GetInputNodeQuantSpecs(*node_names, *node_mins, *node_maxs,
-                                        inference_type, quant_specs)) {
+  if (mlir::quant::GetInputNodeQuantSpecs(*node_names, *node_mins, *node_maxs,
+                                          inference_type, quant_specs)) {
     return errors::InvalidArgument("Failed to get input quant spec.");
   }
 

@@ -87,6 +87,10 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let summary = "Pass to transform late operations on values to buffer based "
                 "ones.";
   let constructor = "transforms::CreateFinalBufferizePass()";
+  let options = [
+      Option<"alignment_", "alignment", "uint64_t",
+             /*default=*/"64", "Memory alignment">,
+  ];
 }
 
 def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {

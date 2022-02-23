@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 
 const char* const kUsage = R"(
 This tool reads in an HloModule from a file, compiles it using the NVPTX
@@ -85,7 +86,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                           hlo_module.get(), &llvm_context,
                           /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
                           /*data_layout=*/xla::gpu::nvptx::DataLayout(),
-                          /*platform_name=*/platform_name, gpu_device_info,
+                          /*platform_name=*/platform_name, stream_executor::rocm::kROCmPlatformId,
+                          gpu_device_info,
                           cuda_compute_capability, amdgpu_arch,
                           /*pointer_size=*/8));
 

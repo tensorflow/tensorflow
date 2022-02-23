@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 #define DEBUG_TYPE "graphdef-to-mlir"
 
@@ -650,6 +651,27 @@ Status ConvertHandleData(mlir::ArrayAttr handle_data_arr, OpDef::ArgDef *arg) {
 
 Status ExportMlirToGraphdef(mlir::ModuleOp module, GraphDef *output_graph) {
   return mlir::tfg::ExportMlirToGraphdefImpl(module, output_graph);
+}
+
+Status ExportMlirToSavedModel(mlir::ModuleOp module,
+                              const SavedModel &original_saved_model,
+                              SavedModel *output_saved_model) {
+  if (original_saved_model.meta_graphs_size() == 0) {
+    return tensorflow::errors::InvalidArgument(
+        "Original saved model has no meta graphs");
+  }
+
+  tensorflow::GraphDef new_graphdef;
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(ExportMlirToGraphdef(module, &new_graphdef),
+                                  "while converting TFG to GraphDef");
+
+  // Overwrite the graph def portion of the saved model with the new one.
+  tensorflow::MetaGraphDef meta_graph_def = original_saved_model.meta_graphs(0);
+  *(meta_graph_def.mutable_graph_def()) = std::move(new_graphdef);
+  *output_saved_model = original_saved_model;
+  *(output_saved_model->mutable_meta_graphs(0)) = std::move(meta_graph_def);
+
+  return Status::OK();
 }
 
 Status ConvertOperationToNode(mlir::Operation &op, NodeDef *node,

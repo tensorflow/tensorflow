@@ -388,6 +388,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addNestedPass<::mlir::FuncOp>(mlir::createForLoopSpecializationPass());
   // Take launches to launches with kernels.
   if (!cpu_codegen) {
+    pm.addPass(mlir::createGpuLauchSinkIndexComputationsPass());
     const std::string gpuDataLayoutSpec =
         "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
     pm.addPass(mlir::createGpuKernelOutliningPass(gpuDataLayoutSpec));

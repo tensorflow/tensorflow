@@ -62,7 +62,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace as profiler_trace
 from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.types import internal
-from tensorflow.python.types import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
@@ -80,6 +79,10 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import kwarg_only
 from tensorflow.python.util.tf_export import tf_export
 
+# TODO(b/218887885): Loaded lazily due to a circular dependency with this file.
+tensor_spec = LazyLoader(
+    "tensor_spec", globals(),
+    "tensorflow.python.framework.tensor_spec")
 ag_ctx = LazyLoader(
     "ag_ctx", globals(),
     "tensorflow.python.autograph.core.ag_ctx")
@@ -282,56 +285,6 @@ def disable_tensor_equality():
   logging.vlog(1, "Disabling tensor equality")
   _tensor_equality_api_usage_gauge.get_cell().set(False)
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
-
-
-# TODO(b/202447704): Merge into TensorSpec.
-class TensorType(trace.TraceType):
-  """Represents Tensor and TensorSpec for function tracing purposes."""
-
-  def __init__(self, signature_context, shape, dtype, name):
-    self.dtype = dtype
-    self.name = name
-
-    if signature_context.include_tensor_ranks_only and shape.rank is not None:
-      self.shape = tensor_shape.TensorShape([None] * shape.rank)
-    else:
-      self.shape = shape
-
-  def is_subtype_of(self, other):
-    if not isinstance(other, TensorType):
-      return False
-
-    if self.dtype != other.dtype:
-      return False
-
-    # TODO(b/206014848): Name should not be considered.
-    if self.name != other.name:
-      return False
-
-    return self.shape.is_subtype_of(other.shape)
-
-  def most_specific_common_supertype(self, others):
-    # TODO(b/202430155) Implement for shape relaxation.
-    return None
-
-  def __hash__(self) -> int:
-    return hash((self.dtype, self.name, self.shape))
-
-  def __eq__(self, other) -> bool:
-    if not isinstance(other, trace.TraceType):
-      return NotImplemented
-
-    if not isinstance(other, TensorType):
-      return False
-
-    if self.dtype != other.dtype:
-      return False
-
-    # TODO(b/206014848): Name should not be considered.
-    if self.name != other.name:
-      return False
-
-    return self.shape == other.shape
 
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
@@ -1086,7 +1039,8 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     return object_identity.Reference(self)
 
   def __tf_tracing_type__(self, signature_context):
-    return TensorType(signature_context, self.shape, self.dtype, None)
+    return tensor_spec.TensorSpec(
+        self.shape, self.dtype).__tf_tracing_type__(signature_context)
 
 
 # TODO(agarwal): consider getting rid of this.

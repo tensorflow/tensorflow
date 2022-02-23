@@ -26,6 +26,7 @@ from tensorflow.python.distribute import merge_call_interim
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.coordinator import cluster_coordinator
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import test_combinations

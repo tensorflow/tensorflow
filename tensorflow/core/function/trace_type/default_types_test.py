@@ -150,6 +150,23 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(dict_a, dict_c)
     self.assertNotEqual(dict_a, dict_b)
 
+  def testReferenceType(self):
+
+    class MockSubtypeOf2(default_types.Generic):
+
+      def is_subtype_of(self, other):
+        return other._object == 2
+
+    original = default_types.Reference(MockSubtypeOf2(3), 1)
+    clone = default_types.Reference(MockSubtypeOf2(3), 1)
+    different_id = default_types.Reference(MockSubtypeOf2(3), 2)
+    supertype = default_types.Reference(MockSubtypeOf2(2), 1)
+
+    self.assertEqual(original, clone)
+    self.assertFalse(original.is_subtype_of(different_id))
+    self.assertTrue(original.is_subtype_of(supertype))
+    self.assertFalse(supertype.is_subtype_of(original))
+
 
 if __name__ == '__main__':
   test.main()

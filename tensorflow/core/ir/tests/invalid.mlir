@@ -4,8 +4,7 @@
 
 // -----
 
-// expected-error @+2 {{invalid kind of attribute specified}}
-// expected-error @+1 {{expected a version attribute}}
+// expected-error @+1 {{invalid kind of attribute specified}}
 tfg.graph {
 }
 

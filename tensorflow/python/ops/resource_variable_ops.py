@@ -51,7 +51,6 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
-from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
@@ -329,29 +328,6 @@ def variable_accessed(variable):
     tape.variable_accessed(variable)
 
 
-# TODO(b/202447704): Merge into VariableSpec.
-class VariableType(trace.TraceType):
-  """Represents Variables (and specs) for function tracing purposes."""
-
-  def __init__(self, dtype, shape, local_id):
-    self._components = (dtype, tuple(shape.as_list()), local_id)
-
-  def is_subtype_of(self, other):
-    # TODO(b/202429845): Implement for subtyping.
-    return self == other
-
-  def most_specific_common_supertype(self, others):
-    # TODO(b/202430155) Implement for shape relaxation.
-    return None
-
-  def __hash__(self) -> int:
-    return hash(self._components)
-
-  def __eq__(self, other) -> bool:
-    return isinstance(
-        other, VariableType) and self._components == other._components
-
-
 class BaseResourceVariable(variables.VariableV1, core.Tensor):
   """A python variable from an existing handle."""
 
@@ -489,9 +465,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
 
-  def __tf_tracing_type__(self, tracing_context):
-    return VariableType(self.dtype, self.shape,
-                        tracing_context.get_local_id(self._handle._id))  # pylint:disable=protected-access
+  def __tf_tracing_type__(self, signature_context):
+    return signature_context.make_reference_type(
+        VariableSpec(self.shape, self.dtype), self._handle._id)  # pylint:disable=protected-access
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -2364,9 +2340,8 @@ class VariableSpec(tensor_spec.DenseSpec):
     assert len(tensor_list) == 1
     return tensor_list[0]
 
-  def __tf_tracing_type__(self, tracing_context):
-    return VariableType(self.dtype, self.shape,
-                        tracing_context.get_local_id(id(self)))
+  def __tf_tracing_type__(self, signature_context):
+    return signature_context.make_reference_type(self, id(self))
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 

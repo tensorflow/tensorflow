@@ -283,6 +283,9 @@ class PrefetchIntervalPicker {
   // Returns true if the available prefetch intervals have been exhausted.
   virtual bool Done() const = 0;
 
+  // Returns the latest time the prefetch interval picker will have pick.
+  virtual int64_t latest_time() const = 0;
+
   // The retry number can be used to modify the interval picking policies. The
   // first attempt will have a retry_number of 0, then 1, etc.
   virtual void SetRetryNumber(int retry_number) {
@@ -358,6 +361,8 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t Next() override;
   bool Done() const override;
 
+  int64_t latest_time() const override;
+
   std::string ToDebugString() const override;
   std::string ToNoCopyDebugString(const Shape& shape, int64_t start_time,
                                   int64_t end_time) const override;
@@ -420,6 +425,8 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
 
   int64_t Next() override;
   bool Done() const override;
+
+  int64_t latest_time() const override;
 
   void SetRetryNumber(int retry_number) override;
 
@@ -1551,6 +1558,13 @@ class AlternateMemoryBestFitHeap
     return options_.max_size_in_bytes - reserved_in_bytes_;
   }
 
+  // Returns the earliest time in the [start_time, end_time] range that a new
+  // allocation with the given size would fit in the alternate memory. If it
+  // doesn't fit, it returns nullopt.
+  absl::optional<int> FindEarliestTimeToSatisfyPeakMemory(int start_time,
+                                                          int end_time,
+                                                          int64_t size) const;
+
   // Creates and returns a RepackAllocationBlock.
   static RepackAllocationBlock MakeRepackAllocationBlock(
       int64_t start_time, int64_t end_time, int64_t size,
@@ -1587,6 +1601,11 @@ class AlternateMemoryBestFitHeap
   std::vector<AsynchronousCopy> pending_async_copies_;
   std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>
       pending_required_assignments_;
+  // A cache to keep the peak memory usage at each point in the graph. We use
+  // this to see if the proposed allocation in the alternate memory would fit
+  // ignoring fragmentation, and if not, we can skip the more expensive lookup
+  // in the BufferIntervalTree, which also considers fragmentation.
+  std::vector<int64_t> peak_memory_usage_;
   // The data structure that contains AliasedOffset objects and Allocation to
   // AliasedOffset map for efficient lookup.
   std::list<AliasedOffset> aliased_offsets_;

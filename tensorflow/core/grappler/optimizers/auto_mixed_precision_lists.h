@@ -128,6 +128,7 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "Dropout",
         "DropoutGrad",
         "FusedConv2DBiasActivation",
+        "FusedSparseConvGpuV2",
         "GRUBlockCell",
         "GRUBlockCellGrad",
         "LSTMBlockCell",

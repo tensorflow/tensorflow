@@ -274,7 +274,7 @@ cmd_status(){
 do_bazel_nobuild() {
   _run_configure
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/... -//tensorflow/tools/toolchains/win/... -//tensorflow/tools/toolchains/win_1803/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}

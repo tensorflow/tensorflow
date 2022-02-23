@@ -5351,15 +5351,12 @@ class ConvertInfeedDequeueTupleOp
 
   LogicalResult matchAndRewrite(TF::InfeedDequeueTupleOp op,
                                 PatternRewriter &rewriter) const override {
-    std::vector<Type> result_types(op.outputs().size());
-    for (const auto &idx_and_output : llvm::enumerate(op.outputs())) {
-      result_types[idx_and_output.index()] = (idx_and_output.value().getType());
-    }
+    std::vector<Type> result_types;
 
-    for (Type t : result_types) {
-      if (auto ty = t.dyn_cast<RankedTensorType>()) {
-        if (!ty.hasStaticShape()) return failure();
-      }
+    for (mlir::Type t : op.getResultTypes()) {
+      auto ty = t.cast<mlir::TensorType>();
+      if (!ty.hasStaticShape()) return failure();
+      result_types.push_back(t);
     }
 
     // Infeed takes a single token operand. Generate the token using
@@ -5399,6 +5396,15 @@ class ConvertInfeedDequeueTupleOp
       } else {
         data_and_token->setAttr(kShardingAttr, op._XlaShardingAttr());
       }
+    }
+
+    if (op->hasAttr("layouts")) {
+      // Append a UnitAttr for the "token" operand of the mhlo.infeed op here to
+      // avoid compilation failure when exporting "layouts" attribute of the
+      // corresponding InfeedDequeueTupleOp to a graph node.
+      data_and_token->setAttr(
+          "layout", rewriter.getArrayAttr(
+                        {op->getAttr("layouts"), rewriter.getUnitAttr()}));
     }
 
     // The infeed instruction produces a tuple of the infeed data and a token

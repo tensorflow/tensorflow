@@ -727,6 +727,9 @@ uint64_t InferenceContext::GetConstantTensorsSize() const {
   for (const auto& node : nodes_) {
     total_size += node.task.GetGpuOperation().const_args_size_;
   }
+  for (const auto& t : const_tensors_) {
+    total_size += t.second.GetMemorySizeInBytes();
+  }
   return total_size;
 }
 

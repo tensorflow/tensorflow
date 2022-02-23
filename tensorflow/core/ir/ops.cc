@@ -325,30 +325,6 @@ static bool VerifyGenericTFGOperation(Operation &op) {
 // Graph Operation
 //===----------------------------------------------------------------------===//
 
-static void PrintGraphOp(OpAsmPrinter &p, GraphOp op) {
-  p << ' ' << op.version();
-  p.printOptionalAttrDictWithKeyword(op->getAttrs(), {"version"});
-  p << ' ';
-  p.printRegion(op.getBodyRegion());
-}
-
-static ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
-  VersionAttr version;
-  llvm::SMLoc loc = parser.getCurrentLocation();
-  if (parser.parseAttribute(version)) {
-    parser.emitError(loc) << "expected a version attribute";
-    return failure();
-  }
-  result.addAttribute("version", version);
-
-  if (parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
-      parser.parseRegion(*result.addRegion()))
-    return failure();
-  if (result.regions.front()->empty())
-    result.regions.front()->push_back(new Block);
-  return success();
-}
-
 LogicalResult GraphOp::verify() {
   GraphOp op = *this;
   // Check all ops in the body.
@@ -489,7 +465,7 @@ LogicalResult GraphFuncOp::verify() {
   return success();
 }
 
-static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
+ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType> entry_args;
   SmallVector<Attribute> arg_attrs;
   SmallVector<Attribute> result_attrs;
@@ -611,8 +587,9 @@ static ParseResult ParseGraphFunc(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
+void GraphFuncOp::print(OpAsmPrinter &p) {
   // Print the operation and the function name.
+  Operation *op = *this;
   p << " ";
   int argIndentSize = op->getName().getStringRef().size() + 3;
   StringRef visibility_attr_name = SymbolTable::getVisibilityAttrName();
@@ -620,24 +597,23 @@ static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
     p << visibility.getValue() << ' ';
     argIndentSize += visibility.getValue().size() + 1;
   }
-  if (op.generic()) p << "generic ";
+  if (generic()) p << "generic ";
   auto funcName =
       op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
           .getValue();
   p.printSymbolName(funcName);
   argIndentSize += funcName.size();
   std::string indent(argIndentSize, ' ');
-  Region &body = op->getRegion(0);
-  FunctionType fnType = op.getType();
+  FunctionType fnType = getType();
   ArrayRef<Type> arg_types = fnType.getInputs();
   ArrayRef<Type> result_types = fnType.getResults();
   assert((arg_types.size() % 2) == 0);
   // Print operand list with attributes.
   p << '(';
-  ArrayAttr args_attr = op.getAllArgAttrs();
+  ArrayAttr args_attr = getAllArgAttrs();
   for (unsigned i = 0, e = arg_types.size(); i < e; i += 2) {
     // Args come by pair: input+control.
-    p.printOperand(body.getArgument(i));
+    p.printOperand(getArgument(i));
     p << ": ";
     p.printType(arg_types[i]);
     if (auto arg_attrs = args_attr[i].dyn_cast<DictionaryAttr>())
@@ -655,7 +631,7 @@ static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
     p.printNewline();
     p.getStream() << "     -> (";
     indent = std::string(9, ' ');
-    ArrayAttr results_attr = op.getAllResultAttrs();
+    ArrayAttr results_attr = getAllResultAttrs();
     for (int i = 0, e = result_types.size(); i < e; ++i) {
       p.printType(result_types[i]);
       if (auto result_attrs = results_attr[i].dyn_cast<DictionaryAttr>())
@@ -672,12 +648,12 @@ static void PrintGraphFunc(GraphFuncOp op, OpAsmPrinter &p) {
   if (!op->getAttrs().empty()) {
     p.printNewline();
     function_interface_impl::printFunctionAttributes(
-        p, op, fnType.getNumInputs(), fnType.getNumResults(),
+        p, *this, fnType.getNumInputs(), fnType.getNumResults(),
         {"generic", SymbolTable::getVisibilityAttrName()});
   }
   // Print body.
   p << ' ';
-  p.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false);
+  p.printRegion(body(), /*printEntryBlockArgs=*/false);
 }
 
 GraphFuncOp GraphFuncOp::getCalledFunction(Operation *op,
@@ -751,7 +727,7 @@ LogicalResult ReturnOp::verify() {
   return success();
 }
 
-ParseResult ParseReturnOp(OpAsmParser &parser, OperationState &result) {
+ParseResult ReturnOp::parse(OpAsmParser &parser, OperationState &result) {
   // ReturnOp has the same assembly format as generic TFG ops except that the
   // control result attributes are embedded with the control operands:
   // [%ctl {tfg.name = "foo"}, %ctl_0 {tfg.name = "bar"}]
@@ -787,8 +763,8 @@ ParseResult ParseReturnOp(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-void Print(ReturnOp op, OpAsmPrinter &printer) {
-  TFOp tfg_op(op);
+void ReturnOp::print(OpAsmPrinter &printer) {
+  TFOp tfg_op(*this);
   OperandRange data = tfg_op.getNonControlOperands();
   if (!data.empty()) printer << '(' << data << ')';
 
@@ -796,7 +772,7 @@ void Print(ReturnOp op, OpAsmPrinter &printer) {
   if (!ctls.empty()) {
     printer << " [";
     llvm::interleave(
-        llvm::zip(ctls, op.control_ret_attrs().getAsRange<DictionaryAttr>()),
+        llvm::zip(ctls, control_ret_attrs().getAsRange<DictionaryAttr>()),
         printer,
         [&](auto it) {
           printer << std::get<0>(it);
@@ -806,7 +782,7 @@ void Print(ReturnOp op, OpAsmPrinter &printer) {
     printer << ']';
   }
 
-  PrintKeywordAttributes(op, printer, {"control_ret_attrs"});
+  PrintKeywordAttributes(*this, printer, {"control_ret_attrs"});
 
   if (!data.empty()) printer << " : " << data.getTypes();
 }

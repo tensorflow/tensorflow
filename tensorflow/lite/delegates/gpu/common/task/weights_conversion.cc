@@ -59,17 +59,16 @@ uint2 Get2dResourceSize(const WeightsDescription& weight_desc,
 
 void RearrangeWeights(
     const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
-    const WeightsDescription& dst_weight_desc, DataType dst_type,
-    absl::Span<uint8_t> dst) {
+    const WeightsDescription& dst_weight_desc, absl::Span<uint8_t> dst) {
   const uint flt_count =
       GetTotalElementsCountForLayout(dst_weight_desc, weights.shape);
   if (dst_weight_desc.layout == WeightsLayout::kOSpatialIOGroupI4O4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToOHWIOGroupI4O4(weights,
                                        dst_weight_desc.output_group_size,
                                        absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToOHWIOGroupI4O4(weights,
                                        dst_weight_desc.output_group_size,
@@ -77,12 +76,12 @@ void RearrangeWeights(
     }
     return;
   } else if (dst_weight_desc.layout == WeightsLayout::kOSpatialIOGroupO4I4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToOHWIOGroupO4I4(weights,
                                        dst_weight_desc.output_group_size,
                                        absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToOHWIOGroupO4I4(weights,
                                        dst_weight_desc.output_group_size,
@@ -90,12 +89,12 @@ void RearrangeWeights(
     }
     return;
   } else if (dst_weight_desc.layout == WeightsLayout::kOICustomSpatialI4O4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToOICustomSpatialI4O4(
           weights, dst_weight_desc.spatial_remap,
           absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToOICustomSpatialI4O4(
           weights, dst_weight_desc.spatial_remap,
@@ -103,12 +102,12 @@ void RearrangeWeights(
     }
     return;
   } else if (dst_weight_desc.layout == WeightsLayout::kOICustomSpatialO4I4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToOICustomSpatialO4I4(
           weights, dst_weight_desc.spatial_remap,
           absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToOICustomSpatialO4I4(
           weights, dst_weight_desc.spatial_remap,
@@ -117,12 +116,12 @@ void RearrangeWeights(
     return;
   } else if (dst_weight_desc.layout ==
              WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToI4HWIOOGroupO4(weights,
                                        dst_weight_desc.output_group_size,
                                        absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToI4HWIOOGroupO4(weights,
                                        dst_weight_desc.output_group_size,
@@ -131,12 +130,12 @@ void RearrangeWeights(
     return;
   } else if (dst_weight_desc.layout ==
              WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToO4HWIOOGroupI4(weights,
                                        dst_weight_desc.output_group_size,
                                        absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToO4HWIOOGroupI4(weights,
                                        dst_weight_desc.output_group_size,
@@ -148,17 +147,16 @@ void RearrangeWeights(
 
 void RearrangeWeights(
     const tflite::gpu::Tensor<OHWDI, DataType::FLOAT32>& weights,
-    const WeightsDescription& dst_weight_desc, DataType dst_type,
-    absl::Span<uint8_t> dst) {
+    const WeightsDescription& dst_weight_desc, absl::Span<uint8_t> dst) {
   const uint flt_count =
       GetTotalElementsCountForLayout(dst_weight_desc, weights.shape);
   if (dst_weight_desc.layout == WeightsLayout::kOSpatialIOGroupI4O4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToODHWIOGroupI4O4(weights,
                                         dst_weight_desc.output_group_size,
                                         absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToODHWIOGroupI4O4(weights,
                                         dst_weight_desc.output_group_size,
@@ -166,12 +164,12 @@ void RearrangeWeights(
     }
     return;
   } else if (dst_weight_desc.layout == WeightsLayout::kOSpatialIOGroupO4I4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToODHWIOGroupO4I4(weights,
                                         dst_weight_desc.output_group_size,
                                         absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToODHWIOGroupO4I4(weights,
                                         dst_weight_desc.output_group_size,
@@ -179,12 +177,12 @@ void RearrangeWeights(
     }
     return;
   } else if (dst_weight_desc.layout == WeightsLayout::kOICustomSpatialI4O4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToOICustomSpatialI4O4(
           weights, dst_weight_desc.spatial_remap,
           absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToOICustomSpatialI4O4(
           weights, dst_weight_desc.spatial_remap,
@@ -192,12 +190,12 @@ void RearrangeWeights(
     }
     return;
   } else if (dst_weight_desc.layout == WeightsLayout::kOICustomSpatialO4I4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToOICustomSpatialO4I4(
           weights, dst_weight_desc.spatial_remap,
           absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToOICustomSpatialO4I4(
           weights, dst_weight_desc.spatial_remap,
@@ -206,12 +204,12 @@ void RearrangeWeights(
     return;
   } else if (dst_weight_desc.layout ==
              WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToI4DHWIOOGroupO4(weights,
                                         dst_weight_desc.output_group_size,
                                         absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToI4DHWIOOGroupO4(weights,
                                         dst_weight_desc.output_group_size,
@@ -220,12 +218,12 @@ void RearrangeWeights(
     return;
   } else if (dst_weight_desc.layout ==
              WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4) {
-    if (dst_type == DataType::FLOAT32) {
+    if (dst_weight_desc.type == DataType::FLOAT32) {
       float4* f32_ptr = reinterpret_cast<float4*>(dst.data());
       RearrangeWeightsToO4DHWIOOGroupI4(weights,
                                         dst_weight_desc.output_group_size,
                                         absl::MakeSpan(f32_ptr, flt_count / 4));
-    } else if (dst_type == DataType::FLOAT16) {
+    } else if (dst_weight_desc.type == DataType::FLOAT16) {
       half4* f16_ptr = reinterpret_cast<half4*>(dst.data());
       RearrangeWeightsToO4DHWIOOGroupI4(weights,
                                         dst_weight_desc.output_group_size,
