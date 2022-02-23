@@ -247,6 +247,37 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_fallback_executor",
+    testonly = True,
+    srcs = [
+        "runtime_fallback/runtime_fallback_executor.cc",
+    ],
+    hdrs = [
+        "runtime_fallback/runtime_fallback_executor.h",
+    ],
+    deps = [
+        ":host_context_util",
+        ":tf_to_tfrt",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:threadpool_interface",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
+        "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
+        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
+        "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@tf_runtime//:bef",
+        "@tf_runtime//:befexecutor",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:mlirtobef",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "corert_converter",
     srcs = [
         "transforms/corert_converter.cc",
@@ -380,6 +411,17 @@ cc_library(
         "@tf_runtime//:mlirtobef",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "host_context_util",
+    srcs = ["utils/host_context.cc"],
+    hdrs = ["utils/host_context.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@tf_runtime//:hostcontext",
+    ],
 )
 
 cc_library(
