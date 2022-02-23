@@ -154,6 +154,7 @@ tf_kernel_library(
         ":gpu_asin_kernels",
         ":gpu_asinh_kernels",
         ":gpu_atan_kernels",
+        ":gpu_atanh_kernels",
         ":gpu_ceil_kernels",
         ":gpu_complex_abs_kernels",
         ":gpu_conj_kernels",
@@ -189,13 +190,6 @@ tf_kernel_library(
         ":gpu_tan_kernels",
         ":gpu_tanh_kernels",
         "//third_party/eigen3",
-    ]) + if_mlir_generated_experimental_kernels_enabled(
-        [
-            ":gpu_atanh_kernels_experimental",
-        ],
-        [
-            ":gpu_atanh_kernels",
-        ],
     ),
 )
 
@@ -801,17 +795,18 @@ gpu_kernel_library(
     unroll_factors = "4",
 )
 
-gpu_kernel_library(
-    name = "gpu_atanh_kernels_experimental",
-    op = "atanh",
-    tile_size = "256",
-    types = [
-        "f32",
-        "f64",
-    ],
-    unroll_factors = "4",
-    jit_i64_indexed_for_large_tensors_types = ["f16"],
-)
+# TODO: enable when supported in the pipeline
+# gpu_kernel_library(
+#     name = "gpu_atanh_kernels_experimental",
+#     op = "atanh",
+#     tile_size = "256",
+#     types = [
+#         "f32",
+#         "f64",
+#     ],
+#     unroll_factors = "4",
+#     jit_i64_indexed_for_large_tensors_types = ["f16"],
+# )
 
 gpu_kernel_library(
     name = "gpu_conj_kernels",
