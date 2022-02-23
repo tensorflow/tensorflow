@@ -59,6 +59,36 @@ pybind_extension(
     ],
 )
 
+py_library(
+    name = "tfrt_fallback",
+    testonly = True,
+    srcs = ["tfrt_fallback.py"],
+    visibility = ["//tensorflow/compiler/mlir/tfrt:__subpackages__"],
+    deps = [
+        ":_tfrt_fallback",
+    ],
+)
+
+pybind_extension(
+    name = "_tfrt_fallback",
+    testonly = True,
+    srcs = ["tfrt_fallback.cc"],
+    hdrs = ["tfrt_fallback.h"],
+    module_name = "_tfrt_fallback",
+    deps = [
+        ":conversion_utils",
+        "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:refcount",
+        "//tensorflow/core/runtime_fallback/util:type_util",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep
+        "@llvm-project//llvm:Support",
+        "@pybind11",
+        "@tf_runtime//:dtype",
+    ],
+)
+
 pybind_library(
     name = "conversion_utils",
     srcs = ["conversion_utils.cc"],
