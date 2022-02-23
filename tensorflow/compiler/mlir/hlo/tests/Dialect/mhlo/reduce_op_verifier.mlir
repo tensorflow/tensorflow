@@ -401,7 +401,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 func @verify_reducer_function(%arg0: tensor<?xf32>, %arg1 : tensor<?xf32>)
     -> (tensor<f32>) {
 
-  // expected-error@+1 {{The rank of reduction-region's argument at index 1 is not compatible with that of reduce-op's result: 1 vs 0 (expected)}}
+  // expected-error@+1 {{The rank of reduction-region's argument at index 1 is expected to be <= 0, got 1}}
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
 
   ^bb0(%arg2: tensor<?xf32>, %arg3: tensor<?xf32> ):

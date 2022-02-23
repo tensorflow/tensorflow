@@ -151,6 +151,11 @@ static void ReplaceOpWithRegion(PatternRewriter& rewriter, Operation* op,
 
 #include "mhlo_canonicalize.inc"
 
+// Check if the dimension size is dynamic.
+inline static bool isDynamicDimSize(int64_t val) {
+  return val == ShapedType::kDynamicSize;
+}
+
 // Common shape function helper for RngNormal and RngUniform.
 static LogicalResult rngInferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
@@ -174,7 +179,7 @@ static LogicalResult rngInferReturnTypeComponents(
     if (shapeOperandType.getRank() != 1)
       return emitOptionalError(location, "shape operand required to be 1D");
     int size = shapeOperandType.getDimSize(0);
-    if (size == ShapedType::kDynamicSize) {
+    if (isDynamicDimSize(size)) {
       inferredReturnShapes.emplace_back(elementType);
       return success();
     }
@@ -202,11 +207,218 @@ Value MaybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
 // Utilities for verifiers
 //===----------------------------------------------------------------------===//
 
+// Convert a 1D dense int64 attribute to a list of values.
+SmallVector<int64_t> convertDenseIntAttr(
+    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr) {
+  if (!optional_attr.hasValue()) return SmallVector<int64_t>{};
+
+  mlir::DenseIntElementsAttr attr = *optional_attr;
+  auto values = attr.getValues<int64_t>();
+  return {values.begin(), values.end()};
+}
+
+// Convert a 1D or Nx2 dense int64 attribute to a list of tuples.
+FailureOr<SmallVector<std::pair<int64_t, int64_t>>> convertNx2Attribute(
+    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr, Location loc) {
+  if (!optional_attr.hasValue())
+    return SmallVector<std::pair<int64_t, int64_t>>{};
+  mlir::DenseIntElementsAttr attr = *optional_attr;
+
+  auto attr_type = attr.getType().cast<RankedTensorType>();  // ensured by ODS.
+  if (attr_type.getRank() > 1) {
+    if (attr_type.getRank() != 2 || attr_type.getShape()[1] != 2)
+      return (mlir::emitError(loc) << "expects the shape of padding-attribute "
+                                      "to be {N, 2}, but got {"
+                                   << attr_type.getShape() << "}.",
+              failure());
+  } else {
+    // Padding values can be provided as a 1D vector as well.
+    if (attr.getValues<int64_t>().size() % 2 != 0)
+      return (mlir::emitError(loc)
+                  << "expects the padding-entries to have even number of "
+                     "elements, but got "
+                  << attr.getValues<int64_t>().size() << " elements.",
+              failure());
+  }
+
+  auto it = attr.getValues<int64_t>().begin();
+  SmallVector<std::pair<int64_t, int64_t>> out(attr.getNumElements() / 2);
+  for (auto& item : out) {
+    int64_t first = *it;
+    ++it;
+    int64_t second = *it;
+    ++it;
+    item = {first, second};
+  }
+  return out;
+}
+
+// If a window with the given bound in some dimension is dilated with the given
+// dilation factor in that dimension, then the value returned is the bound for
+// the array in that dimension after dilation.
+//
+// For a 1D array with 3 entries 1, 2, 3, a dilation factor of 2 yields a new
+// window with values 1, x, 2, x, 3, where x indicates holes left by the
+// dilation. So DilatedBound(3, 2) == 5.
+int64_t dilatedBound(int64_t bound, int64_t dilation) {
+  assert(bound >= 0 && "The dimension to dialate must be >= 0");
+  if (bound == 0) return 0;
+
+  // Suppose the array has three entries 123 and the dilation factor is 4. Then
+  // the dilated array has 9 entries 1xxx2xxx3. Here, each original entry except
+  // the last expands into 4 entries, so that is (bound - 1) * dilation. Then we
+  // add 1 to account for the final input element.
+  return (bound - 1) * dilation + 1;
+}
+
+// Returns the number of valid positions of a window with the given size and
+// stride within an array with the given bound. This is the bound of an output
+// array with one element per valid position of the window.
+//
+// For example, for arguments of (bound=5, window_size=2, stride=2), the
+// returned value is 2. There are valid positions at offset 0 and offset 2,
+// while offset 4 is not valid since the window's last entry would be at 5,
+// which is beyond the bound of 5.
+int64_t stridedBound(int64_t bound, int64_t window_size, int64_t stride) {
+  assert(window_size >= 0 && "Expected window size to be >= 0");
+  assert(bound >= 0 && "Expected bound to be >= 0");
+
+  if (bound == 0 || window_size > bound) return 0;
+
+  // Without considering stride, the maximum valid offset is bound -
+  // window_size. Taking stride into account, the valid offsets then have the
+  // form q * stride for q = 0, ..., Q such that q * stride <= bound -
+  // window_size. This implies that Q equals floor(bound - window_size /
+  // stride). There are Q + 1 valid values of q, yielding the formula below.
+  return (bound - window_size) / stride + 1;
+}
+
+// WindowDimension described how the kernel window moves across the base area
+// in a particular dimension.
+// Describes the windowing in an operation such as convolution.
+// The window is moved across a base area and for each position of the
+// window a computation is performed. The field below describes the
+// window and the movement of the window across a base area.
+struct WindowDimension {
+  int64_t size = 0;
+  int64_t stride = 1;
+  int64_t padding_low = 0;
+  int64_t padding_high = 0;
+  int64_t window_dilation = 1;
+  int64_t base_dilation = 1;
+  bool window_reversal = false;
+};
+
+// Verifies various properties of window-attributes (viz., stride, padding,
+// lhs_dilation and rhs_dilation) and collects all the window-attributes for
+// each kernel spatial dimensions.
+FailureOr<SmallVector<WindowDimension>>
+verifyWindowAttributesAndInferWindowDimensions(
+    ArrayRef<int64_t> window_dimensions, ArrayRef<int64_t> window_strides,
+    ArrayRef<std::pair<int64_t, int64_t>> padding,
+    ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
+    Location loc) {
+  const auto verifySize = [&](const size_t attrSize,
+                              StringRef attrName) -> LogicalResult {
+    if (attrSize == 0 || attrSize == window_dimensions.size()) return success();
+    return mlir::emitError(loc)
+           << "expects " << attrName
+           << " to have same dimension-size as size of "
+              "window dimensions "
+              "("
+           << window_dimensions.size() << "), but got: " << attrSize << ".";
+  };
+
+  if (failed(verifySize(window_strides.size(), "window-strides")))
+    return failure();
+  if (failed(verifySize(lhs_dilation.size(), "base-dilation factors")))
+    return failure();
+  if (failed(verifySize(rhs_dilation.size(), "window-dilation factors")))
+    return failure();
+  if (failed(verifySize(padding.size(), "padding-entries"))) return failure();
+
+  SmallVector<WindowDimension> window(window_dimensions.size());
+  for (size_t i = 0; i < window_dimensions.size(); i++) {
+    WindowDimension& dim = window[i];
+
+    dim.size = window_dimensions[i];
+    if (!isDynamicDimSize(dim.size) && dim.size <= 0)
+      return (mlir::emitError(loc)
+                  << "expects window to have positive value for " << i
+                  << "-th window dimension, but got " << dim.size << ".",
+              failure());
+
+    if (!window_strides.empty()) dim.stride = window_strides[i];
+    if (dim.stride <= 0)
+      return (mlir::emitError(loc)
+                  << "expects window to have positive stride for " << i
+                  << "-th window dimension, but got " << dim.stride << ".",
+              failure());
+
+    if (!lhs_dilation.empty()) dim.base_dilation = lhs_dilation[i];
+    if (dim.base_dilation <= 0)
+      return (mlir::emitError(loc) << "expects window to have positive base "
+                                      "dilation factor for "
+                                   << i << "-th window dimension, but got "
+                                   << dim.base_dilation << ".",
+              failure());
+
+    if (!rhs_dilation.empty()) dim.window_dilation = rhs_dilation[i];
+    if (dim.window_dilation <= 0)
+      return (mlir::emitError(loc) << "expects window to have positive window "
+                                      "dilation factor for "
+                                   << i << "-th window dimension, but got "
+                                   << dim.window_dilation << ".",
+              failure());
+
+    if (!padding.empty()) {
+      dim.padding_low = padding[i].first;
+      dim.padding_high = padding[i].second;
+    }
+  }
+
+  return window;
+}
+
+// Infer the shape of the output window.
+//  Foreach dimension d,
+//    output-window-shape[d] =
+//            stridedBound(padding_low + dilatedBound(base_shape[d]) +
+//            padding_high,
+//                         dilatedBound(window_shape[d]))
+//      where (padding_low, padding_high) is the padding-pair for d.
+SmallVector<int64_t> inferWindowOutputShape(
+    const ArrayRef<int64_t> base_shape,
+    const ArrayRef<WindowDimension> window) {
+  assert(base_shape.size() == window.size() &&
+         "Size of window dimensions must match the size of base shape.");
+
+  SmallVector<int64_t> output_dimensions(window.size());
+  for (int64_t i = 0; i < window.size(); ++i) {
+    if (isDynamicDimSize(base_shape[i]) || isDynamicDimSize(window[i].size)) {
+      output_dimensions[i] = ShapedType::kDynamicSize;
+    } else {
+      const auto& dim = window[i];
+
+      const int64_t dilated_base =
+          dilatedBound(base_shape[i], dim.base_dilation);
+      const int64_t padded_dilated_base =
+          dim.padding_low + dilated_base + dim.padding_high;
+      const int64_t dilated_window =
+          dilatedBound(dim.size, dim.window_dilation);
+
+      output_dimensions[i] =
+          stridedBound(padded_dilated_base, dilated_window, dim.stride);
+    }
+  }
+
+  return output_dimensions;
+}
+
 // Return true if type1 and type2 are tensors and have the same
 // element-type, else return false. With float element-types, ignore comparing
 // floating-point precision if ignoreFpPrecision is True.
-static bool tensorsHaveSameElType(Type type1, Type type2,
-                                  bool ignoreFpPrecision) {
+bool tensorsHaveSameElType(Type type1, Type type2, bool ignoreFpPrecision) {
   auto tensorTy1 = type1.dyn_cast<TensorType>();
   auto tensorTy2 = type2.dyn_cast<TensorType>();
 
@@ -222,11 +434,178 @@ static bool tensorsHaveSameElType(Type type1, Type type2,
 // Return true if type1 and type2 are shape-compatible and have same element
 // type. If 'ignoreFpPrecision' is True, then allow floats with different
 // precisions while checking element-types.
-static bool compatibleShapeAndElementType(Type type1, Type type2,
-                                          bool ignoreFpPrecision = false) {
+bool compatibleShapeAndElementType(Type type1, Type type2,
+                                   bool ignoreFpPrecision = false) {
   if (failed(verifyCompatibleShape(type1, type2))) return false;
   return tensorsHaveSameElType(type1.cast<ShapedType>(),
                                type2.cast<ShapedType>(), ignoreFpPrecision);
+}
+
+LogicalResult verifyReducerShape(
+    Location loc, Block& block, ArrayRef<TensorType> inputArgTypes,
+    ArrayRef<TensorType> initValueTypes, int64_t numInputs,
+    ArrayRef<int64_t> allowedDimensions, bool allInputsUnranked,
+    SmallVectorImpl<TensorType>& accumulatorSubShapes) {
+  // Check that the number of reduction-region arguments matches with that of
+  // reduce-op's arguments.
+  if (block.getArguments().size() != numInputs * 2)
+    return mlir::emitError(loc)
+           << "Reduction-region must take " << numInputs * 2
+           << " parameters, but takes " << block.getArguments().size()
+           << " parameter(s)";
+
+  // Check if the reduction-region produces non-zero outputs.
+  if (block.getTerminator()->getOperands().empty())
+    return mlir::emitError(loc)
+           << "The reduction-region expected to return some value(s)";
+
+  // Check that the reduction-region returns a tuple- OR list- of tensors.
+  // The number of result-tensors must match the `numInputs`.
+  // TODO(b/171261845): Remove tuples from MHLO dialect.
+  auto tupleT =
+      block.getTerminator()->getOperand(0).getType().dyn_cast<TupleType>();
+  if (tupleT && block.getTerminator()->getOperands().size() == 1) {
+    if (tupleT.size() != numInputs)
+      return mlir::emitError(loc)
+             << "Reduction-region here must produce a tuple with " << numInputs
+             << " tensors, but produces " << tupleT.size() << " instead";
+
+    for (Type elementType : tupleT.getTypes()) {
+      auto tensorTy = elementType.dyn_cast<TensorType>();
+      if (!tensorTy)
+        return mlir::emitError(loc)
+               << "Reduction-region here must produce tuple "
+                  "of tensor-typed results, but "
+                  "produces "
+               << elementType << " instead";
+
+      accumulatorSubShapes.push_back(tensorTy);
+    }
+  } else {
+    if (block.getTerminator()->getOperands().size() != numInputs)
+      return mlir::emitError(loc)
+             << "Reduction-region here must produce " << numInputs
+             << " tensors, but produces "
+             << block.getTerminator()->getOperands().size() << " instead";
+
+    for (Value retOperand : block.getTerminator()->getOperands()) {
+      auto tensorTy = retOperand.getType().dyn_cast<TensorType>();
+      if (!tensorTy)
+        return mlir::emitError(loc) << "Reduction-region here must produce "
+                                       "tensor-typed result(s), but "
+                                       "produces "
+                                    << retOperand.getType() << " instead";
+
+      accumulatorSubShapes.push_back(tensorTy);
+    }
+  }
+
+  // Consider typical reduce-* op syntax:
+  //
+  //      op(I(i), V(j)):
+  //       block(BI(i), BV(j)):
+  //         ... some computation ...
+  //         return(R(i))
+  //
+  // where
+  //  I(i)  : i-th input of op
+  //  V(j)  : j-th init-value of op
+  //  BI(i) : i-th input of reducer-function
+  //  BV(j) : j-th init-value of reducer-function
+  //  R(i)  : i-th return-type
+  //
+  //  Note that: |I(i)| == V(j)| == |BI(i)| == |BV(j)| == |R(i)|
+  //
+  //  Here are the type-constraints among V(j), BI(i), BV(j), and R(i).
+  //    C1 : Check that BI(i) and R(i) have same shape and element-type.
+  //    C2 : Check that BV(j) and R(i) have same shape and element-type.
+  //    C3 : Check that V(j) and R(i) have same shape and element-type.
+  //
+  //  From C1, C2, and C3, we can infer that V(j), BI(i), BV(j), and R(i) all
+  //  have compatible shapes and element-types.
+  //  The next check, C4, adds constraints on how the type if I(i) is related
+  //  to any_of(V(j), BI(i), BV(j), and R(i)), say BV(j);
+  //
+  //  C4.1 : Check that I(i) and BV(j) have same element-type.
+  //  C4.2 : Check that shape of BV(j) is a 'sub-sequence' of
+  //         'allowedDimensions'. 'allowedDimensions' is a list of dimensions
+  //         which any of BI(i), BV(j), and R(i) is allowed to have.
+  for (int64_t inputIdx = 0; inputIdx < numInputs; ++inputIdx) {
+    // Check C1.
+    if (!compatibleShapeAndElementType(accumulatorSubShapes[inputIdx],
+                                       block.getArgument(inputIdx).getType()))
+      return mlir::emitError(loc)
+             << "The type of reduction-region's parameter at index " << inputIdx
+             << " is different than the corresponding result type: "
+             << block.getArgument(inputIdx).getType() << " vs "
+             << accumulatorSubShapes[inputIdx];
+
+    // Check C2.
+    if (!compatibleShapeAndElementType(
+            accumulatorSubShapes[inputIdx],
+            block.getArgument(numInputs + inputIdx).getType(),
+            /*ignoreFpPrecision=*/true))
+      return mlir::emitError(loc)
+             << "The type of reduction-region's parameter at index "
+             << numInputs + inputIdx
+             << " is different than the corresponding result type: "
+             << block.getArgument(numInputs + inputIdx).getType() << " vs "
+             << accumulatorSubShapes[inputIdx];
+
+    // Check C3.
+    if (!compatibleShapeAndElementType(accumulatorSubShapes[inputIdx],
+                                       initValueTypes[inputIdx],
+                                       /*ignoreFpPrecision=*/true))
+      return mlir::emitError(loc)
+             << "The type of reduction-region's result type at index "
+             << inputIdx
+             << " differs from the reduce-op's corresponding init-value type: "
+             << accumulatorSubShapes[inputIdx] << " vs "
+             << initValueTypes[inputIdx];
+
+    // Check C4.1.
+    if (!tensorsHaveSameElType(
+            inputArgTypes[inputIdx],
+            block.getArgument(numInputs + inputIdx).getType(), true))
+      return mlir::emitError(loc)
+             << "The element-type of reduce-op's input-parameter at index "
+             << inputIdx
+             << " differs from that of reduction-region's argument at index "
+             << numInputs + inputIdx << ": " << inputArgTypes[inputIdx]
+             << " vs " << block.getArgument(numInputs + inputIdx).getType();
+
+    // Check C4.2.
+    Type blockArgType = block.getArgument(numInputs + inputIdx).getType();
+    auto blockArgTensorTy = blockArgType.cast<TensorType>();
+
+    if (allInputsUnranked || !blockArgTensorTy.hasRank()) return success();
+
+    auto argShape = blockArgTensorTy.getShape();
+    if (argShape.size() > allowedDimensions.size())
+      return mlir::emitError(loc)
+             << "The rank of reduction-region's argument at index "
+             << numInputs + inputIdx
+             << " is expected to be <= " << allowedDimensions.size() << ", got "
+             << argShape.size();
+
+    int64_t argShapeIdx = 0;
+    for (int64_t outputShapeIdx = 0;
+         outputShapeIdx < allowedDimensions.size() &&
+         argShapeIdx < argShape.size();
+         outputShapeIdx++)
+      if (allowedDimensions[outputShapeIdx] == argShape[argShapeIdx])
+        argShapeIdx++;
+
+    if (argShapeIdx != argShape.size())
+      return mlir::emitError(loc)
+             << "The shape of reduction-region's argument at index "
+             << numInputs + inputIdx
+             << " is not compatible with that of reduce-op's input-parameter "
+                "at index "
+             << inputIdx;
+  }
+
+  return success();
 }
 
 }  // namespace
@@ -374,8 +753,7 @@ LogicalResult CustomCallOp::verify() {
 //===----------------------------------------------------------------------===//
 namespace {
 bool dimCompatible(int64_t a, int64_t b) {
-  return ShapedType::kDynamicSize == a || ShapedType::kDynamicSize == b ||
-         a == b;
+  return isDynamicDimSize(a) || isDynamicDimSize(b) || a == b;
 }
 
 ShapedType inferDotReturnType(ShapedType lhs, ShapedType rhs) {
@@ -2983,10 +3361,138 @@ OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
 // ReduceWindowOp
 //===----------------------------------------------------------------------===//
 
-// For reduce-window, all `inputs` need to have compatible shapes.
+namespace {
+// Infer the return-type of ReduceWindowOp.
+SmallVector<TensorType> inferReduceWindowOpReturnType(
+    ArrayRef<TensorType> input_types, ArrayRef<TensorType> init_types,
+    const ArrayRef<WindowDimension> window) {
+  SmallVector<TensorType> output_types;
+  for (size_t i = 0; i < input_types.size(); ++i) {
+    if (!input_types[i].hasRank()) {
+      output_types.push_back(
+          UnrankedTensorType::get(init_types[i].getElementType()));
+      continue;
+    }
+
+    output_types.push_back(RankedTensorType::get(
+        inferWindowOutputShape(input_types[i].getShape(), window),
+        init_types[i].getElementType()));
+  }
+
+  return output_types;
+}
+}  // namespace
+
+// We intend to verify the following properties
+//  P1. The sizes of 'inputs' and 'init_values' must be atleast 1.
+//  P2. All `inputs` need to have compatible shapes.
+//  P3. size-of(window_dimension) == rank-of(input),
+//        where input is an element of 'inputs'.
+//  P4. Verify and collect the window atributes.
+//  P5. Verify the inner block defining the reducer function.
+//  P6. Verify the return type.
 LogicalResult ReduceWindowOp::verify() {
+  // P1.
+  // Note that the ODS ensures that there are even number of operands; Check if
+  // that number is not zero.
+  if (getOperands().empty())
+    return emitOpError() << "expects the size of operands to be >= 2.";
+
+  // Collect the input and init-value operands. Note that the operand-type is
+  // enforced as "TensorType" by ODS.
+  int64_t num_inputs = getNumOperands() / 2;
+  auto operand_tensor_types = llvm::to_vector<4>(llvm::map_range(
+      getOperandTypes(),
+      [](Type t) -> TensorType { return t.cast<TensorType>(); }));
+  ArrayRef<TensorType> input_types(operand_tensor_types.begin(),
+                                   operand_tensor_types.begin() + num_inputs);
+  ArrayRef<TensorType> init_types(operand_tensor_types.begin() + num_inputs,
+                                  operand_tensor_types.end());
+
+  // P2.
   if (failed(verifyCompatibleShapes(inputs().getTypes())))
     return emitOpError() << "requires same shape for all inputs";
+
+  // P3.
+  SmallVector<int64_t> window_dims =
+      convertDenseIntAttr(this->window_dimensions());
+  for (const auto input_type : input_types) {
+    if (!input_type.hasRank()) continue;
+    if (input_type.getRank() != window_dims.size())
+      return emitOpError()
+             << "expects window-dimensions size == input rank, but got "
+                "window-dimensions size: "
+             << window_dims.size() << " and input: " << input_type
+             << " with rank = " << input_type.getRank() << ".";
+  }
+
+  // P4.
+  auto padding_or_err = convertNx2Attribute(this->padding(), getLoc());
+  if (failed(padding_or_err)) return failure();
+  SmallVector<std::pair<int64_t, int64_t>> padding = *padding_or_err;
+
+  auto window_or_err = verifyWindowAttributesAndInferWindowDimensions(
+      window_dims, convertDenseIntAttr(window_strides()), padding,
+      /*lhs_dilation=*/convertDenseIntAttr(base_dilations()),
+      /*rhs_dilation=*/convertDenseIntAttr(this->window_dilations()), getLoc());
+  if (failed(window_or_err)) return failure();
+
+  // P5.
+  bool all_inputs_unranked =
+      llvm::all_of(input_types, [](TensorType t) { return !t.hasRank(); });
+
+  Block& block = body().front();
+  SmallVector<TensorType> accumulator_subshapes;
+  if (failed(verifyReducerShape(this->getLoc(), block, input_types, init_types,
+                                num_inputs, window_dims, all_inputs_unranked,
+                                accumulator_subshapes)))
+    return failure();
+
+  // P6.
+  if (num_inputs != getNumResults())
+    return emitOpError() << "expects " << num_inputs
+                         << " result values, but got " << getNumResults()
+                         << ".";
+
+  // The result-type is enforced as "TensorType" by ODS.
+  auto result_tensor_types = llvm::to_vector<4>(llvm::map_range(
+      getResultTypes(),
+      [](Type t) -> TensorType { return t.cast<TensorType>(); }));
+
+  // Check if the element-type of results match with the ones derived from
+  // the reducer-block. Already ensured that  |accumulator_subshapes| ==
+  // num_inputs == num_of_results.
+  for (int64_t shape_idx = 0; shape_idx < accumulator_subshapes.size();
+       shape_idx++) {
+    if (accumulator_subshapes[shape_idx].getElementType() !=
+        result_tensor_types[shape_idx].getElementType()) {
+      return emitError()
+             << "expects the element-type of reduce-op's return-value at index "
+             << shape_idx
+             << " to match the element-type of reducer-block's "
+                "corresponding return-value, but got "
+             << result_tensor_types[shape_idx].getElementType() << " and "
+             << accumulator_subshapes[shape_idx].getElementType() << " resp.";
+    }
+  }
+
+  // Check if the shape of results match with the ones derived from
+  // the input-types and wndow-attributes.
+  auto inferred_return_types = inferReduceWindowOpReturnType(
+      input_types, accumulator_subshapes, *window_or_err);
+
+  for (size_t i = 0; i < getNumResults(); i++) {
+    if (failed(verifyCompatibleShape(result_tensor_types[i],
+                                     inferred_return_types[i]))) {
+      return emitOpError()
+             << "expects result at index " << i
+             << " to have compatible shape with the corresponding "
+                "inferred type, but got "
+             << result_tensor_types[i] << " and " << inferred_return_types[i]
+             << " resp.";
+    }
+  }
+
   return success();
 }
 
@@ -3402,171 +3908,6 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
   return success();
 }
 
-static LogicalResult verifyReducerShape(
-    ReduceOp op, Block& block, ArrayRef<TensorType> inputArgTypes,
-    ArrayRef<TensorType> initValueTypes, int64_t numInputs,
-    ArrayRef<int64_t> outputShape, bool allInputsUnranked,
-    SmallVectorImpl<TensorType>& accumulatorSubShapes) {
-  // Check that the number of reduction-region arguments matches with that of
-  // reduce-op's arguments.
-  if (block.getArguments().size() != numInputs * 2)
-    return op.emitError() << "Reduction-region must take " << numInputs * 2
-                          << " parameters, but takes "
-                          << block.getArguments().size() << " parameter(s)";
-
-  // Check if the reduction-region produces non-zero outputs.
-  if (block.getTerminator()->getOperands().empty())
-    return op.emitError()
-           << "The reduction-region expected to return some value(s)";
-
-  // Check that the reduction-region returns a tuple- OR list- of tensors.
-  // The number of result-tensors must match the `numInputs`.
-  // TODO(b/171261845): Remove tuples from MHLO dialect.
-  auto tupleT =
-      block.getTerminator()->getOperand(0).getType().dyn_cast<TupleType>();
-  if (tupleT && block.getTerminator()->getOperands().size() == 1) {
-    if (tupleT.size() != numInputs)
-      return op.emitError()
-             << "Reduction-region here must produce a tuple with " << numInputs
-             << " tensors, but produces " << tupleT.size() << " instead";
-
-    for (Type elementType : tupleT.getTypes()) {
-      auto tensorTy = elementType.dyn_cast<TensorType>();
-      if (!tensorTy)
-        return op.emitError() << "Reduction-region here must produce tuple "
-                                 "of tensor-typed results, but "
-                                 "produces "
-                              << elementType << " instead";
-
-      accumulatorSubShapes.push_back(tensorTy);
-    }
-  } else {
-    if (block.getTerminator()->getOperands().size() != numInputs)
-      return op.emitError()
-             << "Reduction-region here must produce " << numInputs
-             << " tensors, but produces "
-             << block.getTerminator()->getOperands().size() << " instead";
-
-    for (Value retOperand : block.getTerminator()->getOperands()) {
-      auto tensorTy = retOperand.getType().dyn_cast<TensorType>();
-      if (!tensorTy)
-        return op.emitError() << "Reduction-region here must produce "
-                                 "tensor-typed result(s), but "
-                                 "produces "
-                              << retOperand.getType() << " instead";
-
-      accumulatorSubShapes.push_back(tensorTy);
-    }
-  }
-
-  // Consider typical reduce-op syntax:
-  //
-  //      reduce(I(i), V(j)):
-  //       block(BI(i), BV(j)):
-  //         ... some computation ...
-  //         return(R(i))
-  //
-  // where
-  //  I(i)  : i-th input of reduce-op
-  //  V(j)  : j-th init-value of reduce-op
-  //  BI(i) : i-th input of reducer-function
-  //  BV(j) : j-th init-value of reducer-function
-  //  R(i)  : i-th return-type
-  //
-  //  Note that: |I(i)| == V(j)| == |BI(i)| == |BV(j)| == |R(i)|
-  //
-  //  Here are the type-constraints among V(j), BI(i), BV(j), and R(i).
-  //    C1 : Check that BI(i) and R(i) have same shape and element-type.
-  //    C2 : Check that BV(j) and R(i) have same shape and element-type.
-  //    C3 : Check that V(j) and R(i) have same shape and element-type.
-  //
-  //  From C1, C2, and C3, we can infer that V(j), BI(i), BV(j), and R(i) all
-  //  have compatible shapes and element-types.
-  //  The next check, C4, adds constraints on how the type if I(i) is related
-  //  to any_of(V(j), BI(i), BV(j), and R(i)), say BV(j);
-  //
-  //  C4.1 : Check that I(i) and BV(j) have same element-type.
-  //  C4.2 : Check that shape of BV(j) is a 'sub-sequence' of the shape of
-  //         output-array. The shape of output-array is determined from that
-  //         of I(i) after removing the "dimensions-to-reduce" (as specified by
-  //         the dimensions attribute of reduce-op).
-  for (int64_t inputIdx = 0; inputIdx < numInputs; ++inputIdx) {
-    // Check C1.
-    if (!compatibleShapeAndElementType(accumulatorSubShapes[inputIdx],
-                                       block.getArgument(inputIdx).getType()))
-      return op.emitError()
-             << "The type of reduction-region's parameter at index " << inputIdx
-             << " is different than the corresponding result type: "
-             << block.getArgument(inputIdx).getType() << " vs "
-             << accumulatorSubShapes[inputIdx];
-
-    // Check C2.
-    if (!compatibleShapeAndElementType(
-            accumulatorSubShapes[inputIdx],
-            block.getArgument(numInputs + inputIdx).getType(),
-            /*ignoreFpPrecision=*/true))
-      return op.emitError()
-             << "The type of reduction-region's parameter at index "
-             << numInputs + inputIdx
-             << " is different than the corresponding result type: "
-             << block.getArgument(numInputs + inputIdx).getType() << " vs "
-             << accumulatorSubShapes[inputIdx];
-
-    // Check C3.
-    if (!compatibleShapeAndElementType(accumulatorSubShapes[inputIdx],
-                                       initValueTypes[inputIdx],
-                                       /*ignoreFpPrecision=*/true))
-      return op.emitError()
-             << "The type of reduction-region's result type at index "
-             << inputIdx
-             << " differs from the reduce-op's corresponding init-value type: "
-             << accumulatorSubShapes[inputIdx] << " vs "
-             << initValueTypes[inputIdx];
-
-    // Check C4.1.
-    if (!tensorsHaveSameElType(
-            inputArgTypes[inputIdx],
-            block.getArgument(numInputs + inputIdx).getType(), true))
-      return op.emitError()
-             << "The element-type of reduce-op's input-parameter at index "
-             << inputIdx
-             << " differs from that of reduction-region's argument at index "
-             << numInputs + inputIdx << ": " << inputArgTypes[inputIdx]
-             << " vs " << block.getArgument(numInputs + inputIdx).getType();
-
-    // Check C4.2.
-    Type blockArgType = block.getArgument(numInputs + inputIdx).getType();
-    auto blockArgTensorTy = blockArgType.cast<TensorType>();
-
-    if (allInputsUnranked || !blockArgTensorTy.hasRank()) return success();
-
-    auto argShape = blockArgTensorTy.getShape();
-    if (argShape.size() > outputShape.size())
-      return op.emitError()
-             << "The rank of reduction-region's argument at index "
-             << numInputs + inputIdx
-             << " is not compatible with that of reduce-op's result: "
-             << argShape.size() << " vs " << outputShape.size()
-             << " (expected)";
-
-    int64_t argShapeIdx = 0;
-    for (int64_t outputShapeIdx = 0;
-         outputShapeIdx < outputShape.size() && argShapeIdx < argShape.size();
-         outputShapeIdx++)
-      if (outputShape[outputShapeIdx] == argShape[argShapeIdx]) argShapeIdx++;
-
-    if (argShapeIdx != argShape.size())
-      return op.emitError()
-             << "The shape of reduction-region's argument at index "
-             << numInputs + inputIdx
-             << " is not compatible with that of reduce-op's input-parameter "
-                "at index "
-             << inputIdx;
-  }
-
-  return success();
-}
-
 LogicalResult ReduceOp::verify() {
   // Check that there are even number of operands and >= 2.
   if (getNumOperands() % 2 != 0 || getOperands().empty())
@@ -3641,9 +3982,9 @@ LogicalResult ReduceOp::verify() {
 
   Block& block = body().front();
   SmallVector<TensorType> accumulatorSubShapes;
-  if (failed(verifyReducerShape(*this, block, inputArgTypes, initValueTypes,
-                                numInputs, newDimensions, allInputsUnranked,
-                                accumulatorSubShapes)))
+  if (failed(verifyReducerShape(this->getLoc(), block, inputArgTypes,
+                                initValueTypes, numInputs, newDimensions,
+                                allInputsUnranked, accumulatorSubShapes)))
     return failure();
 
   // Check if the reduce-op's result-type matches with the one derived from
