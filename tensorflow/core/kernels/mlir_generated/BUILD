@@ -190,7 +190,7 @@ tf_kernel_library(
         ":gpu_tan_kernels",
         ":gpu_tanh_kernels",
         "//third_party/eigen3",
-    ),
+    ]),
 )
 
 tf_kernel_library(
