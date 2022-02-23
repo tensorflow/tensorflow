@@ -1174,7 +1174,12 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
 // MHLO Other op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]> {
+def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect,
+    AllShapesMatch<["scale", "mean", "variance", "grad_scale",
+        "grad_offset"]>,
+    AllShapesMatch<["operand", "grad_output"]>,
+    AllElementTypesMatch<["operand", "grad_scale", "grad_offset"]>,
+    AllTypesMatch<["operand", "grad_operand"]>]> {
   let summary = "Batch Normalization Gradient";
   let description = [{
     Calculates gradients of batch norm.
@@ -1183,18 +1188,23 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    HLO_Tensor:$operand,
-    HLO_Tensor:$scale,
-    HLO_Tensor:$mean,
-    HLO_Tensor:$variance,
-    HLO_Tensor:$grad_output,
+    RankedTensorOf<[AnyFloat]>:$operand,
+    1DTensorOf<[AnyFloat]>:$scale,
+    1DTensorOf<[AnyFloat]>:$mean,
+    1DTensorOf<[AnyFloat]>:$variance,
+    RankedTensorOf<[AnyFloat]>:$grad_output,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
   let results = (outs Variadic<HLO_TensorOrToken>);
+  let results = (outs
+      RankedTensorOf<[AnyFloat]>:$grad_operand,
+      1DTensorOf<[AnyFloat]>:$grad_scale,
+      1DTensorOf<[AnyFloat]>:$grad_offset);
 
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",

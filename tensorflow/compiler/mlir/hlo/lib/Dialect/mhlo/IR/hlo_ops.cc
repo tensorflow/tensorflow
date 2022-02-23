@@ -1733,6 +1733,72 @@ LogicalResult AllGatherOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// BatchNormGradOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchNormGradOp::verify() {
+  // The following properties are already enforced by the ODS:
+  //  1. Inputs 'operand' & 'grad_output' and outputs 'grad_operand',
+  //     are ranked-tensors with floating-point (fp) type.
+  //  2. The shapes of inputs 'operand' & 'grad_output' match.
+  //  3. Inputs 'scale', 'mean', 'variance' and Outputs 'grad_scale',
+  //     'grad_offset'  are all 1D fp tensors with same shape.
+  //  4. The element-types of input 'operand' and outputs 'grad_scale',
+  //     'grad_offset' match.
+  //  5. The type of input 'operand' and output 'grad_operand' match.
+  //
+  // We intend to verify the following properties
+  //  P1. Inputs 'operand' & 'grad_output' has the same shape with fp
+  //      element-types, ignoring fp-precision : Inferred from (1) & (2).
+  //  P2. The feature dimension 'feature_index' is a valid index in 'operand':
+  //      Inferred from check C2 below.
+  //  P3. Inputs 'scale', 'mean', 'variance' must be 1D tensors with same shape
+  //      and fp element-type (ignoring precision) and the number of elements
+  //      in its sole-dimension == number of features in the 'operand's
+  //      feature-dimension 'feature_index': Inferred from (3) and check C3
+  //      below.
+  //  P4. Outputs 'grad_scale' & 'grad_offset' are 1D tensors with
+  //      element-type == element-type of(operand) and same shape as any of
+  //      the inputs 'scale', 'mean', or 'variance': Inferred from (3), (4) and
+  //      check C3 below.
+  //  P5. The type (shape + element-type) of input 'operand' and
+  //      output 'grad_operand' must match: Inferred from (5).
+
+  // C2.
+  auto operand_type = operand().getType().cast<RankedTensorType>();
+  if (static_cast<int64_t>(feature_index()) >= operand_type.getRank())
+    return emitOpError() << "expects feature_index to be smaller "
+                            "than the rank of operand type; got feature_index "
+                         << feature_index() << ", and rank "
+                         << operand_type.getRank() << ".";
+
+  if (static_cast<int64_t>(feature_index()) < 0)
+    return emitOpError() << "expects feature_index to be a "
+                         << "non-negative number, got "
+                         << static_cast<int64_t>(feature_index()) << ".";
+
+  auto grad_output_type = grad_output().getType().cast<RankedTensorType>();
+  if (operand_type.getRank() != grad_output_type.getRank())
+    return emitOpError() << "expects 'operand' and 'grad_output' to have the "
+                            "same rank. but got rank(oprand) "
+                         << operand_type.getRank() << " and rank(grad_output) "
+                         << grad_output_type.getRank() << ".";
+
+  // C3.
+  const int64_t feature_count = operand_type.getShape()[feature_index()];
+  const int64_t scale_shape =
+      scale().getType().cast<RankedTensorType>().getShape()[0];
+  if (scale_shape != feature_count)
+    return emitOpError() << "expects the size of scale factor to be "
+                            "same as the feature count,"
+                            " but the size of scale factor is "
+                         << scale_shape << " and the feature count is "
+                         << feature_count << ".";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BatchNormTrainingOp
 //===----------------------------------------------------------------------===//
 
