@@ -1382,7 +1382,7 @@ class TensorShape(trace.TraceType):
     >>> p_a.__eq__(p_b)
     True
     >>> t_a.__eq__(p_a)
-    True
+    False
     >>> p_a.__eq__(p_c)
     False
 
