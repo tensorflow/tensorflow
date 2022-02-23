@@ -319,7 +319,11 @@ def tf_library(
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
             "//third_party/eigen3",
-        ] or []) + (deps or []),
+        ] or []) + (
+            mlir_components.count("HloLowering") > 0 and [
+                "@llvm-project//mlir:mlir_c_runner_utils",
+            ] or []
+        ) + (deps or []),
         tags = tags,
     )
 
