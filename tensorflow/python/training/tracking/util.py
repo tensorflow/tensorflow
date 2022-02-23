@@ -1418,6 +1418,10 @@ class TrackableSaver(object):
           # indirect connection from the attached object to the root.
           continue
 
+        if proto_id is None:
+          # Could not find attached dependency in proto.
+          continue
+
         base.CheckpointPosition(
             checkpoint=checkpoint, proto_id=proto_id).restore(ref.ref)
 
