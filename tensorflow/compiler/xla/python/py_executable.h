@@ -43,6 +43,7 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   ~PyExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
+  std::shared_ptr<PjRtExecutable> executable() const { return executable_; }
 
   absl::Span<const PjRtExecutable::LogicalDeviceIds>
   addressable_device_logical_ids() const {
@@ -89,7 +90,7 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   friend class PyClient;
 
   std::shared_ptr<PyClient> client_;
-  std::unique_ptr<PjRtExecutable> executable_;
+  std::shared_ptr<PjRtExecutable> executable_;
   std::shared_ptr<Traceback> traceback_;
 
   // Identical executables (i.e. representing the same program) will have the
