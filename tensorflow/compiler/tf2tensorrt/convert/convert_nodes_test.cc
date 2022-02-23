@@ -3284,6 +3284,63 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
                   ArrayFloatNear(expected_outputs, 0));
 }
 
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
+  Scope s = Scope::NewRootScope();
+  auto dims = ops::Placeholder(s.WithOpName("dims"), DT_INT32);
+  auto value = ops::Placeholder(s.WithOpName("value"), tf_type_);
+  auto fill = ops::Fill(s.WithOpName("my_fill"), dims, value);
+  const NodeDef& node_def = fill.operation.node()->def();
+
+  if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+    Reset();
+    // random data
+    AddTestWeights("dims", {2}, {2, 2}, DT_INT32);
+    AddTestWeights("value", {1}, {42.0}, tf_type_);
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Conversion for Fill is not implemented in"
+                               "implicit batch mode");
+    return;
+  }
+
+  std::vector<std::vector<int>> output_dims_params = {
+      {8}, {8, 2, 4}, {32, 32, 3200}};
+  std::vector<std::vector<int>> value_dims_params = {{}, {1}};
+
+  float val = 42.0;
+  Status status = Status::OK();
+  for (bool dims_is_tensor : {true, false}) {
+    for (bool value_is_tensor : {true, false}) {
+      for (auto output_dims : output_dims_params) {
+        for (auto value_dims : value_dims_params) {
+          Reset();
+          std::vector<int32> dims_dims = {output_dims.size()};
+          if (dims_is_tensor) {
+            AddTestTensor("dims", dims_dims, DT_INT32, output_dims, dims_dims);
+          } else {
+            AddTestWeights("dims", dims_dims, output_dims, DT_INT32);
+          }
+          if (value_is_tensor) {
+            AddTestTensor("value", value_dims, tf_type_, {val});
+          } else {
+            AddTestWeights("value", value_dims, {val}, tf_type_);
+          }
+          size_t nb_el = 1;
+          for (auto d : output_dims) {
+            nb_el *= d;
+          }
+          std::vector<float> expected_output(nb_el, val);
+          TestOpConverter("my_fill", node_def, output_dims, status, status,
+                          ElementsAreArray(expected_output));
+        }
+      }
+    }
+  }
+}
+
+#endif  // IS_TRT_VERSION_GE(8, 2, 0, 0)
+
 #if IS_TRT_VERSION_GE(8, 2, 1, 6) || defined(TF_TRT_USE_EFFICIENT_NMS_PLUGIN)
 
 TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
