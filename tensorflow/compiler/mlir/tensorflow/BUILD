@@ -2501,3 +2501,14 @@ cc_library(
         "@llvm-project//mlir:IR",
     ],
 )
+
+cc_library(
+    name = "set_tpu_infeed_layout",
+    srcs = ["transforms/set_tpu_infeed_layout.cc"],
+    hdrs = ["transforms/set_tpu_infeed_layout.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/xla:adjust_layout",
+        "@llvm-project//mlir:IR",
+    ],
+)
