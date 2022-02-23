@@ -6693,6 +6693,11 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
   ADD_OP("Log", ops::Log, std::log);
   ADD_OP("Neg", ops::Neg, [](float x) { return -x; });
   ADD_OP("Reciprocal", ops::Reciprocal, [](float x) { return 1.0f / x; });
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  ADD_OP("Round", ops::Round, [](float x) { return (float)std::round(x); });
+  ADD_OP("Sign", ops::Sign,
+         [](float x) { return x > 0 ? 1.0f : (x < 0 ? -1.0f : 0.0f); });
+#endif
   ADD_OP("Rsqrt", ops::Rsqrt, [](float x) { return 1.0f / std::sqrt(x); });
   ADD_OP("Sin", ops::Sin, std::sin);
   ADD_OP("Sinh", ops::Sinh, std::sinh);
@@ -6716,6 +6721,16 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
       {1, 1, 2, 3},  // expected output dims
   };
   for (const string& op_name : ops_to_test) {
+    // kSIGN  and kROUND are not yet supported in implicit batch mode.
+    // TODO(drivanov): Remove this check when TRT enables these ops in implicit
+    //                 batch mode (nvbugs/3517570).
+    Status conv_status = Status::OK();
+    if (trt_mode_ == TrtTestMode::kImplicitBatch &&
+        (op_name == "Sign" || op_name == "Round")) {
+      conv_status = errors::Unimplemented(
+          "Unary op: ", op_name, " not supported in implicit batch mode");
+    }
+
     SCOPED_TRACE(op_name);
     Reset();
     if (!op_map.count(op_name)) {
@@ -6736,7 +6751,7 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
     std::vector<float> output;
     std::transform(input_values.begin(), input_values.end(),
                    std::back_inserter(output), op_map[op_name].second);
-    TestOpConverter("my_unary", node_def, p.expected_output_dims, Status::OK(),
+    TestOpConverter("my_unary", node_def, p.expected_output_dims, conv_status,
                     p.runtime_status, ArrayFloatNear(output, 0.0001, true));
   }
 }
