@@ -1065,6 +1065,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
+        "no_rocm",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],

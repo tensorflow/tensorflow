@@ -717,8 +717,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["qr_op_test.py"],
     shard_count = 20,
-    tags = ["no_rocm",
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
