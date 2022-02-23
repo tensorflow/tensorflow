@@ -1654,11 +1654,9 @@ void CollectGraphs(EagerContext* ctx) {
 
 Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
                     int* num_retvals) {
-  profiler::TraceMe activity([&] {
-    return ::tensorflow::profiler::TraceMeEncode(
-        "EagerExecute",
-        {{"eager_op", op->Name()}, {"is_func", op->is_function()}});
-  });
+  profiler::TraceMe activity(
+      [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
+      profiler::TraceMeLevel::kInfo);
 
   if (!op->Executor().Async()) {
     VLOG(6) << "op: " << op->Name() << " is not Async.";
