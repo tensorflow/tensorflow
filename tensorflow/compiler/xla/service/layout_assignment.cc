@@ -221,10 +221,6 @@ Status LayoutAssignment::SetOperandLayout(const Shape& shape_with_layout,
       operand_no > 0 && !mandatory) {
     dfs = false;
     priority--;
-  } else if (instruction->opcode() == HloOpcode::kReshape && !mandatory &&
-             instruction->operand(0)->opcode() == HloOpcode::kDynamicSlice) {
-    dfs = false;
-    priority--;
   }
   VLOG(3) << "SetOperandLayout : " << instruction->name() << ", operand "
           << operand_no << " : "
@@ -2070,10 +2066,6 @@ Status LayoutAssignment::RunOnComputation(
   // Prior to applying default layouts, we take note of all HLO instructions
   // which lack a layout constraint.
   for (LogicalBuffer::Id buffer_id : unconstrained_buffer_ids_) {
-    VLOG(5)
-        << "unconstrained instruction:"
-        << points_to_analysis_->GetBuffer(buffer_id).instruction()->ToString()
-        << "\n";
     unconstrained_layout_instructions_.insert(
         points_to_analysis_->GetBuffer(buffer_id).instruction());
   }
