@@ -27,7 +27,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -276,10 +275,12 @@ class HloDataflowAnalysis {
   // The map of all HloValues in the module. We pass around pointers to the
   // mapped HloValues, so the underlying container must keep them valid despite
   // mutations touching other map entries.
-  absl::node_hash_map<HloValue::Id, HloValue> values_;
+  absl::flat_hash_map<HloValue::Id, std::unique_ptr<HloValue>> values_;
 
   // A map from instruction to InstructionValueSet.
-  absl::node_hash_map<const HloInstruction*, InstructionValueSet> value_sets_;
+  absl::flat_hash_map<const HloInstruction*,
+                      std::unique_ptr<InstructionValueSet>>
+      value_sets_;
 
   // Values marked for deletion during construction. We don't delete them
   // immediately because references to them may remain in ValueSets temporarily
