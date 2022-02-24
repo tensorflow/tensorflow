@@ -14,12 +14,10 @@
 # ==============================================================================
 """Custom Aggregator op is for collecting numeric metrics from the given input."""
 
-# pylint: disable=g-direct-tensorflow-import
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import custom_aggregator_op_wrapper
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.platform import resource_loader
-# pylint: enable=g-direct-tensorflow-import
 
 _custom_aggregator_op = load_library.load_op_library(
     resource_loader.get_path_to_datafile('_custom_aggregator_op.so'))

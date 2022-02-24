@@ -5,6 +5,7 @@ load(
     "tf_copts",
     "tf_custom_op_library",
     "tf_gen_op_wrapper_py",
+    "tf_py_test",
 )
 
 package(
@@ -74,14 +75,16 @@ tf_custom_op_py_library(
     ],
 )
 
-# TODO(b/220688154): Re-enable test once the quantize model wrapper is ready.
-#py_test(
-#    name = "custom_aggregator_op_test",
-#    size = "small",
-#    srcs = ["custom_aggregator_op_test.py"],
-#    deps = [
-#        ":custom_aggregator_op",
-#        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_model_wrapper",
-#        "//tensorflow:tensorflow_py",
-#    ],
-#)
+tf_py_test(
+    name = "custom_aggregator_op_test",
+    size = "small",
+    srcs = ["custom_aggregator_op_test.py"],
+    tags = [
+        "no_oss",  # TODO(b/220688154): Enable OSS tests.
+    ],
+    deps = [
+        ":custom_aggregator_op",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_wrapper",
+    ],
+)
