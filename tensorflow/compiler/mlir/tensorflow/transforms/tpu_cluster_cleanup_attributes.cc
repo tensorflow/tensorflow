@@ -27,7 +27,8 @@ namespace TFTPU {
 
 namespace {
 
-constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
+constexpr char kReplicationInfoAttr[] = "_replication_info";
+constexpr char kCompileDeviceTypeAttr[] = "_xla_compile_device_type";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kClassAttr[] = "_class";
 
@@ -38,7 +39,15 @@ class TPUCleanupClusterAttributesPass
   void runOnOperation() override {
     auto traverse_op = [&](Operation* op, tf_device::ClusterOp tpu_cluster) {
       if (isa<tf_device::ClusterOp>(op)) return WalkResult::advance();
-      op->removeAttr(kTPUReplicateAttr);
+      if (op->hasAttr(kReplicationInfoAttr) &&
+          !op->hasAttr(kCompileDeviceTypeAttr)) {
+        op->emitOpError() << "is expected to have both " << kReplicationInfoAttr
+                          << " and " << kCompileDeviceTypeAttr
+                          << " attributes.";
+        return WalkResult::interrupt();
+      }
+      op->removeAttr(kReplicationInfoAttr);
+      op->removeAttr(kCompileDeviceTypeAttr);
       // This attribute is used for op colocation. Since all ops are located
       // on a single device cluster, this private attribute is no longer
       // needed.

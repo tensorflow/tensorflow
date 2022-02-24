@@ -43,6 +43,7 @@ auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
 namespace {
 
 constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
+// constexpr char kReplicationInfoAttr[] = "_replication_info";
 
 bool HasTPUDevice(mlir::ModuleOp module) {
   mlir::TF::RuntimeDevices devices;
@@ -57,7 +58,8 @@ bool HasTPUDevice(mlir::ModuleOp module) {
 bool HasTPUOp(mlir::ModuleOp module) {
   auto walk_result = module.walk([&](mlir::Operation* op) {
     auto replicate_attr =
-        op->getAttrOfType<mlir::StringAttr>(kTPUReplicateAttr);
+        op->getAttrOfType<mlir::StringAttr>(kTPUReplicateAttr);  // ||
+    // op->getAttrOfType<mlir::StringAttr>(kReplicationInfoAttr);
     if (replicate_attr) return mlir::WalkResult::interrupt();
     return mlir::WalkResult::advance();
   });

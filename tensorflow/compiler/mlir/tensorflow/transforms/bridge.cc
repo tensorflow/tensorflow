@@ -29,6 +29,7 @@ limitations under the License.
 
 namespace mlir {
 namespace {
+
 // Add logger to bridge passmanager.
 // Enable timing statistics per pass for the bridge passmanager.
 void EnableDetailedLogging(PassManager *pm) {
@@ -72,7 +73,7 @@ tensorflow::Status RunTPUBridge(
 }
 }  // namespace
 
-void CreateTPUBridgePipeline(OpPassManager &pm) {
+static void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this but this is
   // currently not the case (see b/177478741).
@@ -181,7 +182,13 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
 
+void CreateTPUBridgePipeline(OpPassManager &pm) {
+  pm.addPass(CreateCanonicalizeCompileAndReplicateAttributesPass());
+  CreateTPUBridgePipelineImpl(pm);
+}
+
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  pm.addPass(CreateCanonicalizeCompileAndReplicateAttributesPass());
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
@@ -194,8 +201,9 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandCoarseningPass());
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandOutliningPass());
   OpPassManager &nested_module = pm.nest<ModuleOp>();
-  CreateTPUBridgePipeline(nested_module);
+  CreateTPUBridgePipelineImpl(nested_module);
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
+  pm.addPass(CreateFallbackToLegacyCompileAndReplicateAttributesPass());
 }
 
 tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,

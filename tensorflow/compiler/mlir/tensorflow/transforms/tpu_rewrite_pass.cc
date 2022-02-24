@@ -59,6 +59,8 @@ limitations under the License.
 namespace mlir {
 namespace TFTPU {
 
+constexpr char kReplicationInfoAttr[] = "_replication_info";
+
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> tpu_compile_metadata_debug(
     "tpu_compile_metadata_debug",
@@ -753,12 +755,11 @@ void TPURewritePass::runOnOperation() {
     return WalkResult::advance();
   });
   if (result_init.wasInterrupted()) return signalPassFailure();
-
   llvm::SmallVector<tf_device::ClusterFuncOp> to_be_erased;
   OpBuilder builder(&getContext());
   auto result = getOperation().walk([&](tf_device::ClusterFuncOp op) {
     // Skip non-tpu device cluster_func.
-    auto cluster_id = op->getAttrOfType<StringAttr>("_tpu_replicate");
+    auto cluster_id = op->getAttrOfType<StringAttr>(kReplicationInfoAttr);
     if (!cluster_id) return WalkResult::advance();
 
     if (failed(Rewrite(op, devices.device_names(),
