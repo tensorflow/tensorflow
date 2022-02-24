@@ -139,6 +139,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // Default: Disabled for devices with NNAPI feature level 4 or lower.
     bool use_burst_computation = false;
 
+    // Specifies the max number of NNAPI reusable executions to cache. An
+    // execution can be reused if the input and output tensors are using the
+    // same buffer handles, and all dynamic dimensions are unchanged. Setting
+    // this field to 0 means do not reuse execution.
+    uint32_t max_execution_cache_size = 4;
+
     // The optional null-terminated vendor specific compilation hints string.
     // It is the vendor_plugin's responsibility to parse the hint string and
     // decide whether the hints should be respected or not. If no vendor_plugin
@@ -313,6 +319,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     bool allow_dynamic_dimensions = false;
     // Whether to use NNAPI Burst mode.
     bool use_burst_computation = false;
+    // Specifies the max number of NNAPI reusable executions to cache.
+    uint32_t max_execution_cache_size = 4;
     // The null-terminated vendor specific compilation hints string
     const char* vendor_compilation_hints = nullptr;
     // The null-terminated vendor specific execution hints string.
