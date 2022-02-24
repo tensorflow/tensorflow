@@ -20,8 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 
 namespace xla {
@@ -38,15 +40,16 @@ StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
 }
 
 void HloLiveRange::NormalizeAliasedBuffers() {
-  for (const HloBuffer& hlo_buffer : alias_analysis_.buffers()) {
-    std::vector<TimeBound*> aliased_live_ranges;
-    aliased_live_ranges.reserve(hlo_buffer.values().size());
-    for (const HloValue* hlo_value : hlo_buffer.values()) {
-      auto it = buffer_live_ranges_.find(hlo_value);
-      if (it != buffer_live_ranges_.end()) {
-        aliased_live_ranges.push_back(&it->second);
-      }
-    }
+  absl::flat_hash_map<HloBuffer::Id, std::vector<TimeBound*>>
+      live_ranges_by_buffer;
+  for (auto& entry : buffer_live_ranges_) {
+    const HloValue& value = *entry.first;
+    const HloBuffer& buffer = alias_analysis_.GetBufferContainingValue(value);
+    live_ranges_by_buffer[buffer.id()].push_back(&entry.second);
+  }
+
+  for (auto& entry : live_ranges_by_buffer) {
+    std::vector<TimeBound*>& aliased_live_ranges = entry.second;
     absl::c_sort(aliased_live_ranges,
                  [](const TimeBound* a, const TimeBound* b) {
                    return std::forward_as_tuple(a->start, a->end) <
