@@ -117,4 +117,4 @@ message XlaOptimizationRemark {
   // Information such as which node was the problem.
   string debug_information = 2;
 }
-// LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/compiler/jit/xla_activity_listener.h)
+// LINT.ThenChange(//tensorflow/compiler/jit/xla_activity_listener.h)
