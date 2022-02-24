@@ -36,6 +36,10 @@ class Generic(trace.TraceType):
       self, types: Sequence[trace.TraceType]) -> Optional[trace.TraceType]:
     return self if all(self == other for other in types) else None
 
+  def experimental_placeholder_value(self) -> Any:
+    """Value used for tracing a function signature with this TraceType."""
+    return self._object
+
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
@@ -55,6 +59,10 @@ class Weakref(Generic):
   When a function argument is a custom class, instead of making a copy of it
   just for the sake of function cache, a weakref is instead kept to save memory.
   """
+
+  def experimental_placeholder_value(self) -> Any:
+    """Value used for tracing a function signature with this TraceType."""
+    return self._object()
 
   def __eq__(self, other):
     if not isinstance(other, trace.TraceType):
@@ -141,11 +149,21 @@ class OrderedCollection(trace.TraceType):
 
 
 class List(OrderedCollection):
-  pass
+
+  def experimental_placeholder_value(self) -> Any:
+    """Value used for tracing a function signature with this TraceType."""
+    return [
+        component.experimental_placeholder_value()
+        for component in self.components
+    ]
 
 
 class Tuple(OrderedCollection):
-  pass
+
+  def experimental_placeholder_value(self) -> Any:
+    """Value used for tracing a function signature with this TraceType."""
+    return tuple(component.experimental_placeholder_value()
+                 for component in self.components)
 
 
 class Attrs(OrderedCollection):
@@ -159,6 +177,12 @@ class Attrs(OrderedCollection):
   def __init__(self, classtype: Type[object],
                attributes: PythonTuple[trace.TraceType]):
     super().__init__(Generic(classtype), *attributes)
+
+  def experimental_placeholder_value(self) -> Any:
+    """Value used for tracing a function signature with this TraceType."""
+    attrs_class = self.components[0].experimental_placeholder_value()
+    return attrs_class(*(component.experimental_placeholder_value()
+                         for component in self.components[1:]))
 
 
 class Dict(trace.TraceType):
@@ -206,6 +230,13 @@ class Dict(trace.TraceType):
 
     return Dict(new_mapping)
 
+  def experimental_placeholder_value(self) -> Any:
+    """Value used for tracing a function signature with this TraceType."""
+    return {
+        key: value.experimental_placeholder_value()
+        for key, value in self.mapping.items()
+    }
+
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
@@ -249,6 +280,10 @@ class Reference(trace.TraceType):
           (other.base for other in types))
 
     return None
+
+  def experimental_placeholder_value(self) -> Any:
+    """Value used for tracing a function signature with this TraceType."""
+    return self.base.experimental_placeholder_value()
 
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, trace.TraceType):
