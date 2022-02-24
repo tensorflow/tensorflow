@@ -29,6 +29,7 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additiona
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
 
 visibility = [
+    # copybara:uncomment "//third_party/auroraml:__subpackages__",
     "//tensorflow:__subpackages__",
     "//learning/brain/tfrt:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
@@ -1246,6 +1247,7 @@ pytype_library(
         ":dtypes",
         ":tensor_shape",
         "//tensorflow/python:platform",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
@@ -1310,6 +1312,7 @@ py_library(
     srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow_estimator/python/estimator:__subpackages__",
+        "//third_party/py/keras:__subpackages__",
     ],
     deps = [
         ":_test_metrics_util",
@@ -1318,6 +1321,7 @@ py_library(
         ":gpu_util",
         ":random_seed",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/config:flags_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:platform",

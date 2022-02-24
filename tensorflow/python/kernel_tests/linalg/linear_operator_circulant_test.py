@@ -638,7 +638,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
           [matrix_tensor, matrix_t, imag_matrix])
 
       np.testing.assert_allclose(0, imag_matrix, atol=1e-6)
-      self.assertAllClose(matrix, matrix_transpose, atol=0)
+      self.assertAllClose(matrix, matrix_transpose, atol=1e-6)
 
   def test_real_spectrum_gives_self_adjoint_operator(self):
     with self.cached_session():

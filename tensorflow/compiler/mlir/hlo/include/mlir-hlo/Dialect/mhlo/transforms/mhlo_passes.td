@@ -36,14 +36,15 @@ def HloLegalizeToLhloPass : Pass<"hlo-legalize-to-lhlo", "ModuleOp"> {
   let constructor = "createLegalizeToLhloPass()";
 }
 
-def HloLegalizeToMemrefPass :Pass<"hlo-legalize-to-memref", "FuncOp"> {
+def HloLegalizeToMemrefPass :Pass<"hlo-legalize-to-memref", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to memref dialect.";
   let constructor = "createLegalizeToMemrefPass()";
 }
 
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "FuncOp"> {
-  let summary = "Legalize from MHLO control flow to CFG control flow.";
+  let summary = "Legalize from MHLO control flow to SCF control flow.";
   let constructor = "createLegalizeControlFlowPass()";
+  let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
 }
 
 def LegalizeEinsumToDotGeneralPass : Pass<"mhlo-legalize-einsum-to-dot-general", "FuncOp"> {
@@ -70,6 +71,11 @@ def HloLegalizeShapeOpsToStandardPass : Pass<"hlo-legalize-shapeops-to-standard"
 def HloLegalizeToLinalgPass : Pass<"hlo-legalize-to-linalg", "FuncOp"> {
   let summary = "Legalize from HLO dialect to Linalg dialect.";
   let constructor = "createLegalizeHloToLinalgPass()";
+}
+
+def HloLegalizeShapeComputationsPass : Pass<"hlo-legalize-shape-computations", "FuncOp"> {
+  let summary = "Legalize HLOs shape operations to core-mlir operations.";
+  let constructor = "createLegalizeShapeComputationsPass()";
 }
 
 def LegalizeToStandardPass : Pass<"mhlo-legalize-to-std", "FuncOp"> {

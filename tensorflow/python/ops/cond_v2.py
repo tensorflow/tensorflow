@@ -33,6 +33,7 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
@@ -304,7 +305,9 @@ def _build_cond(pred,
   # correct output structure
   tensors = [array_ops.identity(t) for t in tensors]
 
-  return _pack_sequence_as(true_graph.structured_outputs, tensors)
+  structured_output_specs = _get_compatible_structured_output_specs(true_graph,
+                                                                    false_graph)
+  return _pack_sequence_as(structured_output_specs, tensors)
 
 
 def get_func_graphs(op):
@@ -344,6 +347,38 @@ def get_func_graphs(op):
             for i, branch_fn in enumerate(op.get_attr("branches"))]
   else:
     raise ValueError("Unsupported op type: {}".format(op.type))
+
+
+def _get_compatible_structured_output_specs(true_graph, false_graph):
+  """Returns the most specific compatible specs of graph structured outputs."""
+  return nest.map_structure(_get_compatible_spec,
+                            true_graph.structured_outputs,
+                            false_graph.structured_outputs)
+
+
+def _get_compatible_spec(value_or_spec1, value_or_spec2):
+  """Returns the most specific compatible spec.
+
+  Args:
+    value_or_spec1: A TypeSpecs or a value that has a defined TypeSpec.
+    value_or_spec2: A TypeSpecs or a value that has a defined TypeSpec.
+
+  Returns:
+    The most specific compatible TypeSpecs of the input.
+
+  Raises:
+    ValueError: If value_or_spec1 is not compatible with value_or_spec2.
+  """
+  spec1 = _get_spec_for(value_or_spec1)
+  spec2 = _get_spec_for(value_or_spec2)
+  return spec1.most_specific_compatible_type(spec2)
+
+
+def _get_spec_for(value_or_spec):
+  """Returns TypeSpec of a value or itself if it is a TypeSpec already."""
+  if isinstance(value_or_spec, type_spec.TypeSpec):
+    return value_or_spec
+  return type_spec.type_spec_from_value(value_or_spec)
 
 
 def _grad_fn(func_graph, grads):

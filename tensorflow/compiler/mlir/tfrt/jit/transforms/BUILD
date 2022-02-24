@@ -43,6 +43,7 @@ cc_library(
     srcs = [
         "tf_jitrt_buffer_forwarding.cc",
         "tf_jitrt_clustering_pass.cc",
+        "tf_jitrt_codegen_transpose.cc",
         "tf_jitrt_copy_removal.cc",
         "tf_jitrt_detensorize_linalg.cc",
         "tf_jitrt_fission.cc",
@@ -76,6 +77,7 @@ cc_library(
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MathDialect",

@@ -102,40 +102,6 @@ VariableInfo::~VariableInfo() {
   }
 }
 
-bool XlaConstOutputCache::FindConstOutput(const int64 output_idx,
-                                          Tensor* output) {
-  const auto iter = cache_.find(output_idx);
-  if (iter == cache_.end()) {
-    return false;
-  } else {
-    *output = iter->second;
-    return true;
-  }
-}
-
-string XlaConstOutputCache::DebugString() const {
-  string debug_string;
-  for (const auto& const_output : cache_) {
-    debug_string.append(std::to_string(const_output.first));
-    debug_string.append(":");
-    debug_string.append(const_output.second.DebugString());
-  }
-  return debug_string;
-}
-
-string XlaConstantOutputResource::DebugString() const {
-  string debug_string;
-  for (const auto& cluster : cache_) {
-    debug_string.append("XlaConstantCache save | ");
-    debug_string.append(std::to_string(int64(cluster.first)));
-    debug_string.append(":[");
-    cluster.second.DebugString();
-    debug_string.append("],");
-  }
-  debug_string.append("].");
-  return debug_string;
-}
-
 Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
                                   absl::Span<const Tensor* const> inputs,
                                   absl::Span<const int> variable_indices,
@@ -490,8 +456,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     ScopedShapedBuffer output, int missing_ctx_input_prefix,
     absl::Span<VariableInfo> variable_infos,
     const xla::HloInputOutputAliasConfig& input_output_alias,
-    const std::map<int, const Tensor*>& resource_vars,
-    XlaConstOutputCache& cache) {
+    const std::map<int, const Tensor*>& resource_vars) {
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   Allocator* allocator = ctx->device()->GetAllocator({});

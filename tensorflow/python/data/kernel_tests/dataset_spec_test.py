@@ -55,10 +55,10 @@ class DatasetSpecTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testDatasetSpecTraceType(self):
     trace_type_1 = dataset_ops.DatasetSpec(
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.int32),
-        [5]).__tf_tracing_type__(None)
+        [5])
     trace_type_2 = dataset_ops.DatasetSpec(
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.int32),
-        [5]).__tf_tracing_type__(None)
+        [5])
 
     self.assertEqual(trace_type_1, trace_type_2)
     self.assertEqual(hash(trace_type_1), hash(trace_type_2))
@@ -67,7 +67,7 @@ class DatasetSpecTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     trace_type_3 = dataset_ops.DatasetSpec(
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.int32),
-        [6]).__tf_tracing_type__(None)
+        [6])
     self.assertNotEqual(trace_type_1, trace_type_3)
     self.assertFalse(trace_type_1.is_subtype_of(trace_type_3))
     self.assertFalse(trace_type_3.is_subtype_of(trace_type_1))

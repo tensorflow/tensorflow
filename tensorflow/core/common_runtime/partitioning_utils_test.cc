@@ -161,6 +161,94 @@ TEST_F(PartitioningUtilsTest, TwoDevices) {
   ASSERT_EQ(3, part2->num_op_nodes());
 }
 
+TEST_F(PartitioningUtilsTest, InsertTransferOpsWithOneDevice) {
+  // A graph with three nodes that are on the same device.
+  // x(_Arg, device0) -> id_x(Identity, device0) -> ret_x(_Retval, device0)
+  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  Scope scope = Scope::NewRootScope().WithDevice(device0_->name());
+
+  auto x = ops::_Arg(scope.WithOpName("x"), DT_FLOAT, 0);
+  auto id_x = ops::Identity(scope.WithOpName("id_x"), x);
+  auto ret_x = ops::_Retval(scope.WithOpName("ret_x"), id_x, 0);
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  FunctionLibraryDefinition flib_def(OpRegistry::Global());
+  Placer placer(graph.get(), "", &flib_def, &device_set_, device0_);
+  TF_ASSERT_OK(placer.Run());
+
+  // No Send/Recv node initially.
+  EXPECT_EQ(graph->num_op_nodes(), 3);
+  int send_count = 0, recv_count = 0;
+  for (const auto* op : graph->op_nodes()) {
+    if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+  }
+  ASSERT_EQ(send_count, 0);
+  ASSERT_EQ(recv_count, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Graph> new_graph,
+                          InsertTransferOps(device_set_, std::move(graph)));
+
+  // No Send/Recv node is added, as all nodes are on the same device.
+  EXPECT_EQ(new_graph->num_op_nodes(), 3);
+  send_count = recv_count = 0;
+  for (const auto* op : new_graph->op_nodes()) {
+    if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+  }
+  EXPECT_EQ(send_count, 0);
+  EXPECT_EQ(recv_count, 0);
+}
+
+TEST_F(PartitioningUtilsTest, InsertTransferOpsWithTwoDevices) {
+  // A graph with three nodes that are on two devices.
+  // x(_Arg, device0) -> id_x(Identity, device1) -> ret_x(_Retval, device0)
+  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  Scope scope = Scope::NewRootScope();
+  Scope scope1 = scope.WithDevice(device0_->name());
+  Scope scope2 = scope.WithDevice(device1_->name());
+
+  auto x = ops::_Arg(scope1.WithOpName("x"), DT_FLOAT, 0);
+  auto id_x = ops::Identity(scope2.WithOpName("id_x"), x);
+  auto ret_x = ops::_Retval(scope1.WithOpName("ret_x"), id_x, 0);
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  FunctionLibraryDefinition flib_def(OpRegistry::Global());
+  Placer placer(graph.get(), "", &flib_def, &device_set_, device0_);
+  TF_ASSERT_OK(placer.Run());
+
+  // No Send/Recv node initially.
+  EXPECT_EQ(graph->num_op_nodes(), 3);
+  int send_count = 0, recv_count = 0;
+  for (const auto* op : graph->op_nodes()) {
+    if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+  }
+  ASSERT_EQ(send_count, 0);
+  ASSERT_EQ(recv_count, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Graph> new_graph,
+                          InsertTransferOps(device_set_, std::move(graph)));
+
+  // Two pairs of Send/Recv nodes are inserted.
+  EXPECT_EQ(new_graph->num_op_nodes(), 7);
+  send_count = recv_count = 0;
+  for (const auto* op : new_graph->op_nodes()) {
+    if (op->IsSend())
+      ++send_count;
+    else if (op->IsRecv())
+      ++recv_count;
+  }
+  EXPECT_EQ(send_count, 2);
+  EXPECT_EQ(recv_count, 2);
+}
+
 void CheckRetIndices(const std::vector<int>& expected,
                      const std::vector<int>& actual) {
   ASSERT_EQ(expected.size(), actual.size());

@@ -20,11 +20,23 @@ limitations under the License.
 namespace tensorflow {
 
 bool PluggableDeviceBFCAllocator::GetAllowGrowthValue(
-    const GPUOptions& gpu_options) {
+    const GPUOptions& gpu_options, bool force_memory_growth_requested) {
   const char* force_allow_growth_string =
       std::getenv("TF_FORCE_GPU_ALLOW_GROWTH");
   if (force_allow_growth_string == nullptr) {
+    if (force_memory_growth_requested && !gpu_options.allow_growth()) {
+      LOG(WARNING) << "Overriding allow_growth setting because "
+                      "force_memory_growth was requested by the device.";
+      return true;
+    }
+
     return gpu_options.allow_growth();
+  }
+
+  if (force_memory_growth_requested) {
+    LOG(WARNING) << "Ignoring the value of TF_FORCE_GPU_ALLOW_GROWTH because "
+                    "force_memory_growth was requested by the device.";
+    return true;
   }
 
   if (strcmp("false", force_allow_growth_string) == 0) {
@@ -75,16 +87,22 @@ bool PluggableDeviceBFCAllocator::GetGarbageCollectionValue() {
 }
 
 PluggableDeviceBFCAllocator::PluggableDeviceBFCAllocator(
-    DeviceMemAllocator* sub_allocator, size_t total_memory, const string& name)
+    DeviceMemAllocator* sub_allocator, size_t total_memory, const string& name,
+    bool force_memory_growth_requested)
     : PluggableDeviceBFCAllocator(sub_allocator, total_memory, GPUOptions(),
-                                  name) {}
+                                  name, force_memory_growth_requested) {}
 
 PluggableDeviceBFCAllocator::PluggableDeviceBFCAllocator(
     DeviceMemAllocator* sub_allocator, size_t total_memory,
-    const GPUOptions& gpu_options, const string& name)
-    : BFCAllocator(
-          sub_allocator, total_memory,
-          PluggableDeviceBFCAllocator::GetAllowGrowthValue(gpu_options), name,
-          PluggableDeviceBFCAllocator::GetGarbageCollectionValue()) {}
+    const GPUOptions& gpu_options, const string& name,
+    bool force_memory_growth_requested)
+    : BFCAllocator(absl::WrapUnique(sub_allocator), total_memory, name, [&] {
+        BFCAllocator::Options o;
+        o.allow_growth = PluggableDeviceBFCAllocator::GetAllowGrowthValue(
+            gpu_options, force_memory_growth_requested);
+        o.garbage_collection =
+            PluggableDeviceBFCAllocator::GetGarbageCollectionValue();
+        return o;
+      }()) {}
 
 }  // namespace tensorflow

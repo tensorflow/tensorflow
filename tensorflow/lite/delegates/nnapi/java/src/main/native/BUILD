@@ -13,7 +13,7 @@ package(
 
 cc_library_with_tflite(
     name = "native",
-    srcs = ["nnapi_delegate_jni.cc"],
+    srcs = ["nnapi_delegate_impl_jni.cc"],
     copts = tflite_copts(),
     tags = [
         "manual",
@@ -28,6 +28,6 @@ cc_library_with_tflite(
 
 filegroup(
     name = "native_srcs",
-    srcs = ["nnapi_delegate_jni.cc"],
+    srcs = ["nnapi_delegate_impl_jni.cc"],
     visibility = nnapi_native_srcs_visibility_allowlist(),
 )

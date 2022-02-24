@@ -34,7 +34,7 @@ package_group(
     packages = [
         # Edge TPU compiler needs to use some compiler passes from kernel_gen.
         "//platforms/darwinn/compiler/...",
-        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/...",
         "//tensorflow/core/kernels/mlir_generated/...",
     ],
 )
@@ -65,7 +65,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:AffineUtils",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ArithmeticTransforms",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexToStandard",

@@ -52,7 +52,7 @@ class XlaLocalLaunchBase : public OpKernel {
                      const NameAttrList& function, bool has_ref_vars);
   XlaLocalLaunchBase(const XlaLocalLaunchBase&) = delete;
   XlaLocalLaunchBase& operator=(const XlaLocalLaunchBase&) = delete;
-  ~XlaLocalLaunchBase() override;
+  ~XlaLocalLaunchBase() override = default;
 
   void Compute(OpKernelContext* ctx) override;
 
@@ -66,9 +66,6 @@ class XlaLocalLaunchBase : public OpKernel {
   const XlaPlatformInfo platform_info_;
 
   bool has_ref_vars_;
-  // Cache GPU const output tensor .
-  XlaConstantOutputResource* cache_;
-  ResourceMgr* rm_;
 };
 
 // XlaLocalLaunchOp is used to replace a region of the TensorFlow graph
@@ -126,13 +123,8 @@ class XlaRunOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override;
 
-  ~XlaRunOp() override;
-
  private:
   const XlaPlatformInfo platform_info_;
-  // Cache GPU const output tensor .
-  XlaConstantOutputResource* cache_;
-  ResourceMgr* rm_;
 };
 
 class XlaMergeOp : public OpKernel {

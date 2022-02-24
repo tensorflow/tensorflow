@@ -16,7 +16,6 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.io.File;
-import java.lang.reflect.Constructor;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -222,7 +221,7 @@ public interface InterpreterApi extends AutoCloseable {
       PREFER_SYSTEM_OVER_APPLICATION,
     };
 
-    /** Method for specifying where to get the TF Lite runtime implementation from. */
+    /** Specify where to get the TF Lite runtime implementation from. */
     public Options setRuntime(TfLiteRuntime runtime) {
       this.runtime = runtime;
       return this;
@@ -253,7 +252,8 @@ public interface InterpreterApi extends AutoCloseable {
    */
   @SuppressWarnings("StaticOrDefaultInterfaceMethod")
   public static InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
-    InterpreterFactoryApi factory = getFactory(options);
+    TfLiteRuntime runtime = (options == null ? null : options.getRuntime());
+    InterpreterFactoryApi factory = TensorFlowLite.getFactory(runtime);
     return factory.create(modelFile, options);
   }
 
@@ -272,69 +272,9 @@ public interface InterpreterApi extends AutoCloseable {
   @SuppressWarnings("StaticOrDefaultInterfaceMethod")
   public static InterpreterApi create(
       @NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
-    InterpreterFactoryApi factory = getFactory(options);
+    TfLiteRuntime runtime = (options == null ? null : options.getRuntime());
+    InterpreterFactoryApi factory = TensorFlowLite.getFactory(runtime);
     return factory.create(byteBuffer, options);
-  }
-
-  @SuppressWarnings("StaticOrDefaultInterfaceMethod")
-  static InterpreterFactoryApi getFactory(InterpreterApi.Options options) {
-    InterpreterFactoryApi factory;
-    Exception exception = null;
-    if (options != null
-        && (options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
-            || options.runtime == TfLiteRuntime.FROM_SYSTEM_ONLY)) {
-      try {
-        Class<?> clazz = Class.forName("com.google.android.gms.tflite.InterpreterFactoryImpl");
-        Constructor<?> factoryConstructor = clazz.getDeclaredConstructor();
-        factoryConstructor.setAccessible(true);
-        factory = (InterpreterFactoryApi) factoryConstructor.newInstance();
-        if (factory != null) {
-          return factory;
-        }
-      } catch (Exception e1) {
-        exception = e1;
-      }
-    }
-    if (options == null
-        || options.runtime == TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION
-        || options.runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
-      try {
-        Class<?> clazz = Class.forName("org.tensorflow.lite.InterpreterFactoryImpl");
-        factory = (InterpreterFactoryApi) clazz.getDeclaredConstructor().newInstance();
-        if (factory != null) {
-          return factory;
-        }
-      } catch (Exception e2) {
-        if (exception == null) {
-          exception = e2;
-        } else {
-          exception.addSuppressed(e2);
-        }
-      }
-    }
-    String message;
-    if (options == null || options.runtime == TfLiteRuntime.FROM_APPLICATION_ONLY) {
-      message =
-          "You should declare a build dependency on org.tensorflow.lite:tensorflow-lite,"
-              + " or call .setRuntime with a value other than TfLiteRuntime.FROM_APPLICATION_ONLY"
-              + " (see docs for org.tensorflow.lite.InterpreterApi.Options#setRuntime).";
-    } else if (options.runtime == TfLiteRuntime.FROM_SYSTEM_ONLY) {
-      message =
-          "You should declare a build dependency on"
-              + " com.google.android.gms:play-services-tflite-java,"
-              + " or call .setRuntime with a value other than TfLiteRuntime.FROM_SYSTEM_ONLY "
-              + " (see docs for org.tensorflow.lite.InterpreterApi.Options#setRuntime).";
-    } else {
-      message =
-          "You should declare a build dependency on"
-              + " org.tensorflow.lite:tensorflow-lite or"
-              + " com.google.android.gms:play-services-tflite-java";
-    }
-    throw new IllegalStateException(
-        "Couldn't find TensorFlow Lite runtime's InterpreterFactoryImpl class --"
-            + " make sure your app links in the right TensorFlow Lite runtime. "
-            + message,
-        exception);
   }
 
   /**
@@ -479,7 +419,7 @@ public interface InterpreterApi extends AutoCloseable {
   public int getInputIndex(String opName);
 
   /**
-   * Gets the Tensor associated with the provdied input index.
+   * Gets the Tensor associated with the provided input index.
    *
    * @throws IllegalArgumentException if {@code inputIndex} is negative or is not smaller than the
    *     number of model inputs.
@@ -498,7 +438,7 @@ public interface InterpreterApi extends AutoCloseable {
   public int getOutputIndex(String opName);
 
   /**
-   * Gets the Tensor associated with the provdied output index.
+   * Gets the Tensor associated with the provided output index.
    *
    * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
    * is executed. If you need updated details *before* running inference (e.g., after resizing an

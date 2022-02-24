@@ -1075,7 +1075,7 @@ tf_py_test(
 
 tf_py_test(
     name = "window_test",
-    size = "small",
+    size = "medium",
     srcs = ["window_test.py"],
     shard_count = 2,
     deps = [

@@ -239,8 +239,6 @@ def build_docs(output_dir, code_url_prefix, search_hints):
           "python/ops/nn_impl.py",
       "tf/keras/Model.md":
           "keras/engine/training.py",
-      "tf/keras/preprocessing/image/random_brightness.md":
-          "keras_preprocessing/image/affine_transformations.py"
   }
 
   all_passed = True

@@ -57,24 +57,6 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo);
 // is a success/failure code per batch element.
 extern const char* const kCusolverCholeskyCallTarget;
 
-// Layout analysis for fusion. The constructor will analyze the given LMHLO
-// fusion operation and store the inferred layouts of fusion internal values.
-// The default constructor will be used when dealing with LMHLO operations, in
-// which case there no analysis is needed and the layout can be inferred from
-// the memref types (so that we can have a unified interface in helper functions
-// to query layouts).
-class FusionLayoutAnalysis {
- public:
-  FusionLayoutAnalysis() {}
-  explicit FusionLayoutAnalysis(mlir::lmhlo::FusionOp fusion_op);
-
-  // Gets the shape of a given value, including its inferred layout.
-  Shape GetShape(mlir::Value value) const;
-
- private:
-  llvm::DenseMap<mlir::Value, Layout> layouts_;
-};
-
 // Returns true if either the dimensions being reduced or the dimensions being
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);

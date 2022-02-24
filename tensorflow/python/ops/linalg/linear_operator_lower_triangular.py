@@ -161,7 +161,6 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-      self._set_graph_parents([self._tril])
 
   def _check_tril(self, tril):
     """Static check of the `tril` argument."""

@@ -37,7 +37,7 @@ StatusOr<TRT_ShapedWeights> TRT_ShapedWeights::CreateWithTensor(
   weights.tensor_ = std::forward<Tensor>(tensor);
   weights.volume_ = weights.shape_.Volume();
   if (weights.shape_.NumDims() == 0) {
-    DCHECK(weights.shape_.IsScalar());
+    DCHECK(weights.shape_.IsEmpty() || weights.shape_.IsScalar());
   }
   return weights;
 }

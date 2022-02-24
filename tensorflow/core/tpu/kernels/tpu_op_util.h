@@ -37,7 +37,8 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
     uint64 mlir_module_fingerprint, const OpInputList& guaranteed_constants,
     const std::vector<TensorShape>& dynamic_shapes,
     const TPUCompileMetadataProto& metadata,
-    const TpuMeshStateInterface& mesh_state);
+    const TpuMeshStateInterface& mesh_state, uint64_t session_id = 0,
+    ResourceMgr* resource_mgr = nullptr);
 }  // namespace tpu
 }  // namespace tensorflow
 

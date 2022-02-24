@@ -718,7 +718,7 @@ struct LhloLegalizeToParallelLoopsPass
 
     RewritePatternSet patterns(&getContext());
     // clang-format off
-    patterns.insert<
+    patterns.add<
         ReduceOpConverter,
         ReduceWindowOpConverter,
         SelectAndScatterOpConverter

@@ -132,7 +132,7 @@ func @sub(%arg0: tensor<1x384x384x3xf32>, %arg1: tensor<3xf32>) -> tensor<1x384x
 // -----
 
 func @ensureBiasForConv2d(%arg0: tensor<128x32x32x3xf32>, %arg1: tensor<32x1x1x3xf32>) -> tensor<128x32x32x32xf32> {
-  %cst = constant unit
+  %cst = "tfl.no_value"() {value = unit} : () -> none
   %0 = "tfl.conv_2d"(%arg0, %arg1, %cst) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<128x32x32x3xf32>, tensor<32x1x1x3xf32>, none) -> tensor<128x32x32x32xf32>
   return %0 : tensor<128x32x32x32xf32>
 }

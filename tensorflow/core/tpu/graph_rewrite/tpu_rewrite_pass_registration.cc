@@ -19,12 +19,17 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass.h"
 #include "tensorflow/core/tpu/graph_rewrite/encapsulate_tpu_computations_pass.h"
 #include "tensorflow/core/tpu/graph_rewrite/tpu_embedding_software_deduplication_rewrite_pass.h"
+#include "tensorflow/core/tpu/graph_rewrite/update_tpu_embedding_ops_passes.h"
 #include "tensorflow/core/tpu/graph_rewrite/variable_merger_pass.h"
 
 namespace tensorflow {
 namespace {
 
 // PRE_PLACEMENT passes:
+// The earlier this occurs, the better. Otherwise we do updates to the same ops
+// in FunctionDefs and the graph.
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 1,
+                      UpdateTPUEmbeddingModePass);
 // This pass uses the TPUEmbeddingConfiguration from the
 // RecvTPUEmbeddingActivations or the SendTPUEmbeddingGradients ops.
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 2,
@@ -45,6 +50,9 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 39,
                       ExtractOutsideCompilationPass);
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 40,
                       DistributedTPURewritePass);
+// Needs to occur after ExtractOutsideCompilationPass (currently phase 39).
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 41,
+                      UpdateTPUEmbeddingEnqueueOrdinalPass);
 
 // POST_REWRITE_FOR_EXEC pass
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 0,

@@ -1167,6 +1167,7 @@ cc_library(
         "transforms/promote_resources_to_args.cc",
         "transforms/readonly_references_to_resources.cc",
         "transforms/region_control_flow_to_functional.cc",
+        "transforms/replica_id_to_device_ordinal.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",
         "transforms/resource_device_inference.cc",
@@ -1288,6 +1289,7 @@ cc_library(
         "@llvm-project//mlir:AffineAnalysis",
         "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ControlFlowOps",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -1363,6 +1365,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -2041,6 +2044,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@llvm-project//mlir:Pass",
     "@llvm-project//mlir:Shape",
     "@llvm-project//mlir:StandardOps",
+    "@llvm-project//mlir:Support",
     "@llvm-project//mlir:TransformUtils",
     "@llvm-project//mlir:Transforms",
     "//tensorflow/compiler/mlir/hlo:hlo",
@@ -2353,7 +2357,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -2402,23 +2406,10 @@ cc_library(
     srcs = ["utils/shape_inference_utils.cc"],
     hdrs = ["utils/shape_inference_utils.h"],
     deps = [
-        ":convert_tensor",
-        ":convert_type",
         ":export_tf_dialect_op",
-        ":export_utils",
-        ":tensorflow",
-        ":tensorflow_attributes",
         ":tensorflow_types",
-        "//tensorflow/compiler/mlir:array_container_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/ir:shape_inference_utils",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:DerivedAttributeOpInterface",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -2507,6 +2498,17 @@ cc_library(
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "set_tpu_infeed_layout",
+    srcs = ["transforms/set_tpu_infeed_layout.cc"],
+    hdrs = ["transforms/set_tpu_infeed_layout.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/xla:adjust_layout",
         "@llvm-project//mlir:IR",
     ],
 )

@@ -70,7 +70,8 @@ using mlir::hlo::printWindowAttributes;
 // AllReduceStartOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(AllReduceStartOp op) {
+mlir::LogicalResult AllReduceStartOp::verify() {
+  AllReduceStartOp op = *this;
   return lmhlo::VerifyAllReduce(op);
 }
 

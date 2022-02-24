@@ -76,7 +76,7 @@ class MiniBenchmarkTest : public ::testing::Test {
     if ((delegate == proto::Delegate::NNAPI) && nnapi_sl) {
       std::cerr << "Using NNAPI SL\n";
       tflite_settings->mutable_nnapi_settings()->set_support_library_handle(
-          reinterpret_cast<int64_t>(nnapi_sl));
+          reinterpret_cast<int64_t>(nnapi_sl->getFL5()));
     }
     proto::ModelFile* file = settings.mutable_model_file();
     file->set_filename(model_path);

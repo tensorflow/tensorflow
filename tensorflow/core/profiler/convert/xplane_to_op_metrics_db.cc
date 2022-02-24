@@ -217,7 +217,7 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {
       last_op_offset_ps = std::max(last_op_offset_ps, event.EndOffsetPs());
 
       absl::string_view tf_op_full_name;
-      bool is_eager;
+      bool is_eager = false;
       event.ForEachStat([&](const XStatVisitor& stat) {
         if (stat.Type() == StatType::kLevel0 ||  // old way to deliver tf_op.
             stat.Type() == StatType::kTfOp) {

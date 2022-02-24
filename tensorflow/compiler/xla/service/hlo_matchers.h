@@ -317,6 +317,7 @@ HLO_MATCHER(Tuple);
 HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);
+HLO_MATCHER(OptimizationBarrier);
 
 #define HLO_MATCHER_VECTOR_OPERANDS(opcode)                              \
   template <>                                                            \

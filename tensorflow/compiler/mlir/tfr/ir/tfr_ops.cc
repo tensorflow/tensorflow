@@ -146,7 +146,8 @@ Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
   if (arith::ConstantOp::isBuildableWith(value, type))
     return builder.create<arith::ConstantOp>(loc, type, value);
   if (ConstantOp::isBuildableWith(value, type))
-    return builder.create<ConstantOp>(loc, type, value);
+    return builder.create<ConstantOp>(loc, type,
+                                      value.cast<FlatSymbolRefAttr>());
   return nullptr;
 }
 
@@ -158,7 +159,8 @@ bool TFRType::classof(Type type) {
 // Custom op methods
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(ConstantTensorOp op) {
+LogicalResult ConstantTensorOp::verify() {
+  ConstantTensorOp op = *this;
   auto input_type = op.arg().getType();
   auto output_type = op.out().getType();
 
@@ -195,7 +197,8 @@ static LogicalResult Verify(ConstantTensorOp op) {
   return failure();
 }
 
-static LogicalResult Verify(TFRFuncOp func) {
+LogicalResult TFRFuncOp::verify() {
+  TFRFuncOp func = *this;
   // Collect all attribute names used by the tensor and tensor list arguments
   // and returns. Also, collect the names of all the attribute arguments as the
   // defined list. Later on, the used attribute names will be verified to be in
@@ -841,52 +844,52 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
 
 void ConstantTensorOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                    MLIRContext *context) {
-  results.insert<ConvertConstToTensorConst>(context);
+  results.add<ConvertConstToTensorConst>(context);
 }
 
 void CastOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.insert<RemoveRedundantCast>(context);
+  results.add<RemoveRedundantCast>(context);
 }
 
 void GetShapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  results.insert<GetTensorShape>(context);
+  results.add<GetTensorShape>(context);
 }
 
 void GetElementOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
-  results.insert<RemoveRedundantGetElement>(context);
+  results.add<RemoveRedundantGetElement>(context);
 }
 
 void GetLengthOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<RemoveRedundantGetLength>(context);
+  results.add<RemoveRedundantGetLength>(context);
 }
 
 void BuildListOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                               MLIRContext *context) {
-  results.insert<BuildConstantListAsAttr>(context);
+  results.add<BuildConstantListAsAttr>(context);
 }
 
 void TFRQuantRawDataOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                     MLIRContext *context) {
-  results.insert<RemoveRawDataOp>(context);
+  results.add<RemoveRawDataOp>(context);
 }
 
 void TFRQuantQParamsOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                     MLIRContext *context) {
-  results.insert<RemoveQParamsOp>(context);
+  results.add<RemoveQParamsOp>(context);
 }
 
 void TFRQuantRescaleOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                     MLIRContext *context) {
-  results.insert<RemoveRescaleOp>(context);
+  results.add<RemoveRescaleOp>(context);
 }
 
 void TFRQuantScaleFactorOp::getCanonicalizationPatterns(
     RewritePatternSet &results, MLIRContext *context) {
-  results.insert<RemoveScaleFactorOp>(context);
+  results.add<RemoveScaleFactorOp>(context);
 }
 
 OpFoldResult TFR::EqualOp::fold(ArrayRef<Attribute> operands) {

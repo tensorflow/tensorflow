@@ -312,7 +312,8 @@ class PjRtClient {
   // Return a device-specific default device assignment for multi-slice system.
   // TODO(zhangqiaorjc): Convert this to pure virtual and push down.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions, int num_slices) const {
+      int num_replicas, int num_replicas_per_slice, int num_partitions,
+      const MultiSliceConfig* multi_slice_config) const {
     return Unimplemented("Multi slice device assignment is not supported.");
   }
 
@@ -738,6 +739,22 @@ class PjRtBuffer {
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
   virtual Status BlockHostUntilReady() = 0;
+
+  // Calls callback when the buffer is ready.
+  //
+  //   buf->OnReady(callback);
+  //
+  // is semantically almost identical to:
+  //
+  //   ForkThread([]() { callback(buf->BlockHostUntilReady()); });
+  //
+  // the only difference being that the callback may happen immediately on the
+  // calling thread. (The implementation may also be more efficient.)
+  //
+  // The interface makes no assumptions about what thread calls callback, so the
+  // caller must ensure that callback returns quickly and hands off long-running
+  // work or any blocking operation to a caller-managed threadpool.
+  virtual void OnReady(std::function<void(Status)> callback) = 0;
 
   // Whether this buffer is on CPU and thus allows for certain optimizations.
   virtual bool IsOnCpu() const = 0;

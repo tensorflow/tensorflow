@@ -16,6 +16,7 @@
 
 import contextlib
 import copy
+import weakref
 
 import six
 
@@ -25,7 +26,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.training.tracking import base
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
-
 
 # global _RESOURCE_TRACKER_STACK
 _RESOURCE_TRACKER_STACK = []
@@ -124,7 +124,7 @@ class CapturableResource(six.with_metaclass(_ResourceMetaclass,
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
     """
-    self._resource_handle = None
+    self._resource_handle_value = None
     self._resource_device = device
     self._self_destruction_context = (
         context.eager_mode if context.executing_eagerly()
@@ -148,6 +148,16 @@ class CapturableResource(six.with_metaclass(_ResourceMetaclass,
     """A function that creates a resource handle."""
     raise NotImplementedError("TrackableResource._create_resource not "
                               "implemented.")
+
+  @property
+  def _resource_handle(self):
+    return self._resource_handle_value
+
+  @_resource_handle.setter
+  def _resource_handle(self, value):
+    if isinstance(value, (ops.Tensor, ops.EagerTensor)):
+      value._parent_trackable = weakref.ref(self)  # pylint: disable=protected-access
+    self._resource_handle_value = value
 
   def _initialize(self):
     """A function that initializes the resource. Optional."""
@@ -177,27 +187,30 @@ class CapturableResource(six.with_metaclass(_ResourceMetaclass,
     resource_map = {self.resource_handle: new_resource}
     return obj_map, resource_map
 
-  def _list_functions_for_serialization(self, unused_functions):
-    @def_function.function(input_signature=[], autograph=False)
-    def _creator():
-      resource = self._create_resource()
-      return resource
+  def _trackable_children(self, save_type, **kwargs):
+    children = super()._trackable_children(save_type, **kwargs)
+    if save_type == "savedmodel":
+      @def_function.function(input_signature=[], autograph=False)
+      def _creator():
+        resource = self._create_resource()
+        return resource
 
-    @def_function.function(input_signature=[], autograph=False)
-    def _initializer():
-      self._initialize()
-      return 1  # Dummy return
+      @def_function.function(input_signature=[], autograph=False)
+      def _initializer():
+        self._initialize()
+        return 1  # Dummy return
 
-    @def_function.function(input_signature=[], autograph=False)
-    def _destroyer():
-      self._destroy_resource()
-      return 1  # Dummy return
+      @def_function.function(input_signature=[], autograph=False)
+      def _destroyer():
+        self._destroy_resource()
+        return 1  # Dummy return
 
-    return {
-        "_create_resource": _creator,
-        "_initialize": _initializer,
-        "_destroy_resource": _destroyer,
-    }
+      children.update({
+          "_create_resource": _creator,
+          "_initialize": _initializer,
+          "_destroy_resource": _destroyer,
+      })
+    return children
 
   def __del__(self):
     try:
@@ -280,31 +293,6 @@ class RestoredResource(TrackableResource):
 
   def __init__(self, device=""):
     super(RestoredResource, self).__init__(device=device)
-
-  def _create_resource(self):
-    raise RuntimeError()
-
-  def _initialize(self):
-    raise RuntimeError()
-
-  # _list_functions_for_serialization expects Function objects, but unlike
-  # _create_resource and _initialize, _destroy_resource didn't always exist in
-  # older TrackableResource implementations, so this default stub must be a
-  # Function.
-  @def_function.function
-  def _destroy_resource(self):
-    raise RuntimeError()
-
-  def _list_functions_for_serialization(self, unused_serialization_cache):
-    # Overwrite this method to avoid the implementation of
-    # base class to re-wrap the polymorphic functions into
-    # another layer of `tf.function`.
-    functions = {
-        "_create_resource": self._create_resource,
-        "_initialize": self._initialize,
-        "_destroy_resource": self._destroy_resource,
-    }
-    return functions
 
   @classmethod
   def _deserialize_from_proto(cls, object_proto, dependencies, **unused_kwargs):

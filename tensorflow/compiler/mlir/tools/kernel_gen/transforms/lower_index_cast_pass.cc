@@ -48,7 +48,7 @@ struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
           Value dim = args.front();
           Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), dim);
           Value casted = b.create<arith::IndexCastOp>(
-              loc, extent, result_ty.getElementType());
+              loc, result_ty.getElementType(), extent);
           b.create<tensor::YieldOp>(loc, casted);
         });
     return success();
@@ -63,18 +63,18 @@ struct LowerIndexCastPass : public LowerIndexCastPassBase<LowerIndexCastPass> {
     registry.insert<tensor::TensorDialect>();
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.add<IndexCastConverter>(patterns.getContext());
     if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
+            applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       return signalPassFailure();
   }
 };
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateLowerIndexCastPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLowerIndexCastPass() {
   return std::make_unique<LowerIndexCastPass>();
 }
 

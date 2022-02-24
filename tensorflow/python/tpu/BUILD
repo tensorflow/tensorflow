@@ -602,7 +602,7 @@ tpu_py_test(
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
-    tags = ["no_oss"],  # TODO(b/213215029): Reenable in OSS when the timeout issue is fixed.
+    tags = ["no_oss"],  # TODO(cpgaffney): Reenable in OSS when "socket closed" and timeout issue resolved.
     deps = [
         ":tpu_embedding",
         ":tpu_embedding_v2",
@@ -635,7 +635,7 @@ tpu_py_test(
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY3",
-    tags = ["no_oss"],  # TODO(b/213215029): Reenable in OSS when the timeout issue is fixed.
+    tags = ["no_oss"],  # TODO(cpgaffney): Reenable in OSS when "socket closed" and timeout issue resolved.
     deps = [
         ":tpu_embedding",
         ":tpu_embedding_v2",

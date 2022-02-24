@@ -476,6 +476,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
@@ -573,6 +574,7 @@ BUILTIN_KERNEL_SRCS = [
     "dequantize.cc",
     "detection_postprocess.cc",
     "div.cc",
+    "dynamic_update_slice.cc",
     "elementwise.cc",
     "embedding_lookup.cc",
     "embedding_lookup_sparse.cc",
@@ -2731,6 +2733,19 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "dynamic_update_slice_test",
+    size = "small",
+    srcs = ["dynamic_update_slice_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 

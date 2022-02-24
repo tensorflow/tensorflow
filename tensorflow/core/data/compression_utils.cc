@@ -70,7 +70,7 @@ Status CompressElement(const std::vector<Tensor>& element,
   }
   if (total_size > kuint32max) {
     return errors::OutOfRange("Encountered dataset element of size ",
-                              total_size, ", exceeding the 4GB limit.");
+                              total_size, ", exceeding the 4GB Snappy limit.");
   }
   DCHECK_EQ(position, uncompressed.mdata() + total_size);
 

@@ -31,30 +31,28 @@ namespace xla {
 namespace gpu {
 
 ParallelLoopEmitter::ParallelLoopEmitter(
-    BodyEmitter body_emitter, const Shape& shape,
+    llvm_ir::BodyEmitter body_emitter, const Shape& shape,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
     LaunchDimensionsConfig launch_config)
-    : LoopEmitter(body_emitter, shape, b),
-      launch_dimensions_(launch_dimensions),
-      launch_config_(launch_config) {}
+    : launch_dimensions_(launch_dimensions),
+      launch_config_(launch_config),
+      body_emitter_(body_emitter),
+      shape_(shape),
+      b_(b) {}
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
     absl::Span<const llvm_ir::IrArray> target_arrays,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
-    LaunchDimensionsConfig launch_config)
-    : LoopEmitter(target_element_generator, target_arrays, b),
-      launch_dimensions_(launch_dimensions),
-      launch_config_(launch_config) {}
 
-ParallelLoopEmitter::ParallelLoopEmitter(
-    const llvm_ir::ElementGenerator& target_element_generator,
-    const llvm_ir::IrArray& target_array,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
     LaunchDimensionsConfig launch_config)
-    : LoopEmitter(target_element_generator, target_array, b),
-      launch_dimensions_(launch_dimensions),
-      launch_config_(launch_config) {}
+    : launch_dimensions_(launch_dimensions),
+      launch_config_(launch_config),
+      body_emitter_(
+          llvm_ir::MakeBodyEmitter(target_element_generator, target_arrays, b,
+                                   /*is_tuple=*/target_arrays.size() > 1)),
+      shape_(target_arrays[0].GetShape()),
+      b_(b) {}
 
 std::vector<llvm_ir::IrArray::Index>
 ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
@@ -212,6 +210,16 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   return array_indices;
 }
 
+Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
+                                           llvm::Type* index_type,
+                                           llvm::Value* base_indvar) {
+  for (const llvm_ir::IrArray::Index& array_index :
+       EmitIndexAndSetExitBasicBlock(loop_name, index_type, base_indvar)) {
+    TF_RETURN_IF_ERROR(body_emitter_(array_index));
+  }
+  return Status::OK();
+}
+
 Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
                                      llvm::Type* index_type) {
   if (index_type == nullptr) {
@@ -222,26 +230,21 @@ Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
   // If all the elements are handled by the current threads, no need
   // to add a loop inside the kernel.
   if (total_threads * launch_config_.unroll_factor >= num_elements) {
-    VLOG(1) << "ParallelLoopEmitter::EmitLoop fallback";
-    return LoopEmitter::EmitLoop(loop_name, index_type);
+    VLOG(1) << "No loops inside the kernel";
+    TF_RETURN_IF_ERROR(EmitSerialLoop(loop_name, index_type));
+  } else {
+    KernelSupportLibrary ksl(b_, llvm_ir::UnrollMode::kDefaultUnroll);
+    auto constant = [&](int64_t val) {
+      return llvm::ConstantInt::get(index_type, val);
+    };
+
+    TF_RETURN_IF_ERROR(ksl.ForWithStatus(
+        "loop", constant(0), constant(num_elements),
+        constant(total_threads * launch_config_.unroll_factor),
+        [&](llvm::Value* base_indvar) {
+          return EmitSerialLoop(loop_name, index_type, base_indvar);
+        }));
   }
-
-  KernelSupportLibrary ksl(b_, llvm_ir::UnrollMode::kDefaultUnroll);
-  auto constant = [&](int64_t val) {
-    return llvm::ConstantInt::get(index_type, val);
-  };
-
-  TF_RETURN_IF_ERROR(
-      ksl.ForWithStatus("loop", constant(0), constant(num_elements),
-                        constant(total_threads * launch_config_.unroll_factor),
-                        [&](llvm::Value* base_indvar) {
-                          for (const llvm_ir::IrArray::Index& array_index :
-                               EmitIndexAndSetExitBasicBlock(
-                                   loop_name, index_type, base_indvar)) {
-                            TF_RETURN_IF_ERROR(body_emitter_(array_index));
-                          }
-                          return Status::OK();
-                        }));
 
   // Set the insertion point of b_ to the loop exit, so that
   // code emitted for later instructions will be correctly placed.

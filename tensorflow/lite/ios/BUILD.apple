@@ -149,7 +149,10 @@ ios_static_framework(
 # bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 //tensorflow/lite/ios:TensorFlowLiteSelectTfOps_framework
 ios_static_framework(
     name = "TensorFlowLiteSelectTfOps_framework",
-    avoid_deps = ["//tensorflow/lite/c:common"],
+    avoid_deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+    ],
     bundle_name = "TensorFlowLiteSelectTfOps",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     deps = [

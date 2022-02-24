@@ -96,7 +96,7 @@ func @inline_simple_tf_device_region() -> tensor<2xi32> {
 // Check that functions can be inlined into islands.
 
 func private @inline_into_island_multi_block_callee() -> tensor<2xi32>  {
-  br ^bb1
+  cf.br ^bb1
 
 ^bb1:
   %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>

@@ -31,6 +31,15 @@ namespace tensor_utils {
 void Avx2MatrixBatchVectorMultiplyAccumulateImpl(
     const float* __restrict__ matrix, int m_rows, int m_cols,
     const float* __restrict__ vector, int n_batch, float* __restrict__ result);
+
+// Matrix multiplication for quantized values using asymmetric quantization.
+void Avx2MatrixBatchVectorMultiplyAccumulateImpl(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, CpuBackendContext* context);
 #endif  // defined(__AVX2__)
 
 #ifdef __SSSE3__

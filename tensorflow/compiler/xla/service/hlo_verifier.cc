@@ -469,12 +469,6 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
   TF_RET_CHECK(all_to_all != nullptr);
-  if (all_to_all->split_dimension()) {
-    if (hlo->replica_groups().empty()) {
-      return InternalError(
-          "An array all-to-all must have an explicit replica_groups config");
-    }
-  }
 
   // The size of each replica group must be the same (checked in
   // CheckReplicaGroups). This is the split count of the operation). In case the
@@ -1432,6 +1426,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
@@ -1547,6 +1542,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:
+      case HloOpcode::kOptimizationBarrier:
       case HloOpcode::kParameter:
       case HloOpcode::kRecv:
       case HloOpcode::kRecvDone:

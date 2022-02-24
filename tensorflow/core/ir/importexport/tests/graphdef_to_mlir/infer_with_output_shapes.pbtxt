@@ -1,0 +1,102 @@
+# RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
+
+# CHECK: Add
+# CHECK-SAME: -> (tensor<4xi32>)
+# CHECK: Add
+# CHECK-SAME: -> (tensor<*xi32>)
+
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "Const_1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "Add"
+  op: "Add"
+  input: "Const"
+  input: "Const_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 4
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Add_1"
+  op: "Add"
+  input: "Const"
+  input: "Const_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 4
+          }
+        }
+        shape {
+          dim {
+            size: 4
+          }
+        }
+      }
+    }
+  }
+}

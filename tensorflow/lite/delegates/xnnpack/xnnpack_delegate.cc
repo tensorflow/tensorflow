@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -84,6 +85,14 @@ class Delegate {
   bool support_any_8bit_quantization() const {
     return (options_.flags & (TFLITE_XNNPACK_DELEGATE_FLAG_QU8 |
                               TFLITE_XNNPACK_DELEGATE_FLAG_QS8)) != 0;
+  }
+
+  bool force_fp16() const {
+#ifdef XNNPACK_DELEGATE_FORCE_PRECISION_FP16
+    return true;
+#else
+    return (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16) != 0;
+#endif
   }
 
   pthreadpool_t threadpool() const {
@@ -546,7 +555,28 @@ class Subgraph {
     xnn_runtime_t runtime_ptr = nullptr;
     uint32_t flags = XNN_FLAG_YIELD_WORKERS;
     if (has_sparse_weights) {
-      flags |= XNN_FLAG_SPARSE_INFERENCE;
+      flags |= XNN_FLAG_HINT_SPARSE_INFERENCE;
+    }
+    if (delegate.force_fp16()) {
+      flags |= XNN_FLAG_FORCE_FP16_INFERENCE;
+    } else {
+      const char* precision_metadata_ptr = nullptr;
+      size_t precision_metadata_size = 0;
+      if (context->GetModelMetadata(
+              context, optimize::kTfLiteReducedPrecisionKey,
+              &precision_metadata_ptr, &precision_metadata_size) == kTfLiteOk) {
+        const std::string precision_metadata(precision_metadata_ptr,
+                                             precision_metadata_size);
+        optimize::ReducedPrecisionSupport precision_mask =
+            optimize::ReducedPrecisionSupport::None;
+        if (optimize::SetMaskFromReducedPrecisionMetadata(precision_metadata,
+                                                          &precision_mask)) {
+          if (optimize::SupportsFP16Inference(precision_mask) &&
+              optimize::SupportsFP16Accumulation(precision_mask)) {
+            flags |= XNN_FLAG_HINT_FP16_INFERENCE;
+          }
+        }
+      }
     }
     status = xnn_create_runtime_v2(subgraph.get(), delegate.threadpool(), flags,
                                    &runtime_ptr);
@@ -2172,14 +2202,16 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
+                                       node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
@@ -4399,8 +4431,10 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   TfLiteXNNPackDelegateOptions options = {0};
 
   // Quantized inference is enabled by default on Web platform
-#ifdef __EMSCRIPTEN__
+#ifdef XNNPACK_DELEGATE_ENABLE_QS8
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QS8;
+#endif
+#ifdef XNNPACK_DELEGATE_ENABLE_QU8
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_QU8;
 #endif
 

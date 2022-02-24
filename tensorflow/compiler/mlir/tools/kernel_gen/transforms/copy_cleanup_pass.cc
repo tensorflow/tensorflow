@@ -159,13 +159,13 @@ struct CopyCleanupPass : public CopyCleanupPassBase<CopyCleanupPass> {
     registry.insert<memref::MemRefDialect>();
   }
 
-  void runOnFunction() override {
-    RemoveCopyIfTargetOnlyRead(getFunction());
-    RemoveCopyIfTargetIsFunctionArg(getFunction());
+  void runOnOperation() override {
+    RemoveCopyIfTargetOnlyRead(getOperation());
+    RemoveCopyIfTargetIsFunctionArg(getOperation());
   }
 };
 
-std::unique_ptr<FunctionPass> CreateCopyCleanupPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateCopyCleanupPass() {
   return std::make_unique<CopyCleanupPass>();
 }
 

@@ -42,7 +42,6 @@ struct ConversionParams {
   GraphDef* output_graph_def = nullptr;
   TrtPrecisionMode precision_mode = TrtPrecisionMode::FP32;
   int minimum_segment_size = 3;
-  const grappler::Cluster* cluster = nullptr;
   // Whether to create engine on conversion or execution time
   bool is_dyn_op = false;
   // maximum number of cached engines
@@ -55,11 +54,13 @@ struct ConversionParams {
 };
 
 // Method to call from optimization pass
-Status ConvertAfterShapes(const ConversionParams& params);
+Status ConvertAfterShapes(const ConversionParams& params,
+                          grappler::Cluster* cluster);
 
 // Helper method for the conversion, expose for testing.
-std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
-                                                 const EngineInfo& engine);
+std::pair<int, Allocator*> GetDeviceAndAllocator(
+    const ConversionParams& params, const EngineInfo& engine,
+    const grappler::Cluster* cluster = nullptr);
 
 // Helper method that registers `segment_graph` as a function to the function
 // library in `graph`.
@@ -69,7 +70,8 @@ Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
 // Creates and serializes an ICudaEngine. Used only in is_dynamic_op=false,
 // a.k.a. static engine mode.
 Status CreateStaticEngine(const ConversionParams& params,
-                          const EngineInfo& info, int max_batch_size,
+                          grappler::Cluster* cluster, const EngineInfo& info,
+                          int max_batch_size,
                           const std::vector<PartialTensorShape>& input_shapes,
                           TrtShapeOptimizationProfile* profile,
                           string* segment_string);

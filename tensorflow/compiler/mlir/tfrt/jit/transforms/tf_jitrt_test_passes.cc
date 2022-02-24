@@ -30,7 +30,7 @@ namespace {
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_test_passes.h.inc"
 
 using mlir::FuncOp;
-using mlir::FunctionPass;
+using mlir::OperationPass;
 using mlir::TFDevice::Cluster;
 using mlir::TFDevice::ClusteringPolicySet;
 using mlir::TFDevice::CreateClusterOp;
@@ -41,11 +41,11 @@ using mlir::TFDevice::ValuesConstraintSet;
 // Cluster operations based on the TF JitRt clustering policy.
 // -------------------------------------------------------------------------- //
 struct TestClusteringPass : public TestClusteringBase<TestClusteringPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     ClusteringPolicySet policies;
     populateTfJitRtClusteringPolicies(policies);
 
-    getFunction().walk([&](mlir::Block* block) {
+    getOperation().walk([&](mlir::Block* block) {
       for (Cluster& cluster : FindClustersInTheBlock(block, policies)) {
         // Do not create too small clusters.
         if (cluster.operations.size() < min_cluster_size) continue;
@@ -53,7 +53,7 @@ struct TestClusteringPass : public TestClusteringBase<TestClusteringPass> {
         if (failed(VerifyCluster(cluster))) continue;
 
         CreateClusterOp(cluster, {});
-        EmitInputsConstraintsRemarks(getFunction(), cluster.constraints);
+        EmitInputsConstraintsRemarks(getOperation(), cluster.constraints);
       }
     });
   }
@@ -64,8 +64,8 @@ struct TestClusteringPass : public TestClusteringBase<TestClusteringPass> {
 // -------------------------------------------------------------------------- //
 struct TestClusteringPolicyPass
     : public TestClusteringPolicyBase<TestClusteringPolicyPass> {
-  void runOnFunction() override {
-    FuncOp func = getFunction();
+  void runOnOperation() override {
+    FuncOp func = getOperation();
     ValuesConstraintSet constraints;
 
     ClusteringPolicySet policies;
@@ -88,11 +88,13 @@ struct TestClusteringPolicyPass
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateTestTfJitRtClusteringPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateTestTfJitRtClusteringPass() {
   return std::make_unique<TestClusteringPass>();
 }
 
-std::unique_ptr<mlir::FunctionPass> CreateTestTfJitRtClusteringPolicyPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateTestTfJitRtClusteringPolicyPass() {
   return std::make_unique<TestClusteringPolicyPass>();
 }
 

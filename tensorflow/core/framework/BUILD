@@ -1068,6 +1068,7 @@ cc_library(
         ":op_def_proto_cc",
         ":tensor",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1742,7 +1743,19 @@ tf_proto_library(
         ":tensor_shape_proto",
         ":types_proto",
     ],
+    visibility = ["//tensorflow:internal"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "function_proto_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [
+#         ":function_proto",
+#     ],
+# )
+# copybara:uncomment_end
 
 tf_proto_library(
     name = "summary_proto",

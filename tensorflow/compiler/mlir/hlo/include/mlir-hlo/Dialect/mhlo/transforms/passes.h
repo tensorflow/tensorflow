@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H
+#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H
 
 #include <memory>
 
@@ -30,7 +30,7 @@ class OperationPass;
 class Pass;
 namespace lmhlo {
 class FusionOp;
-}
+}  // namespace lmhlo
 
 namespace mhlo {
 
@@ -53,7 +53,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
 
 /// Lowers from HLO dialect to Memref dialect allocating/deallocating temporary
 /// buffers if necessary.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToMemrefPass();
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass();
 
 // Lowers shape operations from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>>
@@ -61,6 +61,9 @@ createLegalizeHloShapeOpsToStandardPass();
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
+
+// Lowers from HLO dialects dim operations.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeShapeComputationsPass();
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
@@ -112,4 +115,4 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H

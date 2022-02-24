@@ -183,7 +183,7 @@ Value elementalLowerImplForBroadcastInDimOps(OpBuilder* b, Location loc,
             loc, b->getIndexType(), b->getIntegerAttr(b->getIndexType(), 0));
         auto dim_size_is_1 = b->create<arith::CmpIOp>(
             loc, arith::CmpIPredicate::eq, dim_size, one);
-        input_index.push_back(b->create<mlir::SelectOp>(
+        input_index.push_back(b->create<mlir::arith::SelectOp>(
             loc, dim_size_is_1, zero, output_index[dim]));
       } else {
         // we know this dim is not to be broadcasted at compile time

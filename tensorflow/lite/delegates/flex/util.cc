@@ -76,6 +76,8 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_DOUBLE;
     case kTfLiteInt16:
       return TF_INT16;
+    case kTfLiteUInt16:
+      return TF_UINT16;
     case kTfLiteInt32:
       return TF_INT32;
     case kTfLiteUInt32:
@@ -149,6 +151,8 @@ const char* TfLiteTypeToTfTypeName(TfLiteType type) {
       return "float";
     case kTfLiteInt16:
       return "int16";
+    case kTfLiteUInt16:
+      return "uint16";
     case kTfLiteInt32:
       return "int32";
     case kTfLiteUInt32:

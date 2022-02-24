@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_executable.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/platform/fingerprint.h"
 

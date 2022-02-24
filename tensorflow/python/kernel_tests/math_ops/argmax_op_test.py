@@ -118,6 +118,11 @@ class ArgMaxTest(test.TestCase):
     self._testTieBreaking(np.float64)
     self._testDim(np.float64)
 
+  def testInt16(self):
+    self._testBasic(np.int16)
+    self._testTieBreaking(np.int16)
+    self._testDim(np.int16)
+
   def testInt32(self):
     self._testBasic(np.int32)
     self._testTieBreaking(np.int32)

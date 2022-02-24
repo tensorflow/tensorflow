@@ -137,12 +137,16 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
   BaseFullyConnectedOpModel(
       TfLiteRegistration* registration, int units, int batches,
       const TensorData& input, const TensorData& output = {TensorType_FLOAT32},
+      const TensorType& bias_type = TensorType_FLOAT32,
       bool keep_num_dims = false, bool bias_tensor_optional = false,
       ActivationFunctionType activation_func = ActivationFunctionType_RELU,
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT,
-      bool add_bias_for_quantized = true, int input_size = -1)
-      : batches_(batches), units_(units), input_size_(input_size) {
+      int input_size = -1)
+      : batches_(batches),
+        units_(units),
+        input_size_(input_size),
+        bias_type_(bias_type) {
     if (input_size_ == -1) {
       // Calculate input_size_ from batch and input shape.
       int total_input_size = 1;
@@ -162,20 +166,15 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
 
     if (bias_tensor_optional) {
       bias_ = AddNullInput();
-    } else if (input.type == TensorType_FLOAT32) {
+    } else if (bias_type == TensorType_FLOAT32) {
       bias_ = AddInput({TensorType_FLOAT32, {units_}});
-    } else if (add_bias_for_quantized) {
+    } else {
       // This is a quantized version. The scale of 'bias' depends on the scales
       // of input and filter. Supposedly this is correctly set during quantized
       // training.
       auto bias_scale = GetScale(input_) * GetScale(weights_);
-      if (input.type == TensorType_INT16) {
-        TensorData bias{TensorType_INT64, {units_}, 0, 0, bias_scale};
-        bias_ = AddInput(bias);
-      } else {
-        TensorData bias{TensorType_INT32, {units_}, 0, 0, bias_scale};
-        bias_ = AddInput(bias);
-      }
+      TensorData bias{bias_type, {units_}, 0, 0, bias_scale};
+      bias_ = AddInput(bias);
     }
 
     output_ = AddOutput(output);
@@ -190,13 +189,9 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
                      .Union());
     resolver_ = absl::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
-    std::vector<std::vector<int>> inputs = {GetShape(input_),
-                                            GetShape(weights_)};
-    if (add_bias_for_quantized) {
-      inputs.push_back((bias_ == kTfLiteOptionalTensor) ? std::vector<int>()
-                                                        : GetShape(bias_));
-    }
-    BuildInterpreter(inputs);
+    BuildInterpreter({GetShape(input_), GetShape(weights_),
+                      (bias_ == kTfLiteOptionalTensor) ? std::vector<int>()
+                                                       : GetShape(bias_)});
   }
 
   int input_size() { return input_size_; }
@@ -212,6 +207,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
   int batches_;
   int units_;
   int input_size_;
+  TensorType bias_type_;
 };
 
 class FloatFullyConnectedOpModel : public BaseFullyConnectedOpModel {
@@ -236,13 +232,28 @@ class FloatFullyConnectedOpModel : public BaseFullyConnectedOpModel {
 class QuantizedFullyConnectedOpModel : public BaseFullyConnectedOpModel {
  public:
   using BaseFullyConnectedOpModel::BaseFullyConnectedOpModel;
+  QuantizedFullyConnectedOpModel(
+      TfLiteRegistration* registration, int units, int batches,
+      const TensorData& input, const TensorData& output = {TensorType_INT8},
+      const TensorType& bias_type = TensorType_INT32,
+      bool keep_num_dims = false, bool bias_tensor_optional = false,
+      ActivationFunctionType activation_func = ActivationFunctionType_RELU,
+      FullyConnectedOptionsWeightsFormat weights_format =
+          FullyConnectedOptionsWeightsFormat_DEFAULT,
+      int input_size = -1)
+      : BaseFullyConnectedOpModel(registration, units, batches, input, output,
+                                  bias_type, keep_num_dims,
+                                  bias_tensor_optional, activation_func,
+                                  weights_format, input_size) {}
 
   void SetBias(const std::vector<float>& data) {
-    QuantizeAndPopulate<int32_t>(bias_, data);
+    if (bias_type_ == TensorType_INT32) {
+      QuantizeAndPopulate<int32_t>(bias_, data);
+    } else {
+      QuantizeAndPopulate<int64_t>(bias_, data);
+    }
   }
-  void SetBias64(const std::vector<float>& data) {
-    QuantizeAndPopulate<int64_t>(bias_, data);
-  }
+
   template <typename T>
   void SetWeights(const std::vector<float>& data) {
     QuantizeAndPopulate<T>(weights_, data);
@@ -446,6 +457,7 @@ TEST(FloatFullyConnectedOpTest, SimpleTestNoBias) {
                                /*units=*/1, /*batches=*/2,
                                /*input=*/{TensorType_FLOAT32, {2, 2}},
                                /*output=*/{TensorType_FLOAT32},
+                               /*bias_type=*/TensorType_FLOAT32,
                                /*keep_num_dims=*/false,
                                /*bias_tensor_optional=*/true);
   m.SetWeights({
@@ -472,12 +484,12 @@ TEST(FloatFullyConnectedOpTest, SimpleTestEmptyOutput) {
                                /*units=*/1, /*batches=*/2,
                                /*input=*/{TensorType_FLOAT32, {0, 2}},
                                /*output=*/{TensorType_FLOAT32},
+                               /*bias_type=*/TensorType_FLOAT32,
                                /*keep_num_dims=*/false,
                                /*bias_tensor_optional=*/true,
                                /*activation_func=*/ActivationFunctionType_RELU,
                                /*weights_format=*/
                                FullyConnectedOptionsWeightsFormat_DEFAULT,
-                               /*add_bias_for_quantized=*/true,
                                /*input_size=*/2);
   m.SetWeights({
       2, 4,  // u = 0
@@ -523,11 +535,11 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedUint8NoBias) {
       GetRegistration(), /*units=*/3, /*batches*/ 2,
       /*input=*/{TensorType_UINT8, {2, 10}, -63.5, 64},
       /*output=*/{TensorType_UINT8, {}, -127, 128},
-      /*keep_num_dims =*/false, /*bool bias_tensor_optional =*/false,
+      /*bias_type=*/TensorType_INT32,
+      /*keep_num_dims =*/false, /*bool bias_tensor_optional =*/true,
       /*ActivationFunctionType activation_func =*/ActivationFunctionType_RELU,
       /*FullyConnectedOptionsWeightsFormat weights_format =*/
-      FullyConnectedOptionsWeightsFormat_DEFAULT,
-      /*add_bias_for_quantized =*/false);
+      FullyConnectedOptionsWeightsFormat_DEFAULT);
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<uint8_t>({
@@ -578,12 +590,13 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(23, 24, 25, 57, 58, 59));
 }
 
-TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16) {
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias32) {
   const float scale = 128.0 / 65536;
   QuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
       /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
-      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0});
+      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+      /*bias_type=*/TensorType_INT32);
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
@@ -591,7 +604,36 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16) {
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
   });
-  m.SetBias64({1, 2, 3});
+  m.SetBias({1, 2, 3});
+
+  m.SetInput<int16_t>({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+}
+
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias64) {
+  const float scale = 128.0 / 65536;
+  QuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
+      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+      /*bias_type=*/TensorType_INT64);
+
+  // input_product_scale < output_scale was not true.
+  m.SetWeights<int8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
 
   m.SetInput<int16_t>({
       1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
@@ -611,11 +653,11 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8NoBias) {
       GetRegistration(), /*units=*/3, /*batches*/ 2,
       /*input=*/{TensorType_INT8, {2, 10}, -63.5, 64},
       /*output=*/{TensorType_INT8, {}, -127, 128},
-      /*keep_num_dims =*/false, /*bool bias_tensor_optional =*/false,
+      /*bias_type=*/TensorType_INT32,
+      /*keep_num_dims =*/false, /*bool bias_tensor_optional =*/true,
       /*ActivationFunctionType activation_func =*/ActivationFunctionType_RELU,
       /*FullyConnectedOptionsWeightsFormat weights_format =*/
-      FullyConnectedOptionsWeightsFormat_DEFAULT,
-      /*add_bias_for_quantized =*/false);
+      FullyConnectedOptionsWeightsFormat_DEFAULT);
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
@@ -641,7 +683,8 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedOutputShape3DInt16) {
   QuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
       /*input=*/{TensorType_INT16, {1, 2, 10}, 0, 0, scale, 0},
-      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0});
+      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+      /*bias_type=*/TensorType_INT64);
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
@@ -649,7 +692,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedOutputShape3DInt16) {
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
   });
-  m.SetBias64({1, 2, 3});
+  m.SetBias({1, 2, 3});
 
   m.SetInput<int16_t>({
       1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
@@ -770,6 +813,7 @@ void SimpleTestQuantizedInt16OutputCase(
       /*input=*/
       {TensorType_UINT8, {batches, input_depth}, kInputMin, kInputMax},
       /*output=*/{TensorType_INT16, {}, kOutputMin, kOutputMax},
+      /*bias_type=*/TensorType_INT32,
       /*keep_num_dims=*/false,
       /*bias_tensor_optional=*/false,
       /*activation_func=*/ActivationFunctionType_NONE, weights_format);
@@ -1071,6 +1115,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput4DOutput) {
                                /*units=*/3, /*batches=*/2,
                                /*input=*/{TensorType_FLOAT32, {1, 2, 1, 10}},
                                /*output=*/{TensorType_FLOAT32},
+                               /*bias_type=*/TensorType_FLOAT32,
                                /*keep_num_dims=*/true);
   m.SetWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
@@ -1105,6 +1150,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInputInvalidShape) {
                    GetRegistration(), /*units=*/3, /*batches=*/2,
                    /*input=*/{TensorType_FLOAT32, {4, 1, 5, 1}},
                    /*output=*/{TensorType_FLOAT32},
+                   /*bias_type=*/TensorType_FLOAT32,
                    /*keep_num_dims=*/true),
                "Cannot allocate tensors");
 }

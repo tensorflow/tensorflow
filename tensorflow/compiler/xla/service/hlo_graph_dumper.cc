@@ -1899,7 +1899,11 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
   </style>
 </head>
 <body>
-  $JS_INCLUDE
+  <script src="https://www.gstatic.com/external_hosted/hpcc_js_wasm/index.min.js"
+      integrity="sha384-LigJPbR3TOfU/Xbb+PjiN1dGJYPweLk7kiGnaMgmxnUmKWaCFKbb5tH6iLlyVhPZ"
+      crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/external_hosted/svg_pan_zoom/svg-pan-zoom.js">
+  </script>
 
   <title>Fusion Explorer: $TITLE</title>
   <div id='rendered'><center>Loading...</center></div>
@@ -2040,8 +2044,7 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
   </body>
 </html>
   )",
-      {{"$JS_INCLUDE", kRenderDotJS},
-       {"$DOTS", dot_graphs_compressed},
+      {{"$DOTS", dot_graphs_compressed},
        {"$FRAMES", frames},
        {"$TITLE",
         absl::StrCat(computation.parent()->name(), "_", computation.name())}});

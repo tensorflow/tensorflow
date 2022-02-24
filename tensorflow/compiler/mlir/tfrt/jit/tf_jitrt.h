@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_TF_JITRT_H_
 
+#include <string>
 #include <utility>
 
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
+#include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -30,6 +33,11 @@ limitations under the License.
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 
 namespace tensorflow {
+
+// Record JitRt kernel compilation time for a given session name.
+void RecordCompileTime(const std::string& model_name, const std::string& kernel,
+                       absl::optional<size_t> specialization,
+                       absl::Duration compile_time);
 
 // A set of helper classes to convert results returned from the compiled
 // functions (memrefs or async memrefs) to the Tensorflow Tensors that can be
@@ -127,11 +135,8 @@ struct ConvertTensor {
     // Convert TFRT data type into Tensorflow data type.
     auto dtype = tfd::GetTfDataType(tfrt::GetDType<T>());
 
-    // Build a Tensorflow TensorShape from memref sizes. It should never fail.
-    TensorShape shape;
-    auto st = TensorShapeUtils::MakeShape(memref_sizes, &shape);
-    assert(st.ok() && "failed to build a TensorShape from memref sizes");
-    (void)st;
+    // Build a Tensorflow TensorShape from memref sizes.
+    TensorShape shape(memref_sizes);
 
     // Check if returned memref already has corresponding runtime tensor.
     auto it = ctx.runtime_tensors.find(memref->data);
@@ -157,7 +162,7 @@ struct ConvertTensor {
     // This is a newly allocated memref, and we need to wrap it into the runtime
     // tensor buffer to pass it back to the caller as a Tensor.
     size_t size = sizeof(T);
-    for (int i = 0; i < rank; ++i) size *= memref_sizes[i];
+    for (int64_t dim : memref_sizes) size *= dim;
 
     // Create a TensorBuffer from the returned memref.
     TF_ANNOTATE_MEMORY_IS_INITIALIZED(memref->data, size);
@@ -171,14 +176,14 @@ struct ConvertTensor {
 
     // Keep track of memrefs already used to construct runtime tensors.
     if (--ctx.num_pending_results > 0)
-      ctx.runtime_tensors.insert({memref->data, buffer});
+      ctx.runtime_tensors.try_emplace(memref->data, buffer);
 
     // Incorrect alignment will lead to a segfault in the downstream Tensorflow
     // kernels, check it before returning to the runtime.
     if (internal::IsStaticStorageDuration(memref)) {
-      CHECK(tensor.IsAligned()) << "global memref is not aligned";
+      DCHECK(tensor.IsAligned()) << "global memref is not aligned";
     } else {
-      CHECK(tensor.IsAligned()) << "allocated memref is not aligned";
+      DCHECK(tensor.IsAligned()) << "allocated memref is not aligned";
     }
 
     return tensor;

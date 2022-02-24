@@ -44,11 +44,11 @@ using mlir::AffineExpr;
 using mlir::AffineMap;
 using mlir::failure;
 using mlir::FuncOp;
-using mlir::FunctionPass;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::OpBuilder;
+using mlir::OperationPass;
 using mlir::RankedTensorType;
 using mlir::ShapeComponentAnalysis;
 using mlir::success;
@@ -301,8 +301,8 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 
     // Symbolic shape analysis might have given us an i32 or i64. Cast to index.
     if (!output_dyn_dim.getType().isIndex())
-      output_dyn_dim = rewriter.create<IndexCastOp>(loc, output_dyn_dim,
-                                                    rewriter.getIndexType());
+      output_dyn_dim = rewriter.create<IndexCastOp>(
+          loc, rewriter.getIndexType(), output_dyn_dim);
 
     output_dyn_dimensions.push_back(output_dyn_dim);
   }
@@ -343,18 +343,18 @@ struct SymbolicShapeOptimizationPass
     this->optimize_only_constraints = constraints_only;
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     MLIRContext* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
 
     // Rewrite constraints based on the symbolic shapes.
-    patterns.insert<CstrBroadcastableOpLowering>(ctx);
+    patterns.add<CstrBroadcastableOpLowering>(ctx);
     // Rewrite shape.broadcast based on the symbolic shapes.
-    patterns.insert<BroadcastOpLowering>(ctx);
+    patterns.add<BroadcastOpLowering>(ctx);
 
     // Rewrite broadcasts based on the symbolic shapes if enabled.
     if (!optimize_only_constraints)
-      patterns.insert<DynamicBroadcastInDimOpLowering>(ctx);
+      patterns.add<DynamicBroadcastInDimOpLowering>(ctx);
 
     // Add shape dialect canonicalization patterns to fold shape operations
     // after constraints are replaced with constant witness.
@@ -363,7 +363,7 @@ struct SymbolicShapeOptimizationPass
         op.getCanonicalizationPatterns(patterns, ctx);
     }
 
-    if (failed(mlir::applyPatternsAndFoldGreedily(getFunction(),
+    if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
                                                   std::move(patterns)))) {
       return signalPassFailure();
     }
@@ -372,7 +372,7 @@ struct SymbolicShapeOptimizationPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateSymbolicShapeOptimizationPass(
+std::unique_ptr<OperationPass<FuncOp>> CreateSymbolicShapeOptimizationPass(
     bool constraints_only) {
   return std::make_unique<SymbolicShapeOptimizationPass>(constraints_only);
 }

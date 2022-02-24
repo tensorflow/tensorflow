@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_LHLO_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_LHLO_UTILS_H_
+#ifndef MLIR_HLO_UTILS_LHLO_UTILS_H
+#define MLIR_HLO_UTILS_LHLO_UTILS_H
 
 #include "llvm/ADT/SmallSet.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -97,4 +97,4 @@ static LogicalResult VerifyAllReduce(OpT op) {
 }  // namespace lmhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_LHLO_UTILS_H_
+#endif  // MLIR_HLO_UTILS_LHLO_UTILS_H
