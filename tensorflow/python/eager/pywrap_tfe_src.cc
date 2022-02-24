@@ -3352,7 +3352,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
                 skip_input_indices.reset(Py_None);
               }
               tensorflow::Safe_PyObjectPtr callback_args(Py_BuildValue(
-                  "OOOO0OOOO", op_name, attrs, device, num_inputs, op_inputs, op_outputs,
+                  "OOOOOOOOO", op_name, attrs, device, num_inputs, op_inputs, op_outputs,
                   output_grads, skip_input_indices.get(),
                   forward_pass_name_scope));
 
