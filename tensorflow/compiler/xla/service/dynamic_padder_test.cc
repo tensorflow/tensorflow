@@ -175,7 +175,7 @@ TEST_F(DynamicPadderTest, ReduceTest) {
   // Set up dynamic parameter binding.
   TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
       DynamicParameterBinding::DynamicParameter{1, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
+      DynamicParameterBinding::DynamicDimension{0, {}, 2}));
 
   TF_ASSERT_OK(RunPadder().status());
 
@@ -899,7 +899,7 @@ ENTRY main {
   param_0 = s32[3, 3] parameter(0)
   size = s32[] constant(2)
   param_padded_0 = s32[<=3, 3] set-dimension-size(param_0, size), dimensions={0}
-  param_padded_1 = s32[<=3, <=3] set-dimension-size(param_padded_0, size), 
+  param_padded_1 = s32[<=3, <=3] set-dimension-size(param_padded_0, size),
     dimensions={1}
   ROOT %reverse = s32[<=3, <=3]
     reverse(s32[<=3, <=3] param_padded_1),

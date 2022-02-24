@@ -3408,7 +3408,6 @@ cc_library(
         ":hlo_creation_utils",
         ":hlo_dce",
         ":hlo_pass",
-        ":hlo_verifier",
         ":pattern_matcher",
         ":shape_inference",
         "//tensorflow/compiler/xla:comparison_util",
@@ -3425,6 +3424,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
