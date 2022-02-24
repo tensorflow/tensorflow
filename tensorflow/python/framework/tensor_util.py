@@ -542,9 +542,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
     try:
       str_values = [compat.as_bytes(x) for x in proto_values]
     except TypeError:
-      raise TypeError(f"Failed to convert elements of {values} to Tensor. "
-                      "Consider casting elements to a supported type. See "
-                      "https://www.tensorflow.org/api_docs/python/tf/dtypes "
+      raise TypeError(f"Failed to convert elements of {values.__class__.__name__} "
+                      " to Tensor.Consider casting elements to a supported type. "
+                      "See https://www.tensorflow.org/api_docs/python/tf/dtypes "
                       "for supported TF dtypes.")
     tensor_proto.string_val.extend(str_values)
     return tensor_proto
