@@ -4084,7 +4084,7 @@ tf_python_pybind_extension(
 )
 
 # TODO(b/220191419): Move this build rule back to tensorflow/core/function/BUILD.
-# TODO(mdan): Get rid of if_static, it's nonstandard.
+# TODO(b/221223841): Get rid of if_static, it's nonstandard.
 tf_python_pybind_extension(
     name = "runtime_client_pybind",
     srcs = ["//tensorflow/core/function:runtime_client_pybind.cc"],
