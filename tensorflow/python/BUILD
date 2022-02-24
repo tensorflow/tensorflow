@@ -830,6 +830,10 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "random_index_shuffle_ops_gen",
+)
+
+tf_gen_op_wrapper_private_py(
     name = "list_ops_gen",
 )
 
@@ -2177,6 +2181,7 @@ py_library(
     deps = [
         ":array_ops",
         ":math_ops",
+        ":random_index_shuffle_ops_gen",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
         "//tensorflow/python/framework:dtypes",
