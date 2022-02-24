@@ -258,6 +258,33 @@ TEST_P(ConvolutionOpTest, SimpleTestFloat32WithChannels) {
                              }));
 }
 
+TEST_P(ConvolutionOpTest, SimpleTestFloat32WithChannelsGrouped) {
+  ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 2, 2}},
+                       {TensorType_FLOAT32, {2, 2, 2, 1}},  // 2 groups.
+                       {TensorType_FLOAT32, {}});
+
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      3, 3, 3, 3,  // row = 1
+      4, 4, 4, 4   // row = 2
+  });
+  m.SetFilter({
+      1, 1, 1, 1,      // first 2x2 filter
+      -1, -1, -1, -1,  // second 2x2 filter
+  });
+  m.SetBias({1, 2});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 7, -4,    // first batch
+                                 15, -12,  // second batch
+                             }));
+}
+
 TEST_P(ConvolutionOpTest, InputAndFilterSameWidthHeight) {
   ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
                        {TensorType_FLOAT32, {1, 2, 4, 1}},
@@ -923,6 +950,40 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantized) {
                                  145, 129, 132,  //
                                  144, 131, 130,  //
                                  164, 131, 130,  //
+                             }));
+}
+
+TEST_P(ConvolutionOpTest, SimpleTestQuantizedGrouped) {
+  QuantizedConvolutionOpModel m(GetRegistration(),
+                                {TensorType_UINT8, {2, 2, 2, 2}, -63.5, 64},
+                                {TensorType_UINT8, {2, 2, 2, 1}, -63.5, 64},
+                                {TensorType_UINT8, {}, -127, 128});
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetFilter({
+      1, 2, 3, 4,    // first 2x2 filter
+      -1, 1, -1, 1,  // second 2x2 filter
+  });
+  m.SetBias({1, 2});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear(
+                                            {
+                                                18, 2,  // first batch
+                                                23, 6   // second batch
+                                            },
+                                            1e-5)));
+  // For good  measure, let's also verify the quantized values:
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 145, 129,  //
+                                 150, 133,  //
                              }));
 }
 
@@ -1729,6 +1790,51 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridPerChannel) {
                                      18, 2, 5,  // first batch, right
                                      17, 4, 3,  // second batch, left
                                      37, 4, 3,  // second batch, right
+                                 },
+                                 0.16)));
+}
+
+TEST_P(ConvolutionOpTest, SimpleTestHybridPerChannelGrouped) {
+  float scale = 4.0 / 127.0;
+  float scale2 = 1.0 / 127.0;
+  HybridPerChannelConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
+      {TensorType_INT8,
+       {4, 2, 2, 2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{scale, scale2, scale2, scale2},
+       /*per_channel_quantization_offsets=*/{0, 0, 0, 0},
+       /*channel_index=*/0},
+      {TensorType_FLOAT32, {}});
+
+  m.SetInput({
+      // First batch
+      0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,  // row = 1
+      1, 1, 1, 1, 1, 1, 1, 1,                  // row = 2
+      // Second batch
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2,  // row = 1
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2   // row = 2
+  });
+  m.SetSignedFilter({
+      1,  1,  2,  2,  3,  3,  4,  4,  // first 2x2 filter
+      -1, -1, 1,  1,  -1, -1, 1,  1,  // second 2x2 filter
+      -1, -1, -1, -1, 1,  1,  1,  1,  // third 2x2 filter
+      1,  1,  1,  1,  -1, -1, -1, -1  // forth 2x2 filter
+  });
+  m.SetBias({1, 2, 3, 4});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     18, 2, 5, 2,  //
+                                     18, 2, 5, 2,  //
+                                     17, 4, 3, 4,  //
+                                     37, 4, 3, 4,  //
                                  },
                                  0.16)));
 }
