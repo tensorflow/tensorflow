@@ -10,7 +10,7 @@ package(
 
 filegroup(
     name = "quantized_function_library_mlir",
-    srcs = ["quantized_function_library.mlir"],
+    srcs = ["passes/quantized_function_library.mlir"],
 )
 
 cc_library(
@@ -142,8 +142,8 @@ cc_library(
 )
 
 tf_cc_binary(
-    name = "tf-opt-quant",
-    srcs = ["passes/tf_opt_quant.cc"],
+    name = "tf-quant-opt",
+    srcs = ["passes/tf_quant_opt.cc"],
     deps = [
         ":passes",
         "//tensorflow/compiler/mlir:init_mlir",
