@@ -4769,7 +4769,7 @@ port::Status CudnnSupport::GetConvolveRunners(
 
   return CreateOpRunners<dnn::ConvSignature>(
       stream, cudnn, parent_, cudnn_.get(), std::move(op_graph), kind,
-      input_type, kUnfusedConvUids, use_fallback, out_exec_plans);
+      input_type, {'x', 'w', 'y'}, use_fallback, out_exec_plans);
 #else
   return port::UnimplementedError(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");
@@ -5217,7 +5217,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
 
   return CreateOpRunners<dnn::FusedConvSignature>(
       stream, cudnn, parent_, cudnn_.get(), std::move(op_graph), kind,
-      input_type, kFusedConvUids, use_fallback, out_exec_plans);
+      input_type, {'x', 'w', 'z', 'b', 'y'}, use_fallback, out_exec_plans);
 #else
   return port::UnimplementedError(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");
