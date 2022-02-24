@@ -379,7 +379,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   const HloInstruction* rhs = instr->operand(1);
 
   // Don't run autotuning concurrently on the same GPU.
-  tensorflow::mutex_lock gpu_lock = LockGpu(stream->parent());
+  absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
   const int32_t cublas_autotune_level =
       hlo_module_config.debug_options().xla_gpu_autotune_level();
