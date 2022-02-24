@@ -12,7 +12,7 @@ func @reuse_input_buffer(%arg0: index) -> memref<?x10xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc
   %0 = memref.alloc(%arg0) : memref<?x10xf32>
   %1 = memref.alloc(%arg0) : memref<?x10xf32>
-  linalg.fill(%cst_0, %0) : f32, memref<?x10xf32>
+  linalg.fill ins(%cst_0 : f32) outs(%0 : memref<?x10xf32>)
 
   // CHECK: linalg.generic
   // CHECK-SAME: ins(%[[IN]] :  memref<?x10xf32>)
@@ -45,7 +45,7 @@ func @user_before_generic(%arg0: index) -> memref<?x?xf32> {
   // CHECK: %[[CASTED_OUT:.*]] = memref.cast
   %0 = memref.alloc(%arg0) : memref<?x10xf32>
   %1 = memref.alloc(%arg0) : memref<?x10xf32>
-  linalg.fill(%cst_0, %0) : f32, memref<?x10xf32>
+  linalg.fill ins(%cst_0 : f32) outs(%0 : memref<?x10xf32>)
   %2 = memref.cast %1 : memref<?x10xf32> to memref<?x?xf32>
 
   // CHECK: linalg.generic
@@ -79,7 +79,7 @@ func @non_identity_input_indexing_map(%arg0: index) -> memref<?x10xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc
   %0 = memref.alloc(%arg0) : memref<?x10xf32>
   %1 = memref.alloc(%arg0) : memref<?x10xf32>
-  linalg.fill(%cst_0, %0) : f32, memref<?x10xf32>
+  linalg.fill ins(%cst_0 : f32) outs(%0 : memref<?x10xf32>)
 
   // CHECK: linalg.generic
   // CHECK-SAME: ins(%[[IN]] :  memref<?x10xf32>)
@@ -112,7 +112,7 @@ func @non_contiguous_input_memref(%arg0: index) -> memref<?x10xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc
   %0 = memref.alloc(%arg0) : memref<?x10xf32, #map1>
   %1 = memref.alloc(%arg0) : memref<?x10xf32>
-  linalg.fill(%cst_0, %0) : f32, memref<?x10xf32, #map1>
+  linalg.fill ins(%cst_0 : f32) outs(%0 : memref<?x10xf32, #map1>)
 
   // CHECK: linalg.generic
   // CHECK-SAME: ins(%[[IN]] :  memref<?x10xf32, #map
@@ -145,7 +145,7 @@ func @non_identity_same_size(%arg0: index) -> memref<?x10xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc
   %0 = memref.alloc(%arg0) : memref<?x10xf32>
   %1 = memref.alloc(%arg0) : memref<?x10xf32>
-  linalg.fill(%cst_0, %0) : f32, memref<?x10xf32>
+  linalg.fill ins(%cst_0 : f32) outs(%0 : memref<?x10xf32>)
 
   // CHECK: linalg.generic
   // CHECK-SAME: ins(%[[IN]] :  memref<?x10xf32>)
@@ -179,7 +179,7 @@ func @non_identity_different_size(%arg0: index, %arg1: index)
   // CHECK: %[[OUT:.*]] = memref.alloc
   %0 = memref.alloc(%arg0) : memref<?x10xf32>
   %1 = memref.alloc(%arg1) : memref<?x10xf32>
-  linalg.fill(%cst_0, %0) : f32, memref<?x10xf32>
+  linalg.fill ins(%cst_0 : f32) outs(%0 : memref<?x10xf32>)
 
   // CHECK: linalg.generic
   // CHECK-SAME: ins(%[[IN]] :  memref<?x10xf32>)
@@ -211,7 +211,7 @@ func @identity_different_size(%arg0: index, %arg1: index) -> memref<?x10xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc
   %0 = memref.alloc(%arg0) : memref<?x10xf32>
   %1 = memref.alloc(%arg1) : memref<?x10xf32>
-  linalg.fill(%cst_0, %0) : f32, memref<?x10xf32>
+  linalg.fill ins(%cst_0 : f32) outs(%0 : memref<?x10xf32>)
 
   // CHECK: linalg.generic
   // CHECK-SAME: ins(%[[IN]] :  memref<?x10xf32>)
