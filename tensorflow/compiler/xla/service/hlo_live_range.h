@@ -96,7 +96,9 @@ class HloLiveRange {
   }
 
   // Returns the time stamp of the end of the program.
-  LogicalTime schedule_end_time() const { return schedule_end_time_; }
+  LogicalTime schedule_end_time() const {
+    return flattened_instruction_sequence_.size();
+  }
 
   // Returns whether hlo live range is available on this entire module. Hlo live
   // range is not available if the module is partially ordered.
@@ -114,10 +116,8 @@ class HloLiveRange {
   // recurse into each called computations in module_scoped_analysis mode. As it
   // walks it also tracks down the ordinal number of each instruction in the
   // schedule and store it in the `instruction_schedule` and
-  // 'flattened_instruction_sequence`. The end of each computation is tracked in
-  // `computation_end_time`.
-  int64_t FlattenSchedule(const HloComputation& computation,
-                          int64_t start_time);
+  // 'flattened_instruction_sequence`.
+  void FlattenSchedule(const HloComputation& computation);
 
   // Based on the flattened schedule, calculate the start and end of each
   // buffer.
@@ -213,7 +213,6 @@ class HloLiveRange {
   absl::flat_hash_map<const HloInstruction*, int64_t> instruction_schedule_;
   absl::flat_hash_map<const HloComputation*, TimeBound> computation_span_times_;
   absl::flat_hash_map<const HloValue*, TimeBound> buffer_live_ranges_;
-  LogicalTime schedule_end_time_;
 };
 
 }  // namespace xla
