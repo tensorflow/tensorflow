@@ -140,8 +140,8 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
                                       densify_filter_outputs.size())));
   }
 
-  const std::vector<int32_t> filter_shape = {OutputChannels(), KernelHeight(),
-                                             KernelWidth(), InputChannels()};
+  const std::vector<int32_t> filter_shape = {
+      OutputChannels(), KernelHeight(), KernelWidth(), KernelInputChannels()};
   const std::vector<int32_t> bias_shape = {OutputChannels()};
   std::vector<float> filter_scales;
   std::vector<int64_t> filter_zero_points;
@@ -151,7 +151,7 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
 
     std::vector<uint16_t> filter_data(OutputChannels() * KernelHeight() *
-                                      KernelWidth() * InputChannels());
+                                      KernelWidth() * KernelInputChannels());
     std::vector<uint16_t> bias_data(OutputChannels());
     for (int32_t oc = 0; oc < OutputChannels(); oc++) {
       // Use the same range of all-positive or all-negative values to generate
@@ -165,12 +165,12 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
                                   std::min(range, 0.0f), std::max(range, 0.0f)),
                               std::ref(rng)));
       bias_data[oc] = value_rng();
-      for (int32_t ic = 0; ic < InputChannels(); ic++) {
+      for (int32_t ic = 0; ic < KernelInputChannels(); ic++) {
         for (int32_t y = 0; y < KernelHeight(); y++) {
           for (int32_t x = 0; x < KernelWidth(); x++) {
             const int32_t index =
                 ((oc * KernelHeight() + y) * KernelWidth() + x) *
-                    InputChannels() +
+                    KernelInputChannels() +
                 ic;
             filter_data[index] = value_rng();
           }
@@ -209,7 +209,7 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
                                       dequantize_bias_outputs.size())));
   } else {
     std::vector<float> filter_data(OutputChannels() * KernelHeight() *
-                                   KernelWidth() * InputChannels());
+                                   KernelWidth() * KernelInputChannels());
     std::vector<float> bias_data(OutputChannels());
     for (int32_t oc = 0; oc < OutputChannels(); oc++) {
       // Use the same range of all-positive or all-negative values to generate
@@ -222,12 +222,12 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
                         std::min(range, 0.0f), std::max(range, 0.0f)),
                     std::ref(rng));
       bias_data[oc] = value_rng();
-      for (int32_t ic = 0; ic < InputChannels(); ic++) {
+      for (int32_t ic = 0; ic < KernelInputChannels(); ic++) {
         for (int32_t y = 0; y < KernelHeight(); y++) {
           for (int32_t x = 0; x < KernelWidth(); x++) {
             const int32_t index =
                 ((oc * KernelHeight() + y) * KernelWidth() + x) *
-                    InputChannels() +
+                    KernelInputChannels() +
                 ic;
             filter_data[index] = value_rng();
           }
