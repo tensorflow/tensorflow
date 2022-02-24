@@ -5701,44 +5701,6 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
   }
 };
 
-// Converts the tf.Sign op into mhlo.sign
-// TODO(disc): To recover static special case's performance with folding and
-// canonicalization.
-class ConvertSignOpDynamic : public OpRewritePattern<TF::SignOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::SignOp op,
-                                PatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    Value x = op.x();
-    auto x_type = x.getType().dyn_cast<RankedTensorType>();
-    if (!x_type) return failure();
-    // TODO(disc): Remove this constraint once fold and canonicalization
-    // implemented.
-    if (x_type.hasStaticShape()) return failure();
-
-    Value hlo_sign = rewriter.create<mhlo::SignOp>(loc, x);
-    const StringAttr kNe = rewriter.getStringAttr(
-        mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
-    Value hlo_cmp = rewriter.create<mhlo::CompareOp>(loc, x, x, kNe);
-
-    auto zero =
-        GetScalarConstOfType(x_type.getElementType(), loc, 0, &rewriter);
-    Value shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), x);
-
-    auto broadcast_dims_attr =
-        GetI64ElementsAttr(ArrayRef<int64_t>({}), &rewriter);
-    Value broadcasted_zero = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
-        loc, x_type, zero, shape_op, broadcast_dims_attr);
-
-    auto hlo_select = rewriter.create<mhlo::SelectOp>(
-        loc, hlo_cmp, broadcasted_zero, hlo_sign);
-
-    rewriter.replaceOp(op, hlo_select.getResult());
-    return success();
-  }
-};
-
 // Converts the tf.SigmoidGradOp
 // TODO(disc): To recover static special case's performance with folding and
 // canonicalization.
@@ -7371,7 +7333,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertSliceOpDynamic,
     ConvertTileOpDynamic,
     ConvertUnpackOpDynamic,
-    ConvertSignOpDynamic,
     ConvertSigmoidGradOpDynamic,
     ConvertConv2DDynamic,
     ConvertPadOpDynamic,
