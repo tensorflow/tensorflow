@@ -207,6 +207,18 @@ def VectorizeTiledOps : Pass<"tf-jitrt-vectorize-tiled-ops", "mlir::FuncOp"> {
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
+def TileTranspose : Pass<"tf-jitrt-tile-transpose", "mlir::FuncOp"> {
+  let summary = "Tile transpose operations";
+  let constructor = "tensorflow::CreateTileTransposePass()";
+  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+}
+
+def LowerTranspose : Pass<"tf-jitrt-lower-vector-transpose", "mlir::FuncOp"> {
+  let summary = "Lower vector transpose operations";
+  let constructor = "tensorflow::CreateLowerVectorTransposePass()";
+  let dependentDialects = ["mlir::vector::VectorDialect, mlir::LLVM::LLVMDialect"];
+}
+
 def RewriteVectorMultiReductionPass :
     Pass<"tf-jitrt-rewrite-vector-multi-reduction", "mlir::FuncOp"> {
   let summary = "Convert `vector.multi_reduction` into `vector.reduction` ops.";

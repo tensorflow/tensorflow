@@ -2321,6 +2321,123 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
         self.evaluate(v)
 
 
+class InternalPadToBoundingBoxTest(test_util.TensorFlowTestCase,
+                                   parameterized.TestCase):
+
+  def _InternalPadToBoundingBox(self, x, offset_height, offset_width,
+                                target_height, target_width, use_tensor_inputs):
+    if use_tensor_inputs:
+      offset_height = ops.convert_to_tensor(offset_height)
+      offset_width = ops.convert_to_tensor(offset_width)
+      target_height = ops.convert_to_tensor(target_height)
+      target_width = ops.convert_to_tensor(target_width)
+      x_tensor = ops.convert_to_tensor(x)
+    else:
+      x_tensor = x
+
+    @def_function.function
+    def pad_bbox(*args):
+      return image_ops.pad_to_bounding_box_internal(*args, check_dims=False)
+
+    with self.cached_session():
+      return self.evaluate(
+          pad_bbox(x_tensor, offset_height, offset_width, target_height,
+                   target_width))
+
+  def _assertReturns(self,
+                     x,
+                     x_shape,
+                     offset_height,
+                     offset_width,
+                     y,
+                     y_shape,
+                     use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    target_height, target_width, _ = y_shape
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      y_tf = self._InternalPadToBoundingBox(x, offset_height, offset_width,
+                                            target_height, target_width,
+                                            use_tensor_inputs)
+      self.assertAllClose(y, y_tf)
+
+  def _assertShapeInference(self, pre_shape, height, width, post_shape):
+    image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
+    y = image_ops.pad_to_bounding_box_internal(
+        image, 0, 0, height, width, check_dims=False)
+    self.assertEqual(y.get_shape().as_list(), post_shape)
+
+  def testInt64(self):
+    x = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    x_shape = [3, 3, 1]
+
+    y = [0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    y_shape = [4, 3, 1]
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    i = constant_op.constant([1, 0, 4, 3], dtype=dtypes.int64)
+    y_tf = image_ops.pad_to_bounding_box_internal(
+        x, i[0], i[1], i[2], i[3], check_dims=False)
+    with self.cached_session():
+      self.assertAllClose(y, self.evaluate(y_tf))
+
+  def testNoOp(self):
+    x_shape = [10, 10, 10]
+    x = np.random.uniform(size=x_shape)
+    offset_height, offset_width = [0, 0]
+    self._assertReturns(x, x_shape, offset_height, offset_width, x, x_shape)
+
+  def testPadding(self):
+    x = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    x_shape = [3, 3, 1]
+
+    offset_height, offset_width = [1, 0]
+    y = [0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    y_shape = [4, 3, 1]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
+
+    offset_height, offset_width = [0, 1]
+    y = [0, 1, 2, 3, 0, 4, 5, 6, 0, 7, 8, 9]
+    y_shape = [3, 4, 1]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
+
+    offset_height, offset_width = [0, 0]
+    y = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0]
+    y_shape = [4, 3, 1]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
+
+    offset_height, offset_width = [0, 0]
+    y = [1, 2, 3, 0, 4, 5, 6, 0, 7, 8, 9, 0]
+    y_shape = [3, 4, 1]
+    self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
+
+  def testShapeInference(self):
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+      self._assertShapeInference(None, 55, 66, [55, 66, None])
+
+  def testNameScope(self):
+    # Testing name scope requires a graph.
+    with ops.Graph().as_default():
+      image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
+      y = image_ops.pad_to_bounding_box_internal(
+          image, 0, 0, 55, 66, check_dims=False)
+      self.assertTrue(y.op.name.startswith("pad_to_bounding_box"))
+
+
 class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
 
   def _testSampleDistortedBoundingBox(self, image, bounding_box,
@@ -2689,6 +2806,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
             image_size=[50, 50, 1], bounding_boxes=[[[0., 0., 1., 1.]]])
       image_ops_impl.sample_distorted_bounding_box(
           image_size=[50, 50, 1], bounding_boxes=[[[0., 0., 1., 1.]]], seed=1)
+
 
 class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
 

@@ -1600,7 +1600,8 @@ def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
   let hasVerifier = 1;
 }
 
-def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]> {
+def HLO_DotOp: HLO_Op<"dot",
+    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Dot operator";
   let description = [{
     Performs dot products between vectors, vector/matrix and matrix/matrix
@@ -1618,6 +1619,12 @@ def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]> {
   // to Xla builder.
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]> {

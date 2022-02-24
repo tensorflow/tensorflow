@@ -72,7 +72,7 @@ struct PeelTiledLoopsPass : public PeelTiledLoopsBase<PeelTiledLoopsPass> {
     (void)applyPatternsAndFoldGreedily(func_op, std::move(canonicalizations));
 
     mlir::RewritePatternSet loop_peeling(func_op.getContext());
-    loop_peeling.insert<PeelTiledLoop>(func_op.getContext());
+    loop_peeling.add<PeelTiledLoop>(func_op.getContext());
     (void)applyPatternsAndFoldGreedily(func_op, std::move(loop_peeling));
 
     func_op->walk([&](mlir::linalg::TiledLoopOp op) {

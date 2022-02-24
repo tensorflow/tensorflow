@@ -34,7 +34,7 @@ package_group(
     packages = [
         # Edge TPU compiler needs to use some compiler passes from kernel_gen.
         "//platforms/darwinn/compiler/...",
-        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/...",
         "//tensorflow/core/kernels/mlir_generated/...",
     ],
 )

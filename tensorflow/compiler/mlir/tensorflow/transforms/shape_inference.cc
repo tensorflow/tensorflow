@@ -22,6 +22,7 @@ limitations under the License.
 #include <queue>
 #include <stack>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -779,6 +780,9 @@ class ShapeInference {
   // update the subtypes of the resource type.
   bool InferShapeForVarHandleOp(VarHandleOp op);
 
+  // Infers the output shape of XlaConvOp based on the input shapes
+  bool InferShapeForXlaConvOp(XlaConvOp op);
+
   // Infers the output shape of XlaReduceWindowOp based on the input shapes.
   bool InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op);
 
@@ -1492,6 +1496,268 @@ bool ShapeInference::InferShapeForXlaSelectAndScatterOp(
                           op.operand().getType());
 }
 
+llvm::Optional<RankedTensorType> InferXlaConvOutputShape(
+    llvm::SmallVector<int64_t> input_tensor_dims,
+    llvm::SmallVector<int64_t> kernel_tensor_dims,
+    llvm::SmallVector<int64_t> window_strides,
+    llvm::SmallVector<std::pair<int64_t, int64_t>> paddings,
+    llvm::SmallVector<int64_t> lhs_dilations,
+    llvm::SmallVector<int64_t> rhs_dilations, int64_t batch_group_count,
+    xla::ConvolutionDimensionNumbers dnums, Type element_type) {
+  auto num_spatial_dims = input_tensor_dims.size() - 2;
+  std::vector<int64_t> output_dims(input_tensor_dims.size());
+
+  auto input_batch = input_tensor_dims[dnums.input_batch_dimension()];
+  auto kernel_output_feature =
+      kernel_tensor_dims[dnums.kernel_output_feature_dimension()];
+  output_dims[dnums.output_batch_dimension()] = input_batch / batch_group_count;
+  DCOMMENT("inferrd output batch dimension is "
+           << output_dims[dnums.output_batch_dimension()]);
+  output_dims[dnums.output_feature_dimension()] = kernel_output_feature;
+  DCOMMENT("inferrd output output_feature_dimension is "
+           << output_dims[dnums.output_feature_dimension()]);
+
+  std::vector<int64_t> input_spatial_dims;
+  llvm::SmallVector<int64_t> window_spatial_dims;
+  for (auto i = 0; i < num_spatial_dims; ++i) {
+    input_spatial_dims.push_back(
+        input_tensor_dims[dnums.input_spatial_dimensions(i)]);
+    window_spatial_dims.push_back(
+        kernel_tensor_dims[dnums.kernel_spatial_dimensions(i)]);
+  }
+
+  ShapedType base_shape =
+      RankedTensorType::get(input_spatial_dims, element_type);
+
+  auto window =
+      InferWindowFromDimensions(window_spatial_dims, window_strides, paddings,
+                                lhs_dilations, rhs_dilations);
+
+  auto output_shape =
+      InferWindowOutputShape(base_shape, window.getValue(), element_type);
+
+  for (auto i = 0; i < num_spatial_dims; ++i) {
+    output_dims[dnums.output_spatial_dimensions(i)] =
+        output_shape.getValue().getShape()[i];
+    DCOMMENT("inferrd output spatial dimension "
+             << i << " at dimension numebr "
+             << dnums.output_spatial_dimensions(i) << " is "
+             << output_dims[dnums.output_spatial_dimensions(i)]);
+  }
+  return RankedTensorType::get(output_dims, element_type);
+}
+
+// TODO(hanxiongwang): The logic in this function need move to Op Verify method
+// when dependecy issue of adding header file
+// "third_party/tensorflow/compiler/xla/xla_data.pb.h" into
+// "third_party/tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.cc" is
+// resolved
+LogicalResult PrecheckForXlaConvOp(XlaConvOp op) {
+  auto input_tensor = op.lhs();
+  auto kernel_tensor = op.rhs();
+  auto window_strides = op.window_strides();
+  auto padding = op.padding();
+  auto lhs_dilation = op.lhs_dilation();
+  auto rhs_dilation = op.rhs_dilation();
+  auto feature_group_count = op.feature_group_count();
+  // This batch_group_count is a placeholder. We do not have batch_group_count
+  // in XlaConvOp V1. By default, it is set to be 1. In XlaConvOpV2, we have it.
+  // Eventually we migrate to V2, we con reuse this variable with minor change
+  int64_t batch_group_count = 1;
+
+  auto input_args_have_static_shape = [&]() -> bool {
+    return input_tensor.getType().cast<TensorType>().hasStaticShape() &&
+           kernel_tensor.getType().cast<TensorType>().hasStaticShape() &&
+           window_strides.getType().cast<TensorType>().hasStaticShape() &&
+           padding.getType().cast<TensorType>().hasStaticShape() &&
+           lhs_dilation.getType().cast<TensorType>().hasStaticShape() &&
+           rhs_dilation.getType().cast<TensorType>().hasStaticShape() &&
+           feature_group_count.getType().cast<TensorType>().hasStaticShape();
+  };
+
+  // Return failure when one of the input args has not a static shape
+  if (!input_args_have_static_shape()) {
+    return failure();
+  }
+
+  auto input_tensor_shape =
+      input_tensor.getType().cast<RankedTensorType>().getShape();
+  auto kernel_tensor_shape =
+      kernel_tensor.getType().cast<RankedTensorType>().getShape();
+
+  if (input_tensor_shape.size() <= 2) {
+    return op.emitOpError()
+           << "input tensor argument is " << input_tensor_shape.size()
+           << " which is invalid, since input tensor argument must has a "
+           << "rank greater than 2.\n";
+  }
+
+  if (kernel_tensor_shape.size() <= 2) {
+    return op.emitOpError()
+           << "kernel tensor argument is " << kernel_tensor_shape.size()
+           << " which is invalid, since kernel tensor argument must has a "
+           << "rank greater than 2.\n";
+  }
+
+  if (input_tensor_shape.size() != kernel_tensor_shape.size()) {
+    return op.emitOpError() << "both input tensor and kernel tensor must "
+                            << "have same number of dimensions.\n";
+  }
+
+  DenseElementsAttr feature_group_count_attr;
+  xla::ConvolutionDimensionNumbers dnums;
+  dnums.ParseFromString(op.dimension_numbersAttr().getValue().str());
+  if (dnums.input_spatial_dimensions_size() !=
+      dnums.kernel_spatial_dimensions_size()) {
+    return op.emitOpError() << "Both arguments to convolution must have "
+                            << "same number of dimensions.\n";
+  }
+
+  if (dnums.input_spatial_dimensions_size() !=
+      dnums.output_spatial_dimensions_size()) {
+    return op.emitOpError() << "Both input and output of convolution must have "
+                            << "same number of dimensions.\n";
+  }
+  if (!matchPattern(feature_group_count,
+                    m_Constant(&feature_group_count_attr))) {
+    return success();
+  }
+
+  auto feature_group_count_val =
+      feature_group_count_attr.getValues<IntegerAttr>()[0].getInt();
+  auto input_features = input_tensor_shape[dnums.input_feature_dimension()];
+  auto input_batch = input_tensor_shape[dnums.input_batch_dimension()];
+  auto kernel_input_features =
+      kernel_tensor_shape[dnums.kernel_input_feature_dimension()];
+  auto kernel_output_features =
+      kernel_tensor_shape[dnums.kernel_output_feature_dimension()];
+
+  if (feature_group_count_val <= 0) {
+    return op.emitOpError()
+           << "feature_group_count must be a positive number, got "
+           << feature_group_count_val;
+  }
+
+  if (batch_group_count <= 0) {
+    return op.emitOpError()
+           << "batch_group_count must be a positive number, got "
+           << batch_group_count;
+  }
+  if (batch_group_count > 1 && feature_group_count_val > 1) {
+    return op.emitOpError()
+           << "both batch_group_count " << batch_group_count
+           << "and feature_group_count " << feature_group_count_val
+           << " cannot be greater than 1";
+  }
+  if (kernel_output_features % batch_group_count != 0) {
+    return op.emitOpError()
+           << "Expected output feature dimension size (value "
+           << kernel_output_features
+           << ") to be a multiple of batch group count " << batch_group_count;
+  }
+  if (input_features % feature_group_count_val != 0 ||
+      input_features / feature_group_count_val != kernel_input_features) {
+    return op.emitOpError()
+           << "Expected the size of kernel_input_features (value "
+           << kernel_input_features
+           << ") in rhs times feature_group_count (value "
+           << feature_group_count_val
+           << ") in lhs should equal the size of the z dimension (value "
+           << input_features << ") in lhs.\n";
+  }
+  if (kernel_output_features % feature_group_count_val > 0) {
+    return op.emitOpError() << "Expected output feature dimension (value "
+                            << kernel_output_features << ") to be divisible by "
+                            << "feature_group_count (value "
+                            << feature_group_count_val << ").\n";
+  }
+  if (input_batch % batch_group_count != 0) {
+    return op.emitOpError()
+           << "Expected input batch dimension (value " << input_batch
+           << " ) to be divisible by batch_group_count (value "
+           << batch_group_count << "); ";
+  }
+  return success();
+}
+
+bool ShapeInference::InferShapeForXlaConvOp(XlaConvOp op) {
+  DCOMMENT_OP(op, "Inferring shape for XlaConvOp");
+
+  bool changed = false;
+
+  if (PrecheckForXlaConvOp(op).failed()) {
+    return changed;
+  }
+
+  auto input_tensor = op.lhs();
+  auto kernel_tensor = op.rhs();
+  auto window_strides = op.window_strides();
+  auto padding = op.padding();
+  auto lhs_dilation = op.lhs_dilation();
+  auto rhs_dilation = op.rhs_dilation();
+  // This batch_group_count is a placeholder. We do not have batch_group_count
+  // in XlaConvOp V1. By default, it is set to be 1. In XlaConvOpV2, we have it.
+  // Eventually we migrate to V2, we con reuse this variable with minor change
+  int64_t batch_group_count = 1;
+
+  DenseIntElementsAttr window_strides_attr, padding_attr, lhs_dilation_attr,
+      rhs_dilation_attr;
+  if (matchPattern(window_strides, m_Constant(&window_strides_attr)) &&
+      matchPattern(padding, m_Constant(&padding_attr)) &&
+      matchPattern(lhs_dilation, m_Constant(&lhs_dilation_attr)) &&
+      matchPattern(rhs_dilation, m_Constant(&rhs_dilation_attr))) {
+    llvm::SmallVector<int64_t> input_tensor_dims_vec, kernel_tensor_dims_vec,
+        window_strides_vec, lhs_dilations_vec, rhs_dilations_vec;
+    llvm::SmallVector<std::pair<int64_t, int64_t>> padding_pairs(
+        padding_attr.getNumElements() / 2);
+    xla::ConvolutionDimensionNumbers dnums;
+    dnums.ParseFromString(op.dimension_numbersAttr().getValue().str());
+
+    auto input_tensor_shape = input_tensor.getType().cast<RankedTensorType>();
+    for (auto i = 0; i < input_tensor_shape.getShape().size(); ++i) {
+      DCOMMENT("Input Tensor Shape " << i << "th is "
+                                     << input_tensor_shape.getShape()[i]);
+      input_tensor_dims_vec.push_back(input_tensor_shape.getShape()[i]);
+    }
+
+    auto kernel_tensor_shape = kernel_tensor.getType().cast<RankedTensorType>();
+    for (auto i = 0; i < kernel_tensor_shape.getShape().size(); ++i) {
+      DCOMMENT("Kernel tensor Shape" << i << "th is "
+                                     << kernel_tensor_shape.getShape()[i]);
+      kernel_tensor_dims_vec.push_back(kernel_tensor_shape.getShape()[i]);
+    }
+
+    for (const llvm::APInt& i : window_strides_attr) {
+      window_strides_vec.push_back(i.getSExtValue());
+    }
+
+    for (auto i = 0; i < padding_pairs.size(); ++i) {
+      padding_pairs[i] = {
+          padding_attr.getValues<IntegerAttr>()[i * 2].getInt(),
+          padding_attr.getValues<IntegerAttr>()[i * 2 + 1].getInt()};
+    }
+
+    for (const llvm::APInt& i : lhs_dilation_attr) {
+      lhs_dilations_vec.push_back(i.getSExtValue());
+    }
+
+    for (const llvm::APInt& i : rhs_dilation_attr) {
+      rhs_dilations_vec.push_back(i.getSExtValue());
+    }
+
+    auto output_shape = InferXlaConvOutputShape(
+        input_tensor_dims_vec, kernel_tensor_dims_vec, window_strides_vec,
+        padding_pairs, lhs_dilations_vec, rhs_dilations_vec, batch_group_count,
+        dnums, input_tensor_shape.getElementType());
+    if (output_shape.getValue()) {
+      changed = RefineResultType(op.getOperation(), op.getResult(),
+                                 output_shape.getValue());
+      return changed;
+    }
+  }
+  return changed;
+}
+
 bool ShapeInference::RefineWithInferTypeOpInterface(
     InferTypeOpInterface infer_ti) {
   Operation* op = infer_ti.getOperation();
@@ -1811,6 +2077,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 
   if (auto xla_select_and_scatter_op = dyn_cast<XlaSelectAndScatterOp>(op)) {
     return InferShapeForXlaSelectAndScatterOp(xla_select_and_scatter_op);
+  }
+
+  if (auto xla_conv_op = dyn_cast<XlaConvOp>(op)) {
+    return InferShapeForXlaConvOp(xla_conv_op);
   }
 
   // Return operand as a constant attribute.

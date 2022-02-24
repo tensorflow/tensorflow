@@ -110,11 +110,6 @@ opt<std::string> quant_stats_file_name("quant-stats",
                                        llvm::cl::value_desc("filename"),
                                        llvm::cl::init(""));
 
-// NOLINTNEXTLINE
-opt<bool> convert_tf_while_to_tfl_while(
-    "convert_tf_while_to_tfl_while",
-    llvm::cl::desc("Whether to legalize TF While to TFL While."),
-    llvm::cl::init(true));
 
 // A list of comma separated TF operators which are created by the user.
 // This must be used with `-emit-select-tf-ops=true`.
@@ -144,6 +139,13 @@ opt<bool> guarantee_all_funcs_one_use(
     "guarantee-all-funcs-one-use",
     llvm::cl::desc(
         "Whether to clone functions to ensure each function has a single use."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> enable_dynamic_update_slice(
+    "enable-dynamic-update-slice",
+    llvm::cl::desc("Whether to enable dynamic update slice op to convert "
+                   "TensorListSetItem op."),
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE

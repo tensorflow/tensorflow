@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 
+#include <algorithm>
 #include <ios>
 #include <sstream>
 #include <string>
@@ -42,7 +43,7 @@ static bool IsQuantizationType(tensorflow::DataType dtype) {
 }
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 namespace {
 bool GetBooleanSpecs(const std::string& bool_val) {
   bool result;
@@ -157,5 +158,5 @@ bool GetInputNodeQuantSpecs(
   return false;
 }
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir

@@ -25,6 +25,19 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {
+namespace detail {
+// This class implements the iterator on control return of a value.
+template <typename ValueIteratorT>
+class ControlRetIterator final
+    : public llvm::mapped_iterator_base<ControlRetIterator<ValueIteratorT>,
+                                        ValueIteratorT, Value> {
+ public:
+  using llvm::mapped_iterator_base<ControlRetIterator<ValueIteratorT>,
+                                   ValueIteratorT, Value>::mapped_iterator_base;
+  Value mapElement(Value value) const;
+};
+}  // namespace detail
+
 namespace tfg {
 
 // Wrapper class exposing convenience methods to manipulate TensorFlow graph
@@ -132,6 +145,49 @@ class TFOp {
   // The wrapped operation.
   Operation *op_;
 };
+
+// A range iterator to get the control tokens associated with a value range.
+// This range allows to wrap a ValueRange (or an OperandRange) and iterates on
+// the control token associated to the producer of each value. For example, if
+// you wrap the operands of an operation:
+//     OperandControlRetRange range = op->getOperands();
+// iterating this range will yield the control edges from each of the operations
+// (or block arguments) producing these operands.
+template <typename ValueRangeT>
+class ControlRetRange final
+    : public llvm::iterator_range<
+          ::mlir::detail::ControlRetIterator<typename ValueRangeT::iterator>> {
+ public:
+  using Base = llvm::iterator_range<
+      ::mlir::detail::ControlRetIterator<typename ValueRangeT::iterator>>;
+  explicit ControlRetRange(ValueRangeT c) : Base(c.begin(), c.end()) {}
+
+  /// Return the value at the given index.
+  Value operator[](size_t index) const {
+    assert(index < size() && "invalid index into value range");
+    return *(this->begin() + index);
+  }
+
+  // Return the size of this range.
+  size_t size() const { return llvm::size(*this); }
+
+  // Return first value in the range.
+  Value front() { return (*this)[0]; }
+
+  // Compare this range with another.
+  template <typename OtherT>
+  bool operator==(const OtherT &other) const {
+    return llvm::size(*this) == llvm::size(other) &&
+           std::equal(this->begin(), this->end(), other.begin());
+  }
+  template <typename OtherT>
+  bool operator!=(const OtherT &other) const {
+    return !(*this == other);
+  }
+};
+
+using OperandControlRetRange = ControlRetRange<OperandRange>;
+using ValueControlRetRange = ControlRetRange<ValueRange>;
 
 }  // namespace tfg
 }  // namespace mlir

@@ -1,4 +1,25 @@
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-allowlist="quantize_float_placeholder_only,not_reset_input" | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize --tfl-test-quantize-allowlist="quantize_float_placeholder_only,not_reset_input" | FileCheck %s
+
+// CHECK-LABEL: main
+// Uses `main` function to match the default target function of QuantSpecs and
+// execute the production code path.
+func @main(%arg0: tensor<2x1xf32>, %arg1: tensor<2x3xf32>) -> (tensor<2x4xf32>) {
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<2x1x!quant.uniform<i16:f32, 1.0>>} : (tensor<2x1xf32>) -> tensor<2x1x!quant.uniform<i16:f32, 1.0>>
+  %1 = "tfl.dequantize"(%0) : (tensor<2x1x!quant.uniform<i16:f32, 1.0>>) -> (tensor<2x1xf32>)
+  %2 = "tfl.quantize"(%arg1) {qtype = tensor<2x3x!quant.uniform<i16:f32, 1.0>>} : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i16:f32, 1.0>>
+  %3 = "tfl.dequantize"(%2) : (tensor<2x3x!quant.uniform<i16:f32, 1.0>>) -> (tensor<2x3xf32>)
+  %4 = "tfl.concatenation"(%1, %3) {axis = -1 : i32, fused_activation_function = "NONE"} : (tensor<2x1xf32>, tensor<2x3xf32>) -> tensor<2x4xf32>
+  return %4: tensor<2x4xf32>
+
+// CHECK-NEXT: %[[q:.*]] = "tfl.quantize"(%arg0)
+// CHECK-NEXT: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// CHECK-NEXT: %[[q_0:.*]] = "tfl.quantize"(%arg1)
+// CHECK-NEXT: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
+// CHECK-NEXT: %[[c:.*]] = "tfl.concatenation"(%[[dq]], %[[dq_0]])
+// CHECK-NEXT: %[[q_1:.*]] = "tfl.quantize"(%[[c]])
+// CHECK-NEXT: %[[dq_1:.*]] = "tfl.dequantize"(%[[q_1]])
+// CHECK-NEXT: return %[[dq_1:.*]]
+}
 
 // CHECK-LABEL: quantize_float_placeholder_only
 func @quantize_float_placeholder_only(%arg0: tensor<f32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xf32>) -> (tensor<f32>, tensor<2x3xi32>, tensor<2x3xf32>) {

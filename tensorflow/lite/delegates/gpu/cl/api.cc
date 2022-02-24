@@ -652,6 +652,26 @@ TensorStorageType GetStorageTypeFromOptions(const Environment& env,
   return TensorStorageType::UNKNOWN;
 }
 
+CreateGpuModelInfo GetCreateInfo(const Environment& environment,
+                                 const InferenceOptions& options) {
+  CreateGpuModelInfo create_info;
+  create_info.precision = GetPrecision(environment, options);
+  create_info.storage_type = GetStorageTypeFromOptions(environment, options);
+  if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
+    create_info.hints.Add(ModelHints::kReduceKernelsCount);
+    create_info.hints.Add(ModelHints::kFastTuning);
+  } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
+    create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+  }
+  if (GetRelativeImportance(options, InferencePriority::MIN_MEMORY_USAGE,
+                            InferencePriority::MIN_LATENCY) ==
+      PriorityImportance::HIGHER) {
+    create_info.hints.Add(ModelHints::kNoWinogradOptimizations);
+    create_info.hints.Add(ModelHints::kReuseConvWeights);
+  }
+  return create_info;
+}
+
 class InferenceBuilderImpl : public InferenceBuilder {
  public:
   explicit InferenceBuilderImpl(Environment* environment)
@@ -661,21 +681,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
                           const InferenceEnvironmentOptions& env_options,
                           const GraphFloat32& graph) {
     context_ = absl::make_unique<InferenceContext>();
-    CreateGpuModelInfo create_info;
-    create_info.precision = GetPrecision(*environment_, options);
-    create_info.storage_type =
-        GetStorageTypeFromOptions(*environment_, options);
-    if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
-      create_info.hints.Add(ModelHints::kReduceKernelsCount);
-      create_info.hints.Add(ModelHints::kFastTuning);
-    } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
-      create_info.hints.Add(ModelHints::kAllowSpecialKernels);
-    }
-    if (GetRelativeImportance(options, InferencePriority::MIN_MEMORY_USAGE,
-                              InferencePriority::MIN_LATENCY) ==
-        PriorityImportance::HIGHER) {
-      create_info.hints.Add(ModelHints::kNoWinogradOptimizations);
-    }
+    CreateGpuModelInfo create_info = GetCreateInfo(*environment_, options);
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
 #ifdef CL_DELEGATE_ALLOW_GL
@@ -922,15 +928,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
 
     RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&model));
     InferenceContext context;
-    CreateGpuModelInfo create_info;
-    create_info.precision = GetPrecision(environment_, options);
-    create_info.storage_type = GetStorageTypeFromOptions(environment_, options);
-    if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
-      create_info.hints.Add(ModelHints::kReduceKernelsCount);
-      create_info.hints.Add(ModelHints::kFastTuning);
-    } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
-      create_info.hints.Add(ModelHints::kAllowSpecialKernels);
-    }
+    CreateGpuModelInfo create_info = GetCreateInfo(environment_, options);
     RETURN_IF_ERROR(context.InitFromGraph(create_info, model, &environment_,
                                           serialized_model));
     return absl::OkStatus();

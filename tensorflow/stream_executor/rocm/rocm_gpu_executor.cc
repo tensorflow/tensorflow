@@ -115,6 +115,12 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
+port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+GpuExecutor::CreateOrShareConstant(Stream* stream,
+                                   const std::vector<uint8_t>& content) {
+  return port::UnimplementedError("Not implemented for ROCm");
+}
+
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
   auto module_it = gpu_binary_to_module_.find(gpu_binary);
   if (gpu_binary_to_module_.end() == module_it) {

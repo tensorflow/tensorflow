@@ -468,3 +468,11 @@ tensorflow::core::function::GlobalEagerContext
 tensorflow::core::function::GlobalPythonEagerContext
 tensorflow::core::function::Runtime::CreateFunction
 tensorflow::core::function::Runtime::GetFunctionProto
+
+[//tensorflow/core/config:flag_defs] # flags_api
+tensorflow::flags::Global
+tensorflow::flags::Flags::GetExportedFlag
+
+[//tensorflow/core/config:flags] # flags_api
+tensorflow::config::Flag::value
+tensorflow::config::Flag::reset

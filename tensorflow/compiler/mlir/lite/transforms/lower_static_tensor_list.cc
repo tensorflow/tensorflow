@@ -87,9 +87,11 @@ struct LowerStaticTensorListPass
   LowerStaticTensorListPass() = default;
   LowerStaticTensorListPass(const LowerStaticTensorListPass &) {}
   explicit LowerStaticTensorListPass(bool allow_tensorlist_pass_through,
-                                     bool default_to_single_batch) {
+                                     bool default_to_single_batch,
+                                     bool enable_dynamic_update_slice) {
     this->allow_tensorlist_pass_through = allow_tensorlist_pass_through;
     this->default_to_single_batch = default_to_single_batch;
+    this->enable_dynamic_update_slice = enable_dynamic_update_slice;
   }
 
   StringRef getArgument() const final {
@@ -118,6 +120,12 @@ struct LowerStaticTensorListPass
           "When specified to true, if the tensorlist ops has unspecified batch "
           "size, this pass will assume that the batch size is one to proceed "
           "tensorlist op lowering (default true)"),
+      llvm::cl::init(false)};
+
+  Option<bool> enable_dynamic_update_slice{
+      *this, "enable-dynamic-update-slice",
+      llvm::cl::desc("When specified to true, lower TensorListSetItem with "
+                     "DynamicUpdateSlice op (default false)"),
       llvm::cl::init(false)};
 };
 
@@ -331,7 +339,20 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
 
 struct ConvertTensorListSetItem
     : public OpConversionPattern<TF::TensorListSetItemOp> {
-  using OpConversionPattern::OpConversionPattern;
+  explicit ConvertTensorListSetItem(MLIRContext *context,
+                                    bool enable_dynamic_update_slice = false)
+      : OpConversionPattern<TF::TensorListSetItemOp>(context),
+        enable_dynamic_update_slice(enable_dynamic_update_slice) {}
+
+  LogicalResult matchAndRewrite(
+      TF::TensorListSetItemOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    if (enable_dynamic_update_slice) {
+      return matchAndRewriteImplWithDynamicUpdateSlice(op, adaptor, rewriter);
+    } else {
+      return matchAndRewriteImplWithSliceAndConcat(op, adaptor, rewriter);
+    }
+  }
 
   // This function rewrites the original op into a series of slice and concat op
   // to produce the same result. It first slices the first `$index` rows. Then
@@ -345,9 +366,9 @@ struct ConvertTensorListSetItem
   //        (Slice $input, [0, 0, ...], (Concat (ExpandDims $index, expand_dim =
   //        0), [-1, -1, ...])), (ExpandDims $item, expand_dim = 0), (Slice
   //        $input, [$index + 1, 0, 0, ...], [-1, -1, ...]))>;
-  LogicalResult matchAndRewrite(
+  LogicalResult matchAndRewriteImplWithSliceAndConcat(
       TF::TensorListSetItemOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const override {
+      ConversionPatternRewriter &rewriter) const {
     Location loc = op.getLoc();
     Value input = adaptor.getOperands()[0];
     Value index = adaptor.getOperands()[1];
@@ -394,6 +415,55 @@ struct ConvertTensorListSetItem
         ArrayRef<Value>({slice1, expanded_item, slice2}));
     return success();
   }
+
+  // This function rewrites the original op into a XLA DynamicUpdateSlice op.
+  // |item| is expanded to have the same dimension as input_handle and
+  // |index| is expanded to [index, 0, 0, ...] as the indices to input_handle.
+  // On a high level, it's doing something like:
+  // def : Pat<(TensorListSetItem($input_handle, $index, $item)),
+  //           (XlaDynamicUpdateSlice($input_handle, ExpandDims($item, 0),
+  //              Concat(ExpandDims($index, 0), [0, 0, 0, ...])))>
+  LogicalResult matchAndRewriteImplWithDynamicUpdateSlice(
+      TF::TensorListSetItemOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const {
+    Location loc = op.getLoc();
+    Value input = adaptor.getOperands()[0];
+    Value index = adaptor.getOperands()[1];
+    Value item = adaptor.getOperands()[2];
+
+    IntegerType shape_dtype = rewriter.getIntegerType(32);
+    auto item_rank = rewriter.create<TF::RankOp>(
+        loc, RankedTensorType::get({}, shape_dtype), item);
+    Value scalar_zero = CreateI32SplatConst(loc, &rewriter, {}, 0);
+
+    // Concat(ExpandDims(index, 0), [0, 0, 0, ...])
+    RankedTensorType position_type = RankedTensorType::get({-1}, shape_dtype);
+    auto item_position_shape = rewriter.create<TF::ExpandDimsOp>(
+        loc, RankedTensorType::get({1}, shape_dtype), item_rank, scalar_zero);
+    Value partial_index =
+        CreateI32SplatTensor(loc, &rewriter, item_position_shape, 0);
+    RankedTensorType vector_type = RankedTensorType::get({1}, shape_dtype);
+    auto expanded_index =
+        rewriter.create<TF::ExpandDimsOp>(loc, vector_type, index, scalar_zero);
+    auto start_position = rewriter.create<TF::ConcatOp>(
+        loc, position_type, scalar_zero,
+        ArrayRef<Value>({expanded_index, partial_index}));
+
+    // Expand the dimension of item so that it will have the same rank with
+    // input.
+    // ExpandDims(item, 0)
+    Type element_type = input.getType().cast<TensorType>().getElementType();
+    UnrankedTensorType unranked_tensor = UnrankedTensorType::get(element_type);
+    auto expanded_item = rewriter.create<TF::ExpandDimsOp>(
+        op.getLoc(), unranked_tensor, item, scalar_zero);
+
+    // Update the element with XlaDynamicUpdateSliceOp.
+    rewriter.replaceOpWithNewOp<TF::XlaDynamicUpdateSliceOp>(
+        op, input.getType(), input, expanded_item, start_position);
+    return success();
+  }
+
+  bool enable_dynamic_update_slice;
 };
 
 // Rewrites op of the template type initializing a TensorList with a list of ops
@@ -1474,9 +1544,10 @@ void LowerStaticTensorListPass::runOnOperation() {
   populateWithGenerated(patterns);
   patterns.add<ConvertConst, ConvertIdentity, ConvertTensorListGetItem,
                ConvertTensorListLength, ConvertTensorListPushBack,
-               ConvertTensorListSetItem, ConvertTensorListStack,
-               ConvertTensorListResize, ConvertWhile, ConvertWhileRegion,
-               ConvertIf, ConvertReturn, ConvertYield>(context);
+               ConvertTensorListStack, ConvertTensorListResize, ConvertWhile,
+               ConvertWhileRegion, ConvertIf, ConvertReturn, ConvertYield>(
+      context);
+  patterns.add<ConvertTensorListSetItem>(context, enable_dynamic_update_slice);
   patterns.add<ConvertEmptyTensorList, ConvertTensorListConcatV2,
                ConvertTensorListReserve>(context, allow_tensorlist_pass_through,
                                          default_to_single_batch);
@@ -1509,9 +1580,11 @@ void LowerStaticTensorListPass::runOnOperation() {
 /// Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 /// pass.
 std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
-    bool allow_tensorlist_pass_through, bool default_to_single_batch) {
+    bool allow_tensorlist_pass_through, bool default_to_single_batch,
+    bool enable_dynamic_update_slice) {
   return std::make_unique<LowerStaticTensorListPass>(
-      allow_tensorlist_pass_through, default_to_single_batch);
+      allow_tensorlist_pass_through, default_to_single_batch,
+      enable_dynamic_update_slice);
 }
 
 static PassRegistration<LowerStaticTensorListPass> pass;

@@ -27,7 +27,6 @@ package_group(
         "//learning/serving/contrib/tfrt/mlir/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
-        "//platforms/xla/tests/gpu/...",
         "//smartass/brain/ops/...",
         "//tensorflow_serving/servables/tensorflow/google/...",
         "//third_party/tf_runtime_google/...",
@@ -248,6 +247,37 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_fallback_executor",
+    testonly = True,
+    srcs = [
+        "runtime_fallback/runtime_fallback_executor.cc",
+    ],
+    hdrs = [
+        "runtime_fallback/runtime_fallback_executor.h",
+    ],
+    deps = [
+        ":host_context_util",
+        ":tf_to_tfrt",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:threadpool_interface",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
+        "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
+        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
+        "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@tf_runtime//:bef",
+        "@tf_runtime//:befexecutor",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:mlirtobef",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "corert_converter",
     srcs = [
         "transforms/corert_converter.cc",
@@ -384,6 +414,17 @@ cc_library(
 )
 
 cc_library(
+    name = "host_context_util",
+    srcs = ["utils/host_context.cc"],
+    hdrs = ["utils/host_context.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
     name = "function",
     srcs = [
         "function/function.cc",
@@ -493,39 +534,6 @@ cc_library(
     name = "tfrt_compile_options",
     srcs = ["translate/tfrt_compile_options.cc"],
     hdrs = ["translate/tfrt_compile_options.h"],
-)
-
-cc_library(
-    name = "convert_xla_gpu",
-    srcs = [
-        "translate/convert_xla_gpu.cc",
-    ],
-    hdrs = [
-        "translate/convert_xla_gpu.h",
-    ],
-    tags = [
-        "gpu",
-        "no_oss",
-    ],
-    visibility = [
-        # copybara:uncomment "//learning/brain/experimental/tfrt/jax:__subpackages__",
-        "//platforms/xla/tests/gpu:__pkg__",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:pass_utils",
-        "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:statusor",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Transforms",
-        "@tf_runtime//:befexecutor",
-        "@tf_runtime//:init_tfrt_dialects",
-        "@tf_runtime//:mlirtobef_translate",
-        "@tf_runtime//backends/gpu:gpu_opdefs",
-        "@tf_runtime//backends/gpu:gpu_system",
-    ],
 )
 
 cc_library(

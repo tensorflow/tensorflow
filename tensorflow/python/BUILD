@@ -291,6 +291,7 @@ py_library(
         "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:sharded_variable",
     ],
 )
 
@@ -3278,6 +3279,8 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/experimental/ops",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
@@ -3358,6 +3361,8 @@ filegroup(
         "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
         "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:session_state",  # tf_session
+        "//tensorflow/core/config:flag_defs",  # flags_api
+        "//tensorflow/core/config:flags",  # flags_api
         "//tensorflow/core/data/service:dispatcher_client",  # dispatcher_client
         "//tensorflow/core/data/service:grpc_util",  # grpc_util
         "//tensorflow/core/data/service:server_lib",  # server_lib
@@ -3929,6 +3934,21 @@ py_library(
 )
 
 tf_python_pybind_extension(
+    name = "flags_pybind",
+    srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
+    module_name = "flags_pybind",
+    visibility = ["//tensorflow/core/config:__subpackages__"],
+    deps = [
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core/config:flags_headers",
+        "//tensorflow/python:pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_sanitizers",
     srcs = ["sanitizers_wrapper.cc"],
     module_name = "_pywrap_sanitizers",
@@ -4061,6 +4081,35 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
+)
+
+# TODO(b/220191419): Move this build rule back to tensorflow/core/function/BUILD.
+# TODO(b/221223841): Get rid of if_static, it's nonstandard.
+tf_python_pybind_extension(
+    name = "runtime_client_pybind",
+    srcs = ["//tensorflow/core/function:runtime_client_pybind.cc"],
+    module_name = "runtime_client_pybind",
+    visibility = ["//tensorflow/core/function:__subpackages__"],
+    deps = [
+        "//tensorflow/core/function:runtime_client_headers",
+        "@pybind11",
+        "//tensorflow/python/lib/core:pybind11_status",
+    ] + if_static(
+        extra_deps = [
+            "//tensorflow/core/framework:function_proto_cc",
+            "//tensorflow/core/protobuf:coordination_service_proto_cc",
+            "//tensorflow/core/protobuf:eager_service_proto_cc",
+            "//tensorflow/core/protobuf:master_proto_cc",
+            "//tensorflow/core/protobuf:worker_proto_cc",
+        ],
+        otherwise = [
+            "//tensorflow/core/framework:function_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
+        ],
+    ),
 )
 
 py_library(

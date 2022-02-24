@@ -15,24 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark_mlir_function.h"
 
-#include <algorithm>
 #include <functional>
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Parser.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/runtime_fallback/runtime_fallback_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
-#include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
-#include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
-#include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
-#include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -40,11 +33,8 @@ namespace tensorflow {
 using ::tfrt::ArrayRef;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValuePtr;
-using ::tfrt::BEFFile;
 using ::tfrt::ExecutionContext;
-using ::tfrt::Function;
 using ::tfrt::HostContext;
-using ::tfrt::MakeAvailableAsyncValueRef;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
@@ -56,12 +46,6 @@ using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::ReturnValueConverter;
-
-using ::tensorflow::Env;
-using ::tensorflow::thread::ThreadPool;
-using ::tensorflow::thread::ThreadPoolInterface;
-
-using ::tensorflow::tfrt_stub::FallbackTensor;
 
 // Returns random tensors generated based on the input specs.
 static llvm::SmallVector<Tensor> GetInputTensors(
@@ -174,169 +158,21 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
 // Run function benchmark via the TF->TFRT fallback lowering.
 // -------------------------------------------------------------------------- //
 
-// Thread pool for running `intra-op` tasks scheduled by the fallback kernels.
-class IntraOpTheadPool : public ThreadPoolInterface {
- public:
-  explicit IntraOpTheadPool(int num_threads)
-      : tpool_(Env::Default(), "intra-op", std::max(1, num_threads)) {}
-
-  void Schedule(std::function<void()> fn) override {
-    tpool_.Schedule(std::move(fn));
-  }
-
-  int NumThreads() const override { return tpool_.NumThreads(); }
-  int CurrentThreadId() const override { return tpool_.CurrentThreadId(); }
-  void Cancel() override {}
-
- private:
-  ThreadPool tpool_;
-};
-
-// Run TFRT fallback initialization function to instantiate all fallback
-// kernels ahead of executing the compute function.
-static void RunTfrtInitializer(const ExecutionContext& exec_ctx,
-                               BEFFile* bef_file,
-                               llvm::StringRef fallback_init_func) {
-  const Function* func = bef_file->GetFunction(fallback_init_func);
-  CHECK(func) << "TFRT initialization function was not found";
-  CHECK_EQ(func->argument_types().size(), 1);
-
-  llvm::SmallVector<RCReference<AsyncValue>, 1> results;
-  results.resize(func->result_types().size());
-  CHECK_EQ(results.size(), 1);
-
-  func->Execute(exec_ctx, tfrt::GetReadyChain().GetAsyncValue(), results);
-
-  HostContext* host = exec_ctx.host();
-  host->Await(results);
-
-  CHECK(!results[0]->IsError()) << "Failed to run TFRT initialization function";
-}
-
 void RunTfrtBenchmark(::testing::benchmark::State& state,
                       llvm::StringRef mlir_input, llvm::StringRef function_name,
                       ArrayRef<InputTensorSpec> input_specs) {
   // Number of worker threads (intra-op concurrency for the fallback ops).
   int64_t num_threads = state.range(0);
+  RuntimeFallbackExecutor executor(num_threads);
 
-  // We only support benchmarks written in the Tensorflow dialect.
-  mlir::DialectRegistry registry;
-  mlir::RegisterAllTensorFlowDialects(registry);
-  mlir::MLIRContext context(registry);
-
-  llvm::SourceMgr source_mgr;
-  source_mgr.AddNewSourceBuffer(
-      llvm::MemoryBuffer::getMemBuffer(mlir_input, "benchmark"), llvm::SMLoc());
-
-  // Parse a kernel source code into the MLIR Module.
-  mlir::OwningOpRef<mlir::ModuleOp> module(
-      mlir::parseSourceFile(source_mgr, &context));
-  CHECK(module) << "failed to parse mlir module";
-
-  // Collect all diagnostics emitted while lowering parsed kernel module.
-  std::string diagnostic_str;
-  llvm::raw_string_ostream os(diagnostic_str);
-  mlir::SourceMgrDiagnosticHandler handler(source_mgr, module->getContext(),
-                                           os);
-
-  // Convert TF to TFRT fallback dialect.
-  TfrtPipelineOptions pipeline_opts;
-  pipeline_opts.default_device = kDefaultHostDeviceName;
-  pipeline_opts.hoist_invariant_ops = true;
-  pipeline_opts.enable_native_ops = false;
-  pipeline_opts.cost_threshold = 1024;
-  pipeline_opts.upper_cost_threshold = 100000;
-  pipeline_opts.merge_inter_dependent_streams = true;
-  pipeline_opts.func_use_fallback_tensor = true;
-
-  mlir::PassManager pm(module->getContext());
-  pm.addPass(CreateTfToTfrtConversionPass(pipeline_opts));
-
-  CHECK(mlir::succeeded(pm.run(*module)))
-      << "Failed to lower module to TFRT: " << os.str();
-
-  // Create a thread pool for running intra-op tasks.
-  IntraOpTheadPool intra_op(num_threads);
-
-  // Create a HostContext for running TFRT functions. Concurrent work queue acts
-  // similar to the Tensorflow `inter-op` thread pool, so we'll match the size.
-  auto host = num_threads ? CreateMultiThreadedHostContext(num_threads)
-                          : CreateSingleThreadedHostContext();
-  tfrt::RegisterStaticKernels(host->GetMutableRegistry());
-
-  // Convert module to BEF.
-  auto bef_buffer =
-      tfrt::ConvertMLIRToBEF(*module, /*disable_optional_sections=*/false);
-  CHECK(!bef_buffer.empty()) << "Failed to convert module to BEF";
-
-  // Build an ExecutionContext from the HostContext.
-  ResourceContext resource_context;
-  auto builder = RequestContextBuilder(host.get(), &resource_context);
-
-  // Get tensorflow::EagerContext for the kernel fallback.
-  auto* eager_context_resource =
-      resource_context
-          .GetOrCreateResource<tensorflow::tfd::EagerContextResource>(
-              tensorflow::tfd::kEagerContextResourceName);
-  auto expected_eager_context = eager_context_resource->GetTFEagerContext();
-  auto* eager_context = expected_eager_context.get();
-
-  // Initialize fallback kernels state with a custom intra-op thread pool.
-  auto status = tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
-      &builder, /*runner_table=*/nullptr, eager_context, &intra_op);
-  CHECK(status.ok()) << "Failed to setup request context: "
-                     << status.error_message();
-
-  auto req_ctx = std::move(builder).build();
-  if (auto err = req_ctx.takeError())
-    LOG(FATAL) << "Failed to build a request context";
-
-  ExecutionContext exec_ctx(std::move(*req_ctx));
-
-  auto bef_file = BEFFile::Open(bef_buffer, host->GetKernelRegistry(),
-                                host->diag_handler(), host->allocator());
-  CHECK(bef_file) << "Failed to open BEF";
-
-  // Run TFRT initialization function to pre-instantiate fallback kernels.
-  RunTfrtInitializer(exec_ctx, bef_file.get(), "_tfrt_fallback_init");
-
-  // Get the kernel entrypoint function.
-  const Function* compute = bef_file->GetFunction(function_name);
-  CHECK(compute) << "Entrypoint function not found";
+  executor.Prepare(mlir_input);
 
   // Generate random inputs based on the tensor specs.
   llvm::SmallVector<Tensor> input_tensors = GetInputTensors(input_specs);
 
-  // Prepare function arguments from ready Chain and input Tensors.
-  llvm::SmallVector<AsyncValue*> arguments;
-  arguments.push_back(tfrt::GetReadyChain().release());
-  for (const Tensor& input_tensor : input_tensors) {
-    auto av = MakeAvailableAsyncValueRef<FallbackTensor>(input_tensor);
-    arguments.push_back(av.release());
-  }
-
-  // Space for returned values.
-  llvm::SmallVector<RCReference<AsyncValue>> results;
-
   for (auto _ : state) {
-    // Reset results in preparation for the function call.
-    results.clear();
-    results.resize(compute->result_types().size());
-
-    compute->Execute(exec_ctx, arguments, results);
-
-    // Wait for the function execution to finish, as well as the side-effects.
-    host->Await(results);
-
-    // Check that all results are available.
-    for (unsigned i = 1; i < results.size(); ++i) {
-      if (auto* error = results[i]->GetErrorIfPresent())
-        LOG(FATAL) << "Failed to execute a function: " << StrCat(*error);
-    }
+    executor.Execute(function_name, input_tensors);
   }
-
-  // Deallocate arguments.
-  for (auto* argument : arguments) argument->DropRef();
 }
 
 // -------------------------------------------------------------------------- //

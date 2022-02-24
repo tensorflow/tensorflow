@@ -202,6 +202,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status SelectDevice(DeviceNameUtils::ParsedName preferred,
                       const NodeDef& ndef, Device** out) const;
 
+  // TODO(mdan): Rename to ContainsFunction.
   bool FindFunctionByName(const string& name) const;
 
   Status FindFunctionOpData(const string& name,

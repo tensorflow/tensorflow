@@ -34,17 +34,19 @@ namespace tensorflow {
 class PluggableDeviceBFCAllocator : public BFCAllocator {
  public:
   PluggableDeviceBFCAllocator(DeviceMemAllocator* sub_allocator,
-                              size_t total_memory, const string& name);
+                              size_t total_memory, const string& name,
+                              bool force_memory_growth_requested);
   PluggableDeviceBFCAllocator(DeviceMemAllocator* sub_allocator,
                               size_t total_memory,
-                              const GPUOptions& gpu_options,
-                              const string& name);
+                              const GPUOptions& gpu_options, const string& name,
+                              bool force_memory_growth_requested);
   ~PluggableDeviceBFCAllocator() override {}
 
   TF_DISALLOW_COPY_AND_ASSIGN(PluggableDeviceBFCAllocator);
 
  private:
-  static bool GetAllowGrowthValue(const GPUOptions& gpu_options);
+  static bool GetAllowGrowthValue(const GPUOptions& gpu_options,
+                                  bool force_memory_growth_requested);
   static bool GetGarbageCollectionValue();
 };
 

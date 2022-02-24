@@ -5351,15 +5351,12 @@ class ConvertInfeedDequeueTupleOp
 
   LogicalResult matchAndRewrite(TF::InfeedDequeueTupleOp op,
                                 PatternRewriter &rewriter) const override {
-    std::vector<Type> result_types(op.outputs().size());
-    for (const auto &idx_and_output : llvm::enumerate(op.outputs())) {
-      result_types[idx_and_output.index()] = (idx_and_output.value().getType());
-    }
+    std::vector<Type> result_types;
 
-    for (Type t : result_types) {
-      if (auto ty = t.dyn_cast<RankedTensorType>()) {
-        if (!ty.hasStaticShape()) return failure();
-      }
+    for (mlir::Type t : op.getResultTypes()) {
+      auto ty = t.cast<mlir::TensorType>();
+      if (!ty.hasStaticShape()) return failure();
+      result_types.push_back(t);
     }
 
     // Infeed takes a single token operand. Generate the token using
@@ -5399,6 +5396,15 @@ class ConvertInfeedDequeueTupleOp
       } else {
         data_and_token->setAttr(kShardingAttr, op._XlaShardingAttr());
       }
+    }
+
+    if (op->hasAttr("layouts")) {
+      // Append a UnitAttr for the "token" operand of the mhlo.infeed op here to
+      // avoid compilation failure when exporting "layouts" attribute of the
+      // corresponding InfeedDequeueTupleOp to a graph node.
+      data_and_token->setAttr(
+          "layout", rewriter.getArrayAttr(
+                        {op->getAttr("layouts"), rewriter.getUnitAttr()}));
     }
 
     // The infeed instruction produces a tuple of the infeed data and a token
@@ -5691,44 +5697,6 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
     }
 
     rewriter.replaceOp(op, results);
-    return success();
-  }
-};
-
-// Converts the tf.Sign op into mhlo.sign
-// TODO(disc): To recover static special case's performance with folding and
-// canonicalization.
-class ConvertSignOpDynamic : public OpRewritePattern<TF::SignOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::SignOp op,
-                                PatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    Value x = op.x();
-    auto x_type = x.getType().dyn_cast<RankedTensorType>();
-    if (!x_type) return failure();
-    // TODO(disc): Remove this constraint once fold and canonicalization
-    // implemented.
-    if (x_type.hasStaticShape()) return failure();
-
-    Value hlo_sign = rewriter.create<mhlo::SignOp>(loc, x);
-    const StringAttr kNe = rewriter.getStringAttr(
-        mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
-    Value hlo_cmp = rewriter.create<mhlo::CompareOp>(loc, x, x, kNe);
-
-    auto zero =
-        GetScalarConstOfType(x_type.getElementType(), loc, 0, &rewriter);
-    Value shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), x);
-
-    auto broadcast_dims_attr =
-        GetI64ElementsAttr(ArrayRef<int64_t>({}), &rewriter);
-    Value broadcasted_zero = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
-        loc, x_type, zero, shape_op, broadcast_dims_attr);
-
-    auto hlo_select = rewriter.create<mhlo::SelectOp>(
-        loc, hlo_cmp, broadcasted_zero, hlo_sign);
-
-    rewriter.replaceOp(op, hlo_select.getResult());
     return success();
   }
 };
@@ -7365,7 +7333,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertSliceOpDynamic,
     ConvertTileOpDynamic,
     ConvertUnpackOpDynamic,
-    ConvertSignOpDynamic,
     ConvertSigmoidGradOpDynamic,
     ConvertConv2DDynamic,
     ConvertPadOpDynamic,

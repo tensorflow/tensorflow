@@ -39,9 +39,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
@@ -91,6 +94,19 @@ StatusOr<py::bytes> GetHloModuleSerializedProto(const HloModule& module) {
     return Unknown("Failed to serialize the HloModuleProto.");
   }
   return py::bytes(result);
+}
+
+// Converts a serialized HloModuleProto into a HloModule.
+StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
+    const py::bytes& bytes) {
+  HloModuleProto proto;
+  proto.ParseFromString(bytes);
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          proto, GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(proto, module_config));
+  return std::shared_ptr<HloModule>(std::move(module));
 }
 
 StatusOr<std::shared_ptr<HloModule>> GetHloModule(
@@ -454,6 +470,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
               &HloModule::ToString),
           py::arg("options") = HloPrintOptions())
       .def("as_serialized_hlo_module_proto", &GetHloModuleSerializedProto)
+      .def("from_serialized_hlo_module_proto", &HloModuleFromSerializedProto)
       .def_property_readonly(
           "spmd_output_sharding",
           [](const HloModule& m) -> absl::optional<xla::OpSharding> {

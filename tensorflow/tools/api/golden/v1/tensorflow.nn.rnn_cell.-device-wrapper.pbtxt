@@ -1,9 +1,9 @@
 path: "tensorflow.nn.rnn_cell.DeviceWrapper"
 tf_class {
-  is_instance: "<class \'keras.layers.legacy_rnn.rnn_cell_impl.DeviceWrapper\'>"
-  is_instance: "<class \'keras.layers.legacy_rnn.rnn_cell_wrapper_impl.DeviceWrapperBase\'>"
-  is_instance: "<class \'keras.layers.legacy_rnn.rnn_cell_impl._RNNCellWrapperV1\'>"
-  is_instance: "<class \'keras.layers.legacy_rnn.rnn_cell_impl.RNNCell\'>"
+  is_instance: "<class \'keras.layers.rnn.legacy_cell_wrappers.DeviceWrapper\'>"
+  is_instance: "<class \'keras.layers.rnn.base_cell_wrappers.DeviceWrapperBase\'>"
+  is_instance: "<class \'keras.layers.rnn.legacy_cell_wrappers._RNNCellWrapperV1\'>"
+  is_instance: "<class \'keras.layers.rnn.legacy_cells.RNNCell\'>"
   is_instance: "<class \'keras.legacy_tf_layers.base.Layer\'>"
   is_instance: "<class \'keras.engine.base_layer_v1.Layer\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"

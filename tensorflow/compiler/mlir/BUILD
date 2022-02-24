@@ -19,7 +19,7 @@ package_group(
     packages = ["//tensorflow/compiler/mlir/..."],
 )
 
-exports_files(glob(["g3doc/*.md"]))
+exports_files(glob(["g3doc/*.md"] + ["g3doc/_includes/tf_passes.md"]))
 
 # To reference all tablegen files here when checking for updates to them.
 filegroup(

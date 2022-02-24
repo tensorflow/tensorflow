@@ -1211,7 +1211,7 @@ class Trackable(object):
     """
     return {}, {}
 
-  def _serialize_to_proto(self, **kwargs):
+  def _serialize_to_proto(self, object_proto=None, **kwargs):
     """Returns a proto of any type to be saved into the SavedModel.
 
     Trackable classes decorated with `register_serializable` should overwrite
@@ -1223,19 +1223,22 @@ class Trackable(object):
     APIs such as `tensorflow::LoadSavedModel` will not read this field at all.
 
     Args:
-      **kwargs: Keyword arguments passed to the object during saving. There are
-        no kwargs at this time. One future kwarg would be the SavedModel
-        directory, which will be used by the Assets object.
+      object_proto: A `SavedObject` proto that may be filled by this function.
+        Only the core serializable types (Variable, Function, Constant, Asset)
+        should modify this argument.
+      **kwargs: Future keyword arguments passed to the object during saving.
 
     Returns:
-      A new proto
+      A proto that serializes this class's type.
     """
-    del kwargs
+    del object_proto, kwargs  # Unused.
 
     return None
 
   @classmethod
-  def _deserialize_from_proto(cls, **kwargs):
+  def _deserialize_from_proto(
+      cls, proto=None, dependencies=None, object_proto=None, export_dir=None,
+      asset_file_def=None, operation_attributes=None, **kwargs):
     """Returns a new object restored by the SavedModel.
 
     Trackable classes decorated with `register_serializable` should overwrite
@@ -1293,16 +1296,22 @@ class Trackable(object):
     ```
 
     Args:
-      **kwargs: Keyword arguments passed to the object when loading. As of now,
-        the only supported kwarg is:
-        * proto: A `google.protobuf.Any` proto read from the SavedModel.
-        * dependencies: A dictionary mapping names to dependencies (see
-          `_deserialization_dependencies`).
+      proto: A `google.protobuf.Any` proto read from the `SavedModel`.
+      dependencies: A dictionary mapping names to dependencies (see
+        `_deserialization_dependencies`)
+      object_proto: The `SavedObject` proto for this object.
+      export_dir: The `SavedModel` directory
+      asset_file_def: The `MetaGraphDef`'s `asset_file_def` field.
+      operation_attributes: Dictionary mapping nodes to attribute from the
+        imported `GraphDef`.
+      **kwargs: Future keyword arguments passed to the object when loading.
 
     Returns:
       A new object.
     """
-    del kwargs
+    del (proto, dependencies, object_proto, export_dir, asset_file_def,
+         operation_attributes, kwargs)
+
     return cls()
 
   def _add_trackable_child(self, name, value):
@@ -1373,7 +1382,7 @@ class Trackable(object):
     """Returns this object's `Trackable` attributes.
 
     This method is used to build the object graph (or the object hierarchy,
-    in pickling terms) for checkpoint save/restore, and SavedModel export.
+    in pickling terms) for checkpoint save/restore, and `SavedModel` export.
 
     Override this method to define the children of this instance. Please read
     the implementation restrictions:
@@ -1385,14 +1394,14 @@ class Trackable(object):
 
     **Rule 2: [Checkpoint-only] Do not create new objects.**
 
-    When saving to a SavedMdoel, this method is called *exactly once* for each
+    When saving to a `SavedModel`, this method is called *exactly once* for each
     `Trackable` in the object graph. When saving or restoring from a checkpoint,
     this method may be called *multiple times*. Thus, this method may create
     new Trackables when `save_type == SaveType.SAVEDMODEL` but not when
     `save_type == SaveType.CHECKPOINT`.
 
-    When saving to SavedModel, new `Trackable` children can be created to save
-    non-Trackable attributes to the SavedModel. In the example below, `hyper`
+    When saving to `SavedModel`, new `Trackable` children can be created to save
+    non-Trackable attributes to the `SavedModel`. In the example below, `hyper`
     is a regular python float hyperparameter. To save this value, a new Variable
     is created to store the value of `hyper`:
 
@@ -1421,15 +1430,15 @@ class Trackable(object):
       return {'hyper': tf.Variable(self.hyper)}
     ```
 
-    **Rule 3: [SavedModel-only] Watch out for un-traced tf.functions.**
+    **Rule 3: [`SavedModel`-only] Watch out for un-traced tf.functions.**
 
     At the begining of `_trackable_children`, always call
     `get_concrete_function()` for any `tf.function` that has an input signature.
 
-    When `tf.functions` are saved to SavedModel, any `tf.functions` that have an
-    input signature and has never been called is traced at export time in order
-    to copy the op graph into the SavedModel. `tf.functions` that are traced
-    for the first time are allowed to create new state:
+    When `tf.functions` are saved to `SavedModel`, any `tf.functions` that have
+    an input signature and has never been called is traced at export time in
+    order to copy the op graph into the `SavedModel`. `tf.functions` that are
+    traced for the first time are allowed to create new state:
 
 
     ```
@@ -1442,7 +1451,7 @@ class Trackable(object):
 
     A problem occurs when there is a `Trackable` that returns `fn` as one of its
     children and `self.v` has not been created yet. When `fn` is traced,
-    `self.v` is added to the `Trackable`, but SavedModel does not see this
+    `self.v` is added to the `Trackable`, but `SavedModel` does not see this
     modification since the `Trackable`'s children have already been gathered.
 
     Therefore, as a precaution, call `get_concrete_function()` at the very
@@ -1458,11 +1467,11 @@ class Trackable(object):
     Args:
       save_type: A string, can be 'savedmodel' or 'checkpoint'. Defaults to
         SaveType.CHECKPOINT.
-      **kwargs: Keyword arguments passed to the object when saving SavedModel or
-        Checkpoints. Possible kwargs include (more may be added later):
+      **kwargs: Keyword arguments passed to the object when saving `SavedModel`
+        or Checkpoints. Possible kwargs include (more may be added later):
         * cache: An object identity dictionary (a dictionary that uses "is" to
           match keys, so that unhashable object may be used as keys). An empty
-          cache is created at the start of every SavedModel export, and shared
+          cache is created at the start of every `SavedModel` export, and shared
           between all `Trackable` subclasses in the same object graph. This
           object is used for advanced saving functionality.
 

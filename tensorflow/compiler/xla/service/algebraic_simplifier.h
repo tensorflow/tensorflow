@@ -418,9 +418,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
   StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
-      const HloInstruction& dot, HloInstruction* lhs,
-      int64_t lhs_contracting_dim, HloInstruction* rhs,
-      int64_t rhs_contracting_dim, bool swapped);
+      HloInstruction* dot, HloInstruction* lhs, int64_t lhs_contracting_dim,
+      HloInstruction* rhs, int64_t rhs_contracting_dim, bool swapped);
 
   StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
 

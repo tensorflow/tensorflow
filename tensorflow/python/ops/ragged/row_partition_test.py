@@ -852,6 +852,21 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     rp = RowPartition.from_row_starts([0, 3, 6], nvals=12)
     self.assertAllEqual(12, rp.static_nvals)
 
+  def testStaticNrows(self):
+    rp = RowPartition.from_row_splits([0, 3, 4, 5])
+    static_nrows = rp.static_nrows
+    self.assertIsInstance(static_nrows, int)
+    self.assertAllEqual(3, static_nrows)
+
+  def testStaticNrowsUnknown(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
+    def foo(rs):
+      rp = RowPartition.from_row_splits(rs)
+      static_nrows = rp.static_nrows
+      self.assertIsNone(static_nrows)
+    foo(array_ops.constant([0, 3, 4, 5], dtype=dtypes.int32))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RowPartitionSpecTest(test_util.TensorFlowTestCase,

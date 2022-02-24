@@ -221,6 +221,10 @@ absl::Status TensorDescriptor::PerformSelector(
     return absl::OkStatus();
   } else if (selector == "Read") {
     return PerformReadSelector(gpu_info, args, template_args, result);
+  } else if (selector == "ReadNearest") {
+    return PerformReadNearestSelector(gpu_info, args, result);
+  } else if (selector == "ReadBilinear") {
+    return PerformReadBilinearSelector(gpu_info, args, result);
   } else if (selector == "Write") {
     return PerformWriteSelector(gpu_info, args, result);
   } else if (selector == "WriteLinear") {
@@ -276,6 +280,120 @@ absl::Status TensorDescriptor::PerformReadSelector(
   }
 
   *result = Read(gpu_info, read_as_type, GetPhysicalCoords(xc, yc, zc, sc, bc));
+  return absl::OkStatus();
+}
+
+absl::Status TensorDescriptor::PerformReadNearestSelector(
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    std::string* result) const {
+  if (IsBatchedWidth()) {
+    return absl::NotFoundError(
+        "ReadNearest can not be used with BatchedWidth.");
+  }
+  // ReadNearest(result, fc_x, fc_y, {fc_z}, slice);
+  if (!((args.size() == 5 && HasAxis(Axis::DEPTH)) || args.size() == 4)) {
+    return absl::NotFoundError("Unrecognized ReadNearest selector");
+  }
+  std::vector<std::string> coord_args =
+      std::vector<std::string>(args.begin() + 1, args.end());
+  std::string c;
+  c += "  {\n";
+  c += "  int coord_x_TMP = INIT_INT(" + coord_args[0] + ");\n";
+  c += "  coord_x_TMP = max(coord_x_TMP, 0);\n";
+  c += "  coord_x_TMP = min(coord_x_TMP, width - 1);\n";
+  coord_args[0] = "coord_x_TMP";
+  c += "  int coord_y_TMP = INIT_INT(" + coord_args[1] + ");\n";
+  c += "  coord_y_TMP = max(coord_y_TMP, 0);\n";
+  c += "  coord_y_TMP = min(coord_y_TMP, height - 1);\n";
+  coord_args[1] = "coord_y_TMP";
+  if (HasAxis(Axis::DEPTH)) {
+    c += "  int coord_z_TMP = INIT_INT(" + coord_args[2] + ");\n";
+    c += "  coord_z_TMP = max(coord_z_TMP, 0);\n";
+    c += "  coord_z_TMP = min(coord_z_TMP, depth - 1);\n";
+    coord_args[2] = "coord_z_TMP";
+  }
+  std::string src_value;
+  RETURN_IF_ERROR(PerformReadSelector(gpu_info, coord_args, {}, &src_value));
+  c += "  " + args[0] + " = " + src_value + ";\n";
+  c += "  }";
+  *result = c;
+  return absl::OkStatus();
+}
+
+absl::Status TensorDescriptor::PerformReadBilinearSelector(
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    std::string* result) const {
+  if (IsBatchedWidth()) {
+    return absl::NotFoundError(
+        "ReadBilinear can not be used with BatchedWidth.");
+  }
+  // ReadBilinear(result, fc_x, fc_y, {fc_z}, slice);
+  if (!((args.size() == 5 && HasAxis(Axis::DEPTH)) || args.size() == 4)) {
+    return absl::NotFoundError("Unrecognized ReadBilinear selector");
+  }
+  std::vector<std::string> coord_args =
+      std::vector<std::string>(args.begin() + 1, args.end());
+  std::string c;
+  c += "  {\n";
+  c += "  float f_x_TMP = floor(" + coord_args[0] + ");\n";
+  c += "  float x_scale_TMP = (" + coord_args[0] + ") - f_x_TMP;\n";
+  c += "  int i_x_TMP = INIT_INT(f_x_TMP);\n";
+  c += "  int start_x_TMP = max(i_x_TMP, 0);\n";
+  c += "  int end_x_TMP = min(i_x_TMP + 1, width - 1);\n";
+  c += "  float f_y_TMP = floor(" + coord_args[1] + ");\n";
+  c += "  float y_scale_TMP = (" + coord_args[1] + ") - f_y_TMP;\n";
+  c += "  int i_y_TMP = INIT_INT(f_y_TMP);\n";
+  c += "  int start_y_TMP = max(i_y_TMP, 0);\n";
+  c += "  int end_y_TMP = min(i_y_TMP + 1, height - 1);\n";
+  if (HasAxis(Axis::DEPTH)) {
+    // 3d bilinear read, x, y, z
+    c += "  float f_z_TMP = floor(" + coord_args[2] + ");\n";
+    c += "  float z_scale_TMP = (" + coord_args[2] + ") - f_z_TMP;\n";
+    c += "  int i_z_TMP = INIT_INT(f_z_TMP);\n";
+    c += "  int start_z_TMP = max(i_z_TMP, 0);\n";
+    c += "  int end_z_TMP = min(i_z_TMP + 1, depth - 1);\n";
+    int index = 0;
+    for (const auto& src_z : {"start_z_TMP", "end_z_TMP"}) {
+      for (const auto& src_y : {"start_y_TMP", "end_y_TMP"}) {
+        for (const auto& src_x : {"start_x_TMP", "end_x_TMP"}) {
+          coord_args[0] = src_x;
+          coord_args[1] = src_y;
+          coord_args[2] = src_z;
+          std::string src_value;
+          RETURN_IF_ERROR(
+              PerformReadSelector(gpu_info, coord_args, {"float"}, &src_value));
+          c += "  float4 src" + std::to_string(index) + "_TMP = " + src_value +
+               ";\n";
+          index++;
+        }
+      }
+    }
+    c += "  float4 t0_TMP = mix(mix(src0_TMP, src1_TMP, x_scale_TMP), "
+         "mix(src2_TMP, src3_TMP, x_scale_TMP), y_scale_TMP);\n";
+    c += "  float4 t1_TMP = mix(mix(src4_TMP, src5_TMP, x_scale_TMP), "
+         "mix(src6_TMP, src7_TMP, x_scale_TMP), y_scale_TMP);\n";
+    c += "  " + args[0] + " = TO_FLT4(mix(t0_TMP, t1_TMP, z_scale_TMP));\n";
+  } else {
+    // 2d bilinear read, x, y
+    int index = 0;
+    for (const auto& src_y : {"start_y_TMP", "end_y_TMP"}) {
+      for (const auto& src_x : {"start_x_TMP", "end_x_TMP"}) {
+        coord_args[0] = src_x;
+        coord_args[1] = src_y;
+        std::string src_value;
+        RETURN_IF_ERROR(
+            PerformReadSelector(gpu_info, coord_args, {"float"}, &src_value));
+        c += "  float4 src" + std::to_string(index) + "_TMP = " + src_value +
+             ";\n";
+        index++;
+      }
+    }
+    c += "  " + args[0] +
+         " = TO_FLT4(mix(mix(src0_TMP, src1_TMP, x_scale_TMP), mix(src2_TMP, "
+         "src3_TMP, x_scale_TMP), y_scale_TMP));\n";
+  }
+  c += "  }";
+  *result = c;
   return absl::OkStatus();
 }
 

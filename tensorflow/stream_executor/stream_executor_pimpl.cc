@@ -207,6 +207,12 @@ bool StreamExecutor::UnloadModule(ModuleHandle module_handle) {
   return implementation_->UnloadModule(module_handle);
 }
 
+port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+StreamExecutor::CreateOrShareConstant(Stream* stream,
+                                      const std::vector<uint8_t>& content) {
+  return implementation_->CreateOrShareConstant(stream, std::move(content));
+}
+
 void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
   VLOG(1) << "Called StreamExecutor::Deallocate(mem=" << mem->opaque()
           << ") mem->size()=" << mem->size() << StackTraceIfVLOG10();

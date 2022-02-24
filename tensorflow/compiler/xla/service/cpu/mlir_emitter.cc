@@ -58,8 +58,8 @@ void BuildViewForBuffer(llvm::SmallVectorImpl<llvm::Value *> *args,
                         llvm::IRBuilder<> *b, const Shape &opShape,
                         llvm::Value *op_val) {
   llvm::Type *ty = op_val->getType();
-  while (auto aty = llvm::dyn_cast<llvm::ArrayType>(
-             llvm::cast<llvm::PointerType>(ty)->getElementType())) {
+  while (auto aty =
+             llvm::dyn_cast<llvm::ArrayType>(ty->getPointerElementType())) {
     ty = aty->getElementType()->getPointerTo();
   }
   op_val = b->CreateBitCast(op_val, ty);

@@ -106,6 +106,7 @@ tf_py_test(
     tags = [
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
+        "nooss",  # TODO(b/219580021)
         "notsan",  # Multi-process runner does not work with test sanitizers
     ],
     deps = [

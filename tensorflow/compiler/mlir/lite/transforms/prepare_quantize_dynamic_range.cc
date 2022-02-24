@@ -95,12 +95,13 @@ class PrepareDynamicRangeQuantizePass
         !enable_dynamic_range_per_channel_quantization;
     quant_specs_.minimum_elements_for_weights = min_elements_for_weights;
     ParseCustomOpSpecs(enable_custom_op_quantization,
-                       CustomOpUpdateOptions::kINputIndices,
+                       quant::CustomOpUpdateOptions::kINputIndices,
                        quant_specs_.custom_map);
   }
 
   // Constructor used by manually creating the pass.
-  explicit PrepareDynamicRangeQuantizePass(const QuantizationSpecs& quant_specs)
+  explicit PrepareDynamicRangeQuantizePass(
+      const quant::QuantizationSpecs& quant_specs)
       : quant_specs_(quant_specs) {}
 
   StringRef getArgument() const final {
@@ -119,7 +120,7 @@ class PrepareDynamicRangeQuantizePass
   void runOnOperation() override;
 
  private:
-  QuantizationSpecs quant_specs_;
+  quant::QuantizationSpecs quant_specs_;
 };
 
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
@@ -130,7 +131,7 @@ class PrepareDynamicRangeQuantizableOp
     : public OpRewritePattern<arith::ConstantOp> {
  public:
   explicit PrepareDynamicRangeQuantizableOp(
-      MLIRContext* context, const QuantizationSpecs& quant_specs)
+      MLIRContext* context, const quant::QuantizationSpecs& quant_specs)
       : OpRewritePattern<arith::ConstantOp>(context),
         quant_specs_(quant_specs) {}
 
@@ -424,7 +425,7 @@ class PrepareDynamicRangeQuantizableOp
   }
 
  protected:
-  QuantizationSpecs quant_specs_;
+  quant::QuantizationSpecs quant_specs_;
 };
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
@@ -454,7 +455,7 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
 // Creates an instance of the TensorFlow Lite dialect
 // PrepareDynamicRangeQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicRangeQuantizePass(
-    const QuantizationSpecs& quant_specs) {
+    const quant::QuantizationSpecs& quant_specs) {
   return std::make_unique<PrepareDynamicRangeQuantizePass>(quant_specs);
 }
 

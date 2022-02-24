@@ -41,7 +41,8 @@ class TfTransposeTest(test.TestCase):
           return %1 : tensor<?x?xf32>
         }"""
 
-      compiled = jitrt.compile(mlir_function, 'test', specialize)
+      compiled = jitrt.compile(
+          mlir_function, 'test', specialize, vectorize=True)
 
       d0 = np.random.randint(1, 10)
       d1 = np.random.randint(1, 10)
@@ -51,7 +52,112 @@ class TfTransposeTest(test.TestCase):
       [res] = jitrt.execute(compiled, [arg0])
       np.testing.assert_allclose(res, np.transpose(arg0), atol=0.0)
 
-  def test_transpose_3d(self):
+  def test_transpose_3d_0_2_1(self):
+    for specialize in specializations:
+      mlir_function = """
+        func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+          %0 = "tf.Const"() { value = dense<[0, 2, 1]> : tensor<3xi64> }
+            : () -> tensor<3xi64>
+          %1 = "tf.Transpose"(%arg0, %0)
+            : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
+          return %1 : tensor<?x?x?xf32>
+        }"""
+
+      compiled = jitrt.compile(
+          mlir_function, 'test', specialize, vectorize=True)
+
+      dim_size = 32
+      arg0 = np.arange(0, dim_size * dim_size * dim_size, 1,
+                       np.float32).reshape((dim_size, dim_size, dim_size))
+
+      [res] = jitrt.execute(compiled, [arg0])
+      np.testing.assert_array_equal(res, np.transpose(arg0, (0, 2, 1)))
+
+  def test_transpose_3d_2_0_1(self):
+    for specialize in specializations:
+      mlir_function = """
+        func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+          %0 = "tf.Const"() { value = dense<[2, 0, 1]> : tensor<3xi64> }
+            : () -> tensor<3xi64>
+          %1 = "tf.Transpose"(%arg0, %0)
+            : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
+          return %1 : tensor<?x?x?xf32>
+        }"""
+
+      compiled = jitrt.compile(
+          mlir_function, 'test', specialize, vectorize=True)
+
+      dim_size = 32
+      arg0 = np.arange(0, dim_size * dim_size * dim_size, 1,
+                       np.float32).reshape((dim_size, dim_size, dim_size))
+
+      [res] = jitrt.execute(compiled, [arg0])
+      np.testing.assert_array_equal(res, np.transpose(arg0, (2, 0, 1)))
+
+  def test_transpose_3d_2_1_0(self):
+    for specialize in specializations:
+      mlir_function = """
+        func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+          %0 = "tf.Const"() { value = dense<[2, 1, 0]> : tensor<3xi64> }
+            : () -> tensor<3xi64>
+          %1 = "tf.Transpose"(%arg0, %0)
+            : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
+          return %1 : tensor<?x?x?xf32>
+        }"""
+
+      compiled = jitrt.compile(
+          mlir_function, 'test', specialize, vectorize=True)
+
+      dim_size = 32
+      arg0 = np.arange(0, dim_size * dim_size * dim_size, 1,
+                       np.float32).reshape((dim_size, dim_size, dim_size))
+
+      [res] = jitrt.execute(compiled, [arg0])
+      np.testing.assert_array_equal(res, np.transpose(arg0, (2, 1, 0)))
+
+  def test_transpose_3d_1_2_0(self):
+    for specialize in specializations:
+      mlir_function = """
+        func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+          %0 = "tf.Const"() { value = dense<[1, 2, 0]> : tensor<3xi64> }
+            : () -> tensor<3xi64>
+          %1 = "tf.Transpose"(%arg0, %0)
+            : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
+          return %1 : tensor<?x?x?xf32>
+        }"""
+
+      compiled = jitrt.compile(
+          mlir_function, 'test', specialize, vectorize=True)
+
+      dim_size = 32
+      arg0 = np.arange(0, dim_size * dim_size * dim_size, 1,
+                       np.float32).reshape((dim_size, dim_size, dim_size))
+
+      [res] = jitrt.execute(compiled, [arg0])
+      np.testing.assert_array_equal(res, np.transpose(arg0, (1, 2, 0)))
+
+  def test_transpose_3d_1_0_2(self):
+    for specialize in specializations:
+      mlir_function = """
+        func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+          %0 = "tf.Const"() { value = dense<[1, 0, 2]> : tensor<3xi64> }
+            : () -> tensor<3xi64>
+          %1 = "tf.Transpose"(%arg0, %0)
+            : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
+          return %1 : tensor<?x?x?xf32>
+        }"""
+
+      compiled = jitrt.compile(
+          mlir_function, 'test', specialize, vectorize=True)
+
+      dim_size = 32
+      arg0 = np.arange(0, dim_size * dim_size * dim_size, 1,
+                       np.float32).reshape((dim_size, dim_size, dim_size))
+
+      [res] = jitrt.execute(compiled, [arg0])
+      np.testing.assert_array_equal(res, np.transpose(arg0, (1, 0, 2)))
+
+  def test_double_transpose_3d(self):
     for specialize in specializations:
       mlir_function = """
         func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
@@ -66,7 +172,8 @@ class TfTransposeTest(test.TestCase):
           return %3 : tensor<?x?x?xf32>
         }"""
 
-      compiled = jitrt.compile(mlir_function, 'test', specialize)
+      compiled = jitrt.compile(
+          mlir_function, 'test', specialize, vectorize=True)
 
       d0 = np.random.randint(1, 10)
       d1 = np.random.randint(1, 10)

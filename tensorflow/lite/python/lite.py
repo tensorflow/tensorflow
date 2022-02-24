@@ -551,11 +551,12 @@ class TFLiteConverterBase(object):
     self._metadata.options = conversion_metdata_fb.ConversionOptionsT()
     self._metadata.environment.tensorflowVersion = versions.__version__
     self._metadata.environment.modelType = self._get_original_model_type()
+    self._experimental_enable_dynamic_update_slice = False
 
     # When the value is true, the MLIR quantantizer triggers dynamic range
     # quantization in MLIR instead of the old quantizer. Used only if
     # experimental_new_quantizer is on.
-    self._experimental_new_dynamic_range_quantizer = True
+    self.experimental_new_dynamic_range_quantizer = True
     # Experimental flag to enable low-bit QAT in 8 bit.
     self._experimental_low_bit_qat = False
 
@@ -667,6 +668,8 @@ class TFLiteConverterBase(object):
             self._experimental_tf_quantization_mode,
         "experimental_enable_resource_variables":
             self.experimental_enable_resource_variables,
+        "enable_dynamic_update_slice":
+            self._experimental_enable_dynamic_update_slice,
     }
 
     if self.saved_model_dir:
@@ -756,7 +759,7 @@ class TFLiteConverterBase(object):
     quant_mode = QuantizationMode(
         self.optimizations, self.target_spec, self.representative_dataset,
         graph_def, self._experimental_disable_per_channel,
-        self._experimental_new_dynamic_range_quantizer,
+        self.experimental_new_dynamic_range_quantizer,
         self._experimental_low_bit_qat,
         self._experimental_full_integer_quantization_bias_type)
     converter_kwargs.update({
@@ -999,7 +1002,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     self._quant_mode = QuantizationMode(
         self.optimizations, self.target_spec, self.representative_dataset,
         graph_def, self._experimental_disable_per_channel,
-        self._experimental_new_dynamic_range_quantizer,
+        self.experimental_new_dynamic_range_quantizer,
         self._experimental_low_bit_qat,
         self._experimental_full_integer_quantization_bias_type)
     self._validate_inference_input_output_types(self._quant_mode)
@@ -1071,7 +1074,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     quant_mode = QuantizationMode(
         self.optimizations, self.target_spec, self.representative_dataset,
         graph_def, self._experimental_disable_per_channel,
-        self._experimental_new_dynamic_range_quantizer,
+        self.experimental_new_dynamic_range_quantizer,
         self._experimental_low_bit_qat,
         self._experimental_full_integer_quantization_bias_type)
     self._validate_inference_input_output_types(quant_mode)
@@ -2027,7 +2030,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     quant_mode = QuantizationMode(
         self.optimizations, self.target_spec, self.representative_dataset,
         self._graph_def, self._experimental_disable_per_channel,
-        self._experimental_new_dynamic_range_quantizer,
+        self.experimental_new_dynamic_range_quantizer,
         self._experimental_low_bit_qat,
         self._experimental_full_integer_quantization_bias_type)
 
