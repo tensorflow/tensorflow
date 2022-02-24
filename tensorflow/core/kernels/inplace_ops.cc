@@ -466,6 +466,14 @@ REGISTER(double);
 REGISTER(Eigen::half);
 REGISTER(int64_t);
 
+REGISTER_EMPTY(float, GPU);
+REGISTER_EMPTY(double, GPU);
+REGISTER_EMPTY(Eigen::half, GPU);
+REGISTER_EMPTY(int64_t, GPU);
+REGISTER_EMPTY(int32, GPU);
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 REGISTER_KERNEL_BUILDER(Name("InplaceUpdate")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("x")
@@ -497,13 +505,6 @@ REGISTER_KERNEL_BUILDER(Name("DeepCopy")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
                         CopyOp<CPUDevice>);
-REGISTER_EMPTY(float, GPU);
-REGISTER_EMPTY(double, GPU);
-REGISTER_EMPTY(Eigen::half, GPU);
-REGISTER_EMPTY(int64_t, GPU);
-REGISTER_EMPTY(int32, GPU);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace
 }  // end namespace tensorflow
