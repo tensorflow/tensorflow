@@ -180,7 +180,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
       with test.mock.patch.object(sys, 'stdout', mock_stdout):
         analyzer.ModelAnalyzer.analyze(model_content=fb_model)
       txt = mock_stdout.getvalue()
-      self.assertIn('Your TFLite model has ‘2’ signature_def(s).', txt)
+      self.assertIn("Your TFLite model has '2' signature_def(s).", txt)
       self.assertIn("Signature#0 key: 'add'", txt)
       self.assertIn("  'a' : T#1", txt)
       self.assertIn("  'b' : T#0", txt)
