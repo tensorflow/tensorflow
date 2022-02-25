@@ -55,8 +55,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // b/77879207.
   opts.set_xla_gpu_disable_multi_streaming(true);
 
+  opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
-  opts.set_xla_cpu_enable_fast_math(true);
   opts.set_xla_cpu_fast_math_honor_nans(true);
   opts.set_xla_cpu_fast_math_honor_infs(true);
   opts.set_xla_cpu_fast_math_honor_functions(true);

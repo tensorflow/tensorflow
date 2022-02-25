@@ -271,7 +271,7 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name) = 0;
+      absl::string_view name, bool is_reducer) = 0;
 
   StatusOr<llvm::Value*> EmitElementalMap(
       const HloMapInstruction* map_instr,

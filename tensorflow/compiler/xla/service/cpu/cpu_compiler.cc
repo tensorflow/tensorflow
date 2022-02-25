@@ -21,7 +21,9 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <stack>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -970,6 +972,67 @@ StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
   return mlir_module;
 }
 
+struct ComputationToEmit {
+  HloComputation* computation;
+
+  // Are we emitting this computation with fast-math reassociation enabled?
+  // We enable reassociation for reductions because it has a significant
+  // performance impact.
+  bool allow_reassociation;
+
+  bool operator==(const ComputationToEmit& other) const {
+    return computation == other.computation &&
+           allow_reassociation == other.allow_reassociation;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ComputationToEmit& c) {
+    return H::combine(std::move(h), c.computation, c.allow_reassociation);
+  }
+};
+
+std::vector<ComputationToEmit> SubcomputationEmissionOrder(
+    HloComputation* root) {
+  absl::flat_hash_set<ComputationToEmit> visited;
+  std::vector<ComputationToEmit> postorder;
+
+  // agenda of (node, leave) pairs.
+  std::stack<std::pair<ComputationToEmit, bool>> agenda;
+  agenda.emplace(ComputationToEmit{root, false}, false);
+  while (!agenda.empty()) {
+    ComputationToEmit c;
+    bool leave;
+    std::tie(c, leave) = agenda.top();
+    agenda.pop();
+
+    if (leave) {
+      postorder.push_back(c);
+      continue;
+    }
+
+    if (visited.insert(c).second) {
+      agenda.emplace(c, true);
+      for (auto* instruction : c.computation->instructions()) {
+        bool allow_reassociation =
+            instruction->opcode() == HloOpcode::kReduce ||
+            instruction->opcode() == HloOpcode::kReduceWindow;
+        for (auto it = instruction->called_computations().rbegin();
+             it != instruction->called_computations().rend(); ++it) {
+          HloComputation* called_computation = *it;
+          ComputationToEmit callee{
+              called_computation, c.allow_reassociation || allow_reassociation};
+          if (!visited.contains(callee)) {
+            agenda.emplace(callee, false);
+          }
+        }
+      }
+    }
+  }
+  DCHECK(!postorder.empty() && postorder.back().computation == root);
+  postorder.pop_back();
+  return postorder;
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
@@ -1068,17 +1131,18 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
-  for (auto embedded_computation :
-       entry_computation->MakeEmbeddedComputationsList()) {
-    if (embedded_computation->IsFusionComputation()) {
+  for (ComputationToEmit subcomputation :
+       SubcomputationEmissionOrder(entry_computation)) {
+    if (subcomputation.computation->IsFusionComputation()) {
       continue;
     }
     TF_RETURN_IF_ERROR(
         ir_emitter
             .EmitComputation(
-                embedded_computation, embedded_computation->name(),
+                subcomputation.computation, subcomputation.computation->name(),
                 /*is_top_level_computation=*/false,
-                schedule.sequence(embedded_computation).instructions())
+                schedule.sequence(subcomputation.computation).instructions(),
+                subcomputation.allow_reassociation)
             .status());
   }
   std::string function_name_prefix = entry_computation->name().empty()
@@ -1088,7 +1152,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                       ir_emitter.EmitComputation(
                           entry_computation, function_name_prefix,
                           /*is_top_level_computation=*/true,
-                          schedule.sequence(entry_computation).instructions()));
+                          schedule.sequence(entry_computation).instructions(),
+                          /*allow_reassociation=*/false));
 
   std::string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
@@ -1322,17 +1387,19 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
       TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
-      for (auto embedded_computation :
-           computation->MakeEmbeddedComputationsList()) {
-        if (embedded_computation->IsFusionComputation()) {
+      for (ComputationToEmit subcomputation :
+           SubcomputationEmissionOrder(computation)) {
+        if (subcomputation.computation->IsFusionComputation()) {
           continue;
         }
         TF_RETURN_IF_ERROR(
             ir_emitter
-                .EmitComputation(
-                    embedded_computation, embedded_computation->name(),
-                    /*is_top_level_computation=*/false,
-                    schedule.sequence(embedded_computation).instructions())
+                .EmitComputation(subcomputation.computation,
+                                 subcomputation.computation->name(),
+                                 /*is_top_level_computation=*/false,
+                                 schedule.sequence(subcomputation.computation)
+                                     .instructions(),
+                                 subcomputation.allow_reassociation)
                 .status());
       }
       const std::string& entry_point_name = options.entry_point_name();
@@ -1340,7 +1407,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                           ir_emitter.EmitComputation(
                               computation, entry_point_name,
                               /*is_top_level_computation=*/true,
-                              schedule.sequence(computation).instructions()));
+                              schedule.sequence(computation).instructions(),
+                              /*allow_reassociation=*/false));
 
       CHECK(entry_function->getName() == entry_point_name);
     }
