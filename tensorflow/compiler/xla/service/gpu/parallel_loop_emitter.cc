@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "llvm/IR/Intrinsics.h"
@@ -94,6 +95,22 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
                             static_cast<llvm::Instruction*>(block_id));
   block_id = b_->CreateZExtOrTrunc(block_id, index_type, "block_id");
 
+  const int unroll_factor = launch_config_.unroll_factor;
+  const auto threads_in_block = launch_dimensions_.total_nb_threads();
+  bool enable_optimized_index =
+      !launch_config_.row_vectorized && (unroll_factor > 1) &&
+      (threads_in_block == launch_dimensions_.thread_counts_per_block().x) &&
+      (!shape_.is_dynamic()) &&
+      (!LayoutUtil::IsMonotonicWithDim0Major(shape_.layout())) &&
+      (ShapeUtil::ElementsIn(shape_) % (threads_in_block * unroll_factor) ==
+       0) &&
+      (ShapeUtil::ElementsIn(shape_) == (threads_in_block * unroll_factor *
+                                         launch_dimensions_.block_counts().x));
+
+  // std::cerr << "EmitIndexAndSet " << enable_optimized_index << " "
+  //          << unroll_factor << " " << launch_dimensions_.ToString() << " "
+  //          << shape_.ToString(true) << std::endl;
+
   // Per the PTX documentation:
   //   "It is guaranteed that [...] 0  <=  %tid.x <  %ntid.x"
   llvm::Value* thread_id_x =
@@ -124,6 +141,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
         "",
         /*HasNUW=*/true, /*HasNSW=*/true);
   }
+  llvm::Value* linear_index_base_without_threadx = linear_index_base;
   linear_index_base =
       b_->CreateAdd(linear_index_base, thread_id_x, "linear_index",
                     /*HasNUW=*/true, /*HasNSW=*/true);
@@ -147,10 +165,18 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
       {}, b_);
 
   if (launch_config_.unroll_factor > 1) {
-    linear_index_base = b_->CreateMul(
-        linear_index_base,
-        llvm::ConstantInt::get(index_type, launch_config_.unroll_factor),
-        "linear_index_base", /*HasNUW=*/true, /*HasNSW=*/true);
+    if (enable_optimized_index) {
+      linear_index_base = b_->CreateMul(
+          linear_index_base_without_threadx,
+          llvm::ConstantInt::get(index_type, launch_config_.unroll_factor),
+          "linear_index_base", /*HasNUW=*/true, /*HasNSW=*/true);
+      linear_index_base = b_->CreateAdd(linear_index_base, thread_id_x);
+    } else {
+      linear_index_base = b_->CreateMul(
+          linear_index_base,
+          llvm::ConstantInt::get(index_type, launch_config_.unroll_factor),
+          "linear_index_base", /*HasNUW=*/true, /*HasNSW=*/true);
+    }
   }
 
   if (base_index != nullptr) {
@@ -179,10 +205,13 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   }
 
   for (int i = 1; i < launch_config_.unroll_factor; ++i) {
-    llvm::Value* linear_index =
-        b_->CreateAdd(linear_index_base, llvm::ConstantInt::get(index_type, i),
-                      absl::StrCat("linear_index", i),
-                      /*HasNUW=*/true, /*HasNSW=*/true);
+    const int multiplier = enable_optimized_index
+                               ? launch_dimensions_.thread_counts_per_block().x
+                               : 1;
+    llvm::Value* linear_index = b_->CreateAdd(
+        linear_index_base, llvm::ConstantInt::get(index_type, i * multiplier),
+        absl::StrCat("linear_index", i),
+        /*HasNUW=*/true, /*HasNSW=*/true);
     if (!launch_config_.row_vectorized) {
       array_indices.emplace_back(linear_index, shape_, b_);
     } else {
@@ -193,12 +222,19 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
       array_indices.emplace_back(linear_index, multidim, shape_, b_);
     }
   }
+  llvm::Value* cond;
+
+  if (enable_optimized_index) {
+    cond = b_->CreateICmpULT(llvm::ConstantInt::get(index_type, 0),
+                             llvm::ConstantInt::get(index_type, 1));
+  } else {
+    cond = b_->CreateICmpULT(
+        linear_index_base,
+        llvm::ConstantInt::get(index_type, ShapeUtil::ElementsIn(shape_)));
+  }
 
   auto if_in_bounds = llvm_ir::EmitIfThenElse(
-      b_->CreateICmpULT(
-          linear_index_base,
-          llvm::ConstantInt::get(index_type, ShapeUtil::ElementsIn(shape_))),
-      llvm_ir::IrName(loop_name, "in_bounds"), b_, false);
+      cond, llvm_ir::IrName(loop_name, "in_bounds"), b_, false);
 
   // Set exit_bb_ to the exit block of the if structure.
   exit_bb_ = if_in_bounds.after_block;
