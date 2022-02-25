@@ -35,12 +35,11 @@ PyObject* QuantizeQATModel(absl::string_view saved_model_path,
   auto graph_def_or =
       mlir::quant::QuantizeQATModel(saved_model_path, exported_names_str, tags);
   if (!graph_def_or.ok()) {
-    PyErr_Format(PyExc_ValueError,
-                 graph_def_or.status().error_message().c_str());
+    PyErr_Format(PyExc_ValueError, "failed to quantize QAT model");
     return nullptr;
   }
 
-  std::string ret_str = graph_def_or.ValueOrDie().SerializeAsString();
+  std::string ret_str = graph_def_or.value().SerializeAsString();
 
   return tflite::python_utils::ConvertToPyString(ret_str.c_str(),
                                                  ret_str.size());
@@ -53,11 +52,11 @@ PyObject* QuantizePTQModelPreCalibration(absl::string_view saved_model_path,
       saved_model_path, exported_names_str, tags);
   if (!graph_def_or.ok()) {
     PyErr_Format(PyExc_ValueError,
-                 graph_def_or.status().error_message().c_str());
+                 "failed to quantize PTQ model at the precalibration stage");
     return nullptr;
   }
 
-  std::string ret_str = graph_def_or.ValueOrDie().SerializeAsString();
+  std::string ret_str = graph_def_or.value().SerializeAsString();
 
   return tflite::python_utils::ConvertToPyString(ret_str.c_str(),
                                                  ret_str.size());
@@ -70,11 +69,11 @@ PyObject* QuantizePTQModelPostCalibration(absl::string_view saved_model_path,
       saved_model_path, exported_names_str, tags);
   if (!graph_def_or.ok()) {
     PyErr_Format(PyExc_ValueError,
-                 graph_def_or.status().error_message().c_str());
+                 "failed to quantize PTQ model at the postcalibration stage");
     return nullptr;
   }
 
-  std::string ret_str = graph_def_or.ValueOrDie().SerializeAsString();
+  std::string ret_str = graph_def_or.value().SerializeAsString();
 
   return tflite::python_utils::ConvertToPyString(ret_str.c_str(),
                                                  ret_str.size());
