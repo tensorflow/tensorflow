@@ -186,21 +186,30 @@ class _OwnsMirroredVariables(base.Trackable):
 
 class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
+  @parameterized.named_parameters(
+      ("_enable_async_ckpt", True),
+      ("_disable_async_ckpt", False)
+    )
   @test_util.run_in_graph_and_eager_modes
-  def testMoreComplexSaveableReturned(self):
+  def testMoreComplexSaveableReturned(self, enable_async_ckpt):
+    if enable_async_ckpt and not context.executing_eagerly():
+      self.skipTest(
+          "Skipping this test as async checkpoint does not support graph mode.")
     v = _OwnsMirroredVariables()
     checkpoint = trackable_utils.Checkpoint(v=v)
     test_dir = self.get_temp_dir()
     prefix = os.path.join(test_dir, "ckpt")
     self.evaluate(v.non_dep_variable.assign(42.))
-    save_path = checkpoint.save(prefix)
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_enable_async_checkpoint=enable_async_ckpt)
+    save_path = checkpoint.save(file_prefix=prefix, options=ckpt_options)
     self.evaluate(v.non_dep_variable.assign(43.))
     self.evaluate(v.mirrored.assign(44.))
     checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
     self.assertEqual(42., self.evaluate(v.non_dep_variable))
     self.assertEqual(42., self.evaluate(v.mirrored))
     self.evaluate(v.non_dep_variable.assign(44.))
-    save_path = checkpoint.save(prefix)
+    save_path = checkpoint.save(file_prefix=prefix, options=ckpt_options)
     self.evaluate(v.non_dep_variable.assign(45.))
     checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
     self.assertEqual(44., self.evaluate(v.non_dep_variable))
@@ -222,14 +231,23 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       self.assertEqual(42., self.evaluate(v.non_dep_variable))
       self.assertEqual(42., self.evaluate(v.mirrored))
 
+  @parameterized.named_parameters(
+      ("_enable_async_ckpt", True),
+      ("_disable_async_ckpt", False)
+    )
   @test_util.run_in_graph_and_eager_modes
-  def testAssertConsumedNoCheckpoint(self):
+  def testAssertConsumedNoCheckpoint(self, enable_async_ckpt):
+    if enable_async_ckpt and not context.executing_eagerly():
+      self.skipTest(
+          "Skipping this test as async checkpoint does not support graph mode.")
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     v = variable_scope.get_variable(name="v", initializer=0.)
     self.evaluate(v.initializer)
     ckpt = trackable_utils.Checkpoint(v=v)
     self.evaluate(trackable_utils.gather_initializers(ckpt))
-    save_path = ckpt.save(file_prefix=prefix)
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_enable_async_checkpoint=enable_async_ckpt)
+    save_path = ckpt.save(file_prefix=prefix, options=ckpt_options)
     status = ckpt.restore(save_path=save_path)
     del ckpt
     status.assert_consumed()
@@ -309,15 +327,25 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       self.assertEqual(3, self.evaluate(v))
       self.assertEqual(12, self.evaluate(checkpoint.save_counter))
 
+  @parameterized.named_parameters(
+      ("_enable_async_ckpt", True),
+      ("_disable_async_ckpt", False)
+    )
   @test_util.run_in_graph_and_eager_modes
-  def testCustomNumbering(self):
+  def testCustomNumbering(self, enable_async_ckpt):
+    if enable_async_ckpt and not context.executing_eagerly():
+      self.skipTest(
+          "Skipping this test as async checkpoint does not support graph mode.")
     directory = self.get_temp_dir()
     prefix = os.path.join(directory, "ckpt")
     step = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
     checkpoint = trackable_utils.Checkpoint(step=step)
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_enable_async_checkpoint=enable_async_ckpt)
     self.evaluate(step.initializer)
     for i in range(5):
-      path = checkpoint.write("%s-%d" % (prefix, self.evaluate(step)))
+      path = checkpoint.write("%s-%d" % (prefix, self.evaluate(step)),
+                              options=ckpt_options)
       expected_suffix = "-%d" % (2 * i,)
       if not path.endswith(expected_suffix):
         self.fail("%s should have suffix %s" % (path, expected_suffix))
@@ -822,16 +850,31 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     with self.assertRaises(errors_impl.NotFoundError):
       self.evaluate(_write_checkpoint(checkpoint_prefix_tensor))
 
-  def test_inititialize_with_data_structures(self):
+  @parameterized.named_parameters(
+      ("_enable_async_ckpt", True),
+      ("_disable_async_ckpt", False))
+  def test_inititialize_with_data_structures(self, enable_async_ckpt):
+    if enable_async_ckpt and not context.executing_eagerly():
+      self.skipTest(
+          "Skipping this test as async checkpoint does not support graph mode.")
     checkpoint = trackable_utils.Checkpoint(
         a=[variables_lib.Variable(0.), variables_lib.Variable(1.)],
         b={"a": variables_lib.Variable(2.), "b": variables_lib.Variable(3.)})
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    save_path = checkpoint.save(checkpoint_prefix)
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_enable_async_checkpoint=enable_async_ckpt)
+    save_path = checkpoint.save(file_prefix=checkpoint_prefix,
+                                options=ckpt_options)
     load_checkpoint = trackable_utils.Checkpoint(
         a=[variables_lib.Variable(4.), variables_lib.Variable(5.)],
         b={"a": variables_lib.Variable(6.), "b": variables_lib.Variable(7.)})
+    # When async checkpoint is enabled, we need to first make sure that the
+    # checkpoint saving is fully complete before the checkpoint file can be
+    # loaded by another checkpoint instance. Calling checkpoint.restore() is a
+    # trick to make sure its async thread is joined.
+    if enable_async_ckpt:
+      checkpoint.restore(save_path)
     load_checkpoint.restore(save_path)
     self.assertAllClose(self.evaluate(load_checkpoint.a), [0, 1])
     self.assertAllClose(self.evaluate(load_checkpoint.b), {"a": 2, "b": 3})

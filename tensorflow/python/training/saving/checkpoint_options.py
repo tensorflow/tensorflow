@@ -36,9 +36,10 @@ class CheckpointOptions(object):
   """
 
   # Define object attributes in __slots__ for improved memory and performance.
-  __slots__ = ("experimental_io_device",)
+  __slots__ = ("experimental_io_device", "experimental_enable_async_checkpoint")
 
-  def __init__(self, experimental_io_device=None):
+  def __init__(self, experimental_io_device=None,
+               experimental_enable_async_checkpoint=False):
     """Creates an object that stores options for a Checkpoint.
 
     Args:
@@ -51,5 +52,15 @@ class CheckpointOptions(object):
         This is for example useful if you want to save to a local directory,
         such as "/tmp" when running in a distributed setting. In that case pass
         a device for the host where the "/tmp" directory is accessible.
+
+      experimental_enable_async_checkpoint: bool Type. Indicates whether async
+        checkpoint is enabled. Default is False, i.e., no async checkpoint.
+
+        Async checkpoint moves the checkpoint file writing off the main thread,
+        so that the model can continue to train while the checkpoing file
+        writing runs in the background. Async checkpoint reduces TPU device idle
+        cycles and speeds up model training process, while memory consumption
+        may increase.
     """
     self.experimental_io_device = experimental_io_device
+    self.experimental_enable_async_checkpoint = experimental_enable_async_checkpoint
