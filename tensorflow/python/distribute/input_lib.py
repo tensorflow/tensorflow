@@ -716,9 +716,25 @@ class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
   def value_type(self):
     return DistributedIterator
 
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    try:
+      return functools.reduce(lambda a, b: a.most_specific_compatible_type(b),
+                              others, self)
+    except (TypeError, ValueError):
+      return None
+
   # Overriding this method so that we can merge and reconstruct the spec object
   def most_specific_compatible_type(self, other):
     """Returns the most specific TypeSpec compatible with `self` and `other`.
+
+    Deprecated.
 
     Args:
       other: A `TypeSpec`.
@@ -896,9 +912,25 @@ class DistributedDatasetSpec(DistributedDatasetAndIteratorSpec):
   def value_type(self):
     return DistributedDataset
 
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    try:
+      return functools.reduce(lambda a, b: a.most_specific_compatible_type(b),
+                              others, self)
+    except (TypeError, ValueError):
+      return None
+
   # Overriding this method so that we can merge and reconstruct the spec object
   def most_specific_compatible_type(self, other):
     """Returns the most specific TypeSpec compatible with `self` and `other`.
+
+    Deprecated.
 
     Args:
       other: A `TypeSpec`.
@@ -1240,9 +1272,25 @@ class DistributedDatasetsFromFunctionSpec(DistributedDatasetAndIteratorSpec):
       specs.append(dataset_ops.DatasetSpec(element_spec))
     return specs
 
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    try:
+      return functools.reduce(lambda a, b: a.most_specific_compatible_type(b),
+                              others, self)
+    except (TypeError, ValueError):
+      return None
+
   # Overriding this method so that we can merge and reconstruct the spec object
   def most_specific_compatible_type(self, other):
     """Returns the most specific TypeSpec compatible with `self` and `other`.
+
+    Deprecated.
 
     Args:
       other: A `TypeSpec`.

@@ -17,6 +17,7 @@
 # pylint: disable=g-bad-name
 import contextlib
 
+import functools
 import traceback
 import weakref
 
@@ -1373,7 +1374,22 @@ class TensorArraySpec(type_spec.TypeSpec):
             self._element_shape.is_compatible_with(other._element_shape) and
             self._dynamic_size == other._dynamic_size)
 
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    try:
+      return functools.reduce(lambda a, b: a.most_specific_compatible_type(b),
+                              others, self)
+    except (TypeError, ValueError):
+      return None
+
   def most_specific_compatible_type(self, other):
+    """Deprecated."""
     # pylint: disable=protected-access
     if not self.is_compatible_with(other):
       raise ValueError(f"Type `{self}` is not compatible with `{other}`.")
