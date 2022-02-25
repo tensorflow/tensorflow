@@ -80,8 +80,6 @@ class HloDataflowAnalysis {
       bool bitcast_defines_value = false,
       const CanShareBuffer& can_share_buffer = nullptr);
 
-  static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
-
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
   bool ValueIsDefinedAt(const HloInstruction* instruction,
@@ -176,7 +174,9 @@ class HloDataflowAnalysis {
   static std::vector<std::pair<HloUse, ShapeIndex>> GetInPlaceInputOutputPairs(
       HloInstruction* instruction);
 
- protected:
+ private:
+  static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
+
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value = false,
                       const CanShareBuffer& can_share_buffer = nullptr);
