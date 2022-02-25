@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
@@ -812,12 +813,16 @@ Status ConvertAfterShapes(const ConversionParams& params,
   GetPostOrder(graph, &reverse_topo_order);
   segment::SegmentVector converted_segments;
   converted_segments.reserve(initial_segments.size());
-  string engine_name_prefix =
-      StrCat("TRTEngineOp_", GetNextGraphSequenceNumber(), "_");
+  string engine_name_prefix = StrCat(
+    "TRTEngineOp_",
+    absl::StrFormat("%0*d", 3, GetNextGraphSequenceNumber()),
+    "_"
+  );
   for (size_t t = 0; t < initial_segments.size(); t++) {
     auto& curr_segment = initial_segments.at(t);
     EngineInfo curr_engine;
-    curr_engine.engine_name = StrCat(engine_name_prefix, t);
+    curr_engine.engine_name = StrCat(
+      engine_name_prefix, absl::StrFormat("%0*d", 3, t));
 
     bool int8_no_calib = (params.use_calibration == false &&
                           params.precision_mode == TrtPrecisionMode::INT8);

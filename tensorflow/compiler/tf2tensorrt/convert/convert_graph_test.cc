@@ -203,13 +203,13 @@ TEST_F(ConvertAfterShapesTest, DirectlyConnectedEngines) {
     std::string node_name = node.name();
     if (node.op() != "TRTEngineOp") continue;
     node_name = remove_graph_sequence_number(node_name);
-    if (node_name == "TRTEngineOp_1") {
+    if (node_name == "TRTEngineOp_001") {
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("input", node.input(0));
       ++num_trt_ops;
-    } else if (node_name == "TRTEngineOp_0") {
+    } else if (node_name == "TRTEngineOp_000") {
       EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("TRTEngineOp_1", remove_graph_sequence_number(node.input(0)));
+      EXPECT_EQ("TRTEngineOp_001", remove_graph_sequence_number(node.input(0)));
       EXPECT_EQ("reshape2", node.input(1));
       ++num_trt_ops;
     }
