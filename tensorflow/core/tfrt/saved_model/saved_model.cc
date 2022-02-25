@@ -806,6 +806,13 @@ SavedModelImpl::ImportSubgraph(
       graph_executor_->graph_execution_state().CreateOptimizedGraph(
           graph_import_config));
 
+  // Add send ops as control outputs.
+  for (Node* node : optimization_result.graph->nodes()) {
+    if (node->IsSend()) {
+      graph_import_config.control_outputs.push_back(node->name());
+    }
+  }
+
   // Convert the optimized graph to an MLIR module.
   return tensorflow::ConvertGraphToMlir(
       *optimization_result.graph, /*debug_info=*/{},

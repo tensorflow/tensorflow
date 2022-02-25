@@ -3871,6 +3871,13 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
 
   TF_ASSIGN_OR_RETURN(const auto* subgraph, input_.GetSubGraph(name, specs));
 
+  // Add send ops as control outputs.
+  for (Node* node : subgraph->nodes()) {
+    if (node->IsSend()) {
+      specs.control_outputs.push_back(node->name());
+    }
+  }
+
   // Convert sub-graph to MLIR module.
   return GraphDefImporter::Convert(module_->getContext(), *subgraph,
                                    input_.debug_info(), subgraph->flib_def(),
