@@ -680,3 +680,271 @@ func @moved_ops_with_many_dependencies() {
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
 }
+
+
+// Check that two IfRegion groups where each of them contains 3 IfRegions with
+// the same predicate are merged. There are no dependencies between IfRegions.
+
+// CHECK-LABEL: func @three_if_regions_with_same_predicate_merged
+func @three_if_regions_with_same_predicate_merged() {
+  // CHECK:      tf_device.cluster
+  // CHECK:        "tf.IfRegion"
+  // CHECK:        "tf.A"
+  // CHECK:        "tf.C"
+  // CHECK:        "tf.E"
+  // CHECK:        "tf.B"
+  // CHECK:        "tf.D"
+  // CHECK:        "tf.F"
+  // CHECK:        "tf.IfRegion"
+  // CHECK:        "tf.G"
+  // CHECK:        "tf.H"
+  // CHECK:        "tf.I"
+  // CHECK-NOT:    "tf.IfRegion"
+  "tf_device.cluster"() ({
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %2 = "tf.IfRegion"(%0) ({
+      %5 = "tf.A"() : () -> (tensor<f32>)
+      "tf.Yield"(%5) : (tensor<f32>) -> ()
+      }, {
+      %5 = "tf.B"() : () -> (tensor<f32>)
+      "tf.Yield"(%5) : (tensor<f32>) -> ()
+     }) {is_stateless = false} : (tensor<i1>) -> (tensor<f32>)
+    %3 = "tf.IfRegion"(%0) ({
+      %6 = "tf.C"() : () -> (tensor<f32>)
+      "tf.Yield"(%6) : (tensor<f32>) -> ()
+      }, {
+      %6 = "tf.D"() : () -> (tensor<f32>)
+      "tf.Yield"(%6) : (tensor<f32>) -> ()
+     }) {is_stateless = false} : (tensor<i1>) -> (tensor<f32>)
+    %4 = "tf.IfRegion"(%0) ({
+      %7 = "tf.E"() : () -> (tensor<f32>)
+      "tf.Yield"(%7) : (tensor<f32>) -> ()
+      }, {
+      %7 = "tf.F"() : () -> (tensor<f32>)
+      "tf.Yield"(%7) : (tensor<f32>) -> ()
+     }) {is_stateless = false} : (tensor<i1>) -> (tensor<f32>)
+    "tf.IfRegion"(%1) ({
+      %8 = "tf.G"() : () -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+     }) {is_stateless = false} : (tensor<i1>) -> ()
+    "tf.IfRegion"(%1) ({
+      %9 = "tf.H"() : () -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+     }) {is_stateless = false} : (tensor<i1>) -> ()
+    "tf.IfRegion"(%1) ({
+      %10 = "tf.I"() : () -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+     }) {is_stateless = false} : (tensor<i1>) -> ()
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// Check that IfRegion groups with nested IfRegion with the same predicate are
+// merged at the same block level. There are no dependencies between IfRegions.
+
+// CHECK-LABEL: func @nested_IfRegions_with_same_predicate_same_block_level_merged
+func @nested_IfRegions_with_same_predicate_same_block_level_merged() {
+  // CHECK:      tf_device.cluster
+  // CHECK:        "tf.IfRegion"
+  // CHECK:        "tf.A"
+  // CHECK:        "tf.IfRegion"
+  // CHECK:        "tf.B"
+  // CHECK:        "tf.D"
+  // CHECK:        "tf.F"
+  // CHECK:        "tf.C"
+  // CHECK:        "tf.E"
+  // CHECK:        "tf.G"
+  // CHECK:        "tf.H"
+  // CHECK-NOT:    "tf.IfRegion"
+  "tf_device.cluster"() ({
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %2 = "tf.IfRegion"(%0) ({
+      %5 = "tf.A"() : () -> (tensor<i1>)
+      "tf.IfRegion"(%5) ({
+        %6 = "tf.B"() : () -> (tensor<f32>)
+        "tf.Yield"() : () -> ()
+      }, {
+        %6 = "tf.C"() : () -> (tensor<f32>)
+        "tf.Yield"() : () -> ()
+      }) {is_stateless = false} : (tensor<i1>) -> ()
+      "tf.IfRegion"(%5) ({
+        %7 = "tf.D"() : () -> (tensor<f32>)
+        "tf.Yield"() : () -> ()
+      }, {
+        %7 = "tf.E"() : () -> (tensor<f32>)
+        "tf.Yield"() : () -> ()
+      }) {is_stateless = false} : (tensor<i1>) -> ()
+      "tf.IfRegion"(%5) ({
+        %8 = "tf.F"() : () -> (tensor<f32>)
+        "tf.Yield"() : () -> ()
+      }, {
+        %8 = "tf.G"() : () -> (tensor<f32>)
+        "tf.Yield"() : () -> ()
+      }) {is_stateless = false} : (tensor<i1>) -> ()
+      "tf.Yield"(%5) : (tensor<i1>) -> ()
+      }, {
+      %5 = "tf.H"() : () -> (tensor<i1>)
+      "tf.Yield"(%5) : (tensor<i1>) -> ()
+      }) {is_stateless = false} : (tensor<i1>) -> (tensor<i1>)
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// Check that when two different IfRegion groups are overlapped and there is no
+// control dependency or data dependency, both of the groups can be merged
+
+// CHECK-LABEL: func @two_overlapped_if_groups_with_no_dependency_merged
+func @two_overlapped_if_groups_with_no_dependency_merged() {
+  // CHECK:      tf_device.cluster
+  // CHECK:        "tf.IfRegion"
+  // CHECK:          "tf.A"
+  // CHECK:          "tf.C"
+  // CHECK:          "tf.E"
+  // CHECK:          "tf.B"
+  // CHECK:          "tf.D"
+  // CHECK:          "tf.F"
+  // CHECK:        "tf.IfRegion"
+  // CHECK:          "tf.G"
+  // CHECK:          "tf.I"
+  // CHECK:          "tf.K"
+  // CHECK:          "tf.H"
+  // CHECK:          "tf.J"
+  // CHECK:          "tf.L"
+  // CHECK-NOT:    "tf.IfRegion"
+  "tf_device.cluster"() ({
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+    %2 = "tf.IfRegion"(%0) ({
+      %3 = "tf.A"() : () -> (tensor<f32>)
+      "tf.Yield"(%3) : (tensor<f32>) -> ()
+      }, {
+      %3 = "tf.B"() : () -> (tensor<f32>)
+      "tf.Yield"(%3) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %6 = "tf.IfRegion"(%1) ({
+      %7 = "tf.G"() : () -> (tensor<f32>)
+      "tf.Yield"(%7) : (tensor<f32>) -> ()
+      }, {
+      %7 = "tf.H"() : () -> (tensor<f32>)
+      "tf.Yield"(%7) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %4 = "tf.IfRegion"(%0) ({
+      %5 = "tf.C"() : () -> (tensor<f32>)
+      "tf.Yield"(%5) : (tensor<f32>) -> ()
+      }, {
+      %5 = "tf.D"() : () -> (tensor<f32>)
+      "tf.Yield"(%5) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %8 = "tf.IfRegion"(%1) ({
+      %9 = "tf.I"() : () -> (tensor<f32>)
+      "tf.Yield"(%9) : (tensor<f32>) -> ()
+      }, {
+      %9 = "tf.J"() : () -> (tensor<f32>)
+      "tf.Yield"(%9) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %10 = "tf.IfRegion"(%0) ({
+      %11 = "tf.E"() : () -> (tensor<f32>)
+      "tf.Yield"(%11) : (tensor<f32>) -> ()
+      }, {
+      %11 = "tf.F"() : () -> (tensor<f32>)
+      "tf.Yield"(%11) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %12 = "tf.IfRegion"(%1) ({
+      %13 = "tf.K"() : () -> (tensor<f32>)
+      "tf.Yield"(%13) : (tensor<f32>) -> ()
+      }, {
+      %13 = "tf.L"() : () -> (tensor<f32>)
+      "tf.Yield"(%13) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// Check that when two different IfRegion groups are overlapped and there is a
+// control dependency or data dependency, then they cannot be merged.
+
+// CHECK-LABEL: func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_region_group
+  // CHECK:      tf_device.cluster
+  // CHECK:        "tf.IfRegion"
+  // CHECK:          "tf.A"
+  // CHECK:          "tf.B"
+  // CHECK:        "tf.AA"
+  // CHECK:        "tf.IfRegion"
+  // CHECK:          "tf.C"
+  // CHECK:          "tf.D"
+  // CHECK:        "tf.AB"
+  // CHECK:        "tf.IfRegion"
+  // CHECK:          "tf.E"
+  // CHECK:          "tf.F"
+  // CHECK:        "tf.IfRegion"
+  // CHECK:          "tf.G"
+  // CHECK:          "tf.I"
+  // CHECK:          "tf.K"
+  // CHECK:          "tf.H"
+  // CHECK:          "tf.J"
+  // CHECK:          "tf.L"
+  // CHECK-NOT:    "tf.IfRegion"
+func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_region_group() {
+  "tf_device.cluster"() ({
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+    %2 = "tf.IfRegion"(%0) ({
+      %3 = "tf.A"() : () -> (tensor<f32>)
+      "tf.Yield"(%3) : (tensor<f32>) -> ()
+      }, {
+      %3 = "tf.B"() : () -> (tensor<f32>)
+      "tf.Yield"(%3) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %6 = "tf.IfRegion"(%1) ({
+      %7 = "tf.G"() : () -> (tensor<f32>)
+      "tf.Yield"(%7) : (tensor<f32>) -> ()
+      }, {
+      %7 = "tf.H"() : ()-> (tensor<f32>)
+      "tf.Yield"(%7) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %14 = "tf.AA"(%2) : (tensor<f32>) -> (tensor<f32>)
+    %4 = "tf.IfRegion"(%0) ({
+      %5 = "tf.C"(%14) : (tensor<f32>) -> (tensor<f32>)
+      "tf.Yield"(%5) : (tensor<f32>) -> ()
+      }, {
+      %5 = "tf.D"(%14) : (tensor<f32>) -> (tensor<f32>)
+      "tf.Yield"(%5) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %8 = "tf.IfRegion"(%1) ({
+      %9 = "tf.I"() : () -> (tensor<f32>)
+      "tf.Yield"(%9) : (tensor<f32>) -> ()
+      }, {
+      %9 = "tf.J"() : () -> (tensor<f32>)
+      "tf.Yield"(%9) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %15 = "tf.AB"(%4) : (tensor<f32>) -> (tensor<f32>)
+    %10 = "tf.IfRegion"(%0) ({
+      %11 = "tf.E"(%15) : (tensor<f32>) -> (tensor<f32>)
+      "tf.Yield"(%11) : (tensor<f32>) -> ()
+      }, {
+      %11 = "tf.F"(%15) : (tensor<f32>) -> (tensor<f32>)
+      "tf.Yield"(%11) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %12 = "tf.IfRegion"(%1) ({
+      %13 = "tf.K"() : () -> (tensor<f32>)
+      "tf.Yield"(%13) : (tensor<f32>) -> ()
+      }, {
+      %13 = "tf.L"() : () -> (tensor<f32>)
+      "tf.Yield"(%13) : (tensor<f32>) -> ()
+      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
