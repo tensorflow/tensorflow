@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -213,7 +214,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(CreateLinalgTrivialCopyRemovalPass());
 
   if (options.vectorize)
-    pm.addNestedPass<FuncOp>(mlir::createConvertLinalgTiledLoopsToSCFPass());
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createGmlStToScfPass());
 
   pm.addPass(mlir::createBufferizationToMemRefPass());
   pm.addPass(mlir::createCSEPass());

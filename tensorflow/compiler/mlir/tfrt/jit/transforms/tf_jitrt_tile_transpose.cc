@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
@@ -40,10 +42,10 @@ using mlir::PatternRewriter;
 using mlir::success;
 using mlir::Value;
 using mlir::arith::ConstantIndexOp;
+using mlir::gml_st::LoopOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
-using mlir::linalg::TiledLoopOp;
 
 /// Returns true if the operation is a GenericOp implementing a transposition.
 // TODO(diegocaballero): Move it to MLIR core?
@@ -97,12 +99,13 @@ struct TileTransposePattern : public mlir::OpRewritePattern<GenericOp> {
     // Check if it is cwise on tensors.
     if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
 
-    auto tiled_linalg_op = tileLinalgOp(rewriter, linalg_op, options);
+    auto tiled_linalg_op =
+        mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
     if (failed(tiled_linalg_op) || tiled_linalg_op.getValue().loops.empty())
       return failure();
 
-    TiledLoopOp tiled_loop =
-        mlir::dyn_cast<TiledLoopOp>(*tiled_linalg_op.getValue().loops.front());
+    auto tiled_loop =
+        mlir::dyn_cast<LoopOp>(*tiled_linalg_op.getValue().loops.front());
     if (!tiled_loop) return failure();
 
     tiled_loop->walk([&](GenericOp tiledOp) {
@@ -141,9 +144,7 @@ struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
                         return success(IsTransposeGenericOp(op));
                       });
     auto tiling_options =
-        LinalgTilingOptions()
-            .setTileSizeComputationFunction(get_tile_size)
-            .setLoopType(mlir::linalg::LinalgTilingLoopType::TiledLoops);
+        LinalgTilingOptions().setTileSizeComputationFunction(get_tile_size);
 
     mlir::RewritePatternSet patterns(func.getContext());
     patterns.add<TileTransposePattern>(tiling_options, filter,

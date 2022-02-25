@@ -644,6 +644,7 @@ tf_cc_binary(
         ":tf_to_tfrt",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
+        "//tensorflow/compiler/mlir/hlo:gml_st",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",

@@ -56,7 +56,10 @@ def TileCWise : Pass<"tf-jitrt-tile-cwise", "mlir::FuncOp"> {
   let summary = "Tile cwise linalg.generic on tensors.";
   let constructor = "tensorflow::CreateTileCWisePass()";
 
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+  let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect"
+  ];
 
   let options = [
     Option<"cwise_tile_size", "cwise-tile-size",
@@ -69,7 +72,10 @@ def TileFill : Pass<"tf-jitrt-tile-fill", "mlir::FuncOp"> {
   let summary = "Tile linalg.fill on tensors";
   let constructor = "tensorflow::CreateTileFillPass()";
 
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+  let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect"
+  ];
 
   let options = [
     Option<"cwise_tile_size", "cwise-tile-size",
@@ -82,7 +88,8 @@ def PeelTiledLoops : Pass<"tf-jitrt-peel-tiled-loops", "mlir::FuncOp"> {
   let summary = "Optimize away padding in tiled loops";
   let constructor = "tensorflow::CreatePeelTiledLoopsPass()";
   let dependentDialects = [
-    "mlir::linalg::LinalgDialect",
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect"
   ];
 }
 
@@ -90,6 +97,7 @@ def TileReduction : Pass<"tf-jitrt-tile-reduction", "mlir::FuncOp"> {
   let summary = "Tile and fuse linalg.generic reduction on tensors.";
   let constructor = "tensorflow::CreateTileReductionPass()";
   let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
     "mlir::linalg::LinalgDialect",
     "mlir::memref::MemRefDialect",
     "mlir::scf::SCFDialect"
@@ -115,7 +123,10 @@ def FuseFillIntoTiledReduction
     : Pass<"tf-jitrt-fuse-fill-into-tiled-reduction", "mlir::FuncOp"> {
   let summary = "Fuse `linalg.fill` into `linalg.tiled_loop` with a reduction.";
   let constructor = "tensorflow::CreateFuseFillIntoTiledReductionPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+  let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect"
+  ];
 
   let description = [{
     Fuses `linalg.fill` producers of output tensor arguments into
@@ -210,13 +221,19 @@ def VectorizeTiledOps : Pass<"tf-jitrt-vectorize-tiled-ops", "mlir::FuncOp"> {
 def TileTranspose : Pass<"tf-jitrt-tile-transpose", "mlir::FuncOp"> {
   let summary = "Tile transpose operations";
   let constructor = "tensorflow::CreateTileTransposePass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
+  let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect"
+  ];
 }
 
 def LowerTranspose : Pass<"tf-jitrt-lower-vector-transpose", "mlir::FuncOp"> {
   let summary = "Lower vector transpose operations";
   let constructor = "tensorflow::CreateLowerVectorTransposePass()";
-  let dependentDialects = ["mlir::vector::VectorDialect, mlir::LLVM::LLVMDialect"];
+  let dependentDialects = [
+    "mlir::vector::VectorDialect",
+    "mlir::LLVM::LLVMDialect"
+  ];
 }
 
 def RewriteVectorMultiReductionPass :
