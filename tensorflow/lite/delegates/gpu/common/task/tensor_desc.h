@@ -97,6 +97,12 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   // returns true, otherwise false
   bool ReturnsZeroForNegOneRead() const;
 
+  absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
+                                        const BHWDC& shape) const;
+
+  absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
+                                        const BHWC& shape) const;
+
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
   // This field describes logical layout, actual(physical) GPU layout can be
