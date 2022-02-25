@@ -391,6 +391,34 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "graph_utils",
+    srcs = ["graph_utils.cc"],
+    hdrs = [
+        "graph_utils.h",
+    ],
+    deps = [
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/platform:protobuf",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_utils_test",
+    srcs = ["graph_utils_test.cc"],
+    deps = [
+        ":common_proto_cc",
+        ":graph_utils",
+        ":test_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:graph_proto_cc",
+    ],
+)
+
+cc_library(
     name = "grpc_dispatcher_impl",
     srcs = ["grpc_dispatcher_impl.cc"],
     hdrs = ["grpc_dispatcher_impl.h"],
