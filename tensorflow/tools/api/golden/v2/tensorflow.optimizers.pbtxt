@@ -41,10 +41,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "legacy"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "schedules"
     mtype: "<type \'module\'>"
   }
