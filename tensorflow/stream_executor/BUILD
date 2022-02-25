@@ -6,8 +6,8 @@
 
 load("//tensorflow:tensorflow.bzl", "filegroup", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured",)
-load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm", "tf_cc_test",)
+load("//tensorflow/core/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
+load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
