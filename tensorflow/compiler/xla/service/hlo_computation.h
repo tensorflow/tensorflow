@@ -591,9 +591,10 @@ class HloComputation {
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      const HloComputation::ChannelDependencyGroup& channel_dependency_group,
-      std::vector<HloInstruction*>* post_order, HloInstruction* root,
-      absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
+      HloInstruction* root,
+      HloComputation::ChannelDependencyGroup& channel_dependencies,
+      absl::flat_hash_map<HloInstruction*, VisitState>& visited,
+      std::vector<HloInstruction*>& post_order) const;
 
   Status RemoveUnusedParametersImpl(bool allow_non_fusion);
 
