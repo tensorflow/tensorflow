@@ -348,7 +348,6 @@ py_library(
         ":row_partition",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
-        "//tensorflow/python:composite_tensor",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -363,6 +362,8 @@ py_library(
         "//tensorflow/python:tf2",
         "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:composite_tensor_gradient",
         "//third_party/py/numpy",
     ],
 )
