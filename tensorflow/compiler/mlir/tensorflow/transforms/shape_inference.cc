@@ -1029,9 +1029,17 @@ struct DatasetInput {
 };
 
 // Returns the input elements shapes and types for Dataset ops.
-DatasetInput GetDatasetInput(Operation* op) {
+DatasetInput GetDatasetInput(Value value) {
   // TODO(haoliang): add an interface for DatasetOp to avoid the following
   // enumeration.
+  // Iteratively tracing upwards if parent op is `IdentityOp` or `IdentityNOp`.
+  while (
+      llvm::isa_and_nonnull<IdentityOp, IdentityNOp>(value.getDefiningOp())) {
+    value = value.getDefiningOp()->getOperand(
+        value.cast<OpResult>().getResultNumber());
+  }
+
+  Operation* op = value.getDefiningOp();
   if (!llvm::isa_and_nonnull<BatchDatasetV2Op, MapDatasetOp, RepeatDatasetOp,
                              ParallelMapDatasetOp, ParallelMapDatasetV2Op,
                              TakeDatasetOp>(op))
@@ -1051,8 +1059,7 @@ bool ShapeInference::InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
   auto input_types = llvm::to_vector<1>(
       cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
-  DatasetInput input_elements =
-      GetDatasetInput(op->getOperand(0).getDefiningOp());
+  DatasetInput input_elements = GetDatasetInput(op->getOperand(0));
   if (!input_elements) {
     op->emitWarning("unexpected dataset input; skipping function refinement");
     return false;
@@ -1130,8 +1137,7 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   // Skip if function is not found or it has more than one caller.
   if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
 
-  DatasetInput input_elements =
-      GetDatasetInput(op.input_dataset().getDefiningOp());
+  DatasetInput input_elements = GetDatasetInput(op.input_dataset());
   if (!input_elements) {
     op.emitWarning("unexpected dataset input; skipping function refinement");
     return false;
