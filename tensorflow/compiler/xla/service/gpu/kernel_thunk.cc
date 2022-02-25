@@ -42,7 +42,8 @@ KernelThunk::KernelThunk(ThunkInfo thunk_info,
       launch_dimensions_(launch_dimensions) {}
 
 std::string KernelThunk::ToStringExtra(int indent) const {
-  return " ,kernel = " + kernel_name_;
+  return absl::StrFormat(", kernel = %s, launch dimensions = %s", kernel_name_,
+                         launch_dimensions_.ToString());
 }
 
 Status KernelThunk::Initialize(const GpuExecutable& executable,
