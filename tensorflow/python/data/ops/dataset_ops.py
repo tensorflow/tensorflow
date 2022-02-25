@@ -3182,32 +3182,26 @@ name=None))
     distribution of `init_dist` needs to be resampled into a dataset with
     `target_dist` distribution.
 
-    >>> import collections
-    >>> initial_dist = [0.5, 0.5]
-    >>> target_dist = [0.6, 0.4]
+    >>> initial_dist = [0.6, 0.4]
     >>> num_classes = len(initial_dist)
-    >>> num_samples = 100000
+    >>> num_samples = 1000
     >>> data_np = np.random.choice(num_classes, num_samples, p=initial_dist)
     >>> dataset = tf.data.Dataset.from_tensor_slices(data_np)
-    >>> x = collections.defaultdict(int)
-    >>> for i in dataset:
-    ...   x[i.numpy()] += 1
 
     The value of `x` will be close to `{0: 50000, 1: 50000}` as per the
     `initial_dist` distribution.
 
-    >>> dataset = dataset.rejection_resample(
-    ...    class_func=lambda x: x % 2,
+    >>> target_dist = [0.5, 0.5]
+    >>> resampled_dataset = dataset.rejection_resample(
+    ...    class_func=lambda x: x,
     ...    target_dist=target_dist,
     ...    initial_dist=initial_dist)
+    >>> resampled_dataset = resampled_dataset.map(
+    ...     lambda class_func_result, data: data)
 
-    >>> y = collections.defaultdict(int)
-    >>> for i in dataset:
-    ...   cls, _ = i
-    ...   y[cls.numpy()] += 1
 
-    The value of `y` will be now be close to `{0: 75000, 1: 50000}` thus
-    satisfying the `target_dist` distribution.
+    The value distribution of classes in the resampled_distribution will be now
+    be close to the target distribution.
 
     Args:
       class_func: A function mapping an element of the input dataset to a scalar
