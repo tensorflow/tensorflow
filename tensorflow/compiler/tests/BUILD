@@ -405,7 +405,6 @@ tf_xla_py_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
-	"no_rocm",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",
         "nomsan",
@@ -429,7 +428,6 @@ tf_xla_py_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
-	"no_rocm",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     deps = [
@@ -449,7 +447,6 @@ tf_xla_py_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
-	"no_rocm",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
