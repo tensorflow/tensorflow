@@ -479,6 +479,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/lib/math:math_util",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
