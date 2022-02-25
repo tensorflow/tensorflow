@@ -88,7 +88,7 @@ class _AssertNextDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._transformations = ops.convert_to_tensor(
         transformations, dtype=dtypes.string, name="transformations")
     variant_tensor = (
-        gen_experimental_dataset_ops.experimental_assert_next_dataset(
+        gen_experimental_dataset_ops.assert_next_dataset(
             self._input_dataset._variant_tensor,  # pylint: disable=protected-access
             self._transformations,
             **self._flat_structure))

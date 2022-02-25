@@ -167,9 +167,6 @@ void AssertNextDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 namespace {
 REGISTER_KERNEL_BUILDER(Name("AssertNextDataset").Device(DEVICE_CPU),
                         AssertNextDatasetOp);
-REGISTER_KERNEL_BUILDER(
-    Name("ExperimentalAssertNextDataset").Device(DEVICE_CPU),
-    AssertNextDatasetOp);
 
 }  // namespace
 }  // namespace experimental
