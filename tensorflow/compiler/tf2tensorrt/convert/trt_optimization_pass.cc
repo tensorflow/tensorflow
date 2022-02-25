@@ -304,8 +304,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
       precision_mode_ = TrtPrecisionMode::INT8;
       use_calibration_ = false;
     }
-  } else {
-    LOG(INFO) << "[TF-TRT] not using explicit QDQ mode";
   }
 
   std::vector<string> nodes_to_preserve;
