@@ -582,6 +582,34 @@ TEST_F(AlgebraicSimplifierTest, SelectIdentical) {
   EXPECT_EQ(computation->root_instruction(), param1);
 }
 
+// Test that select(not(pred), a, b) is simplified to select(pred, b, a)
+TEST_F(AlgebraicSimplifierTest, SelectWithNotPred) {
+  Shape pred_ty = ShapeUtil::MakeShape(PRED, {});
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, pred_ty, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0s32, "param1"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r0s32, "param2"));
+  HloInstruction* pred_instr = builder.AddInstruction(
+      HloInstruction::CreateUnary(pred_ty, HloOpcode::kNot, param0));
+  builder.AddInstruction(HloInstruction::CreateTernary(
+      r0s32, HloOpcode::kSelect, pred_instr, param1, param2));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  const auto& operands = computation->root_instruction()->operands();
+  EXPECT_EQ(operands[0], param0);
+  EXPECT_EQ(operands[1], param2);
+  EXPECT_EQ(operands[2], param1);
+}
+
 // Test that Reduce(Reduce(A)) -> Reduce(A)
 TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
   auto m = CreateNewVerifiedModule();
