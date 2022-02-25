@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/common_runtime/graph_execution_state.h"
@@ -52,7 +53,7 @@ class TfrtGraphExecutionState {
   // Creates a `GraphExecutionState` given `graph_def` and `fallback_state`.
   static StatusOr<std::unique_ptr<TfrtGraphExecutionState>> Create(
       tensorflow::GraphDef graph_def, const FallbackState& fallback_state,
-      bool run_placer_grappler_on_nested_functions = false);
+      bool run_placer_grappler_on_functions = false);
 
   // Ctor. Do not use directly. Public only for `std::make_unique<>()`.
   TfrtGraphExecutionState(
@@ -70,16 +71,27 @@ class TfrtGraphExecutionState {
   StatusOr<OptimizationResult> CreateOptimizedGraph(
       const tensorflow::GraphImportConfig& graph_import_config);
 
- private:
+  // Extends the current graph by `graph`.
+  Status Extend(const GraphDef& graph);
+
   // Return the preprocessed full graph. Note that it does not contain the
   // function library in the original graph.
   const tensorflow::Graph& graph() const {
+    absl::MutexLock lock(&graph_execution_state_mu_);
     DCHECK(graph_execution_state_->full_graph());
     return *graph_execution_state_->full_graph();
   }
 
+  // The original graph.
+  const GraphDef* original_graph_def() const {
+    absl::MutexLock lock(&graph_execution_state_mu_);
+    return graph_execution_state_->original_graph_def();
+  }
+
+ private:
   // Return the function library in the original graph.
   const FunctionLibraryDefinition& flib_def() const {
+    absl::MutexLock lock(&graph_execution_state_mu_);
     return graph_execution_state_->flib_def();
   }
 
@@ -87,7 +99,12 @@ class TfrtGraphExecutionState {
       const tensorflow::Graph& graph,
       const tensorflow::BuildGraphOptions& build_graph_options);
 
-  std::unique_ptr<tensorflow::GraphExecutionState> graph_execution_state_;
+  std::unique_ptr<tensorflow::GraphExecutionState> graph_execution_state_
+      ABSL_GUARDED_BY(graph_execution_state_mu_);
+  // We need this mutex even thought `GraphExecutionState` is thread-safe,
+  // because `swap()` is not thread-safe.
+  mutable absl::Mutex graph_execution_state_mu_;
+
   const FallbackState& fallback_state_;
   bool run_placer_grappler_on_functions_;
   // Only valid if `run_placer_grappler_on_functions_` is true.

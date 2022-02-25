@@ -678,6 +678,50 @@ TEST_F(OptimizeGraphTest, FunctionBecomeUnsafeIfAnyOpIsUnsafe) {
                    optimized_graph_def.library().function(0));
 }
 
+class ExtendGraphTest : public grappler::GrapplerTest {};
+
+TEST_F(ExtendGraphTest, ExtendGraph) {
+  GraphDef graphdef;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+    Output a = ops::Const(scope.WithOpName("a"), 0.0f, {10, 10});
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
+                          tensorflow::tfrt_stub::FallbackState::Create({}, {}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(graphdef, *fallback_state, false));
+
+  GraphDef extension;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+    Output b = ops::Const(scope.WithOpName("b"), 0.0f, {10, 10});
+
+    TF_ASSERT_OK(scope.ToGraphDef(&extension));
+  }
+
+  TF_ASSERT_OK(graph_execution_state->Extend(extension));
+
+  GraphDef expected;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+    Output a = ops::Const(scope.WithOpName("a"), 0.0f, {10, 10});
+
+    Output b = ops::Const(scope.WithOpName("b"), 0.0f, {10, 10});
+
+    TF_ASSERT_OK(scope.ToGraphDef(&expected));
+  }
+
+  ASSERT_NE(graph_execution_state->original_graph_def(), nullptr);
+  CompareGraphs(expected, *graph_execution_state->original_graph_def());
+}
+
 }  // namespace
 }  // namespace tfrt_stub
 }  // namespace tensorflow
