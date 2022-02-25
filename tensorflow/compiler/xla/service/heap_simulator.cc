@@ -597,8 +597,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetTransitiveColocations(
     const BufferInterval* item = worklist.back();
     worklist.pop_back();
     for (const BufferType* buffer_colocated : item->colocations) {
-      result.insert(buffer_colocated);
-      worklist.push_back(&buffer_intervals_.at(buffer_colocated));
+      if (result.insert(buffer_colocated).second) {
+        worklist.push_back(&buffer_intervals_.at(buffer_colocated));
+      }
     }
   }
 
