@@ -1772,15 +1772,10 @@ struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
     Value padding_val =
         rewriter.createOrFold<tensor::ExtractOp>(loc, adaptor.padding_value());
 
-    const auto& edge_padding_low = op.edge_padding_low();
-    const auto& edge_padding_high = op.edge_padding_high();
-    SmallVector<OpFoldResult, 4> low, high;
-    for (auto it : llvm::zip(edge_padding_low, edge_padding_high)) {
-      low.push_back(rewriter.createOrFold<arith::ConstantIndexOp>(
-          loc, std::get<0>(it).getZExtValue()));
-      high.push_back(rewriter.createOrFold<arith::ConstantIndexOp>(
-          loc, std::get<1>(it).getZExtValue()));
-    }
+    SmallVector<OpFoldResult, 4> low(
+        op.edge_padding_low().getValues<IntegerAttr>());
+    SmallVector<OpFoldResult, 4> high(
+        op.edge_padding_high().getValues<IntegerAttr>());
     Type result_type = op.getResult().getType();
     auto pad_tensor_op = tensor::createPadScalarOp(
         result_type, adaptor.operand(), padding_val, low, high,
