@@ -39,9 +39,6 @@ py_library(
 tf_py_test(
     name = "failure_handler_test",
     srcs = ["failure_handler_test.py"],
-    tags = [
-        "no_oss",  # b/221081007
-    ],
     deps = [
         ":failure_handling_lib",
         "//tensorflow/python:variables",

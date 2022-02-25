@@ -32,6 +32,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.failure_handling import failure_handling
+from tensorflow.python.distribute.failure_handling import gce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -42,6 +43,9 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import util as tracking_util
+
+
+mock = test.mock
 
 
 CLUSTER_SIZE = 4
@@ -114,54 +118,56 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       def __call__(self):
         return self.v.read_value()
 
-    with strategy.scope():
-      model = Model()
-      # Named it fh_ckpt because it'd be better that the user have their regular
-      # checkpoint separate from the checkpoint for
-      # CoordinatedCheckpointManager, since we will create CheckpointManager to
-      # manage the checkpoint and only one CheckpointManager should be active in
-      # a particular directory at a time..
-      fh_ckpt = tracking_util.Checkpoint(model=model)
+    with mock.patch.object(gce_util, 'on_gcp', lambda: False):
 
-      failure_handler = failure_handling.CoordinatedCheckpointManager(
-          strategy.cluster_resolver, fh_ckpt, checkpoint_dir)
+      with strategy.scope():
+        model = Model()
+        # Named it fh_ckpt because it'd be better that the user have their
+        # regular checkpoint separate from the checkpoint for
+        # CoordinatedCheckpointManager, since we will create CheckpointManager
+        # to manage the checkpoint and only one CheckpointManager should be
+        # active in a particular directory at a time.
+        fh_ckpt = tracking_util.Checkpoint(model=model)
 
-    def distributed_train_step(current_epoch, current_step):
+        failure_handler = failure_handling.CoordinatedCheckpointManager(
+            strategy.cluster_resolver, fh_ckpt, checkpoint_dir)
 
-      @def_function.function
-      def train_step():
-        if distribution_strategy_context.get_distribution_strategy(
-        ).cluster_resolver.task_id == raise_app_error_on_worker:
-          raise errors_impl.ResourceExhaustedError(
-              node_def=None, op=None, message='Running out of resources')
+      def distributed_train_step(current_epoch, current_step):
 
-        model.v.assign_add(constant_op.constant(1.))
+        @def_function.function
+        def train_step():
+          if distribution_strategy_context.get_distribution_strategy(
+          ).cluster_resolver.task_id == raise_app_error_on_worker:
+            raise errors_impl.ResourceExhaustedError(
+                node_def=None, op=None, message='Running out of resources')
 
-      strategy.run(train_step)
+          model.v.assign_add(constant_op.constant(1.))
 
-      if current_step == STEPS_PER_EPOCH - 1:
-        logging.info('epoch %d finished', current_epoch)
+        strategy.run(train_step)
 
-    logging.info('Restored training at %d', failure_handler.total_runs)
-    for epoch in range(failure_handler.total_runs // STEPS_PER_EPOCH,
-                       EPOCHS_TO_RUN):
+        if current_step == STEPS_PER_EPOCH - 1:
+          logging.info('epoch %d finished', current_epoch)
 
-      for step in range(failure_handler.total_runs % STEPS_PER_EPOCH,
-                        STEPS_PER_EPOCH):
-        failure_handler.run(distributed_train_step, epoch, step)
-      # Add some randomness to when preemption actually happens. We should
-      # trigger it for sure if the training is coming to an end and it hasn't
-      # been triggered yet.
-      if epoch >= EPOCHS_TO_RUN - 2:
-        trigger_it = True
-      else:
-        trigger_it = False
+      logging.info('Restored training at %d', failure_handler.total_runs)
+      for epoch in range(failure_handler.total_runs // STEPS_PER_EPOCH,
+                         EPOCHS_TO_RUN):
 
-      self._maybe_trigger_a_preemption(training_started_event, trigger_it)
+        for step in range(failure_handler.total_runs % STEPS_PER_EPOCH,
+                          STEPS_PER_EPOCH):
+          failure_handler.run(distributed_train_step, epoch, step)
+        # Add some randomness to when preemption actually happens. We should
+        # trigger it for sure if the training is coming to an end and it hasn't
+        # been triggered yet.
+        if epoch >= EPOCHS_TO_RUN - 2:
+          trigger_it = True
+        else:
+          trigger_it = False
 
-    self.assertEqual(
-        model.v.numpy(),
-        strategy.num_replicas_in_sync * EPOCHS_TO_RUN * STEPS_PER_EPOCH)
+        self._maybe_trigger_a_preemption(training_started_event, trigger_it)
+
+      self.assertEqual(
+          model.v.numpy(),
+          strategy.num_replicas_in_sync * EPOCHS_TO_RUN * STEPS_PER_EPOCH)
 
   def test_preemption_checkpointing(self):
     has_chief = False
