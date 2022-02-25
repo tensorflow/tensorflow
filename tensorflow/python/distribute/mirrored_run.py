@@ -120,6 +120,15 @@ def _enter_graph(g, eager, creator_stack=None):
       yield
 
 
+@contextlib.contextmanager
+def _maybe_enter_eager_mode(eager):
+  if eager:
+    with context.eager_mode():
+      yield
+  else:
+    yield
+
+
 def _cpu_device(device):
   cpu_device = tf_device.DeviceSpec.from_string(device)
   cpu_device = cpu_device.replace(device_type="CPU", device_index=0)
@@ -241,9 +250,29 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
           mtt_captured_control_deps = set()
           for t in threads:
             mtt_captured_control_deps.update(t.captured_control_deps)
-          with ops.name_scope(mtt_captured_name_scope),\
-              ops.control_dependencies(mtt_captured_control_deps), \
-              variable_scope.variable_scope(mtt_captured_var_scope):
+
+          # Control is transfered from _MirroredReplicaThread (MRT) to the main
+          # thread, i.e., here, to perform `merge_fn`, and thus we preserve the
+          # name scope,  control dependencies, etc. from MRT at the time
+          # `merge_call` is made.
+          # One special case is that the `merge_call` is made under an
+          # `tf.init_scope` in the MRT. `tf.init_scope` will clear control
+          # dependencies, pause gradient tape, and enter the lowest context on
+          # the `context_stack` that is not building a graph function. Entering
+          # the lowest context could be one of the two things: installation of a
+          # graph as the default graph or switch into eager mode. If the former
+          # is done and causes `merge_call` to be called in a different graph
+          # from the one in which `call_for_each_replica` is called, we do not
+          # allow this case (see comment in `_merge_call`) and we would not have
+          # arrived here due to the assertion in `_merge_call`. However, if the
+          # latter is done, we want to make sure the main thread enter an eager
+          # mode scope as well so that `merge_fn` does not have trouble
+          # accessing resources defined in MRT under the same context.
+          with ops.name_scope(
+              mtt_captured_name_scope), ops.control_dependencies(
+                  mtt_captured_control_deps), variable_scope.variable_scope(
+                      mtt_captured_var_scope), _maybe_enter_eager_mode(
+                          threads[0].merge_call_entered_in_eager):
             merge_result = threads[0].merge_fn(distribution, *merge_args,
                                                **merge_kwargs)
           for r, t in enumerate(threads):
@@ -438,6 +467,8 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
     t.captured_var_scope = variable_scope.get_variable_scope()
     t.captured_control_deps = t.graph._current_control_dependencies()  # pylint: disable=protected-access
 
+    t.merge_call_entered_in_eager = context.context().executing_eagerly()
+
     # It is problematic if `merge_call` is called under a different graph other
     # than the one that `_call_for_each_replica` is called under, there are
     # 3 cases this can happen:
@@ -488,6 +519,7 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
     t.should_run.clear()
     if t.coord.should_stop():
       raise _RequestedStop()
+    t.merge_call_entered_in_eager = None
     return t.merge_result
 
   @property
