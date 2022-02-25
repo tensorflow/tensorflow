@@ -16,8 +16,11 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <utility>
 
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 
@@ -29,28 +32,30 @@ namespace {
 
 using llvm::SmallVector;
 using mlir::Attribute;
-using mlir::Block;
 using mlir::dyn_cast;
-using mlir::OpBuilder;
+using mlir::failure;
+using mlir::MLIRContext;
 using mlir::Operation;
+using mlir::PatternRewriter;
 using mlir::success;
 using mlir::Value;
 using mlir::arith::ConstantIndexOp;
-using mlir::linalg::CodegenStrategy;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgTilingOptions;
+using mlir::linalg::LinalgTransformationFilter;
+using mlir::linalg::TiledLoopOp;
 
 /// Returns true if the operation is a GenericOp implementing a transposition.
 // TODO(diegocaballero): Move it to MLIR core?
 bool IsTransposeGenericOp(Operation *op) {
   // Check that op is a generic op and has at least 2 dimensions.
-  auto generic_op = mlir::dyn_cast<GenericOp>(op);
+  auto generic_op = dyn_cast<GenericOp>(op);
   if (!generic_op) return false;
   if (generic_op.getNumLoops() < 2) return false;
 
   // Check whether the body has only one operation (yield op). Transpose ops
   // fused with any other operations are not supported for now.
-  Block *body = generic_op.getBody();
+  mlir::Block *body = generic_op.getBody();
   if (body->empty() || body->begin() != std::prev(body->end())) return false;
   auto yield_op = dyn_cast<mlir::linalg::YieldOp>(body->back());
   if (!yield_op || (yield_op.getNumOperands() != 1)) return false;
@@ -78,9 +83,46 @@ bool IsTransposeGenericOp(Operation *op) {
          (indexing_maps[0].isPermutation() && indexing_maps[1].isIdentity());
 }
 
+struct TileTransposePattern : public mlir::OpRewritePattern<GenericOp> {
+  /// MatchAnyOpTag-based constructor with a mandatory `filter`.
+  TileTransposePattern(LinalgTilingOptions options,
+                       LinalgTransformationFilter filter, MLIRContext *context,
+                       mlir::PatternBenefit benefit = 1)
+      : mlir::OpRewritePattern<GenericOp>(context, benefit),
+        filter(filter),
+        options(options) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      GenericOp linalg_op, PatternRewriter &rewriter) const override {
+    // Check if it is cwise on tensors.
+    if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
+
+    auto tiled_linalg_op = tileLinalgOp(rewriter, linalg_op, options);
+    if (failed(tiled_linalg_op) || tiled_linalg_op.getValue().loops.empty())
+      return failure();
+
+    TiledLoopOp tiled_loop =
+        mlir::dyn_cast<TiledLoopOp>(*tiled_linalg_op.getValue().loops.front());
+    if (!tiled_loop) return failure();
+
+    tiled_loop->walk([&](GenericOp tiledOp) {
+      filter.replaceLinalgTransformationFilter(rewriter, tiledOp);
+    });
+
+    rewriter.replaceOp(linalg_op, tiled_loop->getResults());
+    return success();
+  }
+
+ private:
+  LinalgTransformationFilter filter;
+  LinalgTilingOptions options;
+};
+
+constexpr llvm::StringRef kTiledId = "tiled";
+
 struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
   void runOnOperation() override {
-    auto get_tile_size = [&](OpBuilder b, Operation *op) {
+    auto get_tile_size = [&](mlir::OpBuilder b, Operation *op) {
       auto num_loops = llvm::cast<GenericOp>(op).getNumLoops();
       SmallVector<Value> tiles(num_loops,
                                b.create<ConstantIndexOp>(op->getLoc(), 1));
@@ -91,40 +133,29 @@ struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
       return tiles;
     };
 
-    CodegenStrategy strategy;
-    strategy.tile(
-        GenericOp::getOperationName(),
+    auto func = getOperation();
+    auto filter = LinalgTransformationFilter(
+                      llvm::ArrayRef<mlir::StringAttr>{},
+                      {mlir::StringAttr::get(func.getContext(), kTiledId)})
+                      .addFilter([](Operation *op) {
+                        return success(IsTransposeGenericOp(op));
+                      });
+    auto tiling_options =
         LinalgTilingOptions()
             .setTileSizeComputationFunction(get_tile_size)
-            .setLoopType(mlir::linalg::LinalgTilingLoopType::TiledLoops),
-        /*filter=*/[](Operation *op) {
-          return success(IsTransposeGenericOp(op));
-        });
+            .setLoopType(mlir::linalg::LinalgTilingLoopType::TiledLoops);
 
-    mlir::OpPassManager dynamic_pm("builtin.func");
-    strategy.configurePassPipeline(dynamic_pm, &getContext());
-    if (failed(runPipeline(dynamic_pm, getOperation())))
-      return signalPassFailure();
-  }
-};
+    mlir::RewritePatternSet patterns(func.getContext());
+    patterns.add<TileTransposePattern>(tiling_options, filter,
+                                       patterns.getContext());
+    if (failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+      signalPassFailure();
+    }
 
-struct LowerTransposePass : public LowerTransposeBase<LowerTransposePass> {
-  void runOnOperation() override {
-    mlir::OpPassManager dynamic_pm("builtin.func");
-    CodegenStrategy strategy;
-    strategy.vectorLowering(
-        mlir::linalg::LinalgVectorLoweringOptions()
-            .enableVectorTransposeLowering()
-            .enableAVX2Lowering()
-            .setAVX2LoweringOptions(
-                mlir::x86vector::avx2::LoweringOptions().setTransposeOptions(
-                    mlir::x86vector::avx2::TransposeLoweringOptions()
-                        .lower4x8xf32()
-                        .lower8x8xf32())));
-
-    strategy.configurePassPipeline(dynamic_pm, &getContext());
-    if (failed(runPipeline(dynamic_pm, getOperation())))
-      return signalPassFailure();
+    // Ensure we drop the marker in the end.
+    func.walk([](GenericOp op) {
+      op->removeAttr(mlir::linalg::LinalgTransforms::kLinalgTransformMarker);
+    });
   }
 };
 
@@ -132,11 +163,6 @@ struct LowerTransposePass : public LowerTransposeBase<LowerTransposePass> {
 
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileTransposePass() {
   return std::make_unique<TileTransposePass>();
-}
-
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
-CreateLowerVectorTransposePass() {
-  return std::make_unique<LowerTransposePass>();
 }
 
 }  // namespace tensorflow
