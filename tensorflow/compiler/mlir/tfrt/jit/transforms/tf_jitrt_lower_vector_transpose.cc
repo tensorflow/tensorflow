@@ -40,6 +40,7 @@ struct LowerTransposePass : public LowerTransposeBase<LowerTransposePass> {
 
     CodegenStrategy strategy;
     strategy.vectorLowering(mlir::linalg::LinalgVectorLoweringOptions()
+                                .enableShapeCastLowering(false)
                                 .enableVectorTransposeLowering()
                                 .enableAVX2Lowering()
                                 .setAVX2LoweringOptions(avx_lowering_options));
