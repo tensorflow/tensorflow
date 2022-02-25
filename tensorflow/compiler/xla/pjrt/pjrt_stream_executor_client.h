@@ -604,6 +604,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       const ScatterDetails& scatter_details) override;
 
   Status BlockHostUntilReady() override;
+  StatusOr<bool> IsReady() override;
 
   void OnReady(std::function<void(Status)> callback) override;
 

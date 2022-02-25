@@ -739,6 +739,9 @@ class PjRtBuffer {
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
   virtual Status BlockHostUntilReady() = 0;
+  // Returns `true` iif the buffer is ready. Returns an error if the
+  // buffer has been deleted or the feature is not supported by the client.
+  virtual StatusOr<bool> IsReady() = 0;
 
   // Calls callback when the buffer is ready.
   //

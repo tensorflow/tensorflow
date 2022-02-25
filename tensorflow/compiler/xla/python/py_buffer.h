@@ -97,6 +97,10 @@ class PyBuffer {
 
   // Returns xla::InvalidArgument if the buffer has been deleted.
   Status BlockHostUntilReady();
+
+  // Returns `true` iif the buffer is ready.
+  StatusOr<bool> IsReady() { return buffer_->IsReady(); }
+
   Status CopyToHostAsync();
 
   const Shape& shape() { return buffer_->on_device_shape(); }

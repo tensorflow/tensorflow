@@ -1587,6 +1587,23 @@ Status PjRtStreamExecutorBuffer::BlockHostUntilReady() {
   return Status::OK();
 }
 
+StatusOr<bool> PjRtStreamExecutorBuffer::IsReady() {
+  std::shared_ptr<TrackedDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(&mu_);
+    if (device_buffer_ == nullptr) {
+      return InvalidArgument("IsReady() called on deleted or donated buffer");
+    }
+    device_buffer = device_buffer_;
+  }
+  for (auto& event : device_buffer->definition_events()) {
+    if (!event->IsComplete()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void PjRtStreamExecutorBuffer::OnReady(std::function<void(Status)> callback) {
   std::shared_ptr<TrackedDeviceBuffer> device_buffer;
   {

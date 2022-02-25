@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "pybind11/pybind11.h"
@@ -590,6 +591,9 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       [](PyBuffer::object self) { self.buf()->Delete(); }, py::is_method(type));
   type.attr("block_host_until_ready") = py::cpp_function(
       [](PyBuffer::object self) { return self.buf()->BlockHostUntilReady(); },
+      py::is_method(type));
+  type.attr("is_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsReady(); },
       py::is_method(type));
   type.attr("block_until_ready") = py::cpp_function(
       [](PyBuffer::object self) -> StatusOr<PyBuffer::object> {

@@ -469,6 +469,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   }
 
   Status BlockHostUntilReady() override;
+  StatusOr<bool> IsReady() override;
 
   void OnReady(std::function<void(Status)> callback) override;
 

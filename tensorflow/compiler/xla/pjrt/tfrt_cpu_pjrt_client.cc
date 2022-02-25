@@ -1218,6 +1218,31 @@ Status TfrtCpuBuffer::BlockHostUntilReady() {
   return status;
 }
 
+StatusOr<bool> TfrtCpuBuffer::IsReady() {
+  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(&mu_);
+    if (tracked_device_buffer_ == nullptr) {
+      return InvalidArgument("IsReady() called on deleted or donated buffer");
+    }
+    device_buffer = tracked_device_buffer_;
+  }
+
+  std::vector<tfrt::RCReference<tfrt::AsyncValue>> avs;
+  avs.reserve(device_buffer->DefinitionEvents().size());
+  // Wait for all definition events to complete.
+  for (const auto& ev : device_buffer->DefinitionEvents()) {
+    avs.push_back(ev.CopyRCRef());
+  }
+
+  for (auto& av : avs) {
+    if (!av->IsAvailable()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void TfrtCpuBuffer::OnReady(std::function<void(Status)> callback) {
   std::shared_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer;
   {
