@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -110,6 +111,27 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
 
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+
+  return Status::OK();
+}
+
+Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    se::DeviceMemoryAllocator* device_allocator) {
+
+  TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
+      hlo_module, stream_exec, device_allocator));
+
+  HloPassPipeline post_pipeline("AMDGPU post-layout_assignment");
+
+  // BEF-mode GpuExecutable allocates temp memory, and so the custom-call
+  // implementation for TriangularSolve is not needed.
+#if !BEF_EXECUTABLE
+  // Transform TriangularSolve ops into custom-calls, so we can add temp memory.
+  post_pipeline.AddPass<TriangularSolveRewriter>();
+#endif
+
+  TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
   return Status::OK();
 }
