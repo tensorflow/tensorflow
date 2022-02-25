@@ -123,15 +123,15 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
       mlir_input, function_name, operands, num_threads, lower_from_tensorflow,
       vectorize);
 
-  // Initialize call frame with MemrefDesc operands.
-  Executable::CallFrame call_frame;
-  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
-    LOG(FATAL) << "Failed to initialize call frame";
-
   // Execute async tasks in the HostContext work queue.
   Executable::ExecuteOpts opts;
   HostContextAsyncTaskRunner async_task_runner(b.exec_ctx.host());
   opts.async_task_runner = &async_task_runner;
+
+  // Initialize call frame with MemrefDesc operands.
+  Executable::CallFrame call_frame;
+  if (auto err = b.executable->InitializeCallFrame(opts, operands, &call_frame))
+    LOG(FATAL) << "Failed to initialize call frame";
 
   // Execute once.
   b.executable->Execute(call_frame, opts);
@@ -156,15 +156,15 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
       mlir_input, function_name, operands, num_threads, lower_from_tensorflow,
       vectorize);
 
-  // Initialize call frame with MemrefDesc operands.
-  Executable::CallFrame call_frame;
-  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
-    LOG(FATAL) << "Failed to initialize call frame";
-
   // Execute async tasks in the HostContext work queue.
   Executable::ExecuteOpts opts;
   HostContextAsyncTaskRunner async_task_runner(b.exec_ctx.host());
   opts.async_task_runner = &async_task_runner;
+
+  // Initialize call frame with MemrefDesc operands.
+  Executable::CallFrame call_frame;
+  if (auto err = b.executable->InitializeCallFrame(opts, operands, &call_frame))
+    LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
     call_frame.args[0] = nullptr;  // reset kernel context argument

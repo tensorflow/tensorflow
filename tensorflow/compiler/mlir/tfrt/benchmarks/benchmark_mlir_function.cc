@@ -137,15 +137,16 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   ReturnValueConverter<ResultConversionCtx> converter(results, result_ctx);
   converter.AddConversion(FreeReturnedMemref);
 
-  // Initialize call frame with MemrefDesc operands.
-  Executable::CallFrame call_frame;
-  if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
-    LOG(FATAL) << "Failed to initialize call frame";
-
   // Execute async tasks in the HostContext work queue.
   Executable::ExecuteOpts opts;
   HostContextAsyncTaskRunner async_task_runner(host.get());
   opts.async_task_runner = &async_task_runner;
+
+  // Initialize call frame with MemrefDesc operands.
+  Executable::CallFrame call_frame;
+  if (auto err =
+          (*executable)->InitializeCallFrame(opts, operands, &call_frame))
+    LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
     call_frame.args[0] = nullptr;  // reset kernel context argument
