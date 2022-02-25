@@ -62,7 +62,7 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
 
   std::string input_file = tensorflow::io::JoinPath(
       env->GetRunfilesDir(), "tensorflow", "compiler", "mlir", "quantization",
-      "tensorflow", "quantized_function_library.mlir");
+      "tensorflow", "passes", "quantized_function_library.mlir");
 
   ModuleOp module = getOperation();
 

@@ -30,9 +30,9 @@ namespace mlir {
 namespace quant {
 namespace {
 
-constexpr absl::string_view kEntryFunctionAttr = "tf.entry_function";
-constexpr absl::string_view kExportedNameAttr = "tf_saved_model.exported_names";
-constexpr absl::string_view kIndexPathAttr = "tf_saved_model.index_path";
+constexpr char kEntryFunctionAttr[] = "tf.entry_function";
+constexpr char kExportedNameAttr[] = "tf_saved_model.exported_names";
+constexpr char kIndexPathAttr[] = "tf_saved_model.index_path";
 
 // The ConvertMlirToGraphdef requires the provided input module to have a main
 // function, which might not exist in case of multi-signature graphs. In that
