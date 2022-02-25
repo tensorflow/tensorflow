@@ -81,7 +81,7 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
                        llvm::StringRef mlir_input,
                        llvm::StringRef function_name,
                        llvm::ArrayRef<InputTensorSpec> input_specs,
-                       bool vectorize) {
+                       bool vectorize, bool codegen_transpose) {
   // Number of worker threads.
   int64_t num_threads = state.range(0);
 
@@ -92,6 +92,7 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
 
   TfJitRtPipelineOptions tf_jitrt_opts;
   tf_jitrt_opts.vectorize = vectorize;
+  tf_jitrt_opts.codegen_transpose = codegen_transpose;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_jitrt_opts);
