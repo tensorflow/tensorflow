@@ -2324,8 +2324,11 @@ bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
                                  float alpha, const DeviceMemory<float *> &as,
                                  int lda, DeviceMemory<float *> *bs, int ldb,
                                  int batch_count) {
-  // ROCM TODO: properly implement the interface
-  return false;
+  return DoBlasInternal(wrap::rocblas_strsm_batched, stream,
+                        true /* = pointer_mode_host */, ROCMBlasSide(side),
+                        ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
+                        ROCMBlasDiagonal(diag), m, n, &alpha, GpuMemory(as),
+                        lda, GpuMemoryMutable(bs), ldb, batch_count);
 }
 
 bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
@@ -2334,8 +2337,11 @@ bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
                                  double alpha, const DeviceMemory<double *> &as,
                                  int lda, DeviceMemory<double *> *bs, int ldb,
                                  int batch_count) {
-  // ROCM TODO: properly implement the interface
-  return false;
+  return DoBlasInternal(wrap::rocblas_dtrsm_batched, stream,
+                        true /* = pointer_mode_host */, ROCMBlasSide(side),
+                        ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
+                        ROCMBlasDiagonal(diag), m, n, &alpha, GpuMemory(as),
+                        lda, GpuMemoryMutable(bs), ldb, batch_count);
 }
 
 bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
@@ -2346,8 +2352,12 @@ bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
                                  int lda,
                                  DeviceMemory<std::complex<float> *> *bs,
                                  int ldb, int batch_count) {
-  // ROCM TODO: properly implement the interface
-  return false;
+  return DoBlasInternal(
+      wrap::rocblas_ctrsm_batched, stream, true /* = pointer_mode_host */,
+      ROCMBlasSide(side), ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
+      ROCMBlasDiagonal(diag), m, n, complex_cast(alpha),
+      static_cast<const rocblas_float_complex * const *>(as.opaque()), lda,
+      static_cast<rocblas_float_complex * const *>(bs->opaque()), ldb, batch_count);
 }
 
 bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
@@ -2358,8 +2368,12 @@ bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
                                  int lda,
                                  DeviceMemory<std::complex<double> *> *bs,
                                  int ldb, int batch_count) {
-  // ROCM TODO: properly implement the interface
-  return false;
+  return DoBlasInternal(
+      wrap::rocblas_ztrsm_batched, stream, true /* = pointer_mode_host */,
+      ROCMBlasSide(side), ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
+      ROCMBlasDiagonal(diag), m, n, complex_cast(alpha),
+      static_cast<const rocblas_double_complex * const *>(as.opaque()), lda, 
+      static_cast<rocblas_double_complex * const *>(bs->opaque()), ldb, batch_count);
 }
 
 port::Status ROCMBlas::DoBlasGemmStridedBatched(
