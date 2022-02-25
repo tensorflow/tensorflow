@@ -5534,8 +5534,8 @@ class NnapiTestVendorPlugin : public NnapiDelegateVendorPlugin {
     return kTfLiteOk;
   }
 
-  static TfLiteStatus DoMapNode(const TfLiteContext* context,
-                                const TfLiteNode* node, int node_index,
+  static TfLiteStatus DoMapNode(TfLiteContext* context, const TfLiteNode* node,
+                                int node_index,
                                 NnapiMappingUtilCInterface* mapping,
                                 ANeuralNetworksModel* model) {
     std::vector<uint32_t> input_indices;
