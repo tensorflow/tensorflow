@@ -63,7 +63,7 @@ endif()
 add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
   builtin_op_data.h
   common.h
-  common.c
+  common.cc
   c_api_types.h
   c_api.h
   c_api.cc
