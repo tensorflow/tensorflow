@@ -22,10 +22,10 @@ func @transpose_2d(%arg0: tensor<?x?xf32>)
 }
 
 // CHECK-LABEL:   func @transpose_2d(
-// CHECK:           linalg.tiled_loop
+// CHECK:           gml_st.loop
 // CHECK:             linalg.generic
 // CHECK:               linalg.yield
-// CHECK:             linalg.yield
+// CHECK:             gml_st.yield
 
 // -----
 
@@ -48,7 +48,7 @@ func @identity(%arg0: tensor<?x?xf32>)
 }
 
 // CHECK-LABEL:   func @identity(
-// CHECK-NOT:       linalg.tiled_loop
+// CHECK-NOT:       gml_st.loop
 
 // -----
 
@@ -71,4 +71,4 @@ func @transpose_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32>{
 }
 
 // CHECK-LABEL:   func @transpose_add(
-// CHECK-NOT:       linalg.tiled_loop
+// CHECK-NOT:       gml_st.loop

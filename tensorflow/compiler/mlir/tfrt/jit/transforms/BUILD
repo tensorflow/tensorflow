@@ -65,6 +65,8 @@ cc_library(
         ":tf_jitrt_clustering",
         ":tf_jitrt_passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:gml_st",
+        "//tensorflow/compiler/mlir/hlo:gml_st_transforms",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
         "//tensorflow/compiler/mlir/hlo:shape_component_analysis",
         "//tensorflow/compiler/mlir/tensorflow",
