@@ -210,9 +210,10 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   // Create execution engine with an inner optimization pipeline.
   auto opt_pipeline = mlir::makeOptimizingTransformer(
       /*optLevel=*/2, /*sizeLevel=*/0, /*targetMachine=*/nullptr);
+  mlir::ExecutionEngineOptions engine_options;
+  engine_options.transformer = opt_pipeline;
   llvm::Expected<std::unique_ptr<ExecutionEngine>> engine =
-      mlir::ExecutionEngine::create(module.get(), /*llvmModuleBuilder=*/nullptr,
-                                    opt_pipeline);
+      mlir::ExecutionEngine::create(module.get(), engine_options);
   if (!engine) return nullptr;
 
   // Finally, register the missing symbols.
