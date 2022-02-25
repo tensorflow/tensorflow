@@ -16,10 +16,12 @@ limitations under the License.
 
 #include <sys/mman.h>
 
+#include <algorithm>
 #include <initializer_list>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_plugin.h"
 #include "tensorflow/lite/interpreter.h"
@@ -49,18 +51,12 @@ MATCHER(QuantizedNear, "") {
 
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
-  SingleOpModelWithNNAPI() {
-    options_.disallow_nnapi_cpu = false;
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options_));
-    SetDelegate(stateful_delegate_.get());
-  }
+  SingleOpModelWithNNAPI() { options_.disallow_nnapi_cpu = false; }
 
   explicit SingleOpModelWithNNAPI(
       const StatefulNnApiDelegate::Options& options) {
     options_ = options;
     options_.disallow_nnapi_cpu = false;
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options_));
-    SetDelegate(stateful_delegate_.get());
   }
 
   TfLiteStatus ResizeInputTensor(int tensor_index,
@@ -79,6 +75,16 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   }
 
   TfLiteStatus AllocateTensors() { return interpreter_->AllocateTensors(); }
+
+  void SetTensorMaxSize(uint32_t tensor_index, size_t max_size) {
+    options_.tensor_max_size_hints.emplace(tensor_index, max_size);
+  }
+
+  void ApplyNNAPIDelegate() {
+    stateful_delegate_.reset(new StatefulNnApiDelegate(options_));
+    SetDelegate(stateful_delegate_.get());
+    ApplyDelegate();
+  }
 
  protected:
   void SetData(int index, TensorType type, const std::vector<float>& data) {
@@ -117,14 +123,17 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   }
 
   void BuildInterpreterWithNNAPI(std::vector<std::vector<int>> input_shapes,
-                                 bool allow_fp32_relax_to_fp16 = false) {
+                                 bool allow_fp32_relax_to_fp16 = false,
+                                 bool apply_delegate = true) {
     // We skip those TfLite delegates that are applied by default in TfLite
     // runtime by setting 'apply_delegate' to false. Afterwards, we explicitly
     // call ApplyDelegate to apply the NNAPI delegate to meet the testing
     // purpose.
     BuildInterpreter(input_shapes, /*num_threads=*/-1, allow_fp32_relax_to_fp16,
                      /*apply_delegate=*/false, /*allocate_and_delegate=*/true);
-    ApplyDelegate();
+    if (apply_delegate) {
+      ApplyNNAPIDelegate();
+    }
   }
 
  private:
@@ -5448,6 +5457,23 @@ TfLiteRegistration* Register_FLOOR();
 }  // namespace ops
 
 namespace {
+
+std::vector<uint32_t> GetNNAPIDimensions(const TfLiteTensor* tensor) {
+  std::vector<uint32_t> dimensions;
+  dimensions.reserve(tensor->dims->size);
+  if (tensor->dims_signature != nullptr &&
+      tensor->dims_signature->size == tensor->dims->size) {
+    for (auto d : TfLiteIntArrayView(tensor->dims_signature)) {
+      uint32_t nnapi_dim = (d == -1) ? 0 : static_cast<uint32_t>(d);
+      dimensions.push_back(nnapi_dim);
+    }
+  } else {
+    dimensions.assign(tensor->dims->data,
+                      tensor->dims->data + tensor->dims->size);
+  }
+  return dimensions;
+}
+
 // The "nnapi-custom-op" is just float32 floor.
 static const char kTestCustomOp[] = "nnapi-custom-op";
 class NnapiTestVendorPlugin : public NnapiDelegateVendorPlugin {
@@ -5488,10 +5514,11 @@ class NnapiTestVendorPlugin : public NnapiDelegateVendorPlugin {
     // Allocate a new tensor index
     ann_tensor_index = mapping->AddNewNnTensorIndex(mapping, tensor_index);
     TfLiteTensor* tensor = &context->tensors[tensor_index];
+    auto dimensions = GetNNAPIDimensions(tensor);
     ANeuralNetworksOperandType operand_type{
         .type = ANEURALNETWORKS_TENSOR_FLOAT32,
-        .dimensionCount = static_cast<uint32_t>(tensor->dims->size),
-        .dimensions = reinterpret_cast<uint32_t*>(tensor->dims->data),
+        .dimensionCount = static_cast<uint32_t>(dimensions.size()),
+        .dimensions = dimensions.data(),
         .scale = 0.0f,
         .zeroPoint = 0,
     };
@@ -5551,12 +5578,14 @@ class CustomFloorOpModel : public SingleOpModelWithNNAPI {
  public:
   CustomFloorOpModel(const StatefulNnApiDelegate::Options& options,
                      const TensorData& input, const TensorData& output,
-                     bool allow_fp32_relax_to_fp16 = false)
+                     bool allow_fp32_relax_to_fp16 = false,
+                     bool apply_delegate = true)
       : SingleOpModelWithNNAPI(options) {
-    Init(input, output, allow_fp32_relax_to_fp16);
+    Init(input, output, allow_fp32_relax_to_fp16, apply_delegate);
   }
 
   int input() { return input_; }
+  int output() { return output_; }
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 
@@ -5567,26 +5596,81 @@ class CustomFloorOpModel : public SingleOpModelWithNNAPI {
  private:
   // Performs initialization logic shared across all constructors.
   void Init(const TensorData& input, const TensorData& output,
-            bool allow_fp32_relax_to_fp16 = false) {
+            bool allow_fp32_relax_to_fp16 = false, bool apply_delegate = true) {
     input_ = AddInput(input);
     output_ = AddOutput(output);
     SetCustomOp(kTestCustomOp, {}, tflite::ops::builtin::Register_FLOOR);
-    BuildInterpreterWithNNAPI({GetShape(input_)}, allow_fp32_relax_to_fp16);
+    BuildInterpreterWithNNAPI({GetShape(input_)}, allow_fp32_relax_to_fp16,
+                              apply_delegate);
   }
 };
 
 TEST(NNAPIDelegate, CustomFloorVendorExtension) {
-  NnapiTestVendorPlugin* vendor_plugin = new NnapiTestVendorPlugin();
+  auto vendor_plugin = std::make_unique<NnapiTestVendorPlugin>();
   StatefulNnApiDelegate::Options options;
   options.accelerator_name = "nnapi-reference";
-  options.vendor_plugin = vendor_plugin;
+  options.vendor_plugin = vendor_plugin.get();
 
   CustomFloorOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
                        {TensorType_FLOAT32, {1, 2, 2, 1}});
   m.PopulateTensor<float>(m.input(), {0, 0.2, 1.7, 2.8});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 0.0, 1.0, 2.0}));
-  delete vendor_plugin;
+}
+
+TEST(NNAPIDelegate, CustomFloorVendorExtensionDynamic) {
+  // Models with dynamic dimensions and vendor plugin is not supported before
+  // NNAPI 1.2 (API level 29).
+  if (NnApiImplementation()->android_sdk_version <
+      delegate::nnapi::kMinSdkVersionForNNAPI12) {
+    GTEST_SKIP();
+  }
+
+  auto vendor_plugin = std::make_unique<NnapiTestVendorPlugin>();
+  StatefulNnApiDelegate::Options options;
+  options.accelerator_name = "nnapi-reference";
+  options.vendor_plugin = vendor_plugin.get();
+  options.allow_dynamic_dimensions = true;
+
+  // Both input and output tensors have dynamic batch.
+  auto tensor_data = TensorData{TensorType_FLOAT32,
+                                /*shape=*/{1, 2, 2, 1},
+                                /*min=*/0.0f,
+                                /*max=*/0.0f,
+                                /*scale=*/0.0f,
+                                /*zero_point=*/0,
+                                /*per_channel_quantization=*/false,
+                                /*per_channel_quantization_scales=*/{},
+                                /*per_channel_quantization_offsets=*/{},
+                                /*channel_index=*/0,
+                                /*traversal_order=*/{},
+                                /*format=*/{},
+                                /*block_size=*/{},
+                                /*block_map=*/{},
+                                /*shape_signature=*/{-1, 2, 2, 1}};
+  size_t max_batch_size = 2;
+  size_t tensor_max_size = max_batch_size * 2 * 2 * 1 * sizeof(float);
+  CustomFloorOpModel m(options, tensor_data, tensor_data,
+                       /*allow_fp32_relax_to_fp16=*/false,
+                       /*apply_delegate=*/false);
+  m.SetTensorMaxSize(m.input(), tensor_max_size);
+  m.SetTensorMaxSize(m.output(), tensor_max_size);
+  m.ApplyNNAPIDelegate();
+
+  // Try the max batch size.
+  EXPECT_EQ(m.ResizeInputTensor(m.input(), {2, 2, 2, 1}), kTfLiteOk);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
+  m.PopulateTensor<float>(m.input(), {0, 0.2, 1.7, 2.8, 3.4, 4.1, 5.9, 6.3});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0}));
+
+  // Try another batch size.
+  EXPECT_EQ(m.ResizeInputTensor(m.input(), {1, 2, 2, 1}), kTfLiteOk);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
+  m.PopulateTensor<float>(m.input(), {1.7, 2.8, 3.4, 4.1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1.0, 2.0, 3.0, 4.0}));
 }
 
 }  // namespace
