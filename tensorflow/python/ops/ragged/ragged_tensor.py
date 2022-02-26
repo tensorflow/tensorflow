@@ -1559,11 +1559,9 @@ class RaggedTensor(composite_tensor.CompositeTensor,
           partition._nrows = array_ops.size(
               partition._row_splits, out_type=dtype) - 1
 
-    # self.flat_values could be a CompositeTensor and doesn't have set_shape.
-    if hasattr(self.flat_values, "set_shape"):
-      # Inner dimensions
-      flat_shape = tensor_shape.as_shape([None] + shape[self.ragged_rank + 1:])
-      self.flat_values.set_shape(flat_shape)
+    # Inner dimensions
+    flat_shape = tensor_shape.as_shape([None] + shape[self.ragged_rank + 1:])
+    self.flat_values.set_shape(flat_shape)
 
   #=============================================================================
   # Tensor Type Conversions
@@ -2504,15 +2502,6 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
             result,
             RowPartition.from_row_splits(row_splits, validate=False),
             internal=True)
-    if self._shape.ndims is not None:
-      if isinstance(result, RaggedTensor):
-        result._set_shape(self._shape)  # pylint: disable=protected-access
-        # TODO(xjun): MaskedTensor doesn't implement set_shape.
-        if self.flat_values_spec is not None and hasattr(result.flat_values,
-                                                         "set_shape"):
-          result.flat_values.set_shape(self.flat_values_spec.shape)
-      elif isinstance(result, ops.Tensor):
-        result.set_shape(self._shape)
     return result
 
   # The RaggedTensorSpec tensor_list encoding uses to/from_variant ops
@@ -2570,11 +2559,10 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
         output_ragged_rank=self._ragged_rank)
     if self._shape.ndims is not None:
       if isinstance(result, RaggedTensor):
+        outer_dim = tensor_shape.dimension_value(self._shape[0])
+        if outer_dim is not None:
+          result.row_splits.set_shape([outer_dim + 1])
         result._set_shape(self._shape)  # pylint: disable=protected-access
-        # TODO(xjun): MaskedTensor doesn't implement set_shape.
-        if self.flat_values_spec is not None and hasattr(self.flat_values,
-                                                         "set_shape"):
-          result.flat_values.set_shape(self.flat_values_spec.shape)
       else:
         result.set_shape(self._shape)
     return result
@@ -3025,7 +3013,6 @@ def _add_supported_value_type(cls):
      - x.dtype
    - Methods:
      - x.__getitem__(idx) (method: returns a supported value type)
-     - x.set_shape(shape)
    - Ops:
      - tf.shape(x) -- tf.shape(x)[0] must be a tf.Tensor.
      - tf.tile(x)

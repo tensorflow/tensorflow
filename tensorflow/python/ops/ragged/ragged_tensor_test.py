@@ -21,7 +21,6 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1947,48 +1946,6 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertAllTensorsEqual(actual_components, components)
     rt_reconstructed = rt_spec._from_components(actual_components)
     self.assertAllEqual(rt, rt_reconstructed)
-
-  @parameterized.parameters([
-      {
-          'flat_value_spec': tensor_spec.TensorSpec(None, dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec(None, dtypes.int64),
-      },
-      {
-          'flat_value_spec': tensor_spec.TensorSpec([None,], dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec(None, dtypes.int64),
-      },
-      {
-          'flat_value_spec': tensor_spec.TensorSpec(None, dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec([None,], dtypes.int64),
-      },
-      {
-          'flat_value_spec': tensor_spec.TensorSpec([None,], dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec([None,], dtypes.int64),
-      },
-      {
-          'flat_value_spec': tensor_spec.TensorSpec([4,], dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec(None, dtypes.int64),
-      },
-      {
-          'flat_value_spec': tensor_spec.TensorSpec(None, dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec([3,], dtypes.int64),
-      },
-  ])
-  def testToFromComponentsStaticUnknownShape(self, flat_value_spec,
-                                             row_splits_spec):
-    rt_spec = RaggedTensorSpec(shape=[2, None], ragged_rank=1)
-    tester = self
-
-    @def_function.function(input_signature=[flat_value_spec, row_splits_spec])
-    def test_fn(flat_value, row_splits):
-      # Apply static shape information saved in rt_spec to rt.
-      rt = rt_spec._from_components([flat_value, row_splits])
-      tester.assertEqual(rt.shape.as_list(), [2, None])
-      return rt + ragged_factory_ops.constant([[1.0, 1.0, 1.0], [1.0]])
-
-    result = test_fn([1.0, 2.0, 3.0, 4.0], [0, 3, 4])
-    expected_result = ragged_factory_ops.constant([[2.0, 3.0, 4.0], [5.0]])
-    self.assertAllEqual(result, expected_result)
 
   @test_util.run_v1_only('RaggedTensorValue is deprecated in v2')
   def testFromNumpyComponents(self):
