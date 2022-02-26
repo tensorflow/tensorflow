@@ -189,7 +189,7 @@ class CoordinatedCheckpointManager(object):
       self._exit_code = _RESTARTABLE_EXIT_CODE
     else:
       raise NotImplementedError('CoordinatedCheckpointManager is only supported'
-                                'for MultiWorkerMirroredStrategy with GPU.')
+                                ' for MultiWorkerMirroredStrategy with GPU.')
 
   def _start_watching_for_signal(self):
     signal.signal(signal.SIGTERM, self._sigterm_handler_fn)
