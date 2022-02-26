@@ -4809,7 +4809,7 @@ ENTRY entry {
   param = f32[1,2,3,4] parameter(0)
   const = f32[] constant(5)
   pad = pad(param, const), padding=0_0x1_0x0_0x0_2
-  ROOT r = reduce-window(pad, const), to_apply=fn, window={size=2x2x2x2 pad=10_100x10_100x10_100x10_100}
+  ROOT r = reduce-window(pad, const), to_apply=fn, window={size=2x2x2x2 lhs_dilate=1x1x1x3 pad=10_100x10_100x10_100x10_100}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4830,7 +4830,7 @@ ENTRY entry {
   EXPECT_EQ(root->window().dimensions(0).padding_high(), 100);
   EXPECT_EQ(root->window().dimensions(1).padding_high(), 100);
   EXPECT_EQ(root->window().dimensions(2).padding_high(), 100);
-  EXPECT_EQ(root->window().dimensions(3).padding_high(), 102);
+  EXPECT_EQ(root->window().dimensions(3).padding_high(), 106);
 }
 
 // Test that ReduceWindow(Convert(Pad(op, x)), y) can simplify to

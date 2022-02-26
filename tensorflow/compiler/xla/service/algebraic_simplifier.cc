@@ -5330,9 +5330,11 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
     const auto& pad_dim = pad_config.dimensions(i);
     auto& window_dim = *new_window.mutable_dimensions(i);
     window_dim.set_padding_low(window_dim.padding_low() +
-                               pad_dim.edge_padding_low());
+                               window_dim.base_dilation() *
+                                   pad_dim.edge_padding_low());
     window_dim.set_padding_high(window_dim.padding_high() +
-                                pad_dim.edge_padding_high());
+                                window_dim.base_dilation() *
+                                    pad_dim.edge_padding_high());
     if (pad_dim.interior_padding() != 0) {
       CHECK_EQ(window_dim.base_dilation(), 1);
       window_dim.set_base_dilation(1 + pad_dim.interior_padding());
