@@ -3,9 +3,6 @@ load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
-# buildifier: disable=same-origin-load
-#load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
 package(
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization:__subpackages__",
@@ -78,12 +75,10 @@ tf_python_pybind_extension(
     ],
     module_name = "pywrap_quantize_model",
     deps = [
-        # TODO(b/220688154): Remove dependency when the quantize model wrapper is included in pywrap_tensorflow.
-        ":quantize_model_cc",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
-        "//third_party/python_runtime:headers",
-        "//tensorflow/python/lib/core:pybind11_lib",
     ],
 )
 
@@ -94,7 +89,6 @@ pytype_strict_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        # TODO(b/220688154): Remove dependency when the quantize model wrapper is included in pywrap_tensorflow.
         ":pywrap_quantize_model",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
@@ -116,9 +110,6 @@ py_test(
     name = "quantize_model_test",
     size = "medium",
     srcs = ["integration_test/quantize_model_test.py"],
-    tags = [
-        "no_oss",  # TODO(b/220688154): Enable OSS tests.
-    ],
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",
@@ -132,9 +123,6 @@ py_test(
     name = "concurrency_test",
     size = "medium",
     srcs = ["integration_test/concurrency_test.py"],
-    tags = [
-        "no_oss",  # TODO(b/220688154): Enable OSS tests.
-    ],
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",
