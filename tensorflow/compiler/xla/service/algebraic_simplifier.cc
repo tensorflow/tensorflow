@@ -3230,7 +3230,7 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
               compare->shape(),
               {add_operand,
                computation_->AddInstruction(HloInstruction::CreateBinary(
-                   lhs->shape(), HloOpcode::kSubtract, rhs, lhs_delta))}));
+                   rhs->shape(), HloOpcode::kSubtract, rhs, lhs_delta))}));
     }
   }
   return Status::OK();
