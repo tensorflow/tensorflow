@@ -1069,11 +1069,14 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
 }
 
 // Helper method that returns the index of the tensor with name 'tensor_name'
-// in the list of tensor names 'tensors'.
+// in the list of tensor names 'tensors'. It allows excluding some indices.
 int GetTensorIndex(const std::string& tensor_name,
-                   llvm::SmallVector<llvm::StringRef, 2> tensors) {
+                   llvm::SmallVector<llvm::StringRef, 2> tensors,
+                   const std::set<int>& exclude_indices = {}) {
   for (const auto& tensor_index_pair : llvm::enumerate(tensors)) {
-    if (tensor_index_pair.value() == tensor_name)
+    if (tensor_index_pair.value() == tensor_name &&
+        exclude_indices.find(tensor_index_pair.index()) ==
+            exclude_indices.end())
       return tensor_index_pair.index();
   }
   return -1;
@@ -1122,9 +1125,13 @@ void SetSignature(
         mlir::ArrayAttr::get(context, {mlir::StringAttr::get(
                                           context, input_pair.value()->name)}));
   }
+  // Multiple signature outputs can refer to the same tensor. Avoid setting
+  // signature output attribute at the same index by maintaining a set.
+  std::set<int> seen_indices;
   for (auto output_pair : llvm::enumerate(signature->outputs)) {
-    const int arg_index = GetTensorIndex(
-        tensors[output_pair.value()->tensor_index]->name, output_names);
+    const int arg_index =
+        GetTensorIndex(tensors[output_pair.value()->tensor_index]->name,
+                       output_names, seen_indices);
     if (arg_index == -1) {
       func->emitWarning("Invalid signature tensors specified.");
       return;
@@ -1133,6 +1140,7 @@ void SetSignature(
                        mlir::ArrayAttr::get(
                            context, {mlir::StringAttr::get(
                                         context, output_pair.value()->name)}));
+    seen_indices.insert(arg_index);
   }
   func->setAttr(
       kExportedNameAttr,
