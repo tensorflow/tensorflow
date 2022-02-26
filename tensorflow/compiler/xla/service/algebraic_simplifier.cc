@@ -3223,7 +3223,8 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
     HloInstruction* lhs_delta;
     if (Match(compare,
               m::Compare(m::Add(m::Op(&add_operand), m::Constant(&lhs_delta)),
-                         m::Constant()))) {
+                         m::Constant())) &&
+        rhs->shape() == lhs_delta->shape()) {
       return ReplaceWithNewInstruction(
           compare,
           compare->CloneWithNewOperands(
