@@ -570,6 +570,13 @@ Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
   if (FailOnXlaCompilation()) {
+    VLOG(1) << "XLA compilation disabled: " << function.name() << "\n"
+            << absl::StrJoin(
+                   args, "\n",
+                   [](std::string* out, const XlaCompiler::Argument& arg) {
+                     out->append(" arg: ");
+                     out->append(arg.HumanString());
+                   });
     return errors::Internal("XLA compilation disabled");
   }
   DCHECK_NE(out_executable, nullptr);
