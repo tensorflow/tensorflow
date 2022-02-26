@@ -919,6 +919,12 @@ Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
     return Status::OK();
   }
 
+  // A && A => A or A & A => A
+  VLOG(10) << "trying transform [A && A => A]: " << logical_and->ToString();
+  if (lhs->Identical(*rhs) && ReplaceInstructionIfCompatible(logical_and, lhs)) {
+    return Status::OK();
+  }
+
   // Simplify tautological conjunctions.
   TF_ASSIGN_OR_RETURN(bool found_tautological_compare,
                       TrySimplifyTautologicalCompare(logical_and));
@@ -2886,6 +2892,12 @@ Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
   // False || A => A and 0 | A => A
   VLOG(10) << "trying transform [False || A => A]: " << logical_or->ToString();
   if (IsAll(lhs, 0) && ReplaceInstructionIfCompatible(logical_or, rhs)) {
+    return Status::OK();
+  }
+
+  // A || A => A and A | A => A
+  VLOG(10) << "trying transform [A || A => A]: " << logical_or->ToString();
+  if (lhs->Identical(*rhs) && ReplaceInstructionIfCompatible(logical_or, lhs)) {
     return Status::OK();
   }
 

@@ -8171,5 +8171,39 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceShapeLayout) {
   EXPECT_EQ(slice_shape.layout().tiles_size(), 1);
 }
 
+TEST_F(AlgebraicSimplifierTest, AndIdentical) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test
+    ENTRY test {
+      input.1 = s32[] parameter(0)
+      input.2 = s32[] parameter(1)
+      compare.13 = pred[] compare(input.1, input.2), direction=LT
+      ROOT and.4 = pred[] and(compare.13, compare.13)
+    }
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_EQ(m->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kCompare);
+}
+
+TEST_F(AlgebraicSimplifierTest, OrIdentical) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test
+    ENTRY test {
+      input = s32[] parameter(0)
+      constant.107 = s32[] constant(1)
+      compare.13 = pred[] compare(input, constant.107), direction=LT
+      ROOT or.4 = pred[] or(compare.13, compare.13)
+    }
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_EQ(m->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kCompare);
+}
+
 }  // namespace
 }  // namespace xla
