@@ -35,7 +35,10 @@ class _NotOkStatusException(Exception):
 
   def __init__(self, message, code, payloads):
     super(_NotOkStatusException, self).__init__()
-    self.message = message
+    self.message = ('\n\nOp name         : ' +
+                    message.split('name=')[1].split((';'))[0] +
+                    '\nRoot-cause      : ' +message.split(':')[0] +'\n' +
+                    'Supported types :' +message.split(':')[1].split('\t;')[0])
     self.code = code
     self.payloads = payloads
 
