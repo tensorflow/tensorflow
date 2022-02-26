@@ -502,6 +502,7 @@ tf_cc_test(
         ":xla_compilation_cache",
         ":xla_cpu_jit",
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
