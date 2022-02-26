@@ -3215,6 +3215,24 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
         return ReplaceInstruction(compare, MakeScalarLike(compare, true));
     }
   }
+  {
+    // Replacing compare(X + C, K) => compare(X, K - C)
+    // This allows constant folding on the right hand side to remove
+    // the addition.
+    HloInstruction * add_operand;
+    HloInstruction * lhs_delta;
+    if (Match(compare,
+              m::Compare(m::Add(m::Op(&add_operand),
+                                m::Constant(&lhs_delta)),
+                         m::Constant()))) {
+      return ReplaceWithNewInstruction(
+          compare,
+          compare->CloneWithNewOperands(
+              compare->shape(),
+              {add_operand, computation_->AddInstruction(HloInstruction::CreateBinary(
+                        lhs->shape(), HloOpcode::kSubtract, rhs, lhs_delta))}));
+    }
+  }
   return Status::OK();
 }
 
