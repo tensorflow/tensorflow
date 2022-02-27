@@ -1,30 +1,38 @@
 load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+#load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization:__subpackages__",
+        "//tensorflow/python:__subpackages__",
     ],
     licenses = ["notice"],
 )
 
 cc_library(
-    name = "quantize_model_lib",
+    name = "quantize_model_cc",
     srcs = [
         "quantize_model.cc",
     ],
     hdrs = [
         "quantize_model.h",
     ],
+    copts = ["-fexceptions"],
+    features = [
+        "-use_header_modules",  # Required for pybind11
+        "-parse_headers",
+    ],
     deps = [
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op_and_kernels",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
@@ -34,14 +42,15 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -54,23 +63,27 @@ cc_library(
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
+        "@pybind11",
     ],
+    alwayslink = True,
 )
 
 tf_python_pybind_extension(
-    name = "quantize_model_wrapper",
+    name = "pywrap_quantize_model",
     srcs = [
-        "quantize_model_wrapper.cc",
+        "pywrap_quantize_model.cc",
     ],
-    module_name = "quantize_model_wrapper",
+    hdrs = [
+        "quantize_model.h",
+    ],
+    module_name = "pywrap_quantize_model",
     deps = [
-        ":quantize_model_lib",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
-        "//tensorflow/lite/python/interpreter_wrapper:python_utils",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "//tensorflow/python/lib/core:pybind11_status",
+        # TODO(b/220688154): Remove dependency when the quantize model wrapper is included in pywrap_tensorflow.
+        ":quantize_model_cc",
         "@com_google_absl//absl/strings",
         "@pybind11",
+        "//third_party/python_runtime:headers",
+        "//tensorflow/python/lib/core:pybind11_lib",
     ],
 )
 
@@ -81,24 +94,25 @@ pytype_strict_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":quantize_model_wrapper",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
+        # TODO(b/220688154): Remove dependency when the quantize model wrapper is included in pywrap_tensorflow.
+        ":pywrap_quantize_model",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/client:session",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
-        "@flatbuffers//:runtime_py",
+        "//tensorflow/python/training/tracking:trackable_utils",
     ],
 )
 
-tf_py_test(
+py_test(
     name = "quantize_model_test",
     size = "medium",
     srcs = ["integration_test/quantize_model_test.py"],
@@ -108,10 +122,13 @@ tf_py_test(
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/saved_model:tag_constants",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-tf_py_test(
+py_test(
     name = "concurrency_test",
     size = "medium",
     srcs = ["integration_test/concurrency_test.py"],
@@ -121,5 +138,8 @@ tf_py_test(
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/saved_model:tag_constants",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

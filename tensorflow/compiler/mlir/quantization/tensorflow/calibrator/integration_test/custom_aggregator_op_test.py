@@ -14,9 +14,13 @@
 # ==============================================================================
 """Tests for Custom Aggregator op."""
 
+import tensorflow  # pylint: disable=unused-import
 
-from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import custom_aggregator_op
-from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model_wrapper
+# pylint: disable=invalid-import-order,g-bad-import-order
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+
+from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import custom_aggregator_op_wrapper
+from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model as quantize_model_wrapper
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -34,55 +38,61 @@ class CustomAggregatorTest(test.TestCase):
       quantize_model_wrapper.clear_calibrator()
       input_tensor = array_ops.constant([1.0, 2.0, 3.0, 4.0, 5.0],
                                         dtypes.float32)
-      aggregator = custom_aggregator_op.custom_aggregator(
-          input_tensor, tensor_id='1')
+      aggregator = custom_aggregator_op_wrapper.custom_aggregator(
+          input_tensor, '1')
       self.assertAllEqual(aggregator.eval(), [1.0, 2.0, 3.0, 4.0, 5.0])
-      min_max = quantize_model_wrapper.get_min_max_from_calibrator('1')
-      self.assertAllEqual(min_max, (1.0, 5.0))
+      min_val = quantize_model_wrapper.get_min_from_calibrator('1')
+      max_val = quantize_model_wrapper.get_max_from_calibrator('1')
+      self.assertAllEqual((min_val, max_val), (1.0, 5.0))
 
   def testTwoIdentities(self):
     with self.test_session():
       quantize_model_wrapper.clear_calibrator()
       input_tensor1 = array_ops.constant([1.0, 2.0, 3.0, 4.0, 5.0],
                                          dtypes.float32)
-      aggregator1 = custom_aggregator_op.custom_aggregator(
-          input_tensor1, tensor_id='2')
+      aggregator1 = custom_aggregator_op_wrapper.custom_aggregator(
+          input_tensor1, '2')
       self.assertAllEqual(aggregator1.eval(), [1.0, 2.0, 3.0, 4.0, 5.0])
       input_tensor2 = array_ops.constant([-1.0, -2.0, -3.0, -4.0, -5.0],
                                          dtypes.float32)
-      aggregator2 = custom_aggregator_op.custom_aggregator(
-          input_tensor2, tensor_id='3')
+      aggregator2 = custom_aggregator_op_wrapper.custom_aggregator(
+          input_tensor2, '3')
       self.assertAllEqual(aggregator2.eval(), [-1.0, -2.0, -3.0, -4.0, -5.0])
 
-      min_max = quantize_model_wrapper.get_min_max_from_calibrator('2')
-      self.assertAllEqual(min_max, (1.0, 5.0))
-      min_max = quantize_model_wrapper.get_min_max_from_calibrator('3')
-      self.assertAllEqual(min_max, (-5.0, -1.0))
+      min_val = quantize_model_wrapper.get_min_from_calibrator('2')
+      max_val = quantize_model_wrapper.get_max_from_calibrator('2')
+      self.assertAllEqual((min_val, max_val), (1.0, 5.0))
+      min_val = quantize_model_wrapper.get_min_from_calibrator('3')
+      max_val = quantize_model_wrapper.get_max_from_calibrator('3')
+      self.assertAllEqual((min_val, max_val), (-5.0, -1.0))
 
   def testClearData(self):
     with self.test_session():
       quantize_model_wrapper.clear_calibrator()
       input_tensor1 = array_ops.constant([1.0, 2.0, 3.0, 4.0, 5.0],
                                          dtypes.float32)
-      aggregator1 = custom_aggregator_op.custom_aggregator(
-          input_tensor1, tensor_id='4')
+      aggregator1 = custom_aggregator_op_wrapper.custom_aggregator(
+          input_tensor1, '4')
       self.assertAllEqual(aggregator1.eval(), [1.0, 2.0, 3.0, 4.0, 5.0])
       input_tensor2 = array_ops.constant([-1.0, -2.0, -3.0, -4.0, -5.0],
                                          dtypes.float32)
-      aggregator2 = custom_aggregator_op.custom_aggregator(
-          input_tensor2, tensor_id='5')
+      aggregator2 = custom_aggregator_op_wrapper.custom_aggregator(
+          input_tensor2, '5')
       self.assertAllEqual(aggregator2.eval(), [-1.0, -2.0, -3.0, -4.0, -5.0])
 
-      min_max = quantize_model_wrapper.get_min_max_from_calibrator('4')
-      self.assertAllEqual(min_max, (1.0, 5.0))
-      min_max = quantize_model_wrapper.get_min_max_from_calibrator('5')
-      self.assertAllEqual(min_max, (-5.0, -1.0))
+      min_val = quantize_model_wrapper.get_min_from_calibrator('4')
+      max_val = quantize_model_wrapper.get_max_from_calibrator('4')
+      self.assertAllEqual((min_val, max_val), (1.0, 5.0))
+      min_val = quantize_model_wrapper.get_min_from_calibrator('5')
+      max_val = quantize_model_wrapper.get_max_from_calibrator('5')
+      self.assertAllEqual((min_val, max_val), (-5.0, -1.0))
 
       quantize_model_wrapper.clear_data_from_calibrator('4')
       with self.assertRaises(ValueError):
-        quantize_model_wrapper.get_min_max_from_calibrator('4')
-      min_max = quantize_model_wrapper.get_min_max_from_calibrator('5')
-      self.assertAllEqual(min_max, (-5.0, -1.0))
+        quantize_model_wrapper.get_min_from_calibrator('4')
+      min_val = quantize_model_wrapper.get_min_from_calibrator('5')
+      max_val = quantize_model_wrapper.get_max_from_calibrator('5')
+      self.assertAllEqual((min_val, max_val), (-5.0, -1.0))
 
 
 if __name__ == '__main__':

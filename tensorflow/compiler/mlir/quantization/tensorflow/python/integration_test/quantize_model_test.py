@@ -16,7 +16,7 @@
 
 from absl.testing import parameterized
 import numpy as np
-import tensorflow as tf  # pylint: disable=unused-import
+import tensorflow  # pylint: disable=unused-import
 
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.python.eager import def_function
@@ -30,8 +30,8 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import save as saved_model_save
-from tensorflow.python.saved_model.saved_model import signature_constants
-from tensorflow.python.saved_model.saved_model import tag_constants
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training.tracking import tracking
 
 
