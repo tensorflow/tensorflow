@@ -80,8 +80,12 @@ struct TensorDescriptor : public GPUObjectDescriptor {
       std::string* x_coord, std::string* y_coord, std::string* s_coord) const;
 
   void UploadData(const tflite::gpu::Tensor<BHWC, DataType::FLOAT32>& src);
+  void UploadData(const tflite::gpu::Tensor<BHWC, DataType::INT32>& src);
   void UploadData(const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
   void UploadData(const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+
+  void DownloadData(tflite::gpu::Tensor<BHWC, DataType::FLOAT32>* dst);
+  void DownloadData(tflite::gpu::Tensor<BHWC, DataType::INT32>* dst);
 
   bool SupportsZeroClamp(const Axis& axis) const;
   bool CanReadOutOfBorder(const Axis& axis) const;
@@ -205,6 +209,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                            std::string* sc, std::string* bc) const;
 
   void UploadData(const float* src);
+  void DownloadData(float* dst);
+  void UploadData(const int32_t* src);
+  void DownloadData(int32_t* dst);
 };
 
 template <typename FromType, typename ToType>

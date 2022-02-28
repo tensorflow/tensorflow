@@ -1097,6 +1097,12 @@ void TensorDescriptor::UploadData(
 }
 
 void TensorDescriptor::UploadData(
+    const tflite::gpu::Tensor<BHWC, DataType::INT32>& src) {
+  shape = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
+  UploadData(src.data.data());
+}
+
+void TensorDescriptor::UploadData(
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
   shape = BHWDC(1, src.shape.h, src.shape.w, 1, src.shape.c);
   UploadData(src.data.data());
@@ -1121,6 +1127,54 @@ void TensorDescriptor::UploadData(const float* src) {
     half* gpu_data = reinterpret_cast<half*>(data.data());
     DataFromBHWDC(src, shape, *this, gpu_data);
   }
+}
+
+void TensorDescriptor::UploadData(const int32_t* src) {
+  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
+                             ? shape.c
+                             : AlignByN(shape.c, 4);
+  int elements_count = shape.b * shape.w * shape.h * shape.d * aligned_channels;
+  data.resize(elements_count * SizeOf(data_type));
+  int32_t* gpu_data = reinterpret_cast<int32_t*>(data.data());
+  DataFromBHWDC(src, shape, *this, gpu_data);
+}
+
+void TensorDescriptor::DownloadData(
+    tflite::gpu::Tensor<BHWC, DataType::FLOAT32>* dst) {
+  dst->shape = BHWC(shape.b, shape.h, shape.w, shape.c);
+  dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
+  DownloadData(dst->data.data());
+}
+void TensorDescriptor::DownloadData(
+    tflite::gpu::Tensor<BHWC, DataType::INT32>* dst) {
+  dst->shape = BHWC(shape.b, shape.h, shape.w, shape.c);
+  dst->data.resize(dst->shape.DimensionsProduct(), 0);
+  DownloadData(dst->data.data());
+}
+
+void TensorDescriptor::DownloadData(float* dst) {
+  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
+                             ? shape.c
+                             : AlignByN(shape.c, 4);
+  int elements_count = shape.b * shape.w * shape.h * shape.d * aligned_channels;
+  data.resize(elements_count * SizeOf(data_type));
+  if (data_type == DataType::FLOAT32) {
+    float* gpu_data = reinterpret_cast<float*>(data.data());
+    DataToBHWDC(gpu_data, shape, *this, dst);
+  } else {
+    half* gpu_data = reinterpret_cast<half*>(data.data());
+    DataToBHWDC(gpu_data, shape, *this, dst);
+  }
+}
+
+void TensorDescriptor::DownloadData(int32_t* dst) {
+  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
+                             ? shape.c
+                             : AlignByN(shape.c, 4);
+  int elements_count = shape.b * shape.w * shape.h * shape.d * aligned_channels;
+  data.resize(elements_count * SizeOf(data_type));
+  int32_t* gpu_data = reinterpret_cast<int32_t*>(data.data());
+  DataToBHWDC(gpu_data, shape, *this, dst);
 }
 
 bool TensorDescriptor::SupportsZeroClamp(const Axis& axis) const {
