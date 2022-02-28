@@ -108,6 +108,7 @@ py_strict_test(
     srcs = ["runtime_client_test.py"],
     main = "runtime_client_test.py",
     python_version = "PY3",
+    tags = ["no_oss"],  # b/219089812
     deps = [
         ":runtime_client_py",
         "//tensorflow/core/framework:function_proto_py",
