@@ -65,6 +65,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest as tf_nest
@@ -4323,10 +4324,65 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
     return self._element_spec
 
   def is_subtype_of(self, other):
-    return self == other
+    """See base class."""
+    if type(self) is not type(other):
+      return False
+
+    # TODO(b/220385675): _element_spec should always be a TypeSpec.
+    try:
+      tf_nest.assert_same_structure(self._element_spec, other._element_spec)  # pylint: disable=protected-access
+    except (TypeError, ValueError):
+      return False
+
+    self_elements = tf_nest.flatten(self._element_spec)
+    other_elements = tf_nest.flatten(other._element_spec)  # pylint: disable=protected-access
+
+    for self_element, other_element in zip(self_elements, other_elements):
+      if isinstance(self_element, trace.TraceType):
+        if not self_element.is_subtype_of(other_element):
+          return False
+      else:
+        if self_element != other_element:
+          return False
+
+    return self._dataset_shape.is_subtype_of(other._dataset_shape)  # pylint: disable=protected-access
 
   def most_specific_common_supertype(self, others):
-    return self if all(self == other for other in others) else None
+    """See base class."""
+    if not all(type(self) is type(other) for other in others):
+      return False
+
+    try:
+      for other in others:
+        tf_nest.assert_same_structure(self._element_spec, other._element_spec)  # pylint: disable=protected-access
+    except (TypeError, ValueError):
+      return False
+
+    self_elements = tf_nest.flatten(self._element_spec)
+    others_elements = [tf_nest.flatten(other._element_spec) for other in others]  # pylint: disable=protected-access
+    common_elements = [None] * len(self_elements)
+
+    for i, self_element in enumerate(self_elements):
+      if isinstance(self_element, trace.TraceType):
+        common_elements[i] = self_element.most_specific_common_supertype(
+            [other_elements[i] for other_elements in others_elements])
+        if common_elements[i] is None:
+          return None
+      else:
+        if all(self_element == other_elements[i]
+               for other_elements in others_elements):
+          common_elements[i] = self_element
+        else:
+          return None
+    common_element_spec = tf_nest.pack_sequence_as(self._element_spec,
+                                                   common_elements)
+
+    common_dataset_shape = self._dataset_shape.most_specific_common_supertype(
+        [other._dataset_shape for other in others])  # pylint: disable=protected-access
+    if common_dataset_shape is None:
+      return None
+
+    return DatasetSpec(common_element_spec, common_dataset_shape)
 
   # TODO(b/220385675): Once _element_spec is guaranteed to be TypeSpec, the
   # following functions do not need to be overloaded: is_subtype_of,

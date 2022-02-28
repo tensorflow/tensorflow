@@ -708,6 +708,31 @@ class DistributedDatasetAndIteratorSpec(type_spec.TypeSpec):
       raise ValueError("tf.distribute strategy is not compatible with both %s "
                        "and %s" % (self, other))
 
+  def _with_tensor_ranks_only(self):
+    element_spec = nest.map_structure(
+        lambda s: s._with_tensor_ranks_only(),  # pylint: disable=protected-access
+        self._element_spec)
+    return type(self)(
+        self._input_workers,
+        element_spec,
+        self._strategy,
+        self._options,
+        cardinality=self._cardinality,
+        enable_get_next_as_optional=self._enable_get_next_as_optional)
+
+  # TODO(b/206014848): Remove once names are not used.
+  def _without_tensor_names(self):
+    element_spec = nest.map_structure(
+        lambda s: s._without_tensor_names(),  # pylint: disable=protected-access
+        self._element_spec)
+    return type(self)(
+        self._input_workers,
+        element_spec,
+        self._strategy,
+        self._options,
+        cardinality=self._cardinality,
+        enable_get_next_as_optional=self._enable_get_next_as_optional)
+
 
 class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
   """Type specification for `DistributedIterator`."""
@@ -716,9 +741,26 @@ class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
   def value_type(self):
     return DistributedIterator
 
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    try:
+      return functools.reduce(lambda a, b: a.most_specific_compatible_type(b),
+                              others, self)
+    except (TypeError, ValueError):
+      return None
+
+  # TODO(b/221472813): Migrate logic to most_specific_common_supertype.
   # Overriding this method so that we can merge and reconstruct the spec object
   def most_specific_compatible_type(self, other):
     """Returns the most specific TypeSpec compatible with `self` and `other`.
+
+    Deprecated. Use most_specific_common_supertype instead.
 
     Args:
       other: A `TypeSpec`.
@@ -778,18 +820,6 @@ class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
         value._options,
         cardinality=value._cardinality,
         enable_get_next_as_optional=value._enable_get_next_as_optional)
-
-  def _with_tensor_ranks_only(self):
-    element_spec = nest.map_structure(
-        lambda s: s._with_tensor_ranks_only(),  # pylint: disable=protected-access
-        self._element_spec)
-    return DistributedIteratorSpec(
-        self._input_workers,
-        element_spec,
-        self._strategy,
-        self._options,
-        cardinality=self._cardinality,
-        enable_get_next_as_optional=self._enable_get_next_as_optional)
 
 
 class DistributedIterator(DistributedIteratorBase,
@@ -896,9 +926,26 @@ class DistributedDatasetSpec(DistributedDatasetAndIteratorSpec):
   def value_type(self):
     return DistributedDataset
 
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    try:
+      return functools.reduce(lambda a, b: a.most_specific_compatible_type(b),
+                              others, self)
+    except (TypeError, ValueError):
+      return None
+
+  # TODO(b/221472813): Migrate logic to most_specific_common_supertype.
   # Overriding this method so that we can merge and reconstruct the spec object
   def most_specific_compatible_type(self, other):
     """Returns the most specific TypeSpec compatible with `self` and `other`.
+
+    Deprecated. Use most_specific_common_supertype instead.
 
     Args:
       other: A `TypeSpec`.
@@ -1240,9 +1287,26 @@ class DistributedDatasetsFromFunctionSpec(DistributedDatasetAndIteratorSpec):
       specs.append(dataset_ops.DatasetSpec(element_spec))
     return specs
 
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    try:
+      return functools.reduce(lambda a, b: a.most_specific_compatible_type(b),
+                              others, self)
+    except (TypeError, ValueError):
+      return None
+
+  # TODO(b/221472813): Migrate logic to most_specific_common_supertype.
   # Overriding this method so that we can merge and reconstruct the spec object
   def most_specific_compatible_type(self, other):
     """Returns the most specific TypeSpec compatible with `self` and `other`.
+
+    Deprecated. Use most_specific_common_supertype instead.
 
     Args:
       other: A `TypeSpec`.
