@@ -3945,9 +3945,11 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
       TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
           old_entry_layout.parameter_shape(i),
           new_program_shape.mutable_parameters(i)));
+      UpdateLayout(new_program_shape.mutable_parameters(i));
     }
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         old_entry_layout.result_shape(), new_program_shape.mutable_result()));
+    UpdateLayout(new_program_shape.mutable_result());
 
     HloModuleConfig config = module->config();
     *config.mutable_entry_computation_layout() =
