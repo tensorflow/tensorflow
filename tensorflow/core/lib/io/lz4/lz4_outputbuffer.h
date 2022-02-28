@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_LZ4_LZ4_OUTPUTBUFFER_H_
 #define TENSORFLOW_CORE_LIB_IO_LZ4_LZ4_OUTPUTBUFFER_H_
 
-#include <lz4.h>
+#include <lz4frame.h>
 
 #include <string>
 
@@ -29,6 +29,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace io {
+
+// forward declaration
+struct Lz4OutputFrameDef;
 
 // Compresses input data using Lz4 (https://github.com/facebook/lz4) and
 // writes to `file`.
@@ -56,8 +59,8 @@ class Lz4OutputBuffer : public WritableFile {
   // with sizes `input_buffer_bytes` and `output_buffer_bytes` respectively.
   // Does not take ownership of `file`.
   Lz4OutputBuffer(WritableFile* file, int32 input_buffer_bytes,
-                   int32 output_buffer_bytes,
-                   const Lz4CompressionOptions& lz4_options);
+                  int32 output_buffer_bytes,
+                  const Lz4CompressionOptions& lz4_options);
 
   // Per convention, the dtor does not call Flush() or Close(). We expect the
   // caller to call those manually when done.
@@ -115,6 +118,8 @@ class Lz4OutputBuffer : public WritableFile {
   WritableFile* file_;  // Not owned
   size_t input_buffer_capacity_;
   size_t output_buffer_capacity_;
+
+  std::unique_ptr<Lz4OutputFrameDef> lz4_frame_;
 
   const Lz4CompressionOptions lz4_options_;
 

@@ -18,13 +18,32 @@ limitations under the License.
 namespace tensorflow {
 namespace io {
 
+struct Lz4OutputFrameDef {
+  Lz4OutputFrameDef(const size_t input_buffer_bytes,
+                    const size_t output_buffer_bytes)
+      : input_buffer_(new char[input_buffer_bytes]),
+        output_buffer_(new char[output_buffer_bytes]) {
+    LZ4F_createCompressionContext(&lz4f_cctx, LZ4F_VERSION);
+  }
+
+  char* next_in_;
+  char* next_out_;
+
+  std::unique_ptr<char[]> input_buffer_;
+  std::unique_ptr<char[]> output_buffer_;
+
+  LZ4F_compressionContext_t lz4f_cctx;
+};
+
 Lz4OutputBuffer::Lz4OutputBuffer(WritableFile* file, int32 input_buffer_bytes,
-                                   int32 output_buffer_bytes,
-                                   const Lz4CompressionOptions& lz4_options)
+                                 int32 output_buffer_bytes,
+                                 const Lz4CompressionOptions& lz4_options)
     : file_(file),
       input_buffer_capacity_(input_buffer_bytes),
       output_buffer_capacity_(output_buffer_bytes),
-      lz4_options_(lz4_options) {
+      lz4_options_(lz4_options),
+      lz4_frame_(
+          new Lz4OutputFrameDef(input_buffer_bytes, output_buffer_bytes)) {
   InitLz4Buffer();
 }
 
@@ -34,17 +53,14 @@ Lz4OutputBuffer::~Lz4OutputBuffer() {
     LOG(WARNING) << "There is still data in the output buffer. "
                  << "Possible data loss has occurred.";
   }
+  LZ4F_freeCompressionContext(lz4_frame_->lz4f_cctx);
 }
 
-void Lz4OutputBuffer::InitLz4Buffer() {
-}
+void Lz4OutputBuffer::InitLz4Buffer() {}
 
-Status Lz4OutputBuffer::Append(StringPiece data) {
-  return Status::OK();
-}
+Status Lz4OutputBuffer::Append(StringPiece data) { return Status::OK(); }
 
-void Lz4OutputBuffer::AddToInputBuffer(StringPiece data) {
-}
+void Lz4OutputBuffer::AddToInputBuffer(StringPiece data) {}
 
 #if defined(TF_CORD_SUPPORT)
 Status Lz4OutputBuffer::Append(const absl::Cord& cord) {
@@ -79,19 +95,13 @@ Status Lz4OutputBuffer::Flush() {
   return file_->Flush();
 }
 
-int32 Lz4OutputBuffer::AvailableInputSpace() const {
-  return 0;
-}
+int32 Lz4OutputBuffer::AvailableInputSpace() const { return 0; }
 
-Status Lz4OutputBuffer::FlushOutputBufferToFile() {
-  return Status::OK();
-}
+Status Lz4OutputBuffer::FlushOutputBufferToFile() { return Status::OK(); }
 
 Status Lz4OutputBuffer::DeflateBuffered() {}
 
-Status Lz4OutputBuffer::Deflate() {
-  return Status::OK();
-}
+Status Lz4OutputBuffer::Deflate() { return Status::OK(); }
 
 }  // namespace io
 }  // namespace tensorflow

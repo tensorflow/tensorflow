@@ -10,7 +10,7 @@ cc_library(
         "lib/*.c",
         "lib/*.h"
     ]),
-    hdrs = ["lib/lz4.h"],
+    hdrs = ["lib/lz4frame.h"],
     copts = [
     ],
     includes = ["lib/"],

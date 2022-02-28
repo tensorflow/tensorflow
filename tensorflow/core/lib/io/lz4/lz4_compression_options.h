@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_LZ4_LZ4_COMPRESSION_OPTIONS_H_
 #define TENSORFLOW_CORE_LIB_IO_LZ4_LZ4_COMPRESSION_OPTIONS_H_
 
-#include <lz4.h>
+#include <lz4frame.h>
 
 #include "tensorflow/core/platform/types.h"
 

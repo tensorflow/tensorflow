@@ -22,10 +22,13 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-#include <lz4.h>
+#include <lz4frame.h>
 
 namespace tensorflow {
 namespace io {
+
+// forward declaration
+struct Lz4InputFrameDef;
 
 class Lz4InputStream : public InputStreamInterface {
  public:
@@ -33,14 +36,14 @@ class Lz4InputStream : public InputStreamInterface {
   //
   // Takes ownership  of `input_stream` iff `owns_input_stream` is true.
   Lz4InputStream(InputStreamInterface* input_stream, size_t input_buffer_bytes,
-                  size_t output_buffer_bytes,
-                  const Lz4CompressionOptions& lz4_options,
-                  bool owns_input_stream);
+                 size_t output_buffer_bytes,
+                 const Lz4CompressionOptions& lz4_options,
+                 bool owns_input_stream);
 
   // Equivalent to the previous constructor with owns_input_stream=false.
   Lz4InputStream(InputStreamInterface* input_stream, size_t input_buffer_bytes,
-                  size_t output_buffer_bytes,
-                  const Lz4CompressionOptions& lz4_options);
+                 size_t output_buffer_bytes,
+                 const Lz4CompressionOptions& lz4_options);
 
   ~Lz4InputStream() override;
 
@@ -76,24 +79,16 @@ class Lz4InputStream : public InputStreamInterface {
   void InitLz4Buffer();
 
   const bool owns_input_stream_;
+  size_t input_buffer_capacity_;   // Size of input_buffer_
+  size_t output_buffer_capacity_;  // Size of output_buffer_
   InputStreamInterface* input_stream_;
-  std::unique_ptr<char[]> input_buffer_;
-  size_t input_buffer_capacity_;  // Size of input_buffer_
-  char* next_in_byte_;            // Next unread byte to decompress
-  size_t avail_in_;  // Number of bytes available to be decompressed
-  LZ4_inBuffer lz4_input_buffer_;
-
-  std::unique_ptr<char[]> output_buffer_;  // Inflated buffer
-  size_t output_buffer_capacity_;          // Size of output_buffer_
-  char* next_unread_byte_;                  // Next unread byte in output_buffer_
-  // bytes left in the output_buffer_ not yet read.
-  size_t unread_bytes_;
 
   // Specifies the number of decompressed bytes currently read.
   size_t bytes_read_;
 
   size_t last_return_;
 
+  std::unique_ptr<Lz4InputFrameDef> lz4_frame_;
   const Lz4CompressionOptions lz4_options_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Lz4InputStream);
