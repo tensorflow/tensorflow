@@ -162,6 +162,7 @@ genrule(
         "@png//:LICENSE",
         "@snappy//:COPYING",
         "@zlib//:zlib.h",
+        "@lz4//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -234,6 +235,7 @@ genrule(
         "@png//:LICENSE",
         "@snappy//:COPYING",
         "@zlib//:zlib.h",
+        "@lz4//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

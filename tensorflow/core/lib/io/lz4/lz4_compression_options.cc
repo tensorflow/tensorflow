@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/io/compression.h"
+#include "tensorflow/core/lib/io/lz4/lz4_compression_options.h"
 
 namespace tensorflow {
 namespace io {
-namespace compression {
 
-const char kNone[] = "";
-const char kGzip[] = "GZIP";
-const char kSnappy[] = "SNAPPY";
-const char kZlib[] = "ZLIB";
-const char kLz4[] = "LZ4";
+Lz4CompressionOptions::Lz4CompressionOptions() {
+  // FIXME (adrian.castro): use LZ4 options
+  // input_buffer_size = LZ4_CStreamInSize();
+  // output_buffer_size = LZ4_DStreamOutSize();
 
-}  // namespace compression
+  // window_log = 0;                // default
+  // compression_level = 3;         // LZ4_CLEVEL_DEFAULT
+  // compression_strategy = 0;      // default
+  // nb_workers = 0;                // single-threaded by default
+  // flush_mode = LZ4_e_continue;  // LZ4_e_continue
+}
+
 }  // namespace io
 }  // namespace tensorflow

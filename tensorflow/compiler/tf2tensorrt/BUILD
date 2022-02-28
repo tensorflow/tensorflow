@@ -955,6 +955,7 @@ pybind_extension(
         "@snappy//:__subpackages__",
         "//:__subpackages__",
         "@zlib//:__subpackages__",
+        "@lz4//:__subpackages__",
     ],
     deps = [
         ":common_utils",

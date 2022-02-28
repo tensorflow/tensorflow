@@ -40,8 +40,11 @@ io::RecordReaderOptions GetMatchingReaderOptions(
     const io::RecordWriterOptions& options) {
   if (options.compression_type == io::RecordWriterOptions::ZLIB_COMPRESSION) {
     return io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB");
+  } else if (options.compression_type == io::RecordWriterOptions::LZ4_COMPRESSION) {
+    return io::RecordReaderOptions::CreateRecordReaderOptions("LZ4");
+  } else {
+    return io::RecordReaderOptions::CreateRecordReaderOptions("");
   }
-  return io::RecordReaderOptions::CreateRecordReaderOptions("");
 }
 
 uint64 GetFileSize(const string& fname) {
@@ -294,6 +297,42 @@ TEST(RecordReaderWriterTest, TestZlib) {
       io::RecordReaderOptions options;
       options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
       options.zlib_options.input_buffer_size = buf_size;
+      io::RecordReader reader(read_file.get(), options);
+      uint64 offset = 0;
+      tstring record;
+      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      EXPECT_EQ("abc", record);
+      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      EXPECT_EQ("defg", record);
+    }
+  }
+}
+
+TEST(RecordReaderWriterTest, TestLz4) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/record_reader_writer_lz4_test";
+
+  for (auto buf_size : BufferSizes()) {
+    {
+      std::unique_ptr<WritableFile> file;
+      TF_CHECK_OK(env->NewWritableFile(fname, &file));
+
+      io::RecordWriterOptions options;
+      options.compression_type = io::RecordWriterOptions::LZ4_COMPRESSION;
+      options.lz4_options.output_buffer_size = buf_size;
+      io::RecordWriter writer(file.get(), options);
+      TF_EXPECT_OK(writer.WriteRecord("abc"));
+      TF_EXPECT_OK(writer.WriteRecord("defg"));
+      TF_CHECK_OK(writer.Flush());
+    }
+
+    {
+      std::unique_ptr<RandomAccessFile> read_file;
+      // Read it back with the RecordReader.
+      TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+      io::RecordReaderOptions options;
+      options.compression_type = io::RecordReaderOptions::LZ4_COMPRESSION;
+      options.lz4_options.input_buffer_size = buf_size;
       io::RecordReader reader(read_file.get(), options);
       uint64 offset = 0;
       tstring record;

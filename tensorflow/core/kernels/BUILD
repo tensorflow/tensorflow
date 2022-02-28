@@ -7732,6 +7732,7 @@ tf_cc_shared_library(
         "//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
+        "@lz4//:__subpackages__",
         # copybara:comment_end
     ],
     visibility = ["//visibility:public"],

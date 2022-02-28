@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/io/record_reader.h"
+#include "tensorflow/core/lib/io/lz4/lz4_inputstream.h"
 
 #include <limits.h>
 
@@ -46,6 +47,9 @@ RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
     options.zlib_options = io::ZlibCompressionOptions::GZIP();
   } else if (compression_type == compression::kSnappy) {
     options.compression_type = io::RecordReaderOptions::SNAPPY_COMPRESSION;
+  } else if (compression_type == compression::kLz4) {
+    options.compression_type = io::RecordReaderOptions::LZ4_COMPRESSION;
+    options.lz4_options = io::Lz4CompressionOptions::DEFAULT();
   } else if (compression_type != compression::kNone) {
     LOG(ERROR) << "Unsupported compression_type:" << compression_type
                << ". No compression will be used.";
@@ -77,6 +81,11 @@ RecordReader::RecordReader(RandomAccessFile* file,
     input_stream_.reset(
         new SnappyInputStream(input_stream_.release(),
                               options.snappy_options.output_buffer_size, true));
+  } else if (options.compression_type ==
+             RecordReaderOptions::LZ4_COMPRESSION) {
+    input_stream_.reset(new Lz4InputStream(
+        input_stream_.release(), options.lz4_options.input_buffer_size,
+        options.lz4_options.output_buffer_size, options.lz4_options, true));
   } else if (options.compression_type == RecordReaderOptions::NONE) {
     // Nothing to do.
   } else {

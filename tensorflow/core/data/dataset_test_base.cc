@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -79,6 +78,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 
 namespace tensorflow {
 namespace data {
@@ -89,6 +89,8 @@ string ToString(CompressionType compression_type) {
       return "ZLIB";
     case CompressionType::GZIP:
       return "GZIP";
+    case CompressionType::LZ4:
+      return "LZ4";
     case CompressionType::RAW:
       return "RAW";
     case CompressionType::UNCOMPRESSED:
@@ -109,6 +111,18 @@ io::ZlibCompressionOptions GetZlibCompressionOptions(
       LOG(WARNING) << "ZlibCompressionOptions does not have an option for "
                    << ToString(compression_type);
       return io::ZlibCompressionOptions::DEFAULT();
+  }
+}
+
+io::Lz4CompressionOptions GetLz4CompressionOptions(
+    CompressionType compression_type) {
+  switch (compression_type) {
+    case CompressionType::LZ4:
+      return io::Lz4CompressionOptions::DEFAULT();
+    case CompressionType::UNCOMPRESSED:
+      LOG(WARNING) << "Lz4CompressionOptions does not have an option for "
+                   << ToString(compression_type);
+      return io::Lz4CompressionOptions::DEFAULT();
   }
 }
 
@@ -135,6 +149,15 @@ Status WriteDataToFile(const string& filename, const char* data,
     TF_RETURN_IF_ERROR(out.Append(data));
     TF_RETURN_IF_ERROR(out.Flush());
     TF_RETURN_IF_ERROR(out.Close());
+  } else if (params.compression_type == CompressionType::LZ4) {
+    auto lz4_compression_options =
+        GetLz4CompressionOptions(params.compression_type);
+    io::Lz4OutputBuffer out(file_writer.get(), params.lz4_input_buffer_size,
+                             params.lz4_output_buffer_size,
+                             lz4_compression_options);
+    TF_RETURN_IF_ERROR(out.Append(data));
+    TF_RETURN_IF_ERROR(out.Flush());
+    TF_RETURN_IF_ERROR(out.Close());
   } else {
     return tensorflow::errors::InvalidArgument(
         "Unsupported compression_type: ", ToString(params.compression_type));
@@ -154,7 +177,13 @@ Status WriteDataToTFRecordFile(const string& filename,
   TF_RETURN_IF_ERROR(env->NewWritableFile(filename, &file_writer));
   auto options = io::RecordWriterOptions::CreateRecordWriterOptions(
       ToString(params.compression_type));
-  options.zlib_options.input_buffer_size = params.input_buffer_size;
+  if (params.compression_type == CompressionType::ZLIB ||
+      params.compression_type == CompressionType::GZIP) {
+    options.zlib_options.input_buffer_size = params.input_buffer_size;
+  } else if (params.compression_type == CompressionType::LZ4) {
+    options.lz4_options.input_buffer_size = params.lz4_input_buffer_size;
+    options.lz4_options.output_buffer_size = params.lz4_output_buffer_size;
+  }
   io::RecordWriter record_writer(file_writer.get(), options);
   for (const auto& record : records) {
     TF_RETURN_IF_ERROR(record_writer.WriteRecord(record));

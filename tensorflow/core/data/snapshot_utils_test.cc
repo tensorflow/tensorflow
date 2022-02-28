@@ -89,6 +89,7 @@ TEST(SnapshotUtilTest, CombinationRoundTripTest) {
   SnapshotRoundTrip(io::compression::kNone, 2);
   SnapshotRoundTrip(io::compression::kGzip, 2);
   SnapshotRoundTrip(io::compression::kSnappy, 2);
+  SnapshotRoundTrip(io::compression::kLz4, 2);
 }
 
 void SnapshotReaderBenchmarkLoop(::testing::benchmark::State& state,
@@ -141,11 +142,16 @@ void SnapshotTFRecordReaderGzipBenchmark(::testing::benchmark::State& state) {
   SnapshotReaderBenchmarkLoop(state, io::compression::kGzip, 2);
 }
 
+void SnapshotTFRecordReaderLz4Benchmark(::testing::benchmark::State& state) {
+  SnapshotReaderBenchmarkLoop(state, io::compression::kLz4, 2);
+}
+
 BENCHMARK(SnapshotCustomReaderNoneBenchmark);
 BENCHMARK(SnapshotCustomReaderGzipBenchmark);
 BENCHMARK(SnapshotCustomReaderSnappyBenchmark);
 BENCHMARK(SnapshotTFRecordReaderNoneBenchmark);
 BENCHMARK(SnapshotTFRecordReaderGzipBenchmark);
+BENCHMARK(SnapshotTFRecordReaderLz4Benchmark);
 
 void SnapshotWriterBenchmarkLoop(::testing::benchmark::State& state,
                                  std::string compression_type, int version) {
@@ -192,12 +198,17 @@ void SnapshotTFRecordWriterSnappyBenchmark(::testing::benchmark::State& state) {
   SnapshotWriterBenchmarkLoop(state, io::compression::kSnappy, 2);
 }
 
+void SnapshotTFRecordWriterLz4Benchmark(::testing::benchmark::State& state) {
+  SnapshotWriterBenchmarkLoop(state, io::compression::kLz4, 2);
+}
+
 BENCHMARK(SnapshotCustomWriterNoneBenchmark);
 BENCHMARK(SnapshotCustomWriterGzipBenchmark);
 BENCHMARK(SnapshotCustomWriterSnappyBenchmark);
 BENCHMARK(SnapshotTFRecordWriterNoneBenchmark);
 BENCHMARK(SnapshotTFRecordWriterGzipBenchmark);
 BENCHMARK(SnapshotTFRecordWriterSnappyBenchmark);
+BENCHMARK(SnapshotTFRecordWriterLz4Benchmark);
 
 }  // namespace
 }  // namespace snapshot_util

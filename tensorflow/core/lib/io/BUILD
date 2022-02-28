@@ -9,6 +9,7 @@ package(
         "//tensorflow/c/experimental/filesystem:__pkg__",
         "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
         "//tensorflow/core/lib/io/snappy:__pkg__",
+        "//tensorflow/core/lib/io/lz4:__pkg__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
     ],
@@ -151,6 +152,8 @@ cc_library(
         ":snappy_inputstream",
         ":zlib_compression_options",
         ":zlib_inputstream",
+        ":lz4_compression_options",
+        ":lz4_inputstream",
         "//tensorflow/core/lib/core:coding",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:stringpiece",
@@ -172,6 +175,8 @@ cc_library(
         ":snappy_outputbuffer",
         ":zlib_compression_options",
         ":zlib_outputbuffer",
+        ":lz4_compression_options",
+        ":lz4_outputbuffer",
         "//tensorflow/core/lib/core:coding",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/core:stringpiece",
@@ -202,6 +207,21 @@ alias(
 alias(
     name = "snappy_compression_options",
     actual = "//tensorflow/core/lib/io/snappy:snappy_compression_options",
+)
+
+alias(
+    name = "lz4_inputstream",
+    actual = "//tensorflow/core/lib/io/lz4:lz4_inputstream",
+)
+
+alias(
+    name = "lz4_outputbuffer",
+    actual = "//tensorflow/core/lib/io/lz4:lz4_outputbuffer",
+)
+
+alias(
+    name = "lz4_compression_options",
+    actual = "//tensorflow/core/lib/io/lz4:lz4_compression_options",
 )
 
 cc_library(
@@ -363,6 +383,9 @@ filegroup(
         "//tensorflow/core/lib/io/snappy:snappy_inputbuffer.h",
         "//tensorflow/core/lib/io/snappy:snappy_inputstream.h",
         "//tensorflow/core/lib/io/snappy:snappy_outputbuffer.h",
+        "//tensorflow/core/lib/io/lz4:lz4_compression_options.h",
+        "//tensorflow/core/lib/io/lz4:lz4_inputstream.h",
+        "//tensorflow/core/lib/io/lz4:lz4_outputbuffer.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -381,6 +404,7 @@ filegroup(
         "table_test.cc",
         "zlib_buffers_test.cc",
         "//tensorflow/core/lib/io/snappy:snappy_test.cc",
+        "//tensorflow/core/lib/io/lz4:lz4_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -416,6 +440,9 @@ filegroup(
         "//tensorflow/core/lib/io/snappy:snappy_inputbuffer.h",
         "//tensorflow/core/lib/io/snappy:snappy_inputstream.h",
         "//tensorflow/core/lib/io/snappy:snappy_outputbuffer.h",
+        "//tensorflow/core/lib/io/lz4:lz4_compression_options.h",
+        "//tensorflow/core/lib/io/lz4:lz4_inputstream.h",
+        "//tensorflow/core/lib/io/lz4:lz4_outputbuffer.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

@@ -35,6 +35,9 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/core/lib/io/lz4/lz4_compression_options.h"
+#include "tensorflow/core/lib/io/lz4/lz4_inputstream.h"
+#include "tensorflow/core/lib/io/lz4/lz4_outputbuffer.h"
 #include "tensorflow/core/platform/coding.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -189,15 +192,24 @@ Status CustomWriter::Initialize(tensorflow::Env* env) {
   }
 #else   // IS_SLIM_BUILD
   if (compression_type_ == io::compression::kGzip) {
-    zlib_underlying_dest_.swap(dest_);
+    underlying_dest_.swap(dest_);
     io::ZlibCompressionOptions zlib_options;
     zlib_options = io::ZlibCompressionOptions::GZIP();
 
     io::ZlibOutputBuffer* zlib_output_buffer = new io::ZlibOutputBuffer(
-        zlib_underlying_dest_.get(), zlib_options.input_buffer_size,
+        underlying_dest_.get(), zlib_options.input_buffer_size,
         zlib_options.output_buffer_size, zlib_options);
     TF_CHECK_OK(zlib_output_buffer->Init());
     dest_.reset(zlib_output_buffer);
+  } else if (compression_type_ == io::compression::kLz4) {
+    underlying_dest_.swap(dest_);
+    io::Lz4CompressionOptions lz4_options =
+        io::Lz4CompressionOptions::DEFAULT();
+
+    io::Lz4OutputBuffer* lz4_output_buffer = new io::Lz4OutputBuffer(
+        underlying_dest_.get(), lz4_options.input_buffer_size,
+        lz4_options.output_buffer_size, lz4_options);
+    dest_.reset(lz4_output_buffer);
   }
 #endif  // IS_SLIM_BUILD
   simple_tensor_mask_.reserve(dtypes_.size());
@@ -304,9 +316,9 @@ Status CustomWriter::Close() {
     TF_RETURN_IF_ERROR(dest_->Close());
     dest_ = nullptr;
   }
-  if (zlib_underlying_dest_ != nullptr) {
-    TF_RETURN_IF_ERROR(zlib_underlying_dest_->Close());
-    zlib_underlying_dest_ = nullptr;
+  if (underlying_dest_ != nullptr) {
+    TF_RETURN_IF_ERROR(underlying_dest_->Close());
+    underlying_dest_ = nullptr;
   }
   return Status::OK();
 }
@@ -776,6 +788,12 @@ Status CustomReader::Initialize(Env* env) {
       input_stream_ =
           absl::make_unique<io::BufferedInputStream>(file_.get(), 64 << 20);
     }
+  } else if (compression_type_ == io::compression::kLz4) {
+    io::Lz4CompressionOptions lz4_options =
+        io::Lz4CompressionOptions::DEFAULT();
+    input_stream_ = absl::make_unique<io::Lz4InputStream>(
+        input_stream_.release(), lz4_options.input_buffer_size,
+        lz4_options.output_buffer_size, lz4_options, true);
   }
 #endif  // IS_SLIM_BUILD
   simple_tensor_mask_.reserve(dtypes_.size());

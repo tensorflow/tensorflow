@@ -30,6 +30,7 @@ class TFRecordCompressionType(object):
   NONE = 0
   ZLIB = 1
   GZIP = 2
+  LZ4 = 3
 
 
 @tf_export(
@@ -41,6 +42,7 @@ class TFRecordOptions(object):
   compression_type_map = {
       TFRecordCompressionType.ZLIB: "ZLIB",
       TFRecordCompressionType.GZIP: "GZIP",
+      TFRecordCompressionType.LZ4: "LZ4",
       TFRecordCompressionType.NONE: ""
   }
 
@@ -53,7 +55,14 @@ class TFRecordOptions(object):
                compression_level=None,
                compression_method=None,
                mem_level=None,
-               compression_strategy=None):
+               compression_strategy=None,
+               lz4_input_buffer_size=None,
+               lz4_output_buffer_size=None,
+               lz4_flush_mode=None,
+               lz4_nb_workers=None,
+               lz4_compression_level=None,
+               lz4_compression_strategy=None,
+               lz4_window_log=None):
     # pylint: disable=line-too-long
     """Creates a `TFRecordOptions` instance.
 
@@ -61,10 +70,12 @@ class TFRecordOptions(object):
     Documentation, details, and defaults can be found in
     [`zlib_compression_options.h`](https://www.tensorflow.org/code/tensorflow/core/lib/io/zlib_compression_options.h)
     and in the [zlib manual](http://www.zlib.net/manual.html).
+    For documentation options and details prefixed by `lz4_*`, find the
+    documentation in the [lz4 manual](https://facebook.github.io/lz4/lz4_manual.html).
     Leaving an option as `None` allows C++ to set a reasonable default.
 
     Args:
-      compression_type: `"GZIP"`, `"ZLIB"`, or `""` (no compression).
+      compression_type: `"GZIP"`, `"ZLIB"`, `"LZ4"` or `""` (no compression).
       flush_mode: flush mode or `None`, Default: Z_NO_FLUSH.
       input_buffer_size: int or `None`.
       output_buffer_size: int or `None`.
@@ -73,6 +84,13 @@ class TFRecordOptions(object):
       compression_method: compression method or `None`.
       mem_level: 1 to 9, or `None`.
       compression_strategy: strategy or `None`. Default: Z_DEFAULT_STRATEGY.
+      lz4_input_buffer_size: int or `None`. 
+      lz4_output_buffer_size: int or `None`.
+      lz4_flush_mode: int or `None`.
+      lz4_nb_workers: int or `None`.
+      lz4_compression_level: 0 to 19, or `None`. Default: LZ4_CLEVEL_DEFAULT.
+      lz4_compression_strategy: 0 to 9, or `None`. Default: 0.
+      lz4_window_log: between LZ4_WINDOWLOG_MIN and LZ4_WINDOWLOG_MAX. Default: 0.
 
     Returns:
       A `TFRecordOptions` object.
@@ -93,6 +111,13 @@ class TFRecordOptions(object):
     self.compression_method = compression_method
     self.mem_level = mem_level
     self.compression_strategy = compression_strategy
+    self.lz4_input_buffer_size = lz4_input_buffer_size
+    self.lz4_output_buffer_size = lz4_output_buffer_size
+    self.lz4_flush_mode = lz4_flush_mode
+    self.lz4_nb_workers = lz4_nb_workers
+    self.lz4_compression_level = lz4_compression_level
+    self.lz4_compression_strategy = lz4_compression_strategy
+    self.lz4_window_log = lz4_window_log
 
   @classmethod
   def get_compression_type_string(cls, options):
@@ -102,7 +127,7 @@ class TFRecordOptions(object):
       options: `TFRecordOption`, `TFRecordCompressionType`, or string.
 
     Returns:
-      Compression type as string (e.g. `'ZLIB'`, `'GZIP'`, or `''`).
+      Compression type as string (e.g. `'ZLIB'`, `'GZIP'`, `'LZ4'`, or `''`).
 
     Raises:
       ValueError: If compression_type is invalid.
@@ -142,6 +167,20 @@ class TFRecordOptions(object):
       options.zlib_options.mem_level = self.mem_level
     if self.compression_strategy is not None:
       options.zlib_options.compression_strategy = self.compression_strategy
+    if self.lz4_input_buffer_size is not None:
+      options.lz4_options.input_buffer_size = self.lz4_input_buffer_size
+    if self.lz4_output_buffer_size is not None:
+      options.lz4_options.output_buffer_size = self.lz4_output_buffer_size
+    if self.lz4_flush_mode is not None:
+      options.lz4_options.flush_mode = self.lz4_flush_mode
+    if self.lz4_nb_workers is not None:
+      options.lz4_options.nb_workers = self.lz4_nb_workers
+    if self.lz4_compression_level is not None:
+      options.lz4_options.compression_level = self.lz4_compression_level
+    if self.lz4_compression_strategy is not None:
+      options.lz4_options.compression_strategy = self.lz4_compression_strategy
+    if self.lz4_window_log is not None:
+      options.lz4_options.window_log = self.lz4_window_log
     return options
 
 

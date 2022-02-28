@@ -292,10 +292,16 @@ TEST_F(RecordioTest, NonSequentialReadsWithReadBuffer) {
   TestNonSequentialReads(RecordWriterOptions(), options);
 }
 
-TEST_F(RecordioTest, NonSequentialReadsWithCompression) {
+TEST_F(RecordioTest, NonSequentialReadsWithZlibCompression) {
   TestNonSequentialReads(
       RecordWriterOptions::CreateRecordWriterOptions("ZLIB"),
       RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
+}
+
+TEST_F(RecordioTest, NonSequentialReadsWithLz4Compression) {
+  TestNonSequentialReads(
+      RecordWriterOptions::CreateRecordWriterOptions("LZ4"),
+      RecordReaderOptions::CreateRecordReaderOptions("LZ4"));
 }
 
 // Tests of all the error paths in log_reader.cc follow:
@@ -339,9 +345,14 @@ TEST_F(RecordioTest, ReadErrorWithBuffering) {
   TestReadError(RecordWriterOptions(), options);
 }
 
-TEST_F(RecordioTest, ReadErrorWithCompression) {
+TEST_F(RecordioTest, ReadErrorWithZlibCompression) {
   TestReadError(RecordWriterOptions::CreateRecordWriterOptions("ZLIB"),
                 RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
+}
+
+TEST_F(RecordioTest, ReadErrorWithLz4Compression) {
+  TestReadError(RecordWriterOptions::CreateRecordWriterOptions("LZ4"),
+                RecordReaderOptions::CreateRecordReaderOptions("LZ4"));
 }
 
 TEST_F(RecordioTest, CorruptLength) {

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/io/compression.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/lib/io/lz4/lz4_compression_options.h"
+#include "tensorflow/core/lib/io/lz4/lz4_inputstream.h"
+#include "tensorflow/core/lib/io/lz4/lz4_outputbuffer.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
+
+#include <lz4.h>
 
 namespace tensorflow {
 namespace io {
-namespace compression {
 
-const char kNone[] = "";
-const char kGzip[] = "GZIP";
-const char kSnappy[] = "SNAPPY";
-const char kZlib[] = "ZLIB";
-const char kLz4[] = "LZ4";
-
-}  // namespace compression
 }  // namespace io
 }  // namespace tensorflow

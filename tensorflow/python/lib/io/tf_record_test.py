@@ -286,6 +286,25 @@ class TFRecordWriterTest(TFCompressionTestCase):
           "Setting {} = {}, file was {} smaller didn't match sign of {}".format(
               prop, value, delta, delta_sign))
 
+  def testLz4CompressionType(self):
+    """test Lz4 Compression Type"""
+    lz4_t = tf_record.TFRecordCompressionType.LZ4
+
+    self.assertEqual(
+        "LZ4",
+        tf_record.TFRecordOptions.get_compression_type_string(
+            tf_record.TFRecordOptions("LZ4")))
+
+    self.assertEqual(
+        "LZ4",
+        tf_record.TFRecordOptions.get_compression_type_string(
+            tf_record.TFRecordOptions(lz4_t)))
+
+    self.assertEqual(
+        "LZ4",
+        tf_record.TFRecordOptions.get_compression_type_string(
+            tf_record.TFRecordOptions(tf_record.TFRecordOptions(lz4_t))))
+
 
 class TFRecordWriterZlibTest(TFCompressionTestCase):
   """TFRecordWriter Zlib test"""

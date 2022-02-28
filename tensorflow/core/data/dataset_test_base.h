@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/lz4/lz4_compression_options.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
@@ -93,7 +94,13 @@ std::vector<Tensor> CreateTensors(
   return result;
 }
 
-enum class CompressionType { ZLIB = 0, GZIP = 1, RAW = 2, UNCOMPRESSED = 3 };
+enum class CompressionType {
+  ZLIB = 0,
+  GZIP = 1,
+  RAW = 2,
+  LZ4 = 3,
+  UNCOMPRESSED = 4
+};
 
 // Returns a string representation for the given compression type.
 string ToString(CompressionType compression_type);
@@ -102,6 +109,12 @@ string ToString(CompressionType compression_type);
 // type. Note that `CompressionType::UNCOMPRESSED` is not supported because
 // `ZlibCompressionOptions` does not have an option.
 io::ZlibCompressionOptions GetZlibCompressionOptions(
+    CompressionType compression_type);
+
+// Gets the specified lz4 compression options according to the compression
+// type. Note that `CompressionType::UNCOMPRESSED` is not supported because
+// `Lz4CompressionOptions` does not have an option.
+io::Lz4CompressionOptions GetLz4CompressionOptions(
     CompressionType compression_type);
 
 // Used to specify parameters when writing data into files with compression.

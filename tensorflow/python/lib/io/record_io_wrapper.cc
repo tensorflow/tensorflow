@@ -316,11 +316,29 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
       .def_readwrite("compression_strategy",
                      &ZlibCompressionOptions::compression_strategy);
 
+  using tensorflow::io::Lz4CompressionOptions;
+  py::class_<Lz4CompressionOptions>(m, "Lz4CompressionOptions")
+      .def_readwrite("input_buffer_size",
+                     &Lz4CompressionOptions::input_buffer_size)
+      .def_readwrite("output_buffer_size",
+                     &Lz4CompressionOptions::output_buffer_size)
+      .def_readwrite("flush_mode",
+                     &Lz4CompressionOptions::flush_mode)
+      .def_readwrite("nb_workers",
+                     &Lz4CompressionOptions::nb_workers)
+      .def_readwrite("compression_level",
+                     &Lz4CompressionOptions::compression_level)
+      .def_readwrite("compression_strategy",
+                     &Lz4CompressionOptions::compression_strategy)
+      .def_readwrite("window_log",
+                     &Lz4CompressionOptions::window_log);
+
   using tensorflow::io::RecordWriterOptions;
   py::class_<RecordWriterOptions>(m, "RecordWriterOptions")
       .def(py::init(&RecordWriterOptions::CreateRecordWriterOptions))
       .def_readonly("compression_type", &RecordWriterOptions::compression_type)
-      .def_readonly("zlib_options", &RecordWriterOptions::zlib_options);
+      .def_readonly("zlib_options", &RecordWriterOptions::zlib_options)
+      .def_readonly("lz4_options", &RecordWriterOptions::lz4_options);
 
   using tensorflow::MaybeRaiseRegisteredFromStatus;
 

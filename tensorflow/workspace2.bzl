@@ -560,7 +560,15 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://zlib.net/zlib-1.2.11.tar.gz"),
     )
 
-    # LINT.IfChange
+    tf_http_archive(
+        name = "lz4",
+        build_file = "//third_party:lz4.BUILD",
+        sha256 = "030644df4611007ff7dc962d981f390361e6c97a34e5cbc393ddfbe019ffe2c1",
+        strip_prefix = "lz4-1.9.3",
+        system_build_file = "//third_party/systemlibs:lz4.BUILD",
+        urls = tf_mirror_urls("https://github.com/lz4/lz4/archive/refs/tags/v1.9.3.tar.gz"),
+    )
+
     tf_http_archive(
         name = "fft2d",
         build_file = "//third_party/fft2d:fft2d.BUILD",
