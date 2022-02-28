@@ -2273,6 +2273,27 @@ def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_XlaRngGetAndUpdateStateOp: HLO_Op<"xla.rng_get_and_update_state", [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "RNG state change";
+  let description = [{
+    This instruction represents the change of the global random number generator
+    state for rng instructions. The global state is incremented by delta and
+    the old state is returned.
+
+    The output is currently defined for a single output type. If this changes in
+    the future to support multiple types, lowering to use of a global memref
+    must ensure that a single memref is still used and updated appropriately.
+  }];
+  let arguments = (ins I64Attr:$delta);
+  let results = (outs StaticShapeTensorOf<[UI64]>);
+
+  let hasVerifier = 1;
+  let assemblyFormat = "attr-dict";
+
+  // Doesn't have an XLA builder equivalent.
+  let hasCustomHLOConverter = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // MHLO Quantize Operator.
 //===----------------------------------------------------------------------===//

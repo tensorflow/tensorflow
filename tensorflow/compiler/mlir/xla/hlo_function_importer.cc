@@ -1054,6 +1054,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       result_type);
     }
+    case HloOpcode::kRngGetAndUpdateState: {
+      return func_builder
+          ->create<mlir::mhlo::XlaRngGetAndUpdateStateOp>(
+              loc, result_type,
+              func_builder->getI64IntegerAttr(
+                  Cast<HloRngGetAndUpdateStateInstruction>(instruction)
+                      ->delta()))
+          .getOperation();
+    }
     case HloOpcode::kWhile: {
       llvm::SmallVector<Value> flattened_operands;
       llvm::SmallVector<Type> flattened_operand_types;

@@ -4166,6 +4166,33 @@ LogicalResult RngUniformOp::reifyReturnTypeShapes(
 }
 
 //===----------------------------------------------------------------------===//
+// XlaRngGetAndUpdateStateOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult XlaRngGetAndUpdateStateOp::verify() {
+  auto result_ty = getType().cast<RankedTensorType>();
+  if (!result_ty) return emitOpError() << "Output is not ranked.";
+  if (!result_ty.hasStaticShape())
+    return emitOpError() << "Output is not statically shaped.";
+  auto rank = result_ty.getRank();
+  if (rank != 1)
+    return emitOpError() << "Output is of rank " << rank << " instead of 1";
+  auto extent = result_ty.getDimSize(0);
+  if (extent != 2)
+    return emitOpError() << "Output size is " << extent << " instead of 2";
+
+  return success();
+}
+
+LogicalResult XlaRngGetAndUpdateStateOp::inferReturnTypes(
+    MLIRContext* ctx, Optional<Location>, ValueRange, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(mlir::RankedTensorType::get(
+      {2}, mlir::IntegerType::get(ctx, 64, IntegerType::Unsigned)));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
 
