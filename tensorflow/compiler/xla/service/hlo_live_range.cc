@@ -31,8 +31,7 @@ StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
     const HloComputation* computation, bool module_scoped_analysis) {
   std::unique_ptr<HloLiveRange> hlo_live_range(
       new HloLiveRange(schedule, alias_analysis, module_scoped_analysis));
-  hlo_live_range->schedule_end_time_ =
-      hlo_live_range->FlattenSchedule(*computation, 0);
+  hlo_live_range->FlattenSchedule(*computation);
   hlo_live_range->CalculateBufferStartEndMap();
   hlo_live_range->NormalizeAliasedBuffers();
   return std::move(hlo_live_range);
@@ -90,16 +89,19 @@ void HloLiveRange::NormalizeAliasedBuffers() {
 
 // FlattenSchedule walks through the computation and tracks down the ordinal
 // number of each instruction in the schedule.
-int64_t HloLiveRange::FlattenSchedule(const HloComputation& computation,
-                                      int64_t start_time) {
-  if (!schedule_.is_computation_scheduled(&computation)) {
+void HloLiveRange::FlattenSchedule(const HloComputation& computation) {
+  auto it = schedule_.sequences().find(computation.unique_id());
+  if (it == schedule_.sequences().end()) {
     total_order_scheduled_ = false;
-    return start_time;
+    return;
   }
 
-  const HloInstructionSequence& instruction_sequence =
-      schedule_.sequence(&computation);
-  int64_t time = start_time;
+  // Check if we've already processed this computation.
+  if (computation_span_times_.contains(&computation)) return;
+
+  int64_t start_time = flattened_instruction_sequence_.size();
+
+  const HloInstructionSequence& instruction_sequence = it->second;
   for (HloInstruction* instruction : instruction_sequence.instructions()) {
     if (module_scoped_analysis_) {
       // Recurse into sub computations if running with module scoped analysis
@@ -108,26 +110,21 @@ int64_t HloLiveRange::FlattenSchedule(const HloComputation& computation,
           instruction->opcode() == HloOpcode::kConditional) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {
-          time = FlattenSchedule(*called_computation, time);
+          FlattenSchedule(*called_computation);
         }
-      }
-      if (instruction->opcode() == HloOpcode::kWhile) {
-        time = FlattenSchedule(*instruction->while_condition(), time);
-        time = FlattenSchedule(*instruction->while_body(), time);
+      } else if (instruction->opcode() == HloOpcode::kWhile) {
+        FlattenSchedule(*instruction->while_condition());
+        FlattenSchedule(*instruction->while_body());
       }
     }
-    if (instruction_schedule_.count(instruction) != 0) {
-      continue;
-    }
-    instruction_schedule_.insert({instruction, time++});
+
+    int64_t time = flattened_instruction_sequence_.size();
+    CHECK(instruction_schedule_.insert({instruction, time}).second);
     flattened_instruction_sequence_.push_back(instruction);
   }
-  computation_span_times_.try_emplace(&computation,
-                                      TimeBound{start_time, time});
-  DCHECK_EQ(instruction_schedule_.size(),
-            flattened_instruction_sequence_.size());
-  DCHECK_LE(instruction_schedule_.size(), time);
-  return time;
+
+  int64_t end_time = flattened_instruction_sequence_.size();
+  computation_span_times_[&computation] = {start_time, end_time};
 }
 
 void HloLiveRange::CalculateBufferStartEndMap() {
@@ -202,7 +199,7 @@ void HloLiveRange::CalculateBufferStartEndMap() {
         value->instruction()->parent() == module->entry_computation() &&
         !module->input_output_alias_config().ParameterHasAlias(
             value->instruction()->parameter_number(), value->index())) {
-      buffer_end_time = schedule_end_time_;
+      buffer_end_time = schedule_end_time();
     }
 
     CHECK(buffer_start_time <= buffer_end_time)
@@ -254,7 +251,7 @@ int64_t HloLiveRange::ComputePeakMemoryMoment() const {
 std::string HloLiveRange::ToString() const {
   std::string output;
   absl::StrAppendFormat(&output, "HloLiveRange (max %d):\n",
-                        schedule_end_time_);
+                        schedule_end_time());
   absl::StrAppendFormat(&output, "  InstructionSequence:\n");
   auto& instructions = flattened_instruction_sequence().instructions();
   for (int64_t i = 0; i < instructions.size(); ++i) {
