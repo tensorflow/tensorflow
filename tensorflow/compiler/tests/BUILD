@@ -192,6 +192,7 @@ tf_xla_py_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+	"no_rocm", # TODO(#1151): fix this test on rocm
     ],
     deps = [
         ":xla_test",
