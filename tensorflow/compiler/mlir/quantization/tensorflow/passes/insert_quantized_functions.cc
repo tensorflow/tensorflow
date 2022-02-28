@@ -22,11 +22,9 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/quantized_function_library.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
 
 namespace mlir {
 namespace quant {
@@ -58,26 +56,15 @@ class InsertQuantizedFunctionsPass
 static PassRegistration<InsertQuantizedFunctionsPass> pass;
 
 void InsertQuantizedFunctionsPass::runOnOperation() {
-  tensorflow::Env* env = tensorflow::Env::Default();
-
-  std::string input_file = tensorflow::io::JoinPath(
-      env->GetRunfilesDir(), "tensorflow", "compiler", "mlir", "quantization",
-      "tensorflow", "passes", "quantized_function_library.mlir");
+  auto mem_buffer = llvm::MemoryBuffer::getMemBuffer(
+      llvm::StringRef(kQuantizedFunctionLibraryInMLIR), /*BufferName=*/"",
+      /*RequiresNullTerminator=*/false);
 
   ModuleOp module = getOperation();
-
-  std::string error_message;
-  std::unique_ptr<llvm::MemoryBuffer> file =
-      openInputFile(input_file, &error_message);
-  if (!file) {
-    module.emitError() << "couldn't find the quantized function library.";
-    return signalPassFailure();
-  }
-
   SymbolTable symbol_table(module);
 
   llvm::SourceMgr source_mgr;
-  source_mgr.AddNewSourceBuffer(std::move(file), llvm::SMLoc());
+  source_mgr.AddNewSourceBuffer(std::move(mem_buffer), llvm::SMLoc());
   OwningOpRef<mlir::ModuleOp> module_ref =
       parseSourceFile(source_mgr, module.getContext());
 

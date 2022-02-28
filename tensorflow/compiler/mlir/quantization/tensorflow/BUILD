@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
@@ -8,9 +9,23 @@ package(
     licenses = ["notice"],
 )
 
-filegroup(
-    name = "quantized_function_library_mlir",
+pytype_strict_binary(
+    name = "gen_quantized_function_library",
+    srcs = ["gen_quantized_function_library.py"],
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)
+
+genrule(
+    name = "quantized_function_library",
     srcs = ["passes/quantized_function_library.mlir"],
+    outs = [
+        "passes/quantized_function_library.h",
+    ],
+    cmd = "$(location gen_quantized_function_library) --output_file $(RULEDIR)/passes/quantized_function_library.h --src $(SRCS)",
+    exec_tools = ["gen_quantized_function_library"],
 )
 
 cc_library(
@@ -101,12 +116,10 @@ cc_library(
         "passes/quantize.cc",
         "passes/quantize_composite_functions.cc",
         "passes/quantize_composite_functions.inc",
+        "passes/quantized_function_library.h",
     ],
     hdrs = [
         "passes/passes.h",
-    ],
-    data = [
-        ":quantized_function_library_mlir",
     ],
     deps = [
         ":pass_util",
@@ -116,7 +129,6 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
