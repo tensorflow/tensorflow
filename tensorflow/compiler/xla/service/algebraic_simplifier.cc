@@ -5367,11 +5367,11 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
   if (HloOpcode::kNot == select->operand(0)->opcode()) {
     auto pred_operand = select->mutable_operand(0)->mutable_operand(0);
     auto on_true = select->mutable_operand(1);
-    auto on_fasle = select->mutable_operand(2);
+    auto on_false = select->mutable_operand(2);
     return ReplaceWithNewInstruction(
         select,
         HloInstruction::CreateTernary(select->shape(), HloOpcode::kSelect,
-                                      pred_operand, on_fasle, on_true));
+                                      pred_operand, on_false, on_true));
   }
   return Status::OK();
 }
