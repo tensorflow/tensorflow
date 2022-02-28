@@ -3264,6 +3264,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:pybind11_proto",
+        "//tensorflow/python/framework:op_def_util_headers",
         "//tensorflow/python/framework:python_api_dispatcher",
         "//tensorflow/python/framework:python_api_info",
         "//tensorflow/python/framework:python_api_parameter_converter",
@@ -3345,6 +3346,7 @@ filegroup(
         ":numpy_lib",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
         "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/framework:op_def_util_headers",  # op_def_util
         "//tensorflow/python/framework:python_api_dispatcher",  # python_api_dispatcher
         "//tensorflow/python/framework:python_tensor_converter",  # python_tensor_converter
         "//tensorflow/python/framework:python_op_gen",  # python_op_gen

@@ -546,6 +546,12 @@ tf_py_test(
 )
 
 cc_library(
+    name = "op_def_util_headers",
+    textual_hdrs = ["op_def_util.h"],
+    visibility = ["//tensorflow:internal"],
+)
+
+cc_library(
     name = "op_def_util_cc",
     srcs = ["op_def_util.cc"],
     hdrs = ["op_def_util.h"],
@@ -558,34 +564,17 @@ cc_library(
     ],
 )
 
-# Note: this target is only used for op_def_util_test.  It includes op_def_util.cc
-# directly in its srcs (rather than depending on the `op_def_util_cc` target) because
-# depending on that target adds dependencies that register objects; and since the
-# extension is built as a shared object in some kokoro tests, this causes those objects
-# to get registered multiple times (which fails).
-# TODO(edloper): Simplify this, once cpp_python_util is changed to not depend on
-# safe_ptr (which transitively depends on third_party/tensorflow/c:c_api_no_xla).
 tf_python_pybind_extension(
     name = "_op_def_util",
-    srcs = [
-        "op_def_util.cc",
-        "op_def_util_pybind.cc",
-    ],
-    hdrs = [
-        "op_def_util.h",
-        "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
-        "//tensorflow/python/lib/core:safe_ptr_hdr",
-        "//tensorflow/python/util:util_hdr",
-    ],
+    srcs = ["op_def_util_pybind.cc"],
     module_name = "_op_def_util",
     deps = [
+        ":op_def_util_headers",
+        "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python:pybind11_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )
