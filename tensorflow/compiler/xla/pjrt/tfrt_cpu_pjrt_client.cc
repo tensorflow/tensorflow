@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/primitive_util.h"
 
 #define EIGEN_USE_THREADS
 
@@ -39,8 +38,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
+#include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/pjrt/worker_thread.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
@@ -1147,6 +1148,13 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
       src_device_buffer_definition_events_avs_copy =
           CopyAsyncValues(src_device_buffer_definition_events_avs);
 
+  // Grab a reference to the tracked device buffer object that underlies the
+  // source buffer. The tracked device buffer object may hold ownership of
+  // external objects, such as NumPy arrays, and we must not allow it to be
+  // deleted until the closure below completes.
+  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> source_tdb =
+      src_device_buffer.buffer();
+
   // Add d2d as usage event on src_buffer.
   src_device_buffer.ConvertUsageHold(absl::MakeSpan(src_usage_events));
 
@@ -1155,7 +1163,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
       [client = client_, num_leaf_buffers, src_buffers = std::move(src_buffers),
        dst_buffers_copies = dst_buffers, indirect_avs = std::move(indirect_avs),
        src_device_buffer_definition_events_avs =
-           std::move(src_device_buffer_definition_events_avs_copy)]() mutable {
+           std::move(src_device_buffer_definition_events_avs_copy),
+       source_tdb{std::move(source_tdb)}]() mutable {
         tensorflow::profiler::TraceMe traceme("D2D Dispatch");
         for (const auto& av : src_device_buffer_definition_events_avs) {
           if (auto* error = av->GetErrorIfPresent()) {

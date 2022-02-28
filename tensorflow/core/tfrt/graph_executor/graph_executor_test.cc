@@ -81,6 +81,60 @@ TEST_F(GraphExecutorTest, Vanilla) {
               ::testing::ElementsAreArray({2}));
 }
 
+TEST_F(GraphExecutorTest, Extend) {
+  GraphDef graph_def;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+    Output a = ops::Const(scope.WithOpName("a"), 0.0f, {10, 10});
+
+    Output b = ops::Const(scope.WithControlDependencies(a).WithOpName("b"),
+                          0.0f, {10, 10});
+    Output c = ops::Identity(scope.WithOpName("c"), b);
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
+  }
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            tpu_model_resource.get(), graph_def));
+
+  GraphDef extension;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+    auto input = ops::Placeholder(scope.WithOpName("input"), DT_INT32);
+    auto rank = ops::Rank(scope.WithOpName("rank"), input);
+
+    TF_ASSERT_OK(scope.ToGraphDef(&extension));
+  }
+
+  TF_ASSERT_OK(graph_executor->Extend(extension));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
+  inputs.push_back({"input", CreateTfTensor<int32_t>(
+                                 /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({2}));
+}
+
 }  // namespace
 }  // namespace tfrt_stub
 }  // namespace tensorflow

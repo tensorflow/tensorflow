@@ -170,7 +170,7 @@ cc_library(
         ":internal",
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt:__subpackages__",
-        "//tensorflow/compiler/mlir/tfrt/benchmarks:__subpackages__",
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/eager:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__subpackages__",

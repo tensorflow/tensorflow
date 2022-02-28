@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements conversion of `linalg.tiled_loop` to buffer form.
+// This file implements conversion of `gml_st.loop` to buffer form.
 
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -39,9 +40,9 @@ namespace {
 
 using bufferization::ToMemrefOp;
 using bufferization::ToTensorOp;
+using gml_st::LoopOp;
 using linalg::FillOp;
 using linalg::InitTensorOp;
-using linalg::TiledLoopOp;
 using memref::SubViewOp;
 using tensor::ExtractSliceOp;
 using tensor::InsertSliceOp;
@@ -55,7 +56,7 @@ struct BufferizeExtractSliceOp : public OpConversionPattern<ExtractSliceOp> {
   LogicalResult matchAndRewrite(
       ExtractSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (!op->getParentOfType<TiledLoopOp>()) return failure();
+    if (!op->getParentOfType<LoopOp>()) return failure();
 
     rewriter.replaceOpWithNewOp<SubViewOp>(
         op, adaptor.source(), op.getMixedOffsets(), op.getMixedSizes(),
@@ -71,7 +72,7 @@ struct BufferizeFillOp : public OpConversionPattern<FillOp> {
   LogicalResult matchAndRewrite(
       FillOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (!op->getParentOfType<TiledLoopOp>()) return failure();
+    if (!op->getParentOfType<LoopOp>()) return failure();
 
     rewriter.create<FillOp>(op.getLoc(), adaptor.value(), adaptor.output());
     rewriter.replaceOp(op, adaptor.output());
@@ -86,7 +87,7 @@ struct BufferizeInitTensorOp : public OpConversionPattern<InitTensorOp> {
   LogicalResult matchAndRewrite(
       InitTensorOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (!op->getParentOfType<TiledLoopOp>()) return failure();
+    if (!op->getParentOfType<LoopOp>()) return failure();
 
     rewriter.replaceOpWithNewOp<memref::AllocOp>(
         op, getTypeConverter()->convertType(op.getType()).cast<MemRefType>(),
@@ -97,12 +98,12 @@ struct BufferizeInitTensorOp : public OpConversionPattern<InitTensorOp> {
 
 bool IsBlockArgOfTiledLoop(Value value) {
   if (auto block_arg = value.dyn_cast<BlockArgument>())
-    return isa<TiledLoopOp>(block_arg.getOwner()->getParentOp());
+    return isa<LoopOp>(block_arg.getOwner()->getParentOp());
   return false;
 }
 
 // Attempts to find an existing `memref.subview` of `destMemRef` in the tiled
-// loop. The assumption is that in `linalg.tiled_loop` the tile of the output
+// loop. The assumption is that in `gml_st.loop` the tile of the output
 // tensor that we read and the tile that we write to are the same.
 Value FindExistingSubview(Value destMemRef) {
   if (auto to_memref = destMemRef.getDefiningOp<ToMemrefOp>()) {
@@ -137,7 +138,7 @@ struct BufferizeInsertSliceOp : public OpConversionPattern<InsertSliceOp> {
     Value destMemRef = adaptor.dest();
     assert(destMemRef.getType().isa<MemRefType>());
 
-    if (!op->getParentOfType<TiledLoopOp>()) return failure();
+    if (!op->getParentOfType<LoopOp>()) return failure();
 
     Value subview = FindExistingSubview(destMemRef);
     if (!subview) {
@@ -160,7 +161,7 @@ struct BufferizeLinalgOp
   LogicalResult matchAndRewrite(
       linalg::LinalgOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const final {
-    if (!op->getParentOfType<TiledLoopOp>()) return failure();
+    if (!op->getParentOfType<LoopOp>()) return failure();
 
     // GenericOpAdaptor below expects an `operand_segment_sizes` attribute.
     if (!op->hasAttr("operand_segment_sizes")) return failure();
@@ -175,34 +176,34 @@ struct BufferizeLinalgOp
   }
 };
 
-// Convert `linalg.yield` terminator of `linalg.tiled_loop` to `linalg.yield`
-// with no arguments.
-struct BufferizeLinalgYieldOp : public OpConversionPattern<linalg::YieldOp> {
-  using OpConversionPattern<linalg::YieldOp>::OpConversionPattern;
+// Convert `gml_st.yield` terminator of `gml_st.loop` to `gml_st.yield` with no
+// arguments.
+struct BufferizeLinalgYieldOp : public OpConversionPattern<gml_st::YieldOp> {
+  using OpConversionPattern<gml_st::YieldOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      linalg::YieldOp op, OpAdaptor adaptor,
+      gml_st::YieldOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (!mlir::dyn_cast<TiledLoopOp>(op->getParentOp()) ||
+    if (!mlir::dyn_cast<LoopOp>(op->getParentOp()) ||
         adaptor.getOperands().empty())
       return failure();
 
-    rewriter.replaceOpWithNewOp<linalg::YieldOp>(op);
+    rewriter.replaceOpWithNewOp<gml_st::YieldOp>(op);
     return success();
   }
 };
 
-// FuncOp-like bufferization pattern for `linalg.tiled_loop` that inserts
+// FuncOp-like bufferization pattern for `gml_st.loop` that inserts
 // `memref.tensor_load` ops for every memref block argument.
-struct BufferizeTiledLoopOp : public OpConversionPattern<TiledLoopOp> {
-  using OpConversionPattern<TiledLoopOp>::OpConversionPattern;
+struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
+  using OpConversionPattern<LoopOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      TiledLoopOp loop, OpAdaptor adaptor,
+      LoopOp loop, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (loop.getNumResults() == 0) return failure();
 
-    auto new_loop = rewriter.create<TiledLoopOp>(
+    auto new_loop = rewriter.create<LoopOp>(
         loop.getLoc(), adaptor.lowerBound(), adaptor.upperBound(),
         adaptor.step(), adaptor.inputs(), adaptor.outputs(),
         adaptor.iterator_types(), adaptor.distribution_types());
@@ -298,7 +299,7 @@ void populateTiledLoopBufferizePattern(
     BufferizeInsertSliceOp,
     BufferizeLinalgOp,
     BufferizeLinalgYieldOp,
-    BufferizeTiledLoopOp,
+    BufferizeLoopOp,
     BufferizeVectorTransferReadOp,
     BufferizeVectorTransferWriteOp
   >(*converter, context);

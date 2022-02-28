@@ -2013,6 +2013,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cost_constants",
+        ":cost_measurement",
         ":cost_measurement_registry",
         "@com_google_absl//absl/strings",
     ],

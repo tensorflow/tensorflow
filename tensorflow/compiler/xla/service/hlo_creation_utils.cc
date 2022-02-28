@@ -321,13 +321,23 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
                                         absl::Span<const int64_t> dimensions,
-                                        HloOpcode binary_opcode) {
+                                        HloComputation* reduce_computation) {
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
   auto result_shape = ShapeUtil::FilterDimensions(
       [&](const int64_t dim) {
         return !absl::c_linear_search(dimensions, dim);
       },
       operand->shape());
+
+  return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
+      result_shape, operand, init_value, dimensions, reduce_computation));
+}
+
+StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
+                                        HloInstruction* init_value,
+                                        absl::Span<const int64_t> dimensions,
+                                        HloOpcode binary_opcode) {
+  auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
   HloComputation* reduce_computation;
   {
     HloComputation::Builder b(operand->name() + ".reduce_sub_computation");
@@ -340,9 +350,7 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
     reduce_computation =
         operand->parent()->parent()->AddEmbeddedComputation(b.Build());
   }
-
-  return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
-      result_shape, operand, init_value, dimensions, reduce_computation));
+  return MakeReduceHlo(operand, init_value, dimensions, reduce_computation);
 }
 
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
@@ -365,9 +373,7 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
         HloInstruction::CreateBinary(scalar_shape, binary_opcode, lhs, rhs));
     reduce_computation = module->AddEmbeddedComputation(b.Build());
   }
-
-  return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
-      scalar_shape, operand, init_value, all_dims, reduce_computation));
+  return MakeReduceHlo(operand, init_value, all_dims, reduce_computation);
 }
 
 StatusOr<HloInstruction*> MakeReverseHlo(HloInstruction* operand,

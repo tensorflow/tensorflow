@@ -473,16 +473,22 @@ void EagerServiceImpl::RunComponentFunction(
   s = GetEagerOperationAndNumRetvals(operation, eager_context, eager_executor,
                                      op, num_retvals);
   if (!s.ok()) {
+    delete num_retvals;
+    delete op;
     done(s);
     return;
   }
   if (!op->IsLocal()) {
+    delete num_retvals;
+    delete op;
     done(errors::Internal(
         "Received RunComponentFunction request with remote function device. "));
     return;
   }
   s = op->SetAttrBool("is_component_function", true);
   if (!s.ok()) {
+    delete num_retvals;
+    delete op;
     done(errors::Internal("Error setting is_component_function attribute: ",
                           s.error_message()));
     return;

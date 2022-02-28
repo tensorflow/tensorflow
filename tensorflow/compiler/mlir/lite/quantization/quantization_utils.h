@@ -704,7 +704,7 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
   LogicalResult matchAndRewrite(RQ op,
                                 PatternRewriter& rewriter) const override {
-    Value pre_quantized = op.input();
+    Value pre_quantized = op->getOperand(0);
     auto pre_quantized_type =
         quant::QuantizedType::getQuantizedElementType(pre_quantized.getType());
     if (!pre_quantized_type) return failure();
@@ -726,7 +726,7 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
     llvm::SmallVector<Type, 4> new_output_types;
     for (auto result : def->getResults()) {
       if (result.hasOneUse() && *result.getUsers().begin() == op) {
-        new_output_types.push_back(op.qtype());
+        new_output_types.push_back(op.getResult().getType());
       } else {
         new_output_types.push_back(result.getType());
       }

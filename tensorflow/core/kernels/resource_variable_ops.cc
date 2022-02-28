@@ -540,10 +540,15 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
-TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_uint32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<Variant>("dtype")
+                            .HostMemory("resource"),
+                        AssignVariableOp<CPUDevice, Variant>);
 
 template <typename Device, typename T, DenseUpdateType Op>
 class AssignUpdateVariableOp : public OpKernel {
@@ -793,19 +798,19 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
 // Variant objects themselves sit on CPU, even if they contain data
 // pointing to a device.
 REGISTER_KERNEL_BUILDER(Name("ResourceGather")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int32>("Tindices"),
-                        ResourceGatherOp<GPUDevice, Variant, int32>)
+                        ResourceGatherOp<CPUDevice, Variant, int32>)
 REGISTER_KERNEL_BUILDER(Name("ResourceGather")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int64_t>("Tindices"),
-                        ResourceGatherOp<GPUDevice, Variant, int64>)
+                        ResourceGatherOp<CPUDevice, Variant, int64>)
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -1150,12 +1155,12 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_GPU);
 
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int32>("Tindices"),
-                        ResourceScatterUpdateOp<GPUDevice, Variant, int32,
+                        ResourceScatterUpdateOp<CPUDevice, Variant, int32,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_GPU)
@@ -1165,12 +1170,12 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                         ResourceScatterUpdateOp<GPUDevice, bool, int32,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int64_t>("Tindices"),
-                        ResourceScatterUpdateOp<GPUDevice, Variant, int64,
+                        ResourceScatterUpdateOp<CPUDevice, Variant, int64,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_GPU)

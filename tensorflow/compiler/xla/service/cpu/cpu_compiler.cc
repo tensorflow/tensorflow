@@ -48,6 +48,7 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
@@ -824,6 +825,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Transform HLO operations to Linalg.
+  pm.addPass(mlir::mhlo::createLegalizeToMemrefPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
 
@@ -844,6 +846,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgBufferizePass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createConvertLinalgToLoopsPass());
   pm.addPass(mlir::createInlinerPass());
@@ -894,6 +897,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
   pm.addNestedPass<mlir::FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::memref::createExpandOpsPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createLowerAffinePass());
   pm.addPass(mlir::mhlo::CreateLegalizeXLAFrameworkToLLVMPass());
   pm.addPass(mlir::createMemRefToLLVMPass());
   pm.addPass(mlir::createConvertSCFToCFPass());

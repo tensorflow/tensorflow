@@ -58,8 +58,9 @@ func @testBatchPassthrough(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf32>) -
 // CHECK-LABEL: @testVec
 func @testVec(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> tensor<f32> {
   // CHECK-NEXT: [[R0:%.+]] = "mhlo.reshape"(%arg0) : (tensor<32xf32>) -> tensor<1x32xf32>
-  // CHECK-NEXT: [[M:%.+]] = "mhlo.dot"([[R0]], %arg1)
-  // CHECK-NEXT: [[RR:%.+]] = "mhlo.reshape"([[M]]) : (tensor<1xf32>) -> tensor<f32>
+  // CHECK-NEXT: [[R1:%.+]] = "mhlo.reshape"(%arg1) : (tensor<32xf32>) -> tensor<32x1xf32>
+  // CHECK-NEXT: [[M:%.+]] = "mhlo.dot"([[R0]], [[R1]])
+  // CHECK-NEXT: [[RR:%.+]] = "mhlo.reshape"([[M]]) : (tensor<1x1xf32>) -> tensor<f32>
   // CHECK-NEXT: return [[RR]]
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
@@ -76,8 +77,10 @@ func @testVec(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> tensor<f32> {
 // CHECK-LABEL: @testMatVec
 func @testMatVec(%arg0: tensor<32x20xf32>, %arg1: tensor<32xf32>) -> tensor<20xf32> {
   // CHECK-NEXT: [[T:%.+]] = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]>
-  // CHECK-NEXT: [[M:%.+]] = "mhlo.dot"([[T]], %arg1)
-  // CHECK-NEXT: return [[M]]
+  // CHECK-NEXT: [[R1:%.+]] = "mhlo.reshape"(%arg1) : (tensor<32xf32>) -> tensor<32x1xf32>
+  // CHECK-NEXT: [[M:%.+]] = "mhlo.dot"([[T]], [[R1]])
+  // CHECK-NEXT: [[R:%.+]] = "mhlo.reshape"([[M]])
+  // CHECK-NEXT: return [[R]]
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_contracting_dimensions = [0],
@@ -123,3 +126,20 @@ func @dot_general_to_dot_dynamic(%arg0: tensor<128x4x?x32xf32>, %arg1: tensor<8x
 // CHECK-DAG: %[[DR3:.+]] = "mhlo.dynamic_reshape"(%[[DOT]], %[[CONCAT3]])
 // CHECK: return %[[DR3]]
 
+
+// -----
+
+func @dot_no_rhs_batch(%arg0: tensor<1x512x768xf32>, %arg1: tensor<768x12x64xf32>) -> tensor<1x512x12x64xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [0]>
+    } : (tensor<1x512x768xf32>, tensor<768x12x64xf32>) -> tensor<1x512x12x64xf32>
+  return %0 : tensor<1x512x12x64xf32>
+}
+
+// CHECK-LABEL:  func @dot_no_rhs_batch
+// CHECK:          %[[RESHAPEL:.+]] = "mhlo.reshape"(%arg0) : (tensor<1x512x768xf32>) -> tensor<512x768xf32>
+// CHECK:          %[[RESHAPER:.+]] = "mhlo.reshape"(%arg1) : (tensor<768x12x64xf32>) -> tensor<768x768xf32>
+// CHECK:          %[[DOT:.+]] = "mhlo.dot"(%[[RESHAPEL]], %[[RESHAPER]]) : (tensor<512x768xf32>, tensor<768x768xf32>) -> tensor<512x768xf32>
+// CHECK:          %[[OUT:.+]] = "mhlo.reshape"(%[[DOT]]) : (tensor<512x768xf32>) -> tensor<1x512x12x64xf32>

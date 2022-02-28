@@ -111,8 +111,9 @@ using ::tfrt::jitrt::OperandConstraint;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
-using ::tfrt::jitrt::ReturnValueConverter;
+using ::tfrt::jitrt::ReturnValueConversion;
 using ::tfrt::jitrt::SpecializationListener;
+using ::tfrt::jitrt::StaticReturnValueConverter;
 
 using ::tensorflow::profiler::TraceMe;
 using ::tensorflow::profiler::TraceMeEncode;
@@ -556,8 +557,13 @@ static AsyncValueRef<Chain> ResetCompilationThreadPool(
 // Execute compiled JitRt kernels with Fallback Runtime interop.
 // -------------------------------------------------------------------------- //
 
+using ReturnTensorflowTensor =
+    ReturnValueConversion<TensorflowConversionContext,
+                          ReturnStridedMemref<ConvertTensor>>;
+
 using TensorflowReturnValueConverter =
-    ReturnValueConverter<TensorflowConversionContext>;
+    StaticReturnValueConverter<TensorflowConversionContext,
+                               ReturnTensorflowTensor>;
 
 // Converts Tensor to the Memref Descriptor and verifies that the Tensor
 // value is compatible with the memref type.
@@ -655,9 +661,7 @@ static void ExecuteImpl(Executable& executable,
   for (auto& t : operands)
     ctx.runtime_tensors.insert({t.tensor().data(), &t.tensor()});
 
-  // Tensorflow -> JitRt only supports returning Memrefs as Tensors.
   TensorflowReturnValueConverter converter(results, ctx);
-  converter.AddConversion(ReturnStridedMemref<ConvertTensor>);
 
   // Get the worker threads from the execution context.
   Expected<Eigen::ThreadPoolInterface*> worker_threads =
@@ -671,7 +675,7 @@ static void ExecuteImpl(Executable& executable,
 
   Executable::ExecuteOpts opts;
   opts.async_task_runner = &async_task_runner;
-  opts.kernel_context = &converter.context();
+  opts.kernel_context = &ctx;
 
   // Execution error automatically forwarded to all results, we only need to
   // notify the HostContext to emit the diagnostics for the kernel invocation.

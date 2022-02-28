@@ -1,7 +1,7 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
-load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library")
+load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library", "tfrt_cc_test")
 
 # TF to TFRT kernels conversion.
 package(
@@ -151,6 +151,19 @@ tfrt_cc_library(
     ],
 )
 
+# copybara:uncomment_begin
+# tfrt_cc_test(
+#     name = "tf_jitrt_test",
+#     srcs = ["jit/tf_jitrt_test.cc"],
+#     deps = [
+#         ":tf_jitrt",
+#         "@com_google_googletest//:gtest_main",
+#         "@llvm-project//mlir:mlir_c_runner_utils",
+#         "@tf_runtime//backends/jitrt",
+#     ],
+# )
+# copybara:uncomment_end
+
 tfrt_cc_library(
     name = "tf_jitrt_kernels",
     srcs = ["jit/tf_jitrt_kernels.cc"],
@@ -243,6 +256,37 @@ cc_library(
         "@llvm-project//mlir:SideEffects",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:tensor_opdefs",
+    ],
+)
+
+cc_library(
+    name = "runtime_fallback_executor",
+    testonly = True,
+    srcs = [
+        "runtime_fallback/runtime_fallback_executor.cc",
+    ],
+    hdrs = [
+        "runtime_fallback/runtime_fallback_executor.h",
+    ],
+    deps = [
+        ":host_context_util",
+        ":tf_to_tfrt",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:threadpool_interface",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
+        "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
+        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
+        "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@tf_runtime//:bef",
+        "@tf_runtime//:befexecutor",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:mlirtobef",
+        "@tf_runtime//:support",
     ],
 )
 
@@ -380,6 +424,17 @@ cc_library(
         "@tf_runtime//:mlirtobef",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "host_context_util",
+    srcs = ["utils/host_context.cc"],
+    hdrs = ["utils/host_context.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@tf_runtime//:hostcontext",
+    ],
 )
 
 cc_library(
@@ -589,6 +644,7 @@ tf_cc_binary(
         ":tf_to_tfrt",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
+        "//tensorflow/compiler/mlir/hlo:gml_st",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_pass_test_pipeline_registration",

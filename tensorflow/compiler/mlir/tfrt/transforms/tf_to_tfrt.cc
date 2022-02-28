@@ -161,14 +161,7 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
                      llvm::isa<mlir::TF::TPUReplicatedInputOp,
                                mlir::TF::TPUReplicatedOutputOp>(op);
 
-    // Currently the fallback executeop does not support GPU device. For GPU
-    // device, we still lower it to corert executeop where more devices are
-    // supported.
-    //
-    // TODO(b/166705169): Once GPU device are supported in fallback, we can
-    // remove the conversion to corert.
-    if (parsed_device_name->device_type == DEVICE_GPU ||
-        (parsed_device_name->device_type == kDeviceTypeTpu &&
+    if ((parsed_device_name->device_type == kDeviceTypeTpu &&
          !tpu_lower_to_fallback_) ||
         // Convert ops running on TPU to CoreRT dialect to prevent the creation
         // of tfrt_fallback_async.createop for them.
@@ -1536,12 +1529,6 @@ void PopulateTFToTFRTConversionPatterns(
   patterns->add<CoreRTConstStringTensorOpConversion,
                 CoreRTConstDenseTensorOpConversion>(context, corert_converter);
 
-  // For tf.Const op on GPU, we still lower it to corert.executeop temporarily.
-  //
-  // TODO(chky): Use specialized patterns for tf.Const ops on GPU.
-  patterns->add<CoreRTExecuteOpConversion<TF::ConstOp>>(
-      context, corert_converter, kGpuDeviceName);
-
   if (enable_native_ops) {
     // Below TF operations will be converted to use corert.executeop, which will
     // invoke TFRT native op if implemented.
@@ -1890,6 +1877,22 @@ class TfToTfrtConversionPass
       llvm::cl::init(false)};
 };
 
+// Assigns devices so that later passes can utilize device information.
+// Device assignement might have not been done by the upstream pipeline, or get
+// removed by previous passes. However, we assume most of the device assignment
+// has been done by the upstream pipeline, so we simply assign the default
+// device to unassigned ops. Specifically, we do assignment for ConstOp first to
+// place it on the same device as its user operation, instead of placing it on
+// the default device blindly.
+// TODO(b/221297389): Figure out a more robust way to handle dropped device
+// assignment.
+void AddTfDeviceAssignmentPasses(mlir::OpPassManager &pm,
+                                 const TfrtPipelineOptions &options) {
+  pm.addPass(mlir::TF::CreateConstantOpDeviceAssignmentPass());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::TF::CreateSimpleTFDeviceAssignmentPass(options.default_device));
+}
+
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -2154,11 +2157,9 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
       mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
-  // Here we assign devices so that later passes can utilize device information.
-  // We assume most of the device assignment has been done by the upstream
-  // pipeline, so we simply assign the default device to unassigned ops.
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::TF::CreateSimpleTFDeviceAssignmentPass(options.default_device));
+
+  AddTfDeviceAssignmentPasses(pm, options);
+
   // Here we perform TFRT specific optimization before standard TF optimization,
   // as TFRT-specific optimization may create more opportunities.
   pm.addNestedPass<mlir::FuncOp>(tfrt_compiler::CreateOptimizeTfForTfrtPass());
@@ -2169,7 +2170,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateTFOptimizePass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
-  pm.addPass(mlir::TF::CreateConstantOpDeviceAssignmentPass());
+  AddTfDeviceAssignmentPasses(pm, options);
 
   // After the standard pass, we now have MLIR in TF dialect, and now we convert
   // reference variable to resource variables, which is besteffort.
@@ -2230,9 +2231,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
     pm.addNestedPass<mlir::FuncOp>(
         mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
-  // Then we assign default devices.
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::TF::CreateSimpleTFDeviceAssignmentPass(options.default_device));
+  AddTfDeviceAssignmentPasses(pm, options);
 
   pm.addNestedPass<mlir::FuncOp>(
       mlir::TF::CreateTensorDeviceCopyConversionPass());
@@ -2287,10 +2286,7 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
     pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   }
 
-  // The optimization since the last device assignment may remove device
-  // information, so we assign default devices again.
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::TF::CreateSimpleTFDeviceAssignmentPass(options.default_device));
+  AddTfDeviceAssignmentPasses(pm, options);
 
   pm.addPass(CreateLowerTFSavedModelPass(options.hoist_invariant_ops));
 }

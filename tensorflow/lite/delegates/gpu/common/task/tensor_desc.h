@@ -80,8 +80,12 @@ struct TensorDescriptor : public GPUObjectDescriptor {
       std::string* x_coord, std::string* y_coord, std::string* s_coord) const;
 
   void UploadData(const tflite::gpu::Tensor<BHWC, DataType::FLOAT32>& src);
+  void UploadData(const tflite::gpu::Tensor<BHWC, DataType::INT32>& src);
   void UploadData(const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
   void UploadData(const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+
+  void DownloadData(tflite::gpu::Tensor<BHWC, DataType::FLOAT32>* dst);
+  void DownloadData(tflite::gpu::Tensor<BHWC, DataType::INT32>* dst);
 
   bool SupportsZeroClamp(const Axis& axis) const;
   bool CanReadOutOfBorder(const Axis& axis) const;
@@ -92,6 +96,12 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   // If for addr == -1 this linear storage type returns FLT4(0.0), this function
   // returns true, otherwise false
   bool ReturnsZeroForNegOneRead() const;
+
+  absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
+                                        const BHWDC& shape) const;
+
+  absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
+                                        const BHWC& shape) const;
 
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
@@ -124,6 +134,12 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformReadSelector(
       const GpuInfo& gpu_info, const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
+  absl::Status PerformReadNearestSelector(const GpuInfo& gpu_info,
+                                          const std::vector<std::string>& args,
+                                          std::string* result) const;
+  absl::Status PerformReadBilinearSelector(const GpuInfo& gpu_info,
+                                           const std::vector<std::string>& args,
+                                           std::string* result) const;
 
   absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
                                          std::string* result) const;
@@ -199,6 +215,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                            std::string* sc, std::string* bc) const;
 
   void UploadData(const float* src);
+  void DownloadData(float* dst);
+  void UploadData(const int32_t* src);
+  void DownloadData(int32_t* dst);
 };
 
 template <typename FromType, typename ToType>

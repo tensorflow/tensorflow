@@ -73,6 +73,14 @@ static Tensor CreateTensor(const TensorShape& input_shape,
   return tensor;
 }
 
+// Creates a tensor with the specified dtype and shape, with values 0, 1, 2, ...
+template <typename T>
+static Tensor CreateTensor(const TensorShape& input_shape) {
+  Tensor tensor(DataTypeToEnum<T>::value, input_shape);
+  test::FillIota<T>(&tensor, 0);
+  return tensor;
+}
+
 // Creates a vector of tensors with the specified dtype, shape, and values.
 template <typename T>
 std::vector<Tensor> CreateTensors(

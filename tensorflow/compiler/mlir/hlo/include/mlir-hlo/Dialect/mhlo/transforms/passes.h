@@ -53,7 +53,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
 
 /// Lowers from HLO dialect to Memref dialect allocating/deallocating temporary
 /// buffers if necessary.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToMemrefPass();
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass();
 
 // Lowers shape operations from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>>

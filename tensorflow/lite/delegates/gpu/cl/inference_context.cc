@@ -217,6 +217,7 @@ absl::Status GetBufferAsignment(
   const size_t base_align_bytes =
       std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
 
+  *use_offset_assignment = false;
   if (*is_sub_buffers_supported) {
     RETURN_IF_ERROR(AssignOffsetsToTensors(
         *buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
