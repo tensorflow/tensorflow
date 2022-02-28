@@ -479,3 +479,12 @@ tensorflow::config::Flag::reset
 
 [//tensorflow/python/framework:op_def_util] # op_def_util
 tensorflow::DataTypeToPyObject
+
+[//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc] # quantization
+tensorflow::quantization::QuantizeQATModel
+tensorflow::quantization::QuantizePTQModelPreCalibration
+tensorflow::quantization::QuantizePTQModelPostCalibration
+tensorflow::quantization::ClearCollectedInformationFromCalibrator
+tensorflow::quantization::ClearDataFromCalibrator
+tensorflow::quantization::GetMinFromCalibrator
+tensorflow::quantization::GetMaxFromCalibrator
