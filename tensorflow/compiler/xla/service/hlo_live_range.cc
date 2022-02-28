@@ -176,10 +176,12 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     HloPosition end_position;
     int64_t max_end_time = 0;
     for (const HloPosition& position : value->positions()) {
-      if (instruction_schedule_[position.instruction] >= max_end_time) {
-        max_end_time = instruction_schedule_[value->instruction()];
+      int64_t position_time = instruction_schedule_[position.instruction];
+      if (position_time >= max_end_time) {
+        max_end_time = position_time;
         end_position = position;
       }
+
       const HloComputation* position_comp = position.instruction->parent();
       // If this instruction lives out, the live range of the instruction
       // should be extended to the end of the computation.
