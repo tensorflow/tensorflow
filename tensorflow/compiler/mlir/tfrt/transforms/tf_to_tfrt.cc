@@ -1168,20 +1168,21 @@ class TFRTWhileOpConversion
                         mlir::SymbolTable *symbol_table,
                         const tfrt_compiler::TensorArraySideEffectAnalysis
                             *tensor_array_side_effect_analysis,
-                        bool func_use_fallback_tensor)
+                        bool func_use_fallback_tensor,
+                        bool enable_while_parallel_iterations)
       : mlir::OpConversionPattern<TF::WhileOp>(context),
         type_converter_(*type_converter),
         corert_converter_(*corert_converter),
         symbol_table_(*symbol_table),
         tensor_array_side_effect_analysis_(*tensor_array_side_effect_analysis),
-        func_use_fallback_tensor_(func_use_fallback_tensor) {}
+        func_use_fallback_tensor_(func_use_fallback_tensor),
+        enable_while_parallel_iterations_(enable_while_parallel_iterations) {}
 
   mlir::LogicalResult matchAndRewrite(
       mlir::TF::WhileOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
     mlir::FlatSymbolRefAttr cond_fn = op.condAttr();
     mlir::FlatSymbolRefAttr body_fn = op.bodyAttr();
-    // TODO(hanbinyoon): Support the parallel_iterations attribute.
 
     llvm::SmallVector<Type, 4> while_arg_result_types;
     // Insert a chain for side effects as the first argument/result.
@@ -1233,9 +1234,12 @@ class TFRTWhileOpConversion
     auto &while_args = pred_args;
     while_args[0] = pred_chain;
 
+    int64_t parallel_iterations =
+        enable_while_parallel_iterations_ ? op.parallel_iterations() : 1;
+
     auto new_op = rewriter.create<tfrt::compiler::WhileOp>(
         op.getLoc(), while_arg_result_types, first_iteration_bool_cond,
-        while_args, new_body_fn.sym_name());
+        while_args, new_body_fn.sym_name(), parallel_iterations);
 
     rewriter.replaceOp(op, new_op.getResults().drop_front());
 
@@ -1274,6 +1278,7 @@ class TFRTWhileOpConversion
   const tfrt_compiler::TensorArraySideEffectAnalysis
       &tensor_array_side_effect_analysis_;
   bool func_use_fallback_tensor_;
+  bool enable_while_parallel_iterations_;
 };
 
 // Create the pred function that contains a call to the original cond function
@@ -1350,7 +1355,11 @@ mlir::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
     mlir::TF::WhileOp op, mlir::FlatSymbolRefAttr original_body_fn,
     mlir::FuncOp pred_fn, mlir::TypeRange arg_types,
     mlir::ConversionPatternRewriter &rewriter) const {
-  std::string body_fn_name = original_body_fn.getValue().str() + "/tfrt_body";
+  int64_t parallel_iterations =
+      enable_while_parallel_iterations_ ? op.parallel_iterations() : 1;
+
+  std::string body_fn_name = original_body_fn.getValue().str() + "/tfrt_body_" +
+                             absl::StrCat(parallel_iterations);
 
   if (auto body_fn = symbol_table_.lookup<mlir::FuncOp>(body_fn_name)) {
     return body_fn;
@@ -1371,6 +1380,23 @@ mlir::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
   auto func_type = rewriter.getFunctionType(arg_types, body_result_types);
   auto body_fn =
       rewriter.create<mlir::FuncOp>(op.getLoc(), body_fn_name, func_type);
+  if (parallel_iterations > 1) {
+    // Disable stream merging by setting cost threshold to 1. The key to
+    // parallelize while iterations is to execute iteration index handling (e.g.
+    // ++i; i < max_iterations) in parallel to loop bodies. Since iteration
+    // index handling is usually cheap when this while loop is parallelizable,
+    // we don't want to merge it with loop bodies into one stream of inline
+    // execution. The quickest way to achieve this is to disable stream merging
+    // for loop functions. The potential downside is stream merging won't be
+    // applied to other part of the loop body, so there might be excessive
+    // threading overhead.
+    //
+    // TODO(chky): Consider a better way of parallizing while ops, so that we
+    // can have stream merging applied within the loop body. One option is to
+    // perform compiler transformation to extract iteration index handling logic
+    // out of the loop body and convert it to a parallel_map-like op.
+    body_fn->setAttr("tfrt.cost_threshold", rewriter.getI64IntegerAttr(1));
+  }
 
   auto *block = body_fn.addEntryBlock();
   rewriter.setInsertionPointToStart(block);
@@ -1489,7 +1515,8 @@ void PopulateTFToTFRTConversionPatterns(
     const tfrt_compiler::TensorArraySideEffectAnalysis
         *tensor_array_side_effect_analysis,
     bool enable_native_ops, bool func_use_fallback_tensor,
-    bool tpu_lower_to_fallback, bool target_tpurt) {
+    bool enable_while_parallel_iterations, bool tpu_lower_to_fallback,
+    bool target_tpurt) {
   // By default, we lower all TF ops to fallback ops.
   patterns->add<FallbackExecuteOpConversion>(
       context, corert_converter, fallback_converter, cost_analysis,
@@ -1509,7 +1536,8 @@ void PopulateTFToTFRTConversionPatterns(
                                         func_use_fallback_tensor);
   patterns->add<TFRTWhileOpConversion>(
       context, func_type_converter, corert_converter, symbol_table,
-      tensor_array_side_effect_analysis, func_use_fallback_tensor);
+      tensor_array_side_effect_analysis, func_use_fallback_tensor,
+      enable_while_parallel_iterations);
   patterns->add<TFRTCallOpConversion<mlir::TF::StatefulPartitionedCallOp>,
                 TFRTCallOpConversion<mlir::TF::PartitionedCallOp>,
                 TFRTCallOpConversion<mlir::TF::LegacyCallOp>,
@@ -1602,6 +1630,8 @@ class TfToTfrtConversionPass
     upper_cost_threshold_ = options.upper_cost_threshold;
     merge_inter_dependent_streams_ = options.merge_inter_dependent_streams;
     func_use_fallback_tensor_ = options.func_use_fallback_tensor;
+    enable_while_parallel_iterations_ =
+        options.enable_while_parallel_iterations;
   }
   TfToTfrtConversionPass(const TfToTfrtConversionPass &) {}
 
@@ -1639,7 +1669,8 @@ class TfToTfrtConversionPass
     PopulateTFToTFRTConversionPatterns(
         &context, &patterns, &corert_converter, &fallback_converter,
         &symbol_table, &cost_analysis, &tensor_array_side_effect_analysis,
-        enable_native_ops_, func_use_fallback_tensor_, tpu_lower_to_fallback_,
+        enable_native_ops_, func_use_fallback_tensor_,
+        enable_while_parallel_iterations_, tpu_lower_to_fallback_,
         target_tpurt_);
 
     return mlir::applyPartialConversion(func, target, std::move(patterns));
@@ -1874,6 +1905,12 @@ class TfToTfrtConversionPass
       llvm::cl::desc(
           "If true, use TF tensor as input/output types in func (and other "
           "control flow) ops."),
+      llvm::cl::init(false)};
+
+  Option<bool> enable_while_parallel_iterations_{
+      *this, "enable-while-parallel-iterations",
+      llvm::cl::desc("If true, tf.While op will be parallelized. This is "
+                     "currently experimental."),
       llvm::cl::init(false)};
 };
 
