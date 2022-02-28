@@ -7,7 +7,7 @@
 func @tanh_lower_and_fuse(%arg0: tensor<?x32xf32>) -> tensor<?x32xf32> {
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: %[[DIM:.*]] = memref.dim %[[ARG]], %[[C0]]
-  // CHECK: %[[MEMREF:.*]] = memref.alloc(%[[DIM]]) : memref<?x32xf32>
+  // CHECK: %[[MEMREF:.*]] = memref.alloc(%[[DIM]]) {{.*}} : memref<?x32xf32>
 
   // CHECK: linalg.generic
   // CHECK-SAME: indexing_maps = [#map, #map]
@@ -276,7 +276,7 @@ func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
 
 // CHECK-LABEL: @tf_transpose_const_perm
 func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
-  // CHECK: %[[OUT:.*]] = memref.alloc() : memref<3x2xf32>
+  // CHECK: %[[OUT:.*]] = memref.alloc() {{.*}} : memref<3x2xf32>
   // CHECK: linalg.generic {indexing_maps = [#map0, #map1]
   // CHECK-SAME: ins(%arg0 : memref<2x3xf32>)
   // CHECK-SAME: outs(%[[OUT]] : memref<3x2xf32>)

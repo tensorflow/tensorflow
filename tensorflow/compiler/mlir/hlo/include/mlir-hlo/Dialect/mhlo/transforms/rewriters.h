@@ -70,7 +70,6 @@ void populateHLOToLHLOConversionPattern(
 // inserted when the lowering would otherwise lead to a memref with a
 // non-identity map.
 void populateHLOToMemrefConversionPattern(
-    bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns,
     const std::function<bool(Operation *)> &enforce_identity_map =
         [](Operation *) { return true; });
