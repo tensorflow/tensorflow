@@ -461,6 +461,20 @@ message HloModuleProto {
     LAYOUT = 3;
   }
 
+  // The source of the optimization profile.
+  enum ProfileSource {
+    UNKNOWN_SOURCE = 0;
+    EMBEDDED = 1;
+    REMOTE = 2;
+  }
+
+  // The compilation event that triggered the use of the profile.
+  enum CompilationEvent {
+    UNKNOWN_EVENT = 0;
+    FIRST_COMPILATION = 1;
+    RECOMPILATION = 2;
+  }
+
   // Information about the optimization profile that this module contains.
   message ProfileInfo {
     // The optimization profiles that this module contains.
@@ -468,12 +482,11 @@ message HloModuleProto {
     // Speedup of tuned config compared to default config.
     double relative_speedup = 2;
     // The source of the optimization profile that this module contains.
-    xla.ProfileSource profile_source = 3;
+    ProfileSource profile_source = 3;
     // The compilation event that triggered the use of the profile.
-    xla.CompilationEvent compilation_event = 4;
+    CompilationEvent compilation_event = 4;
   }
 
-  // Profile information for the HLO module.
   repeated ProfileInfo profile_info = 13;
 }
 
