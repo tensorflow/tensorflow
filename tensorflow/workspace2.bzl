@@ -268,7 +268,7 @@ def _tf_repositories():
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
-        urls = tf_mirror_urls("https://github.com/googleapis/google-cloud-cpp/archive/v1.17.1.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/googleapis/google-cloud-cpp/archive/v1.36.0.tar.gz"),
     )
 
     tf_http_archive(
