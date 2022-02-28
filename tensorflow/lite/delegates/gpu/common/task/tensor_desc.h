@@ -110,9 +110,14 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   Layout layout =
       Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
 
-  // optional
-  BHWDC shape;
-  std::vector<uint8_t> data;
+  void SetBHWCShape(const BHWC& new_shape) {
+    shape = BHWDC(new_shape.b, new_shape.h, new_shape.w, 1, new_shape.c);
+  }
+  void SetBHWDCShape(const BHWDC& new_shape) { shape = new_shape; }
+  BHWC GetBHWCShape() const { return BHWC(shape.b, shape.h, shape.w, shape.c); }
+  BHWDC GetBHWDCShape() const { return shape; }
+  void SetData(std::vector<uint8_t>&& new_data) { data = new_data; }
+  const std::vector<uint8_t>& GetData() const { return data; }
 
   // applicable only for TEXTURE_2D.
   // When Texture 2d created from buffer, we can use it as texture or as buffer.
@@ -218,6 +223,10 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void DownloadData(float* dst);
   void UploadData(const int32_t* src);
   void DownloadData(int32_t* dst);
+
+  // optional
+  BHWDC shape;
+  std::vector<uint8_t> data;
 };
 
 template <typename FromType, typename ToType>

@@ -94,23 +94,23 @@ TensorDescriptor::TensorDescriptor(TensorDescriptor&& desc)
       data_type(desc.data_type),
       storage_type(desc.storage_type),
       layout(desc.layout),
-      shape(desc.shape),
-      data(std::move(desc.data)),
       use_buffer_for_write_only_2d_texture(
           desc.use_buffer_for_write_only_2d_texture),
       use_buffer_for_write_only_image_buffer(
-          desc.use_buffer_for_write_only_image_buffer) {}
+          desc.use_buffer_for_write_only_image_buffer),
+      shape(desc.shape),
+      data(std::move(desc.data)) {}
 TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
   if (this != &desc) {
     std::swap(data_type, desc.data_type);
     std::swap(storage_type, desc.storage_type);
     std::swap(layout, desc.layout);
-    std::swap(shape, desc.shape);
-    data = std::move(desc.data);
     std::swap(use_buffer_for_write_only_2d_texture,
               desc.use_buffer_for_write_only_2d_texture);
     std::swap(use_buffer_for_write_only_image_buffer,
               desc.use_buffer_for_write_only_image_buffer);
+    std::swap(shape, desc.shape);
+    data = std::move(desc.data);
     GPUObjectDescriptor::operator=(std::move(desc));
   }
   return *this;
