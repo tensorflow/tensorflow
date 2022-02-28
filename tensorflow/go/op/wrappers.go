@@ -32540,6 +32540,35 @@ func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf
 	return op.Output(0)
 }
 
+// Outputs the position of `value` in a permutation of [0, ..., max_index].
+//
+// Output values are a bijection of the `index` for any combination and `seed` and `max_index`.
+//
+// If multiple inputs are vectors (matrix in case of seed) then the size of the
+// first dimension must match.
+//
+// The outputs are deterministic.
+//
+// Arguments:
+//	index: A scalar tensor or a vector of dtype `dtype`. The index (or indices) to be shuffled. Must be within [0, max_index].
+//	seed: A tensor of dtype `Tseed` and shape [3] or [n, 3]. The random seed.
+//	max_index: A scalar tensor or vector of dtype `dtype`. The upper bound(s) of the interval (inclusive).
+//
+// Returns A scalar tensor of dtype `dtype`, within [0, max_index]. The randomly shuffled index.
+func RandomIndexShuffle(scope *Scope, index tf.Output, seed tf.Output, max_index tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RandomIndexShuffle",
+		Input: []tf.Input{
+			index, seed, max_index,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // RandomPoissonAttr is an optional argument to RandomPoisson.
 type RandomPoissonAttr func(optionalAttr)
 
