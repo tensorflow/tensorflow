@@ -470,7 +470,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
               << kernel_info.name << " (" << session_name << ")";
     Expected<JitExecutable> jit_executable = JitExecutable::Instantiate(
         kernel_info.serialized_operation, kernel_info.entrypoint,
-        std::move(opts), runner);
+        std::move(opts), session_name, runner);
     auto compile_duration = absl::Now() - compile_start_time;
 
     LOG(INFO) << "JitExecutable instantiation for " << kernel_info.name
