@@ -23,7 +23,7 @@
 from tensorflow.python import pywrap_tensorflow
 
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import runtime_client_pybind
+from tensorflow.core.function import runtime_client_pybind
 
 GlobalEagerContext = runtime_client_pybind.GlobalEagerContext
 GlobalPythonEagerContext = runtime_client_pybind.GlobalPythonEagerContext
