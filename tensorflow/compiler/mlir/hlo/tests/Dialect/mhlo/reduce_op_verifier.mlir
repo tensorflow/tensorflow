@@ -59,8 +59,7 @@ func @reduce_unranked(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>,
   ^bb0(%arg4: tensor<*xf32>, %arg5: tensor<*xf32>, %arg6: tensor<*xf32>, %arg7: tensor<*xf32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %2 = "mhlo.add"(%arg5, %arg7) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<*xf32>, tensor<*xf32>) -> tuple<tensor<*xf32>, tensor<*xf32>>
-    "mhlo.return"(%3) : (tuple<tensor<*xf32>, tensor<*xf32>>) -> ()
+    "mhlo.return"(%1, %2) : (tensor<*xf32>, tensor<*xf32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<4x4xf32>, tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
 
@@ -80,8 +79,7 @@ func @reduce_odd_num_args(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.add"(%arg5, %arg7) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<f32>>) -> ()
+    "mhlo.return"(%arg5, %arg7) : (tensor<f32>, tensor<f32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
 
@@ -116,8 +114,7 @@ func @reduce_diferent_input_shapes(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>,
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.add"(%arg5, %arg7) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<f32>>) -> ()
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<f32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?xf32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
 
@@ -135,8 +132,7 @@ func @reduce_diferent_input_shapes(%arg0: tensor<2x3xf32>, %arg1: tensor<3x2xf32
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.add"(%arg5, %arg7) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<f32>>) -> ()
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<f32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<2x3xf32>, tensor<3x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2xf32>, tensor<2xf32>)
 
@@ -215,44 +211,6 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
     %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>) {
 
-  // expected-error@+1 {{Reduction-region here must produce a tuple with 2 tensors, but produces 3 instead}}
-  %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
-
-  ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
-    %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %2 = "mhlo.add"(%arg5, %arg7) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %3 = "mhlo.tuple"(%1, %2, %2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<f32>, tensor<f32>>) -> ()
-
-  }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
-
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
-}
-
-// -----
-
-func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
-    %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>) {
-
-  // expected-error@+1 {{Reduction-region here must produce tuple of tensor-typed results, but produces 'f32' instead}}
-  %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
-
-  ^bb0(%arg4: f32, %arg5: f32, %arg6: f32, %arg7: f32):
-    %1 = "llvm.add"(%arg4, %arg6) : (f32, f32) -> f32
-    %2 = "llvm.add"(%arg5, %arg7) : (f32, f32) -> f32
-    %3 = "mhlo.tuple"(%1, %2) : (f32, f32) -> tuple<f32, f32>
-    "mhlo.return"(%3) : (tuple<f32, f32>) -> ()
-
-  }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
-
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
-}
-
-// -----
-
-func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
-    %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>) {
-
   // expected-error@+1 {{Reduction-region here must produce 2 tensors, but produces 1 instead}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
 
@@ -312,8 +270,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.add"(%arg5, %arg7) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-    %3 = "mhlo.tuple"(%2, %1) : (tensor<i32>, tensor<f32>) -> tuple<tensor<i32>, tensor<f32>>
-    "mhlo.return"(%3) : (tuple<tensor<i32>, tensor<f32>>) -> ()
+    "mhlo.return"(%2, %1) : (tensor<i32>, tensor<f32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
 
@@ -331,8 +288,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.add"(%arg5, %arg7) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-    %3 = "mhlo.tuple"(%1, %1) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<f32>>) -> ()
+    "mhlo.return"(%1, %1) : (tensor<f32>, tensor<f32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
 
@@ -350,8 +306,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.max"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<f32>>) -> ()
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<f32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xi32>)
 
@@ -369,8 +324,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.add"(%arg5, %arg7) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<f32>>) -> ()
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<f32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
 
@@ -388,8 +342,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.max"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<f32>>) -> ()
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<f32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
 
@@ -441,8 +394,7 @@ func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.add"(%arg5, %arg7) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<i32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>, tensor<?xi32>)
 
@@ -477,8 +429,7 @@ func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
     %1 = "mhlo.add"(%arg4, %arg6) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.add"(%arg5, %arg7) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<i32>) -> ()
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?x?xf32>)
 

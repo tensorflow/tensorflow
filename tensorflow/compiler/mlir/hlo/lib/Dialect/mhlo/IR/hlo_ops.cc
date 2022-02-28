@@ -459,45 +459,23 @@ LogicalResult verifyReducerShape(
     return mlir::emitError(loc)
            << "The reduction-region expected to return some value(s)";
 
-  // Check that the reduction-region returns a tuple- OR list- of tensors.
+  // Check that the reduction-region returns list- of tensors.
   // The number of result-tensors must match the `numInputs`.
-  // TODO(b/171261845): Remove tuples from MHLO dialect.
-  auto tupleT =
-      block.getTerminator()->getOperand(0).getType().dyn_cast<TupleType>();
-  if (tupleT && block.getTerminator()->getOperands().size() == 1) {
-    if (tupleT.size() != numInputs)
-      return mlir::emitError(loc)
-             << "Reduction-region here must produce a tuple with " << numInputs
-             << " tensors, but produces " << tupleT.size() << " instead";
+  if (block.getTerminator()->getOperands().size() != numInputs)
+    return mlir::emitError(loc)
+           << "Reduction-region here must produce " << numInputs
+           << " tensors, but produces "
+           << block.getTerminator()->getOperands().size() << " instead";
 
-    for (Type elementType : tupleT.getTypes()) {
-      auto tensorTy = elementType.dyn_cast<TensorType>();
-      if (!tensorTy)
-        return mlir::emitError(loc)
-               << "Reduction-region here must produce tuple "
-                  "of tensor-typed results, but "
-                  "produces "
-               << elementType << " instead";
+  for (Value retOperand : block.getTerminator()->getOperands()) {
+    auto tensorTy = retOperand.getType().dyn_cast<TensorType>();
+    if (!tensorTy)
+      return mlir::emitError(loc) << "Reduction-region here must produce "
+                                     "tensor-typed result(s), but "
+                                     "produces "
+                                  << retOperand.getType() << " instead";
 
-      accumulatorSubShapes.push_back(tensorTy);
-    }
-  } else {
-    if (block.getTerminator()->getOperands().size() != numInputs)
-      return mlir::emitError(loc)
-             << "Reduction-region here must produce " << numInputs
-             << " tensors, but produces "
-             << block.getTerminator()->getOperands().size() << " instead";
-
-    for (Value retOperand : block.getTerminator()->getOperands()) {
-      auto tensorTy = retOperand.getType().dyn_cast<TensorType>();
-      if (!tensorTy)
-        return mlir::emitError(loc) << "Reduction-region here must produce "
-                                       "tensor-typed result(s), but "
-                                       "produces "
-                                    << retOperand.getType() << " instead";
-
-      accumulatorSubShapes.push_back(tensorTy);
-    }
+    accumulatorSubShapes.push_back(tensorTy);
   }
 
   // Consider typical reduce-* op syntax:

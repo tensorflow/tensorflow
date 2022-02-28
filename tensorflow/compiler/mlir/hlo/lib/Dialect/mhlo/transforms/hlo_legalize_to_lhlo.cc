@@ -301,10 +301,11 @@ struct HloToLhloReduceLikeOpConverter : public BaseOpConversion<HloOpTy> {
             MemRefType::get(tensor_ty.getShape(), tensor_ty.getElementType()));
       }
     } else {
-      auto result_type =
-          return_op.results().front().getType().template cast<TensorType>();
-      sig_conversion.addInputs({MemRefType::get(result_type.getShape(),
-                                                result_type.getElementType())});
+      for (auto result : return_op.results()) {
+        auto result_type = result.getType().template cast<TensorType>();
+        sig_conversion.addInputs({MemRefType::get(
+            result_type.getShape(), result_type.getElementType())});
+      }
     }
     rewriter.applySignatureConversion(&new_op.body(), sig_conversion);
 

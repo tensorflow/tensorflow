@@ -125,8 +125,7 @@ func @reduce_more_than_one_inner_op(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi3
   ^bb0(%arg4: tensor<f32> loc("foo"), %arg5: tensor<i32> loc("foo"), %arg6: tensor<f32> loc("foo"), %arg7: tensor<i32> loc("foo")):
     %1 = mhlo.add %arg4, %arg6 : tensor<f32> loc("foo")
     %2 = mhlo.add %arg5, %arg7 : tensor<i32> loc("foo")
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>> loc("foo")
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<i32>>) -> () loc("foo")
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<i32>) -> () loc("foo")
   }) {dimensions = dense<0> : tensor<1xi64>}
     : (tensor<1x8xf32>, tensor<1x8xi32>, tensor<f32>, tensor<i32>) -> (tensor<8xf32>, tensor<8xi32>) loc("foo")
 
