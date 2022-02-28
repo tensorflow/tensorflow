@@ -569,15 +569,14 @@ absl::Status Tensor::WriteData(
 
 absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,
                                           CLContext* context) {
-  shape_ = desc.shape;
+  shape_ = desc.GetBHWDCShape();
   descriptor_.data_type = desc.data_type;
   descriptor_.storage_type = desc.storage_type;
   descriptor_.layout = desc.layout;
   memory_owner_ = true;
   CLMemory memory;
-  uint8_t* data_ptr = desc.data.empty()
-                          ? nullptr
-                          : const_cast<unsigned char*>(desc.data.data());
+  const uint8_t* data_ptr =
+      desc.GetData().empty() ? nullptr : desc.GetData().data();
   RETURN_IF_ERROR(
       AllocateTensorMemory(*context, shape_, descriptor_, data_ptr, &memory));
   memory_ = memory.Release();
