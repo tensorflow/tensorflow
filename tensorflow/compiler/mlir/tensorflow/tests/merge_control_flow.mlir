@@ -682,7 +682,7 @@ func @moved_ops_with_many_dependencies() {
 }
 
 
-// Check that two IfRegion groups where each of them contains 3 IfRegions with
+// Check that two IfRegion groups where each of them contains three IfRegions with
 // the same predicate are merged. There are no dependencies between IfRegions.
 
 // CHECK-LABEL: func @three_if_regions_with_same_predicate_merged
@@ -807,63 +807,63 @@ func @nested_IfRegions_with_same_predicate_same_block_level_merged() {
 func @two_overlapped_if_groups_with_no_dependency_merged() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
-  // CHECK:          "tf.A"
-  // CHECK:          "tf.C"
-  // CHECK:          "tf.E"
-  // CHECK:          "tf.B"
-  // CHECK:          "tf.D"
-  // CHECK:          "tf.F"
+  // CHECK:          "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK           "tf.Const"() {value = dense<5.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK           "tf.Const"() {value = dense<9.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:          "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK           "tf.Const"() {value = dense<6.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK           "tf.Const"() {value = dense<1.000000e+01> : tensor<f32>} : () -> tensor<f32>
   // CHECK:        "tf.IfRegion"
-  // CHECK:          "tf.G"
-  // CHECK:          "tf.I"
-  // CHECK:          "tf.K"
-  // CHECK:          "tf.H"
-  // CHECK:          "tf.J"
-  // CHECK:          "tf.L"
+  // CHECK:          "tf.Const"() {value = dense<3.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK           "tf.Const"() {value = dense<7.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK           "tf.Const"() {value = dense<1.100000e+01> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:          "tf.Const"() {value = dense<4.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK           "tf.Const"() {value = dense<8.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK           "tf.Const"() {value = dense<1.200000e+01> : tensor<f32>} : () -> tensor<f32>
   // CHECK-NOT:    "tf.IfRegion"
   "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
     %2 = "tf.IfRegion"(%0) ({
-      %3 = "tf.A"() : () -> (tensor<f32>)
+      %3 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }, {
-      %3 = "tf.B"() : () -> (tensor<f32>)
+      %3 = "tf.Const"() {value = dense<2.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%3) : (tensor<f32>) -> ()
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %6 = "tf.IfRegion"(%1) ({
-      %7 = "tf.G"() : () -> (tensor<f32>)
+      %7 = "tf.Const"() {value = dense<3.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%7) : (tensor<f32>) -> ()
       }, {
-      %7 = "tf.H"() : () -> (tensor<f32>)
+      %7 = "tf.Const"() {value = dense<4.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%7) : (tensor<f32>) -> ()
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %4 = "tf.IfRegion"(%0) ({
-      %5 = "tf.C"() : () -> (tensor<f32>)
+      %5 = "tf.Const"() {value = dense<5.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%5) : (tensor<f32>) -> ()
       }, {
-      %5 = "tf.D"() : () -> (tensor<f32>)
+      %5 = "tf.Const"() {value = dense<6.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%5) : (tensor<f32>) -> ()
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %8 = "tf.IfRegion"(%1) ({
-      %9 = "tf.I"() : () -> (tensor<f32>)
+      %9 = "tf.Const"() {value = dense<7.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%9) : (tensor<f32>) -> ()
       }, {
-      %9 = "tf.J"() : () -> (tensor<f32>)
+      %9 = "tf.Const"() {value = dense<8.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%9) : (tensor<f32>) -> ()
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %10 = "tf.IfRegion"(%0) ({
-      %11 = "tf.E"() : () -> (tensor<f32>)
+      %11 = "tf.Const"() {value = dense<9.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%11) : (tensor<f32>) -> ()
       }, {
-      %11 = "tf.F"() : () -> (tensor<f32>)
+      %11 = "tf.Const"() {value = dense<10.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%11) : (tensor<f32>) -> ()
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %12 = "tf.IfRegion"(%1) ({
-      %13 = "tf.K"() : () -> (tensor<f32>)
+      %13 = "tf.Const"() {value = dense<11.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%13) : (tensor<f32>) -> ()
       }, {
-      %13 = "tf.L"() : () -> (tensor<f32>)
+      %13 = "tf.Const"() {value = dense<12.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%13) : (tensor<f32>) -> ()
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
@@ -888,12 +888,12 @@ func @two_overlapped_if_groups_with_no_dependency_merged() {
   // CHECK:          "tf.E"
   // CHECK:          "tf.F"
   // CHECK:        "tf.IfRegion"
-  // CHECK:          "tf.G"
-  // CHECK:          "tf.I"
-  // CHECK:          "tf.K"
-  // CHECK:          "tf.H"
-  // CHECK:          "tf.J"
-  // CHECK:          "tf.L"
+  // CHECK:          "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:          "tf.Const"() {value = dense<3.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:          "tf.Const"() {value = dense<5.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:          "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:          "tf.Const"() {value = dense<4.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK;          "tf.Const"() {value = dense<6.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK-NOT:    "tf.IfRegion"
 func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_region_group() {
   "tf_device.cluster"() ({
@@ -905,12 +905,12 @@ func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_region_gr
       }, {
       %3 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"(%3) : (tensor<f32>) -> ()
-      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+      }) {is_stateless = false} : (tensor<i1>) -> (tensor<f32>)
     %6 = "tf.IfRegion"(%1) ({
-      %7 = "tf.G"() : () -> (tensor<f32>)
+      %7 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%7) : (tensor<f32>) -> ()
       }, {
-      %7 = "tf.H"() : ()-> (tensor<f32>)
+      %7 = "tf.Const"() {value = dense<2.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%7) : (tensor<f32>) -> ()
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %14 = "tf.AA"(%2) : (tensor<f32>) -> (tensor<f32>)
@@ -920,12 +920,12 @@ func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_region_gr
       }, {
       %5 = "tf.D"(%14) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"(%5) : (tensor<f32>) -> ()
-      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+      }) {is_stateless = false} : (tensor<i1>) -> (tensor<f32>)
     %8 = "tf.IfRegion"(%1) ({
-      %9 = "tf.I"() : () -> (tensor<f32>)
+      %9 = "tf.Const"() {value = dense<3.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%9) : (tensor<f32>) -> ()
       }, {
-      %9 = "tf.J"() : () -> (tensor<f32>)
+      %9 = "tf.Const"() {value = dense<4.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%9) : (tensor<f32>) -> ()
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     %15 = "tf.AB"(%4) : (tensor<f32>) -> (tensor<f32>)
@@ -935,12 +935,12 @@ func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_region_gr
       }, {
       %11 = "tf.F"(%15) : (tensor<f32>) -> (tensor<f32>)
       "tf.Yield"(%11) : (tensor<f32>) -> ()
-      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+      }) {is_stateless = false} : (tensor<i1>) -> (tensor<f32>)
     %12 = "tf.IfRegion"(%1) ({
-      %13 = "tf.K"() : () -> (tensor<f32>)
+      %13 = "tf.Const"() {value = dense<5.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%13) : (tensor<f32>) -> ()
       }, {
-      %13 = "tf.L"() : () -> (tensor<f32>)
+      %13 = "tf.Const"() {value = dense<6.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%13) : (tensor<f32>) -> ()
       }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     tf_device.return
