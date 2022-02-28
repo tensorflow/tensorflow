@@ -18,7 +18,10 @@ import tempfile
 import uuid
 import warnings
 
-from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model_wrapper
+# pylint: disable=invalid-import-order,g-bad-import-order
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+
+from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model as quantize_model_wrapper
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import importer
@@ -240,8 +243,8 @@ def quantize(saved_model_path: str,
       for node_def in function_def.node_def:
         if node_def.op == 'CustomAggregator':
           node_id = node_def.attr['id'].s
-          min_val, max_val = quantize_model_wrapper.get_min_max_from_calibrator(
-              node_id)
+          min_val = quantize_model_wrapper.get_min_from_calibrator(node_id)
+          max_val = quantize_model_wrapper.get_max_from_calibrator(node_id)
           quantize_model_wrapper.clear_data_from_calibrator(node_id)
           node_def.attr['min'].f = float(min_val)
           node_def.attr['max'].f = float(max_val)

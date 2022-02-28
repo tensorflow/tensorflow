@@ -12,36 +12,40 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_MODEL_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_MODEL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_LIB_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_LIB_H_
 
-#include <string>
-#include <vector>
+#include <pybind11/stl.h>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/framework/graph.pb.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
+#include "tensorflow/python/lib/core/pybind11_lib.h"
 
-namespace mlir {
-namespace quant {
+namespace tensorflow {
+namespace quantization {
 
-// Quantizes the given QAT-enabled model.
-absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags);
+PyObject* QuantizeQATModel(absl::string_view saved_model_path,
+                           absl::string_view exported_names_str,
+                           absl::string_view tags);
 
-// Quantizes the given model with post-training quantization. This method covers
-// the part for the pre-calibration stage.
-absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags);
+PyObject* QuantizePTQModelPreCalibration(absl::string_view saved_model_path,
+                                         absl::string_view exported_names_str,
+                                         absl::string_view tags);
 
-// Quantizes the given model with post-training quantization. This method covers
-// the part for the post-calibration stage.
-absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPostCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags);
-}  // namespace quant
-}  // namespace mlir
+PyObject* QuantizePTQModelPostCalibration(absl::string_view saved_model_path,
+                                          absl::string_view exported_names_str,
+                                          absl::string_view tags);
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_MODEL_H_
+void ClearCollectedInformationFromCalibrator();
+
+void ClearDataFromCalibrator(absl::string_view id);
+
+float GetMinFromCalibrator(absl::string_view id);
+
+float GetMaxFromCalibrator(absl::string_view id);
+
+}  // namespace quantization
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_LIB_H_
