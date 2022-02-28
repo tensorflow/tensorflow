@@ -36,6 +36,8 @@ cc_library(
     hdrs = [
         "passes/util.h",
     ],
+    # TODO(b/220688154): Restrict the visibility.
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "@llvm-project//mlir:IR",
@@ -121,6 +123,8 @@ cc_library(
     hdrs = [
         "passes/passes.h",
     ],
+    # TODO(b/220688154): Restrict the visibility.
+    visibility = ["//visibility:public"],
     deps = [
         ":pass_util",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
