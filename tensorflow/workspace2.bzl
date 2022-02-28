@@ -453,7 +453,7 @@ def _tf_repositories():
             "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
             "//third_party/systemlibs:protobuf_deps.bzl": "protobuf_deps.bzl",
         },
-        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/v3.9.2.zip"),
+        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/v3.19.4.zip"),
     )
 
     tf_http_archive(
