@@ -826,6 +826,24 @@ class EagerPyFuncTest(PyFuncTestBase):
     self.assertIsInstance(y, ragged_tensor.RaggedTensor)
     self.assertAllEqual(y, [[1, 2, 3], [4], [5, 6]])
 
+  def testRaggedTensorBroadcast(self):
+    # Check that eager_py_func preserves output shape information, which is
+    # required by broadcasting.
+    def fn(x):
+      return 2 * x
+
+    def foo(x):
+      spec = ragged_tensor.RaggedTensorSpec.from_value(x)
+      res = script_ops.eager_py_func(fn, [x], spec)
+      return x + res
+
+    x = ragged_factory_ops.constant([[1.0, 2.0], [3.0]])
+    expected_result = [[3.0, 6.0], [9.0]]
+    result1 = foo(x)
+    self.assertAllEqual(result1, expected_result)
+    result2 = def_function.function(foo)(x)
+    self.assertAllEqual(result2, expected_result)
+
   def testRaggedExpectedListGotList(self):
     x = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6]])
     x_spec = type_spec.type_spec_from_value(x)
