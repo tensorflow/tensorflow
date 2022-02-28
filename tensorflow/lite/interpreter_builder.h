@@ -51,7 +51,8 @@ namespace tflite {
 /// `error_reporter`: a functor that is called to report errors that handles
 ///   printf var arg semantics. The lifetime of the `error_reporter` object must
 ///   be greater than or equal to the `Interpreter` created by `operator()`.
-/// `options`: Options that can change behavior of interpreter.
+/// `options_experimental`: Options that can change behavior of interpreter.
+///   WARNING: this parameter is an experimental API and is subject to change.
 ///
 /// Returns a kTfLiteOk when successful and sets interpreter to a valid
 /// Interpreter. Note: The user must ensure the lifetime of the model (and error
@@ -65,7 +66,7 @@ class InterpreterBuilder {
   // after calling the constructor.
   InterpreterBuilder(const FlatBufferModel& model,
                      const OpResolver& op_resolver,
-                     const InterpreterOptions* options = nullptr);
+                     const InterpreterOptions* options_experimental = nullptr);
   /// Builds an interpreter given only the raw flatbuffer Model object (instead
   /// of a FlatBufferModel). Mostly used for testing.
   /// If `error_reporter` is null, then DefaultErrorReporter() is used.
@@ -74,7 +75,7 @@ class InterpreterBuilder {
   InterpreterBuilder(const ::tflite::Model* model,
                      const OpResolver& op_resolver,
                      ErrorReporter* error_reporter = DefaultErrorReporter(),
-                     const InterpreterOptions* options = nullptr);
+                     const InterpreterOptions* options_experimental = nullptr);
   ~InterpreterBuilder();
   InterpreterBuilder(const InterpreterBuilder&) = delete;
   InterpreterBuilder& operator=(const InterpreterBuilder&) = delete;
