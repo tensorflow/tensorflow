@@ -14,10 +14,6 @@
 # ==============================================================================
 """Generates the quantized function library contained header file."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from typing import Sequence
 
 from absl import app
@@ -26,14 +22,10 @@ from absl import flags
 _OUTPUT_FILE = flags.DEFINE_string('output_file', None, 'output file location')
 _SRC = flags.DEFINE_string('src', None, 'source file location')
 
+flags.mark_flags_as_required(['output_file', 'src'])
+
 
 def main(_: Sequence[str]) -> None:
-  if _OUTPUT_FILE.value is None:
-    raise app.UsageError('--output_file should be specified')
-
-  if _SRC.value is None:
-    raise app.UsageError('--src should be specified')
-
   with open(_SRC.value, 'r') as f:
     lines = f.readlines()
 
