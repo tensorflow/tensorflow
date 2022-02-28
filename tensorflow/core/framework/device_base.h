@@ -118,6 +118,9 @@ class DeviceContext : public core::RefCounted {
 
   // check if device is a pluggable device
   virtual bool IsPluggableDevice() { return false; }
+
+  // Returns the pinned host memory allocator for the device.
+  virtual Allocator* host_memory_allocator() const { return nullptr; }
 };
 
 class DeviceBase {
