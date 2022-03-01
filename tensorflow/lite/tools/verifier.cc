@@ -498,6 +498,11 @@ bool IsConstantTensor(const Tensor& tensor, const Model& model) {
   return false;
 }
 
+bool IsStatefulOp(const OperatorCode* opcode) {
+  return (GetBuiltinCode(opcode) == BuiltinOperator_CUSTOM &&
+          strcmp("CIRCULAR_BUFFER", opcode->custom_code()->c_str()) == 0);
+}
+
 // Performs basic consistency checks on a sub-graph.
 bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
                                ErrorReporter* error_reporter) {
@@ -555,7 +560,8 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
               output_idx, op_idx, EnumNameBuiltinOperator(builtin_code));
           return false;
         } else if (variable_tensors.find(output_idx) !=
-                   variable_tensors.end()) {
+                       variable_tensors.end() &&
+                   !IsStatefulOp(opcode)) {
           ReportError(
               error_reporter, "Output tensor %d to op %d (%s) is a variable",
               output_idx, op_idx, EnumNameBuiltinOperator(builtin_code));
