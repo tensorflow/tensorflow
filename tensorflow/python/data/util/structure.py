@@ -163,6 +163,8 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
       flat_ret.append(flat_class)
     elif issubclass(flat_class, sparse_tensor.SparseTensor):
       flat_ret.append(sparse_tensor.SparseTensorSpec(flat_shape, flat_type))
+    elif issubclass(flat_class, ragged_tensor.RaggedTensor):
+      flat_ret.append(ragged_tensor.RaggedTensorSpec(flat_shape, flat_type))
     elif issubclass(flat_class, ops.Tensor):
       flat_ret.append(tensor_spec.TensorSpec(flat_shape, flat_type))
     elif issubclass(flat_class, tensor_array_ops.TensorArray):
