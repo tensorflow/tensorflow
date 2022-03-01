@@ -852,13 +852,13 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
   ArrayRef<Type> returns = func.getType().getResults();
   if (operands.size() * 2 != arguments.size()) {
     return attach_func(op->emitOpError(func_name)
-                       << " function expected to have " << operands.size() * 2
-                       << " arguments but got " << arguments.size());
+                       << " function has " << arguments.size() / 2
+                       << " arguments but was provided " << operands.size());
   }
   if (results.size() != returns.size()) {
     return attach_func(op->emitOpError(func_name)
-                       << " function expected to have " << results.size()
-                       << " return values but got " << returns.size());
+                       << " function has " << returns.size()
+                       << " results but expected " << results.size());
   }
 
   if (func.generic()) return success();
