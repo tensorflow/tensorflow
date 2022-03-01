@@ -67,6 +67,7 @@ pybind_extension(
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/python:python_ref_manager",
         "//tensorflow/compiler/xla/python:types",
+        "//tensorflow/compiler/xla/python:util",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/python:bfloat16_lib",
