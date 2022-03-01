@@ -92,6 +92,10 @@ class UnaryOpTest(test.TestCase):
       if x.dtype in (np.complex64, np.complex128) and tf_func == math_ops.sign:
         return  # Return early
 
+      if x.dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype) \
+        and tf_func == math_ops.round:
+        return # Return early
+
       if x.dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype):
         s = list(np.shape(x))
         jacob_t, _ = gradient_checker.compute_gradient(
@@ -414,6 +418,7 @@ class UnaryOpTest(test.TestCase):
     k = np.arange(-0.90, 0.90, 0.05).astype(bfloat16)  # between -1 and 1
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
+    self._compareCpu(y, np.round, math_ops.round)
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
     self._compareCpu(y, compute_f32(self._inv), math_ops.reciprocal)
