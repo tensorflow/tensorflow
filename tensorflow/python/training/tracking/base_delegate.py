@@ -144,5 +144,7 @@ class DelegatingTrackableMixin(object):
   def _deserialization_dependencies(self, *args, **kwargs):
     return self._trackable._deserialization_dependencies(*args, **kwargs)
 
+  def _export_to_saved_model_graph(self, *args, **kwargs):
+    return self._trackable._export_to_saved_model_graph(*args, **kwargs)
   # pylint: enable=protected-access
 
