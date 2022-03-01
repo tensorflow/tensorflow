@@ -461,6 +461,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
   }
 
   void RemoveInstruction(HloInstruction* instruction) override {
+    VLOG(42) << " removing instruction:" << instruction->name();
     post_order_[FindOrDie(post_order_index_, instruction)] = nullptr;
     post_order_index_.erase(instruction);
   }
@@ -576,6 +577,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
                   /*producer=*/operand);
             }
 
+            VLOG(42) << "about to work on FUSING:" << operand->name() << " "
+                     << instruction->name();
             fusion_queue->PreFusion(operand, instruction);
             fusion_instruction = Fuse(operand, instruction);
           }
@@ -633,6 +636,15 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           continue;
         }
 
+        auto disp = (fusion_instruction->IsOutputFusion() ||
+                     fusion_instruction->IsLoopFusion())
+                        ? fusion_instruction->fused_instructions_computation()
+                              ->ToString()
+                        : " ";
+        VLOG(42) << "about to work on fusing instruction :" << operand->name()
+                 << " " << instruction->name()
+                 << " \n result: " << fusion_instruction->ToString() << "\n "
+                 << disp;
         // Saving name to use after the instruction is removed.
         std::string producer_name = operand->name();
         fusion_queue->OnFusingInstruction(fusion_instruction, operand,
