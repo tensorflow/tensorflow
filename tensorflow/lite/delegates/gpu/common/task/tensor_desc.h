@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -69,6 +71,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   void Release() override { data.clear(); }
   uint64_t GetSizeInBytes() const override { return data.size(); };
+  size_t GetSizeInBytesForShape(const BHWDC& shape5d) const;
 
   bool HasAxis(Axis axis) const;
   void SetAddressMode(AddressMode mode);
@@ -79,13 +82,16 @@ struct TensorDescriptor : public GPUObjectDescriptor {
       const std::vector<std::string>& args, std::string* value_name,
       std::string* x_coord, std::string* y_coord, std::string* s_coord) const;
 
-  void UploadData(const tflite::gpu::Tensor<BHWC, DataType::FLOAT32>& src);
-  void UploadData(const tflite::gpu::Tensor<BHWC, DataType::INT32>& src);
+  template <DataType T>
+  void UploadData(const tflite::gpu::Tensor<BHWC, T>& src);
+  template <DataType T>
+  void DownloadData(tflite::gpu::Tensor<BHWC, T>* dst);
+
   void UploadData(const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
   void UploadData(const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
 
-  void DownloadData(tflite::gpu::Tensor<BHWC, DataType::FLOAT32>* dst);
-  void DownloadData(tflite::gpu::Tensor<BHWC, DataType::INT32>* dst);
+  int GetLinearIndex(const BHWDC& shape5d, int b, int x, int y, int d, int s,
+                     int sub_c) const;
 
   bool SupportsZeroClamp(const Axis& axis) const;
   bool CanReadOutOfBorder(const Axis& axis) const;
@@ -219,23 +225,108 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                            std::string* xc, std::string* yc, std::string* zc,
                            std::string* sc, std::string* bc) const;
 
-  void UploadData(const float* src);
-  void DownloadData(float* dst);
-  void UploadData(const int32_t* src);
-  void DownloadData(int32_t* dst);
+  template <typename T>
+  void UploadData(const T* src);
+  template <typename T>
+  void DownloadData(T* dst);
 
   // optional
   BHWDC shape;
   std::vector<uint8_t> data;
 };
 
+template <DataType T>
+void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {
+  shape = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
+  UploadData(src.data.data());
+}
+
+template <DataType T>
+void TensorDescriptor::DownloadData(tflite::gpu::Tensor<BHWC, T>* dst) {
+  dst->shape = BHWC(shape.b, shape.h, shape.w, shape.c);
+  dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
+  DownloadData(dst->data.data());
+}
+
+template <typename T>
+void TensorDescriptor::UploadData(const T* src) {
+  data.resize(GetSizeInBytesForShape(shape));
+  if (data_type == DataType::FLOAT16) {
+    half* gpu_data = reinterpret_cast<half*>(data.data());
+    DataFromBHWDC(src, shape, *this, gpu_data);
+  } else {
+    T* gpu_data = reinterpret_cast<T*>(data.data());
+    DataFromBHWDC(src, shape, *this, gpu_data);
+  }
+}
+
+template <typename T>
+void TensorDescriptor::DownloadData(T* dst) {
+  data.resize(GetSizeInBytesForShape(shape));
+  if (data_type == DataType::FLOAT16) {
+    half* gpu_data = reinterpret_cast<half*>(data.data());
+    DataToBHWDC(gpu_data, shape, *this, dst);
+  } else {
+    T* gpu_data = reinterpret_cast<T*>(data.data());
+    DataToBHWDC(gpu_data, shape, *this, dst);
+  }
+}
+
 template <typename FromType, typename ToType>
 void DataFromBHWDC(const FromType* src, const BHWDC& shape,
-                   const TensorDescriptor& desc, ToType* dst);
+                   const TensorDescriptor& desc, ToType* dst) {
+  const int channels_alignment =
+      desc.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c : 4;
+  const int slices = DivideRoundUp(shape.c, 4);
+  for (int b = 0; b < shape.b; ++b) {
+    for (int s = 0; s < slices; ++s) {
+      for (int y = 0; y < shape.h; ++y) {
+        for (int x = 0; x < shape.w; ++x) {
+          for (int d = 0; d < shape.d; ++d) {
+            for (int c = 0; c < channels_alignment; ++c) {
+              FromType value;
+              if (s * 4 + c < shape.c) {
+                const int cpu_index =
+                    shape.LinearIndex({b, y, x, d, s * 4 + c});
+                value = src[cpu_index];
+              } else {
+                value = 0;
+              }
+              int gpu_index = desc.GetLinearIndex(shape, b, x, y, d, s, c);
+              dst[gpu_index] = value;
+            }
+          }
+        }
+      }
+    }
+  }
+}
 
 template <typename FromType, typename ToType>
 void DataToBHWDC(const FromType* src, const BHWDC& shape,
-                 const TensorDescriptor& desc, ToType* dst);
+                 const TensorDescriptor& desc, ToType* dst) {
+  const int channels_alignment =
+      desc.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c : 4;
+  const int slices = DivideRoundUp(shape.c, 4);
+  for (int b = 0; b < shape.b; ++b) {
+    for (int s = 0; s < slices; ++s) {
+      for (int y = 0; y < shape.h; ++y) {
+        for (int x = 0; x < shape.w; ++x) {
+          for (int d = 0; d < shape.d; ++d) {
+            for (int c = 0; c < channels_alignment; ++c) {
+              if (s * 4 + c >= shape.c) {
+                continue;
+              }
+              int cpu_index = shape.LinearIndex({b, y, x, d, s * 4 + c});
+              int gpu_index = desc.GetLinearIndex(shape, b, x, y, d, s, c);
+              dst[cpu_index] = src[gpu_index];
+            }
+          }
+        }
+      }
+    }
+  }
+}
 
 std::string ToString(TensorStorageType type);
 
