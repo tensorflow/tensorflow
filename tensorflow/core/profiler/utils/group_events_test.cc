@@ -309,7 +309,7 @@ TEST(GroupEventsTest, EagerOpTest) {
   const char* kEagerOpGpuEvent = "eager_op_kernel_matmul";
   CreateXEvent(&host_plane_builder, &main_thread,
                HostEventType::kEagerKernelExecute, 200, 300,
-               {{StatType::kIsFunc, 0L}});
+               {{StatType::kIsFunc, static_cast<int64_t>(0)}});
   CreateXEvent(&host_plane_builder, &main_thread, kEagerOpGpuLaunchEvent, 210,
                290, {{StatType::kCorrelationId, correlation_id}});
   CreateXEvent(&device_plane_builder, &gpu_stream, kEagerOpGpuEvent, 400, 500,
@@ -321,7 +321,7 @@ TEST(GroupEventsTest, EagerOpTest) {
   const char* kEagerFuncGpuEvent = "eager_func_kernel_matmul";
   CreateXEvent(&host_plane_builder, &main_thread,
                HostEventType::kEagerKernelExecute, 300, 400,
-               {{StatType::kIsFunc, 1L}});
+               {{StatType::kIsFunc, static_cast<int64_t>(1)}});
   CreateXEvent(&host_plane_builder, &main_thread, kEagerFuncGpuLaunchEvent, 310,
                390, {{StatType::kCorrelationId, correlation_id}});
   CreateXEvent(&device_plane_builder, &gpu_stream, kEagerFuncGpuEvent, 500, 600,
@@ -332,14 +332,14 @@ TEST(GroupEventsTest, EagerOpTest) {
   const char* kEagerOpCpuEvent = "eager_op_cpu_kernel:Matmul";
   CreateXEvent(&host_plane_builder, &main_thread,
                HostEventType::kEagerKernelExecute, 400, 500,
-               {{StatType::kIsFunc, 0L}});
+               {{StatType::kIsFunc, static_cast<int64_t>(0)}});
   CreateXEvent(&host_plane_builder, &main_thread, kEagerOpCpuEvent, 410, 490);
 
   // Eagerly executed CPU TF function.
   const char* kEagerFuncCpuEvent = "eager_func_cpu_kernel:Matmul";
   CreateXEvent(&host_plane_builder, &main_thread,
                HostEventType::kEagerKernelExecute, 500, 600,
-               {{StatType::kIsFunc, 1L}});
+               {{StatType::kIsFunc, static_cast<int64_t>(1)}});
   CreateXEvent(&host_plane_builder, &main_thread, kEagerFuncCpuEvent, 510, 590);
 
   GroupTfEvents(&space);
