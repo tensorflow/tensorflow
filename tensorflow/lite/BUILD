@@ -199,10 +199,14 @@ cc_library(
 
 cc_library(
     name = "graph_info",
+    srcs = ["graph_info.cc"],
     hdrs = ["graph_info.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        ":kernel_api",
+        "//tensorflow/lite/c:common",
+    ],
 )
 
 cc_library(
@@ -494,7 +498,6 @@ cc_library(
     name = "cc_api_experimental",
     srcs = [
         "core/subgraph.cc",
-        "graph_info.cc",
         "interpreter_experimental.cc",
         "signature_runner.cc",
     ],
