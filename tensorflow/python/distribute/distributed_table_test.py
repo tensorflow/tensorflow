@@ -18,6 +18,8 @@
 import copy
 import os
 
+os.environ["TF_NUM_INTEROP_THREADS"]="16"
+
 from absl.testing import parameterized
 
 from tensorflow.python.compat import v2_compat
