@@ -1502,6 +1502,15 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
   auto fft_length_values = fft_op.fft_length().getValues<int64_t>();
   std::vector<int64_t> fft_length(fft_length_values.begin(),
                                   fft_length_values.end());
+
+  if (IsBefThunkEnabled(hlo_module_config_)) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Thunk> thunk,
+        CreateBefThunk(GetThunkInfo(op), op, {arg_slice, dest_slice}));
+    AddThunkToThunkSequence(std::move(thunk));
+    return Status::OK();
+  }
+
   AddThunkToThunkSequence(
       absl::make_unique<FftThunk>(GetThunkInfo(op), fft_type, fft_length,
                                   /*input_buffer=*/arg_slice,

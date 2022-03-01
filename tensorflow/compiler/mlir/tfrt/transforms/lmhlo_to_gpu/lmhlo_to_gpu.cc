@@ -44,6 +44,7 @@ void populateCclConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCholeskyConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateConvolutionConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCustomCallConversionPattern(RewritePatternSet&, TypeConverter&);
+void populateFftConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateGemmConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateInfeedAndOutfeedConversionPattern(RewritePatternSet&,
                                                TypeConverter&);
@@ -87,6 +88,7 @@ void ConvertLmhloToGpuPass::runOnOperation() {
   populateTriangularSolveConversionPattern(patterns, converter);
   populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
   populateReturnOpTypeConversionPattern(patterns, converter);
+  populateFftConversionPattern(patterns, converter);
 
   // Set of ops that need to be wrapped in tfrt_gpu_conversion.async.execute
   // before lowering directly to tfrt_gpu ops (and therefore require some chain
@@ -98,7 +100,7 @@ void ConvertLmhloToGpuPass::runOnOperation() {
       lmhlo::AllGatherOp, lmhlo::AllReduceOp, lmhlo::ReduceScatterOp,
       lmhlo::AllToAllOp, lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp,
       lmhlo::TriangularSolveOp, lmhlo::ReplicaIdOp, lmhlo::PartitionIdOp,
-      lmhlo::InfeedOp, lmhlo::OutfeedOp>();
+      lmhlo::InfeedOp, lmhlo::OutfeedOp, lmhlo::FftOp>();
   tfrt::gpu::populateGpuAsyncConversionPatterns(patterns, converter,
                                                 wrap_target);
 

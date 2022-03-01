@@ -67,6 +67,7 @@ cc_library(
         "cholesky_pattern.cc",
         "convolution_pattern.cc",
         "custom_call_pattern.cc",
+        "fft_pattern.cc",
         "gemm_pattern.cc",
         "infeed_and_outfeed_pattern.cc",
         "lmhlo_to_gpu.cc",

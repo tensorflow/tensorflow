@@ -203,6 +203,9 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo::OutfeedOp>(op)) {
     return Thunk::Kind::kOutfeed;
   }
+  if (mlir::isa<mlir::lmhlo::FftOp>(op)) {
+    return Thunk::Kind::kFft;
+  }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
 }
