@@ -955,6 +955,155 @@ class Unknown : public Node {
   }
 };
 
+class AsyncUnknownRatio : public Node {
+ public:
+  AsyncUnknownRatio(Node::Args args,
+                    std::vector<std::shared_ptr<Parameter>> parameters)
+      : Node(args) {
+    for (auto& parameter : parameters) {
+      parameters_[parameter->name] = std::move(parameter);
+    }
+  }
+
+  virtual ~AsyncUnknownRatio() {}
+
+ protected:
+  std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
+    std::vector<std::shared_ptr<Parameter>> parameters;
+    for (auto& pair : parameters_) {
+      parameters.push_back(pair.second);
+    }
+    return std::make_shared<AsyncUnknownRatio>(
+        Args{id_, name_, std::move(output)}, parameters);
+  }
+
+  // The input time is the sum of inherited input time and parallelism adjusted
+  // self processing time, divided by the ratio estimate.
+  void InputTimeLocked(NodeValues* input_times) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
+    double inherited_input_time;
+    if (output_) {
+      inherited_input_time = (*input_times)[output_->long_name()];
+    } else {
+      inherited_input_time = (*input_times)[kModelInputTimeKey];
+    }
+    double parallelism = 1.0;
+    auto* parallelism_parameter = gtl::FindOrNull(parameters_, kParallelism);
+    if (parallelism_parameter) {
+      parallelism = (*parallelism_parameter)->value;
+    }
+    double ratio = 0.0;
+    if (!EstimateRatio(&ratio)) {
+      (*input_times)[long_name()] =
+          inherited_input_time + SelfProcessingTimeLocked() / parallelism;
+      return;
+    }
+    double input_time =
+        (inherited_input_time + SelfProcessingTimeLocked() / parallelism) /
+        ratio;
+    (*input_times)[long_name()] = input_time;
+  }
+
+  // The output time is the sum of parallelism adjusted self processing time and
+  // expected wait time from the buffer model estimated using
+  // `ComputeWaitTime(producer_time, consumer_time, parallelism, ...)`, where
+  // `producer_time` is the product of the estimated ratio and the sum of output
+  // times of inputs, `consumer_time` is the product of the estimated ratio and
+  // the `input_time` specified through `input_times` (since for each element
+  // stored in the buffer, the inputs need to be called ratio times), and if the
+  // node has parallelism parameter, then `buffer_size` is derived from
+  // `parallelism`.
+  //
+  // Current implementation assumes that there is at most 1 parameter per node.
+  //
+  // TODO(wilsin): This function does not work for GradientDescent optimization.
+  void OutputTimeLocked(const NodeValues& input_times,
+                        ParameterGradients* gradients, NodeValues* output_times,
+                        NodeValues* output_time_gradients) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
+    // Estimate ratio with its first input number of elements and its own number
+    // of elements.
+    // TODO(jsimsa): The current implementation assumes that the number of input
+    // elements consumed per output is the same across all inputs.
+    double ratio = 0.0;
+    bool ratio_estimated = EstimateRatio(&ratio);
+    double parallelism = 1.0;
+    double buffer_size = 0.0;
+    auto* parallelism_parameter = gtl::FindOrNull(parameters_, kParallelism);
+    if (parallelism_parameter) {
+      parallelism = (*parallelism_parameter)->value;
+      buffer_size = parallelism;
+    }
+    double self_processing_time = SelfProcessingTimeLocked();
+    double output_time, wait_time, consumer_time, producer_time;
+    double input_time = input_times.at(long_name());
+    if (ratio_estimated) {
+      consumer_time = input_time * ratio;
+      producer_time = ratio * OutputTimeForInputs(*output_times);
+    } else {
+      consumer_time = input_time;
+      producer_time = 0.0L;
+    }
+
+    wait_time = ComputeWaitTime(producer_time, consumer_time, buffer_size,
+                                /*producer_time_derivative=*/nullptr,
+                                /*consumer_time_derivative=*/nullptr,
+                                /*buffer_size_derivative=*/nullptr);
+    output_time = self_processing_time / parallelism + wait_time;
+    (*output_times)[long_name()] = output_time;
+  }
+
+  // The processing time is the sum of the self processing time and the product
+  // of the estimated ratio and the sum of processing times of inputs.
+  void TotalProcessingTimeLocked(NodeValues* processing_times,
+                                 NodeValues* total_processing_times) override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
+    double ratio = 0.0;
+    double self_processing_time = SelfProcessingTimeLocked();
+    if (processing_times) {
+      (*processing_times)[long_name()] = self_processing_time;
+    }
+    if (!EstimateRatio(&ratio)) {
+      (*total_processing_times)[long_name()] = self_processing_time;
+      return;
+    }
+    double inputs_processing_time =
+        ratio * TotalProcessingTimeForInputs(*total_processing_times);
+    (*total_processing_times)[long_name()] =
+        self_processing_time + inputs_processing_time;
+  }
+
+  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    double result = 0;
+    auto* parameter = gtl::FindOrNull(parameters_, kParallelism);
+    if (parameter) {
+      result += (*parameter)->value * AverageBufferedElementSize();
+    }
+    return result;
+  }
+
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::ASYNC_UNKNOWN_RATIO);
+    return Status::OK();
+  }
+
+ private:
+  bool EstimateRatio(double* ratio) const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    // TODO(wilsin): Consistent with UnknownRatio, current implementation
+    // assumes that the number of input elements consumed per output is the same
+    // across all inputs.
+    if (num_elements_ == 0 || inputs_.empty() ||
+        inputs_.front()->num_elements() == 0) {
+      return false;
+    }
+    *ratio = static_cast<double>(inputs_.front()->num_elements()) /
+             static_cast<double>(num_elements_);
+    return true;
+  }
+};
+
 }  // namespace
 
 thread_local int64_t Node::work_start_;
@@ -999,6 +1148,12 @@ std::shared_ptr<Node> MakeSourceNode(Node::Args args) {
 
 std::shared_ptr<Node> MakeUnknownRatioNode(Node::Args args) {
   return std::make_shared<UnknownRatio>(std::move(args));
+}
+
+std::shared_ptr<Node> MakeAsyncUnknownRatioNode(
+    Node::Args args, std::vector<std::shared_ptr<Parameter>> parameters) {
+  return std::make_shared<AsyncUnknownRatio>(std::move(args),
+                                             std::move(parameters));
 }
 
 std::shared_ptr<Node> MakeUnknownNode(Node::Args args) {

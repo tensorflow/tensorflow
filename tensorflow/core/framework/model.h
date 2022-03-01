@@ -623,6 +623,10 @@ std::shared_ptr<Node> MakeSourceNode(Node::Args args);
 // specified as a parameter, UnknownRatio estimates the ratio empirically.
 std::shared_ptr<Node> MakeUnknownRatioNode(Node::Args args);
 
+// AsyncUnknownRatio nodes are the asynchronous version of unknown ratio nodes.
+std::shared_ptr<Node> MakeAsyncUnknownRatioNode(
+    Node::Args args, std::vector<std::shared_ptr<Parameter>> parameters);
+
 // Unknown nodes represent datasets for which we do not have a model. It acts
 // as pass-through between inputs and output.
 std::shared_ptr<Node> MakeUnknownNode(Node::Args args);
