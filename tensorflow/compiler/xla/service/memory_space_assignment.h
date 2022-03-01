@@ -1108,6 +1108,11 @@ struct Options {
   // cross-program-prefetched buffer can be reused.
   bool enable_cross_program_prefetch_freeing = true;
 
+  // Enable redundant eviction optimization in/around while loops. If enabled,
+  // this optimization would keep a copy of the buffer in the default memory in
+  // addition to alternate memory to eliminate redundant evictions.
+  bool enable_while_redundant_eviction_elimination = true;
+
   // An optional memory space assignment autotuning config, which is used
   // to sort allocated buffers.
   absl::optional<std::vector<uint64_t>> autotuning_config = absl::nullopt;

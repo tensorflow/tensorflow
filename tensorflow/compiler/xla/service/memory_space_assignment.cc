@@ -1760,7 +1760,8 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
         // already have a copy in the default memory space. We search backwards
         // (latest to earliest in execution time) for a suitable allocation in
         // order to find the most recent one.
-        if (absl::c_find_if(allocation_value.value()->positions(),
+        if (options_.enable_while_redundant_eviction_elimination &&
+            absl::c_find_if(allocation_value.value()->positions(),
                             [&hlo_use](const HloPosition& position) {
                               return position.instruction ==
                                          hlo_use.instruction &&
