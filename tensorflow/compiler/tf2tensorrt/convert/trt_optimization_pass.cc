@@ -232,7 +232,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
         tensorflow::down_cast<const grappler::GrapplerFunctionItem&>(item);
     TF_RETURN_IF_ERROR(
         UpdateFunctionSpecificConversionParams(params_, func_item.func_attr()));
-    assert(cp.minimum_segment_size > 0);
   }
 
   return ConvertGraph(params_, optimized_item, nodes_to_preserve, cluster,
