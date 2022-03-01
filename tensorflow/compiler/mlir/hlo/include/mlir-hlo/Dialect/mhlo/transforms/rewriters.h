@@ -71,7 +71,7 @@ void populateHLOToLHLOConversionPattern(
 // non-identity map.
 void populateHLOToMemrefConversionPattern(
     bufferization::BufferizeTypeConverter *converter,
-    RemoveSignTypeConverter *sign_converter, RewritePatternSet *patterns,
+    RewritePatternSet *patterns,
     const std::function<bool(Operation *)> &enforce_identity_map =
         [](Operation *) { return true; });
 
