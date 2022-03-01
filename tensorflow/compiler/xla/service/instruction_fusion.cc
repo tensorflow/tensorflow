@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 #include <algorithm>
+#include <functional>
 #include <list>
 #include <memory>
 #include <numeric>
@@ -717,11 +718,49 @@ HloInstruction* InstructionFusion::FuseInstruction(
   return fusion_instruction->FuseInstruction(producer);
 }
 
+void InstructionFusion::UpdateReusedOperandsForFusion(
+    HloInstruction* producer, HloInstruction* consumer,
+    HloInstruction* fusion_instruction) {
+  absl::flat_hash_set<const HloInstruction*>& consumer_reused_operands =
+      ReusedOperandsOf(consumer);
+  const absl::flat_hash_set<const HloInstruction*>& producer_reused_operands =
+      ReusedOperandsOf(producer);
+
+  absl::flat_hash_set<const HloInstruction*>* fusion_reused_operands;
+  if (consumer == fusion_instruction) {
+    fusion_reused_operands = &consumer_reused_operands;
+  } else {
+    // Clone the reused operands information from `consumer` onto the new
+    // fusion. In principle we could just call ReusedOperandsOf(fusion), but
+    // that has a quadratic time complexity because we might revisit the
+    // all operators in a fusion each time we fused a new operator in.
+    auto& fusion_reused_operands_ptr =
+        reused_fusion_operands_[fusion_instruction];
+    CHECK(!fusion_reused_operands_ptr);
+    fusion_reused_operands_ptr =
+        std::make_unique<absl::flat_hash_set<const HloInstruction*>>(
+            consumer_reused_operands);
+    fusion_reused_operands = fusion_reused_operands_ptr.get();
+  }
+  // An operand of the newly updated fusion is reused if it was used by both
+  // producer and consumer, or if it was reused by either the producer or the
+  // consumer.
+  for (HloInstruction* operand : producer->operands()) {
+    if (consumer->IsUserOf(operand)) {
+      fusion_reused_operands->insert(operand);
+    }
+  }
+  fusion_reused_operands->insert(producer_reused_operands.begin(),
+                                 producer_reused_operands.end());
+  fusion_reused_operands->erase(producer);
+}
+
 HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
                                         HloInstruction* consumer) {
   VLOG(2) << "Fusing " << producer->ToString() << " into "
           << consumer->ToString();
   HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
+  UpdateReusedOperandsForFusion(producer, consumer, fusion_instruction);
   FuseInstruction(fusion_instruction, producer);
   if (fusion_instruction != producer && fusion_instruction != consumer) {
     VLOG(2) << "       created new fusion: " << fusion_instruction->ToString();
@@ -734,6 +773,7 @@ HloInstruction* InstructionFusion::FuseIntoMultiOutput(
   VLOG(2) << "Multi-output fusing " << producer->ToString() << " into "
           << consumer->ToString();
   HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
+  UpdateReusedOperandsForFusion(producer, consumer, fusion_instruction);
   fusion_instruction->FuseInstructionIntoMultiOutput(producer);
   return fusion_instruction;
 }
@@ -929,23 +969,31 @@ HloInstruction::FusionKind InstructionFusion::ChooseKind(
   return HloInstruction::FusionKind::kLoop;
 }
 
+absl::flat_hash_set<const HloInstruction*>& InstructionFusion::ReusedOperandsOf(
+    const HloInstruction* instruction) {
+  std::unique_ptr<absl::flat_hash_set<const HloInstruction*>>& reused_operands =
+      reused_fusion_operands_[instruction];
+  if (reused_operands != nullptr) {
+    return *reused_operands;
+  }
+  reused_operands =
+      std::make_unique<absl::flat_hash_set<const HloInstruction*>>();
+
+  for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+    bool reuses = instruction->ReusesOperandElements(i);
+    if (reuses) {
+      // We cache the operand corresponding to the fusion parameter, because the
+      // parameter numbers would be invalidated after the next fusion.
+      reused_operands->insert(instruction->operand(i));
+    }
+  }
+  return *reused_operands;
+}
+
 bool InstructionFusion::ReusesOperandElements(const HloInstruction* consumer,
                                               int64_t operand_index) {
   auto operand = consumer->operand(operand_index);
-  auto it = reused_fusion_operands_.find(consumer);
-  if (it != reused_fusion_operands_.end() && it->second.contains(operand)) {
-    return true;
-  }
-  bool reuses = consumer->ReusesOperandElements(operand_index);
-  // If a parameter was reused, we can cache this information. Fusion
-  // computations only ever grow, so it becomes more likely that a parameter is
-  // reused, but a reused parameter will never become *not* reused.
-  if (reuses) {
-    // We cache the operand corresponding to the fusion parameter, because the
-    // parameter pointers would be invalidated after the next fusion.
-    reused_fusion_operands_[consumer].insert(operand);
-  }
-  return reuses;
+  return ReusedOperandsOf(consumer).contains(operand);
 }
 
 }  // namespace xla
