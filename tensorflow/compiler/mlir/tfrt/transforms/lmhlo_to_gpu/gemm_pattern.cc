@@ -72,9 +72,13 @@ Type MlirComputationType(Type element_type,
                          ConversionPatternRewriter& rewriter) {
   if (element_type.isF16()) {
     return rewriter.getF32Type();
-  } else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
+  }
+#if !TENSORFLOW_USE_ROCM
+    else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
     return complex_type.getElementType();
-  } else {
+  }
+#endif
+    else {
     return element_type;
   }
 }
@@ -151,7 +155,7 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
   auto handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, context);
 
   auto lhs_op = MatrixTransposeToBlasOperation(lhs_matrix.transpose);
-  auto rhs_op = MatrixTransposeToBlasOperation(lhs_matrix.transpose);
+  auto rhs_op = MatrixTransposeToBlasOperation(rhs_matrix.transpose);
 
   const auto input_data_type = MlirTypeToBlasDataType(input_type);
   const auto output_data_type = MlirTypeToBlasDataType(output_type);

@@ -51,6 +51,11 @@ tfrt::gpu::wrapper::BlasComputeType MlirTypeToBlasComputeType(mlir::Type type) {
   if (type.isF16()) return rocblas_datatype_f16_r;
   if (type.isF32()) return rocblas_datatype_f32_r;
   if (type.isF64()) return rocblas_datatype_f64_r;
+  if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+    auto element_type = complex_type.getElementType();
+    if (element_type.isF32()) return rocblas_datatype_f32_c;
+    if (element_type.isF64()) return rocblas_datatype_f64_c;
+  }
   if (type.isSignlessInteger(/*width=*/32)) return rocblas_datatype_i32_r;
 #else
   if (type.isF16()) return CUBLAS_COMPUTE_16F;
