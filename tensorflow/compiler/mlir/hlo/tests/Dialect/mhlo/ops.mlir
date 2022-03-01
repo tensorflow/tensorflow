@@ -2066,40 +2066,6 @@ func @custom_call_mismatch_tensor_and_layout_permutation(%arg: tensor<1x2x3xf32>
 
 // -----
 
-// CHECK: func @reduce_window
-func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
-  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
-         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>, %b1: tensor<i32>):
-              %2 = mhlo.add %a0, %b0 : tensor<f32>
-              %3 = mhlo.add %a1, %b1 : tensor<i32>
-              %4 = "mhlo.tuple"(%2, %3) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-              "mhlo.return"(%4) : (tuple<tensor<f32>, tensor<i32>>) -> ()
-            })
-         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
-           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
-           window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
-}
-
-// -----
-
-func @reduce_window_invalid(%arg0: tensor<4x2xf32>, %arg1: tensor<4x3xi32>, %init0: tensor<f32>, %init1: tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error @+1 {{requires same shape for all inputs}}
-  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
-         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>, %b1: tensor<i32>):
-              %2 = mhlo.add %a0, %b0 : tensor<f32>
-              %3 = mhlo.add %a1, %b1 : tensor<i32>
-              %4 = "mhlo.tuple"(%2, %3) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-              "mhlo.return"(%4) : (tuple<tensor<f32>, tensor<i32>>) -> ()
-            })
-         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
-           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
-           window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x3xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
-}
-
-// -----
-
 func @rng_normal_invalid(%arg0: tensor<f32>, %arg1: tensor<f32>) {
   %cst = "mhlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>
   // expected-error @+1 {{tensor<7xf32>}}
@@ -2403,7 +2369,7 @@ func @while_with_invalid_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
   %0 = "mhlo.tuple"(%arg0, %cst_2) : (tensor<3xf32>, tensor<1xf32>) -> tuple<tensor<3xf32>, tensor<1xf32>>
   %1 = "mhlo.tuple"(%cst_1, %0) : (tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>) -> tuple<tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>>
-  // expected-error @+1 {{'mhlo.while' op requires the same type for operand and result at index 1}}
+  // expected-error @+1 {{op operand #1 must be tensor of floating-point or pred (AKA boolean or 1-bit integer) or 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements values or token}}
   %2:2 = "mhlo.while"(%cst_0, %1) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>):
     %t0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tensor<2xi32>
@@ -2778,3 +2744,12 @@ func @error_batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<25xf3
         tensor<25xf32>) -> tensor<4x256xf32>
   return %0 : tensor<4x256xf32>
 }
+
+// -----
+// Test rng_get_and_update_state_op
+// CHECK-LABEL: xla.rng_get_and_update_state
+builtin.func @xla.rng_get_and_update_state() -> tensor<2xui64> {
+  %result = mhlo.xla.rng_get_and_update_state {delta = 1 : i64}
+  return %result : tensor<2xui64>
+}
+// CHECK: mhlo.xla.rng_get_and_update_state

@@ -145,8 +145,8 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
             se::dnn::ProfileResult* profile_result) -> Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
-      return (*runner)(stream, input_ptr, filter_ptr, side_input_ptr, bias_ptr,
-                       output_ptr_rz, scratch, profile_result);
+      return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
+                       side_input_ptr, bias_ptr, output_ptr_rz);
     };
 
     SE_ASSIGN_OR_RETURN(
@@ -304,8 +304,8 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
             se::dnn::ProfileResult* profile_result) -> Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
-      return (*runner)(stream, input_ptr, filter_ptr, output_ptr, scratch,
-                       profile_result);
+      return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
+                       output_ptr);
     };
     SE_ASSIGN_OR_RETURN(
         auto results,

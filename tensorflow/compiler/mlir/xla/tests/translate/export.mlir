@@ -946,7 +946,7 @@ func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f3
 // -----
 
 // CHECK:  HloModule
-func @main(%arg0: tensor<2x17x31x7xi32>) -> tensor<2x3x5x7xi32> {
+func @main(%arg0: tensor<2x17x31x7xi32>) -> tensor<2x5x8x7xi32> {
   %0 = mhlo.constant dense<-2147483648> : tensor<i32>
   %1 = "mhlo.reduce_window"(%arg0, %0) ({
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):	
@@ -958,8 +958,8 @@ func @main(%arg0: tensor<2x17x31x7xi32>) -> tensor<2x3x5x7xi32> {
     padding = dense<[[0, 0], [2, 0], [0, 2], [0, 0]]> : tensor<4x2xi64>,
     base_dilations = dense<[1, 1, 1, 1]> : tensor<4xi64>,
     window_dilations = dense<[1, 2, 2, 1]> : tensor<4xi64>
-  } : (tensor<2x17x31x7xi32>, tensor<i32>) -> tensor<2x3x5x7xi32>
-  return %1 : tensor<2x3x5x7xi32>
+  } : (tensor<2x17x31x7xi32>, tensor<i32>) -> tensor<2x5x8x7xi32>
+  return %1 : tensor<2x5x8x7xi32>
 }
 
 // CHECK:  %[[MAX_COMPUTATION:.*]] ([[ARG0:.*]]: s32[], [[ARG1:.*]]: s32[]) -> s32[]

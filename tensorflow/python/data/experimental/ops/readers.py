@@ -372,7 +372,7 @@ def make_csv_dataset_v2(
   ```
   # No label column specified
   dataset = tf.data.experimental.make_csv_dataset(filename, batch_size=2)
-  iterator = ds.as_numpy_iterator()
+  iterator = dataset.as_numpy_iterator()
   print(dict(next(iterator)))
   # prints a dictionary of batched features:
   # OrderedDict([('Feature_A', array([1, 4], dtype=int32)),
@@ -383,7 +383,7 @@ def make_csv_dataset_v2(
   # Set Feature_B as label column
   dataset = tf.data.experimental.make_csv_dataset(
       filename, batch_size=2, label_name="Feature_B")
-  iterator = ds.as_numpy_iterator()
+  iterator = dataset.as_numpy_iterator()
   print(next(iterator))
   # prints (features, labels) tuple:
   # (OrderedDict([('Feature_A', array([1, 2], dtype=int32))]),

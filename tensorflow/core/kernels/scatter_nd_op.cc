@@ -323,7 +323,7 @@ class ScatterNdUpdateOp : public OpKernel {
 
 #define REGISTER_SCATTER_ND_KERNEL_INDEX_INT32_GPU(index_type, name)  \
   REGISTER_KERNEL_BUILDER(Name(name)                                  \
-                              .Device(DEVICE_GPU)                     \
+                              .Device(DEVICE_DEFAULT)                 \
                               .TypeConstraint<int32>("T")             \
                               .TypeConstraint<index_type>("Tindices") \
                               .HostMemory("indices")                  \
@@ -344,7 +344,7 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX_INT32_GPU(index_type, name, \
                                                           op)               \
   REGISTER_KERNEL_BUILDER(Name(name)                                        \
-                              .Device(DEVICE_GPU)                           \
+                              .Device(DEVICE_DEFAULT)                       \
                               .TypeConstraint<int32>("T")                   \
                               .TypeConstraint<index_type>("Tindices")       \
                               .HostMemory("ref")                            \
@@ -356,7 +356,7 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_SCATTER_ND_NON_ALIASING_UPDATE_KERNEL_INDEX_INT32_GPU( \
     index_type, name, op)                                               \
   REGISTER_KERNEL_BUILDER(Name(name)                                    \
-                              .Device(DEVICE_GPU)                       \
+                              .Device(DEVICE_DEFAULT)                   \
                               .TypeConstraint<int32>("T")               \
                               .TypeConstraint<index_type>("Tindices")   \
                               .HostMemory("input")                      \
@@ -378,7 +378,7 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL_INDEX_INT32_GPU(index_type, \
                                                                    name, op)   \
   REGISTER_KERNEL_BUILDER(Name(name)                                           \
-                              .Device(DEVICE_GPU)                              \
+                              .Device(DEVICE_DEFAULT)                          \
                               .TypeConstraint<int32>("T")                      \
                               .TypeConstraint<index_type>("Tindices")          \
                               .HostMemory("ref")                               \
@@ -513,7 +513,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_UPDATE_INT32_GPU_INDEX_TYPE(index_type) \
   REGISTER_KERNEL_BUILDER(Name("TensorScatterUpdate")                      \
-                              .Device(DEVICE_GPU)                          \
+                              .Device(DEVICE_DEFAULT)                      \
                               .TypeConstraint<int32>("T")                  \
                               .TypeConstraint<index_type>("Tindices")      \
                               .HostMemory("tensor")                        \
@@ -533,7 +533,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_ADD_INT32_GPU_INDEX_TYPE(index_type) \
   REGISTER_KERNEL_BUILDER(Name("TensorScatterAdd")                      \
-                              .Device(DEVICE_GPU)                       \
+                              .Device(DEVICE_DEFAULT)                   \
                               .TypeConstraint<int32>("T")               \
                               .TypeConstraint<index_type>("Tindices")   \
                               .HostMemory("tensor")                     \
@@ -553,7 +553,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_SUB_INT32_GPU_INDEX_TYPE(index_type) \
   REGISTER_KERNEL_BUILDER(Name("TensorScatterSub")                      \
-                              .Device(DEVICE_GPU)                       \
+                              .Device(DEVICE_DEFAULT)                   \
                               .TypeConstraint<int32>("T")               \
                               .TypeConstraint<index_type>("Tindices")   \
                               .HostMemory("tensor")                     \
@@ -573,7 +573,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_MIN_INT32_GPU_INDEX_TYPE(index_type) \
   REGISTER_KERNEL_BUILDER(Name("TensorScatterMin")                      \
-                              .Device(DEVICE_GPU)                       \
+                              .Device(DEVICE_DEFAULT)                   \
                               .TypeConstraint<int32>("T")               \
                               .TypeConstraint<index_type>("Tindices")   \
                               .HostMemory("tensor")                     \
@@ -593,7 +593,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_MAX_INT32_GPU_INDEX_TYPE(index_type) \
   REGISTER_KERNEL_BUILDER(Name("TensorScatterMax")                      \
-                              .Device(DEVICE_GPU)                       \
+                              .Device(DEVICE_DEFAULT)                   \
                               .TypeConstraint<int32>("T")               \
                               .TypeConstraint<index_type>("Tindices")   \
                               .HostMemory("tensor")                     \

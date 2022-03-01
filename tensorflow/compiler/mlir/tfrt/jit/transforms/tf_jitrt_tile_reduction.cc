@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
@@ -52,6 +53,7 @@ using mlir::success;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::arith::ConstantIndexOp;
+using mlir::gml_st::LoopOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::InitTensorOp;
@@ -60,8 +62,6 @@ using mlir::linalg::LinalgTilingLoopType;
 using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
 using mlir::linalg::PaddingValueComputationFunction;
-using mlir::linalg::TiledLoopOp;
-using mlir::linalg::YieldOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::tensor::PadOp;
 
@@ -82,7 +82,7 @@ struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
     if (linalg_op.getNumOutputs() != 1) return failure();
     if (linalg_op.getNumLoops() != 2) return failure();
 
-    auto tiled_op = tileLinalgOp(rewriter, linalg_op, options);
+    auto tiled_op = mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
     if (failed(tiled_op)) return failure();
 
     tiled_op->loops.front()->walk([&](LinalgOp tOp) {
@@ -180,7 +180,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
         rewriter.create<FillOp>(loc, fill_op.value(), new_init).result();
 
     GenericOp tiled_reduction;
-    auto tiled_loop_op = rewriter.create<TiledLoopOp>(
+    auto tiled_loop_op = rewriter.create<LoopOp>(
         loc, makeArrayRef(zero), makeArrayRef(input_size),
         makeArrayRef(tile_size_value), inputs, makeArrayRef(new_fill),
         rewriter.getStrArrayAttr(mlir::getReductionIteratorTypeName()),
@@ -207,7 +207,8 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
           mlir::Region &region = tiled_reduction.region();
           OpBuilder::InsertionGuard g(rewriter);
           rewriter.cloneRegionBefore(linalg_op.region(), region, region.end());
-          b.create<YieldOp>(nested_loc, tiled_reduction.getResult(0));
+          b.create<mlir::gml_st::YieldOp>(nested_loc,
+                                          tiled_reduction.getResult(0));
         });
     // Create `linalg.generic` to reduce
     // tensor<VECTOR_SIZExELEM_TYPE>->tensor<ELEM_TYPE>.
@@ -285,7 +286,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
           BlockAndValueMapping bvm;
           bvm.map(combiner->getOperands(), args);
           Value result_val = b.clone(*combiner, bvm)->getResult(0);
-          b.create<YieldOp>(nested_loc, result_val);
+          b.create<mlir::linalg::YieldOp>(nested_loc, result_val);
         });
     return accumulator;
   }
@@ -333,10 +334,8 @@ struct TileReductionPass : public TileReductionBase<TileReductionPass> {
     assert(reduction_2d_tile_sizes.size() == 2 &&
            "Tiling sizes for 2D reductions should have two elements");
     patterns.add<RowOrColumnReductionTilingPattern>(
-        LinalgTilingOptions{}
-            .setTileSizes(reduction_2d_tile_sizes)
-            .setLoopType(LinalgTilingLoopType::TiledLoops),
-        filter, patterns.getContext());
+        LinalgTilingOptions{}.setTileSizes(reduction_2d_tile_sizes), filter,
+        patterns.getContext());
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Ensure we drop the marker in the end.

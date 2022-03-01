@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -82,7 +83,8 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       reduction_2d_tile_sizes));
 
-  if (options.vectorize) pm.addNestedPass<FuncOp>(CreateTileTransposePass());
+  if (options.vectorize && options.codegen_transpose)
+    pm.addNestedPass<FuncOp>(CreateTileTransposePass());
   pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.vector_size));
   if (options.peel) {
     pm.addNestedPass<FuncOp>(CreatePeelTiledLoopsPass());
@@ -212,13 +214,13 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(CreateLinalgTrivialCopyRemovalPass());
 
   if (options.vectorize)
-    pm.addNestedPass<FuncOp>(mlir::createConvertLinalgTiledLoopsToSCFPass());
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createGmlStToScfPass());
 
   pm.addPass(mlir::createBufferizationToMemRefPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  if (options.vectorize)
+  if (options.vectorize && options.codegen_transpose)
     pm.addNestedPass<FuncOp>(CreateLowerVectorTransposePass());
 
   mlir::VectorTransferToSCFOptions vec_to_scf_options;

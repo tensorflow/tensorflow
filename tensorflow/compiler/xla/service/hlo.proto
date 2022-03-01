@@ -451,6 +451,8 @@ message HloModuleProto {
 
   xla.OpSharding spmd_output_sharding = 12;
 
+  repeated xla.OpSharding spmd_parameters_shardings = 14;
+
   // The type of optimization profile in use for module-level optimizations.
   enum ProfileType {
     INVALID = 0;

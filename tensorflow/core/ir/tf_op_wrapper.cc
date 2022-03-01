@@ -19,6 +19,29 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {
+namespace detail {
+template <typename ValueIteratorT>
+Value ControlRetIterator<ValueIteratorT>::mapElement(Value value) const {
+  if (value.getType().isa<tf_type::ControlType>()) return value;
+
+  if (auto block_arg = value.dyn_cast<BlockArgument>()) {
+    Block *owner = block_arg.getOwner();
+    // The control token of an arg is the arg right after itself.
+    Value control_arg = owner->getArguments()[block_arg.getArgNumber() + 1];
+    assert(control_arg.getType().isa<tf_type::ControlType>());
+    return control_arg;
+  }
+
+  assert(value.getDefiningOp() != nullptr);
+  return tfg::TFOp(value.getDefiningOp()).controlRet();
+}
+
+// Explicitly instantiate `ControlRetIterator<ValueIteratorT>::mapElement`
+// above.
+template class ControlRetIterator<OperandRange::iterator>;
+template class ControlRetIterator<ValueRange::iterator>;
+}  // namespace detail
+
 namespace tfg {
 
 TFOp::TFOp(Operation *op) : op_(op) {

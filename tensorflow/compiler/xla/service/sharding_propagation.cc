@@ -1086,7 +1086,7 @@ bool InferUnspecifiedDimsFromOperand(HloInstruction* annotate_op,
             operand_sharding, unspecified_dims);
     HloSharding sharding = annotate_op->sharding();
     if (!hlo_sharding_util::MergeShardingIfCompatible(
-            partial_replicated, sharding.NumTiles(), &sharding)) {
+            partial_replicated, sharding.NumTiles() + 1, &sharding)) {
       return false;
     }
     annotate_op->set_sharding(sharding);
@@ -1124,8 +1124,7 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
   if (!annotate_op->IsCustomCall("Sharding")) {
     CHECK_EQ(annotate_op->opcode(), HloOpcode::kCopy);
   }
-  if (!IsSpatiallyPartitioned(annotate_op->operand(0)) ||
-      !user->sharding().IsTiled()) {
+  if (!user->has_sharding() || !user->sharding().IsTiled()) {
     return false;
   }
   absl::optional<HloSharding> user_sharding =
@@ -1141,7 +1140,7 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
             *user_sharding, unspecified_dims);
     HloSharding sharding = annotate_op->sharding();
     if (!hlo_sharding_util::MergeShardingIfCompatible(
-            partial_replicated, sharding.NumTiles(), &sharding)) {
+            partial_replicated, sharding.NumTiles() + 1, &sharding)) {
       return false;
     }
     annotate_op->set_sharding(sharding);
@@ -1197,7 +1196,7 @@ bool InferUnspecifiedDimsFromUsers(HloInstruction* annotate_op,
 
   HloInstruction* op_for_users =
       man_conversion_op == nullptr ? annotate_op : man_conversion_op;
-  bool changed = true;
+  bool changed = false;
   for (HloInstruction* user : op_for_users->users()) {
     changed |= InferUnspecifiedDimsFromOneUser(
         annotate_op, user, aggressiveness, is_spmd, unspecified_dims,
@@ -2527,7 +2526,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
         if (!instruction->has_sharding()) {
           continue;
         }
-        if (IsCSEPreventionTarget(instruction)) {
+        if (IsCSEPreventionTarget(instruction) && instruction->has_sharding()) {
           if (!(*original_sharding).contains(instruction)) {
             // Mark the propagated sharding as for CSE prevention.
             instruction->set_sharding(

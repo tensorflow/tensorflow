@@ -221,6 +221,10 @@ Status LayoutAssignment::SetOperandLayout(const Shape& shape_with_layout,
       operand_no > 0 && !mandatory) {
     dfs = false;
     priority--;
+  } else if (instruction->opcode() == HloOpcode::kReshape && !mandatory &&
+             instruction->operand(0)->opcode() == HloOpcode::kDynamicSlice) {
+    dfs = false;
+    priority--;
   }
   VLOG(3) << "SetOperandLayout : " << instruction->name() << ", operand "
           << operand_no << " : "
@@ -560,38 +564,6 @@ Status LayoutAssignment::AddMandatoryConstraints(
           TF_RETURN_IF_ERROR(SetOperandLayout(
               custom_call->operand_shapes_with_layout()[i], custom_call, i));
         }
-      }
-    } else if (instruction->opcode() == HloOpcode::kSend ||
-               instruction->opcode() == HloOpcode::kRecv) {
-      CHECK(get_channel_constraints(instruction))
-          << "Multi-module layout assignment requires ChannelLayoutConstraints";
-      int64_t channel_id = *instruction->channel_id();
-      if (!get_channel_constraints(instruction)
-               ->IsChannelConstrained(channel_id)) {
-        continue;
-      }
-      if (instruction->opcode() == HloOpcode::kSend) {
-        // TODO(b/68493863): Change to use SetOperandLayout().
-        const Shape send_buffer_shape = instruction->operand(0)->shape();
-        TF_RET_CHECK(send_buffer_shape.IsArray());
-        Shape new_buffer_shape =
-            get_channel_constraints(instruction)
-                ->LayoutShapeForChannel(send_buffer_shape,
-                                        *instruction->channel_id());
-        TF_RETURN_IF_ERROR(
-            SetInstructionLayout(new_buffer_shape, instruction->operand(0)));
-      } else {
-        const Shape recv_buffer_shape =
-            ShapeUtil::GetTupleElementShape(instruction->shape(), 0);
-        TF_RET_CHECK(recv_buffer_shape.IsArray());
-        TF_ASSIGN_OR_RETURN(
-            const LogicalBuffer* buffer,
-            points_to_analysis_->GetBufferDefinedAt(instruction, {0}));
-        Shape new_shape =
-            get_channel_constraints(instruction)
-                ->LayoutShapeForChannel(recv_buffer_shape,
-                                        *instruction->channel_id());
-        TF_RETURN_IF_ERROR(SetBufferLayout(new_shape.layout(), *buffer));
       }
     } else if (IsLayoutConstrainedCollective(instruction)) {
       TF_RETURN_IF_ERROR(
@@ -2032,9 +2004,6 @@ Status LayoutAssignment::RunOnComputation(
         });
   }
 
-  // Must be run before clearing layouts.
-  TF_RETURN_IF_ERROR(BuildHostChannelConstraints(computation));
-
   TF_RETURN_IF_ERROR(ClearComputationLayouts(computation));
   if (computation_layout != nullptr) {
     auto it = computation_layouts_.find(computation);
@@ -2066,6 +2035,10 @@ Status LayoutAssignment::RunOnComputation(
   // Prior to applying default layouts, we take note of all HLO instructions
   // which lack a layout constraint.
   for (LogicalBuffer::Id buffer_id : unconstrained_buffer_ids_) {
+    VLOG(5)
+        << "unconstrained instruction:"
+        << points_to_analysis_->GetBuffer(buffer_id).instruction()->ToString()
+        << "\n";
     unconstrained_layout_instructions_.insert(
         points_to_analysis_->GetBuffer(buffer_id).instruction());
   }

@@ -1362,6 +1362,15 @@ LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
+LogicalResult ExportXlaOp(XlaRngGetAndUpdateStateOp op, OpLoweringContext ctx) {
+  // This op does not exist in the XLA builder interface.
+  (*ctx.values)[op.getResult()] =
+      xla::internal::XlaBuilderFriend::BuildRngGetAndUpdateState(
+          ctx.builder, static_cast<int64_t>(op.delta()),
+          xla::TypeToShape(op.getType()));
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(BatchNormGradOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   auto results = op.getResults();

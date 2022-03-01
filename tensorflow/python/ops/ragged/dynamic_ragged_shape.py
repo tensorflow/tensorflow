@@ -20,12 +20,13 @@ TODO(martinz): replace ragged_tensor_shape with this.
 
 
 import abc
-from typing import Iterable, Sequence, Tuple, Union
+from typing import Any, Iterable, Sequence, Optional, Tuple, Union
 
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -48,7 +49,7 @@ from tensorflow.python.types import core
 #
 # TODO(martinz): unify the impl of the determination of index type across
 #     RowPartition and DynamicRaggedShape.
-class DynamicRaggedShape:
+class DynamicRaggedShape(extension_type.ExtensionType):
   """The shape of a ragged or dense tensor.
 
   Ragged shapes are encoded using two fields:
@@ -78,6 +79,9 @@ class DynamicRaggedShape:
   [RP([2, 1])]                | [3, 2]       | `[[[1, 2], [3, 4]], [[5, 6]]]`
   [RP([2, 1]), RP([2, 1, 2])] | [5]          | `[[[1, 2], [3]], [[4, 5]]]`
   """
+  _row_partitions: Tuple[RowPartition, ...]
+  _inner_shape: ops.Tensor
+  _static_inner_shape: tensor_shape.TensorShape
 
   def __init__(self, row_partitions, inner_shape, dtype=None, validate=False):
     """Core constructor for a DynamicRaggedShape.
@@ -273,7 +277,8 @@ class DynamicRaggedShape:
       (row_partitions, nvals) = _to_row_partitions_and_nvals_from_lengths(
           lengths[:num_row_partitions + 1])
       inner_shape = [nvals] + lengths[num_row_partitions + 1:]
-      return DynamicRaggedShape(row_partitions, inner_shape, dtype=dtype)
+      return DynamicRaggedShape(
+          row_partitions, inner_shape, dtype=dtype)
     else:
       return DynamicRaggedShape([], lengths, dtype=dtype)
 
@@ -291,7 +296,8 @@ class DynamicRaggedShape:
     if not row_partitions:
       raise ValueError("row_partitions cannot be empty")
     inner_shape = [row_partitions[-1].nvals()]
-    return DynamicRaggedShape(row_partitions, inner_shape, dtype=dtype)
+    return DynamicRaggedShape(
+        row_partitions, inner_shape, dtype=dtype)
 
   @classmethod
   def _from_inner_shape(cls, inner_shape, dtype=None):
@@ -414,7 +420,8 @@ class DynamicRaggedShape:
           return DynamicRaggedShape._from_inner_shape(self.inner_shape[:stop])
         else:
           new_inner_shape = self.inner_shape[:stop - self.num_row_partitions]
-        return DynamicRaggedShape(self.row_partitions, new_inner_shape)
+        return DynamicRaggedShape(
+            self.row_partitions, new_inner_shape)
     else:
       if stop < self.rank:
         partial = self._slice_shape(0, stop)
@@ -1039,7 +1046,9 @@ def _find_dtype(value, preferred):
   raise ValueError("Illegal dtype: " + str(result))
 
 
-def _find_dtype_iterable(iterable, dtype):
+def _find_dtype_iterable(
+    iterable: Iterable[Any],
+    dtype: Optional[dtypes.DType]) -> Optional[dtypes.DType]:
   """Find the preferred dtype of a list of objects.
 
   This will go over the iterable, and use the first object with a preferred

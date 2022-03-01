@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_XLA_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_XLA_BUILDER_H_
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
@@ -58,6 +59,9 @@ struct XlaBuilderFriend {
 
   static XlaOp BuildBitcast(XlaBuilder* builder, XlaOp operand,
                             const Shape& shape);
+
+  static XlaOp BuildRngGetAndUpdateState(XlaBuilder* builder, int64_t delta,
+                                         const Shape& shape);
 
   static HloInstructionProto* GetInstruction(XlaOp op);
   static HloInstructionProto* GetInstructionByHandle(XlaBuilder* builder,

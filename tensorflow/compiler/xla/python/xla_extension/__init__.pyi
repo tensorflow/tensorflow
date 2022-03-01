@@ -158,6 +158,8 @@ class HloPrintOptions:
   leading_and_trailing_instructions_number: int
 
 class HloModule:
+  spmd_output_sharding: Optional[OpSharding]
+  spmd_parameters_shardings: Optional[List[OpSharding]]
   def to_string(self, options: HloPrintOptions = ...) -> str: ...
   def as_serialized_hlo_module_proto(self)-> bytes: ...
   @staticmethod

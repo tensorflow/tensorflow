@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <iterator>
 
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -59,25 +60,43 @@ bool isExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
 // tensor.expand_shape.
 struct ReshapeToExpandShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
-  ReshapeToExpandShape(MLIRContext *ctx) : OpRewritePattern(ctx) {}
+  using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
     ShapeComponentAnalysis shapeComponentAnalysis;
     if (!isExpandShape(shapeComponentAnalysis, op)) return failure();
     auto output_shape = shapeComponentAnalysis.GetValueInfo(op.output_shape());
     SmallVector<ReassociationExprs> reassociations(output_shape->size());
+    SmallVector<int64_t> output_dimensions;
     auto *it = reassociations.begin();
     int64_t runningIndex = 0;
     for (const auto &dim : *output_shape) {
       it->push_back(rewriter.getAffineDimExpr(runningIndex++));
-      if (!dim.isConstant(1)) ++it;
+      if (dim.isConstant(1)) {
+        output_dimensions.push_back(1);
+      } else {
+        ++it;
+        output_dimensions.push_back(ShapedType::kDynamicSize);
+      }
     }
     // If the last dimension was a 1 expand it from the penultimate dim.
-    if (output_shape->back().isConstant(1)) std::prev(it)->append(*it);
+    if (it != reassociations.begin() && output_shape->back().isConstant(1))
+      std::prev(it)->append(*it);
     reassociations.erase(it, reassociations.end());
 
-    rewriter.replaceOpWithNewOp<tensor::ExpandShapeOp>(
-        op, op.getResult().getType(), op.operand(), reassociations);
+    // mhlo.dynamic_reshape is more lenient about the type. Add the static
+    // knowledge we have about 1 dims.
+    auto old_result_type = op.getResult().getType().cast<ShapedType>();
+    auto new_result_type = RankedTensorType::get(
+        output_dimensions, old_result_type.getElementType());
+    Location loc = op.getLoc();
+    Value expanded_shape = rewriter.create<tensor::ExpandShapeOp>(
+        loc, new_result_type, op.operand(), reassociations);
+    if (old_result_type != new_result_type) {
+      expanded_shape =
+          rewriter.create<tensor::CastOp>(loc, old_result_type, expanded_shape);
+    }
+    rewriter.replaceOp(op, expanded_shape);
     return success();
   }
 };

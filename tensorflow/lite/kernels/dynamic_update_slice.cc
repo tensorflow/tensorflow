@@ -155,6 +155,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       DynamicUpdateSlice<float>(operand, update, indice, output);
       break;
+    case kTfLiteBool:
+      DynamicUpdateSlice<bool>(operand, update, indice, output);
+      break;
     case kTfLiteInt8:
       DynamicUpdateSlice<int8_t>(operand, update, indice, output);
       break;
@@ -167,7 +170,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     default:
       TF_LITE_KERNEL_LOG(context,
                          "DynamicUpdateSlice only currently supports "
-                         "8-bit/32-bit/64-bit integer or "
+                         "1-bit/8-bit/32-bit/64-bit integer or "
                          "float type, got %d.",
                          operand->type);
       return kTfLiteError;

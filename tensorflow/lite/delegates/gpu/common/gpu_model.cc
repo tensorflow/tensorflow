@@ -162,7 +162,7 @@ absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
   if (!has_batch && shape.b != 1) {
     return absl::InvalidArgumentError("Wrong layout, batch mismatch.");
   }
-  if (!CanCreateTensorWithShape(gpu_info, shape, tensor_desc).ok()) {
+  if (!tensor_desc.CanCreateTensorWithShape(gpu_info, shape).ok()) {
     return absl::UnavailableError(
         "Current device can not allocate tensor with this shape for "
         "predefined/external descriptor.");
@@ -241,10 +241,9 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
           storage_type == TensorStorageType::TEXTURE_ARRAY;
       if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
         if (shape.c < 4 && can_use_single_texture &&
-            CanCreateTensorWithShape(
-                gpu_info, shape,
-                TensorDescriptor{data_type,
-                                 TensorStorageType::SINGLE_TEXTURE_2D, layout})
+            TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
+                             layout}
+                .CanCreateTensorWithShape(gpu_info, shape)
                 .ok()) {
           storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
         }

@@ -695,6 +695,7 @@ const json* CudnnExecutionPlanEngineFilterRuntime() {
   }();
   return json_handle;
 }
+
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 // A helper function to decide whether to use
@@ -4066,10 +4067,11 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
     return MakeAlgorithmDesc();
   }
 
-  port::Status operator()(
-      Stream* stream, DeviceMemoryBase input_data, DeviceMemoryBase filter_data,
-      DeviceMemoryBase output_data, DeviceMemoryBase scratch_memory,
-      dnn::ProfileResult* output_profile_result) const override {
+  port::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
+                          DeviceMemoryBase scratch_memory,
+                          DeviceMemoryBase input_data,
+                          DeviceMemoryBase filter_data,
+                          DeviceMemoryBase output_data) const override {
     auto algo = MakeAlgorithmDesc();
 
     // Check that the current stream supports tensor ops if they're requested.
@@ -4095,7 +4097,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
                      ? static_cast<void*>(&dbeta)
                      : static_cast<void*>(&fbeta);
 
-    const bool is_profiling = output_profile_result != nullptr;
+    const bool is_profiling = profile_result != nullptr;
 
     std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
     if (is_profiling) {
@@ -4190,10 +4192,9 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
       if (!timer->Stop(AsGpuStream(stream))) {
         return port::Status(port::error::INTERNAL, "Failed to stop timer");
       }
-      output_profile_result->set_algorithm(algo);
-      output_profile_result->set_elapsed_time_in_ms(
-          timer->GetElapsedMilliseconds());
-      output_profile_result->set_scratch_size(scratch_memory.size());
+      profile_result->set_algorithm(algo);
+      profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
+      profile_result->set_scratch_size(scratch_memory.size());
     }
 
     return port::Status::OK();
@@ -4251,7 +4252,7 @@ port::Status CudnnSupport::DoConvolve(
     DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
+    dnn::ProfileResult* profile_result) {
   cudnnDataType_t cudnn_type =
       ToCudnnDataType(element_type, input_descriptor.layout());
   CudnnTensorDescriptor input_nd(input_descriptor, cudnn_type);
@@ -4275,8 +4276,8 @@ port::Status CudnnSupport::DoConvolve(
           parent_, stream, cudnn_.get(), algorithm_desc, element_type,
           output_type, kind, std::move(input_nd), std::move(output_nd),
           std::move(filter_nd), std::move(conv)));
-  return runner(stream, input_data, filter_data, output_data, scratch_memory,
-                output_profile_result);
+  return runner(stream, profile_result, scratch_memory, input_data, filter_data,
+                output_data);
 }
 
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
@@ -4418,13 +4419,15 @@ port::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
   return dnn::AlgorithmDesc(engine_id, tuning_knobs_vec, workspace_size);
 }
 
+template <typename Sig>
+class CudnnExecutionPlanRunner;
 // An OpRunner implemented by an ExecutionPlan.
 //
-// This is an ad-hoc base class holding the implementation of ToString and
-// GetWorkspaceSize for use by CudnnConvRunner and CudnnFusedConvRunner (and
-// future cudnn frontend op runners as the API encompasses more ops).
-template <typename Sig>
-class CudnnExecutionPlanRunner : public dnn::OpRunner<Sig> {
+// This is the class holding the implementation of ToString, GetWorkspaceSize,
+// and operator() for use by the cudnn frontend op runners.
+template <typename... Args>
+class CudnnExecutionPlanRunner<void(Args...)>
+    : public dnn::OpRunner<void(Args...)> {
  public:
   std::string ToString() const override { return plan_.getTag(); }
 
@@ -4434,39 +4437,13 @@ class CudnnExecutionPlanRunner : public dnn::OpRunner<Sig> {
     return ExecutionPlanToAlgorithmDesc(plan_, workspace_size_);
   }
 
- protected:
-  CudnnExecutionPlanRunner(GpuExecutor* parent, CudnnAccess* cudnn,
-                           cudnn_frontend::ExecutionPlan plan,
-                           size_t workspace_size)
-      : parent_(parent),
-        cudnn_(cudnn),
-        plan_(std::move(plan)),
-        workspace_size_(workspace_size) {}
-  GpuExecutor* parent_;
-  CudnnAccess* cudnn_;
-  cudnn_frontend::ExecutionPlan plan_;
-  size_t workspace_size_;
-};
-
-class CudnnConvRunner : public CudnnExecutionPlanRunner<dnn::ConvSignature> {
- public:
-  // Queries the workspace size and constructs a 'CudnnConvRunner'.
-  static port::StatusOr<CudnnConvRunner> Create(
-      GpuExecutor* parent, CudnnAccess* cudnn,
-      cudnn_frontend::ExecutionPlan plan) {
-    auto workspace_size = static_cast<uint64_t>(plan.getWorkspaceSize());
-    RETURN_MSG_IF_CUDNN_ERROR(plan);
-    return {{parent, cudnn, std::move(plan), workspace_size}};
-  }
-
-  port::Status operator()(
-      Stream* stream, DeviceMemoryBase input_data, DeviceMemoryBase filter_data,
-      DeviceMemoryBase output_data, DeviceMemoryBase scratch_memory,
-      dnn::ProfileResult* output_profile_result) const override {
+  port::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
+                          DeviceMemoryBase scratch_memory,
+                          Args... inputs) const override {
     if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
       return port::InternalError(
-          "CudnnConvRunner cached across multiple StreamExecutors.");
+          "CudnnExecutionPlanRunner cached across multiple StreamExecutors.");
     }
 
     auto cudnn = cudnn_->GetHandle(parent_, stream);
@@ -4474,21 +4451,23 @@ class CudnnConvRunner : public CudnnExecutionPlanRunner<dnn::ConvSignature> {
     size_t workspace_size = plan_.getWorkspaceSize();
     RETURN_MSG_IF_CUDNN_ERROR(plan_);
 
-    void* data_ptrs[] = {input_data.opaque(), output_data.opaque(),
-                         filter_data.opaque()};
-    int64_t uids[] = {'x', 'y', 'w'};
-    auto variantPack = cudnn_frontend::VariantPackBuilder()
-                           .setWorkspacePointer(scratch_memory.opaque())
-                           .setDataPointers(3, data_ptrs)
-                           .setUids(3, uids)
-                           .build();
+    std::array<void*, sizeof...(Args)> data_ptrs = {inputs.opaque()...};
+
+    // TODO(kaixih@nvidia): Remove the const_cast after cudnn frontend can take
+    // in const int64 pointer.
+    auto variantPack =
+        cudnn_frontend::VariantPackBuilder()
+            .setWorkspacePointer(scratch_memory.opaque())
+            .setDataPointers(data_ptrs.size(), data_ptrs.data())
+            .setUids(data_uids_.size(), const_cast<int64_t*>(data_uids_.data()))
+            .build();
     RETURN_MSG_IF_CUDNN_ERROR(variantPack);
 
-    VLOG(4) << "\nDo convolution with plan tag: " << plan_.getTag()
+    VLOG(4) << "\nDo cudnn execution plan with plan tag: " << plan_.getTag()
             << "\nWorkspace size in bytes: " << workspace_size
             << "\nVariantPack: " << variantPack.describe();
 
-    const bool is_profiling = output_profile_result != nullptr;
+    const bool is_profiling = profile_result != nullptr;
 
     std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
     if (is_profiling) {
@@ -4510,18 +4489,42 @@ class CudnnConvRunner : public CudnnExecutionPlanRunner<dnn::ConvSignature> {
         return port::Status(port::error::INTERNAL, "Failed to stop timer");
       }
       SE_ASSIGN_OR_RETURN(auto desc, ToAlgorithmDesc());
-      output_profile_result->set_algorithm(desc);
-      output_profile_result->set_elapsed_time_in_ms(
-          timer->GetElapsedMilliseconds());
-      output_profile_result->set_scratch_size(scratch_memory.size());
+      profile_result->set_algorithm(desc);
+      profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
+      profile_result->set_scratch_size(scratch_memory.size());
+
+      VLOG(4) << "cudnn op with plan " << plan_.getTag()
+              << ", workspace_size=" << workspace_size << " -> "
+              << CudnnStatusToString(status) << " in "
+              << timer->GetElapsedMilliseconds() << "ms";
     }
 
     return port::Status::OK();
   }
 
+  static port::StatusOr<CudnnExecutionPlanRunner> Create(
+      GpuExecutor* parent, CudnnAccess* cudnn,
+      cudnn_frontend::ExecutionPlan plan, absl::Span<const int64_t> uids) {
+    auto workspace_size = static_cast<uint64_t>(plan.getWorkspaceSize());
+    RETURN_MSG_IF_CUDNN_ERROR(plan);
+    return {{parent, cudnn, std::move(plan), workspace_size, uids}};
+  }
+
  private:
-  // Private to prevent passing in the wrong workspace_size.
-  using CudnnExecutionPlanRunner::CudnnExecutionPlanRunner;
+  CudnnExecutionPlanRunner(GpuExecutor* parent, CudnnAccess* cudnn,
+                           cudnn_frontend::ExecutionPlan plan,
+                           size_t workspace_size,
+                           absl::Span<const int64_t> uids)
+      : parent_(parent),
+        cudnn_(cudnn),
+        plan_(std::move(plan)),
+        workspace_size_(workspace_size),
+        data_uids_(uids.begin(), uids.end()) {}
+  GpuExecutor* parent_;
+  CudnnAccess* cudnn_;
+  cudnn_frontend::ExecutionPlan plan_;
+  size_t workspace_size_;
+  absl::InlinedVector<int64_t, sizeof...(Args)> data_uids_;
 };
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
@@ -4721,8 +4724,8 @@ port::Status CudnnSupport::GetConvolveRunners(
       continue;
     }
 
-    auto runner_or =
-        CudnnConvRunner::Create(parent_, cudnn_.get(), std::move(plan));
+    auto runner_or = CudnnExecutionPlanRunner<dnn::ConvSignature>::Create(
+        parent_, cudnn_.get(), std::move(plan), {'x', 'w', 'y'});
     if (!runner_or.ok()) {
       // Note this can happen if cuDNN Frontend gives us partially-initialized
       // ExecutionPlans because its error handling is broken in non-exception
@@ -4735,7 +4738,8 @@ port::Status CudnnSupport::GetConvolveRunners(
     }
 
     out_exec_plans->push_back(
-        std::make_unique<CudnnConvRunner>(runner_or.ConsumeValueOrDie()));
+        std::make_unique<CudnnExecutionPlanRunner<dnn::ConvSignature>>(
+            runner_or.ConsumeValueOrDie()));
 
     // We will use the first working plan when determinism is required.
     if (RequireCudnnDeterminism()) {
@@ -4800,105 +4804,17 @@ CudnnSupport::ConvolveRunnerFromDesc(
   SE_ASSIGN_OR_RETURN(auto execution_plan,
                       RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
 
-  SE_ASSIGN_OR_RETURN(auto runner,
-                      CudnnConvRunner::Create(parent_, cudnn_.get(),
-                                              std::move(execution_plan)));
-  return {std::make_unique<CudnnConvRunner>(std::move(runner))};
+  SE_ASSIGN_OR_RETURN(
+      auto runner,
+      CudnnExecutionPlanRunner<dnn::ConvSignature>::Create(
+          parent_, cudnn_.get(), std::move(execution_plan), {'x', 'w', 'y'}));
+  return {std::make_unique<CudnnExecutionPlanRunner<dnn::ConvSignature>>(
+      std::move(runner))};
 #else
   return port::UnimplementedError(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");
 #endif
 }
-
-#if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
-class CudnnFusedConvRunner
-    : public CudnnExecutionPlanRunner<dnn::FusedConvSignature> {
- public:
-  // Queries the workspace size and constructs a 'CudnnFusedConvRunner'.
-  static port::StatusOr<CudnnFusedConvRunner> Create(
-      GpuExecutor* parent, CudnnAccess* cudnn,
-      cudnn_frontend::ExecutionPlan plan) {
-    auto workspace_size = static_cast<uint64_t>(plan.getWorkspaceSize());
-    RETURN_MSG_IF_CUDNN_ERROR(plan);
-    return {{parent, cudnn, std::move(plan), workspace_size}};
-  }
-
-  port::Status operator()(Stream* stream, DeviceMemoryBase input_data,
-                          DeviceMemoryBase filter_data,
-                          DeviceMemoryBase side_input_data,
-                          DeviceMemoryBase bias_data,
-                          DeviceMemoryBase output_data,
-                          DeviceMemoryBase scratch_memory,
-                          dnn::ProfileResult* profile_result) const override {
-    if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
-        stream->parent()->implementation()) {
-      return port::InternalError(
-          "CudnnFusedConvRunner cached across multiple StreamExecutors.");
-    }
-
-    auto cudnn = cudnn_->GetHandle(parent_, stream);
-
-    size_t workspace_size = plan_.getWorkspaceSize();
-    RETURN_MSG_IF_CUDNN_ERROR(plan_);
-
-    void* data_ptrs[] = {
-        input_data.opaque(),      output_data.opaque(), filter_data.opaque(),
-        side_input_data.opaque(), bias_data.opaque(),
-    };
-    int64_t uids[] = {'x', 'y', 'w', 'z', 'b'};
-    auto variantPack = cudnn_frontend::VariantPackBuilder()
-                           .setWorkspacePointer(scratch_memory.opaque())
-                           .setDataPointers(5, data_ptrs)
-                           .setUids(5, uids)
-                           .build();
-    RETURN_MSG_IF_CUDNN_ERROR(variantPack);
-
-    VLOG(4) << "\nDo fused convolution with plan tag: " << plan_.getTag()
-            << "\nWorkspace size in bytes: " << workspace_size
-            << "\nVariantPack: " << variantPack.describe();
-
-    std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
-    if (profile_result) {
-      timer.reset(new GpuTimer(parent_));  // NOLINT
-      // The start and stop of the timer should be as close to the Cudnn call as
-      // possible. It is still possible for other threads to issue workload on
-      // to this stream. So it could take multiple profiling measurements.
-      if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return port::Status(port::error::INTERNAL, "Failed to start timer");
-      }
-    }
-
-    cudnnStatus_t status = cudnnBackendExecute(
-        cudnn.handle(), plan_.get_raw_desc(), variantPack.get_raw_desc());
-    if (status != CUDNN_STATUS_SUCCESS || !profile_result) {
-      VLOG(4) << "conv with plan " << plan_.getTag()
-              << ", workspace_size=" << workspace_size << " -> "
-              << CudnnStatusToString(status);
-    }
-    RETURN_IF_CUDNN_ERROR(status);
-
-    if (profile_result) {
-      if (!timer->Stop(AsGpuStream(stream))) {
-        return port::Status(port::error::INTERNAL, "Failed to stop timer");
-      }
-      SE_ASSIGN_OR_RETURN(auto desc, ToAlgorithmDesc());
-      profile_result->set_algorithm(desc);
-      profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
-      profile_result->set_scratch_size(scratch_memory.size());
-      VLOG(4) << "conv with plan " << plan_.getTag()
-              << ", workspace_size=" << workspace_size << " -> "
-              << CudnnStatusToString(status) << " in "
-              << timer->GetElapsedMilliseconds() << "ms";
-    }
-
-    return port::Status::OK();
-  }
-
- private:
-  // Private to prevent passing in the wrong workspace_size.
-  using CudnnExecutionPlanRunner::CudnnExecutionPlanRunner;
-};
-#endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 
 class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
  public:
@@ -4942,13 +4858,13 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
     return MakeAlgorithmDesc();
   }
 
-  port::Status operator()(Stream* stream, DeviceMemoryBase input_data,
+  port::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
+                          DeviceMemoryBase scratch_memory,
+                          DeviceMemoryBase input_data,
                           DeviceMemoryBase filter_data,
                           DeviceMemoryBase side_input_data,
                           DeviceMemoryBase bias_data,
-                          DeviceMemoryBase output_data,
-                          DeviceMemoryBase scratch_memory,
-                          dnn::ProfileResult* profile_result) const override {
+                          DeviceMemoryBase output_data) const override {
     if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
       return port::InternalError(
@@ -5147,9 +5063,11 @@ CudnnSupport::FusedConvolveRunnerFromDesc(
                       RebuildExecutionPlan(cudnn, algorithm_desc, *op_graph));
 
   SE_ASSIGN_OR_RETURN(auto runner,
-                      CudnnFusedConvRunner::Create(parent_, cudnn_.get(),
-                                                   std::move(execution_plan)));
-  return {std::make_unique<CudnnFusedConvRunner>(std::move(runner))};
+                      CudnnExecutionPlanRunner<dnn::FusedConvSignature>::Create(
+                          parent_, cudnn_.get(), std::move(execution_plan),
+                          {'x', 'w', 'z', 'b', 'y'}));
+  return {std::make_unique<CudnnExecutionPlanRunner<dnn::FusedConvSignature>>(
+      std::move(runner))};
 #else
   return port::UnimplementedError(
       "Cudnn execution plans are only supported with Cudnn >= 8.1.");
@@ -5348,8 +5266,8 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
       continue;
     }
 
-    auto runner_or =
-        CudnnFusedConvRunner::Create(parent_, cudnn_.get(), std::move(plan));
+    auto runner_or = CudnnExecutionPlanRunner<dnn::FusedConvSignature>::Create(
+        parent_, cudnn_.get(), std::move(plan), {'x', 'w', 'z', 'b', 'y'});
     if (!runner_or.ok()) {
       // Note this can happen if cuDNN Frontend gives us partially-initialized
       // ExecutionPlans because its error handling is broken in non-exception
@@ -5362,7 +5280,8 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
     }
 
     out_exec_plans->push_back(
-        std::make_unique<CudnnFusedConvRunner>(runner_or.ConsumeValueOrDie()));
+        std::make_unique<CudnnExecutionPlanRunner<dnn::FusedConvSignature>>(
+            runner_or.ConsumeValueOrDie()));
 
     // We will use the first working plan when determinism is required.
     if (RequireCudnnDeterminism()) {
@@ -5955,8 +5874,8 @@ port::Status CudnnSupport::DoFusedConvolve(
           std::move(output_nd), std::move(filter), std::move(bias_nd),
           std::move(conv), std::move(activation_desc)));
 
-  return runner(stream, conv_input_data, filter_data, side_input_data, biases,
-                output_data, scratch, output_profile_result);
+  return runner(stream, output_profile_result, scratch, conv_input_data,
+                filter_data, side_input_data, biases, output_data);
 }
 
 port::Status CudnnSupport::DoPrepareForCtcLoss(

@@ -3181,12 +3181,8 @@ func @sign(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
 
 // CHECK-LABEL: func @sign_dynamic
 func @sign_dynamic(%arg0: tensor<?x2x3x?xf32>) -> tensor<?x2x3x?xf32> {
-  // CHECK: "mhlo.sign"(%arg0) : (tensor<?x2x3x?xf32>) -> tensor<?x2x3x?xf32>
-  // CHECK: "mhlo.compare"({{.*}}) {comparison_direction = "NE"} : (tensor<?x2x3x?xf32>, tensor<?x2x3x?xf32>) -> tensor<?x2x3x?xi1>
-  // CHECK: shape.shape_of %arg0 : tensor<?x2x3x?xf32> -> tensor<4xindex>
-  // CHECK: "mhlo.dynamic_broadcast_in_dim"({{.*}}) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<4xindex>) -> tensor<?x2x3x?xf32>
-  // CHECK: "mhlo.select"({{.*}}) : (tensor<?x2x3x?xi1>, tensor<?x2x3x?xf32>, tensor<?x2x3x?xf32>) -> tensor<?x2x3x?xf32>
-  // CHECK: return {{.*}} : tensor<?x2x3x?xf32>
+  // CHECK: [[SIGN:%.*]] = "mhlo.sign"(%arg0) : (tensor<?x2x3x?xf32>) -> tensor<?x2x3x?xf32>
+  // CHECK: return [[SIGN]] : tensor<?x2x3x?xf32>
   %0 = "tf.Sign"(%arg0) : (tensor<?x2x3x?xf32>) -> (tensor<?x2x3x?xf32>)
   return %0 : tensor<?x2x3x?xf32>
 }
@@ -6341,7 +6337,7 @@ func @xlaeinsum(%arg0: tensor<2x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<2x4xf3
 //===----------------------------------------------------------------------===//
 // -----
 // CHECK-LABEL: @test_xla_reduce_window
-func @test_xla_reduce_window(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<6xf32> {
+func @test_xla_reduce_window(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<10xf32> {
   %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
   %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
@@ -6351,10 +6347,10 @@ func @test_xla_reduce_window(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor
   // CHECK-NEXT: ^{{.*}}(%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
   // CHECK-NEXT:   %[[SUM:.*]] = call @sum_reducer3(%[[ARG0]], %[[ARG1]]){{.*}}
   // CHECK-NEXT:   "mhlo.return"(%[[SUM]]) : (tensor<*xf32>) -> ()
-  // CHECK-NEXT: }) {base_dilations = dense<3> : tensor<1xi64>, padding = dense<0> : tensor<1x2xi64>, window_dilations = dense<4> : tensor<1xi64>, window_dimensions = dense<1> : tensor<1xi64>, window_strides = dense<2> : tensor<1xi64>} : (tensor<7xf32>, tensor<f32>) -> tensor<6xf32>
+  // CHECK-NEXT: }) {base_dilations = dense<3> : tensor<1xi64>, padding = dense<0> : tensor<1x2xi64>, window_dilations = dense<4> : tensor<1xi64>, window_dimensions = dense<1> : tensor<1xi64>, window_strides = dense<2> : tensor<1xi64>} : (tensor<7xf32>, tensor<f32>) -> tensor<10xf32>
   // CHECK-NEXT: return %[[REDUCE]]
-  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @sum_reducer3} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<6xf32>
-  return %0 : tensor<6xf32>
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @sum_reducer3} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
 }
 
 func private @sum_reducer3(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
