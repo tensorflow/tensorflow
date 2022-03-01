@@ -12,18 +12,15 @@ package(
 )
 
 cc_library(
-    name = "quantize_model_cc",
+    name = "quantize_model_lib",
     srcs = [
         "quantize_model.cc",
     ],
     hdrs = [
         "quantize_model.h",
     ],
-    copts = ["-fexceptions"],
-    features = [
-        "-use_header_modules",  # Required for pybind11
-        "-parse_headers",
-    ],
+    # TODO(b/220688154): Restrict the visibility
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
@@ -47,7 +44,6 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
-        "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -60,6 +56,41 @@ cc_library(
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "quantize_model_cc",
+    srcs = [
+        "quantize_model_wrapper.cc",
+    ],
+    hdrs = [
+        "quantize_model_wrapper.h",
+    ],
+    copts = ["-fexceptions"],
+    features = [
+        "-use_header_modules",  # Required for pybind11
+        "-parse_headers",
+    ],
+    deps = [
+        ":quantize_model_lib",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op_and_kernels",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@pybind11",
     ],
     alwayslink = True,
@@ -71,7 +102,7 @@ tf_python_pybind_extension(
         "pywrap_quantize_model.cc",
     ],
     hdrs = [
-        "quantize_model.h",
+        "quantize_model_wrapper.h",
     ],
     module_name = "pywrap_quantize_model",
     deps = [
