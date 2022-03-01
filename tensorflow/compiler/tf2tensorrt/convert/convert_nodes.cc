@@ -923,9 +923,13 @@ Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
     Status status = ConvertToTensorOrWeights(src_def, edge->src_output(),
                                              &tensor_or_weights);
     if (!status.ok()) {
+      VLOG(2) << "Failed to convert input `" << src_def.name() << "` to a "
+              << "TRT_TensorOrWeights: " << status.error_message();
+
       return errors::Internal(
-          "Failed to convert input ", src_def.name(),
-          " to a TRT_TensorOrWeights: ", status.error_message());
+          "Failed to convert at least one input to a TRT_TensorOrWeights: ",
+          status.error_message()
+      );
     }
     inputs.push_back(tensor_or_weights);
   }
