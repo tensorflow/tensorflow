@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -107,7 +108,7 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   params.external_state_policy = external_state_policy_;
 
   GraphDef graph_def;
-  Status s = AsGraphDef(ctx, dataset, SerializationContext(params), &graph_def);
+  Status s = AsGraphDef(dataset, SerializationContext(params), &graph_def);
   if (!s.ok()) {
     ctx->CtxFailure(errors::FailedPrecondition(
         "Failed to serialize the input pipeline graph: ", s.error_message()));
