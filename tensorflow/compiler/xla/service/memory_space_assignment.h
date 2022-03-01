@@ -1457,7 +1457,7 @@ class AlternateMemoryBestFitHeap
   // Find the best possible chunk candidate, where it has the longest possible
   // availability if no preferred offset is given, or at the preferred_offset if
   // it is given.
-  absl::optional<ChunkCandidate> FindBestChunkCandidate(
+  absl::optional<Chunk> FindBestChunkCandidate(
       const AllocationRequest& request, const AliasedOffset* preferred_offset,
       BufferInterval* alternate_mem_interval) const;
 
@@ -1535,7 +1535,7 @@ class AlternateMemoryBestFitHeap
   // pending_chunks_ so that we can "uncommit" them in case we need to roll back
   // this allocation sequence.
   void AddToPendingChunks(const BufferInterval& buffer_interval,
-                          const ChunkCandidate& chunk_candidate);
+                          const Chunk& chunk);
   // If we need to remove the allocations for this allocation sequence, this
   // removes pending chunks and asynchronous copies in the respective pending
   // buffers from the interval trees. If an allocation request returns
@@ -1602,7 +1602,7 @@ class AlternateMemoryBestFitHeap
   // for aliased allocations.
   std::list<RepackAllocationBlock> repack_allocation_blocks_;
   int64_t num_repacks_ = 0;
-  std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
+  std::vector<std::pair<BufferInterval, Chunk>> pending_chunks_;
   std::vector<AsynchronousCopy> pending_async_copies_;
   std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>
       pending_required_assignments_;
