@@ -329,6 +329,11 @@ message HloComputationProto {
 
   // The id of the root of the computation.
   int64 root_id = 6;
+
+  // Whether this is a fusion computation. Fusion computations should use this
+  // to determine whether they are a fusion in CreateFromProto since the
+  // parent fusion_instruction_ may get removed and be nullptr.
+  bool is_fusion_computation = 7;
 }
 
 // Serialization of an HLO schedule. An HLO schedule contains a total order of
