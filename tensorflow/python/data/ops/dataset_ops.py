@@ -6164,26 +6164,18 @@ class _DirectedInterleaveDataset(DatasetV2):
     self._data_inputs = list(data_inputs)
     self._stop_on_empty_dataset = stop_on_empty_dataset
 
-    first_output_types = get_legacy_output_types(data_inputs[0])
-    first_output_classes = get_legacy_output_classes(data_inputs[0])
-
-    for i, data_input in enumerate(data_inputs[1:]):
-      if (get_legacy_output_types(data_input) != first_output_types or
-          get_legacy_output_classes(data_input) != first_output_classes):
-        raise TypeError(f"Invalid `datasets`. `datasets` must have the same "
-                        f"type and class.\n Dataset 0 "
-                        f"types={first_output_types}; "
-                        f"classes={first_output_classes}.\n"
-                        f"Dataset {i+1} "
-                        f"types={get_legacy_output_types(data_input)}; "
-                        f"classes={get_legacy_output_classes(data_input)}.")
-
     spec = self._data_inputs[0].element_spec
-    for data_input in self._data_inputs[1:]:
-      spec = nest.pack_sequence_as(spec, [
-          x.most_specific_compatible_type(y) for (x, y) in zip(
-              nest.flatten(spec), nest.flatten(data_input.element_spec))
-      ])
+    for i, data_input in enumerate(self._data_inputs[1:]):
+      try:
+        spec = nest.map_structure(
+            lambda x, y: x.most_specific_compatible_type(y),
+            spec, data_input.element_spec)
+      except (TypeError, ValueError) as e:
+        raise TypeError(f"Invalid `datasets`. `datasets` must have compatible "
+                        f"element specs.\n Dataset 0 "
+                        f"element_spec={data_inputs[0].element_spec}.\n"
+                        f"Dataset {i+1} "
+                        f"element_spec={data_input.element_spec}.") from e
     self._element_spec = spec
 
     # pylint: disable=protected-access
