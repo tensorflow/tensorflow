@@ -1,5 +1,8 @@
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -74,13 +77,11 @@ tf_custom_op_py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "custom_aggregator_op_test",
     size = "small",
     srcs = ["integration_test/custom_aggregator_op_test.py"],
-    tags = [
-        "no_oss",  # TODO(b/220688154): Enable OSS tests.
-    ],
+    tags = ["no_pip"],
     deps = [
         ":gen_custom_aggregator_op_wrapper",
         "//tensorflow:tensorflow_py",
