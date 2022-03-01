@@ -146,6 +146,22 @@ struct ComputeOpAndFuncBufferizePass
     bufferization::AlwaysCopyBufferizationState bufferization_state(options);
     bufferization::populateBufferizationPattern(bufferization_state, patterns);
 
+    CustomBufferizeTypeConverter converter;
+    mhlo::RemoveSignTypeConverter remove_sign_converter;
+
+    // Configure bufferize pattern for functions and lhlo.
+    mhlo::populateHLOToMemrefConversionPattern(
+        &converter, &remove_sign_converter, &patterns,
+        /*enforce_identity_map=*/[](Operation* op) {
+          // Force identity maps for several ops which don't support memrefs
+          // with affine_maps.
+          return llvm::any_of(op->getUsers(), [](Operation* user) {
+            return isa<gml_st::LoopOp, mlir::ReturnOp, mhlo::DynamicReshapeOp,
+                       tensor::CastOp, tensor::CollapseShapeOp,
+                       tensor::ExpandShapeOp>(user);
+          });
+        });
+
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       signalPassFailure();
@@ -174,20 +190,6 @@ struct ComputeOpAndFuncBufferizePass
         });
 
     CustomBufferizeTypeConverter converter;
-    mhlo::RemoveSignTypeConverter remove_sign_converter;
-
-    // Configure bufferize pattern for functions and lhlo.
-    mhlo::populateHLOToMemrefConversionPattern(
-        &converter, &remove_sign_converter, &patterns,
-        /*enforce_identity_map=*/[](Operation* op) {
-          // Force identity maps for several ops which don't support memrefs
-          // with affine_maps.
-          return llvm::any_of(op->getUsers(), [](Operation* user) {
-            return isa<gml_st::LoopOp, mlir::ReturnOp, mhlo::DynamicReshapeOp,
-                       tensor::CastOp, tensor::CollapseShapeOp,
-                       tensor::ExpandShapeOp>(user);
-          });
-        });
     populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
                                                              converter);
     populateCallOpTypeConversionPattern(patterns, converter);

@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -32,6 +33,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -40,36 +43,32 @@ namespace mhlo {
 namespace {
 
 template <typename T>
-class SignlessOpConversion : public OpConversionPattern<T> {
+class SignlessOpConversion : public OpRewritePattern<T> {
  public:
   SignlessOpConversion(TypeConverter& type_converter,
                        RemoveSignTypeConverter* remove_sign_converter,
                        MLIRContext* ctx)
-      : OpConversionPattern<T>(type_converter, ctx),
+      : OpRewritePattern<T>(ctx),
         remove_sign_converter_(remove_sign_converter) {}
 
-  LogicalResult matchAndRewrite(
-      T op, typename T::Adaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    auto loc = op.getLoc();
-    // Sign-convert operands and result type.
-    SmallVector<Value> converted_operands;
-    for (auto operand : adaptor.getOperands()) {
-      Type original = operand.getType();
-      Type converted = remove_sign_converter_->convertType(original);
-      if (converted == original) {
-        converted_operands.push_back(operand);
-      } else {
-        converted_operands.push_back(
-            rewriter
-                .create<UnrealizedConversionCastOp>(loc, converted, operand)
-                ->getResult(0));
-      }
+  Value convertToSignless(RewriterBase& rewriter, Location loc,
+                          Value value) const {
+    Type original = value.getType();
+    Type converted = remove_sign_converter_->convertType(original);
+    if (converted == original) {
+      return value;
+    } else {
+      return rewriter.create<UnrealizedConversionCastOp>(loc, converted, value)
+          ->getResult(0);
     }
+  }
+
+  LogicalResult matchAndRewrite(T op, PatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
+    // Sign-convert result type.
     Type op_result_type = remove_sign_converter_->convertType(op.getType());
     // Perform actual rewrite.
-    Value result =
-        signlessRewrite(op, converted_operands, op_result_type, rewriter);
+    Value result = signlessRewrite(op, op_result_type, rewriter);
     if (!result) return failure();
 
     // If the element type of the original op and the returned value differ,
@@ -93,14 +92,13 @@ class SignlessOpConversion : public OpConversionPattern<T> {
           rewriter.create<UnrealizedConversionCastOp>(loc, new_type, result)
               .getResult(0);
     }
-    rewriter.replaceOp(op, result);
+    bufferization::replaceOpWithBufferizedValues(rewriter, op, result);
     return success();
   }
 
  protected:
-  virtual Value signlessRewrite(T op, ArrayRef<Value> operands,
-                                Type result_type,
-                                ConversionPatternRewriter& rewriter) const = 0;
+  virtual Value signlessRewrite(T op, Type result_type,
+                                RewriterBase& rewriter) const = 0;
 
  private:
   RemoveSignTypeConverter* remove_sign_converter_;
@@ -114,19 +112,23 @@ class HloToMemrefReshapeUnrankedConverter
  public:
   using BaseOpConversion<mhlo::ReshapeOp>::BaseOpConversion;
 
-  Value signlessRewrite(mhlo::ReshapeOp op, ArrayRef<Value> operands,
-                        Type op_result_type,
-                        ConversionPatternRewriter& rewriter) const final {
-    mhlo::ReshapeOp::Adaptor adaptor(operands);
+  Value signlessRewrite(mhlo::ReshapeOp op, Type op_result_type,
+                        RewriterBase& rewriter) const final {
     auto unranked_operand_type =
-        adaptor.operand().getType().dyn_cast<UnrankedMemRefType>();
+        op.operand().getType().dyn_cast<UnrankedTensorType>();
     if (unranked_operand_type == nullptr) return {};
     auto loc = op->getLoc();
     auto result_type = op_result_type.cast<RankedTensorType>();
+
+    bufferization::BufferizationOptions options;
+    options.fullyDynamicLayoutMaps = false;
+    Value operand_buffer =
+        bufferization::lookupBuffer(rewriter, op.operand(), options);
+
     auto cast = rewriter.create<memref::CastOp>(
         loc,
         MemRefType::get(result_type.getShape(), result_type.getElementType()),
-        adaptor.operand());
+        convertToSignless(rewriter, loc, operand_buffer));
 
     return cast;
   }
@@ -137,9 +139,8 @@ class HloToMemrefDynamicReshapeConverter
  public:
   using BaseOpConversion<mhlo::DynamicReshapeOp>::BaseOpConversion;
 
-  Value signlessRewrite(mhlo::DynamicReshapeOp op, ArrayRef<Value> operands,
-                        Type op_result_type,
-                        ConversionPatternRewriter& rewriter) const final {
+  Value signlessRewrite(mhlo::DynamicReshapeOp op, Type op_result_type,
+                        RewriterBase& rewriter) const final {
     ShapedType result_type;
     if (auto ranked_type = op_result_type.dyn_cast<RankedTensorType>()) {
       result_type =
@@ -150,9 +151,17 @@ class HloToMemrefDynamicReshapeConverter
     } else {
       return {};
     }
-    mhlo::DynamicReshapeOp::Adaptor adaptor(operands);
+    bufferization::BufferizationOptions options;
+    options.fullyDynamicLayoutMaps = false;
+    Value operand_buffer =
+        bufferization::lookupBuffer(rewriter, op.operand(), options);
+    Value shape_buffer =
+        bufferization::lookupBuffer(rewriter, op.output_shape(), options);
+
     auto reshape = rewriter.create<memref::ReshapeOp>(
-        op.getLoc(), result_type, adaptor.operand(), adaptor.output_shape());
+        op.getLoc(), result_type,
+        convertToSignless(rewriter, op.getLoc(), operand_buffer),
+        convertToSignless(rewriter, op.getLoc(), shape_buffer));
     return reshape;
   }
 };
@@ -168,12 +177,19 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
                                                         sign_converter, ctx),
         enforce_identity_maps_(std::move(enforce_identity_maps)) {}
 
-  Value signlessRewrite(mhlo::DynamicBroadcastInDimOp op,
-                        ArrayRef<Value> operands, Type op_result_type,
-                        ConversionPatternRewriter& rewriter) const final {
+  Value signlessRewrite(mhlo::DynamicBroadcastInDimOp op, Type op_result_type,
+                        RewriterBase& rewriter) const final {
     auto result_type = op_result_type.dyn_cast<RankedTensorType>();
     if (!result_type) return {};
-    Value result = InsertDynamicMemrefCastOp(op, operands.front(), &rewriter);
+
+    bufferization::BufferizationOptions options;
+    options.fullyDynamicLayoutMaps = false;
+    Value operand_buffer =
+        bufferization::lookupBuffer(rewriter, op.operand(), options);
+
+    Value result = InsertDynamicMemrefCastOp(
+        op, convertToSignless(rewriter, op.getLoc(), operand_buffer),
+        &rewriter);
 
     if (enforce_identity_maps_(op)) {
       result = CreateCopy(op, result, &rewriter);
@@ -189,6 +205,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
   memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
       mhlo::DynamicBroadcastInDimOp op, Value operand, OpBuilder* b) const {
     auto loc = op.getLoc();
+
     auto operand_type = operand.getType().cast<MemRefType>();
     auto operand_shape = operand_type.getShape();
     auto operand_rank = operand_type.getRank();
