@@ -1102,16 +1102,39 @@ AddressMode TensorDescriptor::AddressModeFromState() const {
   }
 }
 
-void TensorDescriptor::UploadData(
-    const tflite::gpu::Tensor<BHWC, DataType::FLOAT32>& src) {
-  shape = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
-  UploadData(src.data.data());
+size_t TensorDescriptor::GetSizeInBytesForShape(const BHWDC& shape5d) const {
+  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
+                             ? shape5d.c
+                             : AlignByN(shape5d.c, 4);
+  int elements_count =
+      shape5d.b * shape5d.w * shape5d.h * shape5d.d * aligned_channels;
+  return elements_count * SizeOf(data_type);
 }
 
-void TensorDescriptor::UploadData(
-    const tflite::gpu::Tensor<BHWC, DataType::INT32>& src) {
-  shape = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
-  UploadData(src.data.data());
+int TensorDescriptor::GetLinearIndex(const BHWDC& shape5d, int b, int x, int y,
+                                     int d, int s, int sub_c) const {
+  const int slices = DivideRoundUp(shape5d.c, 4);
+  switch (storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return ((((d * slices + s) * shape5d.h + y) * shape5d.w + x) * shape5d.b +
+              b) *
+                 4 +
+             sub_c;  // DSHWBC4
+    case TensorStorageType::TEXTURE_2D:
+      return ((((y * slices + s) * shape5d.w + x) * shape5d.b + b) * shape5d.d +
+              d) *
+                 4 +
+             sub_c;  // HSWBDC4
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return (((y * shape5d.w + x) * shape5d.b + b) * shape5d.d + d) *
+                 shape5d.c +
+             sub_c;  // HWBDC
+    case TensorStorageType::UNKNOWN:
+      return -1;
+  }
 }
 
 void TensorDescriptor::UploadData(
@@ -1124,69 +1147,6 @@ void TensorDescriptor::UploadData(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
   shape = BHWDC(1, 1, 1, 1, src.shape.v);
   UploadData(src.data.data());
-}
-
-void TensorDescriptor::UploadData(const float* src) {
-  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
-                             ? shape.c
-                             : AlignByN(shape.c, 4);
-  int elements_count = shape.b * shape.w * shape.h * shape.d * aligned_channels;
-  data.resize(elements_count * SizeOf(data_type));
-  if (data_type == DataType::FLOAT32) {
-    float* gpu_data = reinterpret_cast<float*>(data.data());
-    DataFromBHWDC(src, shape, *this, gpu_data);
-  } else {
-    half* gpu_data = reinterpret_cast<half*>(data.data());
-    DataFromBHWDC(src, shape, *this, gpu_data);
-  }
-}
-
-void TensorDescriptor::UploadData(const int32_t* src) {
-  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
-                             ? shape.c
-                             : AlignByN(shape.c, 4);
-  int elements_count = shape.b * shape.w * shape.h * shape.d * aligned_channels;
-  data.resize(elements_count * SizeOf(data_type));
-  int32_t* gpu_data = reinterpret_cast<int32_t*>(data.data());
-  DataFromBHWDC(src, shape, *this, gpu_data);
-}
-
-void TensorDescriptor::DownloadData(
-    tflite::gpu::Tensor<BHWC, DataType::FLOAT32>* dst) {
-  dst->shape = BHWC(shape.b, shape.h, shape.w, shape.c);
-  dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
-  DownloadData(dst->data.data());
-}
-void TensorDescriptor::DownloadData(
-    tflite::gpu::Tensor<BHWC, DataType::INT32>* dst) {
-  dst->shape = BHWC(shape.b, shape.h, shape.w, shape.c);
-  dst->data.resize(dst->shape.DimensionsProduct(), 0);
-  DownloadData(dst->data.data());
-}
-
-void TensorDescriptor::DownloadData(float* dst) {
-  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
-                             ? shape.c
-                             : AlignByN(shape.c, 4);
-  int elements_count = shape.b * shape.w * shape.h * shape.d * aligned_channels;
-  data.resize(elements_count * SizeOf(data_type));
-  if (data_type == DataType::FLOAT32) {
-    float* gpu_data = reinterpret_cast<float*>(data.data());
-    DataToBHWDC(gpu_data, shape, *this, dst);
-  } else {
-    half* gpu_data = reinterpret_cast<half*>(data.data());
-    DataToBHWDC(gpu_data, shape, *this, dst);
-  }
-}
-
-void TensorDescriptor::DownloadData(int32_t* dst) {
-  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
-                             ? shape.c
-                             : AlignByN(shape.c, 4);
-  int elements_count = shape.b * shape.w * shape.h * shape.d * aligned_channels;
-  data.resize(elements_count * SizeOf(data_type));
-  int32_t* gpu_data = reinterpret_cast<int32_t*>(data.data());
-  DataToBHWDC(gpu_data, shape, *this, dst);
 }
 
 bool TensorDescriptor::SupportsZeroClamp(const Axis& axis) const {
@@ -1390,151 +1350,5 @@ absl::Status TensorDescriptor::CanCreateTensorWithShape(
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
   return CanCreateTensorWithShape(gpu_info, shape5D);
 }
-
-namespace {
-int GetLinearIndex(const TensorDescriptor& desc, const BHWDC& shape, int b,
-                   int x, int y, int d, int s, int sub_c) {
-  const int slices = DivideRoundUp(shape.c, 4);
-  switch (desc.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_3D:
-      return ((((d * slices + s) * shape.h + y) * shape.w + x) * shape.b + b) *
-                 4 +
-             sub_c;  // DSHWBC4
-    case TensorStorageType::TEXTURE_2D:
-      return ((((y * slices + s) * shape.w + x) * shape.b + b) * shape.d + d) *
-                 4 +
-             sub_c;  // HSWBDC4
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return (((y * shape.w + x) * shape.b + b) * shape.d + d) * shape.c +
-             sub_c;  // HWBDC
-    case TensorStorageType::UNKNOWN:
-      return -1;
-  }
-}
-
-int GetChannelsAlignment(const TensorDescriptor& desc, const BHWDC& shape) {
-  return desc.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c
-                                                                   : 4;
-}
-}  // namespace
-
-template <typename FromType, typename ToType>
-void DataFromBHWDC(const FromType* src, const BHWDC& shape,
-                   const TensorDescriptor& desc, ToType* dst) {
-  const int channels_alignment = GetChannelsAlignment(desc, shape);
-  const int slices = DivideRoundUp(shape.c, 4);
-  for (int b = 0; b < shape.b; ++b) {
-    for (int s = 0; s < slices; ++s) {
-      for (int y = 0; y < shape.h; ++y) {
-        for (int x = 0; x < shape.w; ++x) {
-          for (int d = 0; d < shape.d; ++d) {
-            for (int c = 0; c < channels_alignment; ++c) {
-              FromType value;
-              if (s * 4 + c < shape.c) {
-                const int cpu_index =
-                    shape.LinearIndex({b, y, x, d, s * 4 + c});
-                value = src[cpu_index];
-              } else {
-                value = 0;
-              }
-              int gpu_index = GetLinearIndex(desc, shape, b, x, y, d, s, c);
-              dst[gpu_index] = value;
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-template void DataFromBHWDC<float, float>(const float* src, const BHWDC& shape,
-                                          const TensorDescriptor& desc,
-                                          float* dst);
-template void DataFromBHWDC<float, half>(const float* src, const BHWDC& shape,
-                                         const TensorDescriptor& desc,
-                                         half* dst);
-template void DataFromBHWDC<int32_t, int32_t>(const int32_t* src,
-                                              const BHWDC& shape,
-                                              const TensorDescriptor& desc,
-                                              int32_t* dst);
-template void DataFromBHWDC<int16_t, int16_t>(const int16_t* src,
-                                              const BHWDC& shape,
-                                              const TensorDescriptor& desc,
-                                              int16_t* dst);
-template void DataFromBHWDC<int8_t, int8_t>(const int8_t* src,
-                                            const BHWDC& shape,
-                                            const TensorDescriptor& desc,
-                                            int8_t* dst);
-template void DataFromBHWDC<uint32_t, uint32_t>(const uint32_t* src,
-                                                const BHWDC& shape,
-                                                const TensorDescriptor& desc,
-                                                uint32_t* dst);
-template void DataFromBHWDC<uint16_t, uint16_t>(const uint16_t* src,
-                                                const BHWDC& shape,
-                                                const TensorDescriptor& desc,
-                                                uint16_t* dst);
-template void DataFromBHWDC<uint8_t, uint8_t>(const uint8_t* src,
-                                              const BHWDC& shape,
-                                              const TensorDescriptor& desc,
-                                              uint8_t* dst);
-
-template <typename FromType, typename ToType>
-void DataToBHWDC(const FromType* src, const BHWDC& shape,
-                 const TensorDescriptor& desc, ToType* dst) {
-  const int channels_alignment = GetChannelsAlignment(desc, shape);
-  const int slices = DivideRoundUp(shape.c, 4);
-  for (int b = 0; b < shape.b; ++b) {
-    for (int s = 0; s < slices; ++s) {
-      for (int y = 0; y < shape.h; ++y) {
-        for (int x = 0; x < shape.w; ++x) {
-          for (int d = 0; d < shape.d; ++d) {
-            for (int c = 0; c < channels_alignment; ++c) {
-              if (s * 4 + c >= shape.c) {
-                continue;
-              }
-              int cpu_index = shape.LinearIndex({b, y, x, d, s * 4 + c});
-              int gpu_index = GetLinearIndex(desc, shape, b, x, y, d, s, c);
-              dst[cpu_index] = src[gpu_index];
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-template void DataToBHWDC<float, float>(const float* src, const BHWDC& shape,
-                                        const TensorDescriptor& desc,
-                                        float* dst);
-template void DataToBHWDC<half, float>(const half* src, const BHWDC& shape,
-                                       const TensorDescriptor& desc,
-                                       float* dst);
-template void DataToBHWDC<int32_t, int32_t>(const int32_t* src,
-                                            const BHWDC& shape,
-                                            const TensorDescriptor& desc,
-                                            int32_t* dst);
-template void DataToBHWDC<int16_t, int16_t>(const int16_t* src,
-                                            const BHWDC& shape,
-                                            const TensorDescriptor& desc,
-                                            int16_t* dst);
-template void DataToBHWDC<int8_t, int8_t>(const int8_t* src, const BHWDC& shape,
-                                          const TensorDescriptor& desc,
-                                          int8_t* dst);
-template void DataToBHWDC<uint32_t, uint32_t>(const uint32_t* src,
-                                              const BHWDC& shape,
-                                              const TensorDescriptor& desc,
-                                              uint32_t* dst);
-template void DataToBHWDC<uint16_t, uint16_t>(const uint16_t* src,
-                                              const BHWDC& shape,
-                                              const TensorDescriptor& desc,
-                                              uint16_t* dst);
-template void DataToBHWDC<uint8_t, uint8_t>(const uint8_t* src,
-                                            const BHWDC& shape,
-                                            const TensorDescriptor& desc,
-                                            uint8_t* dst);
-
 }  // namespace gpu
 }  // namespace tflite
