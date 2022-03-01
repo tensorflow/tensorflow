@@ -374,6 +374,52 @@ TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHomogeneous) {
               ::testing::HasSubstr("expected a subtype"));
 }
 
+TEST(MultiaryUnstack, One) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_TENSOR);
+
+  const auto ret = MultiaryUnstack(TFT_DATASET, UnstackTensor)({t1});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_DATASET);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  ASSERT_EQ(rt.args(0).args(0).type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args(0).args(0).args_size(), 1);
+  ASSERT_EQ(rt.args(0).args(0).args(0).type_id(), TFT_TENSOR);
+}
+
+TEST(MultiaryUnstack, Three) {
+  FullTypeDef t1;
+  t1.set_type_id(TFT_RAGGED);
+  t1.add_args()->set_type_id(TFT_STRING);
+  FullTypeDef t2;
+  t2.set_type_id(TFT_TENSOR);
+  FullTypeDef t3;
+  t3.set_type_id(TFT_RAGGED);
+  t3.add_args()->set_type_id(TFT_INT64);
+
+  const auto ret = MultiaryUnstack(TFT_DATASET, UnstackTensor)({t1, t2, t3});
+  TF_EXPECT_OK(ret.status());
+
+  const FullTypeDef& rt = ret.ValueOrDie();
+  EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args_size(), 1);
+  EXPECT_EQ(rt.args(0).type_id(), TFT_DATASET);
+  ASSERT_EQ(rt.args(0).args_size(), 1);
+  ASSERT_EQ(rt.args(0).args(0).type_id(), TFT_PRODUCT);
+  ASSERT_EQ(rt.args(0).args(0).args_size(), 3);
+  ASSERT_EQ(rt.args(0).args(0).args(0).type_id(), TFT_RAGGED);
+  ASSERT_EQ(rt.args(0).args(0).args(0).args_size(), 1);
+  ASSERT_EQ(rt.args(0).args(0).args(0).args(0).type_id(), TFT_STRING);
+  ASSERT_EQ(rt.args(0).args(0).args(1).type_id(), TFT_TENSOR);
+  ASSERT_EQ(rt.args(0).args(0).args(2).type_id(), TFT_RAGGED);
+  ASSERT_EQ(rt.args(0).args(0).args(2).args_size(), 1);
+  ASSERT_EQ(rt.args(0).args(0).args(2).args(0).type_id(), TFT_INT64);
+}
+
 }  // namespace
 
 }  // namespace full_type
