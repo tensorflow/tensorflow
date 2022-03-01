@@ -104,6 +104,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt32:
     case kTfLiteBool:
       break;
+    case kTfLiteInt16:
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+      break;
 
     default:
       TF_LITE_KERNEL_LOG(context,

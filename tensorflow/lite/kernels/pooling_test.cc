@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
-
+#include <cstdarg>
 #include <initializer_list>
 #include <vector>
 
@@ -425,13 +425,17 @@ TEST(QuantizedPoolingOpTest, AveragePoolLargeDepth) {
 // Test quantized AveragePool with int16 input and output. The input is the same
 // as the uint8 test QuantizedPoolingOpTest.AveragePool but with a scale of
 // 1/4096 rather than 1/16.
+// Input Range[-16+(3/4096), 16-(5/4096)] --> [Scale{(2/4096)}, zero_point{0}]
+// Range is not symmetrical, but zero point is 0
 TEST(QuantizedPoolingOpTest, SymmetricAveragePool16) {
   const float ulp = 1.f / 4096.f;
+  float lowerRange = -16.0 + (3. / 4 * ulp);  // -15.9998168945
+  float upperRange = 16.0 - (5. / 4 * ulp);   // 15.9996948242
   SymmetricQuantizedPoolingOpModel16 m(
       BuiltinOperator_AVERAGE_POOL_2D,
-      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 0, 16 - ulp},
+      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, lowerRange, upperRange},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_INT16, {}, 0, 16 - ulp});
+      /*output=*/{TensorType_INT16, {}, lowerRange, upperRange});
   m.SetInput({
       0, 6, 2, 4,   //
       3, 2, 10, 7,  //
@@ -441,7 +445,7 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePool16) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({2.75, 5.75})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({(44 - 128) * 256, (92 - 128) * 256}));
+              ElementsAreArray({(150 - 128) * 256, (174 - 128) * 256}));
 }
 
 // Test quantized AveragePool with int8 input and output. The input is the same
@@ -907,13 +911,16 @@ TEST(QuantizedInt8PoolingOpTest, MaxPool) {
 TEST(QuantizedInt8PoolingOpTest16, MaxPool) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
-  // Input Range[0, 16-(1/4096)] --> [Scale{(1/4096)}, zero_point{-32768}]
+  // Input Range[-16+(3/4096), 16-(5/4096)] --> [Scale{(2/4096)}, zero_point{0}]
+  // Range is not symmetrical, but zero point is 0
   const float ulp = 1.f / 4096.f;
+  float lowerRange = -16.0 + (3. / 4 * ulp);  // -15.9998168945
+  float upperRange = 16.0 - (5. / 4 * ulp);   // 15.9996948242
   SymmetricQuantizedPoolingOpModel16 m(
       BuiltinOperator_MAX_POOL_2D,
-      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 0, 16 - ulp},
+      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, lowerRange, upperRange},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_INT16, {}, 0, 16 - ulp});
+      /*output=*/{TensorType_INT16, {}, lowerRange, upperRange});
   m.SetInput({
       0, 6, 2, 4,   //
       3, 2, 10, 7,  //
@@ -923,7 +930,7 @@ TEST(QuantizedInt8PoolingOpTest16, MaxPool) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({6, 10})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({(96 - 128) * 256, (160 - 128) * 256}));
+              ElementsAreArray({(176 - 128) * 256, (208 - 128) * 256}));
 }
 
 TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu) {

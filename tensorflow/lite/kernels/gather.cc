@@ -65,8 +65,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteFloat32:
     case kTfLiteUInt8:
+      TF_LITE_ENSURE_EQ(context, input->params.scale, output->params.scale);
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point,
+                        output->params.zero_point);
+      break;
     case kTfLiteInt8:
+      TF_LITE_ENSURE_EQ(context, input->params.scale, output->params.scale);
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point,
+                        output->params.zero_point);
+      break;
     case kTfLiteInt16:
+      TF_LITE_ENSURE_EQ(context, input->params.scale, output->params.scale);
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+      break;
     case kTfLiteInt64:
     case kTfLiteInt32:
     case kTfLiteBool:

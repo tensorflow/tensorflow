@@ -79,6 +79,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, input0->type);
 
+  if (output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   // Guarantee input/output quantization params match as we do not support
   // packing quantized tensors.
   for (int i = 0; i < data->values_count; i++) {

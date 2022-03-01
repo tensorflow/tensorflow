@@ -108,6 +108,16 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
+  if (input->type == kTfLiteInt16) {
+    if (pool_type == kAverage || pool_type == kMax) {
+      // We currently don't have a quantized implementation of L2Pool (kL2)
+      TFLITE_DCHECK_LE(std::abs(input->params.scale - output->params.scale),
+                       1.0e-6);
+      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+    }
+  }
+
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
   output_size->data[0] = batches;
   output_size->data[1] = out_height;

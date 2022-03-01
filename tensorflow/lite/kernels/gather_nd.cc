@@ -87,6 +87,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Assign to output the input type.
   output->type = params->type;
 
+  if (output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   // The result shape is
   // indices.shape[:-1] + params.shape[indices.shape[-1]:]
   const int output_rank = indices_rank + params_rank - indices_nd - 1;

@@ -80,6 +80,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                           op_context.output->type);
 
+  if (op_context.input->type == kTfLiteUInt8 ||
+      op_context.input->type == kTfLiteInt8 ||
+      op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.scale,
+                      op_context.output->params.scale);
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point,
+                      op_context.output->params.zero_point);
+  }
+  if (op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
+  }
+
   if (!IsConstantTensor(op_context.perm)) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;

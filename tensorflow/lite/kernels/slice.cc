@@ -135,6 +135,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_MSG(context, NumDimensions(input) <= kMaxDim,
                      "Slice op only supports 1D-5D input arrays.");
 
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 ||
+      input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.scale, output->params.scale);
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point,
+                      output->params.zero_point);
+  }
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+  }
+
   // Postpone allocation of output if any of the indexing tensors is not
   // constant
   if (!(IsConstantTensor(begin) && IsConstantTensor(size))) {

@@ -79,6 +79,19 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, input_x->type, input_y->type);
   output->type = input_x->type;
 
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+      output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input_x->params.scale, output->params.scale);
+    TF_LITE_ENSURE_EQ(context, input_y->params.scale, output->params.scale);
+    TF_LITE_ENSURE_EQ(context, input_x->params.zero_point,
+                      output->params.zero_point);
+    TF_LITE_ENSURE_EQ(context, input_y->params.zero_point,
+                      output->params.zero_point);
+  }
+  if (output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   // Respect the original output shape when there are mixed shapes to represent
   // a scalar data.
   if (GetTensorShape(input_condition).FlatSize() == 1 &&

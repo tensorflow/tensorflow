@@ -80,6 +80,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         context, context->ResizeTensor(context, output, copied_output_shape));
   }
 
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+  }
+
   TfLiteIntArrayFree(output_shape);
   return kTfLiteOk;
 }
