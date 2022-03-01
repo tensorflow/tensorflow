@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 package(
     default_visibility = [
-        "//tensorflow/compiler/mlir/quantization:__subpackages__",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
         "//tensorflow/python:__subpackages__",
     ],
     licenses = ["notice"],
@@ -19,8 +19,6 @@ cc_library(
     hdrs = [
         "quantize_model.h",
     ],
-    # TODO(b/220688154): Restrict the visibility
-    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
@@ -72,6 +70,10 @@ cc_library(
     features = [
         "-use_header_modules",  # Required for pybind11
         "-parse_headers",
+    ],
+    visibility = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
+        "//tensorflow/python:__subpackages__",
     ],
     deps = [
         ":quantize_model_lib",

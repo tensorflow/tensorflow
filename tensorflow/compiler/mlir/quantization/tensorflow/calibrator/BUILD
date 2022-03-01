@@ -10,7 +10,7 @@ load(
 
 package(
     default_visibility = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
     ],
     licenses = ["notice"],
 )
@@ -19,8 +19,6 @@ cc_library(
     name = "calibrator_singleton",
     srcs = ["calibrator_singleton.cc"],
     hdrs = ["calibrator_singleton.h"],
-    # TODO(b/220688154): Restrict the visibility.
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -71,8 +69,6 @@ tf_custom_op_py_library(
     dso = [":_custom_aggregator_op.so"],
     kernels = [":custom_aggregator_op_and_kernels"],
     srcs_version = "PY3",
-    # TODO(b/220688154): Restrict the visibility.
-    visibility = ["//visibility:public"],
     deps = [
         ":gen_custom_aggregator_op_wrapper",
     ],
