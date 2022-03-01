@@ -2283,6 +2283,48 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(
         list(output_details[0]['shape_signature']),
         list(model.layers[-1].output_shape))
+        
+  @test_util.run_v2_only
+  def testKerasFullyConnectedQATHasNoReshapes(self):
+    """Create a simple QAT FullyConnected Model to ensure reshapes are removed."""
+    input_tensor = tf.keras.layers.Input(
+        batch_size=1,
+        shape=[8, 4],
+        name='input_tensor',
+        dtype=tf.float32)
+
+    x = tf.quantization.fake_quant_with_min_max_args(input_tensor, -3.0, 3.0)
+    x = tf.keras.layers.Dense(16)(x)
+    x = tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+    model = tf.keras.Model(input_tensor, x)
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy'])
+
+    # Export the keras model to saved model.
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'fully_connected_qat_no_reshapes')
+    model.save(saved_model_dir, save_format='tf', include_optimizer=False)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.inference_input_type = dtypes.int8
+    converter.inference_output_type = dtypes.int8
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    byte_model = util._convert_model_from_bytearray_to_object(tflite_model)
+
+    self.assertEqual(byte_model.operatorCodes[0].builtinCode,
+                     schema_fb.BuiltinOperator.QUANTIZE)
+    self.assertNotEqual(byte_model.operatorCodes[1].builtinCode,
+                     schema_fb.BuiltinOperator.RESHAPE)
+    self.assertEqual(byte_model.operatorCodes[1].builtinCode,
+                     schema_fb.BuiltinOperator.FULLY_CONNECTED)
+    self.assertNotEqual(byte_model.operatorCodes[2].builtinCode,
+                     schema_fb.BuiltinOperator.RESHAPE)
+    self.assertEqual(byte_model.operatorCodes[2].builtinCode,
+                     schema_fb.BuiltinOperator.DEQUANTIZE)
 
   def _createUnknownInputShapeModel(self):
     """Create a simple SavedModel with unknown input."""
