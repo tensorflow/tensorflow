@@ -1,6 +1,3 @@
-# TODO(b/)220688154): Enable MLIR test cases.
-#load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
-
 package(
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
@@ -19,10 +16,3 @@ filegroup(
         "@llvm-project//mlir:run_lit.sh",
     ],
 )
-
-# TODO(b/)220688154): Enable MLIR test cases.
-#glob_lit_tests(
-#    data = [":test_utilities"],
-#    driver = "@llvm-project//mlir:run_lit.sh",
-#    test_file_exts = ["mlir"],
-#)
