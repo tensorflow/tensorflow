@@ -1,10 +1,18 @@
 load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+
+package_group(
+    name = "internal_visibility_allowlist_package",
+    packages = [
+        "//tensorflow/compiler/mlir/quantization/...",
+    ] + internal_visibility_allowlist(),
+)
 
 package(
     default_visibility = [
-        "//tensorflow/compiler/mlir/quantization:__subpackages__",
+        ":internal_visibility_allowlist_package",
     ],
     licenses = ["notice"],
 )
@@ -36,8 +44,6 @@ cc_library(
     hdrs = [
         "passes/util.h",
     ],
-    # TODO(b/220688154): Restrict the visibility.
-    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "@llvm-project//mlir:IR",
@@ -123,8 +129,6 @@ cc_library(
     hdrs = [
         "passes/passes.h",
     ],
-    # TODO(b/220688154): Restrict the visibility.
-    visibility = ["//visibility:public"],
     deps = [
         ":pass_util",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
