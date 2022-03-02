@@ -569,15 +569,6 @@ Status XlaCompilationCache::CompileImpl(
     CompileScope scope, CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
-  if (FailOnXlaCompilation()) {
-    VLOG(1) << "XLA compilation disabled: " << function.name() << "\n"
-            << absl::StrJoin(
-                   args, "\n",
-                   [](std::string* out, const XlaCompiler::Argument& arg) {
-                     absl::StrAppend(out, " arg: ", arg.HumanString());
-                   });
-    return errors::Internal("XLA compilation disabled");
-  }
   DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
@@ -588,7 +579,6 @@ Status XlaCompilationCache::CompileImpl(
     }
   }
   TF_ASSIGN_OR_RETURN(Signature signature, BuildSignature(function, args));
-
 
   // The outer lock protects the existence of the cache entry. It does not
   // protect the contents of the cache entry.
@@ -654,6 +644,22 @@ Status XlaCompilationCache::CompileImpl(
   CompileState state = entry->compile_state;
   *out_compilation_result = nullptr;
   *out_executable = nullptr;
+
+  // Check if the requested entry is uncompiled and return an error if
+  // compilation is disabled. This will raise an error for kLazy even if we have
+  // not yet hit the compilation threshold and no compilation happens this
+  // round. This is to avoid non-determanism of when compilation is disallowed,
+  // for example by changing the threshold.
+  if (state == CompileState::kUncompiled && FailOnXlaCompilation()) {
+    VLOG(1) << "XLA compilation disabled: " << function.name() << "\n"
+            << absl::StrJoin(
+                   args, "\n",
+                   [](std::string* out, const XlaCompiler::Argument& arg) {
+                     absl::StrAppend(out, " arg: ", arg.HumanString());
+                   });
+
+    return errors::Internal("XLA compilation disabled");
+  }
 
   if (state == CompileState::kUncompiled) {
     XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
