@@ -1902,7 +1902,10 @@ tf_py_test(
     srcs = ["tensor_util_test.py"],
     main = "tensor_util_test.py",
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_msan",
+        "no_windows",
+    ],
     deps = [
         ":for_generated_wrappers",
         ":framework",
