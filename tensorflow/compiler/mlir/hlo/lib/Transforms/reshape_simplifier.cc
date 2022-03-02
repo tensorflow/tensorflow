@@ -67,16 +67,16 @@ struct ReshapeToExpandShape final
     if (!isExpandShape(shapeComponentAnalysis, op)) return failure();
     auto output_shape = shapeComponentAnalysis.GetValueInfo(op.output_shape());
     SmallVector<ReassociationExprs> reassociations(output_shape->size());
-    SmallVector<int64_t> output_dimensions;
+    auto old_result_type = op.getResult().getType().cast<ShapedType>();
+    auto output_dimensions = llvm::to_vector<>(old_result_type.getShape());
     auto *it = reassociations.begin();
     int64_t runningIndex = 0;
     for (const auto &dim : *output_shape) {
       it->push_back(rewriter.getAffineDimExpr(runningIndex++));
       if (dim.isConstant(1)) {
-        output_dimensions.push_back(1);
+        output_dimensions[runningIndex - 1] = 1;
       } else {
         ++it;
-        output_dimensions.push_back(ShapedType::kDynamicSize);
       }
     }
     // If the last dimension was a 1 expand it from the penultimate dim.
@@ -86,7 +86,6 @@ struct ReshapeToExpandShape final
 
     // mhlo.dynamic_reshape is more lenient about the type. Add the static
     // knowledge we have about 1 dims.
-    auto old_result_type = op.getResult().getType().cast<ShapedType>();
     auto new_result_type = RankedTensorType::get(
         output_dimensions, old_result_type.getElementType());
     Location loc = op.getLoc();
