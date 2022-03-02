@@ -174,11 +174,10 @@ struct ComputeOpAndFuncBufferizePass
         });
 
     CustomBufferizeTypeConverter converter;
-    mhlo::RemoveSignTypeConverter remove_sign_converter;
 
     // Configure bufferize pattern for functions and lhlo.
     mhlo::populateHLOToMemrefConversionPattern(
-        &converter, &remove_sign_converter, &patterns,
+        &converter, &patterns,
         /*enforce_identity_map=*/[](Operation* op) {
           // Force identity maps for several ops which don't support memrefs
           // with affine_maps.

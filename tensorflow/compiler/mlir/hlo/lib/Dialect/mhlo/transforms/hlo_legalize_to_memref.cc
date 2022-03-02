@@ -39,107 +39,39 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
-template <typename T>
-class SignlessOpConversion : public OpConversionPattern<T> {
- public:
-  SignlessOpConversion(TypeConverter& type_converter,
-                       RemoveSignTypeConverter* remove_sign_converter,
-                       MLIRContext* ctx)
-      : OpConversionPattern<T>(type_converter, ctx),
-        remove_sign_converter_(remove_sign_converter) {}
+struct HloToMemrefReshapeUnrankedConverter
+    : public OpConversionPattern<mhlo::ReshapeOp> {
+  HloToMemrefReshapeUnrankedConverter(TypeConverter& type_converter,
+                                      MLIRContext* ctx)
+      : OpConversionPattern<mhlo::ReshapeOp>(type_converter, ctx) {}
 
   LogicalResult matchAndRewrite(
-      T op, typename T::Adaptor adaptor,
+      mhlo::ReshapeOp op, mhlo::ReshapeOp::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    auto loc = op.getLoc();
-    // Sign-convert operands and result type.
-    SmallVector<Value> converted_operands;
-    for (auto operand : adaptor.getOperands()) {
-      Type original = operand.getType();
-      Type converted = remove_sign_converter_->convertType(original);
-      if (converted == original) {
-        converted_operands.push_back(operand);
-      } else {
-        converted_operands.push_back(
-            rewriter
-                .create<UnrealizedConversionCastOp>(loc, converted, operand)
-                ->getResult(0));
-      }
-    }
-    Type op_result_type = remove_sign_converter_->convertType(op.getType());
-    // Perform actual rewrite.
-    Value result =
-        signlessRewrite(op, converted_operands, op_result_type, rewriter);
-    if (!result) return failure();
-
-    // If the element type of the original op and the returned value differ,
-    // do a conversion cast to fix it up.
-    auto expected_element_type =
-        op.getType().template cast<ShapedType>().getElementType();
-    auto result_type = result.getType().cast<BaseMemRefType>();
-    auto actual_element_type = result_type.getElementType();
-    if (expected_element_type != actual_element_type) {
-      assert(remove_sign_converter_->convertType(expected_element_type) ==
-             actual_element_type);
-      Type new_type;
-      if (auto ranked = result_type.dyn_cast<MemRefType>()) {
-        new_type = MemRefType::get(ranked.getShape(), expected_element_type,
-                                   ranked.getLayout(), ranked.getMemorySpace());
-      } else {
-        new_type = UnrankedMemRefType::get(expected_element_type,
-                                           result_type.getMemorySpace());
-      }
-      result =
-          rewriter.create<UnrealizedConversionCastOp>(loc, new_type, result)
-              .getResult(0);
-    }
-    rewriter.replaceOp(op, result);
-    return success();
-  }
-
- protected:
-  virtual Value signlessRewrite(T op, ArrayRef<Value> operands,
-                                Type result_type,
-                                ConversionPatternRewriter& rewriter) const = 0;
-
- private:
-  RemoveSignTypeConverter* remove_sign_converter_;
-};
-
-template <typename T>
-using BaseOpConversion = SignlessOpConversion<T>;
-
-class HloToMemrefReshapeUnrankedConverter
-    : public BaseOpConversion<mhlo::ReshapeOp> {
- public:
-  using BaseOpConversion<mhlo::ReshapeOp>::BaseOpConversion;
-
-  Value signlessRewrite(mhlo::ReshapeOp op, ArrayRef<Value> operands,
-                        Type op_result_type,
-                        ConversionPatternRewriter& rewriter) const final {
-    mhlo::ReshapeOp::Adaptor adaptor(operands);
     auto unranked_operand_type =
         adaptor.operand().getType().dyn_cast<UnrankedMemRefType>();
-    if (unranked_operand_type == nullptr) return {};
-    auto loc = op->getLoc();
-    auto result_type = op_result_type.cast<RankedTensorType>();
-    auto cast = rewriter.create<memref::CastOp>(
-        loc,
+    if (unranked_operand_type == nullptr) return failure();
+    auto result_type = op.getType().cast<RankedTensorType>();
+
+    rewriter.replaceOpWithNewOp<memref::CastOp>(
+        op,
         MemRefType::get(result_type.getShape(), result_type.getElementType()),
         adaptor.operand());
-
-    return cast;
+    return success();
   }
 };
 
-class HloToMemrefDynamicReshapeConverter
-    : public BaseOpConversion<mhlo::DynamicReshapeOp> {
- public:
-  using BaseOpConversion<mhlo::DynamicReshapeOp>::BaseOpConversion;
+struct HloToMemrefDynamicReshapeConverter
+    : public OpConversionPattern<mhlo::DynamicReshapeOp> {
+  HloToMemrefDynamicReshapeConverter(TypeConverter& type_converter,
+                                     MLIRContext* ctx)
+      : OpConversionPattern<mhlo::DynamicReshapeOp>(type_converter, ctx) {}
 
-  Value signlessRewrite(mhlo::DynamicReshapeOp op, ArrayRef<Value> operands,
-                        Type op_result_type,
-                        ConversionPatternRewriter& rewriter) const final {
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicReshapeOp op, mhlo::DynamicReshapeOp::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    Type op_result_type = op.getType();
+
     ShapedType result_type;
     if (auto ranked_type = op_result_type.dyn_cast<RankedTensorType>()) {
       result_type =
@@ -148,38 +80,38 @@ class HloToMemrefDynamicReshapeConverter
                    op_result_type.dyn_cast<UnrankedTensorType>()) {
       result_type = UnrankedMemRefType::get(unranked_type.getElementType(), 0);
     } else {
-      return {};
+      return failure();
     }
-    mhlo::DynamicReshapeOp::Adaptor adaptor(operands);
-    auto reshape = rewriter.create<memref::ReshapeOp>(
-        op.getLoc(), result_type, adaptor.operand(), adaptor.output_shape());
-    return reshape;
+    rewriter.replaceOpWithNewOp<memref::ReshapeOp>(
+        op, result_type, adaptor.operand(), adaptor.output_shape());
+    return success();
   }
 };
 
 // TODO(b/175670649) Fix this to no longer access original tensor operands.
-class HloToMemrefDynamicBroadcastInDimOpConverter
-    : public BaseOpConversion<mhlo::DynamicBroadcastInDimOp> {
- public:
+struct HloToMemrefDynamicBroadcastInDimOpConverter
+    : public OpConversionPattern<mhlo::DynamicBroadcastInDimOp> {
   HloToMemrefDynamicBroadcastInDimOpConverter(
-      TypeConverter& converter, RemoveSignTypeConverter* sign_converter,
-      MLIRContext* ctx, std::function<bool(Operation*)> enforce_identity_maps)
-      : BaseOpConversion<mhlo::DynamicBroadcastInDimOp>(converter,
-                                                        sign_converter, ctx),
-        enforce_identity_maps_(std::move(enforce_identity_maps)) {}
+      TypeConverter& converter, MLIRContext* ctx,
+      std::function<bool(Operation*)> enforce_identity_maps)
+      : OpConversionPattern<mhlo::DynamicBroadcastInDimOp>(converter, ctx),
+        enforce_identity_maps(std::move(enforce_identity_maps)) {}
 
-  Value signlessRewrite(mhlo::DynamicBroadcastInDimOp op,
-                        ArrayRef<Value> operands, Type op_result_type,
-                        ConversionPatternRewriter& rewriter) const final {
-    auto result_type = op_result_type.dyn_cast<RankedTensorType>();
-    if (!result_type) return {};
-    Value result = InsertDynamicMemrefCastOp(op, operands.front(), &rewriter);
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicBroadcastInDimOp op,
+      mhlo::DynamicBroadcastInDimOp::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto result_type = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_type) return failure();
 
-    if (enforce_identity_maps_(op)) {
+    Value result =
+        InsertDynamicMemrefCastOp(op, adaptor.getOperands().front(), &rewriter);
+
+    if (enforce_identity_maps(op)) {
       result = CreateCopy(op, result, &rewriter);
     }
-
-    return result;
+    rewriter.replaceOp(op, {result});
+    return success();
   }
 
  private:
@@ -302,7 +234,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     return copy;
   }
 
-  std::function<bool(Operation*)> enforce_identity_maps_;
+  std::function<bool(Operation*)> enforce_identity_maps;
 };
 
 struct HloLegalizeToMemrefPass
@@ -319,25 +251,15 @@ struct HloLegalizeToMemrefPass
     ConversionTarget target(context);
 
     bufferization::BufferizeTypeConverter converter;
-    RemoveSignTypeConverter sign_converter;
 
-    populateHLOToMemrefConversionPattern(&converter, &sign_converter,
-                                         &patterns);
+    populateHLOToMemrefConversionPattern(&converter, &patterns);
 
-    target.addIllegalOp<DynamicReshapeOp, DynamicBroadcastInDimOp,
-                        XlaRngGetAndUpdateStateOp>();
+    target.addIllegalOp<DynamicReshapeOp, DynamicBroadcastInDimOp>();
     target.addLegalDialect<arith::ArithmeticDialect,
                            bufferization::BufferizationDialect, BuiltinDialect,
                            memref::MemRefDialect, tensor::TensorDialect>();
 
     auto module = getOperation();
-    OpBuilder b(module);
-    b.create<memref::GlobalOp>(
-        module.getLoc(), b.getStringAttr("rng_state"),
-        b.getStringAttr("private"),
-        MemRefType::get({}, b.getIntegerType(128, false)),
-        b.getIntegerAttr(b.getIntegerType(128, false), 0x7012395ull), false,
-        /*alignment=*/IntegerAttr());
     if (failed(applyPartialConversion(module, target, std::move(patterns))))
       signalPassFailure();
   }
@@ -347,14 +269,13 @@ struct HloLegalizeToMemrefPass
 
 void populateHLOToMemrefConversionPattern(
     bufferization::BufferizeTypeConverter* converter,
-    RemoveSignTypeConverter* sign_converter, RewritePatternSet* patterns,
+    RewritePatternSet* patterns,
     const std::function<bool(Operation*)>& enforce_identity_maps) {
   MLIRContext* context = patterns->getContext();
   patterns->add<HloToMemrefDynamicBroadcastInDimOpConverter>(
-      *converter, sign_converter, context, enforce_identity_maps);
+      *converter, context, enforce_identity_maps);
   patterns->add<HloToMemrefDynamicReshapeConverter,
-                HloToMemrefReshapeUnrankedConverter>(*converter, sign_converter,
-                                                     context);
+                HloToMemrefReshapeUnrankedConverter>(*converter, context);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass() {
