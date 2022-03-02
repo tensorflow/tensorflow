@@ -384,7 +384,6 @@ class _EagerDefinedFunction(object):
         None,
         compat.as_str(""))
 
-    self._fn = fn
     for name, attr_value in attrs.items():
       serialized = attr_value.SerializeToString()
       # TODO(iga): this creates and deletes a new TF_Status for every attr.
@@ -392,21 +391,24 @@ class _EagerDefinedFunction(object):
       pywrap_tf_session.TF_FunctionSetAttrValueProto(fn, compat.as_str(name),
                                                      serialized)
 
-    # NOTE(feyu): Do not cache signature and definition at initialization to
-    # save memory usage of concrete functions never called through Python. We
-    # cache them on the first call of .definition and .signature.
-    signature = self._get_definition().signature
-
-    self._name = compat.as_bytes(signature.name)
+    # TODO(apassos) avoid creating a FunctionDef (specially to grab the
+    # signature, but also in general it's nice not to depend on it.
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tf_session.TF_FunctionToFunctionDef(fn, buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
+    function_def = function_pb2.FunctionDef()
+    function_def.ParseFromString(compat.as_bytes(proto_data))
+    self._name = compat.as_bytes(function_def.signature.name)
     with ops.init_scope():
       if context.executing_eagerly():
         context.ensure_initialized()
         context.add_function(fn)
         self._function_deleter = _EagerDefinedFunctionDeleter(self.name)
         self._registered_on_context = True
-
-    self._num_outputs = len(signature.output_arg)
-    self._output_types = [o.type for o in signature.output_arg]
+    self.definition = function_def
+    self.signature = function_def.signature
+    self._num_outputs = len(self.signature.output_arg)
+    self._output_types = [o.type for o in self.signature.output_arg]
     self._output_shapes = [o.shape for o in outputs]
     self._control_captures = graph.control_captures
     # Shallow copy outputs since ConcreteFunction may mutate it.
@@ -417,32 +419,6 @@ class _EagerDefinedFunction(object):
     self._grad_func = None
     self.graph = graph
     self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
-
-  @property
-  def signature(self):
-    try:
-      return self._signature
-    except AttributeError:
-      self._signature = self.definition.signature
-    return self._signature
-
-  @property
-  def definition(self):
-    try:
-      return self._definition
-    except AttributeError:
-      self._definition = self._get_definition()
-    return self._definition
-
-  def _get_definition(self):
-    # TODO(apassos) avoid creating a FunctionDef (specially to grab the
-    # signature, but also in general it's nice not to depend on it.
-    with c_api_util.tf_buffer() as buffer_:
-      pywrap_tf_session.TF_FunctionToFunctionDef(self._fn, buffer_)
-      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
-    function_def = function_pb2.FunctionDef()
-    function_def.ParseFromString(compat.as_bytes(proto_data))
-    return function_def
 
   def add_to_graph(self, g=None):
     """Add the function to the current context or a graph, if supplied.
