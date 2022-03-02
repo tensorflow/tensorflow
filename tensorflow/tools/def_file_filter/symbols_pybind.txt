@@ -478,9 +478,11 @@ tensorflow::config::Flag::value
 tensorflow::config::Flag::reset
 
 [//tensorflow/python/framework:op_def_util_cc] # op_def_util
+tensorflow::AttributeType
 tensorflow::AttributeTypeFromName
 tensorflow::AttrValueToPyObject
 tensorflow::ConvertPyObjectToAttributeType
+tensorflow::DataTypeToPyObject
 tensorflow::Safe_PyObjectPtr
 
 [//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc] # quantization
