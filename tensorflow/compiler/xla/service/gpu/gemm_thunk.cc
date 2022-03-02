@@ -466,6 +466,9 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
                                     output_matrix, stream, alpha, beta_cmplx,
                                     scratch_allocator, best_algorithm,
                                     /*output_profile_result=*/profile_result);
+      default:
+        return InternalError("%%s", absl::StrCat("Unexpected GEMMLt datatype: ",
+                                                 output_shape.ToString()));
     }
   } else {
     auto best_algorithm = [&]() -> absl::optional<se::blas::AlgorithmType> {
