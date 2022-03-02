@@ -2543,6 +2543,72 @@ Status QuantizedConv2DShape(InferenceContext* c) {
   return Status::OK();
 }
 
+Status FusedQuantizedConvShape(InferenceContext* c, int num_dims) {
+  std::vector<string> fused_ops;
+  TF_RETURN_IF_ERROR(c->GetAttr("fused_ops", &fused_ops));
+  ShapeHandle unused, channel;
+  bool fused_sum, fused_bias, fused_requantize;
+  fused_sum =
+      std::find(fused_ops.begin(), fused_ops.end(), "Sum") != fused_ops.end();
+  fused_bias = std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") !=
+               fused_ops.end();
+  fused_requantize = std::find(fused_ops.begin(), fused_ops.end(),
+                               "Requantize") != fused_ops.end();
+  if (fused_bias && !fused_sum) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));  // bias
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // min_input
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // max_input
+    TF_RETURN_IF_ERROR(
+        c->WithRankAtMost(c->input(5), 1, &channel));  // min_filter
+    TF_RETURN_IF_ERROR(
+        c->WithRankAtMost(c->input(6), 1, &channel));  // max_filter
+  } else if (fused_sum && !fused_bias) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), num_dims, &unused));  // summand
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // min_input
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // max_input
+    TF_RETURN_IF_ERROR(
+        c->WithRankAtMost(c->input(5), 1, &channel));  // min_filter
+    TF_RETURN_IF_ERROR(
+        c->WithRankAtMost(c->input(6), 1, &channel));  // max_filter
+  } else if (fused_bias && fused_sum) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));         // bias
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), num_dims, &unused));  // summand
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // min_input
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // max_input
+    TF_RETURN_IF_ERROR(
+        c->WithRankAtMost(c->input(6), 1, &channel));  // min_filter
+    TF_RETURN_IF_ERROR(
+        c->WithRankAtMost(c->input(7), 1, &channel));  // max_filter
+  } else {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // min_input
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // max_input
+    TF_RETURN_IF_ERROR(
+        c->WithRankAtMost(c->input(4), 1, &channel));  // min_filter
+    TF_RETURN_IF_ERROR(
+        c->WithRankAtMost(c->input(5), 1, &channel));  // max_filter
+  }
+  if (fused_requantize) {
+    c->set_output(1, c->Scalar());
+    c->set_output(2, c->Scalar());
+  } else {
+    c->set_output(1, channel);
+    c->set_output(2, channel);
+  }
+  return Status::OK();
+}
+
+Status FusedQuantizedConv2DShape(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(shape_inference::Conv2DShapeImpl(c, true));
+  TF_RETURN_IF_ERROR(FusedQuantizedConvShape(c, 4));
+  return Status::OK();
+}
+
+Status FusedQuantizedDepthwiseConv2D(InferenceContext* c) {
+  TF_RETURN_IF_ERROR(DepthwiseConv2DNativeShapeImpl(c, true));
+  TF_RETURN_IF_ERROR(FusedQuantizedConvShape(c, 4));
+  return Status::OK();
+}
+
 Status QuantizedAvgPoolShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(shape_inference::AvgPoolShape(c));
   ShapeHandle unused;
