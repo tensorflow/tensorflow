@@ -44,6 +44,7 @@
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/rocblas_wrapper.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 
@@ -69,13 +70,35 @@ Value GetBias(lmhlo_gpu::GEMM_BiasOpAdaptor op) { return op.bias(); }
 // Match GEMM auto-tuning, see ComputationTypeFromPrimitive()
 Type MlirComputationType(Type element_type,
                          ConversionPatternRewriter& rewriter) {
-  if (element_type.isF16()) {
-    return rewriter.getF32Type();
-  } else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
+  if (element_type.isF16()) return rewriter.getF32Type();
+
+#if !TENSORFLOW_USE_ROCM
+  if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>())
     return complex_type.getElementType();
-  } else {
-    return element_type;
-  }
+#endif
+
+  return element_type;
+}
+
+// Gets the platform specific Gemm algorithm value.
+template <class GemmOp>
+tfrt::gpu::wrapper::BlasGemmAlgo GetBlasGemmAlgoOrDefault(GemmOp op) {
+#if TENSORFLOW_USE_ROCM
+  rocblas_gemm_algo default_value = rocblas_gemm_algo_standard;
+#else
+  cublasGemmAlgo_t default_value = CUBLAS_GEMM_DEFAULT;
+#endif
+  return static_cast<decltype(default_value)>(
+      op.algorithm().getValueOr(default_value));
+}
+
+tfrt::gpu::wrapper::BlasOperation MatrixTransposeToBlasOperation(
+    bool transpose) {
+#if TENSORFLOW_USE_ROCM
+  return transpose ? rocblas_operation_transpose : rocblas_operation_none;
+#else
+  return transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
+#endif
 }
 
 // Create all the Ops necessary for the GEMM operation, including the GEMM
@@ -86,7 +109,7 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
                     mlir::Type output_type, MatrixDescriptor lhs_matrix,
                     MatrixDescriptor rhs_matrix, MatrixDescriptor output_matrix,
                     llvm::APFloat alpha_real, llvm::APFloat alpha_imaginary,
-                    llvm::APFloat beta_real, cublasGemmAlgo_t algorithm,
+                    llvm::APFloat beta_real,
                     ConversionPatternRewriter& rewriter) {
   auto loc = op.getLoc();
   if (auto bias = GetBias(adaptor)) {
@@ -124,18 +147,18 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
   auto ldc = rewriter.create<tfrt::compiler::ConstantI32Op>(
       loc, output_matrix.num_rows);
 
+  tfrt::gpu::wrapper::BlasGemmAlgo algorithm = GetBlasGemmAlgoOrDefault(op);
   auto algo = rewriter.create<tfrt::gpu::BlasGemmAlgoOp>(loc, algorithm);
 
   Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
   auto handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, context);
 
-  auto lhs_op = lhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
-  auto rhs_op = rhs_matrix.transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
+  auto lhs_op = MatrixTransposeToBlasOperation(lhs_matrix.transpose);
+  auto rhs_op = MatrixTransposeToBlasOperation(rhs_matrix.transpose);
 
-  const auto input_data_type = MlirTypeToCudaDataType(input_type);
-  const auto output_data_type = MlirTypeToCudaDataType(output_type);
-  const auto compute_type = MlirTypeToCublasComputeType(mlir_compute_type);
-
+  const auto input_data_type = MlirTypeToBlasDataType(input_type);
+  const auto output_data_type = MlirTypeToBlasDataType(output_type);
+  const auto compute_type = MlirTypeToBlasComputeType(mlir_compute_type);
   if (batch_size != 1) {
     auto lhs_stride =
         rewriter.create<tfrt::compiler::ConstantI64Op>(loc, lhs_matrix.stride);
@@ -308,13 +331,9 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
   llvm::APFloat beta_real = APFloat::getZero(op.alpha_real().getSemantics());
   if (auto attr = GetBeta(op)) beta_real = attr.getValue();
 
-  auto algorithm = static_cast<cublasGemmAlgo_t>(
-      op.algorithm().getValueOr(CUBLAS_GEMM_DEFAULT));
-
   return CreateTfrtOps(op, adaptor, chain, stream, batch_size, input_type,
                        output_type, lhs_matrix, rhs_matrix, output_matrix,
-                       op.alpha_real(), op.alpha_imag(), beta_real, algorithm,
-                       rewriter);
+                       op.alpha_real(), op.alpha_imag(), beta_real, rewriter);
 }
 
 template <class GemmOpType>

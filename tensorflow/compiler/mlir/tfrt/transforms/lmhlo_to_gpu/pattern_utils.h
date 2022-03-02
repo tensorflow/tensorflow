@@ -20,28 +20,26 @@
 #include "tensorflow/stream_executor/dnn.h"
 #include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/cudnn_wrapper.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/miopen_wrapper.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/rocblas_wrapper.h"  // from @tf_runtime
 
 namespace tensorflow {
 
-// TODO(hanbinyoon): Consider making this return a
-// tfrt::gpu::wrapper::BlasDataType (also rename to MlirTypeToBlasDataType).
-// Converts from mlir::Type to the corresponding cudaDataType_t.
-cudaDataType_t MlirTypeToCudaDataType(mlir::Type type);
+// Converts from mlir::Type to the corresponding
+// tfrt::gpu::wrapper::BlasDataType.
+tfrt::gpu::wrapper::BlasDataType MlirTypeToBlasDataType(mlir::Type type);
 
-// TODO(hanbinyoon): Consider making this return a
-// tfrt::gpu::wrapper::BlasComputeType (also rename to
-// MlirTypeToBlasComputeType).
-// Converts from mlir::Type to the corresponding cublasComputeType_t.
-cublasComputeType_t MlirTypeToCublasComputeType(mlir::Type type);
+// Converts from mlir::Type to the corresponding
+// tfrt::gpu::wrapper::BlasComputeType.
+tfrt::gpu::wrapper::BlasComputeType MlirTypeToBlasComputeType(mlir::Type type);
 
-// TODO(hanbinyoon): Consider making this return a
-// tfrt::gpu::wrapper::DnnDataType (also rename to MlirTypeToDnnDataType).
-// Converts from mlir::Type to the corresponding cudnnDataType_t.
-cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type);
-cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type,
-                                        se::dnn::DataLayout data_layout);
-cudnnDataType_t MlirTypeToCudnnDataType(mlir::Type type,
-                                        se::dnn::FilterLayout filter_layout);
+// Converts from mlir::Type to the corresponding
+// tfrt::gpu::wrapper::DnnDataType.
+tfrt::gpu::wrapper::DnnDataType MlirTypeToDnnDataType(mlir::Type type);
+tfrt::gpu::wrapper::DnnDataType MlirTypeToDnnDataType(
+    mlir::Type type, se::dnn::DataLayout data_layout);
+tfrt::gpu::wrapper::DnnDataType MlirTypeToDnnDataType(
+    mlir::Type type, se::dnn::FilterLayout filter_layout);
 
 // Creates a TFRT constant op for the specified numerical value of specified
 // type.

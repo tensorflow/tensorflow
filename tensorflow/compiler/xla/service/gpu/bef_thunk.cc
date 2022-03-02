@@ -366,8 +366,15 @@ static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
     const Thunk::ExecuteParams& params, const BufferAllocation::Slice& slice) {
   se::DeviceMemoryBase data =
       params.buffer_allocations->GetDeviceAddress(slice);
-  tfrt::gpu::wrapper::Pointer<void> pointer(data.opaque(),
-                                            tfrt::gpu::wrapper::Platform::CUDA);
+
+  // TODO(hanbinyoon): This should be moved to a function in a central place.
+#if TENSORFLOW_USE_ROCM
+  auto platform = tfrt::gpu::wrapper::Platform::ROCm;
+#else
+  auto platform = tfrt::gpu::wrapper::Platform::CUDA;
+#endif
+
+  tfrt::gpu::wrapper::Pointer<void> pointer(data.opaque(), platform);
   auto allocator =
       tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuOneShotAllocator<void>>(
           pointer);
