@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,9 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include "tensorflow/core/util/mkl_util.h"
+#include "absl/base/call_once.h"
+#include "tensorflow/core/util/onednn_env_vars.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -28,5 +30,16 @@ bool AreWeightsFrozen() {
   });
   return weights_const;
 }
+
+bool UseSystemAlloc() {
+  static bool use_sys_alloc = false;
+  static absl::once_flag once;
+  absl::call_once(once, [&] {
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ONEDNN_USE_SYSTEM_ALLOCATOR",
+                                   /*default_value*/ false, &use_sys_alloc));
+  });
+  return use_sys_alloc;
+}
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL

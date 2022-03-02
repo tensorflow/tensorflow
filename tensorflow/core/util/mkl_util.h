@@ -135,8 +135,6 @@ inline void execute_primitives(
   }
 }
 
-bool AreWeightsFrozen();
-
 // In oneDNN v1.x, the format (ex. NCHW) used to initialize a memory descriptor
 // (md) structure will no longer be recorded in its `format` field. Instead, it
 // will be set to a canonical `blocked` format for every fully described md.

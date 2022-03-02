@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_UTIL_ONEDNN_ENV_VARS_H_
+#define TENSORFLOW_CORE_UTIL_ONEDNN_ENV_VARS_H_
 #ifdef INTEL_MKL
 
-#include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
-
 namespace tensorflow {
-
-constexpr const char* MklCPUAllocator::kMaxLimitStr;
-constexpr const size_t MklCPUAllocator::kDefaultMaxLimit;
+  bool AreWeightsFrozen();
+  bool UseSystemAlloc();
 }  // namespace tensorflow
-
 #endif  // INTEL_MKL
+#endif  // TENSORFLOW_CORE_UTIL_ONEDNN_ENV_VARS_H_

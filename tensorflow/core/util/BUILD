@@ -17,10 +17,6 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
-)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -171,6 +167,7 @@ filegroup(
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
+        "onednn_env_vars.h",
         "mkl_threadpool.h",
         "mkl_util.h",
         "overflow.h",
@@ -301,6 +298,7 @@ filegroup(
 filegroup(
     name = "mkl_util_hdrs",
     srcs = [
+        "onednn_env_vars.h",
         "mkl_threadpool.h",
         "mkl_util.h",
     ],
@@ -404,9 +402,9 @@ cc_library(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_util",
-    srcs = ["mkl_util.cc"],
-    hdrs = ["mkl_util.h"],
+    name = "onednn_env_vars",
+    srcs = ["onednn_env_vars.cc"],
+    hdrs = ["onednn_env_vars.h"],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -414,7 +412,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:ops_util",
-    ] + mkl_deps(),
+    ],
 )
 
 cc_library(
