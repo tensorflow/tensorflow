@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -39,10 +40,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
@@ -1833,6 +1836,39 @@ mlir::LogicalResult ReshapeOp::verify() {
            << " to be cast compatible with expected type " << expected_ty;
 
   return success();
+}
+
+LogicalResult ReshapeOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attr, RegionRange,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  ReshapeOpAdaptor op(operands, attr);
+  const Value input = op.input();
+  const Value shape = op.shape();
+
+  auto error_handler = [&](const llvm::Twine &message) -> LogicalResult {
+    // A dummy error handler.
+    // Errors when computing the output shape will be raised in
+    // ReshapeOp::verify call.
+    return failure();
+  };
+  TensorType output_type;
+  if (GetReshapeOutputType(input, shape, error_handler, output_type)
+          .succeeded()) {
+    inferredReturnTypes.assign({output_type});
+    return success();
+  }
+  Type result_type;
+  result_type = UnrankedTensorType::get(
+      input.getType().cast<ShapedType>().getElementType());
+  inferredReturnTypes.assign({result_type});
+  return success();
+}
+
+bool ReshapeOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
