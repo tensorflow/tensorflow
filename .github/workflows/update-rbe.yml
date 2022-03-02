@@ -16,6 +16,11 @@
 name: Update RBE Configs
 on:
   workflow_dispatch:
+  schedule:
+    # Run once a week on Sunday at 3am. See http://crontab.guru
+    # Runs at 3am to make sure it picks up the latest images built every week.
+    # See https://github.com/tensorflow/build/blob/master/.github/workflows/docker.yml
+    - cron: '0 3 * * 0'
 
 jobs:
   rbe:
@@ -24,12 +29,15 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
-    - name: Install Python dependencies
+    - name: Update the RBE Configs
       run: |
         function map() {
           digest=$(curl -s "https://gcr.io/v2/tensorflow-sigs/build/manifests/$2" | jq -r .config.digest)
           sed -i"" "s/\(\"$1\".*build@\)sha256:.*\(\",\)/\1$digest\2/" tensorflow/tools/toolchains/remote_config/configs.bzl 
         }
+        # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
+        # This is a mapping of name_container_map keys under sigbuild_tf_configs
+        # to tag names on gcr.io/tensorflow-sigs/build.
         map sigbuild-r2.9 latest-python3.9
         map sigbuild-r2.9-python3.7 latest-python3.7
         map sigbuild-r2.9-python3.8 latest-python3.8
@@ -37,3 +45,8 @@ jobs:
         map sigbuild-r2.9-python3.10 latest-python3.10
     - name: Create Pull Request with changes
       uses: peter-evans/create-pull-request@v3
+      with:
+        title: Update the RBE images to the latest container versions
+        body: |
+          Automated PR created once per week to get the latest Docker images.
+          See https://github.com/tensorflow/build/blob/master/.github/workflows/docker.yml
