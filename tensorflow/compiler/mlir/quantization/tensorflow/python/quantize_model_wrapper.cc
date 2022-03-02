@@ -51,7 +51,8 @@ PyObject* QuantizeQATModel(absl::string_view saved_model_path,
   absl::StatusOr<tensorflow::GraphDef> graph_def =
       internal::QuantizeQATModel(saved_model_path, exported_names_str, tags);
   if (!graph_def.ok()) {
-    PyErr_Format(PyExc_ValueError, "failed to quantize QAT model");
+    PyErr_Format(PyExc_ValueError, "failed to quantize QAT model: %s",
+                 std::string(graph_def.status().message()).c_str());
     return nullptr;
   }
 
@@ -69,7 +70,8 @@ PyObject* QuantizePTQModelPreCalibration(absl::string_view saved_model_path,
                                                exported_names_str, tags);
   if (!graph_def.ok()) {
     PyErr_Format(PyExc_ValueError,
-                 "failed to quantize PTQ model at the precalibration stage");
+                 "failed to quantize PTQ model at the precalibration stage: %s",
+                 std::string(graph_def.status().message()).c_str());
     return nullptr;
   }
 
@@ -86,8 +88,10 @@ PyObject* QuantizePTQModelPostCalibration(absl::string_view saved_model_path,
       internal::QuantizePTQModelPostCalibration(saved_model_path,
                                                 exported_names_str, tags);
   if (!graph_def.ok()) {
-    PyErr_Format(PyExc_ValueError,
-                 "failed to quantize PTQ model at the postcalibration stage");
+    PyErr_Format(
+        PyExc_ValueError,
+        "failed to quantize PTQ model at the postcalibration stage: %s",
+        std::string(graph_def.status().message()).c_str());
     return nullptr;
   }
 
