@@ -41,6 +41,11 @@ def HloLegalizeToMemrefPass :Pass<"hlo-legalize-to-memref", "ModuleOp"> {
   let constructor = "createLegalizeToMemrefPass()";
 }
 
+def HloLegalizeToArithmeticPass :Pass<"hlo-legalize-to-arithmetic", "ModuleOp"> {
+  let summary = "Legalize from HLO dialect to arithmetic dialect.";
+  let constructor = "createLegalizeToArithmeticPass()";
+}
+
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "FuncOp"> {
   let summary = "Legalize from MHLO control flow to SCF control flow.";
   let constructor = "createLegalizeControlFlowPass()";

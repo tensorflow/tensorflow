@@ -75,6 +75,9 @@ void populateHLOToMemrefConversionPattern(
     const std::function<bool(Operation *)> &enforce_identity_map =
         [](Operation *) { return true; });
 
+// Collection of rewrite patterns for lowering of HLO to arithmetic dialect.
+void populateHLOToArithmeticConversionPatterns(RewritePatternSet *patterns);
+
 // Collection of rewrite patterns for lowering of shape operations from the HLO
 // dialect to the standard dialect.
 void populateHLOShapeOpsToStandardConversionPattern(
