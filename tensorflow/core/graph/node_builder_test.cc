@@ -148,6 +148,8 @@ TEST(NodeBuilderTest, FwdTypeInferenceBasicType) {
                    .Input(input_node)
                    .Finalize(&graph, &node));
 
+  node->RunForwardTypeInference();
+
   ASSERT_TRUE(node->def().has_experimental_type());
   FullTypeDef ft = node->def().experimental_type();
   ASSERT_EQ(input_node->def().experimental_type().type_id(), TFT_PRODUCT);
@@ -161,6 +163,8 @@ TEST(NodeBuilderTest, FwdTypeInferenceBasicType) {
                    .Attr("T", DT_VARIANT)
                    .Input(input_node)
                    .Finalize(&graph, &node));
+
+  node->RunForwardTypeInference();
 
   ASSERT_TRUE(node->def().has_experimental_type());
   ft = node->def().experimental_type();

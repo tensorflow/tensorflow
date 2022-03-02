@@ -2667,65 +2667,6 @@ def py_tests(
             **kwargs
         )
 
-def gpu_py_tests(
-        name,
-        srcs,
-        size = "medium",
-        kernels = [],
-        data = [],
-        shard_count = 1,
-        tags = [],
-        prefix = "",
-        xla_enable_strict_auto_jit = False,
-        xla_enabled = False,
-        grpc_enabled = False,
-        **kwargs):
-    # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
-    # XLA tests once enough compute resources are available.
-    test_tags = [tags + tf_gpu_tests_tags()]
-    if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
-        two_gpus = tags + two_gpu_tags
-        if "requires-gpu-nvidia" in two_gpus:
-            two_gpus.remove("requires-gpu-nvidia")
-        test_tags.append(two_gpus)
-
-    for test_tag in test_tags:
-        if "additional_deps" in kwargs:
-            fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
-        if xla_enable_strict_auto_jit:
-            py_tests(
-                name = name + "_xla",
-                size = size,
-                srcs = srcs,
-                data = data,
-                grpc_enabled = grpc_enabled,
-                kernels = kernels,
-                prefix = prefix,
-                shard_count = shard_count,
-                tags = test_tag + ["xla", "manual"],
-                xla_enabled = xla_enabled,
-                xla_enable_strict_auto_jit = True,
-                **kwargs
-            )
-        py_tests(
-            name = name,
-            size = size,
-            srcs = srcs,
-            data = data,
-            grpc_enabled = grpc_enabled,
-            kernels = kernels,
-            prefix = prefix,
-            shard_count = shard_count,
-            tags = test_tag,
-            xla_enabled = xla_enabled,
-            xla_enable_strict_auto_jit = False,
-            **kwargs
-        )
-
-# terminology changes: saving cuda_* definition for compatibility
-def cuda_py_tests(*args, **kwargs):
-    gpu_py_tests(*args, **kwargs)
-
 # Creates a genrule named <name> for running tools/proto_text's generator to
 # make the proto_text functions, for the protos passed in <srcs>.
 #

@@ -1,16 +1,39 @@
+load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+
+package_group(
+    name = "internal_visibility_allowlist_package",
+    packages = [
+        "//tensorflow/compiler/mlir/quantization/...",
+    ] + internal_visibility_allowlist(),
+)
 
 package(
     default_visibility = [
-        "//tensorflow/compiler/mlir/quantization:__subpackages__",
+        ":internal_visibility_allowlist_package",
     ],
     licenses = ["notice"],
 )
 
-filegroup(
-    name = "quantized_function_library_mlir",
-    srcs = ["quantized_function_library.mlir"],
+pytype_strict_binary(
+    name = "gen_quantized_function_library",
+    srcs = ["gen_quantized_function_library.py"],
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)
+
+genrule(
+    name = "quantized_function_library",
+    srcs = ["passes/quantized_function_library.mlir"],
+    outs = [
+        "passes/quantized_function_library.h",
+    ],
+    cmd = "$(location gen_quantized_function_library) --output_file $(RULEDIR)/passes/quantized_function_library.h --src $(SRCS)",
+    exec_tools = ["gen_quantized_function_library"],
 )
 
 cc_library(
@@ -22,7 +45,6 @@ cc_library(
         "passes/util.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
@@ -38,7 +60,6 @@ td_library(
         "passes/quantize_composite_functions.td",
         "passes/utils.td",
     ],
-    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
@@ -103,12 +124,10 @@ cc_library(
         "passes/quantize.cc",
         "passes/quantize_composite_functions.cc",
         "passes/quantize_composite_functions.inc",
+        "passes/quantized_function_library.h",
     ],
     hdrs = [
         "passes/passes.h",
-    ],
-    data = [
-        ":quantized_function_library_mlir",
     ],
     deps = [
         ":pass_util",
@@ -118,13 +137,10 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:path",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/random",
@@ -142,12 +158,11 @@ cc_library(
 )
 
 tf_cc_binary(
-    name = "tf-opt-quant",
-    srcs = ["passes/tf_opt_quant.cc"],
+    name = "tf-quant-opt",
+    srcs = ["passes/tf_quant_opt.cc"],
     deps = [
         ":passes",
         "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",

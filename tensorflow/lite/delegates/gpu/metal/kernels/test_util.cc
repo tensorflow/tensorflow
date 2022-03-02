@@ -212,6 +212,61 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
   return absl::OkStatus();
 }
 
+absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
+    const std::vector<TensorDescriptor*>& src_cpu,
+    const std::vector<TensorDescriptor*>& dst_cpu,
+    std::unique_ptr<GPUOperation>&& operation) {
+  const OperationDef& op_def = operation->GetDefinition();
+  std::vector<MetalSpatialTensor> src(src_cpu.size());
+  for (int i = 0; i < src_cpu.size(); ++i) {
+    auto src_shape = src_cpu[i]->GetBHWDCShape();
+    if (src_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
+    }
+    RETURN_IF_ERROR(src[i].CreateFromDescriptor(*src_cpu[i], device_.device()));
+    operation->SetSrc(&src[i], i);
+  }
+
+  std::vector<MetalSpatialTensor> dst(dst_cpu.size());
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    auto dst_shape = dst_cpu[i]->GetBHWDCShape();
+    if (dst_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
+    }
+    RETURN_IF_ERROR(CreateTensor(device_.device(), dst_shape,
+                                 op_def.dst_tensors[i], &dst[i]));
+
+    operation->SetDst(&dst[i], i);
+  }
+  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
+
+  ComputeTask gpu_task;
+  gpu_task.Init(std::move(operation));
+  RETURN_IF_ERROR(gpu_task.Compile(&device_));
+  for (int i = 0; i < src_cpu.size(); ++i) {
+    gpu_task.SetSrcTensor(&src[i], i);
+  }
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    gpu_task.SetDstTensor(&dst[i], i);
+  }
+  RETURN_IF_ERROR(gpu_task.UpdateParams());
+
+  id<MTLCommandQueue> command_queue = [device_.device() newCommandQueue];
+  id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+  id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+  gpu_task.Encode(encoder);
+  [encoder endEncoding];
+  [command_buffer commit];
+  [command_buffer waitUntilCompleted];
+
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    RETURN_IF_ERROR(dst[i].ToDescriptor(dst_cpu[i], device_.device()));
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

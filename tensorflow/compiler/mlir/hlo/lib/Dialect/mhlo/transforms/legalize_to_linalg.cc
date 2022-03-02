@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -1021,14 +1022,17 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
 
     result_type = typeConverter->convertType(result_type).cast<ShapedType>();
 
-    if (result_type.getNumElements() == 1 && !operand_type.hasStaticShape()) {
+    // Special case where the result is a scalar.
+    if (result_type.getRank() == 0 && !operand_type.hasStaticShape()) {
       // This means all dimensions of the operand need to be 1. We add a cast to
       // cast the dynamic dimensions to 1.
       auto static_type = RankedTensorType::get(
           llvm::SmallVector<int64_t>(operand_type.getRank(), 1), elem_type);
       operand = rewriter.create<tensor::CastOp>(reshape_op.getLoc(),
                                                 static_type, operand);
-      operand_type = static_type;
+      rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(
+          reshape_op, result_type, operand, ArrayRef<ReassociationIndices>{});
+      return success();
     }
 
     // Compute the reassociation maps for the linalg operation. This will
@@ -1037,6 +1041,25 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
     if (Optional<SmallVector<ReassociationIndices>> reassociation_map =
             getReassociationIndicesForReshape(operand_type, result_type)) {
       if (result_type.getRank() < operand_type.getRank()) {
+        // We have found a working reassociation map. If the operand is dynamic,
+        // we first need to cast all unknown dimensions in the input that get
+        // collapsed to a static-sized dimension in the output, to 1.
+        SmallVector<int64_t> shape(operand_type.getShape().begin(),
+                                   operand_type.getShape().end());
+        for (const auto& map : llvm::enumerate(*reassociation_map)) {
+          // If the result dim is dynamic, we do not mind dynamic entries in the
+          // source.
+          if (result_type.isDynamicDim(map.index())) continue;
+          for (auto target_dim : map.value()) {
+            if (shape[target_dim] == ShapedType::kDynamicSize)
+              shape[target_dim] = 1;
+          }
+        }
+        auto new_operand_type = RankedTensorType::get(shape, elem_type);
+        if (new_operand_type != operand_type) {
+          operand = rewriter.create<tensor::CastOp>(reshape_op.getLoc(),
+                                                    new_operand_type, operand);
+        }
         rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(
             reshape_op, result_type, operand, *reassociation_map);
       } else {
@@ -1772,15 +1795,10 @@ struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
     Value padding_val =
         rewriter.createOrFold<tensor::ExtractOp>(loc, adaptor.padding_value());
 
-    const auto& edge_padding_low = op.edge_padding_low();
-    const auto& edge_padding_high = op.edge_padding_high();
-    SmallVector<OpFoldResult, 4> low, high;
-    for (auto it : llvm::zip(edge_padding_low, edge_padding_high)) {
-      low.push_back(rewriter.createOrFold<arith::ConstantIndexOp>(
-          loc, std::get<0>(it).getZExtValue()));
-      high.push_back(rewriter.createOrFold<arith::ConstantIndexOp>(
-          loc, std::get<1>(it).getZExtValue()));
-    }
+    SmallVector<OpFoldResult, 4> low(
+        op.edge_padding_low().getValues<IntegerAttr>());
+    SmallVector<OpFoldResult, 4> high(
+        op.edge_padding_high().getValues<IntegerAttr>());
     Type result_type = op.getResult().getType();
     auto pad_tensor_op = tensor::createPadScalarOp(
         result_type, adaptor.operand(), padding_val, low, high,

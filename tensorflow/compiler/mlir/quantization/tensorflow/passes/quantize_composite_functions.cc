@@ -44,9 +44,9 @@ namespace mlir {
 namespace quant {
 namespace {
 
-constexpr absl::string_view quantize_func_name = "quantize_i8";
-constexpr absl::string_view dequantize_func_name = "dequantize_i8";
-constexpr absl::string_view kAttrMapAttribute = "attr_map";
+constexpr char kQuantizeFuncName[] = "quantize_i8";
+constexpr char kDequantizeFuncName[] = "dequantize_i8";
+constexpr char kAttrMapAttribute[] = "attr_map";
 
 class QuantizeCompositeFunctionsPass
     : public mlir::PassWrapper<QuantizeCompositeFunctionsPass,
@@ -158,7 +158,7 @@ class ReplaceQuantizePattern : public mlir::OpRewritePattern<QuantizeCastOp> {
         output_type.clone(elem_type.getStorageType())};
     SmallVector<Value> args = {q_op.arg(), scale, zero_point};
     FlatSymbolRefAttr func_name =
-        FlatSymbolRefAttr::get(rewriter.getStringAttr(quantize_func_name));
+        FlatSymbolRefAttr::get(rewriter.getStringAttr(kQuantizeFuncName));
 
     auto quantize_call = rewriter.create<TF::PartitionedCallOp>(
         loc, output_types, args, func_name,
@@ -195,7 +195,7 @@ class ReplaceDequantizePattern
         rewriter.create<quant::StorageCastOp>(loc, output_type, dq_op.arg());
 
     FlatSymbolRefAttr func_name =
-        FlatSymbolRefAttr::get(rewriter.getStringAttr(dequantize_func_name));
+        FlatSymbolRefAttr::get(rewriter.getStringAttr(kDequantizeFuncName));
     SmallVector<Value> args = {scast_op->getResult(0), scale, zero_point};
     auto dequantize_call = rewriter.create<TF::PartitionedCallOp>(
         loc, dq_op.getResult().getType(), args, func_name,
@@ -254,7 +254,9 @@ LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
         return failure();
       }
       identifier_to_attr.insert(
-          {key_and_value_pair[0], inner_op.getAttr(key_and_value_pair[1])});
+          {llvm::StringRef(std::string(key_and_value_pair[0])),
+           inner_op.getAttr(
+               llvm::StringRef(std::string(key_and_value_pair[1])))});
     }
   }
 
@@ -271,14 +273,16 @@ LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
         float_func.emitError("The attr_map attribute is malformed");
         return failure();
       }
-      if (identifier_to_attr.count(key_and_value_pair[1]) == 0) {
+      if (identifier_to_attr.count(
+              llvm::StringRef(std::string(key_and_value_pair[1]))) == 0) {
         float_func.emitError(
             absl::StrCat("Couldn't find the attribute corresponding to ",
                          key_and_value_pair[1]));
         return failure();
       }
-      inner_op.setAttr(key_and_value_pair[0],
-                       identifier_to_attr[key_and_value_pair[1]]);
+      inner_op.setAttr(llvm::StringRef(std::string(key_and_value_pair[0])),
+                       identifier_to_attr[llvm::StringRef(
+                           std::string(key_and_value_pair[1]))]);
     }
     inner_op.removeAttr(kAttrMapAttribute);
   }

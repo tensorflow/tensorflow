@@ -1054,6 +1054,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       result_type);
     }
+    case HloOpcode::kRngGetAndUpdateState: {
+      return func_builder
+          ->create<mlir::mhlo::XlaRngGetAndUpdateStateOp>(
+              loc, result_type,
+              func_builder->getI64IntegerAttr(
+                  Cast<HloRngGetAndUpdateStateInstruction>(instruction)
+                      ->delta()))
+          .getOperation();
+    }
     case HloOpcode::kWhile: {
       llvm::SmallVector<Value> flattened_operands;
       llvm::SmallVector<Type> flattened_operand_types;
@@ -1162,8 +1171,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(ConvertPadding(padding));
       auto reduce = func_builder->create<mlir::mhlo::ReduceWindowOp>(
           loc, return_types, operands, attributes);
-      TF_RETURN_IF_ERROR(
-          ImportAsRegion(*instruction->to_apply(), &reduce.body()));
+      TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
+                                        &reduce.body(),
+                                        /*flatten_region_arg_tuple=*/true));
 
       // Check if the output needs to be tupled.
       if (return_types.size() == 1 && return_types.front() == result_type) {

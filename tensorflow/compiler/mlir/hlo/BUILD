@@ -872,6 +872,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:MathDialect",
@@ -1117,6 +1118,26 @@ cc_library(
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:ShapeTransforms",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "hlo_legalize_to_arithmetic",
+    srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_arithmetic.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":mhlo_pass_details",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
@@ -1537,6 +1558,7 @@ cc_library(
         ":greedy_tiling",
         ":group_reduction_dimensions",
         ":hlo_legalize_shape_ops_to_standard",
+        ":hlo_legalize_to_arithmetic",
         ":hlo_legalize_to_lhlo",
         ":hlo_legalize_to_memref",
         ":legalize_control_flow",

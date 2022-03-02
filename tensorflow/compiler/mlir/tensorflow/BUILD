@@ -706,7 +706,6 @@ cc_library(
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:CallOpInterfacesIncGen",
-        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",

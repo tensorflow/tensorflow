@@ -32,6 +32,12 @@ std::string GetReadImageFromDataType(DataType data_type) {
     return "read_imagef";
   } else if (data_type == DataType::FLOAT16) {
     return "read_imageh";
+  } else if (data_type == DataType::INT8 || data_type == DataType::INT16 ||
+             data_type == DataType::INT32) {
+    return "read_imagei";
+  } else if (data_type == DataType::UINT8 || data_type == DataType::UINT16 ||
+             data_type == DataType::UINT32) {
+    return "read_imageui";
   } else {
     return "error";
   }
@@ -42,6 +48,12 @@ std::string GetWriteImageFromDataType(DataType data_type) {
     return "write_imagef";
   } else if (data_type == DataType::FLOAT16) {
     return "write_imageh";
+  } else if (data_type == DataType::INT8 || data_type == DataType::INT16 ||
+             data_type == DataType::INT32) {
+    return "write_imagei";
+  } else if (data_type == DataType::UINT8 || data_type == DataType::UINT16 ||
+             data_type == DataType::UINT32) {
+    return "write_imageui";
   } else {
     return "error";
   }
@@ -82,23 +94,23 @@ TensorDescriptor::TensorDescriptor(TensorDescriptor&& desc)
       data_type(desc.data_type),
       storage_type(desc.storage_type),
       layout(desc.layout),
-      shape(desc.shape),
-      data(std::move(desc.data)),
       use_buffer_for_write_only_2d_texture(
           desc.use_buffer_for_write_only_2d_texture),
       use_buffer_for_write_only_image_buffer(
-          desc.use_buffer_for_write_only_image_buffer) {}
+          desc.use_buffer_for_write_only_image_buffer),
+      shape(desc.shape),
+      data(std::move(desc.data)) {}
 TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
   if (this != &desc) {
     std::swap(data_type, desc.data_type);
     std::swap(storage_type, desc.storage_type);
     std::swap(layout, desc.layout);
-    std::swap(shape, desc.shape);
-    data = std::move(desc.data);
     std::swap(use_buffer_for_write_only_2d_texture,
               desc.use_buffer_for_write_only_2d_texture);
     std::swap(use_buffer_for_write_only_image_buffer,
               desc.use_buffer_for_write_only_image_buffer);
+    std::swap(shape, desc.shape);
+    data = std::move(desc.data);
     GPUObjectDescriptor::operator=(std::move(desc));
   }
   return *this;
@@ -470,8 +482,6 @@ absl::Status TensorDescriptor::PerformWrite2DSelector(
 std::string TensorDescriptor::Read(
     const GpuInfo& gpu_info, DataType read_as_type,
     const std::vector<std::string>& coords) const {
-  const std::string read_as =
-      read_as_type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
   const bool need_conversion = read_as_type != data_type;
   const std::string metal_type =
       read_as_type == DataType::FLOAT32 ? "float4" : "half4";
@@ -505,7 +515,8 @@ std::string TensorDescriptor::Read(
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
       if (gpu_info.IsApiOpenCl()) {
-        return absl::Substitute("$0(image2d, $1, (int2)($2, $3))", read_as,
+        return absl::Substitute("$0(image2d, $1, (int2)($2, $3))",
+                                GetReadImageFromDataType(read_as_type),
                                 AddressModeToCLSampler(AddressModeFromState()),
                                 coords[0], coords[1]);
       } else if (gpu_info.IsApiMetal()) {
@@ -529,7 +540,7 @@ std::string TensorDescriptor::Read(
     case TensorStorageType::TEXTURE_3D:
       if (gpu_info.IsApiOpenCl()) {
         return absl::Substitute("$0(image3d, $1, (int4)($2, $3, $4, 0))",
-                                read_as,
+                                GetReadImageFromDataType(read_as_type),
                                 AddressModeToCLSampler(AddressModeFromState()),
                                 coords[0], coords[1], coords[2]);
       } else if (gpu_info.IsApiMetal()) {
@@ -554,7 +565,7 @@ std::string TensorDescriptor::Read(
     case TensorStorageType::TEXTURE_ARRAY:
       if (gpu_info.IsApiOpenCl()) {
         return absl::Substitute("$0(image2d_array, $1, (int4)($2, $3, $4, 0))",
-                                read_as,
+                                GetReadImageFromDataType(read_as_type),
                                 AddressModeToCLSampler(AddressModeFromState()),
                                 coords[0], coords[1], coords[2]);
       } else if (gpu_info.IsApiMetal()) {
@@ -578,7 +589,8 @@ std::string TensorDescriptor::Read(
       }
     case TensorStorageType::IMAGE_BUFFER:
       if (gpu_info.IsApiOpenCl()) {
-        return absl::StrCat(read_as, "(image_buffer, ", coords[0], ")");
+        return absl::StrCat(GetReadImageFromDataType(read_as_type),
+                            "(image_buffer, ", coords[0], ")");
       } else if (gpu_info.IsApiMetal()) {
         std::string result =
             absl::Substitute("image_buffer.read(uint($0))", coords[0]);
@@ -1090,10 +1102,39 @@ AddressMode TensorDescriptor::AddressModeFromState() const {
   }
 }
 
-void TensorDescriptor::UploadData(
-    const tflite::gpu::Tensor<BHWC, DataType::FLOAT32>& src) {
-  shape = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
-  UploadData(src.data.data());
+size_t TensorDescriptor::GetSizeInBytesForShape(const BHWDC& shape5d) const {
+  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
+                             ? shape5d.c
+                             : AlignByN(shape5d.c, 4);
+  int elements_count =
+      shape5d.b * shape5d.w * shape5d.h * shape5d.d * aligned_channels;
+  return elements_count * SizeOf(data_type);
+}
+
+int TensorDescriptor::GetLinearIndex(const BHWDC& shape5d, int b, int x, int y,
+                                     int d, int s, int sub_c) const {
+  const int slices = DivideRoundUp(shape5d.c, 4);
+  switch (storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return ((((d * slices + s) * shape5d.h + y) * shape5d.w + x) * shape5d.b +
+              b) *
+                 4 +
+             sub_c;  // DSHWBC4
+    case TensorStorageType::TEXTURE_2D:
+      return ((((y * slices + s) * shape5d.w + x) * shape5d.b + b) * shape5d.d +
+              d) *
+                 4 +
+             sub_c;  // HSWBDC4
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return (((y * shape5d.w + x) * shape5d.b + b) * shape5d.d + d) *
+                 shape5d.c +
+             sub_c;  // HWBDC
+    case TensorStorageType::UNKNOWN:
+      return -1;
+  }
 }
 
 void TensorDescriptor::UploadData(
@@ -1106,21 +1147,6 @@ void TensorDescriptor::UploadData(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
   shape = BHWDC(1, 1, 1, 1, src.shape.v);
   UploadData(src.data.data());
-}
-
-void TensorDescriptor::UploadData(const float* src) {
-  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
-                             ? shape.c
-                             : AlignByN(shape.c, 4);
-  int elements_count = shape.b * shape.w * shape.h * shape.d * aligned_channels;
-  data.resize(elements_count * SizeOf(data_type));
-  if (data_type == DataType::FLOAT32) {
-    float* gpu_data = reinterpret_cast<float*>(data.data());
-    DataFromBHWDC(src, shape, *this, gpu_data);
-  } else {
-    half* gpu_data = reinterpret_cast<half*>(data.data());
-    DataFromBHWDC(src, shape, *this, gpu_data);
-  }
 }
 
 bool TensorDescriptor::SupportsZeroClamp(const Axis& axis) const {
@@ -1163,150 +1189,166 @@ bool TensorDescriptor::ReturnsZeroForNegOneRead() const {
   return storage_type == TensorStorageType::IMAGE_BUFFER;
 }
 
-namespace {
-int GetLinearIndex(const TensorDescriptor& desc, const BHWDC& shape, int b,
-                   int x, int y, int d, int s, int sub_c) {
+absl::Status TensorDescriptor::CanCreateTensorWithShape(
+    const GpuInfo& gpu_info, const BHWDC& shape) const {
   const int slices = DivideRoundUp(shape.c, 4);
-  switch (desc.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_3D:
-      return ((((d * slices + s) * shape.h + y) * shape.w + x) * shape.b + b) *
-                 4 +
-             sub_c;  // DSHWBC4
-    case TensorStorageType::TEXTURE_2D:
-      return ((((y * slices + s) * shape.w + x) * shape.b + b) * shape.d + d) *
-                 4 +
-             sub_c;  // HSWBDC4
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return (((y * shape.w + x) * shape.b + b) * shape.d + d) * shape.c +
-             sub_c;  // HWBDC
-    case TensorStorageType::UNKNOWN:
-      return -1;
+  const uint64_t flt_size = data_type == DataType::FLOAT32 ? 4 : 2;
+  const uint64_t channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
+                                ? shape.c
+                                : slices * 4;
+  const uint64_t allocation_size =
+      flt_size * channels * shape.b * shape.w * shape.h * shape.d;
+  const std::string common_desc = "Shape - " + ToString(shape) +
+                                  ", data type - " + ToString(data_type) + ".";
+  if (allocation_size > gpu_info.GetMaxMemoryAllocationSize()) {
+    return absl::ResourceExhaustedError(absl::StrCat(
+        "Requested allocation size - ", allocation_size,
+        " bytes. Max allocation size for this GPU - ",
+        gpu_info.GetMaxMemoryAllocationSize(), " bytes. ", common_desc));
   }
-}
-
-int GetChannelsAlignment(const TensorDescriptor& desc, const BHWDC& shape) {
-  return desc.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c
-                                                                   : 4;
-}
-}  // namespace
-
-template <typename FromType, typename ToType>
-void DataFromBHWDC(const FromType* src, const BHWDC& shape,
-                   const TensorDescriptor& desc, ToType* dst) {
-  const int channels_alignment = GetChannelsAlignment(desc, shape);
-  const int slices = DivideRoundUp(shape.c, 4);
-  for (int b = 0; b < shape.b; ++b) {
-    for (int s = 0; s < slices; ++s) {
-      for (int y = 0; y < shape.h; ++y) {
-        for (int x = 0; x < shape.w; ++x) {
-          for (int d = 0; d < shape.d; ++d) {
-            for (int c = 0; c < channels_alignment; ++c) {
-              FromType value;
-              if (s * 4 + c < shape.c) {
-                const int cpu_index =
-                    shape.LinearIndex({b, y, x, d, s * 4 + c});
-                value = src[cpu_index];
-              } else {
-                value = 0;
-              }
-              int gpu_index = GetLinearIndex(desc, shape, b, x, y, d, s, c);
-              dst[gpu_index] = value;
-            }
-          }
-        }
+  switch (storage_type) {
+    case TensorStorageType::BUFFER: {
+      const uint64_t flt4_size = 4 * (data_type == DataType::FLOAT32 ? 4 : 2);
+      const uint64_t buffer_size =
+          flt4_size * shape.b * shape.w * shape.h * shape.d * slices;
+      if (buffer_size > gpu_info.GetMaxBufferSize()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Buffer with size - ", buffer_size,
+            " bytes can not be created. Max buffer size for this GPU - ",
+            gpu_info.GetMaxBufferSize(), " bytes. ", common_desc));
+      } else {
+        return absl::OkStatus();
       }
     }
-  }
-}
-
-template void DataFromBHWDC<float, float>(const float* src, const BHWDC& shape,
-                                          const TensorDescriptor& desc,
-                                          float* dst);
-template void DataFromBHWDC<float, half>(const float* src, const BHWDC& shape,
-                                         const TensorDescriptor& desc,
-                                         half* dst);
-template void DataFromBHWDC<int32_t, int32_t>(const int32_t* src,
-                                              const BHWDC& shape,
-                                              const TensorDescriptor& desc,
-                                              int32_t* dst);
-template void DataFromBHWDC<int16_t, int16_t>(const int16_t* src,
-                                              const BHWDC& shape,
-                                              const TensorDescriptor& desc,
-                                              int16_t* dst);
-template void DataFromBHWDC<int8_t, int8_t>(const int8_t* src,
-                                            const BHWDC& shape,
-                                            const TensorDescriptor& desc,
-                                            int8_t* dst);
-template void DataFromBHWDC<uint32_t, uint32_t>(const uint32_t* src,
-                                                const BHWDC& shape,
-                                                const TensorDescriptor& desc,
-                                                uint32_t* dst);
-template void DataFromBHWDC<uint16_t, uint16_t>(const uint16_t* src,
-                                                const BHWDC& shape,
-                                                const TensorDescriptor& desc,
-                                                uint16_t* dst);
-template void DataFromBHWDC<uint8_t, uint8_t>(const uint8_t* src,
-                                              const BHWDC& shape,
-                                              const TensorDescriptor& desc,
-                                              uint8_t* dst);
-
-template <typename FromType, typename ToType>
-void DataToBHWDC(const FromType* src, const BHWDC& shape,
-                 const TensorDescriptor& desc, ToType* dst) {
-  const int channels_alignment = GetChannelsAlignment(desc, shape);
-  const int slices = DivideRoundUp(shape.c, 4);
-  for (int b = 0; b < shape.b; ++b) {
-    for (int s = 0; s < slices; ++s) {
-      for (int y = 0; y < shape.h; ++y) {
-        for (int x = 0; x < shape.w; ++x) {
-          for (int d = 0; d < shape.d; ++d) {
-            for (int c = 0; c < channels_alignment; ++c) {
-              if (s * 4 + c >= shape.c) {
-                continue;
-              }
-              int cpu_index = shape.LinearIndex({b, y, x, d, s * 4 + c});
-              int gpu_index = GetLinearIndex(desc, shape, b, x, y, d, s, c);
-              dst[cpu_index] = src[gpu_index];
-            }
-          }
-        }
+    case TensorStorageType::IMAGE_BUFFER: {
+      const uint64_t flt4_size = 4 * (data_type == DataType::FLOAT32 ? 4 : 2);
+      const uint64_t buffer_size =
+          flt4_size * shape.b * shape.w * shape.h * shape.d * slices;
+      const uint64_t image_width = buffer_size / flt4_size;
+      if (image_width > gpu_info.GetMaxImageBufferWidth()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image buffer with width - ", image_width,
+            " can not be created. Max image buffer width for this GPU - ",
+            gpu_info.GetMaxImageBufferWidth(), ". ", common_desc));
+      } else if (buffer_size > gpu_info.GetMaxBufferSize()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Buffer with size - ", buffer_size,
+            " bytes can not be created. Max buffer size for this GPU - ",
+            gpu_info.GetMaxBufferSize(), " bytes. ", common_desc));
+      } else {
+        return absl::OkStatus();
       }
     }
+    case TensorStorageType::TEXTURE_3D: {
+      if (gpu_info.IsApiOpenCl() &&
+          gpu_info.opencl_info.cl_version < OpenClVersion::kCl1_2 &&
+          slices == 1) {
+        return absl::InternalError(
+            "clCreateImage3D (that used in CL 1.0/1.1) can not create image "
+            "with depth = 1 by specification.");
+      }
+      const int image_width = shape.w * shape.b;
+      const int image_height = shape.h;
+      const int image_depth = slices * shape.d;
+      if (image_width > gpu_info.GetMaxImage3DWidth()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image3D with width - ", image_width,
+            " can not be created. Max Image3D width for this GPU - ",
+            gpu_info.GetMaxImage3DWidth(), ". ", common_desc));
+      } else if (image_height > gpu_info.GetMaxImage3DHeight()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image3D with height - ", image_height,
+            " can not be created. Max Image3D height for this GPU - ",
+            gpu_info.GetMaxImage3DHeight(), ". ", common_desc));
+      } else if (image_depth > gpu_info.GetMaxImage3DDepth()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image3D with depth - ", image_depth,
+            " can not be created. Max Image3D depth for this GPU - ",
+            gpu_info.GetMaxImage3DDepth(), ". ", common_desc));
+      } else {
+        return absl::OkStatus();
+      }
+    }
+    case TensorStorageType::TEXTURE_ARRAY: {
+      // Bug on some Adreno. b/131099086
+      if (gpu_info.IsApiOpenCl() && slices == 1 && gpu_info.IsAdreno() &&
+          !gpu_info.adreno_info.support_one_layer_texture_array) {
+        return absl::InternalError(
+            "Image2DArray with layer = 1 works incorrect on some Adreno in "
+            "OpenCL. Can not be created.");
+      }
+      const int image_width = shape.w * shape.b;
+      const int image_height = shape.h;
+      const int image_layers = slices * shape.d;
+      if (image_width > gpu_info.GetMaxImage2DWidth()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image2DArray with width - ", image_width,
+            " can not be created. Max Image2DArray width for this GPU - ",
+            gpu_info.GetMaxImage2DWidth(), ". ", common_desc));
+      } else if (image_height > gpu_info.GetMaxImage2DHeight()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image2DArray with height - ", image_height,
+            " can not be created. Max Image2DArray height for this GPU - ",
+            gpu_info.GetMaxImage2DHeight(), ". ", common_desc));
+      } else if (image_layers > gpu_info.GetMaxImage2DArrayLayers()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image2DArray with layers - ", image_layers,
+            " can not be created. Max Image2DArray layers for this GPU - ",
+            gpu_info.GetMaxImage2DArrayLayers(), ". ", common_desc));
+      } else {
+        return absl::OkStatus();
+      }
+    }
+    case TensorStorageType::TEXTURE_2D: {
+      const int image_width = shape.w * shape.b * shape.d;
+      const int image_height = shape.h * slices;
+      if (image_width > gpu_info.GetMaxImage2DWidth()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image2D with width - ", image_width,
+            " can not be created. Max Image2D width for this GPU - ",
+            gpu_info.GetMaxImage2DWidth(), ". ", common_desc));
+      } else if (image_height > gpu_info.GetMaxImage2DHeight()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image2D with height - ", image_height,
+            " can not be created. Max Image2D height for this GPU - ",
+            gpu_info.GetMaxImage2DHeight(), ". ", common_desc));
+      } else {
+        return absl::OkStatus();
+      }
+    }
+    case TensorStorageType::SINGLE_TEXTURE_2D: {
+      const int image_width = shape.w * shape.b * shape.d;
+      const int image_height = shape.h;
+      if (shape.c > 4) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image2D with channels - ", shape.c, " can not be created."));
+      } else if (!gpu_info.SupportsFloatImage2D(data_type, shape.c)) {
+        return absl::ResourceExhaustedError(
+            "Image2D doesn't support this pixel layout.");
+      } else if (image_width > gpu_info.GetMaxImage2DWidth()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image2D with width - ", image_width,
+            " can not be created. Max Image2D width for this GPU - ",
+            gpu_info.GetMaxImage2DWidth(), ". ", common_desc));
+      } else if (image_height > gpu_info.GetMaxImage2DHeight()) {
+        return absl::ResourceExhaustedError(absl::StrCat(
+            "Image2D with height - ", image_height,
+            " can not be created. Max Image2D height for this GPU - ",
+            gpu_info.GetMaxImage2DHeight(), ". ", common_desc));
+      } else {
+        return absl::OkStatus();
+      }
+    }
+    default:
+      return absl::UnimplementedError(
+          "Can not create resources for unknown storage type.");
   }
 }
 
-template void DataToBHWDC<float, float>(const float* src, const BHWDC& shape,
-                                        const TensorDescriptor& desc,
-                                        float* dst);
-template void DataToBHWDC<half, float>(const half* src, const BHWDC& shape,
-                                       const TensorDescriptor& desc,
-                                       float* dst);
-template void DataToBHWDC<int32_t, int32_t>(const int32_t* src,
-                                            const BHWDC& shape,
-                                            const TensorDescriptor& desc,
-                                            int32_t* dst);
-template void DataToBHWDC<int16_t, int16_t>(const int16_t* src,
-                                            const BHWDC& shape,
-                                            const TensorDescriptor& desc,
-                                            int16_t* dst);
-template void DataToBHWDC<int8_t, int8_t>(const int8_t* src, const BHWDC& shape,
-                                          const TensorDescriptor& desc,
-                                          int8_t* dst);
-template void DataToBHWDC<uint32_t, uint32_t>(const uint32_t* src,
-                                              const BHWDC& shape,
-                                              const TensorDescriptor& desc,
-                                              uint32_t* dst);
-template void DataToBHWDC<uint16_t, uint16_t>(const uint16_t* src,
-                                              const BHWDC& shape,
-                                              const TensorDescriptor& desc,
-                                              uint16_t* dst);
-template void DataToBHWDC<uint8_t, uint8_t>(const uint8_t* src,
-                                            const BHWDC& shape,
-                                            const TensorDescriptor& desc,
-                                            uint8_t* dst);
-
+absl::Status TensorDescriptor::CanCreateTensorWithShape(
+    const GpuInfo& gpu_info, const BHWC& shape) const {
+  const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
+  return CanCreateTensorWithShape(gpu_info, shape5D);
+}
 }  // namespace gpu
 }  // namespace tflite

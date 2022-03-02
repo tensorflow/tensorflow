@@ -423,4 +423,8 @@ StatusOr<Shape> TransferManager::ChooseCompactLayoutForShape(
   return LayoutUtil::GetWithDefaultLayout(host_shape);
 }
 
+xla::Shape TransferManager::ChooseGoodInfeedLayout(const Shape& shape) const {
+  return LayoutUtil::GetWithDefaultLayout(shape);
+}
+
 }  // namespace xla

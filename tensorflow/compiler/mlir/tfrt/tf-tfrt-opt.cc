@@ -17,6 +17,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Support/MlirOptMain.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -43,6 +44,7 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::RegisterAllTensorFlowDialects(registry);
+  registry.insert<mlir::gml_st::GmlStDialect>();
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::mhlo::MhloDialect>();
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();

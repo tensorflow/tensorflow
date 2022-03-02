@@ -72,7 +72,6 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   DataType GetDataType() const { return descriptor_.data_type; }
   TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
 
-  // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const;
 
   cl_mem GetMemoryPtr() const;
@@ -102,6 +101,8 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
 
   absl::Status CreateFromDescriptor(const TensorDescriptor& desc,
                                     CLContext* context);
+  absl::Status ToDescriptor(TensorDescriptor* desc,
+                            CLCommandQueue* queue) const;
 
  private:
   friend absl::Status CreateSharedImage2DBufferTensor(
@@ -116,8 +117,10 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
 
   template <typename T>
   absl::Status WriteDataBHWDC(const T* in, CLCommandQueue* queue);
+  absl::Status WriteData(const void* ptr, CLCommandQueue* queue);
   template <typename T>
   absl::Status ReadDataBHWDC(T* out, CLCommandQueue* queue) const;
+  absl::Status ReadData(void* ptr, CLCommandQueue* queue) const;
 
   int3 GetFullTensorRegion() const;
   void Release();
@@ -200,13 +203,8 @@ absl::Status Tensor::ReadData(CLCommandQueue* queue,
 
 template <typename T>
 absl::Status Tensor::WriteDataBHWDC(const T* in, CLCommandQueue* queue) {
-  const int aligned_channels = GetAlignedChannels();
-  const int elements_count =
-      shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
-
-  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
   std::unique_ptr<uint8_t[]> data_copy;
-  data_copy.reset(new uint8_t[data_size]);
+  data_copy.reset(new uint8_t[GetMemorySizeInBytes()]);
   if (descriptor_.data_type == DataType::FLOAT16) {
     // rearrangement and conversion from float32 to float16
     DataFromBHWDC(reinterpret_cast<const float*>(in), shape_, descriptor_,
@@ -217,55 +215,15 @@ absl::Status Tensor::WriteDataBHWDC(const T* in, CLCommandQueue* queue) {
                   reinterpret_cast<T*>(data_copy.get()));
   }
 
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      RETURN_IF_ERROR(
-          queue->EnqueueWriteBuffer(memory_, data_size, data_copy.get()));
-      break;
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::SINGLE_TEXTURE_2D: {
-      cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
-      RETURN_IF_ERROR(queue->EnqueueWriteImage(mem, GetFullTensorRegion(),
-                                               data_copy.get()));
-      break;
-    }
-    default:
-      return absl::InternalError("Unsupported tensor storage type");
-  }
-
-  return absl::OkStatus();
+  return WriteData(data_copy.get(), queue);
 }
 
 template <typename T>
 absl::Status Tensor::ReadDataBHWDC(T* out, CLCommandQueue* queue) const {
-  const int aligned_channels = GetAlignedChannels();
-  const int elements_count =
-      shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
-  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
   std::unique_ptr<uint8_t[]> data_copy;
-  data_copy.reset(new uint8_t[data_size]);
+  data_copy.reset(new uint8_t[GetMemorySizeInBytes()]);
 
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      RETURN_IF_ERROR(
-          queue->EnqueueReadBuffer(memory_, data_size, data_copy.get()));
-      break;
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::SINGLE_TEXTURE_2D: {
-      cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
-      RETURN_IF_ERROR(
-          queue->EnqueueReadImage(mem, GetFullTensorRegion(), data_copy.get()));
-      break;
-    }
-    default:
-      return absl::InternalError("Unsupported tensor storage type");
-  }
+  RETURN_IF_ERROR(ReadData(data_copy.get(), queue));
 
   if (descriptor_.data_type == DataType::FLOAT16) {
     // rearrangement and conversion from float32 to float16

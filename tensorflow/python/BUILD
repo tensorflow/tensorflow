@@ -830,6 +830,10 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "random_index_shuffle_ops_gen",
+)
+
+tf_gen_op_wrapper_private_py(
     name = "list_ops_gen",
 )
 
@@ -2177,6 +2181,7 @@ py_library(
     deps = [
         ":array_ops",
         ":math_ops",
+        ":random_index_shuffle_ops_gen",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
         "//tensorflow/python/framework:dtypes",
@@ -3264,6 +3269,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:pybind11_proto",
+        "//tensorflow/python/framework:op_def_util_cc",
         "//tensorflow/python/framework:python_api_dispatcher",
         "//tensorflow/python/framework:python_api_info",
         "//tensorflow/python/framework:python_api_parameter_converter",
@@ -3315,6 +3321,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/compiler/mlir/python:mlir",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",
     ] + (tf_additional_lib_deps() +
          tf_monitoring_python_deps() +
          tf_additional_plugin_deps() +
@@ -3345,6 +3352,7 @@ filegroup(
         ":numpy_lib",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
         "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/framework:op_def_util_cc",  # op_def_util
         "//tensorflow/python/framework:python_api_dispatcher",  # python_api_dispatcher
         "//tensorflow/python/framework:python_tensor_converter",  # python_tensor_converter
         "//tensorflow/python/framework:python_op_gen",  # python_op_gen
@@ -3409,6 +3417,7 @@ filegroup(
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",  # quantization
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
@@ -4081,35 +4090,6 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
-)
-
-# TODO(b/220191419): Move this build rule back to tensorflow/core/function/BUILD.
-# TODO(b/221223841): Get rid of if_static, it's nonstandard.
-tf_python_pybind_extension(
-    name = "runtime_client_pybind",
-    srcs = ["//tensorflow/core/function:runtime_client_pybind.cc"],
-    module_name = "runtime_client_pybind",
-    visibility = ["//tensorflow/core/function:__subpackages__"],
-    deps = [
-        "//tensorflow/core/function:runtime_client_headers",
-        "@pybind11",
-        "//tensorflow/python/lib/core:pybind11_status",
-    ] + if_static(
-        extra_deps = [
-            "//tensorflow/core/framework:function_proto_cc",
-            "//tensorflow/core/protobuf:coordination_service_proto_cc",
-            "//tensorflow/core/protobuf:eager_service_proto_cc",
-            "//tensorflow/core/protobuf:master_proto_cc",
-            "//tensorflow/core/protobuf:worker_proto_cc",
-        ],
-        otherwise = [
-            "//tensorflow/core/framework:function_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-        ],
-    ),
 )
 
 py_library(

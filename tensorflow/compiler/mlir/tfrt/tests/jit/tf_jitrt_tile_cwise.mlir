@@ -30,7 +30,7 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK:           %[[INIT:.*]] = linalg.init_tensor {{\[}}%[[DIM0]], %[[DIM1]]]
 // CHECK-DAG:       %[[DIM0_OUT:.*]] = tensor.dim %[[INPUT]], %[[C0]]
 // CHECK-DAG:       %[[DIM1_OUT:.*]] = tensor.dim %[[INPUT]], %[[C1]]
-// CHECK:           %[[OUTPUT:.*]] = linalg.tiled_loop
+// CHECK:           %[[OUTPUT:.*]] = gml_st.loop
 // CHECK-SAME:          (%[[ARG1:.*]], %[[ARG2:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-SAME:          to (%[[DIM0_OUT]], %[[DIM1_OUT]])
 // CHECK-SAME:          step (%[[C1]], %[[STEP]])
@@ -55,7 +55,7 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-SAME:            %[[VAL_23:.*]] into %[[OUT_TENS]]
 // CHECK-SAME:            {{\[}}%[[ARG1]], %[[ARG2]]] [%[[C1]],
 // CHECK-SAME:            %{{.*}}] [1, 1]
-// CHECK-NEXT:        linalg.yield %[[INSERT_RESULT]] : tensor<?x?xf32>
+// CHECK-NEXT:        gml_st.yield %[[INSERT_RESULT]] : tensor<?x?xf32>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      return %[[FINAL_OUTPUT:.*]] : tensor<?x?xf32>
 // CHECK-NEXT:    }

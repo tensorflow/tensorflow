@@ -14,14 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
 
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 namespace mlir {
 namespace quant {
 
 bool HasQuantizedTensors(Operation *op) {
-  if (!isa<TFL::QuantizeOp>(op) && IsOpNotQuantizable(op)) return false;
+  if (IsOpNotQuantizable(op)) return false;
   for (Type operand_type : op->getOperandTypes()) {
     auto tensor_type = operand_type.dyn_cast<TensorType>();
     if (tensor_type && tensor_type.getElementType().isa<QuantizedType>()) {

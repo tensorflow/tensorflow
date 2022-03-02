@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Support/MlirOptMain.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -33,12 +32,11 @@ int main(int argc, char **argv) {
   mlir::registerTensorFlowPasses();
 
   mlir::DialectRegistry registry;
-  registry
-      .insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
-              mlir::tf_saved_model::TensorFlowSavedModelDialect,
-              mlir::StandardOpsDialect, mlir::shape::ShapeDialect,
-              mlir::arith::ArithmeticDialect, mlir::quant::QuantizationDialect,
-              mlir::TFL::TensorFlowLiteDialect>();
+  registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
+                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
+                  mlir::StandardOpsDialect, mlir::shape::ShapeDialect,
+                  mlir::arith::ArithmeticDialect,
+                  mlir::quant::QuantizationDialect>();
   return failed(
       mlir::MlirOptMain(argc, argv, "TF quant Pass Driver\n", registry));
 }

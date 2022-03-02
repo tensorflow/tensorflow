@@ -203,7 +203,8 @@ StatusOr<XlaOp> MlirHloBuilder::ReduceInternal(
       loc_, GetValues(all_operands.first(num_args)),
       GetValues(all_operands.subspan(num_args)),
       GetI64ElementsAttr(dimensions_to_reduce, &builder_));
-  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body()));
+  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body(),
+                                       /*flatten_region_arg_tuple*/ true));
   if (op.getNumResults() == 1) return MakeXlaOp(op.getResult(0));
   auto tuple = builder_.create<mlir::mhlo::TupleOp>(loc_, op.getResults());
   return MakeXlaOp(tuple);
@@ -234,7 +235,8 @@ StatusOr<XlaOp> MlirHloBuilder::ReduceWindowInternal(
       GetI64ElementsAttr(base_dilations, &builder_),
       GetI64ElementsAttr(win_dilations, &builder_),
       mlir::DenseIntElementsAttr::get(padding_ty, padding));
-  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body()));
+  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body(),
+                                       /*flatten_region_arg_tuple*/ true));
   return MakeXlaOp(op.getResult(0));
 }
 

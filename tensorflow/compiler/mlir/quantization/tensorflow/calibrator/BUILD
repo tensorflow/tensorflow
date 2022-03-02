@@ -1,4 +1,8 @@
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -9,7 +13,7 @@ load(
 
 package(
     default_visibility = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
     ],
     licenses = ["notice"],
 )
@@ -70,18 +74,19 @@ tf_custom_op_py_library(
     srcs_version = "PY3",
     deps = [
         ":gen_custom_aggregator_op_wrapper",
-        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 
-# TODO(b/220688154): Re-enable test once the quantize model wrapper is ready.
-#py_test(
-#    name = "custom_aggregator_op_test",
-#    size = "small",
-#    srcs = ["custom_aggregator_op_test.py"],
-#    deps = [
-#        ":custom_aggregator_op",
-#        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_model_wrapper",
-#        "//tensorflow:tensorflow_py",
-#    ],
-#)
+tf_py_test(
+    name = "custom_aggregator_op_test",
+    size = "small",
+    srcs = ["integration_test/custom_aggregator_op_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        ":gen_custom_aggregator_op_wrapper",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)

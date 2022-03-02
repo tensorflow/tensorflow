@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
@@ -31,10 +32,10 @@ namespace {
 using mlir::failure;
 using mlir::success;
 using mlir::arith::ConstantIndexOp;
+using mlir::gml_st::LoopOp;
 using mlir::linalg::CodegenStrategy;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
-using mlir::linalg::TiledLoopOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
 
@@ -101,7 +102,7 @@ struct VectorizeTiledOpsPass
       auto fill = mlir::dyn_cast<FillOp>(op);
       if (!fill) return failure();
 
-      if (op->getParentOfType<TiledLoopOp>()) return success();
+      if (op->getParentOfType<LoopOp>()) return success();
 
       // Allow vectorization for static shapes with low number of elements.
       auto output_type = fill.output().getType().cast<mlir::RankedTensorType>();
@@ -121,7 +122,7 @@ struct VectorizeTiledOpsPass
       auto generic = mlir::dyn_cast<GenericOp>(op);
       if (!generic) return failure();
 
-      if (op->getParentOfType<TiledLoopOp>()) return success();
+      if (op->getParentOfType<LoopOp>()) return success();
 
       // Allow vectorization of 1D reductions.
       return success(generic.getNumLoops() == 1 &&

@@ -1,15 +1,8 @@
 package(
     default_visibility = [
-        ":friends",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
     ],
     licenses = ["notice"],
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "//tensorflow/compiler/mlir/quantization/...",
-    ],
 )
 
 cc_library(

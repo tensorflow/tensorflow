@@ -148,6 +148,26 @@ add_mlir_library(MhloToMemrefConversion
   MLIRTransformUtils
 )
 
+add_mlir_library(MhloToArithmeticConversion
+  hlo_legalize_to_arithmetic.cc
+
+  DEPENDS
+  MLIRhlo_opsIncGen
+  MLIRMhloPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MhloDialect
+  MhloTypeConversion
+  MLIRIR
+  MLIRPass
+  MLIRMath
+  MLIRTransforms
+  MLIRTransformUtils
+)
+
 add_mlir_library(MhloToStandard
   legalize_control_flow.cc
   legalize_to_standard.cc
@@ -217,6 +237,7 @@ target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
   MhloPasses
   MhloToLhloConversion
+  MhloToArithmeticConversion
   MhloToMemrefConversion
   MhloToStandard
   MhloToLinalg
