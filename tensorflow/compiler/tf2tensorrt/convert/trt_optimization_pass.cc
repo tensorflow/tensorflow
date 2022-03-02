@@ -201,8 +201,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
       params_.precision_mode = TrtPrecisionMode::INT8;
       params_.use_calibration = false;
     }
-  } else {
-    LOG(INFO) << "[TF-TRT] not using explicit QDQ mode";
   }
 
   // Create a copy of the graph to optimize.
