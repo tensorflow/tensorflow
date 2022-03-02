@@ -173,6 +173,7 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
   auto rebuild_node_def = [&op, &tensor_proto]() {
     TF_ASSERT_OK(NodeDefBuilder("test", "Const")
                      .Attr("value", tensor_proto)
+                     .Attr("dtype", tensor_proto.dtype())
                      .Finalize(&op.node_def));
   };
 

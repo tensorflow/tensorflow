@@ -76,6 +76,9 @@ ForwardTypeInferenceFn Merge() {
     if (merged.type_id() != TFT_UNSET) {
       ret_type.set_type_id(TFT_PRODUCT);
       *(ret_type.add_args()) = merged;
+      FullTypeDef value_index_type;
+      value_index_type.set_type_id(TFT_INT32);
+      *(ret_type.add_args()) = value_index_type;
     }
     return ret_type;
   };

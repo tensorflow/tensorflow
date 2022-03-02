@@ -710,6 +710,7 @@ REGISTER_OP("Const")
     .Output("output: dtype")
     .Attr("value: tensor")
     .Attr("dtype: type")
+    .SetTypeConstructor(full_type::Unary(TFT_TENSOR, "dtype"))
     .SetShapeFn([](InferenceContext* c) {
       const TensorProto* proto = nullptr;
       TF_RETURN_IF_ERROR(c->GetAttr("value", &proto));

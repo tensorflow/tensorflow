@@ -102,8 +102,9 @@ TEST(Merge, Single) {
 
   const FullTypeDef& rt = ret.ValueOrDie();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
-  ASSERT_EQ(rt.args_size(), 1);
+  ASSERT_EQ(rt.args_size(), 2);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  EXPECT_EQ(rt.args(1).type_id(), TFT_INT32);
 }
 
 TEST(Merge, Double) {
@@ -115,8 +116,9 @@ TEST(Merge, Double) {
 
   const FullTypeDef& rt = ret.ValueOrDie();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
-  ASSERT_EQ(rt.args_size(), 1);
+  ASSERT_EQ(rt.args_size(), 2);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
+  EXPECT_EQ(rt.args(1).type_id(), TFT_INT32);
 }
 
 TEST(Merge, Unset) {
@@ -146,10 +148,11 @@ void ExpectInferredArrayOfTensor(StatusOr<FullTypeDef> ret) {
 
   const FullTypeDef& rt = ret.ValueOrDie();
   EXPECT_EQ(rt.type_id(), TFT_PRODUCT);
-  ASSERT_EQ(rt.args_size(), 1);
+  ASSERT_EQ(rt.args_size(), 2);
   EXPECT_EQ(rt.args(0).type_id(), TFT_ARRAY);
   ASSERT_EQ(rt.args(0).args_size(), 1);
   EXPECT_EQ(rt.args(0).args(0).type_id(), TFT_TENSOR);
+  EXPECT_EQ(rt.args(1).type_id(), TFT_INT32);
 }
 
 TEST(Merge, RejectsMismatched) {
