@@ -1712,6 +1712,7 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]> {
     I64ElementsAttr:$fft_length
   );
 
+  let hasVerifier = 1;
   let results = (outs HLO_Tensor);
 }
 
