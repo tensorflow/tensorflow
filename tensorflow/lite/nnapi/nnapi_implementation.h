@@ -2131,4 +2131,20 @@ struct NnApiSLDriverImplFL5;
 std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
     const NnApiSLDriverImplFL5* nnapi_support_library_driver);
 
+/**
+ * Allocate a new NnApi structure instance and fill it with function pointers
+ * from the NnApiSLDriverImplFL5 instance. Terminate the application if any
+ * functions pointer in the NnApiSLDriverImplFL5 instance that is needed to
+ * fill the NnApi structure is a null pointer.
+ *
+ * The NN API Support Library Driver must support at least NNAPI Feature Level 5
+ * (introduced in SDK level 31), but this might point to a compatible struct
+ * that also supports a higher NNAPI Feature Level. These cases can be
+ * distinguished by examining the base.implFeatureLevel field, which should be
+ * set to the supported feature level (which must be >=
+ * ANEURALNETWORKS_FEATURE_LEVEL_5).
+ */
+std::unique_ptr<const NnApi> CreateCompleteNnApiFromSupportLibraryOrFail(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver);
+
 #endif  // TENSORFLOW_LITE_NNAPI_NNAPI_IMPLEMENTATION_H_

@@ -23,6 +23,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdlib>
 
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 
 #ifdef __ANDROID__
@@ -411,49 +412,55 @@ const NnApi LoadNnApi() {
 
 }  // namespace
 
-std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
-    const NnApiSLDriverImplFL5* nnapi_support_library_driver) {
+std::unique_ptr<const NnApi> CreateNnApiFromSupportLibraryImpl(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver,
+    bool nullptr_no_error) {
   auto nnapi = std::make_unique<NnApi>();
   nnapi->nnapi_exists = true;
   nnapi->android_sdk_version = ANEURALNETWORKS_FEATURE_LEVEL_5;
   nnapi->nnapi_runtime_feature_level =
       nnapi_support_library_driver->base.implFeatureLevel;
 
-#define ASSIGN_SL_FUNCTION_TO_NNAPI(name) \
+#define ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(name)                    \
+  if (!nullptr_no_error)                                          \
+    TFLITE_DCHECK(nnapi_support_library_driver->name != nullptr); \
   nnapi->name = nnapi_support_library_driver->name;
 
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemory_createFromFd);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemory_free);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_create);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_free);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_finish);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_addOperand);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_setOperandValue);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksMemory_createFromFd);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksMemory_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksModel_create);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksModel_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksModel_finish);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksModel_addOperand);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksModel_setOperandValue);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       ANeuralNetworksModel_setOperandSymmPerChannelQuantParams);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_setOperandValueFromMemory);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_addOperation);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_identifyInputsAndOutputs);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
+      ANeuralNetworksModel_setOperandValueFromMemory);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksModel_addOperation);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
+      ANeuralNetworksModel_identifyInputsAndOutputs);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       ANeuralNetworksModel_relaxComputationFloat32toFloat16);
   // ANeuralNetworksCompilation_create is not available in the support library
   // because its clients are expected to know which accelerator they want to
   // use. ANeuralNetworksCompilation_createForDevices is available to create
   // compilation for specified devices.
   nnapi->ANeuralNetworksCompilation_create = nullptr;
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_free);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_setPreference);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_finish);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_create);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_free);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setInput);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setInputFromMemory);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setOutput);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setOutputFromMemory);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksCompilation_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksCompilation_setPreference);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksCompilation_finish);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_create);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_setInput);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_setInputFromMemory);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_setOutput);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
+      ANeuralNetworksExecution_setOutputFromMemory);
   // Support library doesn't support regular asynchronous execution.
   nnapi->ANeuralNetworksExecution_startCompute = nullptr;
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksEvent_wait);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksEvent_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksEvent_wait);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksEvent_free);
 
 #ifdef __ANDROID__
   nnapi->ASharedMemory_create = getASharedMemory_create();
@@ -461,105 +468,110 @@ std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
   nnapi->ASharedMemory_create = ASharedMemory_create;
 #endif  // __ANDROID__
 
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworks_getDeviceCount);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworks_getDevice);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksDevice_getName);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksDevice_getVersion);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksDevice_getFeatureLevel);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksDevice_getType);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworks_getDeviceCount);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworks_getDevice);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksDevice_getName);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksDevice_getVersion);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksDevice_getFeatureLevel);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksDevice_getType);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       ANeuralNetworksModel_getSupportedOperationsForDevices);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_createForDevices);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_setCaching);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_setTimeout);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksCompilation_setPriority);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_compute);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setTimeout);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setLoopTimeout);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_getOutputOperandRank);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksCompilation_createForDevices);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksCompilation_setCaching);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksCompilation_setTimeout);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksCompilation_setPriority);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_compute);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_setTimeout);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_setLoopTimeout);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
+      ANeuralNetworksExecution_getOutputOperandRank);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       ANeuralNetworksExecution_getOutputOperandDimensions);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksBurst_create);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksBurst_free);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_burstCompute);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemory_createFromAHardwareBuffer);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setMeasureTiming);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_getDuration);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksDevice_getExtensionSupport);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_getExtensionOperandType);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_getExtensionOperationType);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksModel_setOperandExtensionData);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksBurst_create);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksBurst_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_burstCompute);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
+      ANeuralNetworksMemory_createFromAHardwareBuffer);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_setMeasureTiming);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_getDuration);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksDevice_getExtensionSupport);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
+      ANeuralNetworksModel_getExtensionOperandType);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
+      ANeuralNetworksModel_getExtensionOperationType);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
+      ANeuralNetworksModel_setOperandExtensionData);
 
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_create);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_free);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_addInputRole);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_addOutputRole);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_setDimensions);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemoryDesc_finish);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksMemoryDesc_create);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksMemoryDesc_free);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksMemoryDesc_addInputRole);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksMemoryDesc_addOutputRole);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksMemoryDesc_setDimensions);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksMemoryDesc_finish);
 
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemory_createFromDesc);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksMemory_copy);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksMemory_createFromDesc);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksMemory_copy);
 
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksEvent_createFromSyncFenceFd);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksEvent_getSyncFenceFd);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksEvent_createFromSyncFenceFd);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksEvent_getSyncFenceFd);
 
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       ANeuralNetworksExecution_startComputeWithDependencies);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       ANeuralNetworksExecution_enableInputAndOutputPadding);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworksExecution_setReusable);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworksExecution_setReusable);
 
-  ASSIGN_SL_FUNCTION_TO_NNAPI(ANeuralNetworks_getRuntimeFeatureLevel);
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(ANeuralNetworks_getRuntimeFeatureLevel);
 
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticCompilationInfo_areDynamicTensorsUsed);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed);
-  ASSIGN_SL_FUNCTION_TO_NNAPI(
+  ASSIGN_SL_FUNCTION_TO_NNAPI_IMPL(
       SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed);
 
   // There are several functions that are defined in the SL but are not yet used
@@ -570,6 +582,18 @@ std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
   //   * ANeuralNetworks_getMaximumLoopTimeout
 
   return nnapi;
+}
+
+std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver) {
+  return CreateNnApiFromSupportLibraryImpl(nnapi_support_library_driver,
+                                           /*nullptr_no_error*/ true);
+}
+
+std::unique_ptr<const NnApi> CreateCompleteNnApiFromSupportLibraryOrFail(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver) {
+  return CreateNnApiFromSupportLibraryImpl(nnapi_support_library_driver,
+                                           /*nullptr_no_error*/ false);
 }
 
 const NnApi* NnApiImplementation() {
