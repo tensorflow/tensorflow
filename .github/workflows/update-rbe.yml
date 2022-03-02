@@ -26,6 +26,7 @@ jobs:
   rbe:
     name: Update RBE Configs
     runs-on: ubuntu-latest
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
