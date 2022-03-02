@@ -64,6 +64,7 @@ class InterpreterWrapper;  // Class for friend declarations.
 }  // namespace interpreter_wrapper
 
 /// Options class for `Interpreter`.
+/// WARNING: This is an experimental API and subject to change.
 class InterpreterOptions {
  public:
   InterpreterOptions()
