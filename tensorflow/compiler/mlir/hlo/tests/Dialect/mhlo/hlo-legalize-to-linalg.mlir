@@ -934,6 +934,17 @@ func @reshape_2D_0D_dynamic(%arg0: tensor<?x?xi32>) -> tensor<i32> {
 
 // -----
 
+// CHECK-LABEL: func @reshape_3D_1D_semidynamic
+func @reshape_3D_1D_semidynamic(%arg0: tensor<16x1x?xi32>) -> tensor<16xi32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<16x1x?xi32>) -> tensor<16xi32>
+  return %0 : tensor<16xi32>
+}
+// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<16x1x?xi32> to tensor<16x1x1xi32>
+// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<16x1x1xi32> into tensor<16xi32>
+// CHECK: return %[[COLLAPSE:.*]] : tensor<16xi32>
+
+// -----
+
 // CHECK-LABEL: func @minf
 func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %0 = "mhlo.minimum"(%lhs, %rhs) {someattr}
