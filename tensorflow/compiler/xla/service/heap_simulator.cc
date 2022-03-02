@@ -826,10 +826,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
       continue;
     }
 
-    ChunkCandidate chunk_candidate = FindChunkCandidate(buffer_interval);
     // This implementation of the heap algorithm does not have a notion of
     // maximum heap size, so it just commits.
-    CommitChunk(buffer_interval, chunk_candidate);
+    CommitChunk(buffer_interval, FindChunkCandidate(buffer_interval));
   }
   VLOG(1) << "result heap_size: " << result_.heap_size;
   Result result;
@@ -853,7 +852,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetSortedBufferIntervals() const {
 }
 
 template <typename BufferType>
-typename GlobalDecreasingSizeBestFitHeap<BufferType>::ChunkCandidate
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
     int64_t preferred_offset) const {
@@ -898,8 +897,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
   });
 
   // Find the minimum free chunk that can hold this buffer.
-  ChunkCandidate chunk_candidate{Chunk{-1, INT64_MAX}, result_.heap_size};
-  Chunk& min_fit_chunk = chunk_candidate.chunk;
+  Chunk min_fit_chunk{-1, INT64_MAX};
   int64_t preferred_chunk_end = preferred_offset + buffer_interval.size;
   auto use_free_chunk_if_smaller = [&](int64_t free_offset, int64_t free_size) {
     if (free_size < buffer_interval.size) {
@@ -915,7 +913,6 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
       // If the free offset is at the very end and if the preferred offset lies
       // in this, pick the preferred offset and grow the heap.
       min_fit_chunk = {preferred_offset, buffer_interval.size};
-      chunk_candidate.heap_size = preferred_chunk_end;
     }
 
     // Pick the min-fit chunk only if we didn't have a preferred offset or a
@@ -937,39 +934,34 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
   // When preferred offset is provided and the preferred offset is larger than
   // the current heap size, simply use the preferred offset provided.
   if (result_.heap_size <= preferred_offset) {
-    chunk_candidate.heap_size = preferred_chunk_end;
     min_fit_chunk = {preferred_offset, buffer_interval.size};
   }
 
   if (min_fit_chunk.offset == -1) {
-    // Increase the heap size to fit in the last free chunk.
-    chunk_candidate.heap_size = offset + buffer_interval.size;
     min_fit_chunk = {offset, buffer_interval.size};
   }
 
   min_fit_chunk.size = buffer_interval.size;
-  return chunk_candidate;
+  return min_fit_chunk;
 }
 
 template <typename BufferType>
 void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
     const GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval&
         buffer_interval,
-    GlobalDecreasingSizeBestFitHeap<BufferType>::ChunkCandidate
-        chunk_candidate) {
+    GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk chunk) {
   // Update the maximum heap size according to the one determined by the chunk
   // candidate.
-  result_.heap_size = chunk_candidate.heap_size;
-  interval_tree_.Add(buffer_interval.start, buffer_interval.end,
-                     chunk_candidate.chunk);
+  result_.heap_size = std::max(result_.heap_size, chunk.chunk_end());
+  interval_tree_.Add(buffer_interval.start, buffer_interval.end, chunk);
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
-    AddToChunkMap(colocation, chunk_candidate.chunk);
+    AddToChunkMap(colocation, chunk);
     auto colocation_interval = buffer_intervals_[colocation];
     interval_tree_.Add(colocation_interval.start, colocation_interval.end,
-                       chunk_candidate.chunk);
+                       chunk);
   }
 
-  AddToChunkMap(buffer_interval.buffer, chunk_candidate.chunk);
+  AddToChunkMap(buffer_interval.buffer, chunk);
 }
 
 template <typename BufferType>
@@ -1004,8 +996,8 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
                      << size_limit_per_heap_;
       }
 
-      ChunkCandidate chunk_candidate = FindChunkCandidate(buffer_interval);
-      if (chunk_candidate.heap_size <= size_limit_per_heap_ ||
+      Chunk chunk_candidate = FindChunkCandidate(buffer_interval);
+      if (chunk_candidate.chunk_end() <= size_limit_per_heap_ ||
           // Commit the chunk as long as the heap is empty. We do this because
           // we want the size constraint to be soft, meaning that results are
           // successfully generated even if there are some buffer sizes larger

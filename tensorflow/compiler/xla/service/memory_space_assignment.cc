@@ -2024,9 +2024,9 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
     return;
   }
 
-  ChunkCandidate chunk_candidate = FindChunkCandidate(*prefetch_candidate);
-  if (chunk_candidate.chunk.offset != 0 ||
-      chunk_candidate.heap_size > available_heap_size()) {
+  Chunk chunk_candidate = FindChunkCandidate(*prefetch_candidate);
+  if (chunk_candidate.offset != 0 ||
+      chunk_candidate.chunk_end() > available_heap_size()) {
     LOG(WARNING)
         << "Could not allocate preferred memory for cross program prefetch";
     return;
@@ -2101,10 +2101,9 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   int64_t cross_program_prefetch_end_time =
       free_buffer ? last_use_time : prefetch_candidate->end;
 
-  AddAsyncCopy(*allocations.back(), MemorySpace::kAlternate,
-               chunk_candidate.chunk, prefetch_candidate->start,
-               cross_program_prefetch_end_time, latest_prefetch_time,
-               &allocations, /*aliased_offset=*/nullptr,
+  AddAsyncCopy(*allocations.back(), MemorySpace::kAlternate, chunk_candidate,
+               prefetch_candidate->start, cross_program_prefetch_end_time,
+               latest_prefetch_time, &allocations, /*aliased_offset=*/nullptr,
                /*resource=*/0.0,
                /*is_cross_program_prefetch=*/true);
   absl::c_for_each(uses, [&](auto& use) { allocations.back()->AddUse(use); });
@@ -2114,8 +2113,8 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   if (free_buffer) {
     VLOG(2) << "Adding an end-of-program prefetch for freed "
                "cross-program-prefetched buffer.";
-    AddAsyncCopy(*allocations.front(), MemorySpace::kAlternate,
-                 chunk_candidate.chunk, end_of_program_prefetch_start_time,
+    AddAsyncCopy(*allocations.front(), MemorySpace::kAlternate, chunk_candidate,
+                 end_of_program_prefetch_start_time,
                  end_of_program_prefetch_end_time,
                  end_of_program_prefetch_end_time, &allocations,
                  cross_program_prefetch_offset,
@@ -2178,15 +2177,15 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
       interval.end = i;
       interval.need_allocation = true;
       interval.colocations = {};
-      ChunkCandidate chunk_candidate =
+      Chunk chunk_candidate =
           FindChunkCandidate(interval, /*preferred_offset=*/0);
-      CHECK_EQ(chunk_candidate.chunk.offset, 0);
+      CHECK_EQ(chunk_candidate.offset, 0);
       AddToPendingChunks(interval, chunk_candidate);
 
       allocations_->push_back(
           absl::make_unique<MemorySpaceAssignment::Allocation>(
               HloPosition{instruction_sequence[i], {}}, MemorySpace::kAlternate,
-              chunk_candidate.chunk, i, i, /*is_scoped_allocation=*/true));
+              chunk_candidate, i, i, /*is_scoped_allocation=*/true));
 
       repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
           i, i, reserved_scoped_memory,
@@ -2445,7 +2444,7 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks(
   }
   for (const auto& interval_and_chunk : pending_chunks_) {
     const BufferInterval& interval = interval_and_chunk.first;
-    const Chunk& chunk = interval_and_chunk.second.chunk;
+    const Chunk& chunk = interval_and_chunk.second;
     VLOG(3) << "Uncommitting: (" << interval.start << ", " << interval.end
             << ") off = " << chunk.offset << " size = " << chunk.size;
     for (int i = interval.start; i <= interval.end; ++i) {
@@ -2546,20 +2545,18 @@ void AlternateMemoryBestFitHeap::ClearPendingChunks() {
 }
 
 void AlternateMemoryBestFitHeap::AddToPendingChunks(
-    const BufferInterval& buffer_interval,
-    const ChunkCandidate& chunk_candidate) {
+    const BufferInterval& buffer_interval, const Chunk& chunk_candidate) {
   VLOG(3) << "Committing chunk: " << buffer_interval.start << "-"
-          << buffer_interval.end << " : [" << chunk_candidate.chunk.offset
-          << ", " << chunk_candidate.chunk.size << "]";
+          << buffer_interval.end << " : [" << chunk_candidate.offset << ", "
+          << chunk_candidate.size << "]";
   pending_chunks_.emplace_back(buffer_interval, chunk_candidate);
   for (int i = buffer_interval.start; i <= buffer_interval.end; ++i) {
-    peak_memory_usage_[i] += chunk_candidate.chunk.size;
+    peak_memory_usage_[i] += chunk_candidate.size;
     CHECK_LE(peak_memory_usage_[i], options_.max_size_in_bytes)
         << "Peak memory usage at " << i
         << " exceeds the max size of alternate memory. "
         << buffer_interval.start << "-" << buffer_interval.end << " : ["
-        << chunk_candidate.chunk.offset << ", " << chunk_candidate.chunk.size
-        << "]";
+        << chunk_candidate.offset << ", " << chunk_candidate.size << "]";
   }
   CommitChunk(buffer_interval, chunk_candidate);
 }
@@ -2907,15 +2904,14 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
   // for the entire live range. This can result in unnecessary copies. By using
   // the last use time, we try to find an allocation that is available for the
   // entire Producer to Use2 range.
-  absl::optional<ChunkCandidate> chunk_candidate = FindBestChunkCandidate(
+  absl::optional<Chunk> chunk_candidate = FindBestChunkCandidate(
       request, preferred_offset, &alternate_mem_interval);
   // Check if the new heap size fits within limits. Also ensure if a
   // preferred offset was provided, that offset was used.
   if (chunk_candidate) {
     VLOG(3) << "Keep the buffer in alternate memory. Offset = "
-            << chunk_candidate->chunk.offset
-            << ", size = " << chunk_candidate->chunk.size
-            << ", heap_size = " << chunk_candidate->heap_size
+            << chunk_candidate->offset << ", size = " << chunk_candidate->size
+            << ", heap_size = " << result_.UpdatedHeapSize(*chunk_candidate)
             << ", prefetch picker = "
             << options_.prefetch_interval_picker->ToNoCopyDebugString(
                    defining_position.shape(), request.start_time,
@@ -2931,8 +2927,8 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
     } else {
       request.allocation_value->allocation_sequence()->push_back(
           absl::make_unique<MemorySpaceAssignment::Allocation>(
-              defining_position, MemorySpace::kAlternate,
-              chunk_candidate->chunk, request.start_time, request.end_time,
+              defining_position, MemorySpace::kAlternate, chunk_candidate,
+              request.start_time, request.end_time,
               /*is_scoped_allocation=*/false));
       CreateOrAddToAliasedOffset(
           *request.allocation_value->allocation_sequence()->back(),
@@ -2976,9 +2972,9 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Evict(
 
   for (; eviction_mem_interval.end > eviction_end_time;
        --eviction_mem_interval.end) {
-    ChunkCandidate chunk_candidate =
+    Chunk chunk_candidate =
         FindChunkCandidate(eviction_mem_interval, preferred_offset);
-    if (chunk_candidate.chunk.offset == preferred_offset) {
+    if (chunk_candidate.offset == preferred_offset) {
       AddToPendingChunks(eviction_mem_interval, chunk_candidate);
       break;
     }
@@ -3178,15 +3174,15 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
     if (chunk_candidate) {
       VLOG(3) << "Move the buffer to alternate memory at "
               << alternate_mem_interval.start
-              << ". Offset = " << chunk_candidate->chunk.offset
-              << ", size = " << chunk_candidate->chunk.size
-              << ", heap_size = " << chunk_candidate->heap_size
+              << ". Offset = " << chunk_candidate->offset
+              << ", size = " << chunk_candidate->size
+              << ", heap_size = " << result_.UpdatedHeapSize(*chunk_candidate)
               << ", prefetch picker = "
               << options_.prefetch_interval_picker->ToDebugString();
       AddToPendingChunks(alternate_mem_interval, *chunk_candidate);
 
       AddAsyncCopy(prev_allocation_in_default_mem, MemorySpace::kAlternate,
-                   chunk_candidate->chunk, alternate_mem_interval.start,
+                   chunk_candidate, alternate_mem_interval.start,
                    request.end_time, prefetch_end_time,
                    request.allocation_value->allocation_sequence(),
                    request.preferred_offset, prefetch_resource);
@@ -3212,7 +3208,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
   }
 }
 
-absl::optional<AlternateMemoryBestFitHeap::ChunkCandidate>
+absl::optional<AlternateMemoryBestFitHeap::Chunk>
 AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     const AllocationRequest& request, const AliasedOffset* preferred_offset,
     BufferInterval* alternate_mem_interval) const {
@@ -3238,14 +3234,15 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     int64_t latest_contiguous_use_time = *use_time_it;
 
     // Find a chunk that's as long living as possible.
-    absl::optional<ChunkCandidate> last_chunk_candidate;
+    absl::optional<Chunk> last_chunk_candidate;
     int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
     std::lower_bound(earliest_use_it, std::next(use_time_it), -1,
                      [&](int64_t use, int64_t) {
                        alternate_mem_interval->end = use;
-                       ChunkCandidate chunk_candidate =
+                       Chunk chunk_candidate =
                            FindChunkCandidate(*alternate_mem_interval);
-                       if (chunk_candidate.heap_size <= available_heap_size()) {
+                       if (chunk_candidate.chunk_end() <=
+                           available_heap_size()) {
                          if (use > latest_matching_use) {
                            last_chunk_candidate = chunk_candidate;
                            latest_matching_use = use;
@@ -3258,7 +3255,7 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
       VLOG(3) << "FindBestChunkCandidate earliest use = " << earliest_use
               << ", latest contiguous use = " << latest_contiguous_use_time
               << ", use with available mem = " << latest_matching_use
-              << ", offset = " << last_chunk_candidate->chunk.offset;
+              << ", offset = " << last_chunk_candidate->offset;
     }
     alternate_mem_interval->end = end_time;
     return last_chunk_candidate;
@@ -3266,9 +3263,9 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
   // If a preferred offset is given, try to find an allocation at that offset
   // only.
   alternate_mem_interval->end = end_time;
-  ChunkCandidate chunk_candidate =
+  Chunk chunk_candidate =
       FindChunkCandidate(*alternate_mem_interval, preferred_offset->offset);
-  if (chunk_candidate.chunk.offset == preferred_offset->offset) {
+  if (chunk_candidate.offset == preferred_offset->offset) {
     return chunk_candidate;
   }
   return absl::nullopt;
