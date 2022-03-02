@@ -1,9 +1,6 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
@@ -227,12 +224,6 @@ cuda_py_test(
         "//tensorflow/python:stateless_random_ops",
         "//third_party/py/numpy",
     ],
-)
-
-tf_py_test(
-    name = "random_index_shuffle_test",
-    srcs = ["random_index_shuffle_test.py"],
-    shard_count = 10,
 )
 
 py_library(
