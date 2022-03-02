@@ -1561,13 +1561,6 @@ class Subgraph {
       case kTfLiteBuiltinCeil:
         return VisitCeilNode(subgraph, delegate, logging_context, node_index,
                              node, context->tensors, xnnpack_tensors);
-      case kTfLiteBuiltinConcatenation: {
-        const TfLiteConcatenationParams* concat_params =
-            static_cast<const TfLiteConcatenationParams*>(node->builtin_data);
-        return VisitConcatenationNode(subgraph, delegate, logging_context,
-                                      node_index, node, context->tensors,
-                                      concat_params, xnnpack_tensors);
-      }
       case kTfLiteBuiltinConv2d: {
         const TfLiteConvParams* conv_params =
             static_cast<const TfLiteConvParams*>(node->builtin_data);
@@ -1971,55 +1964,6 @@ class Subgraph {
       }
     }
 
-    return kTfLiteOk;
-  }
-
-  static TfLiteStatus VisitConcatenationNode(
-      xnn_subgraph_t subgraph, const Delegate& delegate,
-      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
-      const TfLiteTensor* tensors,
-      const TfLiteConcatenationParams* concat_params,
-      const std::vector<uint32_t>& xnnpack_tensors) {
-    TF_LITE_ENSURE_STATUS(
-        CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
-
-    const TfLiteTensor& input1_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input1_tensor,
-                                       node->inputs->data[0], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        logging_context, input1_tensor, node->inputs->data[0], node_index));
-
-    const TfLiteTensor& input2_tensor = tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input2_tensor,
-                                       node->inputs->data[1], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        logging_context, input2_tensor, node->inputs->data[1], node_index));
-
-    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
-                                       node->outputs->data[0], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        logging_context, output_tensor, node->outputs->data[0], node_index));
-
-    if (subgraph != nullptr) {
-      int axis = concat_params->axis;
-      if (axis < 0) axis += input1_tensor.dims->size;
-      const xnn_status status = xnn_define_concatenate2(
-          subgraph, axis,
-          /*input1_id=*/xnnpack_tensors[node->inputs->data[0]],
-          /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
-          /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
-          /*flags=*/0);
-      if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context,
-                           "failed to delegate CONCATENATION node #%d",
-                           node_index);
-        return kTfLiteError;
-      }
-    }
     return kTfLiteOk;
   }
 

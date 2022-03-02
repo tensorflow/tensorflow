@@ -169,10 +169,6 @@ Below is the list of currently supported floating-point operators:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-#### `CONCATENATION`
-
-* Only supports concatenating 2 inputs.
-
 #### `CONV_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
