@@ -66,6 +66,9 @@ class WrappedTensor(composite_tensor.CompositeTensor):
   def _type_spec(self):
     return WrappedTensorSpec(type_spec.type_spec_from_value(self.value))
 
+  def set_shape(self, shape):
+    return self.value.set_shape(shape)
+
 
 class WrappedTensorSpec(type_spec.TypeSpec):
 
@@ -79,6 +82,10 @@ class WrappedTensorSpec(type_spec.TypeSpec):
   @property
   def value_type(self):
     return WrappedTensor
+
+  @property
+  def shape(self):
+    return self._value_spec.shape
 
   def _to_components(self, value):
     return value.value
@@ -426,7 +433,7 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
       {
           'rt_spec':
               RaggedTensorSpec(
-                  shape=[2, None, None],
+                  shape=[3, None, None],
                   ragged_rank=1,
                   flat_values_spec=WrappedTensorSpec(
                       tensor_spec.TensorSpec(None, dtype=dtypes.float32))),
