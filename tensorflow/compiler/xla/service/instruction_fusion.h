@@ -275,6 +275,19 @@ class InstructionFusion : public HloModulePass {
       absl::Span<HloInstruction* const> post_order);
 
  private:
+  // Returns the reused operands of `instruction` from reused_fusion_operands_,
+  // computing them if they have not previously been computed for that
+  // instruction.
+  // The returned value has pointer stability, assuming entries are not deleted
+  // from reused_fusion_operands_.
+  absl::flat_hash_set<const HloInstruction*>& ReusedOperandsOf(
+      const HloInstruction* instruction);
+
+  // Updates reused_fusion_operands_ for a fusion when we are about to fuse
+  // `producer` into `fusion_instruction`.
+  void UpdateReusedOperandsForFusion(HloInstruction* producer,
+                                     HloInstruction* fusion_instruction);
+
   HloInstruction* AddFusionInstruction(HloInstruction* producer,
                                        HloInstruction* consumer);
 
@@ -301,8 +314,9 @@ class InstructionFusion : public HloModulePass {
   FusionConfigCollection config_collection_mode_;
 
   // Caches which operands are reused inside fusion computations.
-  absl::flat_hash_map<const HloInstruction*,
-                      absl::flat_hash_set<const HloInstruction*>>
+  absl::flat_hash_map<
+      const HloInstruction*,
+      std::unique_ptr<absl::flat_hash_set<const HloInstruction*>>>
       reused_fusion_operands_;
 
   InstructionFusion(const InstructionFusion&) = delete;
