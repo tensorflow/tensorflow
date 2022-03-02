@@ -1535,6 +1535,46 @@ func @bitcast(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
 
 // -----
 
+func @bitcast_convert(%arg: tensor<2x4xf32>) -> tensor<2x2xf64> {
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xf32>) -> tensor<2x2xf64>
+  return %0 : tensor<2x2xf64>
+}
+
+
+// -----
+
+func @invalid_bitcast_convert_unranked(%arg: tensor<*xf32>) -> tensor<2x4xf32> {
+  // expected-error@+1 {{expects ranked tensors}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<*xf32>) -> tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+// -----
+
+func @invalid_bitcast_convert_shape_mismatch(%arg: tensor<2x4xf32>) -> tensor<4x4xf32> {
+  // expected-error@+1 {{target and operand shapes must match in their non-final positions. Got: 4, 4 and 2, 4}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xf32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+func @invalid_bitcast_convert_width_mismatch(%arg: tensor<2x4xf32>) -> tensor<2x4xf64> {
+  // expected-error@+1 {{target and operand final dimensions and elements must match. Got: 2, 4, 'f64' and 2, 4, 'f32'}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xf32>) -> tensor<2x4xf64>
+  return %0 : tensor<2x4xf64>
+}
+
+// -----
+
+func @invalid_bitcast_convert_decomplex(%arg: tensor<2x4xcomplex<f32>>) -> tensor<2x4xf64> {
+  // expected-error@+1 {{cannot convert between real and complex types}}
+  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xcomplex<f32>>) -> tensor<2x2xf64>
+  return %0 : tensor<2x2xf64>
+}
+
+// -----
+
 func @reduce_precision(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
   %0 = "mhlo.reduce_precision"(%arg) {exponent_bits=2 : i32, mantissa_bits=3 : i32} : (tensor<2x4xf32>) -> tensor<2x4xf32>
   return %0 : tensor<2x4xf32>

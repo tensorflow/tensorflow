@@ -1271,6 +1271,7 @@ def HLO_BitcastConvertOp : HLO_ShapedInterfaceOp<"bitcast_convert",
 
   let arguments = (ins HLO_Tensor:$operand);
   let results = (outs HLO_Tensor);
+  let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
 }
 

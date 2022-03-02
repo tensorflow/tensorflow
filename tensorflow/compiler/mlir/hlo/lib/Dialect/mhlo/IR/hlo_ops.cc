@@ -1940,6 +1940,107 @@ LogicalResult BitcastConvertOp::reifyReturnTypeShapes(
       &builder, getOperation(), operands.front(), &reifiedReturnShapes);
 }
 
+/*
+ * We intend to verify the following properties
+ * P1. The dimensions of the operand and the target shape must match, apart
+ * from adding a minor dimension which will change by the ratio of the primitive
+ * size before and after the conversion.
+ * (https://www.tensorflow.org/xla/operation_semantics#bitcastconverttype)
+ * P2. We cannot convert between complex and real types (cf xla)
+ * P3. Final dimensions must be the same in-memory size (accounting for bit
+ * width)
+ */
+LogicalResult BitcastConvertOp::verify() {
+  auto operand_type = operand().getType().dyn_cast<RankedTensorType>();
+  auto target_type = getResult().getType().dyn_cast<RankedTensorType>();
+  if (!operand_type || !target_type)
+    return emitOpError() << "expects ranked tensors";
+
+  // P2.
+  auto target_shape_elt = target_type.getElementType();
+  auto operand_shape_elt = operand_type.getElementType();
+  if (target_shape_elt.isa<ComplexType>() !=
+      operand_shape_elt.isa<ComplexType>()) {
+    return emitOpError() << "cannot convert between real and complex types.";
+  }
+
+  auto target_shape = target_type.getShape();
+  auto operand_shape = operand_type.getShape();
+  auto target_shape_bit_width = target_shape_elt.isa<ComplexType>()
+                                    ? target_shape_elt.dyn_cast<ComplexType>()
+                                          .getElementType()
+                                          .getIntOrFloatBitWidth()
+                                    : target_shape_elt.getIntOrFloatBitWidth();
+  auto operand_shape_bit_width =
+      operand_shape_elt.isa<ComplexType>()
+          ? operand_shape_elt.dyn_cast<ComplexType>()
+                .getElementType()
+                .getIntOrFloatBitWidth()
+          : operand_shape_elt.getIntOrFloatBitWidth();
+
+  // P3.
+  if (target_shape.empty() && operand_shape.empty()) {
+    if (target_shape_bit_width == operand_shape_bit_width) {
+      return success();
+    }
+    return emitOpError() << "requires compatible bitwidths. "
+                         << "Got: " << target_shape << ", " << target_shape_elt
+                         << " and " << operand_shape << ", "
+                         << operand_shape_elt << ".";
+  }
+
+  auto target_shape_prefix = target_shape;
+  auto operand_shape_prefix = operand_shape;
+  if (!target_shape.empty() && !operand_shape.empty()) {
+    if (target_shape_bit_width < operand_shape_bit_width) {
+      target_shape_prefix = target_shape.drop_back();
+      auto target_shape_final = target_shape[target_shape.size() - 1];
+      if (!isDynamicDimSize(target_shape_final)) {
+        if (target_shape_bit_width * target_shape_final !=
+            operand_shape_bit_width) {
+          return emitOpError() << "requires compatible bitwidths. "
+                               << "Got: " << target_shape << ", "
+                               << target_shape_elt << " and " << operand_shape
+                               << ", " << operand_shape_elt << ".";
+        }
+      }
+    } else if (target_shape_bit_width > operand_shape_bit_width) {
+      operand_shape_prefix = operand_shape.drop_back();
+      auto operand_shape_final = operand_shape[operand_shape.size() - 1];
+      if (!isDynamicDimSize(operand_shape_final)) {
+        if (target_shape_bit_width !=
+            operand_shape_bit_width * operand_shape_final) {
+          return emitOpError() << "requires compatible bitwidths. "
+                               << "Got: " << target_shape << ", "
+                               << target_shape_elt << " and " << operand_shape
+                               << ", " << operand_shape_elt << ".";
+        }
+      }
+    }
+    if (target_shape_bit_width != operand_shape_bit_width) {
+      return emitOpError() << "requires compatible bitwidths. "
+                           << "Got: " << target_shape << ", "
+                           << target_shape_elt << " and " << operand_shape
+                           << ", " << operand_shape_elt << ".";
+    }
+
+    // P1.
+    for (auto [target_dim, operand_dim] :
+         llvm::zip(target_shape_prefix, operand_shape_prefix)) {
+      if (!isDynamicDimSize(target_dim) && !isDynamicDimSize(operand_dim)) {
+        if (target_dim != operand_dim) {
+          return emitOpError()
+                 << "target and operand shapes must match in their non-final "
+                 << "positions. Got: " << target_shape << " and "
+                 << operand_shape << ".";
+        }
+      }
+    }
+  }
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // BroadcastOp
 //===----------------------------------------------------------------------===//
