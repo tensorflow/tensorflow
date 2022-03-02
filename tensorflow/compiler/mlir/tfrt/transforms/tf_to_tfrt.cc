@@ -2263,8 +2263,8 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 
   // Decompose resource ops as resource variables will be converted to tensors
-  // directly. Only do use for non-TPU programs.
-  if (options.decompose_resource_ops && !options.target_tpurt)
+  // directly.
+  if (options.decompose_resource_ops)
     pm.addNestedPass<mlir::FuncOp>(
         mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
