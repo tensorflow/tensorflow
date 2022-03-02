@@ -201,13 +201,13 @@ bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
     auto filename = tensorflow::io::Basename(full_filename);
     if (absl::StartsWith(filename, prefix)) {
       matched_filename = full_filename;
-      VLOG(0) << "RunBackend() - Will load PTX from file: " << full_filename;
+      VLOG(1) << "RunBackend() - Will load PTX from file: " << full_filename;
       break;
     }
   }
   if (!module_config.debug_options().xla_gpu_ptx_file().empty() &&
       matched_filename.empty()) {
-    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+    VLOG(1) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a PTX file to load.";
   }
 
@@ -244,12 +244,12 @@ std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
       });
   if (!xla_gpu_llvm_ir_file.empty() &&
       matched_filename == std::end(xla_gpu_llvm_ir_file)) {
-    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+    VLOG(1) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a LLVM file to load.";
   }
 
   if (matched_filename != std::end(xla_gpu_llvm_ir_file)) {
-    VLOG(0) << "RunBackend() - Will load LLVM from file: " << *matched_filename;
+    VLOG(1) << "RunBackend() - Will load LLVM from file: " << *matched_filename;
     llvm::LLVMContext& context = llvm_module->getContext();
     llvm::SMDiagnostic err;
     std::unique_ptr<llvm::Module> loaded_module =
@@ -421,7 +421,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
           // got).
           RecordPtxToCubinDuration(end_usecs - start_usecs);
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
-          VLOG(0) << "Compiled PTX size:" << ptx.size()
+          VLOG(1) << "Compiled PTX size:" << ptx.size()
                   << " CUBIN size: " << cache_value->cubin_data.size();
         } else {
           if (maybe_cubin.status().code() ==
