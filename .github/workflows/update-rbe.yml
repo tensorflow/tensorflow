@@ -49,4 +49,4 @@ jobs:
         title: Update the RBE images to the latest container versions
         body: |
           Automated PR created once per week to get the latest Docker images.
-          See https://github.com/tensorflow/build/blob/master/.github/workflows/docker.yml
+          See https://github.com/tensorflow/tensorflow/blob/master/.github/workflows/update-rbe.yml
