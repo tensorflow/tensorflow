@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
@@ -217,6 +218,14 @@ class Subgraph {
             tensors[t] = t;
           }
           break;
+        case kTfLiteBuiltinSplit:
+          // Ignore the first input (split_dim), as it is represented as
+          // parameters of the XNNPACK operator rather than extra input.
+          {
+            const int t = node->inputs->data[1];
+            tensors[t] = t;
+            break;
+          }
         default:
           // All other operators: process all inputs
           for (int k = 0; k < node->inputs->size; k++) {
@@ -1745,6 +1754,13 @@ class Subgraph {
                                 node, context->tensors, softmax_params,
                                 xnnpack_tensors);
       }
+      case kTfLiteBuiltinSplit: {
+        const TfLiteSplitParams* split_params =
+            static_cast<const TfLiteSplitParams*>(node->builtin_data);
+        return VisitSplitNode(subgraph, delegate, logging_context, node_index,
+                              node, context->tensors, split_params,
+                              xnnpack_tensors);
+      }
       case kTfLiteBuiltinSqrt:
         return VisitSqrtNode(subgraph, delegate, logging_context, node_index,
                              node, context->tensors, xnnpack_tensors);
@@ -1983,6 +1999,99 @@ class Subgraph {
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate CEIL node #%d",
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitSplitNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors, const TfLiteSplitParams* split_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_EQ(logging_context, split_params->num_splits,
+                      NumOutputs(node));
+
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 2, 2, node_index));
+
+    int split_dim_idx = node->inputs->data[0];
+    const TfLiteTensor& split_dim_tensor = tensors[split_dim_idx];
+    TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, split_dim_tensor,
+                                          kTfLiteInt32, split_dim_idx,
+                                          node_index));
+    TF_LITE_ENSURE_STATUS(CheckAxesTensorShape(
+        logging_context, split_dim_tensor, split_dim_idx, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, split_dim_tensor, split_dim_idx, node_index));
+
+    int input_idx = node->inputs->data[1];
+    const TfLiteTensor& input_tensor = tensors[input_idx];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+        delegate, logging_context, input_tensor, input_idx, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, input_idx, node_index));
+
+    int32_t split_dim = GetTensorData<int32_t>(&split_dim_tensor)[0];
+    if (split_dim < 0) split_dim += NumDimensions(&input_tensor);
+    TF_LITE_ENSURE(logging_context, split_dim >= 0);
+    TF_LITE_ENSURE(logging_context, split_dim < NumDimensions(&input_tensor));
+
+    int input_split_dim_size = SizeOfDimension(&input_tensor, split_dim);
+    if (input_split_dim_size % 2 != 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "Cannot evenly split dimension %d, which is %d into 2", split_dim,
+          input_split_dim_size);
+      return kTfLiteError;
+    }
+
+    int32_t expected_output_split_dim_size = input_split_dim_size >> 1;
+
+    for (int i = 0; i < NumOutputs(node); i++) {
+      int output_idx = node->outputs->data[i];
+      const TfLiteTensor& output_tensor = tensors[output_idx];
+
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+          delegate, logging_context, output_tensor, output_idx, node_index));
+      TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+          logging_context, output_tensor, output_idx, node_index));
+      TF_LITE_ENSURE_EQ(logging_context, NumDimensions(&input_tensor),
+                        NumDimensions(&output_tensor));
+
+      for (int d = 0; d < NumDimensions(&input_tensor); d++) {
+        if (d == split_dim) {
+          if (SizeOfDimension(&output_tensor, split_dim) !=
+              expected_output_split_dim_size) {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                logging_context,
+                "mismatch in split dimension %d (%d != %d) "
+                "in output %d and input"
+                "tensors of SPLIT operator #%d",
+                split_dim, SizeOfDimension(&output_tensor, split_dim),
+                expected_output_split_dim_size, d, node_index);
+            return kTfLiteError;
+          }
+        } else {
+          TF_LITE_ENSURE_STATUS(CheckTensorsDimensionMatch(
+              logging_context, input_tensor, output_tensor, d, node_index,
+              "SPLIT"));
+        }
+      }
+    }
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_even_split2(
+          subgraph, split_dim,
+          /*input_id=*/xnnpack_tensors[input_idx],
+          /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
+          /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
+          /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate SPLIT node #%d",
                            node_index);
         return kTfLiteError;
       }
