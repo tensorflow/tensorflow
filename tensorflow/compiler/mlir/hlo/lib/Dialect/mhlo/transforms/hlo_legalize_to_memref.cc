@@ -174,10 +174,7 @@ class HloToMemrefDynamicBroadcastInDimOpConverter
     auto result_type = op_result_type.dyn_cast<RankedTensorType>();
     if (!result_type) return {};
     Value result = InsertDynamicMemrefCastOp(op, operands.front(), &rewriter);
-
-    if (enforce_identity_maps_(op)) {
-      result = CreateCopy(op, result, &rewriter);
-    }
+    result = CreateCopy(op, result, &rewriter);
 
     return result;
   }
