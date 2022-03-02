@@ -28,7 +28,7 @@ jobs:
       run: |
         function map() {
           digest=$(curl https://gcr.io/v2/tensorflow-sigs/build/manifests/$2 | jq .config.digest)
-          sed -i"" tensorflow/tools/toolchains/remote_config/configs.bzl "0,/\"$1\".*sha256/s/sha256:.*[^\"]+/$digest/"
+          sed -i"" "0,/\"$1\".*sha256/s/sha256:.*[^\"]+/$digest/" tensorflow/tools/toolchains/remote_config/configs.bzl 
         }
         map sigbuild-r2.9 latest-python3.9
         map sigbuild-r2.9-python3.7 latest-python3.7
