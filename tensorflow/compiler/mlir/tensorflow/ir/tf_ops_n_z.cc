@@ -3260,12 +3260,12 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // XlaBroadcastHelperOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   auto loc = location ? *location : mlir::UnknownLoc::get(context);
-  XlaBroadcastHelperOpAdaptor op(operands, attributes);
+  XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   if (failed(op.verify(loc))) {
     return failure();
   }
@@ -3273,10 +3273,8 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
   Value lhs = op.lhs();
   Value rhs = op.rhs();
   auto set_unranked_results = [&]() {
-    auto unranked_lhs = UnrankedTensorType::get(getElementTypeOrSelf(lhs));
-    inferredReturnTypes.push_back(unranked_lhs);
-    auto unranked_rhs = UnrankedTensorType::get(getElementTypeOrSelf(rhs));
-    inferredReturnTypes.push_back(unranked_rhs);
+    inferredReturnShapes.emplace_back(getElementTypeOrSelf(lhs));
+    inferredReturnShapes.emplace_back(getElementTypeOrSelf(rhs));
     return success();
   };
 
@@ -3299,8 +3297,8 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
           "if broadcast_dims is empty, both arguments must have equal rank or "
           "at least one argument must be a scalar");
     }
-    inferredReturnTypes.push_back(lhs_ty);
-    inferredReturnTypes.push_back(rhs_ty);
+    inferredReturnShapes.emplace_back(lhs_ty.cast<ShapedType>());
+    inferredReturnShapes.emplace_back(rhs_ty.cast<ShapedType>());
     return success();
   }
 
@@ -3331,13 +3329,11 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
   }
 
   if (broadcast_lhs) {
-    inferredReturnTypes.push_back(
-        RankedTensorType::get(broadcast_shape, lhs_ty.getElementType()));
-    inferredReturnTypes.push_back(rhs_ty);
+    inferredReturnShapes.emplace_back(broadcast_shape, lhs_ty.getElementType());
+    inferredReturnShapes.emplace_back(rhs_ty.cast<ShapedType>());
   } else {
-    inferredReturnTypes.push_back(lhs_ty);
-    inferredReturnTypes.push_back(
-        RankedTensorType::get(broadcast_shape, rhs_ty.getElementType()));
+    inferredReturnShapes.emplace_back(lhs_ty.cast<ShapedType>());
+    inferredReturnShapes.emplace_back(broadcast_shape, rhs_ty.getElementType());
   }
   return success();
 }
@@ -3346,12 +3342,12 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypes(
 // XlaSetDynamicDimensionSizeOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
+LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
+    MLIRContext *context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
+    SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   auto loc = location ? *location : mlir::UnknownLoc::get(context);
-  XlaSetDynamicDimensionSizeOpAdaptor op(operands, attributes);
+  XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
   if (failed(op.verify(loc))) return failure();
 
   TensorType operand_ty = op.input().getType().cast<TensorType>();
@@ -3379,7 +3375,7 @@ LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
     result_ty = UnrankedTensorType::get(element_ty);
   }
 
-  inferredReturnTypes.push_back(result_ty);
+  inferredReturnShapes.emplace_back(result_ty.cast<ShapedType>());
   return success();
 }
 
