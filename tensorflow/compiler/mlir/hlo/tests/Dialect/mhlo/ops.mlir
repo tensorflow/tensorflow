@@ -1471,7 +1471,7 @@ func @bitcast(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
 
 // -----
 
-func @bitcast(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
+func @reduce_precision(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
   %0 = "mhlo.reduce_precision"(%arg) {exponent_bits=2 : i32, mantissa_bits=3 : i32} : (tensor<2x4xf32>) -> tensor<2x4xf32>
   return %0 : tensor<2x4xf32>
 }
