@@ -253,7 +253,6 @@ class InstructionFusion : public HloModulePass {
 
   // Current HloComputation instance the loop fuser is traversing.
   HloComputation* computation_;
-  HloModule* module_;
   // Reachability information for the current computation.
   std::unique_ptr<HloReachabilityMap> reachability_;
 
