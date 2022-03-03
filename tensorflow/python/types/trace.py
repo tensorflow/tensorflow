@@ -49,6 +49,15 @@ class TraceType(metaclass=abc.ABCMeta):
       self, others: Sequence["TraceType"]) -> Optional["TraceType"]:
     pass
 
+  # TODO(b/221309709): Polish into a stable get_placeholder_value.
+  def experimental_placeholder_value(self):
+    """Returns value to use for tracing a function signature of this TraceType.
+
+    This allows tf.function to trace function signatures without needing the
+    actual value which the TraceType represents.
+    """
+    raise NotImplementedError
+
   @abc.abstractmethod
   def __hash__(self) -> int:
     pass

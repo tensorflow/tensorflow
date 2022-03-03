@@ -35,8 +35,19 @@ class MockShape(trace.TraceType):
 
     return True
 
-  def most_specific_common_supertype(self, _):
+  def most_specific_common_supertype(self, others):
     raise NotImplementedError
+
+  def most_specific_common_subtype(self, others):
+    if any(len(other.shape) != len(self.shape) for other in others):
+      return None
+
+    dims = [
+        dim if all(dim == other.shape[i]
+                   for other in others) else None
+        for i, dim in enumerate(self.shape)
+    ]
+    return MockShape(*dims)
 
   def __str__(self):
     return str(self.shape)
@@ -242,6 +253,32 @@ class TypeDispatchTableTest(test.TestCase):
     self.assertEqual(table_1.dispatch(shape), MockShape(1, None, None))
     self.assertEqual(table_2.dispatch(shape), MockShape(None, 2, None))
     self.assertEqual(table_3.dispatch(shape), MockShape(None, None, 3))
+
+  def testGeneralizedExisting(self):
+    table = type_dispatch.TypeDispatchTable()
+    table.add_target(MockShape(None, None, None))
+    table.add_target(MockShape(None, 1, None))
+    table.add_target(MockShape(None, 1, 2))
+    self.assertEqual(
+        table.try_generalizing_trace_type(MockShape(None, 1, 3)),
+        MockShape(None, None, None))
+
+  def testGeneralizedNovel(self):
+    table = type_dispatch.TypeDispatchTable()
+    table.add_target(MockShape(None, 1, None))
+    table.add_target(MockShape(None, 1, 2))
+    self.assertEqual(
+        table.try_generalizing_trace_type(MockShape(None, 2, 3)),
+        MockShape(None, None, None))
+
+  def testGeneralizedUnknown(self):
+    table = type_dispatch.TypeDispatchTable()
+    table.add_target(MockShape(None, 1))
+    table.add_target(MockShape(None, 2))
+    table.add_target(MockShape(None, 3))
+    self.assertEqual(
+        table.try_generalizing_trace_type(MockShape(None, 4, 3)),
+        MockShape(None, 4, 3))
 
 if __name__ == "__main__":
   test.main()

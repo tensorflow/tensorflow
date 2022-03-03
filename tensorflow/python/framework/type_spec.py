@@ -184,6 +184,10 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
     return self._deserialize(serialized_supertype) if has_supertype else None
 
+  def experimental_placeholder_value(self) -> "TypeSpec":
+    """Value used for tracing a function signature with this TraceType."""
+    return self
+
   # TODO(b/202447704): Reduce internal usages.
   def is_compatible_with(self, spec_or_value):
     """Returns true if `spec_or_value` is compatible with this TypeSpec."""

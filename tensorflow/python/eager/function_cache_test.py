@@ -154,22 +154,6 @@ class FunctionCacheTest(test.TestCase):
     self.assertIsNone(cache.lookup(key_2, False))
     self.assertIsNone(cache.lookup(key_3, True))
 
-  def testExecutionContextSetRetainsInsertedElements(self):
-    cache = function_cache.FunctionCache()
-
-    ctx_1 = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
-    self.assertFalse(cache.has_call_context(ctx_1))
-    cache.add_call_context(ctx_1)
-    self.assertTrue(cache.has_call_context(ctx_1))
-
-    ctx_2 = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
-    self.assertTrue(cache.has_call_context(ctx_2))
-
-    ctx_3 = function_cache.ExecutionContext(1, 1, 1, 1, 1, None)
-    self.assertFalse(cache.has_call_context(ctx_3))
-    cache.add_call_context(ctx_3)
-    self.assertTrue(cache.has_call_context(ctx_3))
-
   def testFunctionCacheKeyRespectsEquality(self):
     ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
     generic = MockGenericType

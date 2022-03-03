@@ -28,20 +28,17 @@ class TypeDispatchTable:
 
   A type dispatch table is a list, L, of target types. Given an input type, I,
   the table selects a target type, T, according to the following dispatch rules:
-    1. I == T or I is more specific than T
-    2. ∄O∈L such that I is more specific than O and O is more specific than T
+    1. I == T or I is subtype of T
+    2. ∄O∈L such that I is subtype of O and O is msubtype of T
     3. If the above two rules are satisfied by multiple targets, the earliest
        inserted one is chosen.
 
   This table is intended for use with function signatures and so it assumes that
-  the types are contravariant. In other words, a supertype is more specific and
-  hence it is acceptable to use a subtype where a supertype is specified.
+  the types are contravariant.
   """
 
   def __init__(self):
     """Creates a TypeDispatchTable object."""
-    self._is_more_specific_fn = lambda a, b: a != b and b.is_subtype_of(a)
-
     # Holds all inserted types as keys. (Using OrderedDict for determinism)
     self._targets = collections.OrderedDict()
 
@@ -73,7 +70,7 @@ class TypeDispatchTable:
     return target in self._targets
 
   def dispatch(self, target: trace.TraceType) -> Optional[trace.TraceType]:
-    """Returns the most specific target if it exists in the table."""
+    """Returns the deepest subtype target if it exists in the table."""
     if target in self._targets:
       return target
 
@@ -83,19 +80,40 @@ class TypeDispatchTable:
       self._dispatch_cache[target] = result
       return result
 
-    most_specific = None
+    deepest_subtype = None
     for other in self._targets:
-      if self._is_more_specific_fn(target, other):
-        if most_specific is None or self._is_more_specific_fn(
-            other, most_specific):
-          most_specific = other
+      if other.is_subtype_of(target):
+        if deepest_subtype is None or deepest_subtype.is_subtype_of(other):
+          deepest_subtype = other
 
-    if most_specific is not None:
+    if deepest_subtype is not None:
       # LRU Cache removes oldest item
       if len(self._dispatch_cache) > _MAX_DISPATCH_CACHE:
         self._dispatch_cache.popitem(last=False)
 
-      self._dispatch_cache[target] = most_specific
+      self._dispatch_cache[target] = deepest_subtype
 
-    return most_specific
+    return deepest_subtype
 
+  def try_generalizing_trace_type(self,
+                                  target: trace.TraceType) -> trace.TraceType:
+    """Returns a generalized subtype of the one given.
+
+    This heuristic aims to reduce the number of future traces by computing a
+    type that represents more general inputs.
+
+    The original "experimental_relax_shapes" heuristic identified a known type
+    which shared a common subtype with the current unknown type and then
+    traced with that common subtype. However, the notion of "common subtype"
+    was only limited to shapes. This heuristic extends that to TraceType.
+
+    Returns `target` if a common subtype can not be found.
+
+    Args:
+      target: The TraceType to generalize
+    """
+    relaxed = target
+    for other in self._targets:
+      supertype = relaxed.most_specific_common_subtype([other])
+      relaxed = supertype if supertype is not None else relaxed
+    return relaxed
