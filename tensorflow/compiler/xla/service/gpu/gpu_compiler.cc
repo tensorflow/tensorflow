@@ -239,9 +239,9 @@ class GpuBfloat16Support : public BFloat16Support {
                  .IsAtLeast(se::CudaComputeCapability::AMPERE);
     }
 #elif TENSORFLOW_USE_ROCM && TF_ROCM_VERSION>=50000
-    auto amd_gcn = stream_exec_->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
-    return ((amd_gcn.find("gfx908") != std::string::npos) ||
-	    (amd_gcn.find("gfx90a") != std::string::npos));
+    auto rocm_compute_capability =
+        stream_exec_->GetDeviceDescription().rocm_compute_capability();
+    return rocm_compute_capability.has_bf16_dtype_support();
 #endif
     return false;
   }
@@ -1242,8 +1242,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
-  std::string amdgpu_arch =
-      stream_exec->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
+  std::string amdgpu_arch = stream_exec->GetDeviceDescription()
+                                .rocm_compute_capability()
+                                .gcn_arch_name();
 
   if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
     HloCostAnalysis::Options options{ShapeSizeBytesFunction()};

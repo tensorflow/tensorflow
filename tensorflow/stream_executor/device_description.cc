@@ -48,7 +48,6 @@ DeviceDescription::DeviceDescription()
       shared_memory_per_core_(kUninitializedUint64),
       shared_memory_per_block_(kUninitializedUint64),
       clock_rate_ghz_(-1.0),
-      rocm_amdgpu_gcn_arch_name_(kUndefinedString),
       numa_node_(-1),
       core_count_(-1),
       ecc_enabled_(false) {}
@@ -92,7 +91,7 @@ std::unique_ptr<std::map<std::string, std::string>> DeviceDescription::ToMap()
 
   result["CUDA Compute Capability"] = cuda_compute_capability().ToString();
 
-  result["AMDGPU GCN Arch Name"] = rocm_amdgpu_gcn_arch_name_;
+  result["AMDGPU GCN Arch Name"] = rocm_compute_capability().gcn_arch_name();
 
   result["NUMA Node"] = absl::StrCat(numa_node());
   result["Core Count"] = absl::StrCat(core_count());

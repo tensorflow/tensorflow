@@ -111,16 +111,14 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNCHW;
   }
 #elif TENSORFLOW_USE_ROCM
-  auto amd_gcn = stream_executor->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
   bool is_enabled = false;
   TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
       "TF_USE_ROCM_NHWC",
       /*default_val=*/false, &is_enabled));
-  if (input_ty != F16 ||
-        (amd_gcn.find("gfx908") == std::string::npos &&
-         amd_gcn.find("gfx90a") == std::string::npos) ||
-      instr->shape().tuple_shapes(0).dimensions_size() != 4 ||
-      !is_enabled) {
+  auto rocm_compute_capability =
+      stream_executor->GetDeviceDescription().rocm_compute_capability();
+  if (input_ty != F16 || (!rocm_compute_capability.has_nhwc_layout_support()) ||
+      instr->shape().tuple_shapes(0).dimensions_size() != 4 || !is_enabled) {
     return kAllNCHW;
   }
 #endif

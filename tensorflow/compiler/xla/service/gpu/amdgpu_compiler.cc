@@ -141,8 +141,9 @@ AMDGPUCompiler::AMDGPUCompiler()
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
 
 GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
-  std::string gcn_arch_name =
-      stream_exec->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
+  std::string gcn_arch_name = stream_exec->GetDeviceDescription()
+                                  .rocm_compute_capability()
+                                  .gcn_arch_name();
   if (gcn_arch_name == stream_exec->GetDeviceDescription().kUndefinedString) {
     LOG(WARNING) << "Couldn't get AMDGPU GCN Arch for device; assuming gfx900.";
     gcn_arch_name = "gfx900";
