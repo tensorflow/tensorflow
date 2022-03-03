@@ -31,6 +31,10 @@ using llvm::Record;
 using llvm::RecordKeeper;
 using mlir::tblgen::Operator;
 
+enum class InputDataType { INT8, UINT8, INT16 };
+
+// One InputDataType will be likely mapped to multiple types in near future so
+// the two structures are separated.
 const std::map<std::string, std::string> &GetTypeToStringRepresentation() {
   static auto *entries = new std::map<std::string, std::string>({
       {"F32", "32-bit float"},
@@ -138,14 +142,28 @@ bool CheckTypeConstraints(llvm::Init *input_value,
 }
 
 void GenerateStaticQuantOp(std::vector<Record *> &defs,
-                           std::vector<std::string> &result, bool is_signed,
-                           bool per_axis) {
+                           std::vector<std::string> &result,
+                           InputDataType act_type, bool per_axis) {
   std::list<std::string> required_types = {
       GetTypeToStringRepresentation().at("F32")};
-  if (is_signed) {
-    required_types.push_back(GetTypeToStringRepresentation().at("QI8"));
-  } else {
-    required_types.push_back(GetTypeToStringRepresentation().at("QUI8"));
+
+  switch (act_type) {
+    case InputDataType::INT8: {
+      required_types.push_back(GetTypeToStringRepresentation().at("QI8"));
+      break;
+    }
+    case InputDataType::UINT8: {
+      required_types.push_back(GetTypeToStringRepresentation().at("QUI8"));
+      break;
+    }
+    case InputDataType::INT16: {
+      required_types.push_back(GetTypeToStringRepresentation().at("QI16"));
+      break;
+    }
+    default: {
+      // Quantization not applied.
+      return;
+    }
   }
 
   // Dimension equals to -1 means per-channel quantization is not supported for
@@ -191,7 +209,7 @@ void EmitStaticInt8PerAxisQuantOp(std::vector<Record *> &defs,
   os.indent(4) << "new std::set<std::string>({\n";
 
   std::vector<std::string> result;
-  GenerateStaticQuantOp(defs, result, true, true);
+  GenerateStaticQuantOp(defs, result, InputDataType::INT8, true);
 
   for (const auto &op_name : result) {
     os.indent(6) << "\"" << op_name << "\",\n";
@@ -210,7 +228,7 @@ void EmitStaticInt8PerTensorQuantOp(std::vector<Record *> &defs,
   os.indent(4) << "new std::set<std::string>({\n";
 
   std::vector<std::string> result;
-  GenerateStaticQuantOp(defs, result, true, false);
+  GenerateStaticQuantOp(defs, result, InputDataType::INT8, false);
 
   for (const auto &op_name : result) {
     os.indent(6) << "\"" << op_name << "\",\n";
@@ -229,7 +247,7 @@ void EmitStaticUInt8PerAxisQuantOp(std::vector<Record *> &defs,
   os.indent(4) << "new std::set<std::string>({\n";
 
   std::vector<std::string> result;
-  GenerateStaticQuantOp(defs, result, false, true);
+  GenerateStaticQuantOp(defs, result, InputDataType::UINT8, true);
 
   for (const auto &op_name : result) {
     os.indent(6) << "\"" << op_name << "\",\n";
@@ -248,7 +266,7 @@ void EmitStaticUInt8PerTensorQuantOp(std::vector<Record *> &defs,
   os.indent(4) << "new std::set<std::string>({\n";
 
   std::vector<std::string> result;
-  GenerateStaticQuantOp(defs, result, false, false);
+  GenerateStaticQuantOp(defs, result, InputDataType::UINT8, false);
 
   for (const auto &op_name : result) {
     os.indent(6) << "\"" << op_name << "\",\n";
@@ -269,11 +287,34 @@ void EmitStaticQuantOp(std::vector<Record *> &defs, raw_ostream *ostream) {
   EmitStaticUInt8PerTensorQuantOp(defs, os);
 }
 
+void EmitStaticQuantWithInt16ActOp(std::vector<Record *> &defs,
+                                   raw_ostream *ostream) {
+  raw_ostream &os = *ostream;
+  llvm::sort(defs, LessRecord());
+
+  os.indent(0)
+      << "const std::set<std::string> &ExportStaticInt8WithInt16ActSpec() {\n";
+  os.indent(2) << "static const std::set<std::string> * result =\n";
+  os.indent(4) << "new std::set<std::string>({\n";
+
+  std::vector<std::string> result;
+  GenerateStaticQuantOp(defs, result, InputDataType::INT16, false);
+
+  for (const auto &op_name : result) {
+    os.indent(6) << "\"" << op_name << "\",\n";
+  }
+
+  os.indent(4) << "});";
+  os.indent(2) << "return *result;\n";
+  os.indent(0) << "}\n";
+}
+
 static bool TFLiteOpCoverageSpecWritersMain(raw_ostream &os,
                                             RecordKeeper &records) {
   std::vector<Record *> op_defs = records.getAllDerivedDefinitions("TFL_Op");
   EmitStaticQuantOp(op_defs, &os);
   EmitDynamicRangeOp(op_defs, &os);
+  EmitStaticQuantWithInt16ActOp(op_defs, &os);
   EmitSparseOp(op_defs, &os);
   return false;
 }
