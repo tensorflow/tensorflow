@@ -49,6 +49,7 @@ jobs:
       with:
         title: Update the RBE images to the latest container versions
         committer: TensorFlow Release Automation <jenkins@tensorflow.org>
+        token: ${{ secrets.JENKINS_TOKEN }}
         reviewers: angerson,mihaimaruseac
         body: |
           Automated PR created once per week to get the latest Docker images.
