@@ -727,6 +727,39 @@ LogicalResult CustomCallOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// CholeskyOp
+//===----------------------------------------------------------------------===//
+
+// The following properties are already enforced by the ODS:
+//   P0. a.element_type is floating or complex
+// We intend to verify the following properties
+//   P1. The 'a' argument to Cholesky must have rank >= 2, got shape %s
+//   P2. The two minor dimensions of 'a' must have equal size, got %s.
+LogicalResult CholeskyOp::verify() {
+  auto a_type = a().getType().dyn_cast<RankedTensorType>();
+  if (!a_type) return success();  // Nothing to check for unranked tensors
+
+  auto a_shape = a_type.getShape();
+  if (a_shape.size() < 2) {
+    return emitOpError() << "argument 'a' must have rank >= 2, got shape "
+                         << a_shape << ".";
+  }
+
+  auto last_dim = a_shape[a_shape.size() - 1];
+  auto penultimate_dim = a_shape[a_shape.size() - 2];
+  if (isDynamicDimSize(last_dim) || isDynamicDimSize(penultimate_dim)) {
+    return success();
+  }
+  if (last_dim != penultimate_dim) {
+    return emitOpError()
+           << "minor dimensions of 'a' must have equal size, got shape "
+           << a_shape << ".";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // DotOp
 //===----------------------------------------------------------------------===//
 namespace {
