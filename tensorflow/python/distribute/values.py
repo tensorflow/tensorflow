@@ -38,6 +38,7 @@ from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
+from tensorflow.python.types import distribute as ds_types
 from tensorflow.python.types import trace
 from tensorflow.python.util.tf_export import tf_export
 
@@ -134,9 +135,28 @@ class DistributedValues(object):
   the subclass, the values could either be synced on update, synced on demand,
   or never synced.
 
-  `tf.distribute.DistributedValues` can be reduced to obtain single value across
-  replicas, as input into `tf.distribute.Strategy.run` or the per-replica values
-  inspected using `tf.distribute.Strategy.experimental_local_results`.
+  Two representative types of `tf.distribute.DistributedValues` are
+  `tf.types.experimental.PerReplica` and `Mirrored` values.
+
+  `PerReplica` values exist on the worker devices, with a different value for
+  each replica. They are produced by iterating through a distributed dataset
+  returned by `tf.distribute.Strategy.experimental_distribute_dataset` and
+  `tf.distribute.Strategy.distribute_datasets_from_function`. They are also the
+  typical result returned by `tf.distribute.Strategy.run`. See below for more
+  examples.
+
+  `Mirrored` values are like `PerReplica` values, except we know that the value
+  on all replicas are the same. `Mirrored` values are kept synchronized by the
+  distribution strategy in use, while `PerReplica` values are kept
+  unsynchronized. `Mirrored` values typically represent model weights. We can
+  safely read a `Mirrored` value in a cross-replica context by using the value
+  on any replica, while PerReplica values can only be read within a replica
+  context.
+
+  `tf.distribute.DistributedValues` can be reduced to obtain a single value
+  across replicas, used as input into `tf.distribute.Strategy.run`, or collected
+  to inspect the per-replica values using
+  `tf.distribute.Strategy.experimental_local_results`.
 
   Example usage:
 
@@ -146,6 +166,11 @@ class DistributedValues(object):
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
+  >>> distributed_values
+  PerReplica:{
+    0: <tf.Tensor: shape=(1,), dtype=float32, numpy=array([5.], dtype=float32)>,
+    1: <tf.Tensor: shape=(1,), dtype=float32, numpy=array([6.], dtype=float32)>
+  }
 
   2. Returned by `run`:
 
@@ -155,6 +180,11 @@ class DistributedValues(object):
   ...   ctx = tf.distribute.get_replica_context()
   ...   return ctx.replica_id_in_sync_group
   >>> distributed_values = strategy.run(run)
+  >>> distributed_values
+  PerReplica:{
+    0: <tf.Tensor: shape=(), dtype=int32, numpy=0>,
+    1: <tf.Tensor: shape=(), dtype=int32, numpy=1>
+  }
 
   3. As input into `run`:
 
@@ -166,8 +196,13 @@ class DistributedValues(object):
   ... def run(input):
   ...   return input + 1.0
   >>> updated_value = strategy.run(run, args=(distributed_values,))
+  >>> updated_value
+  PerReplica:{
+    0: <tf.Tensor: shape=(1,), dtype=float32, numpy=array([6.], dtype=float32)>,
+    1: <tf.Tensor: shape=(1,), dtype=float32, numpy=array([7.], dtype=float32)>
+  }
 
-  4. Reduce value:
+  4. As input into `reduce`:
 
   >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
@@ -176,8 +211,10 @@ class DistributedValues(object):
   >>> reduced_value = strategy.reduce(tf.distribute.ReduceOp.SUM,
   ...                                 distributed_values,
   ...                                 axis = 0)
+  >>> reduced_value
+  <tf.Tensor: shape=(), dtype=float32, numpy=11.0>
 
-  5. Inspect local replica values:
+  5. How to inspect per-replica values locally:
 
   >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
@@ -408,7 +445,8 @@ class DistributedDelegate(DistributedValues):
   # TODO(josh11b): Even more operator overloads.
 
 
-class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
+class PerReplica(DistributedValues, composite_tensor.CompositeTensor,
+                 ds_types.PerReplica):
   """Holds a map from replica to unsynchronized values."""
 
   @property
