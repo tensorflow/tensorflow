@@ -557,9 +557,8 @@ class Options(options_lib.OptionsBase):
                       "Use options.threading instead.")
       return getattr(self, "threading")
     if name == "experimental_deterministic":
-      # TODO(aaudibert): Uncomment after internal uses have been updated.
-      # logging.warning("options.experimental_deterministic is deprecated. "
-      #                 "Use options.deterministic instead.")
+      logging.warning("options.experimental_deterministic is deprecated. "
+                      "Use options.deterministic instead.")
       return getattr(self, "deterministic")
     return super(Options, self).__getattribute__(name)
 
@@ -570,9 +569,8 @@ class Options(options_lib.OptionsBase):
       super(Options, self).__setattr__("threading", value)
       return
     if name == "experimental_deterministic":
-      # TODO(aaudibert): Uncomment after internal uses have been updated.
-      # logging.warning("options.experimental_deterministic is deprecated. "
-      #                 "Use options.deterministic instead.")
+      logging.warning("options.experimental_deterministic is deprecated. "
+                      "Use options.deterministic instead.")
       super(Options, self).__setattr__("deterministic", value)
       return
     super(Options, self).__setattr__(name, value)
