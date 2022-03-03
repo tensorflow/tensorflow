@@ -1687,8 +1687,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
-  logger_->RegisterLogEntry(GetPartitionedHlo(hlo).hlo(),
-                            b_.derived_instructions(hlo));
+  logger_->RegisterLogEntry(hlo, b_.derived_instructions(hlo));
   visiting_hlo_ = nullptr;
   b_.set_visiting_hlo(nullptr);
   // Revert fake one-device shardings for manually partitioned ops.
