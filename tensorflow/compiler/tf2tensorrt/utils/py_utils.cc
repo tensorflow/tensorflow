@@ -17,6 +17,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "third_party/tensorrt/NvInfer.h"
 #endif
@@ -42,6 +43,15 @@ bool IsGoogleTensorRTEnabled() {
 #else   // GOOGLE_CUDA && GOOGLE_TENSORRT
   return false;
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
+}
+
+std::vector<std::string> GetRegisteredOpConverters() {
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+  auto* registry = tensorflow::tensorrt::convert::GetOpConverterRegistry();
+  return registry->ListRegisteredOps();
+#else
+  return {"undef"};
+#endif
 }
 
 }  // namespace tensorrt

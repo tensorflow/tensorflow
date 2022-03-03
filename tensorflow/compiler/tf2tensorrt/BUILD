@@ -32,6 +32,12 @@ load(
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
+# Platform specific build config
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
+
 package(
     default_visibility = ["//visibility:public"],
     features = [
@@ -586,9 +592,29 @@ tf_cuda_library(
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
+# This rule contains static variables for the converter registry. Do not depend
+# on it directly; use :op_converter_registry, and link against
+# libtensorflow_framework.so for the registry symbols. The library
+# libtensorflow_framework.so depends on this target so that users can
+# register custom op converters without the need to incorporate Tensorflow into
+# their build system.
+tf_cuda_library(
+    name = "op_converter_registry_impl",
+    srcs = ["convert/op_converter_registry.cc"],
+    hdrs = [
+        "convert/op_converter_registry.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":utils",
+        ":op_converter",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
 tf_cuda_library(
     name = "op_converter_registry",
-    srcs = ["convert/op_converter_registry.cc"],
     hdrs = [
         "convert/op_converter_registry.h",
     ],
@@ -596,9 +622,8 @@ tf_cuda_library(
     deps = [
         ":utils",
         ":op_converter",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
-    ] + if_tensorrt([":tensorrt_lib"]),
+    ] + if_static([":op_converter_registry_impl"]),
 )
 
 tf_cuda_cc_test(
@@ -939,11 +964,10 @@ tf_proto_library(
     protodeps = tf_additional_all_protos(),
 )
 
-cc_library(
+tf_cuda_library(
     name = "py_utils",
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
-    copts = tf_copts(),
     local_defines = select({
         "@local_config_tensorrt//:use_static_tensorrt": ["TF_USE_TENSORRT_STATIC=1"],
         "//conditions:default": [],
@@ -951,6 +975,7 @@ cc_library(
     deps = if_tensorrt([
         ":common_utils",
         ":tensorrt_lib",
+        ":op_converter_registry",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
 )
