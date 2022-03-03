@@ -19,6 +19,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.util import dispatch
@@ -54,8 +55,9 @@ def row_splits_to_segment_ids(splits, name=None, out_type=None):
     splits = ops.convert_to_tensor(
         splits, name="splits",
         preferred_dtype=dtypes.int64)
-    if splits[0] != 0:
-      raise ValueError("splits[0] must be zero")
+    check = control_flow_ops.Assert(
+        math_ops.equal(splits[0], 0), ["splits[0] %s must be zero" % splits[0]])
+    splits = control_flow_ops.with_dependencies([check], splits)
     if splits.dtype not in (dtypes.int32, dtypes.int64):
       raise ValueError("splits must have dtype int32 or int64")
     splits.shape.assert_has_rank(1)
