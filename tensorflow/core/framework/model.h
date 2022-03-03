@@ -375,16 +375,6 @@ class Node {
   // would be used by the subtree nodes if all of their buffers were full.
   double TotalMaximumBufferedBytes() const TF_LOCKS_EXCLUDED(mu_);
 
-  // Compute and return the maximum buffered bytes on the node itself. By
-  // default non-tunable nodes are assumed not to buffer any bytes, so the
-  // tunable nodes as subclasses are expected to override this
-  // MaximumBufferedBytesHelper to ensure that the optimization algorithm
-  // respects the memory budget.
-  double MaximumBufferedBytes() const TF_LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock l(mu_);
-    return MaximumBufferedBytesHelper();
-  }
-
   // Returns the per-element CPU time spent in the subtree rooted in this node.
   // If `processing_times` is not `nullptr`, collects the per-element CPU time
   // spent in each node of the subtree.
@@ -550,8 +540,7 @@ class Node {
   // default non-tunable nodes are assumed not to buffer any bytes, so the
   // tunable nodes as subclasses are expected to override this method to ensure
   // that the optimization algorithm respects the memory budget.
-  virtual double MaximumBufferedBytesHelper() const
-      TF_SHARED_LOCKS_REQUIRED(mu_);
+  virtual double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Restores node from the proto. Note that this is not done recursively, i.e.
   // input nodes are not restored.
@@ -655,20 +644,8 @@ class Model {
   using NodeValues = Node::NodeValues;
   using ParameterGradients = Node::ParameterGradients;
 
-  struct BudgetParams {
-    BudgetParams(int64_t cpu_budget, int64_t ram_budget)
-        : autotune_cpu_budget(cpu_budget), autotune_ram_budget(ram_budget) {}
-    int64_t autotune_cpu_budget = 0;
-    int64_t autotune_ram_budget = 0;
-  };
-
-  Model() : Model(BudgetParams({1, 1})) {}
-
-  explicit Model(const BudgetParams& budget_params);
+  Model();
   ~Model();
-
-  int64_t CpuBudget() { return budget_params_.autotune_cpu_budget; }
-  int64_t RamBudget() { return budget_params_.autotune_ram_budget; }
 
   // Returns a pointer to the model's output node.
   const std::shared_ptr<Node> output() {
@@ -686,20 +663,19 @@ class Model {
   // recomputation, the implementation caches the result.
   std::string DebugString();
 
-  // Returns true if the `delta` bytes were allocated; false otherwise.
-  bool AllocateBufferedBytes(double delta);
-
   // Uses the given algorithm and resource budgets to periodically perform the
   // autotuning optimization.
   //
   // To terminate the execution of the optimization loop, the caller needs to
   // invoke `cancellation_mgr->StartCancel()`.
-  Status OptimizeLoop(AutotuneAlgorithm algorithm,
+  Status OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+                      int64_t ram_budget,
                       CancellationManager* cancellation_manager);
 
   // Uses the given algorithm and resource budgets to perform the autotuning
   // optimization.
-  void Optimize(AutotuneAlgorithm algorithm, double model_input_time,
+  void Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
+                int64_t ram_budget, double model_input_time,
                 CancellationManager* cancellation_manager);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
@@ -718,12 +694,15 @@ class Model {
   static Status FromProto(ModelProto model_proto,
                           std::unique_ptr<Model>* model);
 
-  // Saves this model to a file. Note that the file directory must already
-  // exist.
-  Status Save(const string& fname);
+  // Saves this model with a given snapshot and its optimization parameters to a
+  // file. Note that the file directory must already exist.
+  Status Save(const string& fname, std::shared_ptr<Node> snapshot,
+              const OptimizationParams& optimization_params);
 
-  // Loads a model from a file with the given name.
-  static Status Load(const string& fname, std::unique_ptr<Model>* model);
+  // Loads a model and its optimization parameters from a file with the given
+  // name.
+  static Status Load(const string& fname, std::unique_ptr<Model>* model,
+                     OptimizationParams* optimization_params);
 
  private:
   // Determines whether optimization should stop given total processing time,
@@ -821,9 +800,6 @@ class Model {
   // Cached result of the `DebugString()` invocation used to implement rate
   // limitting of the computation.
   std::string cached_debug_string_ = "";
-  BudgetParams budget_params_;
-  // Byte count of allocated buffered bytes for all nodes in the model.
-  double maximum_buffered_bytes_ TF_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace model
