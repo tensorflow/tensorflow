@@ -1088,6 +1088,9 @@ cc_library(
     name = "compilability_check_util",
     srcs = ["compilability_check_util.cc"],
     hdrs = ["compilability_check_util.h"],
+    visibility = [
+        ":friends",
+    ],
     deps = [
         ":common",
         ":device_util",

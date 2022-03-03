@@ -48,6 +48,8 @@ jobs:
       uses: peter-evans/create-pull-request@v3
       with:
         title: Update the RBE images to the latest container versions
+        committer: TensorFlow Release Automation <jenkins@tensorflow.org>
+        reviewers: angerson,mihaimaruseac
         body: |
           Automated PR created once per week to get the latest Docker images.
           See https://github.com/tensorflow/tensorflow/blob/master/.github/workflows/update-rbe.yml
