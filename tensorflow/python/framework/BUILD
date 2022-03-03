@@ -243,7 +243,7 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
-        "//tensorflow/python/util:util",
+        "//tensorflow/python/util",
         "//tensorflow/python:_pywrap_py_exception_registry",
         "//tensorflow/python:_pywrap_quantize_training",
         "//tensorflow/python:_pywrap_utils",
@@ -318,16 +318,19 @@ tf_python_pybind_extension(
     ],
 )
 
+#
 py_library(
     name = "dtypes",
     srcs = ["dtypes.py"],
     srcs_version = "PY3",
     deps = [
         ":_dtypes",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/core/framework:types_proto_py_pb2",
         "//tensorflow/python/lib/core:_pywrap_bfloat16",
         "//tensorflow/python/types:doc_typealias",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 

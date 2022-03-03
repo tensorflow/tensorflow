@@ -32,9 +32,10 @@ load(
     "cc_library",
 )
 
+#
 package(
     default_visibility = [
-        "//tensorflow/core:__subpackages__",
+        "//tensorflow:__subpackages__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
     licenses = ["notice"],
@@ -1711,6 +1712,13 @@ tf_proto_library(
     srcs = ["types.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+)
+
+py_proto_library(
+    name = "types_proto_py_pb2",
+    has_services = 0,
+    api_version = 2,
+    deps = [":types_proto"],
 )
 
 tf_proto_library(

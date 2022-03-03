@@ -20,7 +20,7 @@ from tensorflow.core.framework import types_pb2
 # We need to import pywrap_tensorflow prior to the bfloat wrapper to avoid
 # protobuf errors where a file is defined twice on MacOS.
 # pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+# from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.framework import _dtypes
 from tensorflow.python.types import doc_typealias
 from tensorflow.python.lib.core import _pywrap_bfloat16
