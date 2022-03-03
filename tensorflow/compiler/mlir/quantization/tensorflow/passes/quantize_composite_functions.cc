@@ -275,10 +275,10 @@ LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
       }
       if (identifier_to_attr.count(
               llvm::StringRef(std::string(key_and_value_pair[1]))) == 0) {
-        float_func.emitError(
-            absl::StrCat("Couldn't find the attribute corresponding to ",
-                         key_and_value_pair[1]));
-        return failure();
+        float_func.emitWarning(absl::StrCat("Using the default value for the '",
+                                            key_and_value_pair[0],
+                                            "' attribute"));
+        continue;
       }
       inner_op.setAttr(llvm::StringRef(std::string(key_and_value_pair[0])),
                        identifier_to_attr[llvm::StringRef(
