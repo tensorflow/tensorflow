@@ -435,6 +435,7 @@ alias(
 cc_library(
     name = "cc_api_stable",
     srcs = [
+        "core/subgraph.cc",
         "core/subgraph.h",
         "interpreter.cc",
         "interpreter_builder.cc",
@@ -497,7 +498,6 @@ cc_library(
 cc_library(
     name = "cc_api_experimental",
     srcs = [
-        "core/subgraph.cc",
         "interpreter_experimental.cc",
         "signature_runner.cc",
     ],
