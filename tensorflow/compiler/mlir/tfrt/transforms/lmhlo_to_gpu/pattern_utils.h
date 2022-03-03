@@ -19,11 +19,24 @@
 #include "mlir/IR/Types.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/rocblas_wrapper.h" // from @tf_runtime
 #include "tfrt/gpu/wrapper/cudnn_wrapper.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/miopen_wrapper.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/rocblas_wrapper.h"  // from @tf_runtime
 
 namespace tensorflow {
+
+extern const tfrt::gpu::wrapper::Platform kGpuTargetPlatform;
+extern const tfrt::gpu::wrapper::BlasGemmAlgo kBlasGemmDefaultAlgo;
+extern const tfrt::gpu::wrapper::BlasOperation kBlasOperationTranspose;
+extern const tfrt::gpu::wrapper::BlasOperation kBlasOperationConjTranspose;
+extern const tfrt::gpu::wrapper::BlasOperation kBlasOperationNone;
+extern const tfrt::gpu::wrapper::BlasFillMode kBlasFillModeLower;
+extern const tfrt::gpu::wrapper::BlasFillMode kBlasFillModeUpper;
+extern const tfrt::gpu::wrapper::BlasSideMode kBlasSideLeft;
+extern const tfrt::gpu::wrapper::BlasSideMode kBlasSideRight;
+extern const tfrt::gpu::wrapper::BlasDiagType kBlasDiagUnit;
+extern const tfrt::gpu::wrapper::BlasDiagType kBlasDiagNonUnit;
 
 // Converts from mlir::Type to the corresponding
 // tfrt::gpu::wrapper::BlasDataType.
