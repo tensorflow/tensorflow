@@ -54,6 +54,8 @@ def row_splits_to_segment_ids(splits, name=None, out_type=None):
     splits = ops.convert_to_tensor(
         splits, name="splits",
         preferred_dtype=dtypes.int64)
+    if splits[0] != 0:
+      raise ValueError("splits[0] must be zero")
     if splits.dtype not in (dtypes.int32, dtypes.int64):
       raise ValueError("splits must have dtype int32 or int64")
     splits.shape.assert_has_rank(1)
