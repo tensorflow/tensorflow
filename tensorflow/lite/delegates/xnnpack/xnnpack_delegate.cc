@@ -1527,6 +1527,23 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckTensorsDimensionMatch(
+      TfLiteContext* context, const TfLiteTensor& input_tensor,
+      const TfLiteTensor& output_tensor, int dimension_index, int node_index,
+      const char* op_name) {
+    if (input_tensor.dims->data[dimension_index] !=
+        output_tensor.dims->data[dimension_index]) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context,
+          "mismatch in shape dimension %d (%d != %d) in input and output "
+          "tensors of %s operator #%d",
+          dimension_index, input_tensor.dims->data[dimension_index],
+          output_tensor.dims->data[dimension_index], op_name, node_index);
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus VisitNode(
       xnn_subgraph_t subgraph, const Delegate& delegate, TfLiteContext* context,
       TfLiteRegistration* registration, TfLiteNode* node, int node_index,
@@ -1561,6 +1578,13 @@ class Subgraph {
       case kTfLiteBuiltinCeil:
         return VisitCeilNode(subgraph, delegate, logging_context, node_index,
                              node, context->tensors, xnnpack_tensors);
+      case kTfLiteBuiltinConcatenation: {
+        const TfLiteConcatenationParams* concat_params =
+            static_cast<const TfLiteConcatenationParams*>(node->builtin_data);
+        return VisitConcatenationNode(subgraph, delegate, logging_context,
+                                      node_index, node, context->tensors,
+                                      concat_params, xnnpack_tensors);
+      }
       case kTfLiteBuiltinConv2d: {
         const TfLiteConvParams* conv_params =
             static_cast<const TfLiteConvParams*>(node->builtin_data);
@@ -1964,6 +1988,82 @@ class Subgraph {
       }
     }
 
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitConcatenationNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors,
+      const TfLiteConcatenationParams* concat_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
+
+    const TfLiteTensor& input1_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input1_tensor,
+                                       node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input1_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& input2_tensor = tensors[node->inputs->data[1]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input2_tensor,
+                                       node->inputs->data[1], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input2_tensor, node->inputs->data[1], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    // Check dimensions
+    int axis = concat_params->axis;
+    if (axis < 0) axis += input1_tensor.dims->size;
+
+    for (int i = 0; i < output_tensor.dims->size; i++) {
+      // All dimensions must match except the 'axis'.
+      if (i == axis) {
+        continue;
+      }
+      TF_LITE_ENSURE_STATUS(CheckTensorsDimensionMatch(
+          logging_context, input1_tensor, output_tensor, i, node_index,
+          "CONCATENATE"));
+      TF_LITE_ENSURE_STATUS(CheckTensorsDimensionMatch(
+          logging_context, input2_tensor, output_tensor, i, node_index,
+          "CONCATENATE"));
+    }
+
+    int sum_axis =
+        input1_tensor.dims->data[axis] + input2_tensor.dims->data[axis];
+
+    if (output_tensor.dims->data[axis] != sum_axis) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "mismatch in axis dimension %d (%d != %d) in output and input"
+          "tensors of CONCATENATE operator #%d",
+          axis, output_tensor.dims->data[axis], sum_axis, node_index);
+      return kTfLiteError;
+    }
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_concatenate2(
+          subgraph, axis,
+          /*input1_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+          /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate CONCATENATION node #%d",
+                           node_index);
+        return kTfLiteError;
+      }
+    }
     return kTfLiteOk;
   }
 
