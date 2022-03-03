@@ -52,9 +52,9 @@ static llvm::Expected<tfrt::gpu::GpuModule> ModuleLoad(
     return tfrt::MakeStringError(
         "No GpuModuleData resource found in the request context.");
   }
-  llvm::StringRef blob = gpu_module_data->blob;
+  llvm::ArrayRef<uint8_t> blob = gpu_module_data->blob;
 
-  if (blob.empty() || blob.back() != 0)
+  if (blob.empty())
     return tfrt::MakeStringError("blob must be null-terminated");
 
   auto current = tfrt::gpu::wrapper::CtxSetCurrent(context->get());
