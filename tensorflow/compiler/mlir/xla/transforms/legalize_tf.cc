@@ -2212,10 +2212,10 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
       return failure();
     }
 
-    std::string fft_string = "RFFT";
-    if (typeid(OpTy) == typeid(TF::IRFFTOp)) {
+    std::string fft_string = "IRFFT";
+    if (typeid(OpTy) == typeid(TF::RFFTOp)) {
       fft_length = fft_length / 2 + 1;
-      fft_string = "IRFFT";
+      fft_string = "RFFT";
     }
     Location loc = op.getLoc();
 
