@@ -72,9 +72,8 @@ static void TestSmokeTest(void) {
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   ASSERT_NE(interpreter, NULL);
 
-  // The options/model can be deleted immediately after interpreter creation.
+  // The options can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
-  TfLiteModelDelete(model);
 
   ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
   ASSERT_EQ(TfLiteInterpreterGetInputTensorCount(interpreter), 1);
@@ -130,6 +129,9 @@ static void TestSmokeTest(void) {
   ASSERT_EQ(output[1], 9.f);
 
   TfLiteInterpreterDelete(interpreter);
+
+  // The model should only be deleted after destroying the interpreter.
+  TfLiteModelDelete(model);
 }
 
 static void RunTests(void) {
