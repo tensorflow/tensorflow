@@ -120,6 +120,7 @@ class ScopedProfile {
  protected:
   Profiler* profiler_;
   uint32_t event_handle_;
+  bool profiling_;
 };
 
 class ScopedOperatorProfile : public ScopedProfile {
