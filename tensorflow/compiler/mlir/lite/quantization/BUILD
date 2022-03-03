@@ -158,6 +158,7 @@ tf_native_cc_binary(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TableGen",
     ],
 )
