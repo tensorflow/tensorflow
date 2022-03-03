@@ -615,7 +615,7 @@ class PjRtBuffer {
                          std::function<void(Status)> on_ready) = 0;
 
   // Synchronous overload of ToLiteral, as a convenience.
-  Status ToLiteral(MutableLiteralBase* literal) {
+  Status ToLiteralSync(MutableLiteralBase* literal) {
     absl::Notification done;
     Status status;
     ToLiteral(literal, [&](Status s) {
@@ -628,10 +628,10 @@ class PjRtBuffer {
 
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
-  StatusOr<std::shared_ptr<Literal>> ToLiteral() {
+  StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
     auto literal = std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(on_device_shape()));
-    TF_RETURN_IF_ERROR(ToLiteral(literal.get()));
+    TF_RETURN_IF_ERROR(ToLiteralSync(literal.get()));
     return literal;
   }
 
