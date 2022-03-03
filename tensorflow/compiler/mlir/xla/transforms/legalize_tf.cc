@@ -2212,9 +2212,10 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
       return failure();
     }
 
+    int64_t expected_dim = fft_length;
     std::string fft_string = "RFFT";
     if (typeid(OpTy) == typeid(TF::IRFFTOp)) {
-      fft_length = fft_length / 2 + 1;
+      expected_dim = fft_length / 2 + 1;
       fft_string = "IRFFT";
     }
     Location loc = op.getLoc();
@@ -2225,15 +2226,15 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
     }
 
     auto expected_shape = llvm::to_vector<4>(input_shape.drop_back());
-    expected_shape.push_back(fft_length);
+    expected_shape.push_back(expected_dim);
 
     // Zero pad or truncate the last axis
     Value reshaped = op.input();
     SmallVector<int64_t, 4> begin_indices(input_shape.size(), 0);
     SmallVector<int64_t, 4> strides(input_shape.size(), 1);
 
-    // Last dim larger than fft_length, slice the input
-    if (input_shape.back() > fft_length) {
+    // Last dim larger than expected_dim, slice the input
+    if (input_shape.back() > expected_dim) {
       reshaped = rewriter.create<SliceOp>(
           op.getLoc(),
           RankedTensorType::get(expected_shape, input_ty.getElementType()),
@@ -2241,11 +2242,11 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
           GetI64ElementsAttr(expected_shape, &rewriter),
           GetI64ElementsAttr(strides, &rewriter));
 
-      // Last dim smaller than fft_length, zero-pad the input
-    } else if (input_ty.getShape().back() < fft_length) {
+      // Last dim smaller than expected_dim, zero-pad the input
+    } else if (input_ty.getShape().back() < expected_dim) {
       SmallVector<int64_t, 4> no_padding(input_shape.size(), 0);
       SmallVector<int64_t, 4> padding(input_shape.size() - 1, 0);
-      padding.push_back(fft_length - input_shape.back());
+      padding.push_back(expected_dim - input_shape.back());
       Value zero =
           GetScalarConstOfType(input_ty.getElementType(), loc, 0, &rewriter);
       reshaped = rewriter.create<PadOp>(
