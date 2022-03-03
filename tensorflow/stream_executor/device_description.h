@@ -277,11 +277,6 @@ class DeviceDescription {
   // be "gfx000" (which is an invalid gfx arch).
   RocmComputeCapability rocm_compute_capability() const;
 
-  // Returns the AMDGPU ISA version if we're running on the ROCm platform.
-  // If the information is not available, the version is not modified,
-  // and the return value will be false.
-  bool rocm_amdgpu_isa_version(int *version) const;
-
   // Returns the
   // * AMDGPU GCN Architecture Name if we're running on the ROCm platform.
   // * kUndefinedString otherwise
@@ -352,9 +347,6 @@ class DeviceDescription {
 
   // ROCm gfx arch,  "gfx000" if not available.
   RocmComputeCapability rocm_compute_capability_{"gfx000"};
-
-  // ROCM AMDGPU ISA version, 0 if not available.
-  int rocm_amdgpu_isa_version_;
 
   // ROCm AMDGPU GCN Architecture name, "" if not available.
   std::string rocm_amdgpu_gcn_arch_name_;
@@ -449,10 +441,6 @@ class DeviceDescriptionBuilder {
   void set_rocm_compute_capability(std::string gcn_arch_name) {
     device_description_->rocm_compute_capability_ =
         RocmComputeCapability(gcn_arch_name);
-  }
-
-  void set_rocm_amdgpu_isa_version(int version) {
-    device_description_->rocm_amdgpu_isa_version_ = version;
   }
 
   void set_rocm_amdgpu_gcn_arch_name(const std::string &gcn_arch_name) {

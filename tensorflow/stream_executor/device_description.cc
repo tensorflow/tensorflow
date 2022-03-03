@@ -48,7 +48,6 @@ DeviceDescription::DeviceDescription()
       shared_memory_per_core_(kUninitializedUint64),
       shared_memory_per_block_(kUninitializedUint64),
       clock_rate_ghz_(-1.0),
-      rocm_amdgpu_isa_version_(-1),
       rocm_amdgpu_gcn_arch_name_(kUndefinedString),
       numa_node_(-1),
       core_count_(-1),
@@ -114,15 +113,6 @@ CudaComputeCapability DeviceDescription::cuda_compute_capability() const {
 
 RocmComputeCapability DeviceDescription::rocm_compute_capability() const {
   return rocm_compute_capability_;
-}
-
-bool DeviceDescription::rocm_amdgpu_isa_version(int *version) const {
-  bool status = false;
-  if (rocm_amdgpu_isa_version_ > 0) {
-    *version = rocm_amdgpu_isa_version_;
-    status = true;
-  }
-  return status;
 }
 
 bool ThreadDimOk(const DeviceDescription &device_description,
