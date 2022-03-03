@@ -277,13 +277,6 @@ class DeviceDescription {
   // be "gfx000" (which is an invalid gfx arch).
   RocmComputeCapability rocm_compute_capability() const;
 
-  // Returns the
-  // * AMDGPU GCN Architecture Name if we're running on the ROCm platform.
-  // * kUndefinedString otherwise
-  const std::string rocm_amdgpu_gcn_arch_name() const {
-    return rocm_amdgpu_gcn_arch_name_;
-  }
-
   // Returns the maximum amount of shared memory present on a single core
   // (i.e. Streaming Multiprocessor on NVIDIA GPUs; Compute Unit for OpenCL
   // devices). Note that some devices, such as NVIDIA's have a configurable
@@ -347,9 +340,6 @@ class DeviceDescription {
 
   // ROCm gfx arch,  "gfx000" if not available.
   RocmComputeCapability rocm_compute_capability_{"gfx000"};
-
-  // ROCm AMDGPU GCN Architecture name, "" if not available.
-  std::string rocm_amdgpu_gcn_arch_name_;
 
   int numa_node_;
   int core_count_;
@@ -441,10 +431,6 @@ class DeviceDescriptionBuilder {
   void set_rocm_compute_capability(std::string gcn_arch_name) {
     device_description_->rocm_compute_capability_ =
         RocmComputeCapability(gcn_arch_name);
-  }
-
-  void set_rocm_amdgpu_gcn_arch_name(const std::string &gcn_arch_name) {
-    device_description_->rocm_amdgpu_gcn_arch_name_ = gcn_arch_name;
   }
 
   void set_numa_node(int value) { device_description_->numa_node_ = value; }

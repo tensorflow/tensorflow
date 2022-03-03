@@ -150,8 +150,6 @@ typedef struct SE_DeviceDescription {
   int cuda_compute_capability_major;
   int cuda_compute_capability_minor;
 
-  char* rocm_amdgpu_gcn_arch_name;
-
   int numa_node;
   int core_count;
   bool ecc_enabled;

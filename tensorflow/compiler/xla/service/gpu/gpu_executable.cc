@@ -283,7 +283,8 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   if (platform_kind == stream_executor::PlatformKind::kROCm) {
     std::string stream_arch = main_stream->parent()
                                   ->GetDeviceDescription()
-                                  .rocm_amdgpu_gcn_arch_name();
+                                  .rocm_compute_capability()
+                                  .gcn_arch_name();
     std::string gpu_exec_arch = absl::get<std::string>(gpu_version_);
     TF_RET_CHECK(stream_arch == gpu_exec_arch)
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
