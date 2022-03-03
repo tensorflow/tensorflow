@@ -47,6 +47,7 @@ package_group(
         "//third_party/mlir_edge/model_curriculum/iree/...",
         "//third_party/mlperf/submissions/training/v0_7/models/...",
         "//third_party/py/keras/...",
+        "//waymo/ml/deploy/benchmark/...",
     ],
 )
 
